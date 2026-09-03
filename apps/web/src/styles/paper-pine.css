@@ -19,8 +19,15 @@
  * it onto shadcn's token names for the screens still built on those components; they are left
  * alone because rewriting them is a change to screens this phase does not touch.
  */
+/*
+ * FD-11 — `.dash` joins the list rather than copying the six values, which is the extension this
+ * file was written to have: the dashboard is Desk One's language on the screen everybody lands on
+ * first, and a second copy of the marigold is how a hospital ends up with two shades of "needs
+ * attention".
+ */
 .d1,
-.lg {
+.lg,
+.dash {
   --paper: #f4f7f4;
   --card: #ffffff;
   --ink: #132420;

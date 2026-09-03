@@ -1,0 +1,169 @@
+/*
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * THE DASHBOARD — DESK ONE'S LANGUAGE, ON THE SCREEN EVERY SIGNED-IN PERSON LANDS ON FIRST
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Built to the owner's artboard ("Dashboard — the composer", `Main.dc.html`), whose own note sets
+ * the rule this file follows: *"Desk One's identity throughout: paper #f4f7f4, pine #0e6b4e, IBM
+ * Plex, the dark agent dock along the foot. Tokens and control anatomy lifted from desk-one.html,
+ * not re-invented."* So none of the six colours are declared here — they come from
+ * `styles/paper-pine.css`, the same file `.d1` and `.lg` read, and a change there reaches all three.
+ *
+ * Everything is scoped under `.dash`. This screen renders INSIDE the application shell, unlike Desk
+ * One which owns the viewport, so an unscoped rule here would leak into every other screen through
+ * the shared bundle — and would fight the shell's own Tailwind besides.
+ *
+ * ONE DELIBERATE DEPARTURE FROM THE ARTBOARD: it draws its own chrome bar — product mark, who is
+ * signed in, a clock, a search button. That bar is the SHELL's job here and the shell already draws
+ * it. Rendering the artboard's copy of it would put two identity strips and two clocks on one
+ * screen, so this file starts at "Your desk today" and the chrome above it stays the shell's.
+ */
+
+.dash {
+  background: var(--paper);
+  color: var(--ink);
+  font: 13.5px/19px "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100%;
+  padding: 20px 22px 26px;
+}
+
+.dash *{ box-sizing: border-box; }
+.dash button { font: inherit; color: inherit; cursor: pointer; background: none; border: none; padding: 0; text-align: left; }
+.dash button:disabled { cursor: not-allowed; }
+.dash input { font: inherit; color: inherit; }
+.dash a { color: var(--green); }
+.dash button:focus-visible, .dash a:focus-visible, .dash input:focus-visible {
+  outline: 2px solid var(--green); outline-offset: 2px;
+}
+
+.dash .mo { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+.dash .tag {
+  font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9.5px; font-weight: 600;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--faint);
+}
+.dash .kb {
+  display: inline-flex; align-items: center; justify-content: center; height: 16px; min-width: 20px;
+  padding: 0 5px; border-radius: 3px; border: 1px solid var(--line); background: var(--card);
+  font-family: "IBM Plex Mono", monospace; font-size: 9px; font-weight: 600; color: var(--dim); flex-shrink: 0;
+}
+.dash .box { background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+.dash .pill {
+  display: inline-flex; align-items: center; gap: 6px; height: 23px; padding: 0 9px; border-radius: 4px;
+  font-size: 10.5px; font-weight: 600; border: 1px solid var(--line); background: var(--card);
+  color: var(--dim); white-space: nowrap;
+}
+.dash .pill.on { border-color: var(--green-line); background: var(--green-soft); color: var(--green); }
+.dash .pill.gd { border-color: var(--gold-line); background: var(--gold-soft); color: var(--gold); }
+
+.dash .sec {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px;
+  padding: 0 13px; border-radius: 6px; border: 1px solid var(--line); background: var(--card);
+  font-size: 12.5px; font-weight: 500;
+}
+.dash .sec:hover:not(:disabled) { border-color: var(--faint); }
+.dash .sec.go { border-color: var(--green); color: var(--green); font-weight: 600; justify-content: space-between; width: 100%; }
+.dash .sec:disabled { opacity: .42; }
+
+/* ══════════ the doors ══════════ */
+
+.dash .band { margin-bottom: 18px; }
+.dash .bandhd { display: flex; align-items: baseline; gap: 10px; margin-bottom: 9px; flex-wrap: wrap; }
+.dash .bandnote { font-size: 11.5px; color: var(--faint); }
+
+.dash .doors { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.dash .door { display: flex; flex-direction: column; overflow: hidden; }
+.dash .door .hd { display: flex; align-items: baseline; gap: 10px; padding: 14px 16px 11px; }
+.dash .door .hd .ttl { font-size: 15px; font-weight: 600; }
+.dash .door .hd .pth { margin-left: auto; font-size: 10.5px; color: var(--faint); }
+.dash .door .bd { padding: 0 16px 14px; display: flex; flex-direction: column; gap: 11px; flex-grow: 1; }
+
+/*
+ * The figure: the number is the loud thing and the label is quiet under it. `align-items:flex-start`
+ * and a column, not the artboard's baseline row, because a rupee figure and a bare count sit on the
+ * same line and Latin digits with a ₹ are taller than digits alone — a shared baseline made
+ * "₹3,720.00" and "0" look like different type sizes.
+ */
+.dash .figs { display: flex; gap: 22px; flex-wrap: wrap; }
+/* DD11 — the counts go quiet when the socket that would have corrected them is gone. */
+.dash .figs.dim { opacity: .4; }
+.dash .fig { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.dash .fig .n { font-size: 26px; line-height: 26px; font-weight: 600; }
+.dash .fig .l { font-size: 11px; color: var(--dim); }
+.dash a.fig { text-decoration: none; color: inherit; }
+.dash a.fig:hover .n { color: var(--green); }
+
+.dash .row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid var(--line2); }
+.dash .row .dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+.dash .row .txt { font-size: 12.5px; min-width: 0; }
+.dash .row .n { margin-left: auto; font-size: 11.5px; color: var(--dim); flex-shrink: 0; }
+
+/* ══════════ the schemes ══════════ */
+
+.dash .schemes { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.dash .sch {
+  display: flex; flex-direction: column; gap: 7px; padding: 12px 13px; min-width: 0;
+  text-align: left; text-decoration: none; color: inherit;
+}
+.dash .sch:hover { border-color: var(--faint); }
+.dash .sch .nm { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; }
+.dash .sch .note { font-size: 10.5px; color: var(--faint); line-height: 14px; }
+
+/* ══════════ the drawer ══════════ */
+
+/*
+ * THE ONLY GOLD ON THE SCREEN, and that is the point. §1 of Desk One's legend reserves marigold for
+ * "UNPAID stamps, heavy queues, missing data — visible from a metre". A counter that has not counted
+ * its cash is missing data, and this panel has to be the thing a cashier sees from across the room
+ * when they sit down. Everything else on this dashboard is paper and pine.
+ */
+.dash .drawer {
+  border-color: var(--gold-line);
+  background: var(--gold-soft);
+  padding: 16px 18px;
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.dash .drawer .say { min-width: 260px; flex: 1 1 320px; }
+.dash .drawer .ttl { font-size: 14.5px; font-weight: 600; }
+.dash .drawer .body { font-size: 12px; color: var(--dim); line-height: 17px; margin-top: 4px; max-width: 62ch; }
+.dash .drawer .form { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.dash .drawer label { display: block; margin-bottom: 5px; }
+.dash .drawer .in {
+  height: 38px; width: 170px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--card); padding: 0 12px; font-size: 15px;
+}
+.dash .drawer .in:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+.dash .drawer .in.bad { border-color: var(--red); }
+.dash .drawer .pri {
+  display: inline-flex; align-items: center; justify-content: center; height: 38px; padding: 0 16px;
+  border-radius: 6px; background: var(--green); color: #f2faf6; border: 1px solid var(--green);
+  font-size: 13px; font-weight: 600;
+}
+.dash .drawer .pri:hover:not(:disabled) { background: #0a5039; }
+.dash .drawer .pri:disabled { opacity: .45; }
+.dash .drawer .msg { font-size: 11.5px; color: var(--red); margin-top: 6px; }
+
+/* ══════════ the close row ══════════ */
+
+.dash .close { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.dash .close a { font-size: 12.5px; font-weight: 500; }
+
+/*
+ * ═══ NARROW ═══
+ *
+ * A 1366×768 counter machine is the common case and fits three doors. Below 1180px three columns of
+ * figures start truncating a rupee total, which is the one number on this screen nobody may read
+ * wrong, so the grid steps down rather than squeezing. FD-11 measured Desk One clipping at exactly
+ * this width; this screen is built with the breakpoint rather than having one retrofitted.
+ */
+@media (max-width: 1180px) {
+  .dash .doors { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dash .schemes { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 820px) {
+  .dash { padding: 16px 14px 22px; }
+  .dash .doors, .dash .schemes { grid-template-columns: minmax(0, 1fr); }
+}

@@ -1690,6 +1690,46 @@
       "missed": "Missed so far",
       "needsRebooking": "Need rebooking",
       "rebookRow": "patients to rebook — doctor on leave"
+    },
+    "today": "Your desk today",
+    "cta": {
+      "register": "Register a patient",
+      "book": "Open the book",
+      "take": "Take payment"
+    },
+    "drawer": {
+      "title": "Count your cash drawer before the first patient",
+      "body": "Type what is in the drawer now. The close of your shift is measured against it — float plus what you collect is what the drawer should hold, and a variance nobody can compute is a variance nobody is answerable for.",
+      "float": "Opening float (₹)",
+      "open": "Open the drawer",
+      "opening": "Opening…",
+      "isOpen": "drawer open",
+      "locked": "drawer first",
+      "atClose": "drawer counted at close"
+    },
+    "schemes": {
+      "title": "Schemes in play",
+      "note": "what a patient can walk in holding — attach it before the bill, never after",
+      "membership": {
+        "name": "Membership",
+        "note": "look a card up, or enrol — never enrol just to apply a benefit"
+      },
+      "coupons": {
+        "name": "Coupons",
+        "note": "camp and referral slips; the code travels with the quote"
+      },
+      "packages": {
+        "name": "Packages",
+        "note": "a paid bundle draws down; the bill shows what is left"
+      },
+      "panels": {
+        "name": "Corporate & TPA",
+        "note": "self · tpa · pmjay · corporate — a panel payer collects nothing here"
+      },
+      "partners": {
+        "name": "Channel partners",
+        "note": "who sent this patient — one slip per visit, commission accrues"
+      }
     }
   },
   "report": {
