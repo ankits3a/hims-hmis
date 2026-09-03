@@ -238,3 +238,42 @@ Core lab surface — `src/modules/lab` + `schema/lab.test.ts` + `seed-lab-catalo
 `test/lab.e2e.test.ts`: **27 suites, 241 tests, all passing** (then 26/26 after the two schema
 constraint tests landed). Web — `src/screens/lab-*` + `src/lib`: **14 files, 90 tests, all passing**,
 i18n parity included.
+
+### 8.2 T2 — The re-label is a witnessed act (executed 2026-09-03)
+
+Design board EdgeCases #12: *"Label smudged in the ice box; the bench scanner cannot read it."*
+
+- **Typing the number stays ALLOWED.** A laboratory that refused the tube would be discarding a
+  patient's blood over a printer. What it may not be is SILENT: `identifiedBy: "typed"` requires
+  `relabel: {witnessedBy, reason}`, refused on 02 H1's exact terms — a second person, never the
+  receiver, holding `lab.accession.operate` — and a blank reason is not a reason.
+- **`lab.specimen_relabelled` is its own fact**, on the SAME transaction, and the contrast with T1 is
+  written down: T1's event rides a REFUSAL and must outlive the rollback; this one rides a SUCCESS
+  and must vanish with it. A re-label recorded for a tube that was never received is a false record.
+  Routed on `lab:bench` (`LAB_REALTIME_NAMES` 17 → 18; events 23 → 24).
+- **REQUIRED on the wire, defaulted in the service, and the asymmetry is deliberate and PINNED.**
+  The service cannot observe whether a barcode was scanned or keyed; only the screen can. So
+  `receiveBody` requires `identifiedBy` and `accession.test.ts` asserts the schema refuses a body
+  without it — otherwise the service's `"scan"` default would be a hole a forgotten field walks
+  through (results.ts's M3, one act over). The default exists only so 23 internal fixtures that
+  genuinely scan need not be rewritten.
+- The bench screen declares it by CHECKBOX, not by keystroke timing: a heuristic that decided this
+  from typing speed is a control a fast typist switches off by accident.
+
+**Mutants, each applied and each red, then reverted:**
+
+| # | mutant | killed by |
+|---|---|---|
+| 1 | the receiver may witness their own re-label | 1 failed |
+| 2 | a blank reason counts as a reason | 1 failed |
+| 3 | no `lab.specimen_relabelled` written | 1 failed |
+| 4 | web: Receive enabled with no witness/reason | 1 failed |
+| 5 | web: the screen always claims `"scan"` | 1 failed |
+
+**Found by the change, not by a reviewer:** `lab.e2e.test.ts` drove three receives through the real
+route and got 400s — the required field working from the one surface a person comes through. Fixed
+in the e2e, and the pre-existing web D7 test's exact-body pin was widened to say `identifiedBy: "scan"`
+rather than relaxed to `toMatchObject`.
+
+**Evidence (2026-09-03):** typecheck 0; lint **0 errors**. Core lab surface **27 suites, 246 tests
+green**. Web `src/screens/lab-*` + `src/lib` **14 files, 91 tests green**.

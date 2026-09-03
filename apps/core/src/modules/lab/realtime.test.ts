@@ -9,14 +9,14 @@ import { LAB_BENCH_NAMES, LAB_BENCH_TOPIC, LAB_REALTIME_NAMES, labTopicsFor } fr
  * `[]` — the silent failure — is the kill.
  */
 describe("the laboratory's live topics (17c T3)", () => {
-  it("routes seventeen names, and no routed name is outside the event catalogue", () => {
-    expect(LAB_REALTIME_NAMES).toHaveLength(17); // 17d T1 added `lab.tube_swap_suspected`
+  it("routes eighteen names, and no routed name is outside the event catalogue", () => {
+    expect(LAB_REALTIME_NAMES).toHaveLength(18); // 17d: `tube_swap_suspected` (T1), `specimen_relabelled` (T2)
 
     const declared = new Set(LAB_EVENTS.map((e) => e.name));
     for (const name of LAB_REALTIME_NAMES) expect(declared.has(name)).toBe(true);
   });
 
-  it("the seven tube-and-result events route to the group AND to `lab:bench` — never to `[]`", () => {
+  it("the eight tube-and-result events route to the group AND to `lab:bench` — never to `[]`", () => {
     for (const name of LAB_BENCH_NAMES) {
       const topics = labTopicsFor({ name, payload: { orderGroupId: "g-1", specimenId: "s-1" } });
       expect({ name, topics }).toEqual({ name, topics: ["lab:g-1", LAB_BENCH_TOPIC] }); // THE KILL: `[]`

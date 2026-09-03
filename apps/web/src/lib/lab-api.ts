@@ -259,8 +259,16 @@ export const benchArrivals = (): Promise<WireBenchArrival[]> => api("GET", "/lab
 export const LAB_BENCH_TOPIC = "lab:bench";
 export const LAB_CRITICAL_TOPIC = "lab_critical";
 
+/**
+ * 17d T2 — `identifiedBy` is REQUIRED by the route. The server cannot tell a scanned barcode from a
+ * keyed one and this screen can, so the declaration is the screen's to make; a typed number means
+ * the label could not be read and the tube is about to be re-labelled, which is a witnessed act.
+ */
 export const receiveSpecimen = (
-  body: { specimenNo: string; containerSeen?: string; identityRecheckBy?: string }, key: string,
+  body: {
+    specimenNo: string; containerSeen?: string; identityRecheckBy?: string;
+    identifiedBy: "scan" | "typed"; relabel?: { witnessedBy: string; reason: string };
+  }, key: string,
 ): Promise<unknown> => api("POST", "/lab/bench/receive", body, key);
 
 export const rejectSpecimen = (

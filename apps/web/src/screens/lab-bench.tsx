@@ -66,6 +66,14 @@ export function LabBench(): React.ReactElement {
   const [scan, setScan] = useState("");
   const [focusNo, setFocusNo] = useState<string | null>(null);
   const [recheckBy, setRecheckBy] = useState("");
+  /**
+   * 17d T2 — the label could not be read, so the number was keyed by eye and the tube gets a new
+   * label. Declared by the operator rather than sniffed from typing speed: a heuristic that decided
+   * this by keystroke timing would be a control that a fast typist switches off by accident.
+   */
+  const [relabelling, setRelabelling] = useState(false);
+  const [relabelWitness, setRelabelWitness] = useState("");
+  const [relabelReason, setRelabelReason] = useState("");
   const [rejectReason, setRejectReason] = useState<(typeof REJECT_REASONS)[number]>("haemolysed");
   const [attributableTo, setAttributableTo] = useState("collection");
   const [values, setValues] = useState<Record<string, string>>({});
@@ -97,10 +105,19 @@ export function LabBench(): React.ReactElement {
 
   const accession = useMutation({
     mutationFn: (specimenNo: string) => receiveSpecimen(
-      { specimenNo, ...(recheckBy === "" ? {} : { identityRecheckBy: recheckBy }) },
+      {
+        specimenNo,
+        ...(recheckBy === "" ? {} : { identityRecheckBy: recheckBy }),
+        identifiedBy: relabelling ? "typed" : "scan",
+        ...(relabelling ? { relabel: { witnessedBy: relabelWitness.trim(), reason: relabelReason.trim() } } : {}),
+      },
       newIdempotencyKey(),
     ),
-    onSuccess: () => { setError(null); setRecheckBy(""); refresh(); },
+    onSuccess: () => {
+      setError(null); setRecheckBy("");
+      setRelabelling(false); setRelabelWitness(""); setRelabelReason("");
+      refresh();
+    },
     onError: (e: unknown) => setError(labErrorText(e)),
   });
   const refuse = useMutation({
@@ -266,7 +283,36 @@ export function LabBench(): React.ReactElement {
                           onChange={(e) => setRecheckBy(e.target.value)} />
                       </label>
                     )}
-                    <Button type="button" disabled={accession.isPending || (!a.wristbandScanned && recheckBy.trim() === "")}
+                    {/*
+                      17d T2 — design board EdgeCases #12. Typing the number stays ALLOWED: a
+                      laboratory that refused the tube would be discarding a patient's blood over a
+                      printer. What it may not be is SILENT, so declaring it opens a witness and a
+                      reason, and Receive waits for both.
+                    */}
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={relabelling}
+                        onChange={(e) => setRelabelling(e.target.checked)} />
+                      {t("lab.bench.relabelToggle")}
+                    </label>
+                    {relabelling && (
+                      <div className="space-y-2 rounded border border-border p-2">
+                        <p className="text-xs text-muted-foreground">{t("lab.bench.relabelHint")}</p>
+                        <label className="block text-sm">
+                          {t("lab.bench.relabelWitness")}
+                          <input className="mt-1 block w-full rounded border border-input px-2 py-1"
+                            value={relabelWitness} onChange={(e) => setRelabelWitness(e.target.value)} />
+                        </label>
+                        <label className="block text-sm">
+                          {t("lab.bench.relabelReason")}
+                          <input className="mt-1 block w-full rounded border border-input px-2 py-1"
+                            value={relabelReason} onChange={(e) => setRelabelReason(e.target.value)} />
+                        </label>
+                      </div>
+                    )}
+                    <Button type="button"
+                      disabled={accession.isPending
+                        || (!a.wristbandScanned && recheckBy.trim() === "")
+                        || (relabelling && (relabelWitness.trim() === "" || relabelReason.trim() === ""))}
                       onClick={() => accession.mutate(a.specimenNo)}>
                       {t("lab.bench.receive")}
                     </Button>

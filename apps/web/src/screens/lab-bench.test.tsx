@@ -82,7 +82,10 @@ it("D7 — a scanned tube in transit shows its patient; without a wristband scan
   expect(within(row).getByRole("button", { name: "Receive" })).toBeEnabled();
   await userEvent.click(within(row).getByRole("button", { name: "Receive" }));
   await waitFor(() => expect(seen.find((s) => s.path === "/api/lab/bench/receive")).toBeDefined());
-  expect(seen.find((s) => s.path === "/api/lab/bench/receive")!.body).toEqual({ specimenNo: "S2608300009", identityRecheckBy: "Sister Rekha" });
+  /** 17d T2 — `identifiedBy` is now on every receive: the route requires it and the screen declares it. */
+  expect(seen.find((s) => s.path === "/api/lab/bench/receive")!.body).toEqual({
+    specimenNo: "S2608300009", identityRecheckBy: "Sister Rekha", identifiedBy: "scan",
+  });
 });
 
 it("a scan that matches neither list is refused as not drawn here — the chair's route is never asked", async () => {
@@ -150,6 +153,45 @@ it("02 H1 — an absurd value is refused, and the override asks for a PERSON rat
   await userEvent.type(screen.getByLabelText("Second enterer"), "01BENCH2");
   await userEvent.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() => expect(screen.getByRole("status")).toBeInTheDocument());
+});
+
+/**
+ * 17d T2 — THE SMUDGED LABEL. Two assertions a green suite would otherwise miss: Receive stays
+ * DISABLED until both the witness and the reason are there (a control the operator can walk past by
+ * clicking through is not a control), and the body actually carries `identifiedBy: "typed"` — the
+ * route requires it, and a screen that sent `"scan"` while a human keyed the number would make the
+ * whole rule unreachable from the one surface that can answer it.
+ */
+it("17d T2 — a typed tube number opens a witness and a reason, and Receive waits for both", async () => {
+  const seen = mockRoutes({
+    "GET /api/lab/bench/worklist": { status: 200, body: [] },
+    "GET /api/lab/bench/arrivals": { status: 200, body: [ARRIVAL] },
+    "GET /api/lab/bench/criticals": { status: 200, body: [] },
+    "GET /api/lab/collection/specimen/S2608300009": { status: 200, body: null },
+    "POST /api/lab/bench/receive": { status: 201, body: { specimenId: "s-9", itemIds: ["i-9"] } },
+  });
+  renderWithProviders(<LabBench />);
+  await waitFor(() => expect(screen.getByTestId("arrival-S2608300009")).toBeInTheDocument());
+  await userEvent.type(screen.getByLabelText("Scan the tube"), "S2608300009{Enter}");
+
+  // The unscanned-wristband re-check is this arrival's own gate (17a A6) — satisfy it first.
+  await userEvent.type(await screen.findByLabelText("Identity re-checked by"), "Sister Rekha");
+  const receive = screen.getByRole("button", { name: "Receive" });
+  expect(receive).toBeEnabled();
+
+  await userEvent.click(screen.getByLabelText("The label cannot be read — I typed the number"));
+  expect(receive).toBeDisabled(); // THE KILL: a witness-free re-label one click away
+  await userEvent.type(screen.getByLabelText("Witnessed by (second person’s login)"), "01BENCH2");
+  expect(receive).toBeDisabled(); // …and still disabled with no reason
+  await userEvent.type(screen.getByLabelText("Why the label could not be read"), "frozen over");
+  expect(receive).toBeEnabled();
+
+  await userEvent.click(receive);
+  await waitFor(() => expect(seen.filter((c) => c.path === "/api/lab/bench/receive")).toHaveLength(1));
+  expect(seen.find((c) => c.path === "/api/lab/bench/receive")!.body).toMatchObject({
+    specimenNo: "S2608300009", identifiedBy: "typed",
+    relabel: { witnessedBy: "01BENCH2", reason: "frozen over" },
+  });
 });
 
 /**

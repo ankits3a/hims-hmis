@@ -57,6 +57,11 @@ export const LAB_BENCH_NAMES = [
    * a refresh is a flag that arrives after the second tube has gone on the analyser.
    */
   "lab.tube_swap_suspected",
+  /**
+   * 17d T2 — the bench's neighbours see a tube re-labelled as it happens. The phlebotomist whose
+   * label failed is the person who most needs to know the printer or the ice box is at fault.
+   */
+  "lab.specimen_relabelled",
 ] as const;
 
 /**
