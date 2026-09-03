@@ -201,18 +201,25 @@ describe("LoginScreen", () => {
   });
 
   /**
-   * The pine panel carries four real statements about what the software does at the reader's seat.
-   * The first draft hid it with `aria-hidden` — the reflex for a marketing column — which denies a
-   * blind clerk the same information every sighted one gets. It is a complementary landmark
-   * instead: announced, and skippable by anybody navigating landmarks.
+   * The pine panel carries the verse. The first draft hid it with `aria-hidden` — the reflex for a
+   * marketing column — which denies a blind clerk what every sighted one gets; that was true when
+   * the panel held four claims about the software and it is truer now that it holds scripture. It
+   * is a complementary landmark instead: announced, and skippable by anybody navigating landmarks.
+   *
+   * The assertion used to read `toHaveTextContent("At the counter")`, which was the pitch the owner
+   * threw out. It is re-pointed at the verse rather than deleted, because what it is really pinning
+   * is that the panel's CONTENT is inside the landmark and not stranded outside it.
    */
   it("the agent panel is a landmark a screen reader can reach and skip, not hidden content", () => {
     stubFetch({});
+    vi.spyOn(Math, "random").mockReturnValue(0);
     renderWithProviders(<LoginScreen />);
     const aside = screen.getByRole("complementary");
     expect(aside).toBeInTheDocument();
     expect(aside).not.toHaveAttribute("aria-hidden");
-    expect(aside).toHaveTextContent("At the counter");
+    expect(aside).toHaveTextContent("स्वकर्मणा तमभ्यर्च्य सिद्धिं विन्दति मानवः");
+    // Not a live region: the line is fixed for the life of the page, so there is nothing to announce.
+    expect(aside).not.toHaveAttribute("aria-live");
   });
 
   it("no longer refuses a short password client-side — the server decides what may be USED to sign in", async () => {
@@ -232,5 +239,100 @@ describe("LoginScreen", () => {
 
     await waitFor(() => expect(sent).toHaveLength(1));
     expect(sent[0]).toContain('"password":"old7pwd"');
+  });
+
+  /**
+   * ═════════════════════════════════════════════════════════════════════════════════════════════
+   * THE ROTATING LINE — AND THE ONE THING ABOUT IT THAT IS EASY TO BREAK AND HARD TO SEE
+   * ═════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * `Math.random` is stubbed rather than a prop being threaded through, so the screen keeps the same
+   * signature it has in production and the test still pins the verse. Index 0 is 18.46.
+   */
+  it("prints the pinned verse with its citation, and tags the script for a screen reader", () => {
+    stubFetch({});
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    renderWithProviders(<LoginScreen />);
+
+    const shloka = screen.getByText("स्वकर्मणा तमभ्यर्च्य सिद्धिं विन्दति मानवः");
+    expect(shloka).toHaveAttribute("lang", "sa");
+    expect(screen.getByText("गीता 18.46")).toBeInTheDocument();
+    // Hinglish is Hindi in Latin letters, which is what `hi-Latn` is for — it is not English.
+    const meaning = screen.getByText("Apne kaam se hi uski puja — wahi siddhi hai.");
+    expect(meaning).toHaveAttribute("lang", "hi-Latn");
+    expect(screen.getByText(/that is how a person is perfected/)).toHaveAttribute("lang", "en");
+  });
+
+  /**
+   * THE DEFECT THIS GUARDS: the pick belongs in `useState`'s lazy initialiser and NOT in the render
+   * body. This component re-renders on the 20-second clock tick, on every keystroke, on Caps Lock,
+   * on the reveal and on the language toggle — a pick in the render body rerolls the verse under a
+   * clerk mid-read, roughly three times a minute, and every other test here still passes.
+   *
+   * `mockReturnValueOnce(0)` then `0.99` is what makes it fail: a second call lands on a DIFFERENT
+   * line, so a rerolled screen shows the proverb instead of 18.46.
+   */
+  it("holds the same line across a re-render — it never changes under the person reading it", async () => {
+    stubFetch({});
+    vi.spyOn(Math, "random").mockReturnValueOnce(0).mockReturnValue(0.99);
+    renderWithProviders(<LoginScreen />);
+    const user = userEvent.setup();
+    expect(screen.getByText("गीता 18.46")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "SHOW" }));
+    await user.click(screen.getByRole("button", { name: "HIDE" }));
+
+    expect(screen.getByText("गीता 18.46")).toBeInTheDocument();
+    expect(screen.queryByText("सेवा ही परम धर्म है")).not.toBeInTheDocument();
+  });
+
+  it("keeps the same verse across a language switch, and swaps the meaning to Devanagari", async () => {
+    stubFetch({});
+    vi.spyOn(Math, "random").mockReturnValueOnce(0).mockReturnValue(0.99);
+    renderWithProviders(<LoginScreen />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "हिन्दी" }));
+
+    await waitFor(() => expect(screen.getByText("अपने काम से ही उसकी पूजा — वही सिद्धि है।")).toBeInTheDocument());
+    // The Sanskrit is Devanagari in both languages, and it is the SAME verse the English screen had.
+    expect(screen.getByText("स्वकर्मणा तमभ्यर्च्य सिद्धिं विन्दति मानवः")).toBeInTheDocument();
+    expect(screen.getByText("गीता 18.46")).toBeInTheDocument();
+    // Hindi carries no Latin gloss — the meaning above it is already in the reader's script.
+    expect(screen.queryByText(/that is how a person is perfected/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Apne kaam se hi uski puja — wahi siddhi hai.")).not.toBeInTheDocument();
+  });
+
+  /**
+   * `सेवा ही परम धर्म है` is the line the owner asked for by name and it is NOT in the Gita — it is
+   * a proverb. The table gives it `cite: null`; this pins that the SCREEN honours that by printing
+   * the saying label where a verse would print its chapter and verse. A regression here does not
+   * look broken, it looks fine and is false.
+   */
+  it("labels the proverb as a saying and never gives it a chapter and verse", () => {
+    stubFetch({});
+    vi.spyOn(Math, "random").mockReturnValue(0.99);
+    renderWithProviders(<LoginScreen />);
+
+    expect(screen.getByText("सेवा ही परम धर्म है")).toBeInTheDocument();
+    expect(screen.getByText("कहावत · a saying, not a verse")).toBeInTheDocument();
+    expect(screen.queryByText(/^गीता \d/)).not.toBeInTheDocument();
+  });
+
+  /**
+   * FD-10 stamped `data-lang` on the login root, which is what the STYLESHEET needs, and stopped
+   * there. `<html lang>` stayed `"en"` on a fully Hindi screen, so a screen reader pronounced
+   * Devanagari with an English voice — the same defect as the type rules, one layer up, and
+   * invisible in every screenshot because it has no pixels.
+   */
+  it("stamps the document language too, not just the class hook the stylesheet reads", async () => {
+    stubFetch({});
+    document.documentElement.lang = "en";
+    renderWithProviders(<LoginScreen />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "हिन्दी" }));
+
+    await waitFor(() => expect(document.documentElement.lang).toBe("hi"));
   });
 });

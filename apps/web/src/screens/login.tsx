@@ -9,6 +9,7 @@ import { isPasswordChangeRequired } from "../lib/admin-api";
 import i18next from "../lib/i18n";
 import { switchLanguage } from "../lib/i18n";
 import { istClock, istDateLabel } from "./desk-one/model";
+import { pickLine } from "./login-verses";
 import "../styles/paper-pine.css";
 import "./login.css";
 
@@ -52,10 +53,24 @@ type LoginInput = z.infer<typeof loginSchema>;
  * and it would have to be invented, because **there is no readable data here**. Every route is
  * guarded: `GET /ops/mode` answers 401 unauthenticated (measured against the running server, not
  * assumed), and so does everything else. A hospital screen that shows plausible numbers to a person
- * who cannot yet be identified is the worst version of this product, so this one shows none. What
- * it shows is either locally true (the clock, in IST, because a hospital clock in the browser's
- * zone is a wrong clock) or a plain claim about what the software does, in the same
- * argue-in-consequences voice the dock uses.
+ * who cannot yet be identified is the worst version of this product, so this one shows none. The
+ * only live thing on it is the clock, in IST, because a hospital clock in the browser's zone is a
+ * wrong clock.
+ *
+ * ═══ THE PANEL CARRIES A VERSE, NOT A PITCH — THE OWNER'S RULING ═══
+ *
+ * The first version of this panel argued for the product: a lede, a sub, and four capability rows
+ * about what the agent does at the reader's seat. The owner threw it out. Nobody signing in at 08:40
+ * with a queue at the door is reading a pitch for software they have already been given, and a
+ * sign-in screen is the wrong place to sell anything to the people who already work here.
+ *
+ * What stands there now is one line from the Gita and its meaning in Hinglish, a different one on
+ * every page load. The whole risk in that is accuracy, and it is handled one file over in
+ * `login-verses.ts`: the Sanskrit and the chapter:verse live in a single frozen table so they cannot
+ * drift between `en.json` and `hi.json`, every line was transcribed from source rather than
+ * recalled, and the one entry that is a PROVERB rather than scripture — `सेवा ही परम धर्म है` —
+ * carries `cite: null` and is labelled a saying, because attributing a proverb to the Gita on the
+ * screen an entire hospital sees each morning is the one mistake this panel must not make.
  *
  * ═══ WHAT THE OLD SCREEN DID, WHICH THIS ONE STILL DOES ═══
  *
@@ -70,6 +85,14 @@ export function LoginScreen(): React.ReactElement {
   const [revealed, setRevealed] = useState(false);
   const [capsLock, setCapsLock] = useState(false);
   const [clock, setClock] = useState(() => istClock());
+  /**
+   * ONE PICK PER PAGE LOAD, HELD FOR THE LIFE OF THE MOUNT — and the lazy initialiser is the whole
+   * point, not a style choice. `pickLine()` called in the render body would reroll the verse on
+   * every re-render of this component, and this component re-renders on the 20-second clock tick,
+   * on every keystroke, on Caps Lock, on the reveal button and on the language toggle. A clerk would
+   * watch the line change three times a minute while reading it. `useState` runs this once.
+   */
+  const [line] = useState(() => pickLine());
   const { register, handleSubmit, formState } = useForm<LoginInput>({ resolver: zodResolver(loginSchema) });
 
   useEffect(() => {
@@ -113,12 +136,16 @@ export function LoginScreen(): React.ReactElement {
   };
 
   const busy = formState.isSubmitting;
-  const caps = [
-    { key: "counter", title: t("login.cap.counterTitle"), body: t("login.cap.counter") },
-    { key: "till", title: t("login.cap.tillTitle"), body: t("login.cap.till") },
-    { key: "floor", title: t("login.cap.floorTitle"), body: t("login.cap.floor") },
-    { key: "record", title: t("login.cap.recordTitle"), body: t("login.cap.record") },
-  ];
+  const hindi = i18next.language.startsWith("hi");
+  /*
+    The citation, and the reason it is assembled here rather than stored as a finished string: a
+    verse prints `गीता 18.46` and anything that is NOT scripture prints the saying label instead.
+    `cite` is `null` for exactly those, so there is no path on which a proverb acquires a chapter and
+    verse — the type makes the mistake unrepresentable rather than merely unlikely.
+  */
+  const attribution = line.cite === null ? t("login.verse.proverbLabel") : `${t("login.verse.book")} ${line.cite}`;
+  const meaning = t(`login.verse.${line.id}.meaning`);
+  const gloss = t(`login.verse.${line.id}.gloss`);
 
   /*
     The language reaches the STYLESHEET, not just the strings. `.tag`'s uppercase and letter-spacing
@@ -126,15 +153,18 @@ export function LoginScreen(): React.ReactElement {
     words while keeping type rules that fight the script is only half translated.
   */
   return (
-    <div className="lg" data-lang={i18next.language.startsWith("hi") ? "hi" : "en"} data-testid="login-screen">
+    <div className="lg" data-lang={hindi ? "hi" : "en"} data-testid="login-screen">
       {/*
         ══════════ the machine's half ══════════
 
         `<aside>` and NOT `aria-hidden`. The first draft hid this panel from assistive technology,
-        which is the reflex for a marketing column and is wrong here: it holds four real statements
-        about what the software will do at the reader's own seat, and a blind clerk is entitled to
-        them. `<aside>` makes it a complementary landmark instead — announced, and skippable in one
-        keystroke by anybody navigating landmarks, which is the actual need behind the reflex.
+        which is the reflex for a marketing column and is wrong here. It was wrong then because the
+        panel held four real claims about the software, and it is MORE wrong now that it holds a
+        verse: hiding it would hand every sighted colleague a line of scripture each morning and
+        give a blind one a blank. `<aside>` makes it a complementary landmark instead — announced,
+        and skippable in one keystroke by anybody navigating landmarks, which is the actual need
+        behind the reflex. It is deliberately NOT a live region: the line is fixed for the life of
+        the page, so there is nothing for a screen reader to announce as a change.
       */}
       <aside className="pine">
         <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
@@ -145,42 +175,42 @@ export function LoginScreen(): React.ReactElement {
           <span className="tag" style={{ color: "var(--agent-dim)", marginTop: 2 }}>{t("login.product")}</span>
         </div>
 
-        <div style={{ marginTop: 52 }}>
-          <h2 className="lede rise">{t("login.lede")}</h2>
-          <p className="sub" style={{ marginTop: 16 }}>{t("login.sub")}</p>
+        {/*
+          Two spacers of different weight rather than one, so the verse sits a little ABOVE the
+          optical centre of the panel. Dead centre would put it level with the sign-in button on the
+          other half and the two would read as a pair of competing headlines.
+
+          `lang` is set on each line and it is not decoration. The Sanskrit is Devanagari in EVERY UI
+          language, so `lang="sa"` is the only thing that stops a screen reader pronouncing a shloka
+          with an English voice; the Hinglish meaning is Hindi written in Latin letters, which is
+          exactly what `hi-Latn` exists for; the gloss is the one line that really is English.
+        */}
+        <div style={{ flexGrow: 1, minHeight: 28 }} />
+
+        <div className="verse rise">
+          <div className="cite">{attribution}</div>
+          <p className="shloka" lang="sa">{line.shloka}</p>
+          <p className="mean" lang={hindi ? "hi" : "hi-Latn"}>{meaning}</p>
+          {/*
+            Hindi carries no gloss — the meaning above it is already Devanagari and a second line
+            would only repeat it in another script. The key exists in `hi.json` as an empty string
+            because `lib/i18n.test.ts` pins the two locale files key-for-key.
+          */}
+          {gloss === "" ? null : <p className="gloss" lang="en">{gloss}</p>}
         </div>
 
-        <div className="caps" style={{ marginTop: 38 }}>
-          {caps.map((cap, i) => (
-            <div
-              key={cap.key}
-              className="cap rise"
-              style={{ animationDelay: `${String(80 + i * 70)}ms` }}
-            >
-              <span className="dot" />
-              <span>
-                <b className="tag" style={{ marginBottom: 4 }}>{cap.title}</b>
-                {cap.body}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ flexGrow: 1, minHeight: 24 }} />
+        <div style={{ flexGrow: 1.25, minHeight: 28 }} />
 
         {/*
           The footer is the only place on this screen with anything live in it, and it is the CLOCK —
           in IST, because the hospital's day is an IST calendar day and a lobby terminal showing the
-          browser's zone is a clock nobody can act on. The creed below it is in Devanagari with its
-          English gloss underneath, which is the Desk One voice rule: the sentence a person actually
-          says, then what it means.
+          browser's zone is a clock nobody can act on.
+
+          The creed `मरीज़ पहले। मशीन बाद में।` used to sit here and the owner dropped it with the
+          pitch: the panel now carries one Devanagari line, and a second one underneath it competed
+          with the verse for the same job in the same script.
         */}
-        <div style={{ borderTop: "1px solid rgba(217,239,228,.09)", paddingTop: 16, display: "flex", alignItems: "flex-end", gap: 16 }}>
-          <div style={{ minWidth: 0 }}>
-            <div className="dev" style={{ fontSize: 15, color: "#fff" }}>{t("login.creed")}</div>
-            <div style={{ fontSize: 11.5, color: "var(--agent-dim)", marginTop: 2 }}>{t("login.creedGloss")}</div>
-          </div>
-          <div style={{ flexGrow: 1 }} />
+        <div style={{ borderTop: "1px solid rgba(217,239,228,.09)", paddingTop: 16, display: "flex", alignItems: "center", gap: 10 }}>
           <span className="pulse"><i /><b /></span>
           <span className="mo" style={{ fontSize: 11, color: "var(--agent-dim)", whiteSpace: "nowrap" }}>
             {istDateLabel()} · {clock} IST
