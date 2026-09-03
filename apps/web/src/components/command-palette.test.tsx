@@ -58,12 +58,27 @@ it("`/` OPENS THE PALETTE — including on screens that never had a search box",
   expect(screen.getByRole("dialog")).toHaveAttribute("aria-modal", "true");
 });
 
-it("Ctrl+K opens it too — the shortcut every desk already knows", async () => {
+/**
+ * ═══ FD-7 T7 / OWNER RULING 2026-09-03 — `Ctrl+K` DOES NOT OPEN IT, AND THIS ROW IS THE REVERSAL ═══
+ *
+ * This test asserted the opposite one day earlier ("the shortcut every desk already knows"), added
+ * in FD-3 at the owner's own request. The 03-Sep ruling — "no shortcut should overlap chrome browser
+ * or any browser internal shortcut keys" — overturns it: `Ctrl+K` is Chrome's address-bar search.
+ *
+ * Kept as an inverted assertion rather than deleted, for the same reason `keyboard.test.tsx` keeps
+ * one: the chord is written down in FD-3's phase doc as an instruction, so the next task to read it
+ * needs something that says out loud that it was overturned.
+ */
+it("Ctrl+K does NOT open it — it belongs to the browser (the 03-Sep ruling)", async () => {
   renderApp();
   await waitFor(() => expect(screen.getByRole("link", { name: "Registration" })).toBeInTheDocument());
 
   fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+  fireEvent.keyDown(window, { key: "K", metaKey: true });
 
+  expect(screen.queryByRole("dialog")).toBeNull();
+  // AND the door still opens by the key that IS the desk's, so this is not a vacuous pass.
+  fireEvent.keyDown(window, { key: "/" });
   await waitFor(() => expect(paletteInput()).toBeInTheDocument());
 });
 
@@ -177,7 +192,14 @@ describe("the two decisions, asserted directly", () => {
     const input = document.createElement("input");
     const textarea = document.createElement("textarea");
     expect(shouldOpenPalette({ key: "/", ctrlKey: false, metaKey: false }, document.body)).toBe(true);
-    expect(shouldOpenPalette({ key: "k", ctrlKey: true, metaKey: false }, document.body)).toBe(true);
+    /*
+     * FD-7 T7 / OWNER RULING 2026-09-03 — `Ctrl+K` NO LONGER OPENS IT, and this line used to assert
+     * that it did. It is Chrome's address-bar search: "no shortcut should overlap chrome browser or
+     * any browser internal shortcut keys". `/` survives the same rule because Chrome does not claim
+     * it, and Firefox's Quick Find — unlike `Ctrl+N` — is suppressible by the page.
+     */
+    expect(shouldOpenPalette({ key: "k", ctrlKey: true, metaKey: false }, document.body)).toBe(false);
+    expect(shouldOpenPalette({ key: "K", ctrlKey: false, metaKey: true }, document.body)).toBe(false);
     // The guard: a clinician typing a note must keep their character.
     expect(shouldOpenPalette({ key: "/", ctrlKey: false, metaKey: false }, input)).toBe(false);
     expect(shouldOpenPalette({ key: "/", ctrlKey: false, metaKey: false }, textarea)).toBe(false);

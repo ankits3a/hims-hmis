@@ -77,8 +77,8 @@
   },
   "shortcuts": {
     "title": "Shortcuts",
-    "search": "Ctrl+K or / — Search",
-    "new": "Ctrl+N New patient (Alt+N)",
+    "search": "/ — Search",
+    "new": "F4 New patient",
     "confirm": "Ctrl+⏎ Confirm",
     "release": "Esc Release the patient",
     "merge": "Alt+M Merge",
@@ -87,7 +87,8 @@
     "opdVitals": "Alt+V Vitals",
     "opdConsult": "Alt+C Consult",
     "opdAppointments": "Alt+P Appointments",
-    "billing": "Alt+B Counter"
+    "billing": "Alt+B Counter",
+    "book": "F7 Appointments"
   },
   "login": {
     "title": "Sign in",

@@ -281,3 +281,35 @@ the rail that stores it**, and added back to this screen there. The owner's ruli
 the task it lands in has moved.
 
 **Mutants at T3: 3, all dead** (the permission gate, `takePatient`, the navigation target).
+
+**T7 — DONE, and it fixed a chord that had never worked.** `keyboard.tsx`'s own comment already said
+Chrome does not deliver `Ctrl+N` (non-overridable, new window) — so the new-patient chord FD-3 bound
+at the owner's request had never reached the page in the browser this hospital runs, and `Alt+N` was
+bolted on beside it as the half that did. One door, two names, one of them dead. Now **`F4`**, one key.
+**`Ctrl+K` is out of the palette opener**, not merely off the legend. **`F7`** opens the book.
+
+`/` **stays**, and the exception is reasoned rather than overlooked: Chrome does not claim it, and
+Firefox's Quick Find — unlike `Ctrl+N` — is suppressible by the page. That is the distinction the
+whole ruling turns on: a key the page can still claim is safe to claim; a key the browser takes
+before the page sees it is not.
+
+**`F8` and `F9` are NOT bound.** §4d assigns them take-payment and reprint, but those are seat
+ACTIONS and — unlike `F4` and `F7` — they are not a re-mapping of something that already works: "take
+payment" as a keystroke exists nowhere. Binding a global key to an action nothing implements would
+put a dead key on the legend, which is the exact mistake `F2` is kept off the legend to avoid. They
+belong to T6, with the actions.
+
+The rule is now a **predicate**, `browserSafeKey`, not a comment — because §4d's kind of rule decays,
+and the next task to want a shortcut reaches for `Ctrl+<letter>` because that is what applications do.
+Two tests keep the overturned chords dead, in both files that asserted them, rather than deleting the
+rows: FD-3's phase doc still records `Ctrl+N`/`Ctrl+K` as the owner's own instruction, so something
+has to say out loud that they were overturned.
+
+**Mutants at T7: 6, all dead.**
+
+### Still open after this session
+
+- **T5 (ABDM)** — code not started; blocked on §7's four owner deliverables.
+- **T6 (`/billing` + the scheme rail)** — not started. It also now carries R4's registration capture
+  and the `attribution_ids` claim rail (see T3), and `F8`/`F9` (see T7).
+- **Rule 3's server limit** — a doctor-less department queue would need a schema change. Owner's call.
