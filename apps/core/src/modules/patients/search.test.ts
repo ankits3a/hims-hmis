@@ -233,6 +233,44 @@ describe("searchPatients", () => {
     expect((await searchPatients(db, clerk, "9876543210"))[0]!.hasPhoto).toBe(true);
   });
 
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════
+   * FD-11 — THE TWO COLUMNS THAT TELL TWO PEOPLE OF THE SAME NAME APART
+   * ═══════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * FOUND BY LOOKING AT THE RUNNING DESK, 2026-09-03. A search for "Ramesh" returned eight rows all
+   * reading `Ramesh Kumar`, and two of them — `U00110217` and `U00110012` — carried an identical
+   * age, sex AND mobile. The first was pre-selected with Enter bound to it. Every field a clerk had
+   * to choose between two different human beings with was the same on both.
+   *
+   * These two answer the questions a counter actually asks when the number matches too: "kahan se
+   * aaye hain?" and "pehle kab aaye the?". Both are columns of `patients` itself — one more field
+   * in the SAME select, no join, no subquery, no migration.
+   */
+  it("FD-11: carries the area and the registration date, so two same-name rows can be told apart", async () => {
+    const one = await withTx(db, (tx) =>
+      registerPatient(tx, clerk, { name: "Ramesh Kumar", sex: "male", phone: "9100000000", district: "Kanpur Nagar" }),
+    );
+    await withTx(db, (tx) =>
+      registerPatient(tx, clerk, { name: "Ramesh Kumar", sex: "male", phone: "9100000000" }),
+    );
+
+    const hits = await searchPatients(db, clerk, "Ramesh");
+    expect(hits).toHaveLength(2);
+
+    const withArea = hits.find((h) => h.uhid === one.patient.uhid)!;
+    expect(withArea.district).toBe("Kanpur Nagar");
+    // The second row has no area on file, and that is a VALUE the desk renders — not a missing
+    // field. "no area on file" beside "Kanpur Nagar" is itself the thing that tells them apart.
+    expect(hits.find((h) => h.uhid !== one.patient.uhid)!.district).toBeNull();
+
+    // Registration date is never null: `patients.created_at` is NOT NULL with a default.
+    for (const h of hits) {
+      expect(h.registeredOn).toBeInstanceOf(Date);
+      expect(Number.isNaN(h.registeredOn.getTime())).toBe(false);
+    }
+  });
+
   it("excludes confidential patients unless the caller holds patients.confidential.read", async () => {
     const registry = new ModuleRegistry();
     registry.install(patientsManifest);

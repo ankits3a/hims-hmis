@@ -18,6 +18,24 @@ export type PatientSearchResult = {
   isConfidential: boolean;
   hasPhoto: boolean;
   /**
+   * ═══ FD-11 — THE TWO COLUMNS THAT TELL TWO PEOPLE OF THE SAME NAME APART ═══
+   *
+   * FOUND BY LOOKING AT THE DESK, NOT BY A FAILING TEST. A search for "Ramesh" returned eight rows
+   * reading `Ramesh Kumar`, and two of them — `U00110217` and `U00110012` — carried an IDENTICAL
+   * age, sex AND mobile. The first was pre-selected with Enter bound to it. Everything a clerk was
+   * given to choose between two different human beings was the same on both, on a screen whose own
+   * subtitle says "a duplicate stopped here costs nothing".
+   *
+   * These two are what an Indian front desk actually asks when the name and the number match:
+   * *"kahan se aaye hain?"* and *"pehle kab aaye the?"*. Both are columns of `patients` itself, so
+   * they cost one more field in the same SELECT — no join, no subquery, no migration. Last-visit
+   * would be the third and it is deliberately NOT here: it lives in `opd_visits`, and joining the
+   * hub every other module imports to a leaf module's table to decorate a search row is a coupling
+   * this table should not take on. Registration date answers most of the same question.
+   */
+  district: string | null;
+  registeredOn: Date;
+  /**
    * RC-1 T4 / D6 — WHY this row matched: the lanes that fired, per row, from the SAME SQL
    * fragments the predicate is built of (never a JS re-derivation that could drift). The seat
    * renders them as reason chips — "same mobile", never a confidence percentage (design ruling).
@@ -294,6 +312,8 @@ export async function searchPatients(
       administrativeGender: patients.administrativeGender,
       dob: patients.dob,
       isConfidential: patients.isConfidential,
+      district: patients.district,
+      registeredOn: patients.createdAt,
       photoPatientId: patientPhotos.patientId, // ONLY the id column — bytes never load here
       mUhid: laneFor("uhid"),
       mMobile: laneFor("mobile"),
@@ -330,6 +350,8 @@ export async function searchPatients(
       administrativeGender: r.administrativeGender,
       dob: r.dob,
       isConfidential: r.isConfidential,
+      district: r.district,
+      registeredOn: r.registeredOn,
       hasPhoto: r.photoPatientId !== null,
       matchedOn,
     };

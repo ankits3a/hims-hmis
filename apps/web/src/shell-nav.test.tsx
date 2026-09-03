@@ -5,7 +5,7 @@ import { AuthProvider } from "./lib/auth";
 import { setToken } from "./lib/api";
 import { router } from "./router";
 import { stubFetch } from "./test-utils";
-import "./lib/i18n";
+import i18next from "./lib/i18n";
 
 /**
  * PLAN 11h T6 — the shell renders the navigation THIS PERSON CAN USE, and nothing else.
@@ -247,4 +247,23 @@ it("FD-11: an ordinary route still gets the whole shell", async () => {
   await waitFor(() => expect(screen.getByRole("banner")).toBeInTheDocument());
   expect(screen.getByRole("navigation")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();
+});
+
+/**
+ * FD-11 — the desk stamps the script on its own root, exactly as the sign-in screen does.
+ *
+ * `desk-one.css` fixes `.tag`'s three Latin assumptions under `.d1[data-lang="hi"]`, so the
+ * ATTRIBUTE is the fix: without it the override cannot match and every Devanagari label on the desk
+ * silently falls back to whatever face the terminal happens to have. Asserted here rather than left
+ * to a reviewer noticing a missing attribute — it has no pixels of its own to go wrong visibly.
+ */
+it("FD-11: Desk One stamps the script on its root so the Devanagari type rules can apply", async () => {
+  renderShell(["opd.visits.open", "patients.register", "billing.invoice.issue"]);
+  await act(async () => { await router.navigate({ to: "/counter" }); });
+  await waitFor(() => expect(screen.getByTestId("desk-one")).toBeInTheDocument());
+  expect(screen.getByTestId("desk-one")).toHaveAttribute("data-lang", "en");
+
+  await act(async () => { await i18next.changeLanguage("hi"); });
+  await waitFor(() => expect(screen.getByTestId("desk-one")).toHaveAttribute("data-lang", "hi"));
+  await act(async () => { await i18next.changeLanguage("en"); });
 });

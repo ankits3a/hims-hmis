@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { fmtIst, fmtPaise, useDebounced } from "./format";
+import { fmtIst, fmtPaise, monthYearIst, useDebounced } from "./format";
 
 describe("format", () => {
   afterEach(() => {
@@ -70,5 +70,33 @@ describe("format", () => {
     // FIRES ONCE: the three intermediate values never reached a consumer, so a debounced search
     // box makes one request, not four.
     expect([...new Set(seen)]).toEqual(["9", "9876"]);
+  });
+
+  /**
+   * FD-11 — "on file since", and the reason it is arithmetic rather than `Intl`.
+   *
+   * It sits under two rows of a duplicate list to say which record is the old one, so the month it
+   * names has to be the month the HOSPITAL registered the patient, not the month the desk machine's
+   * timezone thinks it was. Hospital hardware clocks are routinely set wrong; IST is a fixed +05:30
+   * with no DST, so the shift is exact and never consults the host.
+   */
+  it("monthYearIst names the IST month, so a record made just after midnight is not the month before", () => {
+    // 2019-03-31T20:30:00Z is 2019-04-01T02:00 IST — a UTC reader would call this March.
+    expect(monthYearIst("2019-03-31T20:30:00.000Z")).toBe("Apr 2019");
+    // ...and one minute earlier really is March, in IST.
+    expect(monthYearIst("2019-03-31T18:29:00.000Z")).toBe("Mar 2019");
+    // The year rolls on the same boundary.
+    expect(monthYearIst("2025-12-31T18:30:00.000Z")).toBe("Jan 2026");
+    expect(monthYearIst("2025-12-31T18:29:00.000Z")).toBe("Dec 2025");
+  });
+
+  /*
+    A row whose date the server could not send must render as nothing rather than as "Invalid Date"
+    or "NaN NaN" — the line exists to help a clerk choose between two people, and a broken string in
+    it is worse than a missing one.
+  */
+  it("monthYearIst renders nothing for a date it cannot read", () => {
+    expect(monthYearIst("")).toBe("");
+    expect(monthYearIst("not-a-date")).toBe("");
   });
 });

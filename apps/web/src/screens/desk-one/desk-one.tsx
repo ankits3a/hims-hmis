@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -77,6 +78,15 @@ const DAY_STAT_LABELS: Record<string, string> = {
 };
 
 export function DeskOne(): React.ReactElement {
+  /*
+    FD-11 — `useTranslation()` here is the SUBSCRIPTION, not a convenience. Reading
+    `i18next.language` in the render body without it stamps the right value on first mount and then
+    never updates: `i18next` is a module singleton and changing the language re-renders only the
+    components that subscribed. `LoginScreen` gets this for free because it calls `t()` at its top
+    level; the desk's `t()` calls all live in child components, so the root re-rendered for every
+    reason EXCEPT the one this attribute exists for. Caught by the test, not by reasoning.
+  */
+  const { i18n } = useTranslation();
   const { username, can, logout } = useAuth();
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -761,13 +771,30 @@ export function DeskOne(): React.ReactElement {
 
   return (
     <DeskProvider value={desk}>
-      <div className="d1" data-testid="desk-one">
+      {/*
+        FD-11 — THE SCRIPT REACHES THE STYLESHEET HERE, EXACTLY AS IT DOES ON THE SIGN-IN SCREEN.
+
+        `.d1`'s type rules are Latin: the body face is IBM Plex Sans, which has NO Devanagari
+        coverage at all, and `.tag` adds `text-transform: uppercase` (a no-op in a script with no
+        case) and `letter-spacing: .14em` (which pulls matras off their consonants). FD-10 fixed all
+        three under `.lg[data-lang="hi"]` for the sign-in screen and the desk never got the same
+        treatment — recorded then as speculative, because Desk One carried no translated strings.
+
+        It carries them now: the row that tells two same-name patients apart is this screen's first
+        real `t()` output, and in Hindi it is Devanagari. A Devanagari string on a face that cannot
+        draw it falls back per-character to whatever the machine happens to have, which is a
+        different face on every terminal in the hospital.
+      */}
+      <div className="d1" data-lang={i18n.language.startsWith("hi") ? "hi" : "en"} data-testid="desk-one">
         <div className="frame">
           {/* ══════════ header ══════════ */}
-          <div style={{
-            display: "flex", alignItems: "center", gap: 14, height: 46, padding: "0 18px",
-            background: "var(--card)", borderBottom: "1px solid var(--line)", flexShrink: 0,
-          }}>
+          {/*
+            FD-11 — THE HEADER'S GEOMETRY MOVED TO CSS BECAUSE A MEDIA QUERY CANNOT REACH AN INLINE
+            STYLE. Below 1220px this row used to push `command F8` clean off the right edge, and the
+            desk offered no way back except a horizontal scroll nobody at a counter performs. It is
+            a class now so `desk-one.css` can let it wrap.
+          */}
+          <div className="top">
             <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
               <div style={{ width: 10, height: 10, borderRadius: 2, background: "var(--green)", transform: "rotate(45deg)" }} />
               <span className="mo" style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: ".08em" }}>DESK ONE</span>
@@ -814,7 +841,19 @@ export function DeskOne(): React.ReactElement {
             <button className="pill gd" style={{ height: 24 }} onClick={() => patch({ overlay: s.overlay === "queues" ? null : "queues" })}>
               <span className="mo">{waiting}</span> waiting <span className="kb">Q</span>
             </button>
-            <button className="pill" style={{ height: 24 }} onClick={() => patch({ overlay: "schema" })}>design schema</button>
+            {/*
+              FD-11 — THE `design schema` BUTTON IS GONE FROM HERE, AND THE OVERLAY IS NOT.
+
+              It sat in the clerk's top bar, permanently, beside the cash float, and opened a
+              design-system reference sheet: hex codes, font names and the `F1 queue_first +
+              token_first` pseudo-code. That is a document for whoever is BUILDING this screen, and
+              a counter's chrome is the most expensive real estate in the application — everything
+              in it is read a hundred times a day by somebody who did not choose to read it.
+
+              `overlays.tsx` already registers it in the command palette (F8), which is exactly
+              where a tool for the person building the screen belongs: reachable by anybody who
+              knows to ask for it, invisible to everybody who does not. Nothing is deleted.
+            */}
             <button className="pill" style={{ height: 24, borderColor: "var(--ink)" }} onClick={() => patch({ overlay: "palette" })}>
               <strong>⌘</strong> command <span className="kb">F8</span>
             </button>
@@ -822,10 +861,7 @@ export function DeskOne(): React.ReactElement {
 
           {/* ══════════ body: dossier + stage ══════════ */}
           <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>
-            <aside style={{
-              width: 296, flexShrink: 0, borderRight: "1px solid var(--line)",
-              background: "var(--card)", overflowY: "auto",
-            }}>
+            <aside className="rail">
               <Dossier />
             </aside>
             <main style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", padding: "24px 30px 30px" }}>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { matchReasonKeys, searchPatients } from "../../lib/patients-api";
+import { matchReasonKeys, matchReasonsDiscriminate, searchPatients } from "../../lib/patients-api";
 import type { WirePatientHit } from "../../lib/patients-api";
 import { getSlots, opdErrorMessage } from "../../lib/opd-api";
 import type { WireDoctorSummary, WireSlot } from "../../lib/opd-api";
@@ -9,6 +9,7 @@ import {
   ageOf, bookableToday, etaClock, initialsOf, rs, sexLetter, vitalsAhead, waitMinutes,
 } from "./model";
 import type { DeptQueue } from "./model";
+import { monthYearIst } from "../../lib/format";
 import { useDesk } from "./session";
 import type { Person } from "./session";
 
@@ -88,6 +89,11 @@ function StageFind(): React.ReactElement {
     enabled: term.length >= 2,
   });
   const rows = hits.data ?? [];
+  /*
+    FD-11 — computed ONCE for the whole result set and not per row, because the question it asks
+    is about the set: do these reasons tell the rows apart, or does every row say the same word?
+  */
+  const reasonsTellApart = matchReasonsDiscriminate(rows);
   const searched = term.length >= 2 && !hits.isFetching;
 
   return (
@@ -142,7 +148,7 @@ function StageFind(): React.ReactElement {
             }}>
               {initialsOf(hit.name)}
             </div>
-            <div style={{ width: 190 }}>
+            <div style={{ width: 210 }}>
               <div style={{ fontSize: 14, fontWeight: 600 }}>
                 {hit.name}
                 {hit.isConfidential ? <span className="pill rd" style={{ height: 19, marginLeft: 6 }}>restricted</span> : null}
@@ -150,19 +156,40 @@ function StageFind(): React.ReactElement {
               <div className="mo" style={{ fontSize: 11, color: "var(--dim)" }}>
                 {ageOf(hit.dob) === "" ? "" : `${ageOf(hit.dob)} `}{sexLetter(hit.administrativeGender)} · {hit.phone ?? "no mobile"}
               </div>
+              {/*
+                FD-11 — THE LINE THAT TELLS TWO RAMESH KUMARS APART.
+
+                What this desk actually returned for "Ramesh": eight rows of the same name, two of
+                them (`U00110217` and `U00110012`) with the same age, sex AND mobile, and the first
+                pre-selected with Enter bound to it. Every field a clerk had to choose between two
+                different human beings with was identical on both.
+
+                These are the two questions a counter asks when the number matches too — "kahan se
+                aaye hain?" and "pehle kab aaye the?" — and both were already columns of `patients`,
+                dropped at the type boundary rather than missing from the database.
+              */}
+              <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 1 }} data-testid="hit-tell-apart">
+                {hit.district ?? t("registrationCounter.find.noDistrict")}
+                {" \u00b7 "}
+                {t("registrationCounter.find.onFileSince", { since: monthYearIst(hit.registeredOn) })}
+              </div>
             </div>
             <span className="mo" style={{ fontSize: 12, fontWeight: 600, width: 120 }}>{hit.uhid}</span>
             {/*
               §3 — MATCH REASONS, NEVER A SCORE. "a clerk can act on a reason, not on 87%." The
               reasons are the SERVER's: `matchedOn` is derived from the same SQL fragments the WHERE
               was built from, per row, so it cannot drift from what actually matched.
+
+              FD-11 — and they are hidden when EVERY row carries the same set. A chip on all eight
+              rows discriminates nothing and reads as corroboration. D6's "no unexplained row beside
+              an explained one" is preserved because the rule is all-or-none, never some.
             */}
             <div style={{ display: "flex", gap: 5, flexGrow: 1, flexWrap: "wrap" }}>
-              {matchReasonKeys(hit.matchedOn).map((key) => (
+              {reasonsTellApart ? matchReasonKeys(hit.matchedOn).map((key) => (
                 <span key={key} className={hit.matchedOn.length > 0 ? "pill on" : "pill"} style={{ height: 20 }}>
                   {t(key)}
                 </span>
-              ))}
+              )) : null}
             </div>
             <button className={i === 0 ? "sec grn" : "sec"} onClick={() => d.hold(personOf(hit))}>
               this is them{i === 0 ? <span className="kb">⏎</span> : null}
@@ -404,7 +431,7 @@ function StageAppointment(): React.ReactElement {
           whose origin is hidden gets trusted too much.
         */}
         <input
-          className="in"
+          className="in complaint"
           style={{ height: 46, marginTop: 10, fontSize: 15 }}
           placeholder="seene mein dard · fever · knee pain · sugar-BP · बुखार…"
           value={s.complaint}

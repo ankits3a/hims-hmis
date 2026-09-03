@@ -41,6 +41,12 @@ export type WirePatientHit = {
   dob: string | null;
   isConfidential: boolean;
   hasPhoto: boolean;
+  /**
+   * FD-11 — the two fields that tell two people of the same name apart. `registeredOn` is an ISO
+   * string here and a `Date` on the server, for the same reason `dob` is (see above).
+   */
+  district: string | null;
+  registeredOn: string;
   /** RC-1 T4 / D6 — WHY this row matched. Rendered as reasons; see `matchReasonKeys`. */
   matchedOn: WireMatchLane[];
 };
@@ -68,6 +74,29 @@ export type WirePatientHit = {
 export function matchReasonKeys(matchedOn: readonly WireMatchLane[]): string[] {
   if (matchedOn.length === 0) return ["registrationCounter.find.reason.onFile"];
   return matchedOn.map((lane) => `registrationCounter.find.reason.${lane}`);
+}
+
+/**
+ * ═══ FD-11 — A REASON EVERY ROW SHARES IS NOT A REASON ═══
+ *
+ * FOUND BY LOOKING. A search for "Ramesh" returned eight rows, and all eight wore the same mint
+ * `same name` chip. A chip that appears on every row carries no information at all: it is the
+ * answer to a question nobody asked, occupying the width where the thing that DOES tell the rows
+ * apart should be. Worse, it reads as corroboration — eight rows each asserting a match.
+ *
+ * The D6 ruling this must not break is that an unexplained row never sits beside an explained one,
+ * because the unexplained one then reads as the stronger match. That ruling is about rows differing
+ * from EACH OTHER, so it is preserved exactly: the reasons are shown when they differ across the
+ * result set and hidden when every row carries the identical set. All or none, never some.
+ *
+ * A single hit keeps its reason — with nothing to compare against, "same mobile" still tells the
+ * clerk the one thing they can go and check with the person in front of them.
+ */
+export function matchReasonsDiscriminate(hits: readonly { matchedOn: WireMatchLane[] }[]): boolean {
+  if (hits.length < 2) return true;
+  const signature = (h: { matchedOn: WireMatchLane[] }): string => matchReasonKeys(h.matchedOn).join("|");
+  const first = signature(hits[0]!);
+  return hits.some((h) => signature(h) !== first);
 }
 
 /**

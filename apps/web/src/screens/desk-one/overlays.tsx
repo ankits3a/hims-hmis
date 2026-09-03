@@ -216,11 +216,24 @@ function QueuesOverlay(): React.ReactElement {
           </div>
         ))}
         <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 16, lineHeight: "14px" }}>
-          Waits are <span className="mo">waitingCount × avgConsultMinutes</span> as the server reports them, refreshed every
-          20 seconds. The clock time is there because patients ask “kitne baje?”, not “how many minutes?”. People at the
-          VITALS BAY are counted separately and never folded into the wait — they are ahead of a walk-in seated now, but
-          the shipped routing rail computes the doctor wait from the doctor's own queue, and two formulas for one number is
-          how a screen and a server come to quote different waits to the same patient.
+          {/*
+            FD-11 — THIS PARAGRAPH USED TO BE A NOTE TO ANOTHER ENGINEER, SHOWN TO A CLERK.
+
+            It read: "Waits are `waitingCount × avgConsultMinutes` as the server reports them ...
+            the shipped routing rail computes the doctor wait from the doctor's own queue, and two
+            formulas for one number is how a screen and a server come to quote different waits to
+            the same patient." A camelCase identifier and a standing confession about a known
+            inconsistency, in the product, in front of the person who has to answer for the number.
+
+            What survives is the part a clerk can ACT on: where the number comes from in words they
+            would use, how fresh it is, and the one thing that makes a line move slower than it
+            looks. The engineering caveat belongs in the tracker, not on the counter.
+          */}
+          The wait is how many people are in that doctor's own line and how long the doctor is
+          taking today. It refreshes every 20 seconds. The clock time is there because patients ask
+          “kitne baje?”, not “how many minutes?”. People waiting at the VITALS BAY are counted
+          separately — they are ahead of a walk-in seated now, so a line can move more slowly than
+          its number suggests.
         </div>
       </div>
     </Sheet>

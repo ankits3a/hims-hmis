@@ -133,9 +133,92 @@
 
 .d1 .frame { min-width: 1220px; flex-grow: 1; display: flex; flex-direction: column; min-height: 0; }
 
+/* The header row and the dossier rail — geometry a media query has to be able to reach. */
+.d1 .top {
+  display: flex; align-items: center; gap: 14px; height: 46px; padding: 0 18px;
+  background: var(--card); border-bottom: 1px solid var(--line); flex-shrink: 0;
+}
+.d1 .rail {
+  width: 296px; flex-shrink: 0; border-right: 1px solid var(--line);
+  background: var(--card); overflow-y: auto;
+}
+
+/*
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-11 — THE NARROW DESK, AND `min-width: 1220px` WAS A FLOOR WITH NOTHING UNDER IT
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * MEASURED, not assumed: at 1512px and 1366px the desk is right. At 1180px `command F8` and the
+ * schema pill crossed the right edge; by 1024px the agent's ask box did too. `.d1` is
+ * `overflow-x: auto`, so nothing was ever LOST — but the way back to the command palette was a
+ * sideways scroll, and a clerk with a queue at the door does not scroll sideways to find a button
+ * that was there yesterday. The sign-in screen has had a narrow story since FD-10; the desk, which
+ * is the screen somebody actually spends the day on, had none.
+ *
+ * 1220px is where the floor was set, so it is where the story starts. Below it the frame stops
+ * insisting on a width it cannot have and the two rows that overflow are allowed to give:
+ *
+ *   · the header WRAPS instead of running off the edge — it grows a second line rather than
+ *     hiding the palette, which is the one control that reaches everything else on this screen;
+ *   · the dossier rail narrows to 252px. It holds the patient in hand and the live bill and is the
+ *     last thing that should disappear, so it shrinks rather than collapsing.
+ *
+ * A 1024×768 lobby terminal lands here. A phone does not: this is a two-handed screen with a cash
+ * drawer beside it, and pretending otherwise would be a layout nobody could work.
+ */
+@media (max-width: 1220px) {
+  .d1 .frame { min-width: 0; }
+  .d1 .top { height: auto; min-height: 46px; flex-wrap: wrap; padding: 7px 12px; row-gap: 7px; }
+  .d1 .rail { width: 252px; }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .d1 .agchip { animation: d1up .16s ease-out; }
   @keyframes d1up { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
   .d1 .spin { animation: d1spin 1s linear infinite; }
   @keyframes d1spin { to { transform: rotate(360deg); } }
+}
+
+/*
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-11 — DEVANAGARI, AND THIS IS FD-10'S FIX ARRIVING AT THE SCREEN PEOPLE ACTUALLY WORK ON
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * FD-10 found that `.tag`'s three rules are Latin assumptions and fixed them under
+ * `.lg[data-lang="hi"]` — on the SIGN-IN screen. The desk wears the identical `.tag` and never got
+ * it: the instance was fixed and the class was not. It was left that way deliberately at the time,
+ * because Desk One carried no translated strings for the bug to damage.
+ *
+ * That stopped being true the moment the search row started printing "no area on file" / "on file
+ * since" through `t()`. So the same three corrections, for the same three reasons:
+ *
+ *   · IBM Plex Mono has NO Devanagari coverage, so every mono label silently falls back to whatever
+ *     the machine has — a different face on every terminal in the hospital.
+ *   · `text-transform: uppercase` buys nothing in a script with no case, while the two rules beside
+ *     it do damage.
+ *   · `letter-spacing: .14em` pulls conjuncts and matras apart, which is exactly what a label is
+ *     there to prevent.
+ *
+ * `.mo` deliberately does NOT change, here as on the sign-in screen: it is worn by UHIDs, money,
+ * tokens and times, which are Latin and digits, and a clerk compares those character by character.
+ */
+.d1[data-lang="hi"] {
+  font-family: "IBM Plex Sans Devanagari", "Nirmala UI", Mangal, "IBM Plex Sans", sans-serif;
+}
+.d1[data-lang="hi"] .tag {
+  font-family: "IBM Plex Sans Devanagari", "Nirmala UI", Mangal, sans-serif;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11.5px;
+}
+
+/*
+ * The complaint field is Devanagari in EVERY language, so it cannot live under `[data-lang="hi"]`.
+ * Its placeholder is deliberately mixed — "seene mein dard · fever · ... · बुखार…" — and what a
+ * clerk TYPES into it is the patient's own words, which at this counter are commonly Devanagari.
+ * On the Latin face that word alone fell back to a different typeface mid-string. Plex Sans
+ * Devanagari carries Latin too, so one stack draws the whole field in one voice.
+ */
+.d1 .in.complaint {
+  font-family: "IBM Plex Sans Devanagari", "Nirmala UI", Mangal, "IBM Plex Sans", sans-serif;
 }

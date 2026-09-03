@@ -2295,6 +2295,8 @@
       "title": "Who is in front of you?",
       "placeholder": "name, mobile or UHID",
       "hint": "Search before you type a single form field — a duplicate stopped here costs nothing.",
+      "noDistrict": "no area on file",
+      "onFileSince": "on file since {{since}}",
       "none": "Nobody on file matches that",
       "registerNew": "Register new",
       "noneOfThese": "None of these is the person in front of you?",
