@@ -77,6 +77,13 @@ const DAY_STAT_LABELS: Record<string, string> = {
   "desk.opd.opened": "visits opened",
 };
 
+/**
+ * How long the desk waits after the last keystroke before it spends a model call. Longer than the
+ * search box's 180 ms on purpose: that one costs a database index, this one costs money and a
+ * provider's burst allowance. See `runTriage` for what the absence of this measured.
+ */
+const TRIAGE_DEBOUNCE_MS = 400;
+
 export function DeskOne(): React.ReactElement {
   /*
     FD-11 — `useTranslation()` here is the SUBSCRIPTION, not a convenience. Reading
@@ -327,13 +334,36 @@ export function DeskOne(): React.ReactElement {
    * it, because advice whose origin is hidden gets trusted too much.
    */
   const triageSeq = useRef(0);
-  const runTriage = useCallback((text: string) => {
-    const seq = ++triageSeq.current;
-    if (text.trim().length < 3) {
-      patch({ triage: null, triageBusy: false });
-      return;
-    }
-    patch({ triageBusy: true });
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-11 — THE DEBOUNCE, AND WITHOUT IT THE MODEL WAS EFFECTIVELY NEVER CONSULTED
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * This fired one LLM call PER KEYSTROKE. The sequence guard below made that look harmless — a
+   * stale answer is discarded, so the screen was never wrong — and it is not harmless at all.
+   * MEASURED against the live gateway, typing "seene mein dard aur saans phool rahi hai":
+   *
+   *     38 calls for one complaint · 36 answered from the KEYWORD TABLE, 2 from the model
+   *     straight at the provider: 32 of 38 came back HTTP 429, `retry-after: 1`
+   *
+   * The daily quota was untouched (964 requests remaining) — it is a BURST limit. And because
+   * `suggestDepartments` falls back to the keyword table on any failure, by design and correctly,
+   * the whole thing failed silently: every request returned 200, the desk showed a department, and
+   * the model the hospital is paying for was consulted for 5% of calls. The one answer the clerk
+   * actually reads is the LAST one, which is the most likely of all to have been throttled — which
+   * is why the screen said "ranked by the keyword table" while a single isolated call said "model".
+   *
+   * A typist's pause is the only honest trigger for an expensive call. 400 ms is longer than the
+   * search box's 180 ms on purpose: that one costs a database index, this one costs a model.
+   * `triageBusy` is still set on the KEYSTROKE, not on the send, so the desk says it is thinking
+   * the moment you stop typing rather than a beat later.
+   */
+  /*
+    The send itself, unchanged. The sequence guard STAYS and is not made redundant by the debounce:
+    it covers a different race — two calls that were both sent, because a request already in flight
+    when the next pause arrives can still answer after the newer one.
+  */
+  const sendTriage = useCallback((text: string, seq: number) => {
     void triage(text).then(
       (r) => {
         if (seq !== triageSeq.current) return; // a later keystroke already asked
@@ -349,6 +379,20 @@ export function DeskOne(): React.ReactElement {
       },
     );
   }, [patch]);
+
+  const triageTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (triageTimer.current !== null) clearTimeout(triageTimer.current); }, []);
+  const runTriage = useCallback((text: string) => {
+    if (triageTimer.current !== null) clearTimeout(triageTimer.current);
+    const seq = ++triageSeq.current;
+    if (text.trim().length < 3) {
+      patch({ triage: null, triageBusy: false });
+      return;
+    }
+    patch({ triageBusy: true });
+    triageTimer.current = setTimeout(() => { sendTriage(text, seq); }, TRIAGE_DEBOUNCE_MS);
+  }, [patch, sendTriage]);
+
 
   /**
    * ═══ THE ASSIGNMENT — ONE TRANSACTION, AND THE LANE DECIDES WHETHER IT TAKES A POSITION ═══

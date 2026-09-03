@@ -62,15 +62,43 @@ const configSchema = z.object({
   /*
    * FD-8 — the triage advisor's gateway. ALL OPTIONAL and unset by default: with no key the desk
    * routes on its own keyword table and never makes a network call, which is the shipped behaviour
-   * and the one every existing test sees. `OMNIROUTE_API_KEY` is a SECRET and belongs in `.env`
+   * and the one every existing test sees. `TRIAGE_API_KEY` is a SECRET and belongs in `.env`
    * (gitignored) or the deploy environment — never in source, never in the browser bundle. The call
    * is made server-side for exactly that reason.
+   *
+   * ═══ FD-11 — THE GATEWAY IS GROQ NOW, AND THE DEFAULT MODEL WAS A LANDMINE ═══
+   *
+   * The owner moved the router off Omniroute. Nothing in the code named it — the client has always
+   * been env-driven and OpenAI-shaped — EXCEPT this default, which was `auto/best-fast`: an
+   * Omniroute routing alias that exists on no other provider. Setting only the URL and the key
+   * would have left every call 404-ing, and the failure is SILENT by design: `suggestDepartments`
+   * falls back to the keyword table on any error, so the desk would have looked like it worked
+   * while the model was never once consulted. A default that is wrong everywhere except one vendor
+   * is worse than no default.
+   *
+   * `openai/gpt-oss-20b` is MEASURED, not chosen from the docs — and the docs would have been
+   * wrong: Groq's published production list leads with `llama-3.3-70b-versatile`, which this
+   * account does not offer at all (`GET /models` returns 14 models and no llama chat model). On
+   * the real triage prompt over five Hinglish complaints:
+   *
+   *     openai/gpt-oss-20b     5/5 parsed   median 478 ms   max  488 ms   ← default
+   *     openai/gpt-oss-120b    5/5 parsed   median 598 ms   max  793 ms
+   *     groq/compound-mini     5/5 parsed   median 849 ms   max  978 ms
+   *     qwen/qwen3.6-27b       0/5 parsed   median 2869 ms            (echoes the template back)
+   *
+   * The 20b is the smallest thing that got every routing right, and it is the one a counter can
+   * afford to wait for.
    */
   TRIAGE_BASE_URL: z.string().url().optional(),
   TRIAGE_API_KEY: z.string().min(1).optional(),
-  TRIAGE_MODEL: z.string().min(1).default("auto/best-fast"),
-  /* MEASURED 2026-09-04 against the real gateway: 22-34 s, and often over 40. A counter cannot wait,
-   * so the default is short and a timeout is an ordinary outcome — the keyword table answers. */
+  TRIAGE_MODEL: z.string().min(1).default("openai/gpt-oss-20b"),
+  /*
+   * Omniroute measured 22-34 s and often over 40, which is what put this timeout here: a counter
+   * cannot wait, so the budget is short and a timeout is an ORDINARY outcome — the keyword table
+   * answers. Groq measured 478 ms median / 488 ms max on the same prompt, so 6 s is now ~12x the
+   * worst observed call rather than a guillotine. It stays at 6 s deliberately: the number exists
+   * for the bad network day, not for the good one.
+   */
   TRIAGE_TIMEOUT_MS: z.coerce.number().int().positive().default(6000),
   NOTIFY_STUCK_AFTER_MS: z.coerce.number().int().positive().default(300000),
   // Plan 11a D6/D7 (retention). All three defaulted, same B1 scar as the block above: no .env

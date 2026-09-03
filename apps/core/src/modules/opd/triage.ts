@@ -165,9 +165,14 @@ export async function suggestDepartments(
         model: config.model,
         /*
          * `stream: false` IS LOAD-BEARING, and it was measured rather than assumed. The Omniroute
-         * gateway answers `text/event-stream` — `data: {...}` chunks — even when streaming is not
-         * requested, so `res.json()` throws and EVERY call would silently fall back to the keyword
-         * table. The desk would have looked like it worked and the model would never have been used.
+         * gateway answered `text/event-stream` — `data: {...}` chunks — even when streaming was not
+         * requested, so `res.json()` threw and EVERY call silently fell back to the keyword table.
+         * The desk looked like it worked and the model was never once used.
+         *
+         * FD-11 — Groq HONOURS it and returns `application/json`, verified against the live gateway
+         * on all four candidate models. The flag stays explicit anyway: it costs nothing, and the
+         * failure it prevents is invisible from the desk. A provider that ignores it is exactly the
+         * provider nobody would suspect.
          */
         stream: false,
         temperature: 0,
