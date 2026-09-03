@@ -115,6 +115,50 @@ describe("patients e2e", () => {
     await request(app.getHttpServer()).get("/patients/01NOSUCH00000000000000000").set(...auth(clerkToken)).expect(404);
   });
 
+  /**
+   * ═══ FD-8 — REGISTRATION ENDS AT THE UHID, SO THIS ROUTE NEEDED THE WALK-IN'S WARNING ═══
+   *
+   * Desk One registers and seats as two stages, which makes `POST /patients` the front desk's way of
+   * creating a patient. It had NO duplicate check, while `POST /opd/walk-in` — until now the
+   * counter's only creating route — has had one since 07b. Moving to the authorised flow without
+   * this would have silently deleted the near-match warning FD-7 T1 had just made readable.
+   *
+   * DD8's rule is carried over exactly: a WARNING a human may override, never a gate.
+   */
+  it("FD-8: a second registration matching an existing patient is REFUSED with the candidates, and can be acknowledged", async () => {
+    const first = await request(app.getHttpServer())
+      .post("/patients").set(...auth(clerkToken))
+      .send({ name: "Ramesh Kale", sex: "male", phone: "9876540002" })
+      .expect(201);
+
+    // Same person again: 409, and the body carries what the clerk needs to TELL THEM APART.
+    const clash = await request(app.getHttpServer())
+      .post("/patients").set(...auth(clerkToken))
+      .send({ name: "Ramesh Kale", sex: "male", phone: "9876540002" })
+      .expect(409);
+    expect(clash.body.code).toBe("duplicate_suspected");
+    const candidates = clash.body.detail.candidates as { id: string; phone: string; matchedOn: string[] }[];
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]!.id).toBe(first.body.patient.id);
+    expect(candidates[0]!.phone).toBe("9876540002");
+    // FD-7 T1's union: this row matched on BOTH probes, and both are reported.
+    expect([...candidates[0]!.matchedOn].sort()).toEqual(["mobile", "name"]);
+
+    // THE WAY THROUGH (DD8). A real second Ramesh Kale on a shared family phone must be registrable.
+    const acknowledged = await request(app.getHttpServer())
+      .post("/patients").set(...auth(clerkToken))
+      .send({ name: "Ramesh Kale", sex: "male", phone: "9876540002", acknowledgedDuplicates: true })
+      .expect(201);
+    expect(acknowledged.body.patient.id).not.toBe(first.body.patient.id);
+  });
+
+  it("FD-8: a first-of-their-name registration is not refused", async () => {
+    await request(app.getHttpServer())
+      .post("/patients").set(...auth(clerkToken))
+      .send({ name: "Nobody Alike", sex: "female", phone: "9812345678" })
+      .expect(201);
+  });
+
   it("photo round-trips as base64 JSON — a ~300 kB body proves the parser bump", async () => {
     const reg = await request(app.getHttpServer())
       .post("/patients").set(...auth(clerkToken))

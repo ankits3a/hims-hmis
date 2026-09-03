@@ -1,6 +1,6 @@
 import {
-  BadRequestException, Body, Controller, ConflictException, ForbiddenException, Get, HttpCode, Inject,
-  NotFoundException, Param, Patch, PayloadTooLargeException, Post, Put, Query,
+  BadRequestException, Body, Controller, ConflictException, ForbiddenException, Get, HttpCode,
+  HttpException, Inject, NotFoundException, Param, Patch, PayloadTooLargeException, Post, Put, Query,
 } from "@nestjs/common";
 import { z } from "zod";
 import type { Actor } from "@hmis/contracts";
@@ -12,6 +12,7 @@ import { WorkflowError } from "../../kernel/workflow/instances";
 import { withTx } from "../../kernel/db/client";
 import { PatientError } from "./uhid";
 import { getPatient, registerPatient, updatePatient } from "./registration";
+import { nearMatches } from "./duplicates";
 import { AMENDMENT_REASONS, IDENTITY_ASSURANCE, touchesIdentity, upgradeAssurance } from "./identity";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { searchPatients } from "./search";
@@ -47,6 +48,17 @@ const CONFLICT_CODES = new Set([
 function toHttp(e: unknown): never {
   if (e instanceof SodViolationError) throw new ForbiddenException(e.message);
   if (e instanceof PatientError) {
+    /**
+     * FD-8 — THE ONE CODE WHOSE WHOLE POINT IS ITS PAYLOAD.
+     *
+     * `duplicate_suspected` without its candidates is a dead end: the clerk is told "somebody
+     * matches" and given nothing to compare against the person in front of them. Every other
+     * `PatientError` is a message; this one is a question, so it travels as `{code, detail}` in the
+     * body — the shape `OpdError` has used since 07b, so a client reads both refusals the same way.
+     */
+    if (e.code === "duplicate_suspected") {
+      throw new HttpException({ statusCode: 409, message: e.message, code: e.code, detail: e.detail }, 409);
+    }
     if (NOT_FOUND_CODES.has(e.code)) throw new NotFoundException(e.message);
     if (FORBIDDEN_CODES.has(e.code)) throw new ForbiddenException(e.message);
     if (e.code === "photo_too_large") throw new PayloadTooLargeException(e.message);
@@ -82,6 +94,8 @@ const guardianBody = z.object({
 });
 
 const registerBody = z.object({
+  /** FD-8 / DD8 — the clerk saw the near-matches and is registering anyway. A warning, never a gate. */
+  acknowledgedDuplicates: z.boolean().optional(),
   name: z.string().min(1).max(200),
   phone: phoneField.optional(),
   altPhone: phoneField.optional(),
@@ -107,7 +121,9 @@ const registerBody = z.object({
 });
 
 const patchBody = registerBody
-  .omit({ ageYears: true, guardian: true })
+  // FD-8 — `acknowledgedDuplicates` is a REGISTRATION-time judgement and must not leak into PATCH
+  // through `.partial()`: an update names an existing patient, so there is no duplicate to acknowledge.
+  .omit({ ageYears: true, guardian: true, acknowledgedDuplicates: true })
   .partial()
   .extend({
     phone: phoneField.nullable().optional(),
@@ -296,12 +312,41 @@ export class PatientsController {
     }
   }
 
+  /**
+   * ═══ FD-8 — REGISTRATION ENDS AT THE UHID, SO THIS ROUTE IS NOW A COUNTER ACT ═══
+   *
+   * Desk One registers and seats as two stages: `enrol()` allocates the UHID and advances, and the
+   * appointment stage opens the visit afterwards. That makes THIS the route the front desk creates
+   * patients through — and it had no duplicate check at all, while `POST /opd/walk-in` (which used
+   * to be the counter's only way to create one) has had one since 07b.
+   *
+   * Without this, moving to the authorised flow would have silently DELETED the near-match warning
+   * FD-7 T1 had just made readable — a regression hiding inside a UX correction.
+   *
+   * DD8's rule is carried over exactly: a WARNING a human may override, never a gate. A real second
+   * Asha Devi on a shared family phone must still be registrable, and a system that refuses her
+   * teaches the desk to invent phone numbers, which is worse than the duplicate.
+   */
   @RequirePermission("patients.register", "hospital")
   @Post()
   async register(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     const b = parsed(registerBody, body);
     try {
-      return await withTx(this.db, (tx) => registerPatient(tx, actor, b));
+      if (b.acknowledgedDuplicates !== true) {
+        const candidates = await nearMatches(this.db, actor, b);
+        if (candidates.length > 0) {
+          throw new PatientError(
+            "duplicate_suspected",
+            `${String(candidates.length)} existing patient(s) closely match this registration`,
+            { candidates },
+          );
+        }
+      }
+      // `acknowledgedDuplicates` is the clerk's recorded judgement and is NOT a patient column, so
+      // it is dropped here rather than handed to `registerPatient`, whose input has no field for it.
+      const input = { ...b };
+      delete input.acknowledgedDuplicates;
+      return await withTx(this.db, (tx) => registerPatient(tx, actor, input));
     } catch (e) {
       toHttp(e);
     }

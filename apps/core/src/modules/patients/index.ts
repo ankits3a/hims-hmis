@@ -13,6 +13,9 @@ export { listAllergies } from "./allergies";
 export type { AllergyRow } from "./allergies";
 export { searchPatients, visiblePatientIds } from "./search";
 export type { MatchLane, PatientSearchResult } from "./search";
+/** FD-8 — the near-match probe, shared by `POST /patients` and the walk-in. */
+export { nearMatches } from "./duplicates";
+export type { DuplicateCandidate } from "./duplicates";
 export { NO_AUTHORITY, effectiveGuardianAuthority, guardiansWithAuthority, sweepGuardianMajority } from "./guardians";
 export type { GuardianAuthority, GuardianRow } from "./guardians";
 /**
