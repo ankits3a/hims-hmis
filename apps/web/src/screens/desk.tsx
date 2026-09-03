@@ -202,6 +202,44 @@ function Door({ card, stale, gated }: { card: WireDeskCard; stale: boolean; gate
  * and can never open one, so gating them would lock them out of their own job with an instruction
  * they cannot follow. The gate is scoped to the people the ruling is about.
  */
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * THE DRAWER THAT IS CLOSED BUT NOT FINISHED — AND THE DEAD END IT USED TO BE
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * FOUND BY THE OWNER, ON THE PREVIEW: *"I wrongly typed the closing amount. Now I can't undo it and
+ * so I can't close the drawer properly and hence can't proceed on to the dashboard."*
+ *
+ * What happened is the control working: `beginClose` with a count that does not match the expected
+ * cash files a `billing_variance` approval AND moves the session to `closing`. The approval is filed
+ * by the cashier, so the kernel's requester≠approver rule refuses that same cashier's later grant —
+ * a cashier who could approve away their own shortfall is not a control at all.
+ *
+ * The DEFECT was this screen's. It read "not open" as "no drawer" and offered the opening-float box,
+ * which `POST /billing/sessions` can only refuse: the cashier already has a live session. A form
+ * whose only outcome is a refusal is worse than no form — it tells somebody the way out is a number
+ * they type, when the way out is another person.
+ *
+ * So a `closing` session gets its own panel that says the true thing and points at the two places
+ * that can actually move it. The doors stay shut either way, because the money reason is unchanged:
+ * there is no drawer to take cash into.
+ */
+function AwaitingApprovalPanel(): React.ReactElement {
+  const { t } = useTranslation();
+  return (
+    <div className="box drawer" data-testid="drawer-awaiting">
+      <div className="say">
+        <div className="ttl">{t("desk.drawer.awaitingTitle")}</div>
+        <p className="body">{t("desk.drawer.awaitingBody")}</p>
+      </div>
+      <div className="form">
+        <Link to="/billing/session" className="pri" data-testid="drawer-goto-session">{t("desk.drawer.seeCount")}</Link>
+        <Link to="/approvals" className="sec">{t("desk.drawer.seeApproval")}</Link>
+      </div>
+    </div>
+  );
+}
+
 function DrawerPanel({ onOpened }: { onOpened: () => void }): React.ReactElement {
   const { t } = useTranslation();
   const [rupees, setRupees] = useState("");
@@ -304,7 +342,15 @@ export function Desk(): React.ReactElement {
     `session.isPending` is NOT "closed": treating a fetch in flight as a closed drawer would flash a
     marigold panel and disable every door for a moment on every single load.
   */
-  const drawerOpen = session.data?.session?.status === "open";
+  const drawerStatus = session.data?.session?.status ?? null;
+  const drawerOpen = drawerStatus === "open";
+  /*
+    `closing` is a THIRD state and not a synonym for "no drawer": the count is in, the money did not
+    agree with the till, and a supervisor has to grant the variance before it can be finalised. The
+    cashier cannot open a new drawer while it is live, so offering them the float box was a form with
+    only one outcome — a refusal.
+  */
+  const awaitingApproval = holdsDrawer && drawerStatus === "closing";
   const gated = holdsDrawer && session.isSuccess && !drawerOpen;
 
   return (
@@ -329,7 +375,13 @@ export function Desk(): React.ReactElement {
           )}
         </div>
 
-        {gated ? <div style={{ marginBottom: 14 }}><DrawerPanel onOpened={() => { void qc.invalidateQueries({ queryKey: ["me", "cash-session"] }); void desk.refetch(); }} /></div> : null}
+        {!gated ? null : (
+          <div style={{ marginBottom: 14 }}>
+            {awaitingApproval
+              ? <AwaitingApprovalPanel />
+              : <DrawerPanel onOpened={() => { void qc.invalidateQueries({ queryKey: ["me", "cash-session"] }); void desk.refetch(); }} />}
+          </div>
+        )}
 
         {desk.isPending ? <p className="bandnote">{t("app.loading")}</p> : null}
 

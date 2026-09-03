@@ -320,6 +320,33 @@ describe("FD-11 — the cash drawer is counted before the first patient", () => 
     expect(asked, "a screen must not ask for what its holder cannot have").toEqual([]);
   });
 
+  /**
+   * THE DEAD END THE OWNER HIT ON THE PREVIEW: *"I wrongly typed the closing amount. Now I can't
+   * undo it and so I can't close the drawer properly and hence can't proceed on to the dashboard."*
+   *
+   * A count that does not match the till files a variance approval and moves the session to
+   * `closing`. The cashier cannot approve their own variance (the kernel refuses requester ==
+   * approver) and cannot open a second drawer while that one is live — so the opening-float box this
+   * screen used to show them was a form whose ONLY possible outcome was a refusal.
+   */
+  it("a drawer awaiting a supervisor is not asked to be opened again — that form could only be refused", async () => {
+    renderAt("/", [REGISTRATION], ["opd.queue.read", "billing.session.own"], {
+      "GET /api/billing/sessions/current": {
+        status: 200,
+        body: { session: { ...OPEN.body.session, status: "closing", countedCashPaise: 0, expectedCashPaise: 402000, variancePaise: -402000 } },
+      },
+    });
+
+    expect(await screen.findByTestId("drawer-awaiting")).toBeInTheDocument();
+    // the float box is GONE — it is not the way out of this state
+    expect(screen.queryByTestId("drawer-panel")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Opening float (₹)")).not.toBeInTheDocument();
+    // and it points at somewhere that can actually move it
+    expect(screen.getByTestId("drawer-goto-session")).toHaveAttribute("href", "/billing/session");
+    // the doors stay shut, because the money reason is unchanged: there is no drawer to take cash into
+    expect(screen.getByTestId("cta-patients.registration")).toBeDisabled();
+  });
+
   it("a drawer already open is not asked for again", async () => {
     renderAt("/", [REGISTRATION], ["opd.queue.read", "billing.session.own"], {
       "GET /api/billing/sessions/current": OPEN,

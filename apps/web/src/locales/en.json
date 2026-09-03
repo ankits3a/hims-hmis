@@ -1706,7 +1706,11 @@
       "opening": "Opening…",
       "isOpen": "drawer open",
       "locked": "drawer first",
-      "atClose": "drawer counted at close"
+      "atClose": "drawer counted at close",
+      "awaitingTitle": "Your drawer is counted and waiting on a supervisor",
+      "awaitingBody": "The cash you counted did not match what the till expected, so the close was filed for approval instead of finishing. You cannot approve your own variance and you cannot open a new drawer while this one is live — a supervisor grants it, then you confirm the close.",
+      "seeCount": "See the count",
+      "seeApproval": "Find the approval"
     },
     "schemes": {
       "title": "Schemes in play",
