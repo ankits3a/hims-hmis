@@ -67,6 +67,9 @@ const visitOpenBody = z.object({
   intendedPayer: z.enum(["self", "tpa", "pmjay", "corporate"]).optional(),
   referralSource: z.enum(["self", "internal_doctor", "external_rmp", "camp", "other"]).optional(),
   referrerName: z.string().max(200).optional(),
+  /** FD-7 T9 / R4 — the partner slip, captured where the patient hands it over. `.max(64)` matches
+   *  `issueInvoiceBody.attributionCode` exactly, so a code the desk accepts cannot be one billing refuses. */
+  attributionCode: z.string().min(1).max(64).optional(),
 });
 /**
  * PLAN 07b T6 — the walk-in body. It is `visitOpenBody` with the patient made a UNION rather than a
@@ -83,6 +86,8 @@ const walkInBody = z.object({
   intendedPayer: z.enum(["self", "tpa", "pmjay", "corporate"]).optional(),
   referralSource: z.enum(["self", "internal_doctor", "external_rmp", "camp", "other"]).optional(),
   referrerName: z.string().max(200).optional(),
+  /** FD-7 T9 / R4 — see `visitOpenBody`. The walk-in is where the front desk actually opens a visit. */
+  attributionCode: z.string().min(1).max(64).optional(),
   acknowledgedDuplicates: z.boolean().optional(),
   // RC-1 T3 / D4 — bill-first defers the QUEUE JOIN, never the doctor: the visit opens with its
   // assignment, the token arrives with POST /opd/visits/:id/join-queue after the money.

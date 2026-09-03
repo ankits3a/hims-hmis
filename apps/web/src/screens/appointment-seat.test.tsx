@@ -270,6 +270,52 @@ describe("FD-7 T2 — the appointment seat", () => {
     expect((await screen.findByTestId("appt-done")).textContent).toContain("11");
   });
 
+  /* ── FD-7 T9 / R4 — the partner slip, captured where the patient hands it over ───────────── */
+
+  it("the slip travels on the walk-in body", async () => {
+    mockRoutes({ "POST /api/opd/walk-in": { status: 200, body: { patientId: "p-1", registered: false, encounter: { id: "E-1" }, tokenNo: 4, sessionId: "s-1" } } });
+    inHand("p-1");
+    renderWithProviders(<AppointmentSeat now={NOW} />);
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByTestId("appt-department"), "dept-gm");
+    await user.type(screen.getByTestId("appt-slip"), "PTR-9911");
+    await user.click(await screen.findByTestId("appt-confirm"));
+
+    await screen.findByTestId("appt-done");
+    expect(sent).toEqual({
+      patient: { existingId: "p-1" }, departmentId: "dept-gm", doctorId: "d-quick",
+      attributionCode: "PTR-9911",
+    });
+  });
+
+  /** No slip means NO KEY — `""` reaching the fee quote is a lookup for a partner that cannot exist. */
+  it("no slip sends no key at all", async () => {
+    mockRoutes({ "POST /api/opd/walk-in": { status: 200, body: { patientId: "p-1", registered: false, encounter: { id: "E-1" }, tokenNo: 4, sessionId: "s-1" } } });
+    inHand("p-1");
+    renderWithProviders(<AppointmentSeat now={NOW} />);
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByTestId("appt-department"), "dept-gm");
+    await user.click(await screen.findByTestId("appt-confirm"));
+
+    await screen.findByTestId("appt-done");
+    expect(sent).not.toHaveProperty("attributionCode");
+  });
+
+  it("the next patient does not inherit the last one's slip", async () => {
+    mockRoutes({ "POST /api/opd/walk-in": { status: 200, body: { patientId: "p-1", registered: false, encounter: { id: "E-1" }, tokenNo: 4, sessionId: "s-1" } } });
+    inHand("p-1");
+    renderWithProviders(<AppointmentSeat now={NOW} />);
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByTestId("appt-department"), "dept-gm");
+    await user.type(screen.getByTestId("appt-slip"), "PTR-9911");
+    await user.click(await screen.findByTestId("appt-confirm"));
+    await screen.findByTestId("appt-done");
+
+    await user.click(screen.getByTestId("appt-next"));
+    await waitFor(() => expect(screen.queryByTestId("appt-done")).toBeNull());
+    expect((screen.getByTestId("appt-slip") as HTMLInputElement).value).toBe("");  // THE KILL
+  });
+
   /* ── D8: two patients, and nothing of the first survives into the second ─────────────────── */
 
   it("two patients in a row: the second starts clean — no department, no doctor, no proposal", async () => {

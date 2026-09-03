@@ -55,6 +55,16 @@ export type FeeQuote = {
    */
   freeReason: { kind: "review_window"; doctorName: string | null; seenOn: string; windowEndsOn: string } | null;
   /**
+   * FD-7 T9 / R4 — THE SLIP THE DESK CAPTURED, so the cashier's field can PRE-FILL from it.
+   *
+   * Without this the quote would silently price with a stored code the billing screen could not see,
+   * and the cashier's own field — blank — would issue the invoice without it. That is exactly the
+   * disagreement RC-2's review named ("a seat that quoted ₹450 would still have issued at ₹500"),
+   * arriving from the opposite direction. The screen shows what the desk captured, and any edit the
+   * cashier makes is therefore explicit and travels on the invoice.
+   */
+  attributionCode: string | null;
+  /**
    * RC-2 T5 / D7 — CORPORATE v0: the payer, named on the quote, on BOTH branches.
    *
    * `PricedDraft.intendedPayer` already carries it — but only when there IS a draft, and a
@@ -106,6 +116,9 @@ export async function feeQuote(
       encounterId, visitType: encounter.visitType, free: true, feeServiceId: null, draft: null,
       freeReason: anchor === null ? null : { kind: "review_window", ...anchor },
       intendedPayer: encounter.intendedPayer,
+      // On the FREE branch too: a review visit still carries the partner's slip, and the accrual
+      // that hangs off it is the partner's whether or not this particular visit was charged for.
+      attributionCode: encounter.attributionCode,
     };
   }
   const draft = await previewInvoice(
@@ -117,10 +130,27 @@ export async function feeQuote(
       // drops it and the quote simply carries no discount, so a mistyped code makes the clerk retype
       // rather than making the counter stall on a patient who is standing there.
       couponCodes: opts.couponCodes,
-      // RC-2 T2 / D3 — the partner slip travels with the question too, for T1's own reason: a
-      // referral that repriced the invoice but not the quote is the same disagreement, and the
-      // clerk attaches the slip during registration, long before billing is opened.
-      attributionCode: opts.attributionCode,
+      /*
+       * RC-2 T2 / D3 — the partner slip travels with the question too, for T1's own reason: a
+       * referral that repriced the invoice but not the quote is the same disagreement.
+       *
+       * FD-7 T9 / R4 — AND IT NOW FALLS BACK TO THE ONE THE DESK CAPTURED. That comment used to end
+       * "the clerk attaches the slip during registration, long before billing is opened" — which was
+       * the intent, with nowhere to attach it to: `attributionCode` was a per-request parameter
+       * stored nowhere, so the slip died between the desk and the cashier unless it was re-typed.
+       * Migration 0059 gave it a home on the encounter, and this is the read.
+       *
+       * AN EXPLICIT CODE STILL WINS, because R4 keeps the slip editable at billing and a stored
+       * code that overrode the one being typed would make a correction impossible.
+       *
+       * That alone would NOT be enough, and the hole is worth naming: the billing screen omits the
+       * key entirely when its field is blank, so "the cashier cleared it" and "the cashier never
+       * touched it" arrive here identically, and the fallback would quietly re-apply the slip they
+       * had just removed. The fix is not on this line — it is that `FeeQuote` now RETURNS
+       * `attributionCode` so the screen PRE-FILLS it. The field then always shows what is stored,
+       * and clearing it is a visible act that travels as a different invoice body.
+       */
+      attributionCode: opts.attributionCode ?? encounter.attributionCode ?? undefined,
     },
     now,
   );
@@ -129,5 +159,8 @@ export async function feeQuote(
     // Read from the ENCOUNTER, not from `draft.intendedPayer`, so both branches answer identically
     // and the free branch is not a special case the seat has to remember.
     intendedPayer: encounter.intendedPayer,
+    // The STORED slip, not `opts.attributionCode`: this field exists so a screen can pre-fill from
+    // what the desk captured. Echoing back the caller's own parameter would make it useless.
+    attributionCode: encounter.attributionCode,
   };
 }

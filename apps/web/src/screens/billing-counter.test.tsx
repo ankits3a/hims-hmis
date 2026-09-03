@@ -380,6 +380,84 @@ describe("BillingCounter", () => {
     expect(wallet.textContent).not.toBe(visits.textContent);
   });
 
+  /**
+   * ═══ FD-7 T9 / R4 — THE SLIP THE DESK CAPTURED IS PRE-FILLED HERE ═══
+   *
+   * The quote now falls back to `opd_encounters.attribution_code`, so without the pre-fill the
+   * cashier would see a price a stored slip had already discounted, in a screen whose slip field was
+   * blank — and issuing from that blank field would send NO code and produce a DIFFERENT invoice.
+   * That is the RC-2 quote/invoice disagreement arriving from the opposite direction.
+   */
+  it("FD-7 T9: the slip captured at the desk pre-fills, and travels on the invoice unedited", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "GET /api/billing/visits/enc-1/fee-quote": { status: 200, body: { ...QUOTE_NEW, attributionCode: "PTR-FROM-DESK" } },
+      "POST /api/billing/invoices/preview": { status: 200, body: FEE_DRAFT },
+      "POST /api/billing/invoices": { status: 201, body: ISSUED },
+      "GET /api/billing/invoices/inv-1/print": { status: 200, body: PRINT },
+    });
+    renderWithProviders(<BillingCounter />);
+    const user = userEvent.setup();
+    await pickPatient(user);
+    await screen.findByTestId("line-row-fee");
+
+    await waitFor(() => expect((screen.getByTestId("counter-referral") as HTMLInputElement).value).toBe("PTR-FROM-DESK"));
+    await waitFor(() => expect(screen.getByTestId("preview-net")).toHaveTextContent("₹560.00"));
+    await user.type(screen.getByLabelText("Amount", { selector: "#tender-amount-0" }), "560");
+    await user.click(screen.getByTestId("submit-invoice"));
+
+    await waitFor(() => expect(bodiesOf("POST", "/api/billing/invoices")).toHaveLength(1));
+    expect(bodiesOf("POST", "/api/billing/invoices")[0]).toMatchObject({ attributionCode: "PTR-FROM-DESK" });
+  });
+
+  /**
+   * R4 keeps it EDITABLE, and clearing must mean "no slip" rather than "unchanged". This is the case
+   * the pre-fill exists to make possible: with a blank field the cashier could not tell whether a
+   * stored code was about to be applied, so removing one was not something they could do at all.
+   */
+  it("FD-7 T9: the cashier can CLEAR the pre-filled slip, and the invoice then carries none", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "GET /api/billing/visits/enc-1/fee-quote": { status: 200, body: { ...QUOTE_NEW, attributionCode: "PTR-WRONG-SLIP" } },
+      "POST /api/billing/invoices/preview": { status: 200, body: FEE_DRAFT },
+      "POST /api/billing/invoices": { status: 201, body: ISSUED },
+      "GET /api/billing/invoices/inv-1/print": { status: 200, body: PRINT },
+    });
+    renderWithProviders(<BillingCounter />);
+    const user = userEvent.setup();
+    await pickPatient(user);
+    await screen.findByTestId("line-row-fee");
+    await waitFor(() => expect((screen.getByTestId("counter-referral") as HTMLInputElement).value).toBe("PTR-WRONG-SLIP"));
+
+    await user.clear(screen.getByTestId("counter-referral"));
+    await waitFor(() => expect((screen.getByTestId("counter-referral") as HTMLInputElement).value).toBe(""));
+
+    await user.type(screen.getByLabelText("Amount", { selector: "#tender-amount-0" }), "560");
+    await user.click(screen.getByTestId("submit-invoice"));
+    await waitFor(() => expect(bodiesOf("POST", "/api/billing/invoices")).toHaveLength(1));
+    expect(bodiesOf("POST", "/api/billing/invoices")[0]).not.toHaveProperty("attributionCode"); // THE KILL
+  });
+
+  /** The key is load-bearing: a DIFFERENT encounter re-seeds, or the next patient inherits the last one's slip. */
+  it("FD-7 T9: switching to another visit re-seeds the slip from that visit's own quote", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "GET /api/billing/visits/enc-1/fee-quote": { status: 200, body: { ...QUOTE_NEW, attributionCode: "PTR-FIRST" } },
+      "GET /api/billing/visits/enc-2/fee-quote": { status: 200, body: { ...QUOTE_NEW, encounterId: "enc-2", attributionCode: "PTR-SECOND" } },
+      "POST /api/billing/invoices/preview": { status: 200, body: FEE_DRAFT },
+    });
+    renderWithProviders(<BillingCounter />);
+    await waitFor(() => expect((screen.getByTestId("counter-referral") as HTMLInputElement).value).toBe("PTR-FIRST"));
+
+    fireEvent.change(screen.getByLabelText("Encounter"), { target: { value: "enc-2" } });
+
+    // THE KILL for a seed keyed on anything but the encounter — the second patient would keep the first's slip.
+    await waitFor(() => expect((screen.getByTestId("counter-referral") as HTMLInputElement).value).toBe("PTR-SECOND"));
+  });
+
   /** No package, no panel — an empty dashed box beside a bill is furniture, not information. */
   it("FD-7 T6: a patient with no package gets no balances panel", async () => {
     searchState.current = { encounterId: "enc-1" };

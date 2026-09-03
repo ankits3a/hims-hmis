@@ -152,6 +152,17 @@ export function AppointmentSeat({ now = new Date() }: { now?: Date } = {}): Reac
   /** The clerk's own choice — set by the by-name door and by taking the alternative. Overrules the proposal. */
   const [overrideDoctorId, setOverrideDoctorId] = useState("");
   const [date, setDate] = useState(todayIst(now));
+  /**
+   * FD-7 T9 / R4 — THE CHANNEL-PARTNER SLIP, CAPTURED WHERE THE PATIENT HANDS IT OVER.
+   *
+   * The owner ruled it is captured at the desk and stays editable at billing. It could not be: the
+   * code was a per-request parameter stored nowhere, so it died between the desk and the cashier.
+   * Migration 0059 gave it a home on the encounter, and this is the act that writes it — the walk-in
+   * is the moment a visit exists to attach it to, which registration (ending at the UHID) no longer
+   * is. Typed as printed and stored unvalidated: billing owns the check that a code binds to this
+   * patient, and duplicating that here would put one money rule in two places.
+   */
+  const [attributionCode, setAttributionCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{ kind: "walkin"; tokenNo: number | null } | { kind: "booked"; at: string } | { kind: "checkedIn"; tokenNo: number | null } | null>(null);
 
@@ -209,16 +220,19 @@ export function AppointmentSeat({ now = new Date() }: { now?: Date } = {}): Reac
 
   const reset = useCallback((): void => {
     setDepartmentId(""); setOverrideDoctorId(""); setError(null); setDone(null); setMode("walkin");
+    setAttributionCode(""); // D8 — the next patient's slip is not this one's
   }, []);
 
   async function confirmWalkIn(idempotencyKey: string): Promise<void> {
     if (patientId === null || chosen === null) return;
     setError(null);
     try {
+      const slip = attributionCode.trim();
       const r = await walkIn({
         patient: { existingId: patientId },
         departmentId: chosen.doctor.departmentId,
         doctorId: chosen.doctor.id,
+        ...(slip === "" ? {} : { attributionCode: slip }),
       }, idempotencyKey);
       setDone({ kind: "walkin", tokenNo: r.tokenNo });
     } catch (e) {
@@ -345,6 +359,22 @@ export function AppointmentSeat({ now = new Date() }: { now?: Date } = {}): Reac
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/*
+                R4 — the slip is captured HERE because this is where a visit comes into existence and
+                where the patient is still holding the paper. It sits above the proposal rather than
+                beside the doctor: it is about who sent the patient, not about who will see them.
+              */}
+              <div>
+                <label htmlFor="appt-slip" className="text-xs font-medium text-muted-foreground">
+                  {t("appointmentSeat.partnerSlip")}
+                </label>
+                <input
+                  id="appt-slip" data-testid="appt-slip" value={attributionCode}
+                  onChange={(e) => setAttributionCode(e.target.value)}
+                  className="mt-1 h-11 w-full rounded-md border border-input bg-background px-3 font-mono text-base"
+                />
               </div>
 
               {mode === "walkin" && proposal !== null && overrideDoctorId === "" && (

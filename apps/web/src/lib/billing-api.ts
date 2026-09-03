@@ -96,6 +96,13 @@ export type WireFeeQuote = {
    */
   freeReason: { kind: "review_window"; doctorName: string | null; seenOn: string; windowEndsOn: string } | null;
   /**
+   * FD-7 T9 / R4 — the slip the desk captured, on BOTH branches, so the cashier's field pre-fills
+   * from it. Without this the quote would price with a stored code the screen could not see and the
+   * cashier's blank field would then issue the invoice without it — the RC-2 disagreement, arriving
+   * from the other direction.
+   */
+  attributionCode: string | null;
+  /**
    * RC-2 T5 / D7 — corporate v0. `"self" | "tpa" | "pmjay" | "corporate"` as the server spells it.
    * On a non-self payer the seat shows "bill to panel — nothing to collect" AND no benefit chips,
    * because RC-2 T3 stops member, coupon and referral benefits at the self-pay share. This field is

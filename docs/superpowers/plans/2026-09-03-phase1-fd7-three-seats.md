@@ -414,3 +414,42 @@ identity, and the priced lines already name the winning benefit.
 `delta` back to `-1`, the count lane treated as money, the zero guard removed, the count lane capped)
 and 5 on the cashier (codes off the preview, codes off the invoice, blanks sent as empty, the two
 units merged into one sentence, the panel always shown).
+
+## 12. T9 — the partner slip gets a home · **migration 0059**
+
+**R4's other half, and three corrections to how this doc described the problem.** T3 and T6 both
+deferred the capture saying "no route binds a slip code to a patient". That was wrong:
+`attribution_ids.patient_id` is populated by `issueAttribution` at ISSUE time and RC-2's review
+MAJOR 5 already compares it. The real gap is narrower and more interesting — **`attributionCode` was
+a per-request parameter with no durable home**. `charge-rules.ts` said in its own comment that "the
+clerk attaches the slip during registration, long before billing is opened", and there was no column
+anywhere to attach it TO. The slip died between the desk and the cashier unless it was re-typed off
+paper that had by then been put away.
+
+**Where it is captured, and why not on `/registration`.** The owner ruled "at registration, editable
+at billing". Their OTHER ruling — registration ends at the UHID — moved the earliest moment a visit
+exists to the walk-in. A slip is one per VISIT (V6), so the capture sits on `/appointment`, one screen
+later, which is still the desk and still while the patient is holding the paper. **If the owner wants
+the field on the registration form itself, it needs a home on the PATIENT, and that is a different
+decision about what a slip belongs to.**
+
+**Stored unvalidated, on purpose.** Billing owns the check that a code binds to this patient
+(RC-2 MAJOR 5); duplicating it at the desk would put one money rule in two places and stall a counter
+on a typo. The desk records what the paper says; the money decides what it is worth.
+
+**The pre-fill is not a nicety, it is the correctness half.** With the quote falling back to the
+stored code, a billing screen with a blank slip field would show a price a stored slip had already
+discounted and then issue an invoice carrying no code — the RC-2 quote/invoice disagreement arriving
+from the opposite direction. `FeeQuote` therefore RETURNS `attributionCode` on **both branches**
+(a free review visit still carries the partner's slip — the accrual hangs off the slip, not off
+whether this visit was charged for), and the cashier's field seeds from it once per encounter. Any
+edit, **including clearing it**, is then an explicit act that travels.
+
+**Mutants at T9: 12, and two of them mattered.** The first draft's six left `no_fallback` and
+`opts_ignored` ALIVE — every assertion read the reported field and none read the MONEY, so a stored
+slip that showed up in a response and changed no price would have passed. Fixing that needed a real
+partner fixture (counterparty + agreement + issued slip, and `new PartnersModule()` to arm the
+benefit-source provider, without which a referral silently prices as no discount). `free_branch`
+survived a later round for the same reason and got its own row. **One guard is recorded as UNTESTED**:
+the "do not re-seed the SAME encounter" half of the pre-fill, because the suite cannot make the quote
+refetch. The encounter KEY is tested; the refetch guard is documented in the code rather than counted.

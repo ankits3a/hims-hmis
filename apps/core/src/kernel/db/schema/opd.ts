@@ -247,6 +247,21 @@ export const opdEncounters = pgTable(
     intendedPayer: text("intended_payer").notNull().default("self"), // 'self' | 'tpa' | 'pmjay' | 'corporate' (§6)
     referralSource: text("referral_source"), // 'self' | 'internal_doctor' | 'external_rmp' | 'camp' | 'other' — attribution capture (§6); Plan 09 uses it
     referrerName: text("referrer_name"),
+    /**
+     * ═══ FD-7 T9 / OWNER RULING R4 — THE CHANNEL-PARTNER SLIP, GIVEN A HOME ═══
+     *
+     * `attributionCode` was a per-request parameter and nothing else — handed to `feeQuote` and to
+     * `issueInvoice` on every call and stored nowhere in between. `charge-rules.ts` says in its own
+     * comment that "the clerk attaches the slip during registration, long before billing is opened",
+     * and there was no column for it to be attached TO, so the cashier had to re-type it or lose it.
+     *
+     * ON THE ENCOUNTER rather than the patient, because a slip is ONE PER VISIT (V6). It is the CODE
+     * as presented, not a foreign key: `attribution_ids` is the partner's own issue book, the code
+     * may be typed before anyone has looked it up, and billing is the surface that validates the
+     * code binds to this patient (RC-2 review MAJOR 5). Storing an unvalidated string here and
+     * validating it where the money is decided keeps the desk fast and the guard in one place.
+     */
+    attributionCode: text("attribution_code"),
     // Consultation record (T7) — nullable until the doctor writes it.
     chiefComplaint: text("chief_complaint"),
     diagnosis: text("diagnosis"),

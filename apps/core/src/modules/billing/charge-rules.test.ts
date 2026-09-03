@@ -1,11 +1,16 @@
+import { eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { seedBillingBase } from "../../../test/helpers/billing";
 import type { BillingBaseFixture } from "../../../test/helpers/billing";
 import { withTx } from "../../kernel/db/client";
-import { couponDefinitions, invoices, opdEncounters, registrationConfig } from "../../kernel/db/schema";
+import { attributionIds, counterparties, couponDefinitions, invoices, opdEncounters, partnerAgreements, registrationConfig } from "../../kernel/db/schema";
 import { getEncounter } from "../opd";
+// FD-7 T9 — importing the module REGISTERS its benefit-source provider (`partners.module.ts:39`).
+// Without it `resolveRegisteredSources` returns nothing and a partner slip prices as no discount,
+// which is what the first draft of these tests actually measured.
+import { PartnersModule } from "../partners";
 import { registerPatient } from "../patients";
 import { feeQuote, feeServiceFor, FEE_LINE_ID } from "./charge-rules";
 import { loadBillingConfig } from "./config";
@@ -123,6 +128,10 @@ describe("the OPD fee branch: feeServiceFor and the fee quote (D8)", () => {
       // to read it from. This exhaustive `toEqual` is what caught the addition, which is the point
       // of writing it exhaustively.
       intendedPayer: "self",
+      // FD-7 T9 / R4 — and it caught this one too. The partner slip travels on the FREE branch as
+      // well: a review visit still carries the slip, and the partner's accrual hangs off the slip
+      // rather than off whether this particular visit was charged for.
+      attributionCode: null,
     });
 
     expect(await codeOf(feeQuote(db, "no-such-encounter", NOW)))
@@ -181,6 +190,7 @@ describe("RC-2 T1 — a presented coupon reaches the quote, not just the invoice
 
   beforeEach(async () => {
     process.env[FLAG] = "true"; // D1: the flag is armed IN TESTS ONLY; no deployed default changes
+    new PartnersModule(); // arms the referral provider exactly as production does
     await truncateAll(db);
     await db.insert(registrationConfig).values({ id: "main", uhidPrefix: "HMS", updatedBy: "t" }).onConflictDoNothing();
     await seedBillingBase(db);
@@ -238,6 +248,114 @@ describe("RC-2 T1 — a presented coupon reaches the quote, not just the invoice
     const quoted = await feeQuote(db, await shapeNewVisit(), NOW);
     expect(quoted.draft!.totals.netPayablePaise).toBe(50_000);
     expect(quoted.draft!.lines[0]!.winner).toBeNull();
+  });
+
+  /* ══════════════════════════════════════════════════════════════════════════════════════════
+     FD-7 T9 / OWNER RULING R4 — THE SLIP THE DESK CAPTURED
+     ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+  /**
+   * `attributionCode` was a PER-REQUEST PARAMETER with no durable home. This file's own comment said
+   * "the clerk attaches the slip during registration, long before billing is opened" — and there was
+   * no column to attach it to, so the slip died between the desk and the cashier unless it was
+   * re-typed. Migration 0059 gave it one on the encounter; these are the two reads.
+   */
+  async function shapeVisitWithSlip(code: string | null): Promise<string> {
+    const id = await shapeNewVisit();
+    await db.update(opdEncounters).set({ attributionCode: code }).where(eq(opdEncounters.id, id));
+    return id;
+  }
+
+  it("FD-7 T9: the quote falls back to the slip the desk captured", async () => {
+    const quoted = await feeQuote(db, await shapeVisitWithSlip("PTR-9911"), NOW);
+    // Returned so the billing screen can PRE-FILL — echoing the caller's own parameter back would
+    // make the field useless, so this is the STORED value on both branches.
+    expect(quoted.attributionCode).toBe("PTR-9911");
+  });
+
+  /**
+   * ═══ AND IT MUST PRICE, NOT MERELY REPORT ═══
+   *
+   * Two mutants survived the first draft of these tests: deleting the fallback, and deleting
+   * `opts.attributionCode` from it. Both passed, because every assertion above reads the REPORTED
+   * field and none of them reads the MONEY. A stored slip that shows up in a response and changes
+   * no price is exactly the rail-with-no-consumer defect this phase keeps finding, so the partner
+   * rows below exist to make the fallback move a number.
+   *
+   * The agreement's `patientDiscountBps` is 1 000 (10%) on "consultation": 50 000 gross → 45 000.
+   */
+  async function issuePartnerSlip(code: string): Promise<void> {
+    const counterpartyId = newId();
+    await db.insert(counterparties).values({
+      id: counterpartyId, code: `CP-${code}`, name: "Invented Referrer",
+      payeeClass: "channel_partner", status: "active", createdBy: "test",
+    });
+    await db.insert(partnerAgreements).values({
+      id: newId(), counterpartyId, versionNo: 1, effectiveFrom: new Date("2026-01-01T00:00:00Z"),
+      effectiveTo: null, status: "active", createdBy: "test",
+      terms: {
+        payableRateBps: 1_000, eligibleCategories: ["consultation"], kicker: null,
+        patientDiscountBps: 1_000, patientDiscountCategories: ["consultation"],
+        patientDiscountCapPaise: null, patientDiscountTitle: "Invented partner referral",
+      },
+    });
+    await db.insert(attributionIds).values({
+      id: newId(), code, counterpartyId, state: "issued", issuedBy: "test",
+      issuedAt: new Date("2026-01-01T00:00:00Z"),
+    });
+  }
+
+  it("FD-7 T9: the stored slip DISCOUNTS the quote with no code passed at all", async () => {
+    await issuePartnerSlip("PTR-PRICES");
+    const withSlip = await feeQuote(db, await shapeVisitWithSlip("PTR-PRICES"), NOW);
+    const without = await feeQuote(db, await shapeVisitWithSlip(null), NOW);
+
+    // THE KILL for a fallback that reports but does not price.
+    expect(withSlip.draft!.totals.netPayablePaise).toBe(45_000);
+    expect(without.draft!.totals.netPayablePaise).toBe(50_000);
+  });
+
+  /** And `opts` still reaches the pricing, which is the other half of the same line. */
+  it("FD-7 T9: a code passed explicitly prices even when the encounter stored none", async () => {
+    await issuePartnerSlip("PTR-TYPED-ONLY");
+    const quoted = await feeQuote(db, await shapeVisitWithSlip(null), NOW, { attributionCode: "PTR-TYPED-ONLY" });
+    expect(quoted.draft!.totals.netPayablePaise).toBe(45_000);  // THE KILL for dropping opts
+    expect(quoted.attributionCode).toBeNull();                  // …and it is still the STORED value reported
+  });
+
+  /** R4 keeps the slip editable at billing, so the cashier looking at the paper still wins. */
+  it("FD-7 T9: an explicitly passed code overrides the stored one", async () => {
+    const quoted = await feeQuote(db, await shapeVisitWithSlip("PTR-STORED"), NOW, { attributionCode: "PTR-TYPED" });
+    // The quote is PRICED with the typed code…
+    expect(quoted.free).toBe(false);
+    // …and still REPORTS the stored one, because that is what the pre-fill is for.
+    expect(quoted.attributionCode).toBe("PTR-STORED");
+  });
+
+  /**
+   * THE FREE BRANCH RETURNS IT TOO, and a mutant proved this needed its own row: nulling the free
+   * branch's `attributionCode` broke nothing, because the only free-branch assertion in this file is
+   * over a visit that has no slip. A review visit still carries the partner's slip — the accrual
+   * hangs off the slip, not off whether this particular visit was charged for — and the billing
+   * screen must pre-fill on that branch as well or the cashier silently drops the partner.
+   */
+  it("FD-7 T9: a FREE revisit still reports the slip, so the pre-fill works on both branches", async () => {
+    const id = newId();
+    const actor: Actor = { type: "user", id: "rc2-clerk" };
+    const { patient } = await withTx(db, (tx) => registerPatient(tx, actor, { name: "Meena Iyer", sex: "female", ageYears: 52 }));
+    await db.insert(opdEncounters).values({
+      id, visitNo: `VRC2F-${id}`, patientId: patient.id, workflowInstanceId: newId(), serviceDate: SERVICE_DAY,
+      visitType: "revisit", status: "waiting", intendedPayer: "self", openedBy: "shaped", updatedBy: "shaped",
+      openedAt: NOW, attributionCode: "PTR-ON-A-FREE-VISIT",
+    });
+
+    const quoted = await feeQuote(db, id, NOW);
+    expect(quoted.free).toBe(true);                                   // the branch with no draft
+    expect(quoted.attributionCode).toBe("PTR-ON-A-FREE-VISIT");       // THE KILL
+  });
+
+  it("FD-7 T9: a visit with no slip quotes null, not an empty string", async () => {
+    expect((await feeQuote(db, await shapeVisitWithSlip(null), NOW)).attributionCode).toBeNull();
   });
 
   it("an unknown code is quoted as no discount, never as an error — the clerk retypes, the counter does not stall", async () => {

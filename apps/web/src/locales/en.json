@@ -2735,6 +2735,7 @@
     "doneBooked": "Booked for {{at}}.",
     "next": "Next patient",
     "forbidden": "This account may not book or route appointments.",
-    "anchorOnLeave": "{{doctor}} has seen this patient before but is on leave today."
+    "anchorOnLeave": "{{doctor}} has seen this patient before but is on leave today.",
+    "partnerSlip": "Partner slip code (if they brought one)"
   }
 }

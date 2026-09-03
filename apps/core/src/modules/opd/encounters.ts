@@ -38,6 +38,13 @@ export type OpenVisitInput = {
   intendedPayer?: "self" | "tpa" | "pmjay" | "corporate";
   referralSource?: "self" | "internal_doctor" | "external_rmp" | "camp" | "other";
   referrerName?: string;
+  /**
+   * FD-7 T9 / R4 — the channel-partner slip's code, as the patient presented it. Stored UNVALIDATED
+   * and deliberately: billing is where a code is checked against the partner's issue book and
+   * against this patient (RC-2 review MAJOR 5), and duplicating that check here would put the same
+   * money rule in two places. What this buys is that the cashier does not have to re-type it.
+   */
+  attributionCode?: string;
   appointment?: { id: string; slotStart: Date }; // set only by appointments.checkIn (T4)
   /**
    * RC-1 T3 / D4 — `bill_first` is a DEFERRED QUEUE JOIN, not a reordered transaction. The visit
@@ -112,6 +119,9 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput 
     id: encounterId, visitNo, patientId: input.patientId, workflowInstanceId: instanceId, departmentId: dept.id, doctorId: doctor.id,
     appointmentId: input.appointment?.id ?? null, serviceDate, visitType,
     intendedPayer: input.intendedPayer ?? "self", referralSource: input.referralSource ?? null, referrerName: input.referrerName ?? null,
+    // Trimmed, and an empty string is stored as NULL: "" is not a slip, and a blank code reaching
+    // the fee quote would be a lookup for a partner that cannot exist.
+    attributionCode: (input.attributionCode ?? "").trim() === "" ? null : input.attributionCode!.trim(),
     openedBy: actor.id, openedAt: now, updatedBy: actor.id, updatedAt: now,
   }).returning();
 

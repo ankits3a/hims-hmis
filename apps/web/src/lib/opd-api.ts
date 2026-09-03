@@ -388,6 +388,12 @@ export type WireWalkInBody = {
   patient: WireWalkInPatient;
   departmentId: string;
   doctorId: string;
+  /**
+   * FD-7 T9 / R4 — the channel-partner slip, captured where the patient hands it over. Stored on the
+   * encounter (migration 0059) so the cashier does not have to re-type it off paper that has by then
+   * been put away; billing owns the check that the code binds to this patient.
+   */
+  attributionCode?: string;
   intendedPayer?: string;
   referralSource?: string;
   referrerName?: string;
