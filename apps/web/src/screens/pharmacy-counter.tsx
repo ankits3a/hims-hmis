@@ -52,6 +52,21 @@ export function PharmacyCounter(): React.ReactElement {
     setPicks({});
     setDraft(null);
     setLabel(null);
+    /**
+     * TAKING A PATIENT CLEARS THE DESK — ALL OF IT (close review, 16c §8.5 pass 1).
+     *
+     * The four lines above reset what belongs to the prescription. These four reset what belongs
+     * to the TRANSACTION, and they were missing: the identity that confirmed the last patient at
+     * the window, the tender typed for their bill, the reason typed to cancel them, and the last
+     * refusal. D7's second identity confirmation (doc 16 A1) is an act the pharmacist performs for
+     * THIS patient; a box still holding the previous patient's token is that control already
+     * answered before anyone looked up. The server refuses the mismatch — which is exactly why no
+     * suite caught it — but a counter must not present the answer to its own safety question.
+     */
+    setIdentityValue("");
+    setTenderAmount("");
+    setReason("");
+    setError(null);
   };
 
   useEffect(() => {
@@ -208,7 +223,7 @@ export function PharmacyCounter(): React.ReactElement {
 
         <section className="space-y-4">
           {inHand !== null && (
-            <div className="space-y-4 rounded border bg-card p-4">
+            <div data-testid="in-hand" className="space-y-4 rounded border bg-card p-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div>
                   <p className="text-lg font-semibold">{patientName(inHand.patient)} <span className="font-mono text-sm">{inHand.patient.uhid}</span></p>

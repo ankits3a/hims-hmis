@@ -6,11 +6,12 @@ import { pharmacyDispenseLines, pharmacyDispenses, pharmacyRegH1 } from "../../k
 import { withTx } from "../../kernel/db/client";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { transition } from "../../kernel/workflow/instances";
+import { invoiceSettlement } from "../billing";
 import { listMedicines } from "../formulary";
 import { consumeReservation, effectiveRegulation, getBatch, itemUomRows, itemsByIds, materialConsumed } from "../materials";
 import { getDoctor, getPrescription, getVisit } from "../opd";
 import { getPatient } from "../patients";
-import { REGISTER_FLAGS, SCHEDULED_FLAGS } from "./config";
+import { REFUSED_FLAGS, REGISTER_FLAGS, SCHEDULED_FLAGS } from "./config";
 import { dispenseHandedOver } from "./events";
 import { PharmacyError } from "./errors";
 import { priceForBatch } from "./price";
@@ -50,9 +51,43 @@ export async function handOverDispense(
 ): Promise<DispenseView> {
   const d = await getDispenseRow(db, dispenseId);
   if (d.status !== "billed") throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} is ${d.status}, not billed`, { status: d.status });
+
+  /**
+   * ═══ D8, READ AS AN AMOUNT AND NOT AS A STATE (close review, 16c §8.5 pass 1) ═══
+   *
+   * `billed` is a column; "paid" is a sum, and the two stop agreeing the moment anyone touches the
+   * money after the bill. `issueInvoice` refuses to leave a remainder unsettled, so the dispense
+   * cannot reach `billed` unpaid — but settlement is DERIVED (`settlement.ts`: no status column
+   * exists on `invoices`, which is what keeps the immutability triggers total), and it is derived
+   * from allocations and credit notes that other desks can still write:
+   *
+   *   grep -rn "reverseAllocation\|issueCreditNote" apps/core/src --include=*.ts | grep -v test
+   *     → billing/receipts.ts, billing/credit-notes.ts, both exported on `billing/index.ts`,
+   *       both reachable from the billing desk's own routes while the patient is still at
+   *       our window (a receipt voided as taken on the wrong invoice; a credit note raised
+   *       against the pharmacy bill).
+   *
+   * So the guard is not "unreachable by construction" (§5A.4's amendment) — the road is built from
+   * another module in one call, and the suite below builds it. The drug leaves against money that
+   * is still there, re-read at the irreversible act.
+   */
+  if (d.invoiceId === null) throw new PharmacyError("invoice_not_settled", "this dispense carries no invoice", { dispenseId: d.id });
+  const invoiceId = d.invoiceId;
+
   const lines = (await linesOf(db, dispenseId)).filter((l) => l.status === "open");
   if (lines.length === 0) throw new PharmacyError("nothing_to_dispense", "no open line to hand over");
   const scheduled = d.scheduled || lines.some((l) => l.scheduleFlag !== null && (SCHEDULED_FLAGS as readonly string[]).includes(l.scheduleFlag));
+  // R-3 at the LAST gate as well (pass 2 on the verify fix): claim and verify each judge a medicine
+  // that the next step may still change, so the schedule this counter may not dispense is refused
+  // wherever a line carrying it can be found — including one written before the guard above existed.
+  const refused = lines.find((l) => l.scheduleFlag !== null && (REFUSED_FLAGS as readonly string[]).includes(l.scheduleFlag));
+  if (refused !== undefined) {
+    throw new PharmacyError(
+      "schedule_x_not_dispensed_here",
+      `line ${String(refused.lineIdx + 1)} is Schedule ${String(refused.scheduleFlag)} — not handed over at the OPD counter until double custody (16d)`,
+      { lineIdx: refused.lineIdx, scheduleFlag: refused.scheduleFlag },
+    );
+  }
 
   const visible = await getPatient(db, actor, d.patientId);
   if (visible === null) throw new PharmacyError("unknown_dispense", `dispense ${dispenseId} not found`);
@@ -87,6 +122,21 @@ export async function handOverDispense(
   const ledgerEntryIds: string[] = [];
   let h1Rows = 0;
   await withTx(db, async (tx) => {
+    /**
+     * PASS 2 ON THIS FIX — the read belongs INSIDE the transaction that moves the stock. Checked
+     * before `withTx`, it is a report about the past: a reversal landing in the gap between the
+     * check and the `consumeReservation` below would still hand the drug over, which is the very
+     * defect the guard was written for, only narrower. Read here, it is serialised against the
+     * money the same way the ledger's own writes are.
+     */
+    const settlement = await invoiceSettlement(tx, invoiceId);
+    if (settlement.state !== "settled") {
+      throw new PharmacyError(
+        "invoice_not_settled",
+        `₹${(settlement.outstandingPaise / 100).toFixed(2)} is outstanding on this bill — the medicine stays at the counter until it is paid or the bill is corrected`,
+        { invoiceId, outstandingPaise: settlement.outstandingPaise, state: settlement.state },
+      );
+    }
     for (const line of lines) {
       if (line.reservationId === null || line.batchId === null || line.itemId === null || line.qtyBase === null) {
         throw new PharmacyError("dispense_not_in_state", `line ${String(line.lineIdx + 1)} holds no reservation`, { lineIdx: line.lineIdx });

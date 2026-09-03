@@ -3,6 +3,10 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { MON, MON2, addAllergy, issueRx, line, reissueRx, seedPharmacyBase } from "../../../test/helpers/pharmacy";
 import { testCfg } from "../../../test/helpers/opd";
 import { withTx } from "../../kernel/db/client";
+import { addMedicine, resolveMedicines } from "../formulary";
+import { registerItem } from "../materials";
+import type { Actor } from "@hmis/contracts";
+import { registerSaleItem } from "./sale-items";
 import { events, orderItems, orders, pharmacyDispenseLines, pharmacyDispenses, workflowInstances } from "../../kernel/db/schema";
 import { claimDispense, findAtCounter } from "./claim";
 import { handlePrescriptionIssued } from "./consumers";
@@ -202,5 +206,49 @@ describe("the dispense counter — find, claim, verify (16c T3)", () => {
     expect(rows.find((r) => r.id === r2.dispenseId)).toMatchObject({ status: "queued", prescriptionVersion: 2 });
     expect(second.version).toBe(2);
     expect(await db.select().from(events).where(eq(events.name, "dispense.queued"))).toHaveLength(2);
+  });
+  /**
+   * ═══ CLOSE REVIEW (16c §8.5, pass 1) — R-3 IS ASKED AT ONE GATE, AND THE OTHER GATE CAN MOVE ═══
+   *
+   * `claimDispense` refuses Schedule X on the medicine the PRESCRIPTION named. `verifyDispense` is
+   * then allowed to name a different one: the substitution equality is salts + strength + form +
+   * route, and says nothing about schedule. Building the road (§5A.4) — a controlled brand sharing
+   * paracetamol's salt set, bridged and stocked like any other, which is also what one mistyped
+   * `schedule_flag` looks like. Before the guard at verify this dispensed a Schedule X tablet at
+   * the OPD counter, with no double custody and no register.
+   */
+  it("R-3 — a substitution cannot walk a Schedule X medicine past the claim's guard", async () => {
+    const MATERIALS_HEAD: Actor = { type: "user", id: "01HMATERIALSHEAD00000000001" };
+    const resolved = await resolveMedicines(db, [fx.med.crocin]);
+    const saltId = resolved.get(fx.med.crocin)!.salts[0]!.saltId;
+
+    const xMedicineId = await withTx(db, async (tx) => {
+      const m = await addMedicine(tx, fx.pharmacist.actor, {
+        brandName: "Calmol 500", form: "tablet", routeClass: "systemic", strengthLabel: "500 mg",
+        scheduleFlag: "X", salts: [{ saltId, strength: "500 mg" }],
+      });
+      const { itemId } = await registerItem(tx, MATERIALS_HEAD, {
+        code: "CALM500", name: "Calmol 500 tablet", class: "drug", baseUom: "tablet", batchTracked: true,
+        formularyMedicineId: m.medicineId, gstRateBps: 1200,
+        uoms: [{ uom: "strip", toBaseMultiplier: 10, isPurchaseUom: true, isIssueUom: true }],
+      });
+      await registerSaleItem(tx, fx.pharmacist.actor, itemId);
+      return m.medicineId;
+    });
+
+    const { issued } = await issueRx(db, fx, [line({ drug: "Crocin 500", medicineId: fx.med.crocin })]);
+    const id = await scanned(issued.qrPayload);
+    await claimDispense(db, fx.pharmacist.actor, { dispenseId: id, door: "rx_qr" }, MON2);
+
+    // the counter never offers it either — an X medicine is not an alternative
+    expect((await alternativesFor(db, id, 0)).map((a) => a.medicineId)).not.toContain(xMedicineId);
+
+    await expect(verifyDispense(db, fx.pharmacist.actor, fx.decls, id, {
+      lines: [{ lineIdx: 0, qtyBase: 10, dispensedMedicineId: xMedicineId, patientConsent: true }],
+    }, MON2)).rejects.toThrow(expect.objectContaining({ code: "schedule_x_not_dispensed_here" }));
+
+    // nothing was written: no order placed, the dispense is still claimed
+    expect(await db.select().from(orders)).toHaveLength(0);
+    expect((await getDispense(db, fx.pharmacist.actor, id)).status).toBe("claimed");
   });
 });
