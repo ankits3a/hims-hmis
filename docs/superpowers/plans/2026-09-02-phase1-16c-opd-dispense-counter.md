@@ -188,15 +188,46 @@ identity, the tender, the cancel reason and the last refusal. The two-patient cy
   defence in depth over state that verify now refuses, and carries no test of its own rather than a
   fabricated one.
 
-**F11 — MAJOR, NOT FIXED, owner named: the pick reservation never expires.** D2 and
-`PICK_RESERVATION_MINUTES = 30` promise that a pick "holds a batch before the ledger may release it
-to somebody else". `pick.ts` writes `expiresAt`; **nothing in `apps/core/src` reads it** — no sweeper,
-no job, and `releaseReservation` is called only by decline and cancel. So an abandoned picked
-dispense holds `qty_reserved` for ever, and since `fefoPick`/`balances` subtract reserved stock, the
-counter reports short stock while the shelf is full. Recoverable by hand today (cancel releases).
-Not fixed here: the mechanism belongs in `materials` — a shared module whose manifest is census-
-pinned — and 16d already owns abandoned-dispense handling and the paid-not-collected refund path.
-**16d inherits it.** Until then the constant promises a behaviour that does not exist.
+**F11 — MAJOR, FIXED 2026-09-04 (this was recorded as "16d inherits it" and that call was
+reversed).** D2 and `PICK_RESERVATION_MINUTES = 30` promise that a pick "holds a batch before the
+ledger may release it to somebody else". `pick.ts` wrote `expires_at` from T4; **nothing in
+`apps/core/src` ever read it** — no sweeper, no job, and `releaseReservation` is called only by
+decline and cancel. An abandoned pick therefore held `qty_reserved` for ever, and because `fefoPick`
+and `balances` both subtract reserved stock, the counter reported short stock on a full shelf.
+
+It was deferred on the grounds that the mechanism belongs in `materials` (a shared, census-pinned
+module) and that 16d owns abandoned-dispense handling. **16d is gated on the IPD cluster's first
+plan, which does not exist**, so the deferral had no date on it — and this is a live defect in
+shipped code, not a missing feature. Closed here instead, entirely in the pharmacy module plus the
+worker registration every module's sweep uses.
+
+- **`sweepExpiredPicks`** (`modules/pharmacy/expiry.ts`), the worker's SIXTEENTH job, `every: 60_000`
+  — a cadence finer than the 30-minute window it enforces, as a literal rather than a new
+  `JobIntervals` key (widening that `Pick` is a type event that stops every census literal
+  compiling, and this job has no operator knob worth that).
+- **DECIDED — an expired pick is an abandoned one:** the stock goes back on the shelf and the
+  dispense is CANCELLED with the reason recorded, which is what D2 already describes. The patient
+  re-presents, the Rx is still active, and the same scan queues a fresh dispense. No new transition
+  and no new state: `picked → cancelled` is in the definition and `cancelDispense` already releases
+  every reservation, cancels every order item and closes the instance in one transaction.
+- **`billed` is never swept.** A paid-for medicine belongs to the patient; releasing that stock
+  would sell it twice. Paid-not-collected stays a REFUND path and stays 16d's (D8, §6).
+- Revert pairs: **R1** (drop the expiry clause) `1 failed / 1 passed` → 2 passed. **R2** (drop the
+  `status = 'picked'` filter) **SURVIVED — recorded, not hidden**: `cancelDispense` refuses a
+  `billed` dispense independently, so the protection is doubled and the suite asserts the outcome.
+  Per §5A.4's amendment the filter is KEPT with its caller enumeration written in as a comment: a
+  reservation is written only by `pickDispense`, which moves the dispense to `picked` in the same
+  transaction, so no road to a non-`picked` row exists **today** — which is not the same as none.
+
+**And a finding about the method, not the code: the job census tax is FIVE places, not four.** Every
+comment in the repo that names it says "`jobs.ts`, both censuses, `alerts.yml`, and that number" —
+four — and four separate plans have repeated it. Registering this job turned **five** tests red:
+`jobs.test.ts` (a count AND a last-position pin), `scheduler.test.ts` (`THE_SIXTEEN` and its spy
+list), `alerts-parity.test.ts` (sorted names AND a separate `toHaveLength`), `alerts.yml`, and
+`test/worker-runtime.e2e.test.ts`. The prediction has been undercounting itself since Plan 14, and
+`worker-runtime.e2e.test.ts` now says so at the point a sixth registrant will read it. The
+last-position assertion in `jobs.test.ts` was RETIRED rather than re-pointed at the newest job —
+pinning "last" makes every future registration edit that line for no assertion value.
 
 ### 8.5a Evidence for the close
 core `modules/pharmacy` + `pharmacy.e2e`: **10 suites / 60 tests, all green** (57 before; +3 written
