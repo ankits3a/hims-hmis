@@ -361,6 +361,80 @@ describe("lab results — entry (17b T6)", () => {
     expect(await eventsNamed("lab.tube_swap_suspected")).toHaveLength(0);
   });
 
+  /* ══════ 17d CLOSE REVIEW PASS 2, F1 — THE AMENDMENT IS NOT AN EXEMPTION EITHER ══════ */
+
+  /**
+   * ═══ PASS 2 FOUND WHAT PASS 1 AND THE TASK BOTH MISSED ═══
+   *
+   * `enterResult` refuses a value impossible for this patient without a second pair of hands (T1).
+   * `amendResult` re-checks the ABSURD ENVELOPE and says so in its own words — *"an amendment is not
+   * an exemption"* — and does not check APPLICABILITY at all. So the one control T1 exists to impose
+   * is skippable by correcting a value instead of keying one.
+   *
+   * It is reachable without any bad faith: a result keyed while the record said `female`, the
+   * registration desk corrects the sex to `male`, and the amendment then writes the impossible value
+   * with nobody vouching and no `lab.tube_swap_suspected` raised. Curating an analyte's
+   * applicability AFTER results exist reaches it the same way.
+   *
+   * Written to FAIL against the merged code: with no guard, the amendment succeeds and both
+   * assertions below are wrong.
+   */
+  it("F1: an AMENDMENT to a value impossible for this patient is refused, exactly as an entry is", async () => {
+    const placed = await resultable(["UPT", "TSH"]);
+    const upt = await analyteIdFor("UPT");
+    const uptItem = await itemIdForCode(placed, "UPT");
+
+    /** The row exists legitimately: the record said `female` when the value was keyed. */
+    await db.update(patients).set({ administrativeGender: "female", sex: "female" })
+      .where(eq(patients.id, fx.patientId));
+    const entered = await enterResult(db, fx.bench.actor, {
+      orderItemId: uptItem, analyteId: upt, value: "Negative", entryMode: "manual",
+    });
+    await verifyResult(db, fx.pathologist.actor, fx.decls, { resultId: entered.resultId });
+
+    /** The registration desk corrects the sex. The tube's analyte is now impossible for this patient. */
+    await db.update(patients).set({ administrativeGender: "male", sex: "male" })
+      .where(eq(patients.id, fx.patientId));
+
+    const before = (await eventsNamed("lab.tube_swap_suspected")).length;
+    await expect(amendResult(db, fx.pathologist.actor, {
+      resultId: entered.resultId, value: "Positive",
+    })).rejects.toMatchObject({ code: "analyte_not_applicable" });
+
+    /** THE KILL: the amendment wrote the impossible value with nobody vouching for it. */
+    const rows = await rowsFor(uptItem);
+    expect(rows.map((r) => r.valueCoded)).not.toContain("Positive");
+    /** And the near-miss is raised here too — a swap suspected at amendment is still a swap. */
+    expect((await eventsNamed("lab.tube_swap_suspected")).length).toBe(before + 1);
+  });
+
+  it("F1: a second pair of hands lets the amendment through, and is STORED on the new row", async () => {
+    const placed = await resultable(["UPT", "TSH"]);
+    const upt = await analyteIdFor("UPT");
+    const uptItem = await itemIdForCode(placed, "UPT");
+    await db.update(patients).set({ administrativeGender: "female", sex: "female" })
+      .where(eq(patients.id, fx.patientId));
+    const entered = await enterResult(db, fx.bench.actor, {
+      orderItemId: uptItem, analyteId: upt, value: "Negative", entryMode: "manual",
+    });
+    await verifyResult(db, fx.pathologist.actor, fx.decls, { resultId: entered.resultId });
+    await db.update(patients).set({ administrativeGender: "male", sex: "male" })
+      .where(eq(patients.id, fx.patientId));
+
+    /** The amender may not vouch for themselves — 02 H1's rule, carried to this path. */
+    await expect(amendResult(db, fx.pathologist.actor, {
+      resultId: entered.resultId, value: "Positive",
+      impossibleOverride: { by: fx.pathologist.id },
+    })).rejects.toMatchObject({ code: "impossible_override_same_actor" });
+
+    await amendResult(db, fx.pathologist.actor, {
+      resultId: entered.resultId, value: "Positive",
+      impossibleOverride: { by: bench2.id },
+    });
+    const amended = (await rowsFor(uptItem)).find((r) => r.valueCoded === "Positive")!;
+    expect(amended.impossibleOverriddenBy).toBe(bench2.id);
+  });
+
   /* ═════════ A5's ENTRY HALF — THE CRITICAL CALL OPENS AT ENTRY, NOT AT VERIFY ═════════ */
 
   it("A5: K+ 6.8 opens exactly ONE call at ENTRY, before any verification", async () => {
@@ -524,9 +598,9 @@ describe("lab results — entry (17b T6)", () => {
     await verifyResult(db, fx.pathologist.actor, fx.decls, { resultId: entered.resultId });
     expect(await db.select().from(labCriticalCalls)).toHaveLength(0);
 
-    const corrected = await withTx(db, (tx) => amendResult(tx, fx.pathologist.actor, {
+    const corrected = await amendResult(db, fx.pathologist.actor, {
       resultId: entered.resultId, value: "6.9",
-    }));
+    });
 
     /**
      * `amendResult` computed the flag and threw it away: it returned `flag: null`, opened no call

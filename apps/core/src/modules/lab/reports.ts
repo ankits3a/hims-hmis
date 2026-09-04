@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
@@ -1110,8 +1110,27 @@ export async function listProvisionalResultsForEncounter(
     ))
     .orderBy(labResults.enteredAt);
 
-  /** The rows this encounter's own values have replaced — the laboratory's working-out, not a result. */
-  const superseded = new Set(rows.map((r) => r.result.supersedesResultId).filter((x): x is string => x !== null));
+  /**
+   * The rows this encounter's own values have replaced — the laboratory's working-out, not a result.
+   *
+   * ═══ CLOSE REVIEW PASS 2, F2 — THE EXCLUSION SET IS BUILT FROM **ALL** ROWS, NOT THE UNVERIFIED ═══
+   *
+   * It used to be built from `rows`, which this function had already filtered to `unverified`. So a
+   * value's replacement leaving that set — by being SIGNED, the ordinary and desirable outcome —
+   * took the exclusion with it, and the withdrawn number came back onto the doctor's provisional
+   * list beside the verified correction that replaced it. A number no longer believed, in front of
+   * a prescriber, wearing the same label as the one that is.
+   *
+   * Asking the QUESTION of the whole encounter rather than of the filtered slice is the fix: what
+   * supersedes a row has nothing to do with whether the superseding row happens to be signed yet.
+   */
+  const supersededRows = rows.length === 0 ? [] : await db
+    .select({ supersedes: labResults.supersedesResultId })
+    .from(labResults)
+    .innerJoin(orderItems, eq(orderItems.id, labResults.orderItemId))
+    .innerJoin(orders, eq(orders.id, orderItems.orderId))
+    .where(and(eq(orders.encounterNo, encounterNo), isNotNull(labResults.supersedesResultId)));
+  const superseded = new Set(supersededRows.map((r) => r.supersedes).filter((x): x is string => x !== null));
   const current = rows.filter((r) => !superseded.has(r.result.id));
 
   /** The same PHI rule as the signed read: a named patient was disclosed, so it is logged. */
