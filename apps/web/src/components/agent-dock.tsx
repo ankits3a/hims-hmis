@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -42,7 +42,33 @@ export function AgentDock(
 ): React.ReactElement {
   const [draft, setDraft] = useState("");
   const [open, setOpen] = useState(false);
+  const askRef = useRef<HTMLInputElement>(null);
   const latest = log[0];
+
+  /*
+    ═══ FD-23 CLOSE REVIEW — THE `F2` KEYCAP HAD TO BECOME TRUE, AND BINDING IT IS THE OWNER'S RULING ═══
+
+    The bar drew an `F2` keycap on both screens that mount it and nothing bound the key, so a clerk
+    pressed it and the browser ate it. Desk One's own dock states the rule this broke, verbatim:
+    *"Every keycap ON the screen shows what is actually bound. A keycap that lies is worse than none:
+    a clerk presses it, the browser eats it, and they learn the screen is broken."*
+
+    Two ways to make it true — delete the keycap, or bind the key. Bound, because the owner already
+    ruled what this key is for: *"CTRL + N should replace F2. F2 will be dedicated to pull agent."*
+    This bar IS the agent surface, so the key does here exactly what it does on Desk One — focus the
+    ask box. The binding is LOCAL and per-screen, like Desk One's; `lib/keyboard.tsx` keeps `F2`
+    unbound globally and its reservation comment and test row stand untouched, because this
+    navigates nowhere.
+  */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "F2") return;
+      e.preventDefault();
+      askRef.current?.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("keydown", onKey); };
+  }, []);
 
   return (
     <div data-testid="agent-dock" style={{ flexShrink: 0, background: "var(--agent)", color: "var(--agent-fg)" }}>
@@ -100,6 +126,7 @@ export function AgentDock(
           onSubmit={(e) => { e.preventDefault(); onAsk(draft); setDraft(""); }}
         >
           <input
+            ref={askRef}
             data-testid="agent-ask"
             value={draft}
             onChange={(e) => { setDraft(e.target.value); }}

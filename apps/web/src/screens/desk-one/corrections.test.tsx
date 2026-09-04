@@ -280,6 +280,30 @@ describe("FD-15: correcting what was typed, from any stage", () => {
     expect(calls.patches[0]!["phone"]).toBe("9100000009");
     expect("reasonClass" in calls.patches[0]!).toBe(false);
   });
+
+  /**
+   * ═══ FD-23 CLOSE REVIEW — A WRONG NUMBER HAS TO BE REMOVABLE, NOT ONLY REPLACEABLE ═══
+   *
+   * Emptying the box sent `phone: ""`. The server declares `phoneField.nullable().optional()` — a
+   * 10-digit Indian mobile, or `null` — so `""` matched neither, the whole amendment 400'd with
+   * "10-digit Indian mobile", and the wrong number stayed on file. A hospital that rings the wrong
+   * person about a result is exactly what this box exists to prevent, and the clerk had no way to
+   * clear it.
+   */
+  it("FD-23 close review: clearing the phone box REMOVES the number — null, never an empty string", async () => {
+    const calls = emptyCalls();
+    mount(calls);
+    await holdFirstHit();
+    const user = userEvent.setup({ delay: null });
+
+    await user.click(screen.getByTestId("flow-dot-register"));
+    await user.clear(await screen.findByTestId("amend-phone"));
+    await user.click(screen.getByTestId("amend-save"));
+
+    await waitFor(() => expect(calls.patches).toHaveLength(1));
+    // THE KILL — `""` is not a value the server's schema accepts, and the patch 400s whole.
+    expect(calls.patches[0]!["phone"]).toBeNull();
+  });
 });
 
 describe("FD-15: changing the doctor from the bill", () => {
@@ -306,6 +330,34 @@ describe("FD-15: changing the doctor from the bill", () => {
     // back at the appointment, with the SAME person — nothing re-typed, no second UHID
     await waitFor(() => expect(screen.getByPlaceholderText(/seene mein dard/)).toBeInTheDocument());
     expect(screen.getByText("Ramesh Kumar")).toBeInTheDocument();
+  });
+
+  /**
+   * ═══ FD-23 CLOSE REVIEW — THE FREE VISIT, WHICH IS THE ONE THIS HAPPENS TO ═══
+   *
+   * The guard read `moneyTaken`, which is true for ANY free quote — so on a ₹0 review visit, the
+   * most common thing an OPD desk handles, "change the doctor" answered *"this bill has already been
+   * settled … needs a credit note"* about a bill that was never issued. The only remaining exit was
+   * Esc, clear the desk and re-find the patient: precisely the dead end FD-15 exists to remove.
+   *
+   * The reclassify control was fixed for this exact reason and this one was not. An ISSUED INVOICE
+   * is what makes a doctor change a credit note; nothing else is.
+   */
+  it("FD-23 close review: a FREE review visit can still change doctor — no invoice, no credit note", async () => {
+    const calls = emptyCalls();
+    mount(calls, { freeQuote: true });
+    await toBill();
+
+    // wait for the free quote to actually land, or the assertion runs before `bill.free` exists
+    await waitFor(() => { expect(screen.getAllByText(/free till 2026-09-29/).length).toBeGreaterThan(0); });
+
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByTestId("change-doctor"));
+
+    // THE KILL — guarded on `moneyTaken`, this abandons nothing and prints the credit-note refusal.
+    await waitFor(() => expect(calls.abandons).toHaveLength(1));
+    expect(calls.abandons[0]!.id).toBe("e-1");
+    expect(screen.queryByText(/needs a credit note/)).not.toBeInTheDocument();
   });
 });
 

@@ -337,6 +337,22 @@ export function etaClock(minutes: number, at: Date = new Date()): string {
  * person's age is how a record reads 41 on one screen and 42 on another.
  */
 /**
+ * ═══ FD-23 CLOSE REVIEW — TODAY, IN IST, BECAUSE AN AGE IS A DATE DIFFERENCE AND DATES ARE LOCAL ═══
+ *
+ * `ageOf` and `ageYearsOf` read `getUTCMonth()/getUTCDate()` off `new Date()`. Between 00:00 and
+ * 05:30 IST — and a hospital runs through every one of those hours — the UTC instant is still
+ * YESTERDAY, so a patient on their birthday was shown a year younger, and `overlays.tsx` seeded the
+ * amend box from that same wrong number. `istClock`, `istDateLabel`, `dayMonthIst` and
+ * `monthYearIst` in this very file all take deliberate care to be IST; these two did not.
+ */
+function istYmdToday(at: Date = new Date()): { y: number; m: number; d: number } {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(at).split("-");
+  return { y: Number(parts[0]), m: Number(parts[1]), d: Number(parts[2]) };
+}
+
+/**
  * ═══ FD-20 — WHAT A PATIENT IS ACTUALLY HOLDING: "MED-4", NOT "T-4" ═══
  *
  * Owner, 2026-09-04: *"the token number should be not according to the doctor but Department. For
@@ -357,10 +373,11 @@ export function ageYearsOf(dob: string | null): number | null {
   if (dob === null || dob === "") return null;
   const born = new Date(`${dob.slice(0, 10)}T00:00:00Z`);
   if (Number.isNaN(born.getTime())) return null;
-  const now = new Date();
-  let years = now.getUTCFullYear() - born.getUTCFullYear();
-  const beforeBirthday = now.getUTCMonth() < born.getUTCMonth()
-    || (now.getUTCMonth() === born.getUTCMonth() && now.getUTCDate() < born.getUTCDate());
+  const today = istYmdToday();
+  let years = today.y - born.getUTCFullYear();
+  const bornMonth = born.getUTCMonth() + 1;
+  const beforeBirthday = today.m < bornMonth
+    || (today.m === bornMonth && today.d < born.getUTCDate());
   if (beforeBirthday) years -= 1;
   return years < 0 ? null : years;
 }
@@ -370,9 +387,11 @@ export function ageOf(dob: string | null): string {
   const born = new Date(`${dob.slice(0, 10)}T00:00:00Z`);
   if (Number.isNaN(born.getTime())) return "";
   const now = new Date();
-  let years = now.getUTCFullYear() - born.getUTCFullYear();
-  const beforeBirthday = now.getUTCMonth() < born.getUTCMonth()
-    || (now.getUTCMonth() === born.getUTCMonth() && now.getUTCDate() < born.getUTCDate());
+  const today = istYmdToday(now);
+  let years = today.y - born.getUTCFullYear();
+  const bornMonth = born.getUTCMonth() + 1;
+  const beforeBirthday = today.m < bornMonth
+    || (today.m === bornMonth && today.d < born.getUTCDate());
   if (beforeBirthday) years -= 1;
   if (years < 1) {
     const months = Math.max(0, Math.round((now.getTime() - born.getTime()) / (30.44 * 86_400_000)));

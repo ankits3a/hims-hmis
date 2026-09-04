@@ -1,7 +1,7 @@
 import {
- describe, expect, it } from "vitest";
+ describe, expect, it, vi } from "vitest";
 import {
-  ageOf, billOf, bookableToday, deptQueues, firstFreeDoctor, flowOf, inHall, laneOf,
+  ageOf, ageYearsOf, billOf, bookableToday, deptQueues, firstFreeDoctor, flowOf, inHall, laneOf,
   rs, shortestLine, shouldJoinNow, stepIndex, tokenStateOf, vitalsAhead, waitMinutes, tokenLabel,
 } from "./model";
 import type { WireDoctorSummary } from "../../lib/opd-api";
@@ -262,6 +262,32 @@ describe("small truths a counter shows a hundred times a day", () => {
     const iso = born.toISOString();
     expect(ageOf(iso.slice(0, 10))).toBe("34");
     expect(ageOf(iso)).toBe("34");
+  });
+
+  /**
+   * ═══ FD-23 CLOSE REVIEW — A BIRTHDAY AT 02:00 IST IS STILL A BIRTHDAY ═══
+   *
+   * `ageOf` read `getUTCMonth()/getUTCDate()` off `new Date()`. Between 00:00 and 05:30 IST the UTC
+   * instant is still YESTERDAY, so a patient standing at the counter on their birthday — and a
+   * hospital runs through every one of those hours — was shown a year younger, and the amend box in
+   * `overlays.tsx` seeded from the same wrong number. Every other date function in this file
+   * (`istClock`, `istDateLabel`, `dayMonthIst`, `monthYearIst`) is deliberately IST; these two were
+   * not.
+   */
+  it("FD-23 close review: the age turns over on the IST calendar, not the browser's UTC one", () => {
+    vi.useFakeTimers();
+    try {
+      // 2026-09-05 02:00 IST === 2026-09-04 20:30 UTC — the window where the two calendars disagree
+      vi.setSystemTime(new Date("2026-09-04T20:30:00.000Z"));
+      // THE KILL — on the UTC clock this reads 2026-09-04, one day BEFORE the birthday, and gives 25
+      expect(ageOf("2000-09-05")).toBe("26");
+      expect(ageYearsOf("2000-09-05")).toBe(26);
+      // the day before is genuinely still 25, IST or not — the fix must not simply add a year
+      expect(ageOf("2000-09-06")).toBe("25");
+      expect(ageYearsOf("2000-09-06")).toBe(25);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("an unknown date of birth is BLANK, never a dash beside the sex letter", () => {

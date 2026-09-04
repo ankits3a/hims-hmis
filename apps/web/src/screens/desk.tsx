@@ -329,6 +329,20 @@ export function Desk(): React.ReactElement {
    * stable across renders — `useRealtime` re-subscribes whenever the joined string changes, and an
    * unstable order would tear the socket down and build it up on every refetch.
    */
+  /*
+    ═══ FD-23 CLOSE REVIEW — THE BAND ASKS THE SERVER, NOT A PERMISSION THIS SCREEN GUESSED ═══
+
+    The band used to render on `can("opd.visits.open")`. The `cashier` role does not hold that
+    permission — it holds `billing.invoice.read` and `membership.instrument.read` — so the server
+    DID send `billing.panels` and `membership.schemes` for a cashier, `SCHEME_CARD_KEYS` filtered
+    both out of `cards` above, and the band that was supposed to show them instead was refused. Both
+    permitted figures vanished with nothing in their place, which inverts this file's own rule that
+    a blank means "you hold no permission that counts this".
+
+    A scheme card ARRIVING is the permission, already evaluated by the module that owns the figure.
+    That is the same source `schemeStats` reads, so the band and its contents can no longer disagree.
+  */
+  const hasSchemeCards = useMemo(() => allCards.some((c) => SCHEME_CARD_KEYS.has(c.key)), [allCards]);
   const topics = useMemo(() => [...new Set(cards.flatMap((c) => c.topics ?? []))].sort(), [cards]);
   const { connected } = useRealtime(topics, () => { void desk.refetch(); });
   /*
@@ -413,7 +427,7 @@ export function Desk(): React.ReactElement {
         );
       })}
 
-      {!can("opd.visits.open") ? null : (
+      {!hasSchemeCards ? null : (
         <div className="band">
           <div className="bandhd">
             <span className="tag">{t("desk.schemes.title")}</span>

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PHOTO_MAX_BYTES } from "../../lib/patients-api";
 
@@ -102,6 +102,23 @@ export function PhotoPanel(
   const [live, setLive] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  /*
+    ═══ FD-23 CLOSE REVIEW — THE CAMERA HAS TO BE RELEASED WHEN THE PANEL GOES AWAY ═══
+
+    `stop()` was reachable only from the snap and cancel buttons. Every other way out of this stage
+    left the stream live: `Esc` (`clearDesk` resets the session to `find`), a successful `enrol`
+    (the desk moves to the appointment stage), or simply the next patient. The panel unmounted, the
+    `MediaStream` did not, and the counter machine's camera light stayed on for the lifetime of the
+    tab — at a front desk facing the waiting hall.
+
+    The cleanup reads `streamRef` at unmount rather than closing over a value, so it releases
+    whatever stream is live at that moment.
+  */
+  useEffect(() => () => {
+    streamRef.current?.getTracks().forEach((track) => { track.stop(); });
+    streamRef.current = null;
+  }, []);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const stop = (): void => {

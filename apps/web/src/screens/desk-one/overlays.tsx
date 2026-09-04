@@ -294,7 +294,25 @@ function EditOverlay(): React.ReactElement {
 
   const save = (): void => {
     const patch: Parameters<typeof d.amend>[0] = {};
-    if (phone.replace(/\s/g, "") !== (p?.phone ?? "")) patch.phone = phone.replace(/\s/g, "");
+    /*
+      ═══ FD-23 CLOSE REVIEW — CLEARING A FIELD HAS TO MEAN "REMOVE IT", NOT SEND AN EMPTY STRING ═══
+
+      Emptying the phone box sent `phone: ""`. `patients.controller.ts` declares
+      `phoneField.nullable().optional()` — a 10-digit Indian mobile, or `null`. `""` is neither, so
+      the request 400'd with "10-digit Indian mobile" and the WRONG NUMBER STAYED ON FILE: a
+      mistyped mobile could be changed but never removed, and a hospital that rings the wrong person
+      about a result is the thing this box exists to prevent. `null` is the value the schema was
+      built to accept.
+
+      THE ADDRESS IS DELIBERATELY NOT CHANGED HERE, and the review finding that paired the two is
+      wrong on this half. `Person` carries `hasAddress: boolean` and no address TEXT, so this box
+      always starts empty and the clerk is never shown what is on file. An empty box therefore means
+      "I am not touching the address", not "remove it" — and making it send `null` would wipe the
+      address of every patient whose phone number was corrected. Clearing an address needs a control
+      that first SHOWS the address, which is a change to what the desk is sent.
+    */
+    const typedPhone = phone.replace(/\s/g, "");
+    if (typedPhone !== (p?.phone ?? "")) patch.phone = typedPhone === "" ? null : typedPhone;
     if (address.trim() !== "") patch.addressLine = address.trim();
     if (nameChanged) patch.name = name.trim();
     if (sexChanged) { patch.sex = sex as "male" | "female" | "other"; patch.administrativeGender = sex as "male" | "female" | "other"; }

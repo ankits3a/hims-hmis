@@ -269,7 +269,9 @@ export type DeskApi = {
   settle: (via: TenderMode | "free", ref?: string) => Promise<void>;
   /** FD-15 — the corrections a counter actually makes, age above all. Class I changes carry a reason. */
   amend: (patch: {
-    phone?: string; addressLine?: string;
+    /* FD-23 close review — `null` REMOVES the number; `""` is not a value the server's
+       `phoneField.nullable().optional()` accepts, and sending it 400'd the whole amendment. */
+    phone?: string | null; addressLine?: string;
     name?: string; sex?: "male" | "female" | "other"; dob?: string; dobEstimated?: boolean;
     administrativeGender?: "male" | "female" | "other";
     reasonClass?: string;

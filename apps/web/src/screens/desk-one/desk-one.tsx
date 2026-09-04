@@ -676,7 +676,22 @@ export function DeskOne(): React.ReactElement {
   const changeDoctor = useCallback(async (reason: string) => {
     const visit = s.visit;
     if (visit === null) return;
-    if (moneyTaken || s.issued !== null) {
+    /*
+      FD-23 CLOSE REVIEW — `moneyTaken` IS THE WRONG QUESTION HERE, AND IT KILLED THE COMMON CASE.
+
+      `moneyTaken` is `s.issued !== null || (quote.data !== undefined && bill.free)`. The second
+      clause is there so the DOSSIER can stamp a free visit "collected" — there is nothing left to
+      collect — and it is right for that. It is wrong for this guard: a ₹0 review visit has had no
+      invoice issued and no money moved, so refusing the correction told the clerk to raise a credit
+      note against a bill that does not exist, and left Esc-and-start-again as the only way out of a
+      mis-seated follow-up. That is the dead end FD-15 was built to remove, on the most common OPD
+      case there is.
+
+      The reclassify control already learned this lesson (`corrections.test.tsx` — "a wrongly-free
+      visit must be correctable too"); this guard had not. An ISSUED INVOICE is the thing that makes
+      a doctor change a credit note rather than a desk correction, and `s.issued` is exactly that.
+    */
+    if (s.issued !== null) {
       patch({ error: "This bill has already been settled — changing the doctor now needs a credit note, not a desk correction." });
       return;
     }
@@ -702,7 +717,7 @@ export function DeskOne(): React.ReactElement {
         log: logged(prev.log, `could not withdraw the seating — ${opdErrorMessage(e)}`, "err"),
       }));
     }
-  }, [s.visit, s.issued, moneyTaken, patch, qc]);
+  }, [s.visit, s.issued, patch, qc]);
 
   /**
    * FD-18 — THE BILLING OVERRIDE, AS A CORRECTION. Owner ruling 2026-09-04, choosing between three
@@ -886,7 +901,8 @@ export function DeskOne(): React.ReactElement {
    * `clerical_error` is the honest default for a counter typo and is what the picker opens on.
    */
   const amend = useCallback(async (body: {
-    phone?: string; addressLine?: string;
+    /* FD-23 close review — `null` REMOVES the number. `""` is not a value the server accepts. */
+    phone?: string | null; addressLine?: string;
     name?: string; sex?: "male" | "female" | "other"; dob?: string; dobEstimated?: boolean;
     administrativeGender?: "male" | "female" | "other";
     reasonClass?: string;
@@ -1081,10 +1097,20 @@ export function DeskOne(): React.ReactElement {
         const mode: Record<string, TenderMode> = { "1": "cash", "2": "upi", "3": "card" };
         const picked = mode[e.key];
         if (picked === undefined) return;
-        // No drawer, no tender — ALL THREE, because `invoices.ts` requires the session for any
-        // receipt. Guarded on the same predicate the buttons are hidden by, so a key can never do
-        // what its button refuses.
-        if (cash.data?.session === null) return;
+        /*
+          No drawer, no tender — ALL THREE, because `invoices.ts` requires the session for any
+          receipt. Guarded on the same predicate the buttons are hidden by, so a key can never do
+          what its button refuses.
+
+          FD-23 CLOSE REVIEW — IT WAS NOT THE SAME PREDICATE, AND THE GAP WAS A CLOSING DRAWER.
+          This read `cash.data?.session === null`, i.e. "no session at all". The buttons go dark on
+          `cashSession !== null && !cashSession.open`, and `open` is `status === "open"` — so a
+          session in `closing` (a paise mismatch at close, which is exactly when a cashier must NOT
+          take more money) left the row dark on screen while `1` still settled in cash. The comment
+          above was true of the buttons and false of the key. Both now ask the one question the
+          server asks: is there an OPEN drawer?
+        */
+        if (cash.data === undefined || cash.data.session === null || cash.data.session.status !== "open") return;
         e.preventDefault();
         // Cash settles on the key. UPI and card ARM on it — the server needs a reference, and
         // sending a blank one would turn one keystroke into a refusal every single time.

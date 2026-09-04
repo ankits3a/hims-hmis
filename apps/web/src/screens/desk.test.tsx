@@ -420,4 +420,34 @@ describe("FD-11 — schemes in play", () => {
     expect(screen.queryByTestId("door-billing.panels")).not.toBeInTheDocument();
     expect(screen.getByTestId("door-patients.registration")).toBeInTheDocument();
   });
+
+  /**
+   * ═══ FD-23 CLOSE REVIEW — THE CASHIER SAW NEITHER THE CARDS NOR THE BAND THAT REPLACED THEM ═══
+   *
+   * The band rendered on `can("opd.visits.open")`. The `cashier` role does not hold it — it holds
+   * `billing.invoice.read` and `membership.instrument.read` — so the server DID send
+   * `billing.panels` and `membership.schemes`, the filter took both out of the door list, and the
+   * band that was meant to show them instead was refused. Two permitted figures vanished with
+   * nothing in their place, which is exactly the "a blank means you hold no permission" distinction
+   * this screen is built to preserve, inverted.
+   *
+   * A scheme card ARRIVING is the permission, already evaluated by the module that owns the figure.
+   */
+  it("FD-23 close review: a cashier with no opd.visits.open still sees the scheme figures they are sent", async () => {
+    renderAt("/", SCHEME_CARDS, ["billing.invoice.read", "membership.instrument.read"]);
+
+    // THE KILL — gated on `opd.visits.open`, this whole band is absent for a cashier.
+    expect(await screen.findByTestId("scheme-n-panels")).toBeInTheDocument();
+    expect(screen.getByTestId("scheme-n-packages")).toBeInTheDocument();
+    // and still never as doors
+    expect(screen.queryByTestId("door-billing.panels")).not.toBeInTheDocument();
+  });
+
+  /** …and somebody the server sent NO scheme card keeps an empty screen, not an empty band. */
+  it("FD-23 close review: no scheme card means no band at all", async () => {
+    renderAt("/", [REGISTRATION], ["patients.register"]);
+
+    await screen.findByTestId("door-patients.registration");
+    expect(screen.queryByTestId("scheme-packages")).not.toBeInTheDocument();
+  });
 });

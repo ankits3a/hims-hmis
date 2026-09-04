@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AgentDock, logged } from "./agent-dock";
 import type { AgentLine } from "./agent-dock";
@@ -79,5 +79,46 @@ describe("AgentDock", () => {
     for (let i = 0; i < 45; i++) log = logged(log, `line ${String(i)}`);
     expect(log).toHaveLength(40);
     expect(log[0]!.text).toBe("line 44");
+  });
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-23 CLOSE REVIEW — THE `F2` KEYCAP HAD TO BECOME TRUE
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * The bar drew an `F2` keycap on both screens that mount it (`/opd/appointments`, `/patients/:id`)
+ * and nothing bound the key: `lib/keyboard.tsx` leaves `F2` deliberately unbound globally, and
+ * neither host screen registered a listener. A clerk pressed it and the browser ate it. Desk One's
+ * own dock states the rule this broke, verbatim: *"Every keycap ON the screen shows what is
+ * actually bound. A keycap that lies is worse than none: a clerk presses it, the browser eats it,
+ * and they learn the screen is broken."*
+ *
+ * BOUND rather than deleted, because the owner already ruled what this key is for: *"CTRL + N
+ * should replace F2. F2 will be dedicated to pull agent."* This bar IS the agent surface, so the
+ * key does here what it does on Desk One — focus the ask box. The binding is LOCAL, so
+ * `lib/keyboard.tsx`'s reservation comment and its "F2 navigates nowhere" row both still stand.
+ */
+describe("AgentDock — the F2 keycap says what the key does", () => {
+  it("F2 focuses the ask box", () => {
+    render(
+      <AgentDock answer={null} log={[]} onAsk={() => undefined} placeholder="ask" idle="idle" />,
+    );
+    const ask = screen.getByTestId("agent-ask");
+    expect(document.activeElement).not.toBe(ask);
+
+    fireEvent.keyDown(window, { key: "F2" });
+
+    // THE KILL — unbound, focus never moves and the keycap advertises nothing.
+    expect(document.activeElement).toBe(ask);
+  });
+
+  it("binds the key it draws, and no other function key", () => {
+    render(
+      <AgentDock answer={null} log={[]} onAsk={() => undefined} placeholder="ask" idle="idle" />,
+    );
+    expect(screen.getByText("F2")).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "F7" });
+    expect(document.activeElement).not.toBe(screen.getByTestId("agent-ask"));
   });
 });

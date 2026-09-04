@@ -2078,8 +2078,16 @@ function StageBill(): React.ReactElement {
 
         It disappears the moment money has moved, because that is a credit note and not a desk
         correction. Saying so on the button is better than offering it and refusing.
+
+        FD-23 CLOSE REVIEW — IT WAS DISAPPEARING ON FREE VISITS, WHICH IS MOST OF THEM.
+        This gate read `d.moneyTaken`, which is true for ANY free quote (it is how the dossier stamps
+        a ₹0 visit "collected"). So on a review visit inside the follow-up window — the commonest
+        thing an OPD desk handles — the whole seating card the owner asked for was replaced by
+        *"Settled against Dr X … a credit note, not a desk correction"*, about a bill that had never
+        been issued. The clerk could not even see who the patient was seeing, and Esc was the only
+        way out. An ISSUED INVOICE is what makes this a credit note; nothing else is.
       */}
-      {d.moneyTaken || s.issued !== null ? (
+      {s.issued !== null ? (
         <div data-testid="change-doctor-locked" style={{ fontSize: 11, color: "var(--faint)", marginTop: 14, lineHeight: "15px" }}>
           Settled against {s.visit.doctorName}. Changing the doctor now is a credit note, not a desk correction.
         </div>
@@ -2108,7 +2116,18 @@ function StageBill(): React.ReactElement {
             <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 2 }}>
               {s.visit.departmentName}
               {s.visit.roomCode === null ? "" : ` · ${s.visit.roomCode}`}
-              {s.visit.tokenNo === null ? "" : ` · token ${String(s.visit.tokenNo)}`}
+              {/*
+                FD-23 CLOSE REVIEW — `tokenLabel`, like every other place a token is shown. This
+                printed a bare `token 4` while the dossier three inches left said `MED-4` and the
+                hand-over script read out `MED-4`. `model.ts`'s own doc: "ONE function for every
+                place a token is shown … A token the screen prints one way and the clerk says
+                another is a patient standing in front of the wrong door." Since FD-20 made the
+                series per-department, `MED-4` and `PED-4` exist at the same moment by design, so a
+                bare `4` is genuinely ambiguous rather than merely inconsistent.
+              */}
+              {s.visit.tokenNo === null
+                ? ""
+                : ` · ${tokenLabel(d.departments.find((x) => x.id === s.visit?.departmentId)?.code ?? null, s.visit.tokenNo)}`}
             </div>
           </div>
           <button
