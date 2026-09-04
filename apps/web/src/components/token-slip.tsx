@@ -1,6 +1,5 @@
 import { QRCodeSVG } from "qrcode.react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
 
 export type TokenSlipProps = {
   tokenNo: number;
@@ -26,22 +25,47 @@ function humanDate(serviceDate: string): string {
 }
 
 /**
- * The printed token slip (D7 / §11.5): token + doctor + room only — no signature line, no more of
- * the patient than the desk that just checked them in already has on screen. `.print-doc` isolation
- * (Step 1 of this task) makes this the ONLY element that reaches the paper; a screen that could ever
- * mount this alongside another `.print-doc` surface (e.g. an e-Rx dialog) is responsible for keeping
- * the two mutually exclusive — this component itself has no opinion on that.
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * THE TOKEN CARD — ON SCREEN. IT IS NO LONGER A PRINTED DOCUMENT (FD-24 T6)
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * This used to carry `.print-doc` and a `window.print()` button, and it was the app's only way to
+ * put a token on paper. Owner ruling R1 made printing SERVER-SIDE, and checking a patient in now
+ * queues a real 72 mm slip inside the visit's own transaction (`joinSessionInTx`). Leaving the
+ * browser path here would mean TWO DIFFERENT TOKEN SLIPS in circulation for one patient:
+ *
+ *   · this one — A5 (the global `@page`), on whatever printer the browser defaults to, with a BARE
+ *     token number; and
+ *   · the real one — 72 mm continuous, on the front desk's thermal, reading `MED-4`.
+ *
+ * A patient holding both, or a clerk handing over whichever appeared first, is exactly the confusion
+ * FD-24 T6 exists to prevent. So the print button and `.print-doc` are gone and this is now what it
+ * always actually was on screen: **the clerk's confirmation of what was just issued** — read aloud,
+ * checked against the paper coming out of the thermal printer.
+ *
+ * THE TOKEN READS `MED-4`, NOT `4`, and that is a defect repair rather than a restyle. Since FD-20
+ * the series is per DEPARTMENT, so `MED-4` and `PED-4` exist at the same moment by design; a bare
+ * number on the screen beside a prefixed number on the slip is a patient sent to the wrong door.
+ *
+ * ═══ THE GAP THIS OPENS, STATED PLAINLY ═══
+ *
+ * Until the print relay is installed in the hospital, NOTHING PRINTS from here. That is the direct
+ * consequence of the server-side ruling and not an oversight: jobs queue correctly and print the
+ * moment a relay comes up. Owner ruling R7 is what makes the interval survivable — a print failure
+ * is advisory, and a patient can be sent to the doctor on a spoken token.
  */
 export function TokenSlip(props: TokenSlipProps): React.ReactElement {
   const { t } = useTranslation();
   return (
     <div className="space-y-3">
-      <div className="print-doc w-[360px] space-y-2 rounded-lg border p-4">
+      <div data-testid="token-card" className="w-[360px] space-y-2 rounded-lg border p-4">
         <p className="text-xs text-neutral-500">{t("hospital.name")}</p>
         <p className="text-sm font-medium">{props.departmentCode} · {props.departmentName}</p>
         <p className="text-sm">{props.doctorName}</p>
         <p className="text-sm">{t("slip.room")}: {props.roomCode ?? "—"}</p>
-        <p data-testid="token-no" className="text-4xl font-bold tabular-nums">{props.tokenNo}</p>
+        <p data-testid="token-no" className="text-4xl font-bold tabular-nums">
+          {props.departmentCode.trim() === "" ? props.tokenNo : `${props.departmentCode.trim().toUpperCase()}-${String(props.tokenNo)}`}
+        </p>
         {/*
           THE VISIT NUMBER, AND ITS DATE, TOGETHER — never the number alone. `V2608170001` carries
           its date as YYMMDD so the id sorts chronologically, but a desk reading DD-MM-YY sees
@@ -54,9 +78,6 @@ export function TokenSlip(props: TokenSlipProps): React.ReactElement {
         <p className="text-sm">{t(`opd.visitType.${props.visitType}`)}</p>
         <QRCodeSVG value={props.qrPayload} size={96} />
       </div>
-      <Button type="button" className="no-print" onClick={() => window.print()}>
-        {t("slip.print")}
-      </Button>
     </div>
   );
 }

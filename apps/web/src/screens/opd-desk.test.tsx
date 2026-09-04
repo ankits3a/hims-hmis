@@ -268,9 +268,9 @@ describe("OpdDesk", () => {
     });
 
     await waitFor(() => expect(callsTo("GET", "/api/patients/p-1/qr")).toHaveLength(1));
-    const slip = container.querySelector(".print-doc") as HTMLElement;
+    const slip = container.querySelector("[data-testid='token-card']") as HTMLElement;
     expect(slip).not.toBeNull();
-    expect(within(slip).getByTestId("token-no")).toHaveTextContent("11");
+    expect(within(slip).getByTestId("token-no")).toHaveTextContent("MED-11"); // FD-20 grammar
     // The wiring, not the rendering (token-slip.test.tsx owns that): the number the API returned
     // on the encounter is the number that reaches the paper.
     expect(within(slip).getByTestId("visit-no")).toHaveTextContent("V2608180011");
@@ -280,8 +280,10 @@ describe("OpdDesk", () => {
     // The badge reflects the RESPONSE's visitType, and the owner's free-follow-up line rides revisit.
     expect(screen.getByTestId("visit-type-badge")).toHaveTextContent("Revisit");
     expect(screen.getByText(/Free follow-up/)).toBeInTheDocument();
-    // Exactly one .print-doc is ever mounted (the slip replaces the desk view).
-    expect(container.querySelectorAll(".print-doc")).toHaveLength(1);
+    // Exactly one token card is ever mounted (it replaces the desk view). FD-24 T6 removed the
+    // `.print-doc` isolation with the browser print path; the card is a screen confirmation now.
+    expect(container.querySelectorAll("[data-testid='token-card']")).toHaveLength(1);
+    expect(container.querySelectorAll(".print-doc")).toHaveLength(0);
 
     await user.click(screen.getByRole("button", { name: "Next patient" }));
     await pickPatient(user);
@@ -390,9 +392,9 @@ describe("OpdDesk", () => {
     await user.click(within(arrivals).getByTestId("checkin-ap-1"));
 
     await waitFor(() => expect(callsTo("POST", "/api/opd/appointments/ap-1/check-in")).toHaveLength(1));
-    const slip = container.querySelector(".print-doc") as HTMLElement;
+    const slip = container.querySelector("[data-testid='token-card']") as HTMLElement;
     expect(slip).not.toBeNull();
-    expect(within(slip).getByTestId("token-no")).toHaveTextContent("9");
+    expect(within(slip).getByTestId("token-no")).toHaveTextContent("MED-9");
     expect(within(slip).getByTestId("visit-no")).toHaveTextContent("V2608180009");
     expect(within(slip).getByText("Room: 14")).toBeInTheDocument(); // roomId room-2 → code 14
     expect(screen.getByTestId("visit-type-badge")).toHaveTextContent("New");
