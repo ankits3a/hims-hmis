@@ -167,16 +167,29 @@ export function RadiologyStudy(): React.ReactElement {
       {cumulative.data !== undefined && cumulative.data.studyCount > 0
         ? (
           <p data-testid="dose-cumulative" className="rounded bg-amber-50 border border-amber-300 px-2 py-1 text-sm">
-            {cumulative.data.overDrlCount > 0
-              ? t("aerb.dose.cumulativeOver", {
-                  count: cumulative.data.studyCount, months: cumulative.data.months,
-                  over: cumulative.data.overDrlCount,
-                  total: cumulative.data.totalDlp === null ? "—" : `${cumulative.data.totalDlp} ${DOSE_UNITS.dlp ?? ""}`,
-                })
-              : t("aerb.dose.cumulative", {
-                  count: cumulative.data.studyCount, months: cumulative.data.months,
-                  total: cumulative.data.totalDlp === null ? "—" : `${cumulative.data.totalDlp} ${DOSE_UNITS.dlp ?? ""}`,
-                })}
+            {(() => {
+              /**
+               * CLOSE REVIEW — this printed `totalDlp` alone and a dash for everything else, so a
+               * patient with six fluoroscopy procedures and no CT read "6 examinations — —". The
+               * server sums DAP and fluoroscopy time too, and D5's whole point is that the cath lab
+               * (63) writes this register through the same `recordDose`. Every total that exists is
+               * shown, each with the unit `units.ts` names for it.
+               */
+              const parts: string[] = [];
+              if (cumulative.data.totalDlp !== null) parts.push(`${cumulative.data.totalDlp} ${DOSE_UNITS.dlp ?? ""}`);
+              if (cumulative.data.totalDap !== null) parts.push(`${cumulative.data.totalDap} ${DOSE_UNITS.dap ?? ""}`);
+              if (cumulative.data.totalFluoroSeconds !== null) {
+                parts.push(`${String(cumulative.data.totalFluoroSeconds)} ${DOSE_UNITS.fluoro_seconds ?? ""}`);
+              }
+              const total = parts.length === 0 ? "—" : parts.join(" · ");
+              const args = {
+                count: cumulative.data.studyCount, months: cumulative.data.months,
+                over: cumulative.data.overDrlCount, total,
+              };
+              return cumulative.data.overDrlCount > 0
+                ? t("aerb.dose.cumulativeOver", args)
+                : t("aerb.dose.cumulative", args);
+            })()}
           </p>
         )
         : null}

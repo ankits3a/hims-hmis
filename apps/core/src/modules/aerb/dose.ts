@@ -1,7 +1,8 @@
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { recordPhiAccess } from "../../kernel/phi/audit";
+import { displayName, listMergedLoserIds, resolvePatientId } from "../patients";
 import { DOSE_SOURCES, doseRegister } from "../../kernel/db/schema/aerb";
 import { patients } from "../../kernel/db/schema/patients";
 import { resources } from "../../kernel/db/schema/resources";
@@ -108,7 +109,9 @@ export interface DoseRegisterRow {
   sourceRef: string;
   patientId: string;
   patientName: string;
+  /** Empty for a confidential patient read without clearance — see `restricted`. */
   uhid: string;
+  restricted: boolean;
   deviceCode: string | null;
   modality: string;
   procedureCode: string;
@@ -139,9 +142,19 @@ export async function doseRegisterRows(
   db: Db, actor: Actor, opts: { from?: string; to?: string; overDrlOnly?: boolean; limit?: number } = {},
 ): Promise<DoseRegisterRow[]> {
   await assertMayReadDoses(db, actor);
+  /**
+   * ═══ CLOSE REVIEW — THE RANGE IS IST, AND IT WAS UTC ═══
+   *
+   * `'2026-09-01'::timestamptz` on a pool with no timezone set is midnight UTC, which is 05:30 IST.
+   * So `{from: '2026-09-01'}` EXCLUDED the trauma CT done at 02:15 IST that morning and INCLUDED
+   * everything up to 05:30 IST on the day after `to`. D12 makes this range the inspector's file,
+   * and 18b shipped the identical defect as a CRITICAL (the MWL date in UTC beside an IST time).
+   * The bounds are now built as explicit IST instants, the `partners/kicker.ts` pattern.
+   */
+  const IST = "+05:30";
   const where = [
-    ...(opts.from === undefined ? [] : [sql`${doseRegister.occurredAt} >= ${opts.from}::timestamptz`]),
-    ...(opts.to === undefined ? [] : [sql`${doseRegister.occurredAt} < (${opts.to}::date + 1)::timestamptz`]),
+    ...(opts.from === undefined ? [] : [sql`${doseRegister.occurredAt} >= ${`${opts.from}T00:00:00${IST}`}::timestamptz`]),
+    ...(opts.to === undefined ? [] : [sql`${doseRegister.occurredAt} < ${`${opts.to}T00:00:00${IST}`}::timestamptz + interval '1 day'`]),
     ...(opts.overDrlOnly === true ? [eq(doseRegister.overDrl, true)] : []),
   ];
   const rows = await db.select({
@@ -149,7 +162,25 @@ export async function doseRegisterRows(
     source: doseRegister.source,
     sourceRef: doseRegister.sourceRef,
     patientId: doseRegister.patientId,
-    patientName: patients.name,
+    /**
+     * ═══ CLOSE REVIEW, CRITICAL — A CONFIDENTIAL PATIENT'S NAME WAS DISCLOSED HERE ═══
+     *
+     * This selected `patients.name` raw. Every other patient-bearing surface in this department
+     * renders through `displayName` (`radiology/read.ts:204`, `:279`, `mwl.ts:242`), so a VIP, a
+     * staff member or a police case shows their ALIAS on the worklist — and their legal name and
+     * UHID on this register, to every holder of `aerb.doses.read`, which includes every
+     * radiographer. `patients.confidential.read` is held by none of the roles that reach this
+     * route, so the disclosure was total rather than partial.
+     */
+    name: patients.name,
+    alias: patients.alias,
+    isConfidential: patients.isConfidential,
+    /**
+     * PASS 2 — the UHID travelled raw beside the alias, and the UHID is the hospital-wide lookup
+     * key: any radiographer could paste it into patient search and recover the legal name, which is
+     * the whole of what the aliasing prevents. It is now withheld from a reader without clearance,
+     * and the row carries `restricted` so a screen can say why rather than render a blank.
+     */
     uhid: patients.uhid,
     deviceCode: resources.code,
     modality: doseRegister.modality,
@@ -171,10 +202,31 @@ export async function doseRegisterRows(
     .orderBy(desc(doseRegister.occurredAt))
     .limit(opts.limit ?? 200);
 
-  const out = rows.map((r) => ({ ...r, occurredAt: r.occurredAt.toISOString() }));
+  /** The reader's clearance, the same question `radiology/read.ts` asks before it renders a name. */
+  const canSeeConfidential = actor.type === "user"
+    && await hasPermission(db, actor.id, "patients.confidential.read", "hospital");
+
+  const out = rows.map(({ name, alias, isConfidential, uhid, ...r }) => {
+    const withheld = isConfidential && !canSeeConfidential;
+    return {
+      ...r,
+      patientName: displayName({ name, alias, isConfidential }, canSeeConfidential),
+      uhid: withheld ? "" : uhid,
+      /** The `registration.ts` convention: a client must be able to tell an aliased row from a real one. */
+      restricted: withheld,
+      occurredAt: r.occurredAt.toISOString(),
+    };
+  });
   const reason = `AERB dose register${opts.overDrlOnly === true ? ", over-DRL only" : ""}, ${String(out.length)} rows`;
-  for (const patientId of new Set(out.map((r) => r.patientId))) {
-    await recordPhiAccess(db, { actor, patientId, surface: "aerb.dose_register", reason });
+  /**
+   * PASS 2 — a row written before a merge carries the LOSER's id, so the disclosure was filed under
+   * an id a records-access enquiry on the surviving patient would never find. Resolved per patient.
+   */
+  for (const rowPatientId of new Set(out.map((r) => r.patientId))) {
+    await recordPhiAccess(db, {
+      actor, patientId: (await resolvePatientId(db, rowPatientId)) ?? rowPatientId,
+      surface: "aerb.dose_register", reason,
+    });
   }
   return out;
 }
@@ -210,8 +262,36 @@ export async function patientCumulativeDose(
   await assertMayReadDoses(db, actor);
   const months = opts.months ?? 12;
   const now = opts.now ?? new Date();
-  const from = new Date(now);
-  from.setUTCMonth(from.getUTCMonth() - months);
+  /**
+   * CLOSE REVIEW — `setUTCMonth(m - months)` rolls forward on a short month: called on 31 March
+   * with `months = 1` it lands on 3 March, a 28-day window sold as one month. Counting back in
+   * whole days from the month arithmetic done on the FIRST of the month avoids the rollover.
+   */
+  const from = new Date(Date.UTC(
+    now.getUTCFullYear(), now.getUTCMonth() - months, 1,
+    now.getUTCHours(), now.getUTCMinutes(), now.getUTCSeconds(),
+  ));
+  from.setUTCDate(Math.min(now.getUTCDate(), new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + 1, 0)).getUTCDate()));
+
+  /**
+   * ═══ CLOSE REVIEW — THE REGISTER IS MERGE-BLIND, AND A SPLIT REGISTRATION IS THE COMMONEST
+   * REASON AN IMAGING HISTORY IS SPLIT IN THE FIRST PLACE ═══
+   *
+   * `merge` never rewrites another module's rows (`patients/registration.ts` §6), so a dose row
+   * written before a merge keeps the LOSER's id for ever. Keyed on the canonical id alone, the
+   * nudge whose entire purpose is O4's *"young patient with six CTs in a year"* reported ONE — the
+   * exact opposite of the truth. Ten other modules already resolve the chain through this helper.
+   */
+  /**
+   * PASS 2 — `listMergedLoserIds` walks DOWN from a winner; asked about a loser it returns `[]`.
+   * And the caller is the study screen, which passes the study's own `patientId` — which for a
+   * study placed BEFORE the merge is the loser's, because merge never rewrites another module's
+   * rows. So the very case the finding described was still split. Every other consumer in the tree
+   * resolves to the canonical id FIRST; this now does too.
+   */
+  /** `null` when the id names no patient at all — the caller's id is then the only one to ask about. */
+  const canonical = (await resolvePatientId(db, patientId)) ?? patientId;
+  const ids = [canonical, ...await listMergedLoserIds(db, canonical)];
 
   const rows = await db.select({
     count: sql<number>`count(*)::int`,
@@ -222,15 +302,24 @@ export async function patientCumulativeDose(
     last: sql<Date | null>`max(${doseRegister.occurredAt})`,
   })
     .from(doseRegister)
-    .where(and(eq(doseRegister.patientId, patientId), gte(doseRegister.occurredAt, from)));
+    .where(and(inArray(doseRegister.patientId, ids), gte(doseRegister.occurredAt, from)));
 
   const r = rows[0];
-  await recordPhiAccess(db, {
-    actor, patientId, surface: "aerb.dose_register",
-    reason: `cumulative dose, ${String(months)} months`,
-  });
+  /**
+   * CLOSE REVIEW — the disclosure row was written unconditionally, so any holder of
+   * `aerb.doses.read` could stamp an `aerb.dose_register` access onto a chart that was never read
+   * (and onto an id that names no patient at all). Over-logging is the safe direction, but it
+   * pollutes the log a records-access enquiry reads. Nothing disclosed, nothing logged.
+   */
+  if ((r?.count ?? 0) > 0) {
+    /** The CANONICAL id — `recordPhiAccess`'s own contract, and the id a records enquiry reads. */
+    await recordPhiAccess(db, {
+      actor, patientId: canonical, surface: "aerb.dose_register",
+      reason: `cumulative dose, ${String(months)} months`,
+    });
+  }
   return {
-    patientId,
+    patientId: canonical,
     months,
     studyCount: r?.count ?? 0,
     totalDlp: r?.totalDlp ?? null,

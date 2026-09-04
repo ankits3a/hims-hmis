@@ -94,7 +94,39 @@ O2's pregnant-radiographer roster gate and any duty reassignment (Plan 20 roster
 - **The precedent T1 copies, named:** `assertMachineRegistered` (`modules/pcpndt/form-f.ts:72`) — an active registration whose validity window contains the date, returning the row so the caller does not read it twice — and `pcpndt_registered_machines`' `uniqueIndex … where active = true`, which is the index that makes "one active licence per device" a database fact rather than a query convention.
 
 ### 8.1 PRs
-#52 the doc · T1 — PR number when opened; one PR per task, squash, auto-merge.
+**#52 the doc (MERGED) · T1 #56 (MERGED) · T2 #57 (MERGED) · T3 #59 · T4 #60 · T5 #61.** One PR per
+task, stacked (each based on the one below), squash, auto-merge; each retargeted to `main` as the
+one below it merged. Migrations `0060`–`0063` after the renumbering (F20).
+
+### 8.7 KNOWN LIMITS, stated rather than discovered later
+
+- **`badgeRegister` is N+1** — one readings query per badge, because the cumulative windows (calendar
+  year, rolling five years) are computed in TypeScript rather than in SQL. At the scale this
+  register runs (a monitored-worker roster is tens of people, not thousands) that is tens of small
+  indexed queries on a screen an RSO opens a few times a month, and the arithmetic is legible in a
+  way a windowed SQL aggregate would not be. `complianceCalendar` inherits it through `badgeGaps`.
+  **If a later phase puts this on a dashboard that polls, that is the phase that must move the
+  arithmetic into SQL** — it is not a bug today and it would be one there.
+- **`doseRegisterRows` caps at 200 rows** (overridable by the caller). A date range wider than the
+  cap silently returns the newest 200; the screen has no paging. Named because a register that
+  quietly truncates is worse than one that refuses, and the fix — a cursor — is a slice of its own.
+- **`recordDose` takes no permission of its own**, by design: the authority to record a dose IS the
+  authority to perform the examination, which the caller has already checked at its own door
+  (`radiology.acquire`). A second permission here would let a radiographer acquire a study the
+  register then refused to account for, which is the worst of both.
+
+### 8.8 WHAT IS OWED — named rather than implied
+
+- **The two close-review passes (§8.5), and they are the term that pays.** 18a measured 15 of 16
+  fixes incomplete; 18b's pass 2 found 4 INCOMPLETE + 1 WRONG of 25, and paid for itself on C7
+  alone. Neither found its CRITICALs by running tests: **3,516 → 3,516 passing tests and every named
+  mutant dead found none of 18b's two.** Reading did. This phase is code-complete and has NOT had
+  that pass, and nothing below the line should be read as if it had.
+- **The four owner rulings of §7** (the RSO and physicist by name, the TLD badge service, the
+  investigation level, the QA contract) — none blocks the code, all block the register having
+  anything true in it.
+- **No deploy.** Production is still at 46 migrations and has never left `commissioning`; 18a and
+  18b have not left the lane either.
 
 ### 8.2 Findings
 
@@ -276,3 +308,219 @@ the study did not carry stores NULL, not `under`"*. Restored; `diff -q` proved i
   (regenerated, with its id and prevId re-stitched into the chain), and `drizzle-kit generate` on
   this branch now says *"No schema changes, nothing to migrate"*. That is the state the next lane
   inherits, and it is the first time in this repo's history that it is true.
+
+### 8.2 Findings — T5
+
+- **F23 (T5) — the calendar's hard part is "which QA record is the LIVE one".** A machine tested
+  annually carries last year's record with a date long past AND this year's with a date a year out.
+  A `select … where next_due_on < today` shows an inspector a machine overdue for a test it has
+  already had — **worse than no calendar**. The latest record per (device, test type) is the one
+  with a live date; the mutant that drops the grouping kills exactly the test that says so.
+- **F24 (T5) — the badge gap has NO due date, which is why it needed its own leg.** Nothing was
+  ever scheduled for it, so it is invisible to every date-driven query in the function, and it is
+  the row that means a person is wearing a dosimeter nobody has read. It is always `overdue` and
+  its `daysOverdue` is how long that has been true.
+- **F25 (T5, D4 restated and pinned)** — an OVERDUE QA leaves the machine `available`. The only
+  automatic block in this phase is a FAILED test, because a physicist measured something and said
+  so. Asserted directly, so a later phase cannot quietly make the calendar a second lockout.
+- **F26 (T5, the walk) — the e2e's `radiographer` holds NO `aerb.*` string, and that is right.**
+  The walk's first draft asserted 200 on `/aerb/doses` for them; the e2e mints per-test roles from
+  explicit permission lists rather than from `seed-roles`, so the assertion was about the fixture.
+  Rewritten as D2's actual claim: a reader holding **exactly** `aerb.doses.read` opens the dose
+  register and is 403 on every other AERB route.
+- **F27 (T5, the walk again) — the first draft's badge assertion depended on the day it ran.** A
+  reading entered for Q1 is stale by September; the walk now passes `onDate=${DAY}` and enters the
+  reading for the quarter that closed a month before it. 18a's F28 — *"a test whose correctness
+  depends on what day it is run is a test that will fail for somebody who did not write it, on a
+  morning when nothing is wrong"* — caught here before CI could find it.
+
+### 8.3 Assertion book as executed — T5
+**Mutant:** list EVERY QA record carrying a `next_due_on`, rather than the latest per device and
+test type. **Result: 1 failed / 11 passed** — *"shows only the LATEST QA record per device and test
+type"*. Restored; `diff -q` proved identical.
+
+### 8.4 Evidence — T5
+| task | batch | counts |
+|---|---|---|
+| T5 | `src/modules/aerb` + `test/` ENTIRE + `src/modules/radiology` | **78 suites / 768 tests, exit 0**; tsc 0, lint 0 errors |
+| T5 (web) | full `@hmis/web` suite | **81 files / 669 tests, exit 0** |
+| the walk | `test/radiology.e2e.test.ts` | 5 tests, exit 0 — **THE AERB WALK** is the fifth |
+
+### 8.5 Close review — pass 1 (three FRESH reviewers, read-only, disjoint areas)
+**4 CRITICAL · 16 MAJOR · 20 MINOR. Every finding verified against the code before it was fixed.**
+Areas: A the licence + QA registers and their consumers · B the dose register, the DRL and PHI ·
+C the badges, the calendar, the routes and the screen. **Not one of the four CRITICALs was visible
+to the suite** — 31/31, 13/13 and 44/44 were green through all of them, and two were pinned BY
+tests as the expected behaviour.
+
+**CRITICAL 1 — a QA `pass` released a blocked machine regardless of when it was performed.**
+The release condition was `result === 'pass' && status === 'qa_blocked'` and nothing else.
+`performedOn` was never compared to the failure it was closing out, so **back-entering the historical
+QA book for an inspector — the ordinary act this register exists to support — released a CT that had
+failed last week, on a certificate from last year**, and stamped the failure row as cleared by it. A
+QA pass is the only exit from `qa_blocked` in the tree, so the release condition IS the control, and
+it had no date in it. Fixed: a pass older than the open failure is refused `stale_qa_pass` and
+writes nothing; `performedOn` is bounded by the server's IST day (F52's rule, which this file was
+not following). The suite could not see it — every release fixture passed a LATER date.
+
+**CRITICAL 2 — the badge cumulative was summed PER BADGE, not per WORKER.**
+`aerb_tld_badges_user_active_ux` is a PARTIAL index, so one person legitimately owns many badge rows
+over time. A radiographer who read 16 and 12 mSv, lost the badge, was re-issued and read 6 more has
+**34 mSv against a 30 mSv statutory ceiling** — and the register showed two green rows, 28 and 6,
+neither over the limit, with no flag anywhere. The five-year leg was worse: nobody keeps one physical
+badge for five years, so 100 mSv was structurally unreachable. The suite performed the exact
+close-then-reissue one test over, and its own title said *"per badge"*. Fixed: every cumulative is
+the worker's, across every badge they have ever worn, and the N+1 §8.7 declared is gone with it.
+
+**CRITICAL 3 — a late report could never put its own year over the limit.**
+The annual window was `periodEnd` inside the year of *today*. `recordBadgeRead`'s own docstring says
+a TLD report arrives weeks after the period it describes — so a Q4 reading entered in February has
+`periodEnd` in LAST year, was excluded from this year, and last year was never recomputed. **A year
+that went over the ceiling was over it at no instant the system could report.** Fixed: every
+calendar year present in a worker's readings is summed and the worst one is carried, whenever its
+reports arrived; the screen names that year.
+
+**CRITICAL 4 — the dose register disclosed a confidential patient's legal name.**
+It selected `patients.name` raw. Every other patient-bearing surface in this department renders
+through `displayName`, so a VIP, a staff member or a police case showed their ALIAS on the worklist
+and their legal name and UHID on this register — to every holder of `aerb.doses.read`, which is
+every radiographer, none of whom holds `patients.confidential.read`. The disclosure was total, not
+partial, and `dose.test.ts` pinned it as intended. Fixed: `displayName` with the reader's clearance,
+both directions pinned.
+
+**MAJOR, fixed** — `AerbError` was in no HTTP mapper, so `device_not_licensed` reached the console
+as a bare **500** (the mapper's own header says NOT ONE OF THESE IS A 500; eighth family added) ·
+**the register could not record a renewal at all**: `licence_no` was globally unique so a
+same-numbered renewal was a 500, and a differently-numbered one could not be filed until the old row
+was dead — which stops the machine for the rest of December, the exact failure D4 argues against
+(fixed: partial unique + `supersedesLicenceId`, both rows in one transaction) · `drlFor` picked a
+level by ARRAY ORDER, so the commonest book (CTDIvol *and* DLP for one examination) gave a false
+`null` one way round and a false `under` the other (fixed: chosen from what was measured, strictest
+wins) · the dose register was **merge-blind** — a merged patient's entire prior history vanished
+from the nudge whose purpose is O4's six-CTs patient, and the PHI row was filed under a
+non-canonical id · its date range was evaluated in **UTC** against IST examinations, so a 02:15 CT
+fell out of its own month (18b's CRITICAL, in a new place) · the calendar's `next_due_on is not
+null` filter ran BEFORE the latest-per-group selection, resurrecting a superseded record so a machine
+showed **overdue for a test it had a fortnight ago** · every tab printed its all-clear sentence when
+the fetch FAILED (`isPending` is false on error) — a compliance screen telling an RSO the hospital is
+clean on the strength of a 403 · the inspector's print fired before the widened query resolved, so
+the preview captured "Loading…" and an empty table · three raw constraint violations reached the RSO
+as 500s, two of them pinned as expected · `/aerb/persons` was the one route trusting its date ·
+the badge READINGS were shipped over the wire and rendered nowhere, so a flagged reading vanished the
+moment a later normal one arrived · `istToday()` on the screen returned the **UTC** day on an IST
+browser (`+330 + getTimezoneOffset()` cancels), so the night radiographer's gap list was a day stale.
+
+**MAJOR, NOT fixed and now declared (§8.8)** — **there is no write surface in the web app at all.**
+Every `aerb.registers.manage` route is reachable only by hand-rolled HTTP; §5 T1 said "the Licences
+tab lists AND FILES" and it does not. The runbook carries the calls, so a go-live is performable —
+but the plan over-claimed and this is the phase's largest open item.
+
+**MINOR, fixed** — the block CHECK said "not a pass" where it meant "a fail" · the MWL licence gate
+failed OPEN on a study type absent from the active book · neither `fileLicence` nor `recordQa`
+checked the resource's KIND, so a bed could be licensed and render in the inspector's file as a
+machine · the gap list dropped a device whose modality was missing or mis-cased — **the machine
+nobody finished configuring is the one most likely to be missing its paper** · `2026-02-31` passed
+the shape check and died at the INSERT · the concurrent-file race was a 500 where `errors.ts`
+promises a 409 · a PHI row was written for a patient with no register rows · `setUTCMonth` rolled
+a short month forward and shortened the window · the cumulative nudge computed DAP and fluoroscopy
+totals and printed a dash · same-day QA ties broke on physical row order · two docstrings described
+behaviour the code did not have.
+
+**MINOR, recorded and not taken** — `appointedPerson` is dead code and its unique index admits two
+users in one role · a device leaving `qa_blocked` by a route Plan 29 has not built yet would orphan
+its failure row · `recordDose` validates its enums and not its numbers (a 500 for a future source) ·
+`FIVE_YEAR_AVERAGE_LIMIT_MSV` is shipped and rendered nowhere · a reading may overlap another's
+period if the endpoints differ · the tab list has no `tabpanel` roles.
+
+### 8.6 Evidence — after pass 1's remediation
+| batch | counts |
+|---|---|
+| `src/modules/aerb` + `test/` ENTIRE + `src/modules/radiology`, on freshly created databases | **78 suites / 790 tests, exit 0** |
+| full `@hmis/web` | **81 files / 673 tests, exit 0** |
+| static | tsc 0, lint 0 errors |
+
+**A lane-wide note:** the full web run failed once on `vitals-bay-stories.test.tsx` (5,017 ms) and
+passed alone at 2,665 ms and on the very next full run. That suite is the front-desk lane's and this
+lane touched nothing it reads — a wall-clock flake on a loaded box, the shape this repo has recorded
+three times. Re-run before searching your own diff.
+
+### 8.5.2 Close review — pass 2 (two FRESH reviewers, briefed at the FIXES, §2.140)
+**Verdicts over pass 1's 20 fixes: 11 CORRECT · 6 INCOMPLETE · 1 WRONG · 7 NEW.** One reviewer built
+a probe — the pre-fix screen with the new tests, `node_modules` symlinked back — so its headline
+findings are MEASURED rather than argued. **This pass paid for itself twice over, and the method's
+own number held: one fix in six was incomplete and one was wrong.**
+
+- **WRONG — pass 1's renewal STOPPED THE MACHINE IT WAS WRITTEN TO KEEP RUNNING.** The fix
+  surrendered the outgoing certificate the instant the incoming one was filed, so entering the 2027
+  licence in November left `activeLicenceFor` returning **null for 20 November** — every ionising
+  study on that CT refused from the day the paperwork arrived until 1 January, with no way back
+  because `surrendered` is terminal. **Worse than the defect it replaced**, which merely refused to
+  record the renewal. Pass 1's own test said *"and the machine never goes dark"* and asserted that
+  only BEFORE the renewal. I reproduced it in a throwaway suite before touching anything: `LICENCE
+  IN FORCE ON 20 NOV 2026 AFTER FILING THE RENEWAL: NONE`.
+  **The invariant was wrong, not the code.** "One active licence per device" is not what a hospital
+  has; it has a SEQUENCE of certificates with non-overlapping validity, and *which is in force* is a
+  function of the DATE — the question `activeLicenceFor` always asked and only the index disagreed
+  with. Migration `0065` replaces the index with "a device cannot hold two certificates that START
+  on the same day"; overlap is refused in `fileLicence` under a `FOR UPDATE` lock on the device row,
+  which is race-free in a way no partial index could be. `supersedesLicenceId` is gone: a renewal is
+  just the next window, filed the day it arrives.
+- **WRONG (web) — the print fix could disable the button for ever.** The effect returned early
+  whenever the widened file was not here, with no path out on failure; the client is `retry: false`,
+  so one 403 left it *disabled and reading "Preparing the file…" for the life of the mount* — a
+  print that could never happen, where the defect it replaced at least always printed something.
+  Unticking the box mid-flight stranded it the same way. Both proven by the reviewer's probe, both
+  now pinned.
+- **INCOMPLETE — CRITICAL 4 was half-closed.** `displayName` aliased the name and **the UHID went
+  out raw beside it** — the hospital-wide lookup key, which any radiographer can paste into patient
+  search to recover the legal name. The finding said "legal name AND UHID"; the fix read half of it,
+  and the new test asserted only that the name was absent. The UHID is now withheld with a
+  `restricted` flag, the `registration.ts` convention.
+- **INCOMPLETE — the dose register dated every row by the UTC day** while the same commit made its
+  SELECTION window IST: a CT at 02:15 IST on 1 April was fetched as April and printed as 31 March.
+  The register was internally inconsistent about the one fact an inspector cross-checks.
+- **INCOMPLETE — the merge chain was walked downward only.** `listMergedLoserIds` walks *down* from
+  a winner; asked about a loser it returns `[]`. The caller is the study screen, which passes the
+  study's own `patientId` — and a study placed BEFORE the merge carries the LOSER's id, because
+  merge never rewrites another module's rows. So the exact case the finding described was still
+  split. `resolvePatientId` first now, both here and on the PHI row.
+- **INCOMPLETE — `recordQa`'s docstring contradicted its code.** It promised a stale pass "records
+  normally and releases nothing"; pass 1 made it throw, which meant that **while a machine was
+  blocked its historical QA book could not be entered at all** — the act the CRITICAL's own
+  narrative calls the ordinary use of this register. It records and releases nothing now, which is
+  what the paragraph always said and is fail-safe in the direction that matters. `stale_qa_pass`
+  left the error union with it.
+- **INCOMPLETE — the calendar fix deleted a machine from the calendar.** Dropping every null
+  `next_due_on` was written for a FAILED test; it did not look at `result`, and the field is
+  optional on every result. A PASS entered without one — a typo on the one field nothing validates —
+  took the machine off the compliance calendar ENTIRELY. Pass 1's defect with the sign flipped, and
+  the more dangerous sign. A pass that scheduled nothing is now a row with no date.
+- **INCOMPLETE — the gap list's exclusion was case-SENSITIVE**, and mis-casing is the very bug the
+  filter was rewritten to catch: a device configured `"MRI"` was listed as needing an AERB licence.
+- **INCOMPLETE — the real-date check landed in one of four files**; `recordQa`'s kind check was
+  never added at all (pass 1's finding named both and only one was fixed); and two of the three new
+  409s had a pre-read and no `23505` catch, so under the concurrency `errors.ts` invokes by name
+  they still escaped as the 500 the codes were added to eliminate.
+- **NEW — the walk read the wall-clock year.** `workerYtdMsv` against a fixture reading ending
+  2026-07-31: green all through 2026 and **red on 1 January 2027**. Eight lines below it the file
+  cites F28 for exactly that. Now `worstYear`, which is a fact about the reading.
+- **NEW — four vacuous tests, measured not guessed.** The print test passed against the ORIGINAL
+  `setTimeout(print, 0)` (in jsdom the mocked fetch drains through microtasks before a macrotask);
+  two QA tests and one licence test passed both before and after. Three are kept as boundary or
+  complement guards with honest titles; the print one was replaced by two that fail against the
+  regression.
+- **NEW — two fixes shipped with no coverage at all**: the DAP/fluoroscopy nudge (the only fixture
+  in the tree sets both to null, so both new branches were dead), and four of the six tabs' error
+  guard. Both now covered.
+
+### 8.6.2 Evidence — after pass 2's remediation
+| batch | counts |
+|---|---|
+| `src/modules/aerb` + `test/` ENTIRE + `src/modules/radiology`, freshly created databases | **78 suites / 797 tests, exit 0** |
+| full `@hmis/web` | **81 files / 683 tests, exit 0** |
+| static | tsc 0, lint 0 errors |
+
+**What the two passes cost and bought:** pass 1 found four CRITICALs that 88 passing tests and five
+dead mutants did not. Pass 2 found that one of pass 1's fixes was worse than the defect, that a
+CRITICAL was half-closed, and that four of the tests written to prove the fixes proved nothing.
+**Neither pass found anything by running tests. Both found everything by reading.**

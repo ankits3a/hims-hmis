@@ -12,6 +12,7 @@ import {
   STATUTORY_LIMITS, badgeGaps, badgeReads, badgeRegister, closeBadge, investigationLevelPerMonth,
   issueBadge, recordBadgeRead, setInvestigationLevel,
 } from "./badges";
+import { complianceCalendar } from "./calendar";
 import { collectResourceKinds } from "../../kernel/resources/kinds";
 import { idSchema, isoDateSchema, parsed, toHttp } from "./aerb-http";
 import type { Actor } from "@hmis/contracts";
@@ -293,11 +294,37 @@ export class AerbController {
     } catch (e) { toHttp(e); }
   }
 
+  /**
+   * PLAN 18c T5 / D12 — the compliance calendar, and the inspector's file behind the same door.
+   *
+   * `includeOk=true` is what the print asks for: the working view is what needs attention, and the
+   * inspector's view is the WHOLE file. One route, one permission, because they are one register
+   * read two ways rather than two registers.
+   */
+  @Get("calendar")
+  @RequirePermission("aerb.registers.read", "hospital")
+  async calendar(
+    @Query("onDate") onDate?: string, @Query("includeOk") includeOk?: string,
+  ): Promise<unknown> {
+    const asOf = onDate === undefined ? undefined : parsed(isoDateSchema, onDate);
+    try {
+      return {
+        rows: await complianceCalendar(this.db, {
+          ...(asOf === undefined ? {} : { onDate: asOf }),
+          includeOk: includeOk === "true",
+        }),
+      };
+    } catch (e) { toHttp(e); }
+  }
+
   @Get("persons")
   @RequirePermission("aerb.registers.read", "hospital")
   async persons(@Query("onDate") onDate?: string): Promise<unknown> {
+    /** CLOSE REVIEW — the one date parameter in this controller that was trusted. `?onDate=yesterday`
+     *  reached Postgres as a `date` cast and came back a 500. */
+    const asOf = onDate === undefined ? undefined : parsed(isoDateSchema, onDate);
     try {
-      return { rows: await appointments(this.db, onDate ? { onDate } : { includeEnded: true }) };
+      return { rows: await appointments(this.db, asOf === undefined ? { includeEnded: true } : { onDate: asOf }) };
     } catch (e) { toHttp(e); }
   }
 

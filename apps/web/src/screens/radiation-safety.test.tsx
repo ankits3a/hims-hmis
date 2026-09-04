@@ -42,6 +42,7 @@ const PERSONS = "GET /api/aerb/persons";
 const QA = "GET /api/aerb/qa";
 const DOSES = "GET /api/aerb/doses";
 const BADGES = "GET /api/aerb/badges";
+const CALENDAR = "GET /api/aerb/calendar";
 
 describe("the radiation-safety register (18c T1)", () => {
   beforeEach(() => { setToken("t"); });
@@ -114,7 +115,7 @@ describe("the radiation-safety register (18c T1)", () => {
     uhid: "HMS-00000001-5", deviceCode: "CT-1", modality: "ct", procedureCode: "CT-HEAD",
     doseCtdivol: "42.000", doseDlp: "1200.000", doseDap: null, fluoroSeconds: null,
     doseManual: false, drlQuantity: "dlp", drlValue: "1000.000", overDrl: true,
-    occurredAt: "2026-06-15T09:00:00.000Z", ...over,
+    restricted: false, occurredAt: "2026-06-15T09:00:00.000Z", ...over,
   });
 
   /**
@@ -176,14 +177,182 @@ describe("the radiation-safety register (18c T1)", () => {
     expect(row).toHaveTextContent("open-ended");
   });
 
-  /** The Calendar tab T5 builds is declared and disabled, so the shape is visible from here. */
-  it("the unbuilt calendar tab is present and disabled", async () => {
+  /** T5 — every register the inspector asks for is now built; no tab is disabled. */
+  it("all five registers are reachable", async () => {
     mockRoutes({
       [LICENCES]: { status: 200, body: { rows: [] } },
       [GAPS]: { status: 200, body: { rows: [] } },
     });
     renderWithProviders(<RadiationSafety />);
-    expect(await screen.findByTestId("aerb-tab-calendar")).toBeDisabled();
+    for (const k of ["licences", "people", "qa", "dose", "badges", "calendar"]) {
+      expect(await screen.findByTestId(`aerb-tab-${k}`)).not.toBeDisabled();
+    }
+  });
+
+  /* ═════════════════════ PLAN 18c T5 — THE CALENDAR ═════════════════════ */
+
+  const calRow = (over: Record<string, unknown> = {}) => ({
+    kind: "licence", subject: "CT-1 — CT machine", detail: "AERB/CT/2026/1",
+    dueOn: "2026-06-01", state: "overdue", daysOverdue: 14, ref: "L1", ...over,
+  });
+
+  /**
+   * The three states read as three different sentences. "14 days overdue" and "due in 9 days" are
+   * different instructions; a screen that rendered both as a date would make the RSO do the
+   * subtraction, which is the arithmetic a calendar exists to have already done.
+   */
+  it("says how late each thing is, in words, and never just a date", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [CALENDAR]: { status: 200, body: { rows: [
+        calRow({ ref: "L1", state: "overdue", daysOverdue: 14 }),
+        calRow({ ref: "Q1", kind: "qa", state: "due", daysOverdue: -9 }),
+        calRow({ ref: "A1", kind: "appointment", state: "due", daysOverdue: 0 }),
+      ] } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-calendar"));
+    expect(await screen.findByTestId("aerb-calendar-L1")).toHaveTextContent("14 days overdue");
+    expect(screen.getByTestId("aerb-calendar-Q1")).toHaveTextContent("due in 9 days");
+    expect(screen.getByTestId("aerb-calendar-A1")).toHaveTextContent("due today");
+  });
+
+  /** A badge nobody has read has no date to be late against, and must not render as blank. */
+  it("renders the badge with no reading as `never read` rather than an empty cell", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [CALENDAR]: { status: 200, body: { rows: [
+        calRow({ ref: "B1", kind: "badge", subject: "A. Devi", detail: "TLD-002", dueOn: null, daysOverdue: 200 }),
+      ] } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-calendar"));
+    const row = await screen.findByTestId("aerb-calendar-B1");
+    expect(row).toHaveTextContent("never read");
+    expect(row).toHaveTextContent("TLD-002");
+  });
+
+  it("a clean file says so rather than showing an empty table", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [CALENDAR]: { status: 200, body: { rows: [] } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-calendar"));
+    expect(await screen.findByTestId("aerb-calendar-empty")).toBeInTheDocument();
+  });
+
+  /**
+   * D12 — the inspector's file is the SAME list with everything shown. Pressing print switches the
+   * view to the whole file first, because a file that omitted the licences that are in date would
+   * be exactly the wrong half to hand an inspector.
+   */
+  /**
+   * CLOSE REVIEW — the print used to fire on a `setTimeout(…, 0)` immediately after flipping the
+   * flag, so the preview captured "Loading…" and a table with headers and no body. It now waits
+   * for the widened file, and the assertion is that A ROW IS ON SCREEN at the moment it prints.
+   */
+  it("printing waits for the whole file to arrive, and prints it with rows on screen", async () => {
+    const print = vi.fn(() => {
+      /** The moment of truth: what the browser would have captured. */
+      expect(screen.getByTestId("aerb-calendar-L1")).toBeInTheDocument();
+    });
+    vi.stubGlobal("print", print);
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [CALENDAR]: { status: 200, body: { rows: [calRow()] } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-calendar"));
+    expect(screen.getByTestId("aerb-calendar-include-ok")).not.toBeChecked();
+    await userEvent.click(screen.getByTestId("aerb-print"));
+    expect(screen.getByTestId("aerb-calendar-include-ok")).toBeChecked();
+    await waitFor(() => { expect(print).toHaveBeenCalled(); });
+  });
+
+  /**
+   * ═══ PASS 2 — THESE TWO GUARD THE REGRESSION PASS 1's FIX INTRODUCED ═══
+   *
+   * Pass 1 replaced a `setTimeout(print, 0)` with an effect that returned early whenever the
+   * widened file was not here — with NO path out on failure. The client is `retry: false`, so one
+   * 403 left the button **disabled and reading "Preparing the file…" for the life of the mount**: a
+   * print that could never happen, where the defect it replaced at least always printed something.
+   * Pass 2 proved both stuck paths with a probe. The test the fix shipped with was VACUOUS — in
+   * jsdom the mocked fetch drains through microtasks before a `setTimeout(…, 0)` macrotask, so it
+   * passed against the ORIGINAL code too.
+   */
+  it("a failed widened fetch releases the print button instead of stranding it", async () => {
+    const print = vi.fn();
+    vi.stubGlobal("print", print);
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [CALENDAR]: { status: 403, body: { statusCode: 403, message: "forbidden", code: "permission_denied" } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-calendar"));
+    await userEvent.click(await screen.findByTestId("aerb-print"));
+    await waitFor(() => { expect(screen.getByTestId("aerb-print")).not.toBeDisabled(); });
+    expect(print).not.toHaveBeenCalled();
+  });
+
+  it("unticking the box while the file is loading releases the print button too", async () => {
+    const print = vi.fn();
+    vi.stubGlobal("print", print);
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [CALENDAR]: { status: 200, body: { rows: [calRow()] } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-calendar"));
+    await userEvent.click(await screen.findByTestId("aerb-print"));
+    await userEvent.click(screen.getByTestId("aerb-calendar-include-ok"));
+    await waitFor(() => { expect(screen.getByTestId("aerb-print")).not.toBeDisabled(); });
+  });
+
+  /**
+   * PASS 2 — the dose register dated every row by the UTC day while SELECTING them by the IST day,
+   * so a CT at 02:15 IST on 1 April was fetched as April and printed as 31 March. The register was
+   * internally inconsistent about the one fact an inspector cross-checks.
+   */
+  it("dates a dose row by the IST day, not the UTC one", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [DOSES]: { status: 200, body: { rows: [doseRow({ occurredAt: "2026-03-31T20:45:00.000Z" })] } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-dose"));
+    /** 20:45 UTC on 31 March is 02:15 IST on 1 April. */
+    expect(await screen.findByTestId("aerb-dose-R1")).toHaveTextContent("2026-04-01");
+  });
+
+  /**
+   * PASS 2 — the alias was rendered beside the UHID, which is the hospital-wide lookup key: any
+   * radiographer could paste it into patient search and recover the legal name, which is the whole
+   * of what the aliasing prevents. CRITICAL 4 was only half-closed.
+   */
+  it("does not print the UHID of a patient whose name it is withholding", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [DOSES]: { status: 200, body: { rows: [
+        doseRow({ id: "R1", patientName: "Patient A", uhid: "", restricted: true }),
+        doseRow({ id: "R2", patientName: "Ravi Kumar", uhid: "HMS-00000002-3", restricted: false }),
+      ] } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-dose"));
+    const hidden = await screen.findByTestId("aerb-dose-R1");
+    expect(hidden).toHaveTextContent("Patient A");
+    expect(hidden).not.toHaveTextContent("HMS-");
+    /** An ordinary patient still shows theirs — the RSO's register is not made useless. */
+    expect(screen.getByTestId("aerb-dose-R2")).toHaveTextContent("HMS-00000002-3");
   });
 
   /* ═════════════════════ PLAN 18c T4 — THE BADGES TAB ═════════════════════ */
@@ -192,7 +361,9 @@ describe("the radiation-safety register (18c T1)", () => {
     badgeId: "B1", userId: "U1", userName: "R. Singh", badgeNo: "TLD-001",
     issuedOn: "2026-01-01", returnedOn: null, status: "active",
     lastPeriodEnd: "2026-03-31", lastHp10Msv: "1.400", lastInvestigation: false,
-    ytdMsv: "1.400", fiveYearMsv: "1.400", overAnnualLimit: false, overFiveYearLimit: false,
+    workerYtdMsv: "1.400", workerFiveYearMsv: "1.400",
+    worstYear: "2026", worstYearMsv: "1.400",
+    overAnnualLimit: false, overFiveYearLimit: false,
     readCount: 1, ...over,
   });
 
@@ -247,13 +418,76 @@ describe("the radiation-safety register (18c T1)", () => {
       [GAPS]: { status: 200, body: { rows: [] } },
       [BADGES]: { status: 200, body: badgeBook({ rows: [
         badge({ badgeId: "B1", lastHp10Msv: "3.200", lastInvestigation: true }),
-        badge({ badgeId: "B2", userName: "S. Iyer", badgeNo: "TLD-002", ytdMsv: "31.000", overAnnualLimit: true }),
+        badge({ badgeId: "B2", userName: "S. Iyer", badgeNo: "TLD-002", worstYearMsv: "31.000", overAnnualLimit: true }),
       ] }) },
     });
     renderWithProviders(<RadiationSafety />);
     await userEvent.click(await screen.findByTestId("aerb-tab-badges"));
     expect(await screen.findByTestId("aerb-badge-B1")).toHaveTextContent("investigate");
-    expect(screen.getByTestId("aerb-badge-B2")).toHaveTextContent("over the statutory limit");
+    const over = screen.getByTestId("aerb-badge-B2");
+    expect(over).toHaveTextContent("over the statutory limit");
+    /** The year that breached is named, and the number is the WORKER's, not the badge's. */
+    expect(over).toHaveTextContent("2026: 31.000 mSv");
+  });
+
+  /* ═══════════ CLOSE REVIEW — THE FOUR SCREEN DEFECTS ═══════════ */
+
+  /**
+   * CRITICAL-adjacent: a compliance screen that says "nothing is due or overdue" when it could not
+   * READ the register is telling an RSO the hospital is clean on the strength of a 403.
+   */
+  it.each([
+    ["calendar", CALENDAR, "aerb-tab-calendar", "aerb-calendar-empty", /Nothing is due/],
+    ["badges", BADGES, "aerb-tab-badges", "aerb-badges-empty", /No TLD badge/],
+    /** PASS 2 — the guard is on all six tabs; two were tested. These are the other four. */
+    ["licences", LICENCES, "aerb-tab-licences", "aerb-licences-empty", /No AERB licence/],
+    ["qa", QA, "aerb-tab-qa", "aerb-qa-empty", /No quality-assurance result/],
+    ["dose", DOSES, "aerb-tab-dose", "aerb-dose-empty", /No dose has been registered/],
+    ["people", PERSONS, "aerb-tab-people", "aerb-people-empty", /No RSO or medical physicist/],
+  ])("a failed %s fetch shows the error and NOT the all-clear sentence", async (_name, route, tab, emptyId, sentence) => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [route]: { status: 403, body: { statusCode: 403, message: "forbidden", code: "permission_denied" } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId(tab));
+    await waitFor(() => {
+      expect(screen.getAllByRole("alert").some((n) => n.textContent?.includes("permission_denied"))).toBe(true);
+    });
+    expect(screen.queryByTestId(emptyId)).not.toBeInTheDocument();
+    expect(screen.queryByText(sentence)).not.toBeInTheDocument();
+  });
+
+  /**
+   * The flagged reading used to be visible only while it was the LATEST one: one ordinary quarter
+   * later, the flag, its level and its lab reference were unreachable from any screen.
+   */
+  it("keeps a flagged reading on the screen after a later normal one", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [BADGES]: { status: 200, body: badgeBook({
+        rows: [badge({ lastHp10Msv: "1.100", lastPeriodEnd: "2026-06-30", lastInvestigation: false })],
+        reads: [
+          { id: "R1", badgeId: "B1", badgeNo: "TLD-001", userName: "R. Singh",
+            periodStart: "2026-01-01", periodEnd: "2026-03-31", hp10Msv: "3.200", hp007Msv: "3.900",
+            reportedOn: "2026-04-20", labRef: "TLD/2026/Q1", investigationFlag: true,
+            investigationLevelMsv: "2.958" },
+          { id: "R2", badgeId: "B1", badgeNo: "TLD-001", userName: "R. Singh",
+            periodStart: "2026-04-01", periodEnd: "2026-06-30", hp10Msv: "1.100", hp007Msv: null,
+            reportedOn: "2026-07-20", labRef: null, investigationFlag: false,
+            investigationLevelMsv: "2.958" },
+        ],
+      }) },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-badges"));
+    const flagged = await screen.findByTestId("aerb-badge-flagged");
+    expect(flagged).toHaveTextContent("3.200 mSv against a level of 2.958 mSv");
+    expect(flagged).toHaveTextContent("TLD/2026/Q1");
+    /** The un-flagged quarter is not in the alert. */
+    expect(flagged).not.toHaveTextContent("1.100");
   });
 
   /* ═════════════════════ PLAN 18c T2 — THE QA TAB ═════════════════════ */

@@ -94,8 +94,16 @@ export const aerbLicences = pgTable(
      */
     deviceResourceId: text("device_resource_id").notNull().references(() => resources.id),
     licenceType: text("licence_type").notNull(),
-    /** As printed on the document. Unique across the hospital: two machines cannot share one. */
-    licenceNo: text("licence_no").notNull().unique(),
+    /**
+     * As printed on the document.
+     *
+     * CLOSE REVIEW — this was `.unique()` across EVERY row, surrendered ones included, and eLORA
+     * renewals routinely keep the number. So the ordinary act of renewing a CT's licence —
+     * surrender the old row, file the new one — hit the constraint and came back a 500, and the
+     * register had no route that could record it at all. The rule that was meant is *two machines
+     * cannot share a live number*, which is a partial index below.
+     */
+    licenceNo: text("licence_no").notNull(),
     /** The eLORA portal's own reference for the application/consent. */
     eloraRef: text("elora_ref"),
     /** Type approval of the equipment model, and the approval of the room's shielding layout. */
@@ -116,14 +124,32 @@ export const aerbLicences = pgTable(
   },
   (t) => [
     /**
-     * ONE ACTIVE LICENCE PER DEVICE — the `pcpndt_registered_machines_device_active_ux` shape, and
-     * for the identical reason. Without it a machine could carry two active rows and
-     * `activeLicenceFor` would return whichever Postgres happened to read first: §2.54's mechanism
-     * with a regulator on the other end of it. A RENEWAL is therefore a status change on the old
-     * row and a new row, never two live ones.
+     * ═══ CLOSE REVIEW PASS 2, CRITICAL — "ONE ACTIVE LICENCE PER DEVICE" WAS THE WRONG INVARIANT ═══
+     *
+     * It was `uniqueIndex(deviceResourceId) where status = 'active'`, and pass 1's remediation built
+     * a renewal on top of it that surrendered the outgoing certificate the moment the incoming one
+     * was filed. Pass 2 measured the consequence: filing the 2027 licence in November left
+     * `activeLicenceFor` returning **null for 20 November**, so the CT refused every ionising study
+     * from the day the certificate arrived until 1 January — and `surrendered` is terminal, so there
+     * was no way back. The fix stopped the machine it was written to keep running.
+     *
+     * The invariant a hospital actually has is **a SEQUENCE of certificates with non-overlapping
+     * validity**, and "which licence is in force" is a function of the DATE, not of a status.
+     * `activeLicenceFor` has always asked the date question; only this index disagreed. So a device
+     * may carry the 2026 and the 2027 licence at once, and neither is ambiguous on any given day.
+     *
+     * `status` goes back to meaning what it says — the lifecycle of ONE certificate (`active`, or
+     * `suspended` because a condition was breached, or `surrendered` because the unit was
+     * decommissioned) — and the uniqueness that remains is the one that is really true: **a device
+     * cannot hold two certificates that start on the same day.** Overlap itself is refused in
+     * `fileLicence`, under a `FOR UPDATE` lock on the device row so two concurrent files serialise.
      */
-    uniqueIndex("aerb_licences_device_active_ux")
-      .on(t.deviceResourceId)
+    uniqueIndex("aerb_licences_device_from_ux")
+      .on(t.deviceResourceId, t.validFrom)
+      .where(sql`${t.status} <> 'surrendered'`),
+    /** Two machines cannot hold the same live licence number. A surrendered row may reuse it. */
+    uniqueIndex("aerb_licences_no_active_ux")
+      .on(t.licenceNo)
       .where(sql`${t.status} = 'active'`),
     /** The calendar's query: what expires, and when. */
     index("aerb_licences_status_validity_idx").on(t.status, t.validTo),
@@ -252,10 +278,17 @@ export const qaRecords = pgTable(
       "aerb_qa_records_release_ck",
       sql`(${t.releasedByRecordId} is null) = (${t.releasedAt} is null)`,
     ),
-    /** Only a FAIL can have applied a block. A `pass` row claiming one is a lie about the machine. */
+    /**
+     * Only a FAIL can have applied a block. A `pass` row claiming one is a lie about the machine.
+     *
+     * CLOSE REVIEW — this was `result <> 'pass'`, which is "not a pass" and not "a fail": it
+     * admitted a `conditional` row claiming a block. `recordQa` never writes that combination, but
+     * the constraint is the half that is supposed to hold if the writer is ever weakened, which is
+     * the reason the dose register's own index gives for itself.
+     */
     check(
       "aerb_qa_records_block_ck",
-      sql`${t.blockApplied} = false or ${t.result} <> 'pass'`,
+      sql`${t.blockApplied} = false or ${t.result} = 'fail'`,
     ),
   ],
 );
