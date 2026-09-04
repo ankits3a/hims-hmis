@@ -2815,6 +2815,23 @@
       "pass": "Pass",
       "fail": "Fail",
       "conditional": "Conditional"
+    },
+    "dose": {
+      "title": "Patient dose register",
+      "empty": "No dose has been registered yet.",
+      "overDrlOnly": "Show only examinations over their reference level",
+      "patient": "Patient",
+      "exam": "Examination",
+      "dose": "Dose",
+      "drl": "Reference level",
+      "verdict": "Verdict",
+      "when": "When",
+      "over": "over DRL",
+      "under": "within DRL",
+      "noLevel": "no level published",
+      "manual": "typed from the console",
+      "cumulative": "{{count}} ionising examinations in {{months}} months — {{total}}",
+      "cumulativeOver": "{{count}} ionising examinations in {{months}} months, {{over}} over their reference level — {{total}}"
     }
   }
 }

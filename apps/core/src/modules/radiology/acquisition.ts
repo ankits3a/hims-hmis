@@ -7,7 +7,7 @@ import { transition } from "../../kernel/workflow/instances";
 import { istDayString } from "../../kernel/approvals/cumulative";
 import { appendEvent } from "../../kernel/events/append";
 import { assertFormFRecorded, assertMachineRegistered, assertPersonRegistered } from "../pcpndt";
-import { assertDeviceLicensed } from "../aerb";
+import { assertDeviceLicensed, recordDose } from "../aerb";
 import { RADIOLOGY_RESOURCE_KINDS } from "./kinds";
 import { isValidDicomUid, mintStudyInstanceUid } from "./uid";
 import { RadiologyError } from "./errors";
@@ -15,11 +15,26 @@ import { imagingStudyAcquired } from "./events";
 import { evaluateReadiness, isContrastAllergen, studyGates, IMAGING_TERMINAL_GATE_STATES } from "./gates";
 import { listAllergies } from "../patients";
 import { authorisationOf, encounterPayer, hasBillDecision, raiseBillDecision } from "./money";
-import { requireStudyType } from "./study-types";
+import { activeDoseReferenceLevels, drlFor, requireStudyType } from "./study-types";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
 import type { ImageSource } from "../../kernel/db/schema/radiology";
+
+/**
+ * PLAN 18c T3 — which measured number a reference level's QUANTITY refers to. One place, because a
+ * comparison that read DLP against a CTDIvol level would be a verdict about the wrong number and
+ * nothing downstream could tell.
+ */
+const DOSE_VALUE_BY_QUANTITY: Readonly<Record<
+  "ctdivol" | "dlp" | "dap" | "fluoro_seconds",
+  (m: { ctdivol: number | null; dlp: number | null; dap: number | null; fluoro: number | null }) => number | null
+>> = {
+  ctdivol: (m) => m.ctdivol,
+  dlp: (m) => m.dlp,
+  dap: (m) => m.dap,
+  fluoro_seconds: (m) => m.fluoro,
+};
 
 /**
  * PLAN 18a T7 — **ACQUISITION: the patient is on the table, and the ORDER OF OPERATIONS IS THE
@@ -486,6 +501,55 @@ export async function recordAcquired(
       `study ${study.id} was acquired by somebody else while this was being recorded`,
       { studyId: study.id },
     );
+  }
+
+  /**
+   * ═══ PLAN 18c T3 / D5 — THE AERB DOSE REGISTER, IN THIS TRANSACTION ═══
+   *
+   * 18a's §6 promised 18c *"a projection of the dose columns"* and 18c's D5 refused the projection:
+   * the cath lab (63) records a fluoroscopy dose against a procedure and radiation oncology (64)
+   * against a fraction, and a register that JOINED `imaging_studies` would have had one source for
+   * ever. So radiology WRITES the row, here, inside the CAS it just won — a dose that was registered
+   * and an examination that was not cannot exist separately, and the unique index on
+   * `(source, source_ref)` means a retried transaction cannot count the dose twice (A6's own
+   * comment: "a double-click double-emits and 18c counts the dose twice").
+   *
+   * **The comparison is made HERE and stored as a fact**, because this module holds the published
+   * reference levels and `aerb` must not read a radiology definition to learn about them. A level
+   * republished next year must not change what this examination was measured against.
+   *
+   * Non-ionising examinations write NO row: an ultrasound has no dose and a register full of zeroes
+   * for USG would bury the CTs an RSO is looking for.
+   */
+  if (ionising) {
+    const levels = await activeDoseReferenceLevels(tx);
+    const level = drlFor(levels, study.studyTypeCode, studyType.modality);
+    const measured = level === null ? null : DOSE_VALUE_BY_QUANTITY[level.quantity]({
+      ctdivol: input.doseCtdivol ?? null, dlp: input.doseDlp ?? null,
+      dap: input.doseDap ?? null, fluoro: input.fluoroSeconds ?? null,
+    });
+    await recordDose(tx, actor, {
+      source: "imaging",
+      sourceRef: study.id,
+      patientId: study.patientId,
+      deviceResourceId: study.deviceResourceId,
+      modality: studyType.modality,
+      procedureCode: study.studyTypeCode,
+      doseCtdivol: input.doseCtdivol ?? null,
+      doseDlp: input.doseDlp ?? null,
+      doseDap: input.doseDap ?? null,
+      fluoroSeconds: input.fluoroSeconds ?? null,
+      doseManual: input.doseManual ?? false,
+      /**
+       * A level exists but this examination carried no number of that QUANTITY — a CT with a DLP
+       * where the level is set on CTDIvol — is `null`, not `false`. There is nothing to compare,
+       * and a verdict of "under" would be a claim nobody measured.
+       */
+      drl: level === null || measured === null
+        ? null
+        : { quantity: level.quantity, value: level.value, over: measured > level.value },
+      occurredAt: acquiredAt,
+    });
   }
 
   await transition(tx, study.workflowInstanceId, "acquired", actor);

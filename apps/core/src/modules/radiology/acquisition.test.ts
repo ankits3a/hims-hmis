@@ -6,8 +6,8 @@ import {
 import { PCPNDT_PERMISSIONS } from "../../../test/helpers/pcpndt";
 import { ensureRole, mkUser } from "../../../test/helpers/opd";
 import {
-  events, imagingBillDecisions, imagingDefinitions, imagingStudies, orderItems, pcpndtFormF,
-  resources,
+  doseRegister, events, imagingBillDecisions, imagingDefinitions, imagingStudies, orderItems,
+  pcpndtFormF, resources,
 } from "../../kernel/db/schema";
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
@@ -636,5 +636,90 @@ describe("acquisition: the patient is on the table (18a T7)", () => {
     const study = await readyStudy("USG-ABDO", "usg");
     await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
     await expect(start(study.studyId)).resolves.toBeDefined();
+  });
+
+  /* ═════════ PLAN 18c T3 / D5 — THE DOSE REGISTER, WRITTEN IN THIS TRANSACTION ═════════ */
+
+  /** Publishes a DRL book the way the runbook does: draft, approve, activate — not an INSERT. */
+  const publishDrls = async (levels: unknown[]) => {
+    await db.insert(imagingDefinitions).values({
+      id: `drl-${String(seq)}-${String(Date.now())}`, kind: "dose_reference_levels", version: 1,
+      body: { levels }, status: "active", draftedBy: fx.radiologist.id,
+      publishedBy: fx.radiologist.id, publishedAt: NOW,
+    });
+  };
+
+  it("18c T3: an acquired ionising study lands ONE register row, with the comparison stored", async () => {
+    await publishDrls([{ study_type_code: "CT-HEAD", quantity: "dlp", value: 1000, source: "ICRP 135" }]);
+    const study = await readyStudy("CT-HEAD", "ct");
+    /** `stat` clears DD12a's money gate, which runs before everything this test is about. */
+    await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
+    await start(study.studyId);
+    await acquired(study.studyId, { imageSource: "pacs", doseDlp: 1200, doseCtdivol: 42 });
+
+    const rows = await db.select().from(doseRegister).where(eq(doseRegister.sourceRef, study.studyId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      source: "imaging", patientId: fx.patientId, modality: "ct", procedureCode: "CT-HEAD",
+      drlQuantity: "dlp", overDrl: true,
+    });
+    expect(rows[0]!.drlValue).toBe("1000.000");
+    expect(rows[0]!.deviceResourceId).toBe(fx.devices.ct);
+  });
+
+  /**
+   * The comparison is made against the quantity the LEVEL names. A study carrying a DLP where the
+   * level is set on CTDIvol has nothing to compare, and `null` is the honest answer — `false` would
+   * be a claim of compliance nobody measured.
+   */
+  it("18c T3: a level on a quantity the study did not carry stores NULL, not `under`", async () => {
+    await publishDrls([{ study_type_code: "CT-HEAD", quantity: "ctdivol", value: 60 }]);
+    const study = await readyStudy("CT-HEAD", "ct");
+    /** `stat` clears DD12a's money gate, which runs before everything this test is about. */
+    await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
+    await start(study.studyId);
+    await acquired(study.studyId, { imageSource: "pacs", doseDlp: 1200 });
+    const rows = await db.select().from(doseRegister).where(eq(doseRegister.sourceRef, study.studyId));
+    expect(rows[0]!.overDrl).toBeNull();
+    expect(rows[0]!.drlQuantity).toBeNull();
+  });
+
+  it("18c T3: with NO published DRL book at all the study still registers, uncompared", async () => {
+    const study = await readyStudy("XR-CHEST", "xray");
+    /** `stat` clears DD12a's money gate, which runs before everything this test is about. */
+    await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
+    await start(study.studyId);
+    await acquired(study.studyId, { imageSource: "no_pacs_images", doseDap: 1.4 });
+    const rows = await db.select().from(doseRegister).where(eq(doseRegister.sourceRef, study.studyId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.overDrl).toBeNull();
+  });
+
+  /**
+   * A study type's own level beats the modality fallback — a hospital that set a figure for
+   * `CT-HEAD` meant that one and not its generic CT number.
+   */
+  it("18c T3: the study type's level wins over the modality's", async () => {
+    await publishDrls([
+      { modality: "ct", quantity: "dlp", value: 2000 },
+      { study_type_code: "CT-HEAD", quantity: "dlp", value: 1000 },
+    ]);
+    const study = await readyStudy("CT-HEAD", "ct");
+    /** `stat` clears DD12a's money gate, which runs before everything this test is about. */
+    await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
+    await start(study.studyId);
+    await acquired(study.studyId, { imageSource: "pacs", doseDlp: 1500 });
+    const rows = await db.select().from(doseRegister).where(eq(doseRegister.sourceRef, study.studyId));
+    expect(rows[0]!.drlValue).toBe("1000.000");
+    expect(rows[0]!.overDrl).toBe(true);
+  });
+
+  /** An ultrasound has no dose. A register full of zeroes for USG would bury the CTs. */
+  it("18c T3: a NON-ionising study writes no register row at all", async () => {
+    const study = await readyStudy("USG-ABDO", "usg");
+    await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
+    await start(study.studyId);
+    await acquired(study.studyId, { imageSource: "no_pacs_images" });
+    expect(await db.select().from(doseRegister).where(eq(doseRegister.sourceRef, study.studyId))).toHaveLength(0);
   });
 });

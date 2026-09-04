@@ -1,8 +1,11 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { aerbErrorText, fetchAppointments, fetchLicenceGaps, fetchLicences, fetchQaRecords } from "../lib/aerb-api";
-import type { WireAppointment, WireLicence, WireLicenceGap, WireQaRecord } from "../lib/aerb-api";
+import {
+  DOSE_UNITS, aerbErrorText, fetchAppointments, fetchDoseRegister, fetchLicenceGaps, fetchLicences,
+  fetchQaRecords,
+} from "../lib/aerb-api";
+import type { WireAppointment, WireDoseRow, WireLicence, WireLicenceGap, WireQaRecord } from "../lib/aerb-api";
 
 /**
  * PLAN 18c T1 / D11 — **THE RADIATION-SAFETY REGISTER: one screen, the tabs an inspector asks for.**
@@ -15,13 +18,27 @@ import type { WireAppointment, WireLicence, WireLicenceGap, WireQaRecord } from 
  * which modalities AERB licences at all is a regulatory fact, and a client-side list of them would
  * be the copy that drifted the day somebody added a modality.
  *
- * The tabs Dose, Badges and Calendar arrive with T3, T4 and T5. They are declared here as disabled
+ * The tabs Badges and Calendar arrive with T4 and T5. They are declared here as disabled
  * rather than absent so that the screen's shape is the register's shape from the first commit, and
  * so a reader can see what is coming without reading the phase document.
  */
 const TABS = ["licences", "people", "qa", "dose", "badges", "calendar"] as const;
 type Tab = (typeof TABS)[number];
-const BUILT: readonly Tab[] = ["licences", "people", "qa"];
+const BUILT: readonly Tab[] = ["licences", "people", "qa", "dose"];
+
+/**
+ * The measured numbers, each with the unit `aerb/units.ts` names for it. 18b's close review found a
+ * DAP figure rendered with a unit the tree never declared; nothing here infers one, and a quantity
+ * with no number simply does not appear.
+ */
+function doseText(r: WireDoseRow): string {
+  const parts: string[] = [];
+  if (r.doseCtdivol !== null) parts.push(`CTDIvol ${r.doseCtdivol} ${DOSE_UNITS.ctdivol ?? ""}`);
+  if (r.doseDlp !== null) parts.push(`DLP ${r.doseDlp} ${DOSE_UNITS.dlp ?? ""}`);
+  if (r.doseDap !== null) parts.push(`DAP ${r.doseDap} ${DOSE_UNITS.dap ?? ""}`);
+  if (r.fluoroSeconds !== null) parts.push(`${String(r.fluoroSeconds)} ${DOSE_UNITS.fluoro_seconds ?? ""}`);
+  return parts.join(" · ");
+}
 
 function istToday(): string {
   const now = new Date();
@@ -50,6 +67,12 @@ export function RadiationSafety(): React.ReactElement {
     queryFn: fetchQaRecords,
     enabled: tab === "qa",
   });
+  const [overDrlOnly, setOverDrlOnly] = useState(false);
+  const doses = useQuery({
+    queryKey: ["aerb", "doses", overDrlOnly],
+    queryFn: () => fetchDoseRegister(overDrlOnly),
+    enabled: tab === "dose",
+  });
   const people = useQuery({
     queryKey: ["aerb", "persons"],
     queryFn: fetchAppointments,
@@ -59,6 +82,7 @@ export function RadiationSafety(): React.ReactElement {
   const licenceRows: WireLicence[] = licences.data?.rows ?? [];
   const gapRows: WireLicenceGap[] = gaps.data?.rows ?? [];
   const qaRows: WireQaRecord[] = qa.data?.rows ?? [];
+  const doseRows: WireDoseRow[] = doses.data?.rows ?? [];
   const peopleRows: WireAppointment[] = people.data?.rows ?? [];
   /** A machine sitting in `qa_blocked` is the state the QA tab exists to make impossible to miss. */
   const blockedNow = qaRows.filter((r) => r.deviceStatus === "qa_blocked");
@@ -198,6 +222,65 @@ export function RadiationSafety(): React.ReactElement {
                           {r.blockApplied
                             ? (r.releasedAt === null ? t("aerb.qa.blocked") : t("aerb.qa.released"))
                             : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+          </section>
+        )
+        : null}
+
+      {tab === "dose"
+        ? (
+          <section className="space-y-4">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                data-testid="aerb-over-drl-only"
+                checked={overDrlOnly}
+                onChange={(e) => { setOverDrlOnly(e.target.checked); }}
+              />
+              {t("aerb.dose.overDrlOnly")}
+            </label>
+
+            {doses.isError ? <p role="alert" className="text-red-600">{aerbErrorText(doses.error)}</p> : null}
+            {doses.isPending ? <p>{t("common.loading")}</p> : null}
+            {!doses.isPending && doseRows.length === 0
+              ? <p data-testid="aerb-dose-empty">{t("aerb.dose.empty")}</p>
+              : (
+                <table className="w-full text-sm" data-testid="aerb-dose">
+                  <thead>
+                    <tr className="text-left">
+                      <th>{t("aerb.dose.when")}</th>
+                      <th>{t("aerb.dose.patient")}</th>
+                      <th>{t("aerb.dose.exam")}</th>
+                      <th>{t("aerb.dose.dose")}</th>
+                      <th>{t("aerb.dose.drl")}</th>
+                      <th>{t("aerb.dose.verdict")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {doseRows.map((r) => (
+                      <tr key={r.id} data-testid={`aerb-dose-${r.id}`}>
+                        <td>{r.occurredAt.slice(0, 10)}</td>
+                        <td>{r.patientName} · {r.uhid}</td>
+                        <td>{r.procedureCode} ({r.modality}){r.deviceCode === null ? "" : ` · ${r.deviceCode}`}</td>
+                        <td>{doseText(r)}{r.doseManual ? ` · ${t("aerb.dose.manual")}` : ""}</td>
+                        <td>
+                          {r.drlValue === null
+                            ? "—"
+                            : `${r.drlValue} ${DOSE_UNITS[r.drlQuantity ?? ""] ?? ""}`}
+                        </td>
+                        {/*
+                          * THREE states, not two. `null` is "no level published" and must never
+                          * render as "within" — that would be a claim of compliance nobody measured.
+                          */}
+                        <td className={r.overDrl === true ? "text-red-700 font-semibold" : ""}>
+                          {r.overDrl === null
+                            ? t("aerb.dose.noLevel")
+                            : r.overDrl ? t("aerb.dose.over") : t("aerb.dose.under")}
                         </td>
                       </tr>
                     ))}

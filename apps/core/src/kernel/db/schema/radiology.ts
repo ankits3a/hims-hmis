@@ -99,7 +99,7 @@ export const IMAGING_GATE_KIND_VALUES = [
 ] as const;
 
 /** DD13 — the three governed definition kinds, and 18b T3's fourth: where the images are viewed. */
-export const IMAGING_DEFINITION_KIND_VALUES = ["study_types", "pregnancy_policy", "critical_categories", "pacs_settings"] as const;
+export const IMAGING_DEFINITION_KIND_VALUES = ["study_types", "pregnancy_policy", "critical_categories", "pacs_settings", "dose_reference_levels"] as const;
 
 /** DD15 — the report version chain's five states. `prelim` is O-11's UNVERIFIED draft. */
 export const IMAGING_REPORT_STATUSES = ["prelim", "draft", "signed", "amended", "superseded"] as const;
