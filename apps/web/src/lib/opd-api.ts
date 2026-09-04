@@ -90,6 +90,13 @@ export function putCounterFlow(body: Partial<WireCounterFlow>): Promise<WireOpdC
 export type WirePatientSummary = {
   requestedId: string; id: string; uhid: string; name: string | null; alias: string | null;
   restricted: boolean; administrativeGender: string; dob: string | null;
+  /**
+   * FD-25 — present ONLY on `GET /opd/appointments?needsRebooking=true&contact=true`, and null on a
+   * restricted row. Optional because it is absent from every other read of this shape: a display
+   * surface has never needed a contact number and still does not. See the server type for why this
+   * is a second narrow surface rather than a widening of `PatientSummary`.
+   */
+  phone?: string | null;
 };
 
 // ——— appointments and slots ———
@@ -370,8 +377,38 @@ export function listDoctors(): Promise<{ items: WireDoctor[] }> {
 export function listDoctorSchedules(doctorId: string): Promise<{ items: WireSchedule[] }> {
   return api("GET", `/opd/doctors/${doctorId}/schedules`);
 }
-export function listLeaves(doctorId: string): Promise<{ items: WireLeave[] }> {
-  return api("GET", `/opd/leaves?doctorId=${encodeURIComponent(doctorId)}`);
+/**
+ * FD-25 — `doctorId` IS NOW OPTIONAL, because the appointment seat's top bar asks a HOSPITAL-WIDE
+ * question: "is any doctor on leave this week?". The route has always accepted the absent case
+ * (`opd-masters.controller.ts` marks it optional); only this client hardcoded it, so the screen
+ * that needed the wider read could not make it. A client change, not a server one.
+ */
+export function listLeaves(
+  opts: { doctorId?: string; from?: string; to?: string; status?: string } = {},
+): Promise<{ items: WireLeave[] }> {
+  const params = new URLSearchParams();
+  if (opts.doctorId !== undefined && opts.doctorId !== "") params.set("doctorId", opts.doctorId);
+  if (opts.from !== undefined) params.set("from", opts.from);
+  if (opts.to !== undefined) params.set("to", opts.to);
+  if (opts.status !== undefined) params.set("status", opts.status);
+  const qs = params.toString();
+  return api("GET", `/opd/leaves${qs === "" ? "" : `?${qs}`}`);
+}
+
+/**
+ * FD-25 — THE REBOOKING RAIL'S READ, with the contact opt-in the rail exists for.
+ *
+ * `contact=true` is accepted by the server ONLY alongside `needsRebooking=true`, and it records one
+ * PHI-access row per number disclosed with the reason attached. That is deliberately narrower than
+ * putting a phone on `PatientSummary`, and deliberately cheaper than N× `GET /patients/:id`, which
+ * would write an audit row per row per poll and bury the real disclosures in its own noise.
+ *
+ * NOTE THE MISSING DATE BOUND: `listAppointments` supports only an exact `serviceDate`, so this
+ * returns every `needs_rebooking` row ever created, oldest first, capped at 500. Filter it with
+ * `rebookingToday` before rendering — see that function for why the raw list is the wrong list.
+ */
+export function listNeedsRebooking(withContact = false): Promise<{ items: WireAppointment[] }> {
+  return api("GET", `/opd/appointments?needsRebooking=true${withContact ? "&contact=true" : ""}`);
 }
 
 /**

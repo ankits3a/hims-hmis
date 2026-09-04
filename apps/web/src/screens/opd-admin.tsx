@@ -484,7 +484,7 @@ function SchedulesAndLeavesTab({
   });
   const leaves = useQuery({
     queryKey: ["opd", "leaves", doctorId],
-    queryFn: () => listLeaves(doctorId),
+    queryFn: () => listLeaves({ doctorId }),
     enabled: doctorId !== "",
     refetchInterval: POLL_MS,
   });

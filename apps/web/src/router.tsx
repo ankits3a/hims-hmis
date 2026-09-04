@@ -23,6 +23,7 @@ import { MyDay } from "./screens/my-day";
 import { StaffReports } from "./screens/staff-reports";
 import { DeskOne } from "./screens/desk-one/desk-one";
 import { Registration } from "./screens/registration";
+import { AppointmentSeat } from "./screens/appointment";
 import { CounterFigures } from "./screens/counter-figures";
 import { PatientDetail } from "./screens/patient-detail";
 import { MergeReview } from "./screens/merge-review";
@@ -113,6 +114,20 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
     authorised, and `shell-nav.test.tsx` asserts each appears exactly once.
   */
   { to: "/registration", label: "nav.registration", permission: "patients.register", group: "desk" },
+  /*
+    ═══ "Booking desk", NOT "Appointments" — FOUND BY LOOKING AT THE NAV ═══
+
+    The artboard's header says "Appointments", and on a standalone canvas that was right. In the
+    shell it put TWO ROWS READING "Appointments" side by side: this seat and `/opd/appointments`
+    below it, which is the supervisor's read-gated browse of anybody's book. A clerk holding both
+    grants saw the same word twice and had nothing to choose by.
+
+    That is FD-1's defect exactly — two names a person cannot tell apart, in a list whose whole job
+    is to say where things are. The seat is renamed rather than the book because the seat is the one
+    with a distinguishing verb: it BOOKS. The screen's own title moved with it, so the nav and the
+    heading agree.
+  */
+  { to: "/appointment", label: "nav.appointment", permission: "opd.appointments.manage", group: "desk" },
   { to: "/merge", label: "nav.merge", permission: "patients.merge", group: "patients" },
   { to: "/approvals", label: "nav.approvals", permission: "approvals.requests.read", group: "admin" },
   { to: "/opd/admin", label: "nav.opdAdmin", permission: "opd.masters.manage", group: "opd" },
@@ -582,6 +597,27 @@ const registrationRoute = createRoute({
   component: Registration,
 });
 
+/**
+ * ═══ FD-25 — `/appointment` IS BACK, ON THE *WRITE* GRANT ═══
+ *
+ * The third of FD-9's three deleted front-desk routes, and the last to return. Like
+ * `/registration` it is a SEAT rather than a second name for Desk One, and the permission is what
+ * makes that true: `opd.appointments.manage`, the WRITE, as against `/opd/appointments` which is
+ * gated on `.read` and is the supervisor's browse of anybody's book.
+ *
+ * The two are not duplicates. This one is organised around ONE PATIENT — who is this, when can they
+ * come, book it — and it carries the rebooking rail, which is the only surface in the product that
+ * answers "the doctor is away, who do I have to call?". That rail is the reason the route exists;
+ * everything else on it is available somewhere else.
+ *
+ * No `staticData.fullViewport`: one seat of three, inside the shell. See `registrationRoute` above.
+ */
+const appointmentRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/appointment",
+  component: AppointmentSeat,
+});
+
 const counterDeskRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/counter",
@@ -961,6 +997,10 @@ export const router = createRouter({
       // task's Files list — the S11 rule this repository has now applied to itself ten times. The
       // number there was MEASURED against the merged tree, never predicted from this arithmetic.
       registrationRoute,
+      // FD-25 — +1, `/appointment`: the last of FD-9's three deleted front-desk routes to come back,
+      // and the one carrying the rebooking rail. `caddyfile-parity.test.ts` pins the count and joins
+      // this task's Files list — MEASURED against the tree, never predicted from arithmetic.
+      appointmentRoute,
       vitalsBayRoute,
       formularyAdminRoute,
       // PLAN 14 T9 — 25 -> 28. `caddyfile-parity.test.ts` pins the count and joins this task's

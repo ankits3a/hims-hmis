@@ -55,6 +55,17 @@ export type PhiSurface =
    */
   | "orders.patient" | "lab.results" | "lab.report"
   /**
+   * FD-25 — A PHONE NUMBER HANDED TO A CLERK WHO HAS TO RING SOMEBODY.
+   *
+   * The appointment seat's rebooking rail answers "the doctor is away — who do I have to call?",
+   * which needs a number per row. `PatientSummary` deliberately carries no contact field, so this
+   * is an OPT-IN read (`getPatientSummaries(..., { withContact })`) and it gets its own surface
+   * rather than reusing `patient.detail`: reading a whole record because a clerk opened it, and
+   * pulling five phone numbers because a doctor went on leave, are different disclosures with
+   * different reasons — and the reason is the only thing this log is ever asked about.
+   */
+  | "patient.contact"
+  /**
    * 17d T5 / D6 — the doctor reading UNSIGNED numbers before the pathologist has verified them
    * (design board EdgeCases #18). Its own name for exactly the reason the sentence above gives
    * about `lab.results` and `lab.report`: "the prescriber saw a provisional value at 21:40" and

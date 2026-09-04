@@ -31,13 +31,28 @@ import { useEffect, useRef, useState } from "react";
 export type AgentLine = { at: string; text: string; kind: "did" | "ok" | "warn" | "err" };
 
 export function AgentDock(
-  { answer, log, onAsk, placeholder, idle }: {
+  { answer, log, onAsk, placeholder, idle, action }: {
     answer: string | null;
     log: AgentLine[];
     onAsk: (question: string) => void;
     placeholder: string;
     /** What the agent says before it has been asked anything — names what it can actually see. */
     idle: string;
+    /**
+     * ═══ FD-25 — THE ONE THING THE BAR MAY OFFER TO *DO*, AND WHY IT IS ONE ═══
+     *
+     * The appointment artboard draws a mint "Draft the calls" beside a ticker reading *"Dr Rao's
+     * Monday list is 5 people. Dr Iyer has 5 free slots that morning — shall I draft the calls?"*.
+     * A bar that can only describe is a bar a clerk reads once; the value is in the offer.
+     *
+     * SINGULAR, and that is the constraint rather than an omission. This bar has no model behind it
+     * and answers only from what is on the screen; a row of actions would be a menu pretending to
+     * be an agent. One offer, on the screen's own state, that the clerk may take or ignore.
+     *
+     * It is OPTIONAL: a screen with nothing to offer renders no button rather than a disabled one,
+     * because a permanently-dead control is the keycap-that-lies rule wearing a different hat.
+     */
+    action?: { label: string; onAct: () => void; busy?: boolean };
   },
 ): React.ReactElement {
   const [draft, setDraft] = useState("");
@@ -155,6 +170,18 @@ export function AgentDock(
           />
           <span className="kb dk">F2</span>
         </form>
+        {action === undefined ? null : (
+          <button
+            className="agdo"
+            type="button"
+            data-testid="agent-action"
+            disabled={action.busy === true}
+            onClick={action.onAct}
+            style={{ flexShrink: 0, opacity: action.busy === true ? 0.5 : 1 }}
+          >
+            {action.label}
+          </button>
+        )}
         <button
           className="mo"
           data-testid="agent-log-toggle"

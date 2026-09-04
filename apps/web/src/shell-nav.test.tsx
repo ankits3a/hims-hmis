@@ -113,14 +113,60 @@ it("offers only the screens the signed-in person holds a permission for", async 
  * So the invariant that survives is EXACTLY-ONCE-EACH, and it is the one that would actually catch
  * a regression: a duplicated row, or a row appearing under a permission its holder does not have.
  */
-it("FD-25: a clerk holding both grants is offered each seat exactly once", async () => {
-  renderShell(["opd.visits.open", "patients.register", "billing.invoice.issue"]);
+/**
+ * ═══ FD-25 — NO TWO NAV ROWS MAY READ THE SAME ═══
+ *
+ * FOUND BY LOOKING, not by this suite: `/appointment` and `/opd/appointments` both rendered the
+ * label "Appointments", one under DESK and one under OPD, a centimetre apart. Both rows were
+ * correct in their own file; the defect only exists in the relationship between them, which is why
+ * nothing failed.
+ *
+ * A nav is a list of PLACES. Two places a person cannot tell apart is FD-1's defect — the one that
+ * put the owner on the wrong counter and had them report the right screen as broken — and it will
+ * recur every time a screen is named after its noun instead of its job. So it is mechanical now:
+ * whatever a person holds, no two links they are offered may carry the same words.
+ */
+it("FD-25: no two nav rows a person can see read the same", async () => {
+  /* An owner-shaped grant list: the widest nav anybody gets, which is where collisions surface. */
+  renderShell([
+    "opd.visits.open", "patients.register", "opd.appointments.manage", "opd.appointments.read",
+    "patients.merge", "billing.invoice.issue", "opd.masters.manage", "opd.vitals.record",
+    "staff.reports.read", "approvals.requests.read",
+  ]);
+  /*
+    Waits on a row this test does NOT make a claim about. Anchoring the wait on "Booking desk" —
+    the label the first version of this guard was written to protect — made the test fail on the
+    WAIT rather than on the duplicate assertion when that label regressed, which is a proof of
+    nothing. A guard must fail on its own claim.
+  */
+  await waitFor(() => expect(screen.getByRole("link", { name: "Registration" })).toBeInTheDocument());
+  const labels = screen.getAllByRole("link").map((a) => a.textContent?.trim() ?? "");
+  const seen = new Map<string, number>();
+  for (const label of labels) seen.set(label, (seen.get(label) ?? 0) + 1);
+  const duplicated = [...seen.entries()].filter(([, n]) => n > 1).map(([label]) => label);
+  expect(duplicated, `these nav labels appear more than once, so a clerk cannot tell the places apart: ${duplicated.join(", ")}`).toEqual([]);
+});
+
+it("FD-25: a clerk holding all three seat grants is offered each seat exactly once", async () => {
+  /*
+    ALL THREE GRANTS, and the third one is the point of the fixture: `/appointment` rides
+    `opd.appointments.manage`, which is a DIFFERENT key from the other two. The first version of
+    this test asserted the appointment row while granting only the counter clerk's three, and it
+    failed — correctly. A row must appear for the grant that opens it and for no other, so a test
+    asserting a row must hold that row's key or it is asserting a privacy defect.
+  */
+  renderShell(["opd.visits.open", "patients.register", "opd.appointments.manage", "billing.invoice.issue"]);
   await waitFor(() => expect(screen.getByRole("link", { name: "Desk One" })).toBeInTheDocument());
   const hrefs = screen.getAllByRole("link").map((a) => a.getAttribute("href"));
   expect(hrefs.filter((h) => h === "/counter")).toHaveLength(1);
   expect(hrefs.filter((h) => h === "/registration")).toHaveLength(1);
-  /* Still deleted, still asserted — `/appointment` returns with its own screen, not before. */
-  expect(hrefs).not.toContain("/appointment");
+  /*
+    FD-25 — and `/appointment` too, now that its screen exists. THREE SEATS, EACH OFFERED ONCE, is
+    the invariant that survives FD-9's "only one front-desk row": that ruling was about three NAMES
+    for one job, and these are three screens for three staffing shapes. A duplicated row, or a row
+    offered to somebody who would 403 on arrival, still fails here.
+  */
+  expect(hrefs.filter((h) => h === "/appointment")).toHaveLength(1);
 });
 
 /**
@@ -229,6 +275,13 @@ it("07b T8: the nav is grouped, and a counter clerk's Desk group comes before th
   */
   expect(hrefs.indexOf("/registration")).toBeGreaterThanOrEqual(0);
   expect(hrefs.indexOf("/registration")).toBeLessThan(hrefs.indexOf("/merge"));
+  /*
+    FD-25 — `/registration` is asserted here and `/appointment` is NOT, and the difference is the
+    fixture rather than an oversight: this person holds `patients.register` but not
+    `opd.appointments.manage`, so the appointment row correctly does not appear for them. The claim
+    this test makes is about GROUP ORDER, and one desk row proves it. Widening the grant to force a
+    third row in would be changing the fixture to suit the assertion.
+  */
   expect(hrefs).not.toContain("/appointment");
 });
 

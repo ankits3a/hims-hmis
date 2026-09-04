@@ -61,7 +61,8 @@
     "pharmacyCounter": "Dispense counter",
     "pharmacyItems": "Pharmacy sale items",
     "radiationSafety": "Radiation safety",
-    "registration": "Registration"
+    "registration": "Registration",
+    "appointment": "Booking desk"
   },
   "palette": {
     "title": "Search",
@@ -1461,11 +1462,12 @@
     "gates": "Gates",
     "open": "Open cockpit",
     "publish": "Publish the list",
-    "published": "Published {{count}} case(s); {{ready}} ready.",
     "publishHint": "Publishing moves every booked case to `listed` and evaluates readiness at once.",
     "gateOpen": "open",
     "gateSatisfied": "satisfied",
-    "patient": "Patient"
+    "patient": "Patient",
+    "published_one": "Published {{count}} case; {{ready}} ready.",
+    "published_other": "Published {{count}} cases; {{ready}} ready."
   },
   "otBook": {
     "title": "Book a day-care case",
@@ -2110,14 +2112,15 @@
       "preview": "What they will receive",
       "collector": "Collected by",
       "print": "Print and hand over",
-      "held": "Held: ₹{{amount}} outstanding on {{count}} invoice(s).",
       "channel": "Hand over by",
       "channel_print": "Printed copy",
       "channel_in_person": "In person",
       "channel_whatsapp": "WhatsApp",
       "heldNoPreview": "The report is held. It is shown and printed once the bill is settled or a billing manager releases it.",
       "live": "live",
-      "offline": "offline"
+      "offline": "offline",
+      "held_one": "Held: ₹{{amount}} outstanding on {{count}} invoice.",
+      "held_other": "Held: ₹{{amount}} outstanding on {{count}} invoices."
     },
     "print": {
       "department": "Department of Laboratory Medicine",
@@ -2206,7 +2209,6 @@
       "results_one": "{{count}} result",
       "results_other": "{{count}} results",
       "signedBy": "signed {{when}}",
-      "heldLine": "Held: ₹{{amount}} outstanding on {{count}} invoice(s). The print lights the moment billing settles it.",
       "releaseHint": "If the patient cannot pay today, only the billing manager can release it — the dues stand.",
       "requestRelease": "Ask the billing manager to release",
       "releaseRequested": "Release requested — approval {{id}}. Enter it below when granted.",
@@ -2229,7 +2231,9 @@
       "channelsNote": "WhatsApp / SMS carry a values-free notice today; the counter is the door for the paper and for in-person-only tests.",
       "askElsewhere": "Your login cannot raise this request. The lab reception counter can, and a billing manager decides it in the approvals inbox; enter the granted approval id here.",
       "printPaper": "Print the paper",
-      "hindiCopy": "Hindi copy"
+      "hindiCopy": "Hindi copy",
+      "heldLine_one": "Held: ₹{{amount}} outstanding on {{count}} invoice. The print lights the moment billing settles it.",
+      "heldLine_other": "Held: ₹{{amount}} outstanding on {{count}} invoices. The print lights the moment billing settles it."
     }
   },
   "radiology": {
@@ -2266,7 +2270,6 @@
       "unknown": "No such study, or you may not see it.",
       "gates": "Safety gates",
       "ready": "Every gate is clear — this study is ready.",
-      "openGates": "{{count}} gate(s) still open.",
       "evidence": "Evidence (JSON)",
       "reason": "Reason",
       "satisfy": "Satisfy",
@@ -2285,7 +2288,9 @@
       "studyUidRecorded": "Study Instance UID recorded",
       "openImages": "Open images",
       "imagesNeverOpened": "Images not opened yet",
-      "imagesOpened": "Opened {{count}}×, last by {{by}}"
+      "imagesOpened": "Opened {{count}}×, last by {{by}}",
+      "openGates_one": "{{count}} gate still open.",
+      "openGates_other": "{{count}} gates still open."
     },
     "report": {
       "title": "Report",
@@ -2622,7 +2627,8 @@
       "title": "on their account",
       "outstanding": "outstanding",
       "clear": "Nothing carried forward.",
-      "carried": "Carried forward from {{count}} earlier bill(s) — it travels onto this one."
+      "carried_one": "Carried forward from {{count}} earlier bill — it travels onto this one.",
+      "carried_other": "Carried forward from {{count}} earlier bills — it travels onto this one."
     },
     "schemes": {
       "title": "Schemes",
@@ -2739,9 +2745,10 @@
       "firstVisit": "No history — first visit",
       "last": "Last chart {{date}}:",
       "carry": "Carried forward, locked until a reason: {{vitals}}",
-      "expectedFlags": "{{count}} expected flag(s) from history",
       "noHistory": "No history to show for this visit",
-      "sealed": "Confidential record — the band is known, the history is sealed at this desk"
+      "sealed": "Confidential record — the band is known, the history is sealed at this desk",
+      "expectedFlags_one": "{{count}} expected flag from history",
+      "expectedFlags_other": "{{count}} expected flags from history"
     },
     "band": {
       "infant": "Infant",
@@ -3046,7 +3053,105 @@
     "complaintHint": "In their own words — seene mein dard · bukhar · ghutne mein dard",
     "themDefault": "them",
     "bySuggestion": "suggested from the complaint",
-    "byKeyword": "matched on keywords"
+    "byKeyword": "matched on keywords",
+    "header": {
+      "title": "Booking desk",
+      "backToSearch": "Back to the search box",
+      "noLeave": "no leave declared this week",
+      "leaveDeclared_one": "{{count}} doctor on leave — bookings need moving",
+      "leaveDeclared_other": "{{count}} doctors on leave — bookings need moving"
+    },
+    "rail": {
+      "bookingFor": "Booking for",
+      "nobodyYet": "Nobody picked yet — search for the patient.",
+      "theirHistory": "Their history",
+      "noHistory": "No visits on file yet.",
+      "needRebooking": "Need rebooking",
+      "none": "none",
+      "nothingToMove": "Nothing needs moving. No declared leave has stranded a booking.",
+      "restricted": "restricted record",
+      "noPhone": "no number on file",
+      "patients_one": "{{count}} patient",
+      "patients_other": "{{count}} patients"
+    },
+    "history": {
+      "seen": "seen",
+      "missed": "missed",
+      "open": "open"
+    },
+    "book": {
+      "heading": "Book a slot",
+      "subtitle": "a booking is a promise about a time — the board only shows times that exist",
+      "doctor": "Doctor",
+      "day": "Day",
+      "room": "Room",
+      "noRoom": "set by the schedule",
+      "theSlots": "the day's slots",
+      "nothingHeld": "nothing held yet",
+      "held": "{{time}} held for this patient",
+      "pickFirst": "Pick a time first",
+      "confirm": "Book {{time}} with {{doctor}}",
+      "confirmMove": "Move {{who}} to {{time}}",
+      "stopMoving": "Stop moving",
+      "moving": "Moving {{who}} from {{was}} — pick the new time, or stop.",
+      "notHeldYet": "a slot is not held until it is booked",
+      "confirmsBy": "confirms by SMS · no token until they arrive"
+    },
+    "day": {
+      "heading": "The day's book",
+      "empty": "Nothing booked for this doctor on this day.",
+      "time": "Time",
+      "patient": "Patient",
+      "status": "Status",
+      "action": "Action",
+      "checkedIn": "{{count}} checked in",
+      "toArrive": "{{count}} to arrive",
+      "missed": "{{count}} missed",
+      "checkIn": "Check in",
+      "checkedInMark": "checked in",
+      "rebook": "Rebook",
+      "cancel": "Cancel",
+      "cancelReason": "why is it being cancelled?",
+      "cancelConfirm": "Cancel the booking",
+      "cancelAbandon": "Keep it"
+    },
+    "state": {
+      "seen": "seen",
+      "in_consult": "in consult",
+      "waiting": "waiting",
+      "booked": "booked",
+      "missed": "missed",
+      "cancelled": "cancelled",
+      "needs_rebooking": "needs rebooking"
+    },
+    "errors": {
+      "noPatient": "Pick the patient first — a booking needs somebody to be for."
+    },
+    "log": {
+      "booked": "Booked {{time}} with {{doctor}}",
+      "moved": "{{who}} moved from {{from}} to {{to}}",
+      "moving": "Moving {{who}} — pick a new time",
+      "checkedIn": "{{who}} checked in",
+      "cancelled": "Booking cancelled",
+      "call": "Call {{who}} on {{phone}} — was {{was}}"
+    },
+    "agent": {
+      "placeholder": "ask about the book, the free slots or the calls…",
+      "idleQuiet": "I read this screen only — the patient in hand, the doctor and day you have picked, the slots that exist, and today's book. The rail above is empty, so there is nothing I would chase.",
+      "draftCalls": "Draft the calls",
+      "nothingToMove": "Nothing needs moving today. — from the rebooking read.",
+      "noDoctor": "No doctor is picked, so there is no diary to read. — from this screen.",
+      "counts": "{{checkedIn}} checked in, {{toArrive}} still to arrive, {{missed}} missed. — from the day's book on this screen.",
+      "scope": "I answer from what is on this screen: the patient in hand, the doctor and day you picked, the slots, the day's book and the rebooking rail. Anything else I would be guessing at.",
+      "idleCalls_one": "{{count}} booking needs moving and there are {{free}} free slots on the day you are looking at.",
+      "idleCalls_other": "{{count}} bookings need moving and there are {{free}} free slots on the day you are looking at.",
+      "drafted_one": "{{count}} call drafted into the log below — name, number and the time they lost.",
+      "drafted_other": "{{count}} calls drafted into the log below — name, number and the time they lost.",
+      "toCall_one": "{{count}} booking needs a call. It is listed in the rail, with the number. — from the rebooking read.",
+      "toCall_other": "{{count}} bookings need a call. They are listed in the rail, with numbers. — from the rebooking read.",
+      "freeSlots_one": "{{count}} free slot for {{doctor}} on {{date}}. — from the slot board on this screen.",
+      "freeSlots_other": "{{count}} free slots for {{doctor}} on {{date}}. — from the slot board on this screen."
+    }
   },
   "aerb": {
     "title": "Radiation safety (AERB)",
@@ -3254,9 +3359,10 @@
       "confidentialBody": "The alias replaces the name on furniture — the strip, the board, the queue display — for everyone, including people who may read the real name. Sealing is revocable; a UHID is not, which is why status never lives in the number."
     },
     "duplicate": {
-      "heading": "{{count}} record(s) on file look like this person",
       "why": "This is a warning, not a refusal. A second real Asha Devi on a shared family phone must be registrable — a desk that cannot register her learns to invent phone numbers instead, and that is how a patient master rots.",
-      "override": "None of these is them — register anyway"
+      "override": "None of these is them — register anyway",
+      "heading_one": "{{count}} record on file looks like this person",
+      "heading_other": "{{count}} records on file look like this person"
     },
     "footer": {
       "registerAndOpen": "Register and open the visit",
@@ -3269,7 +3375,8 @@
       "registered": "Registered — UHID {{uhid}}",
       "seated": "Token {{token}} · {{doctor}}",
       "tookHit": "Took {{uhid}} from the search",
-      "duplicate": "Refused: {{count}} near match(es). The clerk decides."
+      "duplicate_one": "Refused: {{count}} near match. The clerk decides.",
+      "duplicate_other": "Refused: {{count}} near matches. The clerk decides."
     },
     "agent": {
       "placeholder": "ask about this patient, the routing or the form…",
@@ -3280,10 +3387,21 @@
       "guardianUnknownAge": "No age is entered yet. An unknown age is deliberately not treated as a minor — the server takes the same position, and demanding a guardian from every adult who cannot recall a birth year would be its own trap. — from the form.",
       "route": "{{doctor}}, on rule '{{rule}}', about {{minutes}} minutes' wait. — from the routing proposal on this screen.",
       "noRoute": "No doctor is proposed yet — answer either door above and the proposal appears with the rule that chose it. — from this screen.",
-      "duplicates": "The server refused this registration on {{count}} near match(es). They are listed above, and you may override. — from the last server answer.",
-      "noDuplicates": "The search is showing {{count}} row(s) and nothing has been refused as a duplicate. — from this screen.",
       "uhidPending": "No UHID yet — it is allocated when you register, and it is never previewed because the counter beside you may take the next number first. — from this screen.",
-      "uhidIssued": "{{uhid}}. — from the registration this screen just made."
+      "uhidIssued": "{{uhid}}. — from the registration this screen just made.",
+      "noDuplicates_one": "The search is showing {{count}} row and nothing has been refused as a duplicate. — from this screen.",
+      "noDuplicates_other": "The search is showing {{count}} rows and nothing has been refused as a duplicate. — from this screen.",
+      "duplicates_one": "The server refused this registration on {{count}} near match. It is listed above, and you may override. — from the last server answer.",
+      "duplicates_other": "The server refused this registration on {{count}} near matches. They are listed above, and you may override. — from the last server answer."
     }
+  },
+  "slotBoard": {
+    "free": "free",
+    "taken": "taken",
+    "yours": "yours",
+    "past": "already gone",
+    "reading": "reading the diary…",
+    "noSession": "No session that day — this doctor is not sitting, so there is nothing to book. Try another day or another doctor.",
+    "dayFull": "Every slot that day is taken. The times below show who has them — try another day."
   }
 }

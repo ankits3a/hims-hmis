@@ -123,6 +123,44 @@ function resolves(key: string): boolean {
   return typeof node === "string";
 }
 
+/**
+ * ═══ FD-25 — "1 patient(s)" IS NOT COPY A HOSPITAL SHIPS ═══
+ *
+ * FOUND BY LOOKING, on a screenshot reading "1 doctor(s) on leave — bookings need moving" and
+ * "1 patient(s)". The assertions passed: `toHaveTextContent("1 patient")` is satisfied by
+ * "1 patient(s)", so the suite could not tell the difference and neither could the parity test.
+ *
+ * i18next has real plurals — `key_one` / `key_other` — and this repository already uses them in
+ * eleven places. The parenthetical is what a developer writes when they are thinking about the
+ * string and not about the person reading it, and once one ships the next one is easier.
+ *
+ * So the rule becomes mechanical: a value carrying `{{count}}` must be a plural form. That is the
+ * whole check, and it is cheap because i18next's own naming makes it decidable.
+ */
+function leaves(obj: unknown, path: string[] = [], out: [string, string][] = []): [string, string][] {
+  if (typeof obj === "string") { out.push([path.join("."), obj]); return out; }
+  if (typeof obj !== "object" || obj === null) return out;
+  for (const [k, v] of Object.entries(obj)) leaves(v, [...path, k], out);
+  return out;
+}
+
+describe("counted strings use i18next plurals, not a parenthetical", () => {
+  /*
+    ONLY THE PARENTHETICAL, AND THAT IS DELIBERATE. A first version also required every `{{count}}`
+    string to BE a plural form, and it fired on twenty-three keys of which most were correct —
+    "{{count}} checked in", "{{count}} ahead", "bench {{count}}" have no noun to inflect and read
+    the same at one and at five. A guard with that many false positives is a guard somebody deletes,
+    which is the rule this file already states about plurals and comments.
+  */
+  it("no string interpolating {{count}} spells its plural as (s)", () => {
+    const offenders = leaves(en)
+      .filter(([, value]) => value.includes("{{count}}"))
+      .filter(([, value]) => /\(s\)|\(es\)/.test(value));
+    expect(offenders, `these say "(s)" where i18next has _one/_other:\n${offenders.map(([k, v]) => `${k}  ${v}`).join("\n")}\n`).toEqual([]);
+  });
+
+});
+
 describe("every t(\"ns.key\") written in the web source resolves in en.json", () => {
   const files = sourceFiles(SRC);
 
