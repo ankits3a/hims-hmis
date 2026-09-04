@@ -259,6 +259,19 @@ told which batch and which date (`batch_expired`) rather than "cannot cover 20".
 - Tested where the guard lives (`ledger.test.ts` A10b) as well as at the counter: the batch expiring
   TODAY is picked and the same batch is gone the next day.
 
+**C5 — MAJOR, and C4's own fix created it: the counter promised stock the pick would refuse.**
+Excluding expired batches from `fefoPick` left three other places summing RAW balances for the
+`available` figure — the line view, the substitution dropdown, and the sentence inside the
+`short_stock` refusal. The screen would read "190 available", the pharmacist would ask for twenty
+and be told there were none. That is doc 16 §5's interview question 12 — *"what would make you stop
+trusting the system's stock number?"* — answered by the software itself.
+
+Fixed by REMOVING the asymmetry rather than patching the three sites: the predicate now lives in one
+private `sellableBatchRows`, read by both `fefoPick` (what to hand over) and a new exported
+`availableQty` (what to tell the person handing it over). Writing the clause out four times would
+have rebuilt exactly the trap C4 came from. **R4** (the counter back to raw balances) — expected 140,
+received 190; `1 failed / 10 passed` → 11 passed.
+
 **What this says about the first pass.** The contract pass reads the plan's clauses against the
 code, and it found three defects that way. This one was NOT in D1–D10 or R-1..R-5 — the plan never
 wrote down "do not dispense expired stock", because nobody thinks to write it down. It surfaced only

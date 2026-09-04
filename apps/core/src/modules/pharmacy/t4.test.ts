@@ -274,4 +274,24 @@ describe("the dispense counter — pick, bill, hand over (16c T4)", () => {
       .rejects.toThrow(expect.objectContaining({ code: "short_stock" }));
     expect((await db.select().from(stockBalances)).every((b) => b.qtyReserved === 0)).toBe(true);
   });
+  /**
+   * ═══ THE NUMBER ON THE SCREEN IS THE NUMBER THE PICK WILL HONOUR ═══
+   *
+   * Excluding expired stock from `fefoPick` created a second, quieter defect: the counter's
+   * `available` was a raw sum of balances, so it went on counting batches the pick now refuses. A
+   * pharmacist would read "190 available", ask for twenty and be told there are none — which is
+   * doc 16 §5's interview question 12 ("what would make you stop trusting the system's stock
+   * number?") answered by the software itself. Both now read `availableQty`.
+   */
+  it("the counter's available EXCLUDES expired stock, so the figure and the pick agree", async () => {
+    await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "CR-DEAD", expiryDate: "2026-08-01", qtyBase: 50, mrpPaise: 12000 });
+    const v = await verified([line({ drug: "Crocin 500", medicineId: fx.med.crocin })], [20]);
+    // 100 late + 40 early are sellable; the 50 expired are not counted, and 190 would be the old sum
+    expect(v.lines[0]!.available).toBe(140);
+
+    // and after the pick reserves twenty, the figure drops by exactly twenty — reserved is still
+    // subtracted, which is the half of the definition that was always right
+    const p = await pickDispense(db, fx.pharmacist.actor, fx.decls, v.id, {}, MON2);
+    expect(p.lines[0]!.available).toBe(120);
+  });
 });
