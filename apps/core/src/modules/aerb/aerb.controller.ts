@@ -320,8 +320,11 @@ export class AerbController {
   @Get("persons")
   @RequirePermission("aerb.registers.read", "hospital")
   async persons(@Query("onDate") onDate?: string): Promise<unknown> {
+    /** CLOSE REVIEW — the one date parameter in this controller that was trusted. `?onDate=yesterday`
+     *  reached Postgres as a `date` cast and came back a 500. */
+    const asOf = onDate === undefined ? undefined : parsed(isoDateSchema, onDate);
     try {
-      return { rows: await appointments(this.db, onDate ? { onDate } : { includeEnded: true }) };
+      return { rows: await appointments(this.db, asOf === undefined ? { includeEnded: true } : { onDate: asOf }) };
     } catch (e) { toHttp(e); }
   }
 

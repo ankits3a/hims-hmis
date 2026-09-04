@@ -148,6 +148,42 @@ describe("the QA register and the qa_blocked lockout (18c T2)", () => {
     expect(await deviceStatus()).toBe("in_use");
   });
 
+  /* ═══ CLOSE REVIEW, CRITICAL — A PASS CANNOT BE OLDER THAN THE FAILURE IT WOULD CLEAR ═══ */
+
+  /**
+   * The register exists so an inspector can be shown the QA history, so back-entering old
+   * certificates is the ordinary act — and it released a machine that had failed last week.
+   */
+  it("back-entering LAST YEAR's certificate does not release a machine that failed last week", async () => {
+    await record({ result: "fail", performedOn: "2026-06-15" });
+    expect(await deviceStatus()).toBe("qa_blocked");
+
+    await expect(record({ result: "pass", performedOn: "2025-06-10", nextDueOn: "2026-06-10" }))
+      .rejects.toMatchObject({ code: "stale_qa_pass", detail: { blockedOn: "2026-06-15" } });
+
+    /** The machine is still stopped AND the stale record was not written. */
+    expect(await deviceStatus()).toBe("qa_blocked");
+    expect(await db.select().from(qaRecords)).toHaveLength(1);
+  });
+
+  it("a pass on the SAME day as the failure releases — a machine re-tested that afternoon", async () => {
+    await record({ result: "fail", performedOn: "2026-06-15" });
+    await expect(record({ result: "pass", performedOn: "2026-06-15" })).resolves.toMatchObject({ blocked: false });
+    expect(await deviceStatus()).toBe("available");
+  });
+
+  it("history entered on a machine that is NOT blocked records freely, whatever its date", async () => {
+    await expect(record({ result: "pass", performedOn: "2019-04-01", nextDueOn: "2020-04-01" }))
+      .resolves.toMatchObject({ blocked: false, releasedRecordId: null });
+    expect(await deviceStatus()).toBe("available");
+  });
+
+  /** F52's rule: nothing bounded `performedOn` above, so a typo released on a test not yet done. */
+  it("refuses a test performed in the future", async () => {
+    await expect(record({ result: "pass", performedOn: "2099-01-01", nextDueOn: "2099-06-01" }))
+      .rejects.toMatchObject({ code: "invalid_validity" });
+  });
+
   /* ═════════════ THE REST OF THE REGISTER'S RULES ═════════════ */
 
   it("refuses a next-due date that falls before the test was performed", async () => {

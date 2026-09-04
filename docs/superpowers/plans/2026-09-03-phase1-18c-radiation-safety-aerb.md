@@ -345,3 +345,101 @@ type"*. Restored; `diff -q` proved identical.
 | T5 | `src/modules/aerb` + `test/` ENTIRE + `src/modules/radiology` | **78 suites / 768 tests, exit 0**; tsc 0, lint 0 errors |
 | T5 (web) | full `@hmis/web` suite | **81 files / 669 tests, exit 0** |
 | the walk | `test/radiology.e2e.test.ts` | 5 tests, exit 0 — **THE AERB WALK** is the fifth |
+
+### 8.5 Close review — pass 1 (three FRESH reviewers, read-only, disjoint areas)
+**4 CRITICAL · 16 MAJOR · 20 MINOR. Every finding verified against the code before it was fixed.**
+Areas: A the licence + QA registers and their consumers · B the dose register, the DRL and PHI ·
+C the badges, the calendar, the routes and the screen. **Not one of the four CRITICALs was visible
+to the suite** — 31/31, 13/13 and 44/44 were green through all of them, and two were pinned BY
+tests as the expected behaviour.
+
+**CRITICAL 1 — a QA `pass` released a blocked machine regardless of when it was performed.**
+The release condition was `result === 'pass' && status === 'qa_blocked'` and nothing else.
+`performedOn` was never compared to the failure it was closing out, so **back-entering the historical
+QA book for an inspector — the ordinary act this register exists to support — released a CT that had
+failed last week, on a certificate from last year**, and stamped the failure row as cleared by it. A
+QA pass is the only exit from `qa_blocked` in the tree, so the release condition IS the control, and
+it had no date in it. Fixed: a pass older than the open failure is refused `stale_qa_pass` and
+writes nothing; `performedOn` is bounded by the server's IST day (F52's rule, which this file was
+not following). The suite could not see it — every release fixture passed a LATER date.
+
+**CRITICAL 2 — the badge cumulative was summed PER BADGE, not per WORKER.**
+`aerb_tld_badges_user_active_ux` is a PARTIAL index, so one person legitimately owns many badge rows
+over time. A radiographer who read 16 and 12 mSv, lost the badge, was re-issued and read 6 more has
+**34 mSv against a 30 mSv statutory ceiling** — and the register showed two green rows, 28 and 6,
+neither over the limit, with no flag anywhere. The five-year leg was worse: nobody keeps one physical
+badge for five years, so 100 mSv was structurally unreachable. The suite performed the exact
+close-then-reissue one test over, and its own title said *"per badge"*. Fixed: every cumulative is
+the worker's, across every badge they have ever worn, and the N+1 §8.7 declared is gone with it.
+
+**CRITICAL 3 — a late report could never put its own year over the limit.**
+The annual window was `periodEnd` inside the year of *today*. `recordBadgeRead`'s own docstring says
+a TLD report arrives weeks after the period it describes — so a Q4 reading entered in February has
+`periodEnd` in LAST year, was excluded from this year, and last year was never recomputed. **A year
+that went over the ceiling was over it at no instant the system could report.** Fixed: every
+calendar year present in a worker's readings is summed and the worst one is carried, whenever its
+reports arrived; the screen names that year.
+
+**CRITICAL 4 — the dose register disclosed a confidential patient's legal name.**
+It selected `patients.name` raw. Every other patient-bearing surface in this department renders
+through `displayName`, so a VIP, a staff member or a police case showed their ALIAS on the worklist
+and their legal name and UHID on this register — to every holder of `aerb.doses.read`, which is
+every radiographer, none of whom holds `patients.confidential.read`. The disclosure was total, not
+partial, and `dose.test.ts` pinned it as intended. Fixed: `displayName` with the reader's clearance,
+both directions pinned.
+
+**MAJOR, fixed** — `AerbError` was in no HTTP mapper, so `device_not_licensed` reached the console
+as a bare **500** (the mapper's own header says NOT ONE OF THESE IS A 500; eighth family added) ·
+**the register could not record a renewal at all**: `licence_no` was globally unique so a
+same-numbered renewal was a 500, and a differently-numbered one could not be filed until the old row
+was dead — which stops the machine for the rest of December, the exact failure D4 argues against
+(fixed: partial unique + `supersedesLicenceId`, both rows in one transaction) · `drlFor` picked a
+level by ARRAY ORDER, so the commonest book (CTDIvol *and* DLP for one examination) gave a false
+`null` one way round and a false `under` the other (fixed: chosen from what was measured, strictest
+wins) · the dose register was **merge-blind** — a merged patient's entire prior history vanished
+from the nudge whose purpose is O4's six-CTs patient, and the PHI row was filed under a
+non-canonical id · its date range was evaluated in **UTC** against IST examinations, so a 02:15 CT
+fell out of its own month (18b's CRITICAL, in a new place) · the calendar's `next_due_on is not
+null` filter ran BEFORE the latest-per-group selection, resurrecting a superseded record so a machine
+showed **overdue for a test it had a fortnight ago** · every tab printed its all-clear sentence when
+the fetch FAILED (`isPending` is false on error) — a compliance screen telling an RSO the hospital is
+clean on the strength of a 403 · the inspector's print fired before the widened query resolved, so
+the preview captured "Loading…" and an empty table · three raw constraint violations reached the RSO
+as 500s, two of them pinned as expected · `/aerb/persons` was the one route trusting its date ·
+the badge READINGS were shipped over the wire and rendered nowhere, so a flagged reading vanished the
+moment a later normal one arrived · `istToday()` on the screen returned the **UTC** day on an IST
+browser (`+330 + getTimezoneOffset()` cancels), so the night radiographer's gap list was a day stale.
+
+**MAJOR, NOT fixed and now declared (§8.8)** — **there is no write surface in the web app at all.**
+Every `aerb.registers.manage` route is reachable only by hand-rolled HTTP; §5 T1 said "the Licences
+tab lists AND FILES" and it does not. The runbook carries the calls, so a go-live is performable —
+but the plan over-claimed and this is the phase's largest open item.
+
+**MINOR, fixed** — the block CHECK said "not a pass" where it meant "a fail" · the MWL licence gate
+failed OPEN on a study type absent from the active book · neither `fileLicence` nor `recordQa`
+checked the resource's KIND, so a bed could be licensed and render in the inspector's file as a
+machine · the gap list dropped a device whose modality was missing or mis-cased — **the machine
+nobody finished configuring is the one most likely to be missing its paper** · `2026-02-31` passed
+the shape check and died at the INSERT · the concurrent-file race was a 500 where `errors.ts`
+promises a 409 · a PHI row was written for a patient with no register rows · `setUTCMonth` rolled
+a short month forward and shortened the window · the cumulative nudge computed DAP and fluoroscopy
+totals and printed a dash · same-day QA ties broke on physical row order · two docstrings described
+behaviour the code did not have.
+
+**MINOR, recorded and not taken** — `appointedPerson` is dead code and its unique index admits two
+users in one role · a device leaving `qa_blocked` by a route Plan 29 has not built yet would orphan
+its failure row · `recordDose` validates its enums and not its numbers (a 500 for a future source) ·
+`FIVE_YEAR_AVERAGE_LIMIT_MSV` is shipped and rendered nowhere · a reading may overlap another's
+period if the endpoints differ · the tab list has no `tabpanel` roles.
+
+### 8.6 Evidence — after pass 1's remediation
+| batch | counts |
+|---|---|
+| `src/modules/aerb` + `test/` ENTIRE + `src/modules/radiology`, on freshly created databases | **78 suites / 790 tests, exit 0** |
+| full `@hmis/web` | **81 files / 673 tests, exit 0** |
+| static | tsc 0, lint 0 errors |
+
+**A lane-wide note:** the full web run failed once on `vitals-bay-stories.test.tsx` (5,017 ms) and
+passed alone at 2,665 ms and on the very next full run. That suite is the front-desk lane's and this
+lane touched nothing it reads — a wall-clock flake on a loaded box, the shape this repo has recorded
+three times. Re-run before searching your own diff.

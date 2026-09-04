@@ -94,8 +94,16 @@ export const aerbLicences = pgTable(
      */
     deviceResourceId: text("device_resource_id").notNull().references(() => resources.id),
     licenceType: text("licence_type").notNull(),
-    /** As printed on the document. Unique across the hospital: two machines cannot share one. */
-    licenceNo: text("licence_no").notNull().unique(),
+    /**
+     * As printed on the document.
+     *
+     * CLOSE REVIEW — this was `.unique()` across EVERY row, surrendered ones included, and eLORA
+     * renewals routinely keep the number. So the ordinary act of renewing a CT's licence —
+     * surrender the old row, file the new one — hit the constraint and came back a 500, and the
+     * register had no route that could record it at all. The rule that was meant is *two machines
+     * cannot share a live number*, which is a partial index below.
+     */
+    licenceNo: text("licence_no").notNull(),
     /** The eLORA portal's own reference for the application/consent. */
     eloraRef: text("elora_ref"),
     /** Type approval of the equipment model, and the approval of the room's shielding layout. */
@@ -124,6 +132,10 @@ export const aerbLicences = pgTable(
      */
     uniqueIndex("aerb_licences_device_active_ux")
       .on(t.deviceResourceId)
+      .where(sql`${t.status} = 'active'`),
+    /** Two machines cannot hold the same live licence number. A surrendered row may reuse it. */
+    uniqueIndex("aerb_licences_no_active_ux")
+      .on(t.licenceNo)
       .where(sql`${t.status} = 'active'`),
     /** The calendar's query: what expires, and when. */
     index("aerb_licences_status_validity_idx").on(t.status, t.validTo),
@@ -252,10 +264,17 @@ export const qaRecords = pgTable(
       "aerb_qa_records_release_ck",
       sql`(${t.releasedByRecordId} is null) = (${t.releasedAt} is null)`,
     ),
-    /** Only a FAIL can have applied a block. A `pass` row claiming one is a lie about the machine. */
+    /**
+     * Only a FAIL can have applied a block. A `pass` row claiming one is a lie about the machine.
+     *
+     * CLOSE REVIEW — this was `result <> 'pass'`, which is "not a pass" and not "a fail": it
+     * admitted a `conditional` row claiming a block. `recordQa` never writes that combination, but
+     * the constraint is the half that is supposed to hold if the writer is ever weakened, which is
+     * the reason the dose register's own index gives for itself.
+     */
     check(
       "aerb_qa_records_block_ck",
-      sql`${t.blockApplied} = false or ${t.result} <> 'pass'`,
+      sql`${t.blockApplied} = false or ${t.result} = 'fail'`,
     ),
   ],
 );

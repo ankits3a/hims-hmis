@@ -701,12 +701,14 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     const book = await get("/aerb/badges", rso.token);
     expect(book.status).toBe(200);
     const badgeBody = book.body as {
-      rows: { badgeNo: string; ytdMsv: string; lastInvestigation: boolean | null }[];
+      rows: { badgeNo: string; workerYtdMsv: string; worstYear: string | null; lastInvestigation: boolean | null }[];
       limits: { annualMsv: number };
     };
     const mine = badgeBody.rows.find((r) => r.badgeNo === "TLD-E2E-001");
     expect(mine!.lastInvestigation).toBe(true);
-    expect(Number(mine!.ytdMsv)).toBeCloseTo(4.2, 3);
+    /** Close review — the cumulative is the WORKER's, across every badge they have ever worn. */
+    expect(Number(mine!.workerYtdMsv)).toBeCloseTo(4.2, 3);
+    expect(mine!.worstYear).toBe("2026");
     /** The screen never states a limit the server did not send. */
     expect(badgeBody.limits.annualMsv).toBe(30);
 

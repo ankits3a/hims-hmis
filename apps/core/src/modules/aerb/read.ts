@@ -159,6 +159,13 @@ export async function appointments(
  */
 export const AERB_LICENSABLE_MODALITIES: readonly string[] = ["xray", "ct", "mammography", "fluoroscopy", "dexa"];
 
+/**
+ * The modalities AERB does NOT licence, because they emit no ionising radiation. This is the list
+ * the gap check actually uses (see `unlicensedDevices`): everything else — including a device whose
+ * modality attribute is missing, mis-cased or new — is something that must be accounted for.
+ */
+export const AERB_UNLICENSABLE_MODALITIES: readonly string[] = ["usg", "ultrasound", "mri"];
+
 export async function unlicensedDevices(
   db: Db, onDate: string,
 ): Promise<{ deviceResourceId: string; code: string; name: string; modality: string }[]> {
@@ -182,6 +189,20 @@ export async function unlicensedDevices(
     .where(and(eq(resources.kind, "device"), sql`${resources.status} <> 'retired'`))
     .orderBy(asc(resources.code));
 
+  /**
+   * ═══ CLOSE REVIEW — THE MACHINE NOBODY FINISHED CONFIGURING WAS THE ONE THIS COULD NOT SHOW ═══
+   *
+   * The filter used to be `AERB_LICENSABLE_MODALITIES.includes(modality)`, with `modality` falling
+   * back to `""` when the attribute was missing or not a string. So a `device` with no modality at
+   * all, or with `"CT"` where the vocabulary says `"ct"`, was dropped from the gap list entirely —
+   * while `startAcquisition` still refused studies on it, because that gate reads the STUDY TYPE's
+   * `ionising` and never the device's modality. The register's negative space could not show the
+   * machine most likely to be missing its paper.
+   *
+   * An unrecognised modality is now INCLUDED, which is the fail-closed direction for a list whose
+   * whole job is "what cannot be accounted for". The two exclusions are the ones AERB genuinely
+   * does not licence, named rather than derived: ultrasound and MRI emit no ionising radiation.
+   */
   return rows
     .filter((r) => r.licenceId === null)
     .map((r) => ({
@@ -190,5 +211,5 @@ export async function unlicensedDevices(
       name: r.name,
       modality: typeof r.attributes?.modality === "string" ? r.attributes.modality : "",
     }))
-    .filter((r) => AERB_LICENSABLE_MODALITIES.includes(r.modality));
+    .filter((r) => !AERB_UNLICENSABLE_MODALITIES.includes(r.modality));
 }

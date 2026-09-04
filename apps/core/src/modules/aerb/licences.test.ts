@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { ensureRole, mkUser } from "../../../test/helpers/opd";
@@ -115,6 +115,73 @@ describe("the AERB licence register (18c T1)", () => {
     await file(ct, "2026-01-01", "2026-12-31");
     await expect(file(ct, "2027-01-01", "2027-12-31", "AERB/CT/2027/1"))
       .rejects.toMatchObject({ code: "licence_already_active" });
+  });
+
+  /**
+   * CLOSE REVIEW — the renewal path, and without it the register had none.
+   *
+   * "Retire the old row first" meant the 2027 certificate, which arrives in November, could not be
+   * entered until the machine was already stopped. Naming the outgoing licence moves both rows in
+   * one transaction, so the certificate is entered the day it arrives and the CT never goes dark.
+   */
+  it("a renewal supersedes the outgoing licence in ONE transaction, and the machine never goes dark", async () => {
+    const { licenceId } = await file(ct, "2026-01-01", "2026-12-31");
+    expect(await activeLicenceFor(db, ct, "2026-11-20")).not.toBeNull();
+
+    /** November: the 2027 certificate arrives and is filed against the live one. */
+    await withTx(db, (tx) => fileLicence(tx, rso, {
+      deviceResourceId: ct, licenceType: "licence", licenceNo: "AERB/CT/2027/1",
+      validFrom: "2027-01-01", validTo: "2027-12-31", supersedesLicenceId: licenceId,
+    }));
+
+    const rows = await db.select().from(aerbLicences).where(eq(aerbLicences.deviceResourceId, ct));
+    expect(rows).toHaveLength(2);
+    expect(rows.filter((r) => r.status === "active")).toHaveLength(1);
+    expect(rows.find((r) => r.status === "active")!.licenceNo).toBe("AERB/CT/2027/1");
+    /** The outgoing row is surrendered and says what superseded it. */
+    const gone = rows.find((r) => r.status === "surrendered")!;
+    expect(gone.decommissionRef).toBe("AERB/CT/2027/1");
+    expect(gone.decommissionedAt).not.toBeNull();
+  });
+
+  /** eLORA renewals routinely keep the number; the global unique made that a 500. */
+  it("a renewal may KEEP the licence number", async () => {
+    const { licenceId } = await file(ct, "2026-01-01", "2026-12-31", "AERB/CT/SAME");
+    await expect(withTx(db, (tx) => fileLicence(tx, rso, {
+      deviceResourceId: ct, licenceType: "licence", licenceNo: "AERB/CT/SAME",
+      validFrom: "2027-01-01", validTo: "2027-12-31", supersedesLicenceId: licenceId,
+    }))).resolves.toMatchObject({ licenceId: expect.any(String) });
+    const live = await db.select().from(aerbLicences)
+      .where(and(eq(aerbLicences.deviceResourceId, ct), eq(aerbLicences.status, "active")));
+    expect(live).toHaveLength(1);
+    expect(live[0]!.validTo).toBe("2027-12-31");
+  });
+
+  it("naming a licence that is not the device's active one is refused", async () => {
+    await file(ct, "2026-01-01", "2026-12-31");
+    await expect(withTx(db, (tx) => fileLicence(tx, rso, {
+      deviceResourceId: ct, licenceType: "licence", licenceNo: "AERB/CT/2027/1",
+      validFrom: "2027-01-01", validTo: "2027-12-31", supersedesLicenceId: "01NOTALICENCE00000000000",
+    }))).rejects.toMatchObject({ code: "licence_already_active" });
+  });
+
+  /** An AERB licence names a MACHINE; a bed's resource id used to file one and render as licensed. */
+  it("refuses a licence against a resource that is not a device", async () => {
+    const bed = newId();
+    await db.insert(resources).values({
+      id: bed, kind: "bed", code: "B-1", name: "Bed 1", status: "available",
+      attributes: {}, createdBy: "t", updatedBy: "t",
+    });
+    await expect(withTx(db, (tx) => fileLicence(tx, rso, {
+      deviceResourceId: bed, licenceType: "licence", licenceNo: "AERB/BED/1",
+      validFrom: "2026-01-01", validTo: "2026-12-31",
+    }))).rejects.toMatchObject({ code: "unknown_licence", detail: { kind: "bed" } });
+  });
+
+  /** `2026-02-31` passed the regex and the string compare, and died at the INSERT as a 500. */
+  it("refuses a date that is well-formed but not a real day", async () => {
+    await expect(file(ct, "2026-02-31", "2026-12-31"))
+      .rejects.toMatchObject({ code: "invalid_validity" });
   });
 
   it("a renewal filed after the old row is surrendered leaves exactly one active licence", async () => {
@@ -254,6 +321,25 @@ describe("the AERB licence register (18c T1)", () => {
     /** And a lapsed licence puts the machine straight back into the gap. */
     expect((await unlicensedDevices(db, "2027-06-15")).map((g) => g.code)).toEqual(["CT-1"]);
     expect(usg).toBeDefined();
+  });
+
+  /**
+   * CLOSE REVIEW — the gap list used to filter to a KNOWN licensable modality, so a device with no
+   * modality attribute, or with `"CT"` where the vocabulary says `"ct"`, was dropped entirely. The
+   * machine nobody finished configuring is the one most likely to be missing its paper, and it was
+   * the one the negative-space row could not show.
+   */
+  it("the gap list names a machine whose modality is missing or mis-cased", async () => {
+    await mkDevice("DR-1", "");
+    await mkDevice("MMG-1", "CT");
+    const gaps = await unlicensedDevices(db, "2026-06-15");
+    expect(gaps.map((g) => g.code).sort()).toEqual(["CT-1", "DR-1", "MMG-1"]);
+  });
+
+  it("and still never names an ultrasound or an MRI — AERB licences neither", async () => {
+    await mkDevice("MRI-1", "mri");
+    await file(ct, "2026-01-01", "2026-12-31");
+    expect(await unlicensedDevices(db, "2026-06-15")).toHaveLength(0);
   });
 
   it("appointments() lists who is in post on a day", async () => {

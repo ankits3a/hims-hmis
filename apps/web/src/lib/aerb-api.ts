@@ -147,8 +147,16 @@ export type WireBadge = {
   lastPeriodEnd: string | null;
   lastHp10Msv: string | null;
   lastInvestigation: boolean | null;
-  ytdMsv: string;
-  fiveYearMsv: string;
+  /**
+   * CLOSE REVIEW — these are the WORKER's totals across every badge they have ever worn, not this
+   * badge's. A badge lost mid-year and replaced used to split the ledger, and a radiographer over
+   * the 30 mSv statutory ceiling showed as two green rows.
+   */
+  workerYtdMsv: string;
+  workerFiveYearMsv: string;
+  /** The worst calendar year on record and its total — a late Q4 report lands in ITS year. */
+  worstYear: string | null;
+  worstYearMsv: string;
   overAnnualLimit: boolean;
   overFiveYearLimit: boolean;
   readCount: number;

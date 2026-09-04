@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { aerbLicences, aerbPersons, qaRecords } from "../../kernel/db/schema/aerb";
 import { resources } from "../../kernel/db/schema/resources";
 import { users } from "../../kernel/db/schema/auth";
+import { istDayString } from "../../kernel/approvals/cumulative";
 import { badgeGaps } from "./badges";
 import type { Db } from "../../kernel/db/client";
 
@@ -71,7 +72,13 @@ function stateFor(dueOn: string, asOf: string): { state: CalendarState; daysOver
 export async function complianceCalendar(
   db: Db, opts: { onDate?: string; includeOk?: boolean } = {},
 ): Promise<CalendarRow[]> {
-  const asOf = opts.onDate ?? new Date().toISOString().slice(0, 10);
+  /**
+   * CLOSE REVIEW — this defaulted to the UTC day. Between 18:30 and 24:00 UTC that is YESTERDAY in
+   * IST, so a licence whose `valid_to` was yesterday-IST rendered `due today` rather than
+   * `overdue`. The kernel has one helper for this and `ist-clock-parity.test.ts` exists to keep it
+   * the only one.
+   */
+  const asOf = opts.onDate ?? istDayString(new Date());
   const rows: CalendarRow[] = [];
 
   /* ── 1. Equipment licences ── */
@@ -102,6 +109,19 @@ export async function complianceCalendar(
    * The LATEST record per device and test type carries the live `next_due_on`. An older record's
    * date has been superseded, and listing it would show a machine as overdue for a test it has
    * since had — which is the one way a compliance calendar can be worse than none.
+   *
+   * ═══ CLOSE REVIEW — THE `next_due_on is not null` FILTER USED TO RUN BEFORE THE GROUPING ═══
+   *
+   * `next_due_on` is nullable and a FAILED or CONDITIONAL test legitimately has none until the
+   * machine is repaired. Filtering first removed that record from the candidate set, so the
+   * previous year's PASS became "latest" and the calendar showed the machine **overdue for a test
+   * it had a fortnight ago** — the exact failure this grouping exists to prevent, through the one
+   * door it did not cover. The filter now runs AFTER: a machine whose latest test carries no next
+   * date has nothing scheduled and is simply absent, which is true (its FAILURE is what stopped it,
+   * and that is the QA tab's row, not the calendar's).
+   *
+   * Ties on `performed_on` — a retest on the same day after a repair — break on `recorded_at`, so
+   * the row that was entered last wins rather than whichever the unordered read returned first.
    */
   const qa = await db.select({
     id: qaRecords.id,
@@ -109,18 +129,21 @@ export async function complianceCalendar(
     qaType: qaRecords.qaType,
     nextDueOn: qaRecords.nextDueOn,
     performedOn: qaRecords.performedOn,
+    recordedAt: qaRecords.recordedAt,
     code: resources.code,
     name: resources.name,
   })
     .from(qaRecords)
-    .innerJoin(resources, eq(resources.id, qaRecords.deviceResourceId))
-    .where(sql`${qaRecords.nextDueOn} is not null`);
+    .innerJoin(resources, eq(resources.id, qaRecords.deviceResourceId));
 
   const latestQa = new Map<string, (typeof qa)[number]>();
   for (const r of qa) {
     const key = `${r.deviceResourceId} ${r.qaType}`;
     const seen = latestQa.get(key);
-    if (seen === undefined || r.performedOn > seen.performedOn) latestQa.set(key, r);
+    const newer = seen === undefined
+      || r.performedOn > seen.performedOn
+      || (r.performedOn === seen.performedOn && r.recordedAt > seen.recordedAt);
+    if (newer) latestQa.set(key, r);
   }
   for (const r of latestQa.values()) {
     const dueOn = r.nextDueOn;

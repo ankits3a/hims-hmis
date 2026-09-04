@@ -159,9 +159,18 @@ describe("the TLD badge programme and the investigation ladder (18c T4)", () => 
 
   /* ═════════ ONE BADGE, ONE PERSON, ONE PERIOD ═════════ */
 
-  it("refuses a second active badge for one person", async () => {
+  /**
+   * CLOSE REVIEW — this used to assert the raw index name, i.e. it pinned a 500 with a Postgres
+   * constraint in the body as the expected behaviour. The refusal is a sentence now.
+   */
+  it("refuses a second active badge for one person, BY NAME", async () => {
     await issue(tech.id, "TLD-001");
-    await expect(issue(tech.id, "TLD-002")).rejects.toThrow(/aerb_tld_badges_user_active_ux/);
+    await expect(issue(tech.id, "TLD-002")).rejects.toMatchObject({
+      code: "badge_already_issued",
+      detail: { badgeNo: "TLD-002" },
+    });
+    /** And the same number in somebody else's hands is refused too, with a different sentence. */
+    await expect(issue(tech2.id, "TLD-001")).rejects.toMatchObject({ code: "badge_already_issued" });
   });
 
   it("a returned badge frees the person AND the number, and the old readings stay", async () => {
@@ -175,7 +184,27 @@ describe("the TLD badge programme and the investigation ladder (18c T4)", () => 
   it("refuses a second reading for the same badge and period — a correction is not a second dose", async () => {
     const { badgeId } = await issue(tech.id, "TLD-001");
     await read(badgeId);
-    await expect(read(badgeId)).rejects.toThrow(/aerb_tld_reads_badge_period_ux/);
+    await expect(read(badgeId)).rejects.toMatchObject({
+      code: "read_already_recorded",
+      detail: { periodStart: "2026-01-01", periodEnd: "2026-03-31" },
+    });
+  });
+
+  /**
+   * CLOSE REVIEW — a laboratory report for a period before the badge was issued is a report about
+   * a badge somebody else was wearing, and it used to be accepted and counted into the worker's
+   * cumulative.
+   */
+  it("refuses a reading for a period that closed before the badge was issued", async () => {
+    const { badgeId } = await issue(tech.id, "TLD-001", "2026-04-01");
+    await expect(read(badgeId, { periodStart: "2026-01-01", periodEnd: "2026-03-31" }))
+      .rejects.toMatchObject({ code: "invalid_validity", detail: { issuedOn: "2026-04-01" } });
+  });
+
+  it("refuses returning a badge on a date before it was issued, by name rather than by CHECK", async () => {
+    const { badgeId } = await issue(tech.id, "TLD-001", "2026-04-01");
+    await expect(withTx(db, (tx) => closeBadge(tx, rso, badgeId, "returned", "2026-01-01")))
+      .rejects.toMatchObject({ code: "invalid_validity" });
   });
 
   it("refuses a negative reading and a period that ends before it begins", async () => {
@@ -187,16 +216,71 @@ describe("the TLD badge programme and the investigation ladder (18c T4)", () => 
 
   /* ═════════ THE CUMULATIVES, AND THE LIMITS THEY ARE COMPARED AGAINST ═════════ */
 
-  it("sums the calendar year and the rolling five years, per badge", async () => {
+  it("sums the calendar year and the rolling five years FOR THE WORKER", async () => {
     const { badgeId } = await issue(tech.id, "TLD-001", "2022-01-01");
     await read(badgeId, { hp10Msv: 4, periodStart: "2022-01-01", periodEnd: "2022-03-31" });
     await read(badgeId, { hp10Msv: 5, periodStart: "2026-01-01", periodEnd: "2026-03-31" });
     await read(badgeId, { hp10Msv: 6, periodStart: "2026-04-01", periodEnd: "2026-06-30" });
     const [row] = await badgeRegister(db, { onDate: "2026-07-01" });
-    expect(Number(row!.ytdMsv)).toBeCloseTo(11, 3);
-    expect(Number(row!.fiveYearMsv)).toBeCloseTo(15, 3);
+    expect(Number(row!.workerYtdMsv)).toBeCloseTo(11, 3);
+    expect(Number(row!.workerFiveYearMsv)).toBeCloseTo(15, 3);
     expect(row!.overAnnualLimit).toBe(false);
     expect(row!.overFiveYearLimit).toBe(false);
+  });
+
+  /**
+   * ═══ CLOSE REVIEW, CRITICAL — THE DOSE BELONGS TO THE PERSON, NOT TO THE PLASTIC ═══
+   *
+   * A badge lost mid-year and replaced splits the ledger. Summed per badge, this radiographer's
+   * 34 mSv showed as two green rows — 28 and 6 — against a 30 mSv statutory ceiling, with no flag
+   * anywhere. The close-then-reissue below is the sequence the suite ALREADY performed one test
+   * over while asserting the split was correct.
+   */
+  it("a badge lost and re-issued does NOT split the worker's year under the limit", async () => {
+    const first = await issue(tech.id, "TLD-001", "2026-01-01");
+    await read(first.badgeId, { hp10Msv: 16, periodStart: "2026-01-01", periodEnd: "2026-03-31" });
+    await read(first.badgeId, { hp10Msv: 12, periodStart: "2026-04-01", periodEnd: "2026-06-30" });
+    await withTx(db, (tx) => closeBadge(tx, rso, first.badgeId, "lost", "2026-07-01"));
+    const second = await issue(tech.id, "TLD-014", "2026-07-02");
+    await read(second.badgeId, { hp10Msv: 6, periodStart: "2026-07-01", periodEnd: "2026-09-30" });
+
+    const rows = await badgeRegister(db, { onDate: "2026-10-01" });
+    expect(rows).toHaveLength(2);
+    /** BOTH rows carry the person's 34 mSv, and BOTH say the ceiling was breached. */
+    for (const r of rows) {
+      expect(Number(r.workerYtdMsv)).toBeCloseTo(34, 3);
+      expect(r.overAnnualLimit).toBe(true);
+    }
+    /** The per-badge column still shows what THIS badge read, which is what an RSO scans down. */
+    expect(rows.find((r) => r.badgeNo === "TLD-014")!.lastHp10Msv).toBe("6.000");
+  });
+
+  /**
+   * ═══ CLOSE REVIEW, CRITICAL — A LATE REPORT LANDS IN ITS OWN YEAR ═══
+   *
+   * `recordBadgeRead`'s own docstring says a TLD report arrives weeks after the period it
+   * describes. The Q4 reading entered in February has `periodEnd` in LAST year: keyed on the
+   * current year it was excluded, and last year was never recomputed, so a year that went over the
+   * ceiling was over it at no instant the system could report.
+   */
+  it("a Q4 report entered in February still puts LAST year over the limit", async () => {
+    const { badgeId } = await issue(tech.id, "TLD-001", "2026-01-01");
+    for (const [q, start, end] of [["Q1", "2026-01-01", "2026-03-31"], ["Q2", "2026-04-01", "2026-06-30"], ["Q3", "2026-07-01", "2026-09-30"]] as const) {
+      void q;
+      await read(badgeId, { hp10Msv: 9, periodStart: start, periodEnd: end });
+    }
+    /** 27 mSv by the end of September, and clean. */
+    const inYear = await badgeRegister(db, { onDate: "2026-12-31" });
+    expect(inYear[0]!.overAnnualLimit).toBe(false);
+
+    /** The Q4 report arrives in February and takes 2026 to 33 mSv. */
+    await read(badgeId, { hp10Msv: 6, periodStart: "2026-10-01", periodEnd: "2026-12-31", reportedOn: "2027-02-10" });
+    const later = await badgeRegister(db, { onDate: "2027-02-10" });
+    expect(later[0]!.overAnnualLimit).toBe(true);
+    expect(later[0]!.worstYear).toBe("2026");
+    expect(Number(later[0]!.worstYearMsv)).toBeCloseTo(33, 3);
+    /** This YEAR is still zero, and both facts are on the row. */
+    expect(Number(later[0]!.workerYtdMsv)).toBeCloseTo(0, 3);
   });
 
   it("names the statutory limits it compares against, and they are the Rules' numbers", async () => {

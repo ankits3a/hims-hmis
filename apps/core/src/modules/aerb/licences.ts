@@ -3,6 +3,7 @@ import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { appendEvent } from "../../kernel/events/append";
 import { aerbLicences, aerbPersons } from "../../kernel/db/schema/aerb";
+import { resources } from "../../kernel/db/schema/resources";
 import { AERB_LICENCE_TYPES, AERB_PERSON_ROLES } from "../../kernel/db/schema/aerb";
 import { AerbError } from "./errors";
 import { aerbLicenceFiled, aerbLicenceStatusChanged } from "./events";
@@ -49,11 +50,26 @@ export type AerbPersonRow = typeof aerbPersons.$inferSelect;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * CLOSE REVIEW — the shape check alone let `2026-02-31` through: it passed the regex, passed the
+ * `validTo >= validFrom` string compare, and failed at the INSERT with a Postgres date error no
+ * mapper knows. So the one input class most likely to be a typo bypassed the 422 that exists to
+ * name it. A date is now checked for being a real day as well as a well-formed one.
+ */
 function assertIstDate(value: string, field: string): void {
   if (!DATE_RE.test(value)) {
     throw new AerbError(
       "invalid_validity",
       `${field} must be an IST calendar date (YYYY-MM-DD), got "${value}"`,
+      { field },
+    );
+  }
+  const [y, m, d] = value.split("-").map(Number) as [number, number, number];
+  const parsed = new Date(Date.UTC(y, m - 1, d));
+  if (parsed.getUTCFullYear() !== y || parsed.getUTCMonth() !== m - 1 || parsed.getUTCDate() !== d) {
+    throw new AerbError(
+      "invalid_validity",
+      `${field} "${value}" is not a real date`,
       { field },
     );
   }
@@ -72,6 +88,20 @@ async function assertMayManage(exec: Db | Tx, actor: Actor): Promise<void> {
 }
 
 export interface FileLicenceInput {
+  /**
+   * CLOSE REVIEW — the renewal path, and without it this register had none.
+   *
+   * "One active licence per device" plus "a renewal retires the old row first" meant the 2027
+   * certificate, which arrives in November, could not be entered until the 2026 row was suspended
+   * — which stops the machine for the rest of December. The only alternative was to file at 00:00
+   * on 1 January, with every ionising study refused in the meantime. That is precisely the failure
+   * D4 argues against one register over: *a machine that stops itself at midnight strands the night
+   * trauma CT.* The licence register was doing it every year, on every machine.
+   *
+   * Naming the outgoing licence supersedes it and files the new one in ONE transaction, so the
+   * hospital can enter the certificate the day it arrives and the machine never goes dark.
+   */
+  supersedesLicenceId?: string | null;
   deviceResourceId: string;
   licenceType: AerbLicenceType;
   licenceNo: string;
@@ -108,34 +138,85 @@ export async function fileLicence(
     throw new AerbError("invalid_validity", `"${input.licenceType}" is not an AERB licence type`);
   }
 
+  /**
+   * CLOSE REVIEW — the licence must point at a MACHINE. Nothing checked the kind, so a bed's or an
+   * OPD room's resource id filed an AERB licence against it and rendered in the inspector's file as
+   * a licensed machine, while `unlicensedDevices` (which does filter `kind = 'device'`) disagreed
+   * about what a machine is.
+   */
+  const deviceRows = await tx.select({ kind: resources.kind })
+    .from(resources).where(eq(resources.id, input.deviceResourceId));
+  const device = deviceRows[0];
+  if (device === undefined || device.kind !== "device") {
+    throw new AerbError(
+      "unknown_licence",
+      `${input.deviceResourceId} is not a device resource — an AERB licence names a machine`,
+      { deviceResourceId: input.deviceResourceId, kind: device?.kind ?? null },
+    );
+  }
+
   const live = await tx.select({ id: aerbLicences.id, licenceNo: aerbLicences.licenceNo })
     .from(aerbLicences)
     .where(and(eq(aerbLicences.deviceResourceId, input.deviceResourceId), eq(aerbLicences.status, "active")));
-  if (live[0]) {
+  const outgoing = live[0];
+
+  if (outgoing !== undefined) {
+    if (input.supersedesLicenceId !== outgoing.id) {
+      throw new AerbError(
+        "licence_already_active",
+        `device ${input.deviceResourceId} already carries active licence ${outgoing.licenceNo}. A renewal `
+        + `names it as \`supersedesLicenceId\` and both rows move in one transaction, so the machine `
+        + "never goes dark between the two certificates",
+        { deviceResourceId: input.deviceResourceId, activeLicenceId: outgoing.id },
+      );
+    }
+    /** The renewal: the outgoing certificate is surrendered as the new one is filed. */
+    await changeLicenceStatus(tx, actor, outgoing.id, "surrendered", {
+      reason: `superseded by ${input.licenceNo}`,
+      decommissionRef: input.licenceNo,
+    });
+  } else if (input.supersedesLicenceId != null) {
     throw new AerbError(
-      "licence_already_active",
-      `device ${input.deviceResourceId} already carries active licence ${live[0].licenceNo} — a renewal `
-      + "suspends or surrenders that row first, so the register never shows two",
-      { deviceResourceId: input.deviceResourceId, activeLicenceId: live[0].id },
+      "unknown_licence",
+      `licence ${input.supersedesLicenceId} is not the active licence on device ${input.deviceResourceId}`,
+      { supersedesLicenceId: input.supersedesLicenceId },
     );
   }
 
   const licenceId = newId();
-  await tx.insert(aerbLicences).values({
-    id: licenceId,
-    deviceResourceId: input.deviceResourceId,
-    licenceType: input.licenceType,
-    licenceNo: input.licenceNo,
-    eloraRef: input.eloraRef ?? null,
-    typeApprovalRef: input.typeApprovalRef ?? null,
-    layoutApprovalRef: input.layoutApprovalRef ?? null,
-    validFrom: input.validFrom,
-    validTo: input.validTo,
-    rsoUserId: input.rsoUserId ?? null,
-    remarks: input.remarks ?? null,
-    status: "active",
-    createdBy: actor.id,
-  });
+  try {
+    await tx.insert(aerbLicences).values({
+      id: licenceId,
+      deviceResourceId: input.deviceResourceId,
+      licenceType: input.licenceType,
+      licenceNo: input.licenceNo,
+      eloraRef: input.eloraRef ?? null,
+      typeApprovalRef: input.typeApprovalRef ?? null,
+      layoutApprovalRef: input.layoutApprovalRef ?? null,
+      validFrom: input.validFrom,
+      validTo: input.validTo,
+      rsoUserId: input.rsoUserId ?? null,
+      remarks: input.remarks ?? null,
+      status: "active",
+      createdBy: actor.id,
+    });
+  } catch (e) {
+    /**
+     * CLOSE REVIEW — the pre-reads above take no row lock, so two simultaneous files on one device
+     * both see no active row and one loses at the index. `errors.ts` promises a 409 for exactly
+     * that ("a lost race on the counter, not a malformed request") and what came back was a raw
+     * 23505 with an index name in it.
+     */
+    if ((e as { code?: unknown }).code === "23505") {
+      throw new AerbError(
+        "licence_already_active",
+        `licence ${input.licenceNo} or device ${input.deviceResourceId} was filed by somebody else `
+        + "while this was being recorded",
+        { deviceResourceId: input.deviceResourceId, licenceNo: input.licenceNo },
+      );
+    }
+    throw e;
+  }
 
   await appendEvent(tx, aerbLicenceFiled.make({
     payload: {

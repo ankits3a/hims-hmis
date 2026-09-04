@@ -22,21 +22,6 @@ import type { OrderKindDecl } from "../../kernel/orders/kinds";
 import type { ImageSource } from "../../kernel/db/schema/radiology";
 
 /**
- * PLAN 18c T3 — which measured number a reference level's QUANTITY refers to. One place, because a
- * comparison that read DLP against a CTDIvol level would be a verdict about the wrong number and
- * nothing downstream could tell.
- */
-const DOSE_VALUE_BY_QUANTITY: Readonly<Record<
-  "ctdivol" | "dlp" | "dap" | "fluoro_seconds",
-  (m: { ctdivol: number | null; dlp: number | null; dap: number | null; fluoro: number | null }) => number | null
->> = {
-  ctdivol: (m) => m.ctdivol,
-  dlp: (m) => m.dlp,
-  dap: (m) => m.dap,
-  fluoro_seconds: (m) => m.fluoro,
-};
-
-/**
  * PLAN 18a T7 — **ACQUISITION: the patient is on the table, and the ORDER OF OPERATIONS IS THE
  * WHOLE TASK.**
  *
@@ -523,11 +508,18 @@ export async function recordAcquired(
    */
   if (ionising) {
     const levels = await activeDoseReferenceLevels(tx);
-    const level = drlFor(levels, study.studyTypeCode, studyType.modality);
-    const measured = level === null ? null : DOSE_VALUE_BY_QUANTITY[level.quantity]({
-      ctdivol: input.doseCtdivol ?? null, dlp: input.doseDlp ?? null,
-      dap: input.doseDap ?? null, fluoro: input.fluoroSeconds ?? null,
-    });
+    /**
+     * CLOSE REVIEW — the level is chosen from what this examination actually MEASURED, so a book
+     * naming both CTDIvol and DLP for one study type cannot decide the verdict by array order.
+     */
+    const measuredQuantities = {
+      ctdivol: input.doseCtdivol ?? null,
+      dlp: input.doseDlp ?? null,
+      dap: input.doseDap ?? null,
+      fluoro_seconds: input.fluoroSeconds ?? null,
+    };
+    const level = drlFor(levels, study.studyTypeCode, studyType.modality, measuredQuantities);
+    const measured = level === null ? null : measuredQuantities[level.quantity];
     await recordDose(tx, actor, {
       source: "imaging",
       sourceRef: study.id,

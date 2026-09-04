@@ -250,8 +250,16 @@ describe("the radiation-safety register (18c T1)", () => {
    * view to the whole file first, because a file that omitted the licences that are in date would
    * be exactly the wrong half to hand an inspector.
    */
-  it("printing switches to the whole file first, then prints", async () => {
-    const print = vi.fn();
+  /**
+   * CLOSE REVIEW — the print used to fire on a `setTimeout(…, 0)` immediately after flipping the
+   * flag, so the preview captured "Loading…" and a table with headers and no body. It now waits
+   * for the widened file, and the assertion is that A ROW IS ON SCREEN at the moment it prints.
+   */
+  it("printing waits for the whole file to arrive, and prints it with rows on screen", async () => {
+    const print = vi.fn(() => {
+      /** The moment of truth: what the browser would have captured. */
+      expect(screen.getByTestId("aerb-calendar-L1")).toBeInTheDocument();
+    });
     vi.stubGlobal("print", print);
     mockRoutes({
       [LICENCES]: { status: 200, body: { rows: [] } },
@@ -272,7 +280,9 @@ describe("the radiation-safety register (18c T1)", () => {
     badgeId: "B1", userId: "U1", userName: "R. Singh", badgeNo: "TLD-001",
     issuedOn: "2026-01-01", returnedOn: null, status: "active",
     lastPeriodEnd: "2026-03-31", lastHp10Msv: "1.400", lastInvestigation: false,
-    ytdMsv: "1.400", fiveYearMsv: "1.400", overAnnualLimit: false, overFiveYearLimit: false,
+    workerYtdMsv: "1.400", workerFiveYearMsv: "1.400",
+    worstYear: "2026", worstYearMsv: "1.400",
+    overAnnualLimit: false, overFiveYearLimit: false,
     readCount: 1, ...over,
   });
 
@@ -327,13 +337,71 @@ describe("the radiation-safety register (18c T1)", () => {
       [GAPS]: { status: 200, body: { rows: [] } },
       [BADGES]: { status: 200, body: badgeBook({ rows: [
         badge({ badgeId: "B1", lastHp10Msv: "3.200", lastInvestigation: true }),
-        badge({ badgeId: "B2", userName: "S. Iyer", badgeNo: "TLD-002", ytdMsv: "31.000", overAnnualLimit: true }),
+        badge({ badgeId: "B2", userName: "S. Iyer", badgeNo: "TLD-002", worstYearMsv: "31.000", overAnnualLimit: true }),
       ] }) },
     });
     renderWithProviders(<RadiationSafety />);
     await userEvent.click(await screen.findByTestId("aerb-tab-badges"));
     expect(await screen.findByTestId("aerb-badge-B1")).toHaveTextContent("investigate");
-    expect(screen.getByTestId("aerb-badge-B2")).toHaveTextContent("over the statutory limit");
+    const over = screen.getByTestId("aerb-badge-B2");
+    expect(over).toHaveTextContent("over the statutory limit");
+    /** The year that breached is named, and the number is the WORKER's, not the badge's. */
+    expect(over).toHaveTextContent("2026: 31.000 mSv");
+  });
+
+  /* ═══════════ CLOSE REVIEW — THE FOUR SCREEN DEFECTS ═══════════ */
+
+  /**
+   * CRITICAL-adjacent: a compliance screen that says "nothing is due or overdue" when it could not
+   * READ the register is telling an RSO the hospital is clean on the strength of a 403.
+   */
+  it.each([
+    ["calendar", CALENDAR, "aerb-tab-calendar", "aerb-calendar-empty", /Nothing is due/],
+    ["badges", BADGES, "aerb-tab-badges", "aerb-badges-empty", /No TLD badge/],
+  ])("a failed %s fetch shows the error and NOT the all-clear sentence", async (_name, route, tab, emptyId, sentence) => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [route]: { status: 403, body: { statusCode: 403, message: "forbidden", code: "permission_denied" } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId(tab));
+    await waitFor(() => {
+      expect(screen.getAllByRole("alert").some((n) => n.textContent?.includes("permission_denied"))).toBe(true);
+    });
+    expect(screen.queryByTestId(emptyId)).not.toBeInTheDocument();
+    expect(screen.queryByText(sentence)).not.toBeInTheDocument();
+  });
+
+  /**
+   * The flagged reading used to be visible only while it was the LATEST one: one ordinary quarter
+   * later, the flag, its level and its lab reference were unreachable from any screen.
+   */
+  it("keeps a flagged reading on the screen after a later normal one", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [BADGES]: { status: 200, body: badgeBook({
+        rows: [badge({ lastHp10Msv: "1.100", lastPeriodEnd: "2026-06-30", lastInvestigation: false })],
+        reads: [
+          { id: "R1", badgeId: "B1", badgeNo: "TLD-001", userName: "R. Singh",
+            periodStart: "2026-01-01", periodEnd: "2026-03-31", hp10Msv: "3.200", hp007Msv: "3.900",
+            reportedOn: "2026-04-20", labRef: "TLD/2026/Q1", investigationFlag: true,
+            investigationLevelMsv: "2.958" },
+          { id: "R2", badgeId: "B1", badgeNo: "TLD-001", userName: "R. Singh",
+            periodStart: "2026-04-01", periodEnd: "2026-06-30", hp10Msv: "1.100", hp007Msv: null,
+            reportedOn: "2026-07-20", labRef: null, investigationFlag: false,
+            investigationLevelMsv: "2.958" },
+        ],
+      }) },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-badges"));
+    const flagged = await screen.findByTestId("aerb-badge-flagged");
+    expect(flagged).toHaveTextContent("3.200 mSv against a level of 2.958 mSv");
+    expect(flagged).toHaveTextContent("TLD/2026/Q1");
+    /** The un-flagged quarter is not in the alert. */
+    expect(flagged).not.toHaveTextContent("1.100");
   });
 
   /* ═════════════════════ PLAN 18c T2 — THE QA TAB ═════════════════════ */

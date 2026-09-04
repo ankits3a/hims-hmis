@@ -178,11 +178,56 @@ export async function activeDoseReferenceLevels(exec: Db | Tx): Promise<DoseRefe
  * rather than its generic CT figure. A study matching neither has NO level, and the register stores
  * `null` for the verdict, which is deliberately not the same as "under": an examination nobody has
  * set a level for has not passed anything.
+ *
+ * ═══ CLOSE REVIEW — `measured` IS NOT OPTIONAL, AND ARRAY ORDER MUST NOT DECIDE THIS ═══
+ *
+ * This used to be two `find`s and nothing else, so the FIRST entry matching the key won. The
+ * commonest book a physicist publishes names both quantities for one examination —
+ *
+ *     [{study_type_code:"CT-HEAD", quantity:"ctdivol", value:60},
+ *      {study_type_code:"CT-HEAD", quantity:"dlp",     value:1000}]
+ *
+ * — and the acquisition schema accepts any subset of the dose fields. So a CT head recorded with a
+ * DLP of 1450 and no CTDIvol matched the ctdivol entry, measured `null`, and stored **`over_drl =
+ * null`**: "no published reference level" for an examination whose published level it exceeded by
+ * 45%. With the entries the other way round, a study 25% over its CTDIvol level and under its DLP
+ * level stored **`over_drl = false`** — a clean bill, which is the verdict F11 claims is
+ * impossible.
+ *
+ * The fix is the rule `studyTypeByService` sixty lines up already applies to this file's other
+ * ambiguity: *a statutory question must not be decided by array order.* A level is only a level
+ * for an examination that MEASURED its quantity, so the caller passes what it measured and the
+ * choice is made on that. Among several measured candidates the strictest — the one the
+ * examination is furthest over — wins, because a book that names two levels means both.
  */
 export function drlFor(
-  levels: readonly DoseReferenceLevel[], studyTypeCode: string, modality: string,
+  levels: readonly DoseReferenceLevel[],
+  studyTypeCode: string,
+  modality: string,
+  measured: Readonly<Partial<Record<DoseReferenceLevel["quantity"], number | null>>>,
 ): DoseReferenceLevel | null {
-  return levels.find((l) => l.study_type_code === studyTypeCode)
-    ?? levels.find((l) => l.study_type_code === undefined && l.modality === modality)
-    ?? null;
+  const measuredHere = (l: DoseReferenceLevel): boolean => {
+    const v = measured[l.quantity];
+    return v !== null && v !== undefined;
+  };
+  /** How far over its own level this examination is, as a ratio, for picking the strictest. */
+  const excess = (l: DoseReferenceLevel): number => (measured[l.quantity] ?? 0) / l.value;
+
+  const byCode = levels.filter((l) => l.study_type_code === studyTypeCode);
+  const byModality = levels.filter((l) => l.study_type_code === undefined && l.modality === modality);
+
+  for (const tier of [byCode, byModality]) {
+    const usable = tier.filter(measuredHere);
+    if (usable.length > 0) {
+      return usable.reduce((worst, l) => (excess(l) > excess(worst) ? l : worst));
+    }
+    /**
+     * A tier that names levels but none this examination measured stops the search rather than
+     * falling through to the modality: the hospital HAS set a level for this study type, and a
+     * generic figure is not the one they meant. The register stores `null` — no comparison — which
+     * is honest, and which is the state a level on a quantity the machine does not report leaves.
+     */
+    if (tier.length > 0) return null;
+  }
+  return null;
 }

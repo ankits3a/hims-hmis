@@ -117,6 +117,33 @@ describe("the compliance calendar (18c T5)", () => {
     expect(qaRows[0]!.dueOn).toBe(daysFrom(365));
   });
 
+  /**
+   * ═══ CLOSE REVIEW — THE `next_due_on is not null` FILTER RAN BEFORE THE GROUPING ═══
+   *
+   * `next_due_on` is nullable and a FAILED test legitimately has none until the machine is
+   * repaired. Filtering first removed that record from the candidate set, so LAST YEAR's pass
+   * became "latest" and the calendar showed the machine overdue for a test it had a fortnight ago
+   * — F23's "worse than no calendar", through the one door the mutant does not cover.
+   */
+  it("a FAILED test with no next date supersedes last year's pass rather than resurrecting it", async () => {
+    await qa("2025-01-10", daysFrom(-350));
+    await withTx(db, (tx) => recordQa(tx, rso, RADIOLOGY_RESOURCE_KINDS, {
+      deviceResourceId: ct, qaType: "AERB annual QA", result: "fail",
+      performedBy: "S. Iyer", performedOn: daysFrom(-14),
+    }));
+    /** The machine is stopped — which is the QA tab's row — and the calendar chases nothing. */
+    expect((await calendar(true)).filter((r) => r.kind === "qa")).toHaveLength(0);
+  });
+
+  /** A retest the same day after a repair: the row entered LAST wins, not whichever the read found. */
+  it("breaks a same-day tie on when the record was entered", async () => {
+    await qa(daysFrom(-1), daysFrom(2), "AERB annual QA");
+    await qa(daysFrom(-1), daysFrom(200), "AERB annual QA");
+    const rows = (await calendar(true)).filter((r) => r.kind === "qa");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.dueOn).toBe(daysFrom(200));
+  });
+
   /** Two DIFFERENT tests on one machine are two rows: a daily KV check is not the annual QA. */
   it("keeps different test types apart on the same machine", async () => {
     await qa("2026-06-01", daysFrom(-5), "AERB annual QA");
