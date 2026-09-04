@@ -505,3 +505,45 @@ guard rather than the rollback. It attempts on `otherPatientId` now, with the re
 
 **Evidence (2026-09-04):** typecheck 0; lint **0 errors**. **Full OPD + lab surface: 63 suites, 552
 tests green** — the whole hub, because this task touched one.
+
+## 9. CLOSE REVIEW — pass 1 (self, read-only over the six merged commits, 2026-09-04)
+
+Reviewed the 17 non-test core source files across `14b4083`, `4f2298b`, `c5855ca`, `ba19421`,
+`19db9d6`, `cf3e481`.
+
+### 9.1 MAJOR — `overridden` said *offered*, not *accepted* (T1). FIXED.
+
+`lab.tube_swap_suspected` carried `overridden: override !== undefined`. That is TRUE for an override
+the control **refused** — the enterer vouching for themselves, or naming somebody without
+`lab.results.enter`. The event is the row NABL counts to answer *"how often was a suspected swap
+waved through"*, and the count would have included every attempt the control successfully stopped:
+the opposite of the truth about the control.
+
+**And the test encoded the bug** — it asserted `[true, true, true]` over three attempts of which the
+control refused two. That is exactly the trap `close-review-two-pass-lesson` names: a test written
+alongside the code agrees with it. Corrected to `[false, false, true]`; the verdict is now decided
+before the append, every path still writes exactly one event (a refused near-miss is still a
+near-miss), and reverting the field to the old expression fails the suite.
+
+### 9.2 MINOR, recorded not taken — the T4 guard is a read-then-write
+
+`openLabWalkinInTx` SELECTs for an open lab visit and then inserts. Two walk-ins committing in the
+same instant both read "none" and both open — the ordinary duplicates (a reloaded tab, a second
+clerk minutes later) are caught, a true simultaneity is not. The robust fix is a **partial unique
+index** on `(patient_id, department_id, service_date) WHERE status NOT IN ('completed','abandoned')`
+— a migration, and one this pass declines to ship unprompted after the phase's PRs have merged.
+**Carried for the next LIMS phase or an owner ruling.**
+
+### 9.3 Checked and sound
+
+- T5's provisional reader returns no patient name at all and logs `phi_access_log` with the sealed
+  flag, so the alias rule cannot be bypassed through it.
+- T6's `useDowntime` returns `false` while the mode query is loading — the safe default is the one
+  that shows nothing.
+- T2's relabel event is written only on SUCCESS and on the entry's own transaction, which is correct
+  and is the deliberate contrast with T1's (that one must outlive a rollback).
+- The `Db`-first flip of `enterResult` did not change idempotency semantics: the controller's
+  `withIdempotency` wraps the call either way.
+
+**Evidence after the fix (2026-09-04):** typecheck 0; lint 0 errors; **full lab + OPD surface 63
+suites / 552 tests green**.
