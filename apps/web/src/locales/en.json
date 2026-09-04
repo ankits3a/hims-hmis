@@ -1898,7 +1898,10 @@
       "scanned": "scanned",
       "wrongTube": "{{typed}} is not this tube — this one is {{tube}}. Scan the barcode on the tube you just filled.",
       "drawnToLab_one": "Drawn — {{count}} tube to the lab",
-      "drawnToLab_other": "Drawn — {{count}} tubes to the lab"
+      "drawnToLab_other": "Drawn — {{count}} tubes to the lab",
+      "kitSerial": "Downtime kit serial",
+      "kitSerialHint": "e.g. DK-0241",
+      "recordKitLabel": "Record kit label"
     },
     "bench": {
       "title": "Bench",
@@ -1988,7 +1991,9 @@
       "rung_duty_officer": "Duty medical officer / casualty",
       "rung_patient_or_attendant": "Patient or attendant",
       "tryNext": "Try next: {{rung}}",
-      "openFor": "Open {{minutes}} min · target {{target}} min"
+      "openFor": "Open {{minutes}} min · target {{target}} min",
+      "kitSerial": "Downtime kit serial on the tube",
+      "kitSerialHint": "e.g. DK-0241"
     },
     "verify": {
       "title": "Verify & report",
@@ -2087,7 +2092,9 @@
     },
     "seat": {
       "department": "Central lab",
-      "stats": "Counts this seat watches"
+      "stats": "Counts this seat watches",
+      "downtimeTitle": "Downtime — the hospital is running on paper",
+      "downtimeReconcile": "Write the kit serial on the tube and in the paper register. Both are reconciled here when the system is back; nothing needs re-keying twice."
     },
     "reports": {
       "title": "Report centre",

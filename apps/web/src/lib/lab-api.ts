@@ -248,10 +248,20 @@ export const previewLabOrder = (
 export const collectionQueue = (serviceDate: string): Promise<WireCollectionRow[]> =>
   api("GET", `/lab/collection/queue?serviceDate=${serviceDate}`);
 
+/**
+ * 17d T6 — `labelSource` and `downtimeKitSerial` were declared by `printLabels` at 17a T5 (E20 /
+ * 02 C3) and offered by NO screen until now: when the label printer is down the phlebotomist writes
+ * a pre-printed kit serial on the tube, and the barcode the bench later scans is that one. A rail
+ * with no consumer, which is the pattern this series keeps paying for.
+ */
 export const printLabels = (
   orderGroupId: string, scannedUhid: string, key: string,
+  downtime?: { downtimeKitSerial: string },
 ): Promise<{ specimens: WirePrintedSpecimen[] }> =>
-  api("POST", "/lab/collection/labels", { orderGroupId, scannedUhid }, key);
+  api("POST", "/lab/collection/labels", {
+    orderGroupId, scannedUhid,
+    ...(downtime === undefined ? {} : { labelSource: "downtime_kit", downtimeKitSerial: downtime.downtimeKitSerial }),
+  }, key);
 
 export const drawSpecimen = (
   specimenId: string, wristbandScanned: boolean, key: string,
@@ -285,6 +295,8 @@ export const receiveSpecimen = (
   body: {
     specimenNo: string; containerSeen?: string; identityRecheckBy?: string;
     identifiedBy: "scan" | "typed"; relabel?: { witnessedBy: string; reason: string };
+    /** 17d T6 / E20 — the pre-printed kit's serial, mapped to the tube at accession. */
+    downtimeKitSerial?: string;
   }, key: string,
 ): Promise<unknown> => api("POST", "/lab/bench/receive", body, key);
 
