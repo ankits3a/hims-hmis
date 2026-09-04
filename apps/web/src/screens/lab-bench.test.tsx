@@ -156,6 +156,55 @@ it("02 H1 — an absurd value is refused, and the override asks for a PERSON rat
 });
 
 /**
+ * 17d T3 — THE LADDER, on the screen. Design board EdgeCases #17: *"Potassium 6.8 at 21:10; OPD
+ * over, ordering doctor's phone off."* The three assertions that matter are the ones a count of
+ * attempts cannot make: the rungs are drawn with what came of each, the NEXT rung is what the
+ * control defaults to (so re-dialling the unanswered phone is a deliberate choice, not the path of
+ * least resistance), and the elapsed clock is shown against its target.
+ */
+it("17d T3 — the ladder is drawn, the next rung is the default, and the clock is advisory", async () => {
+  const seen = mockRoutes({
+    "GET /api/lab/bench/worklist": { status: 200, body: [] },
+    "GET /api/lab/bench/arrivals": { status: 200, body: [] },
+    "GET /api/lab/bench/criticals": { status: 200, body: [{
+      id: "c-1", resultId: "r-1", openedAt: "2026-08-30T02:00:00.000Z", openedBy: "u-tech",
+      attempts: [
+        { at: "2026-08-30T02:02:00.000Z", by: "u-tech", contact: "Dr Rao mobile", outcome: "no_answer", rung: "ordering_clinician" },
+        { at: "2026-08-30T02:10:00.000Z", by: "u-tech", contact: "Dr Rao mobile", outcome: "spoke", rung: "ordering_clinician" },
+      ],
+      patientDisplay: "Ram Kumar", patientId: "p-1", orderNo: "L2608300001",
+      encounterNo: "V2608290001", analyteCode: "K", value: "6.8", unit: "mmol/L", flag: "HH",
+      supersededBy: null,
+      nextRung: "duty_officer", minutesOpen: 41, targetMinutes: 15,
+    }] },
+    "POST /api/lab/bench/criticals/c-1/ack": { status: 201, body: { closed: false, attempts: 3 } },
+  });
+  renderWithProviders(<LabBench />);
+  const ladder = await screen.findByRole("list", { name: "The call ladder" });
+  const rows = within(ladder).getAllByRole("listitem");
+  expect(rows).toHaveLength(3);
+  expect(rows[0]).toHaveTextContent(/Ordering doctor — Dr Rao mobile \(No answer\); Dr Rao mobile \(Spoke\)/);
+  expect(rows[1]).toHaveTextContent(/Duty medical officer/);
+  expect(rows[2]).toHaveTextContent(/Patient or attendant/);
+
+  // The clock is shown against its target — 41 minutes on a 15-minute SOP.
+  expect(screen.getByText(/Open 41 min · target 15 min/)).toBeInTheDocument();
+  expect(screen.getByText(/Try next: Duty medical officer/)).toBeInTheDocument();
+
+  // THE KILL: the control defaults to the FIRST rung rather than to the next one, and the
+  // technologist re-dials the phone that is already off.
+  expect(screen.getByLabelText("Who you are calling")).toHaveValue("duty_officer");
+
+  await userEvent.type(screen.getByLabelText("Who was called Ram Kumar"), "casualty ext 9");
+  await userEvent.selectOptions(screen.getByLabelText("Outcome"), "spoke");
+  await userEvent.click(screen.getByRole("button", { name: "Record" }));
+  await waitFor(() => expect(seen.filter((c) => c.method === "POST" && c.path.endsWith("/ack"))).toHaveLength(1));
+  expect(seen.find((c) => c.path.endsWith("/ack"))!.body).toMatchObject({
+    attempt: { contact: "casualty ext 9", outcome: "spoke", rung: "duty_officer" },
+  });
+});
+
+/**
  * 17d T2 — THE SMUDGED LABEL. Two assertions a green suite would otherwise miss: Receive stays
  * DISABLED until both the witness and the reason are there (a control the operator can walk past by
  * clicking through is not a control), and the body actually carries `identifiedBy: "typed"` — the
@@ -261,6 +310,8 @@ it("02 §3.6 — the open call panel says a READ-BACK is what closes it", async 
       patientDisplay: "Ram Kumar", patientId: "p-1", orderNo: "L2608300001",
       encounterNo: "V2608290001", analyteCode: "K", value: "6.8", unit: "mmol/L", flag: "HH",
       supersededBy: null,
+      /** 17d T3 — the ladder's own fields; the doctor was rung and did not answer. */
+      nextRung: "ordering_clinician", minutesOpen: 4, targetMinutes: 15,
     }] },
     "POST /api/lab/bench/criticals/c-1/ack": { status: 201, body: { closed: true, attempts: 2 } },
   });

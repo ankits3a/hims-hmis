@@ -277,3 +277,40 @@ rather than relaxed to `toMatchObject`.
 
 **Evidence (2026-09-03):** typecheck 0; lint **0 errors**. Core lab surface **27 suites, 246 tests
 green**. Web `src/screens/lab-*` + `src/lib` **14 files, 91 tests green**.
+
+### 8.3 T3 — The ladder is named, and the clock is visible (executed 2026-09-03)
+
+Design board EdgeCases #17: *"Potassium 6.8 at 21:10; OPD over, ordering doctor's phone off."*
+The call opened itself and every attempt was logged — and the technologist was left dialling ONE
+number with nothing saying who to try next. An escalation path that lives in a technologist's head
+at 21:10 is an escalation path the hospital does not have.
+
+- **`RUNGS` is an enum in escalation order; `contact` stays free text.** A ward extension is not an
+  entity, but "the ordering clinician" and "the duty medical officer" are roles a hospital can be
+  held to. No migration — `attempts` is already jsonb.
+- **Only SPEAKING to somebody retires their rung.** Three unanswered rings, an engaged tone and a
+  message with a ward clerk leave the ladder pointing at the same doctor — 02 §3.6's attempt/
+  acknowledgement distinction, read one level up. `nextRung` returns `null` when every rung has been
+  spoken to and the call is still open, which is a real state (the read-back is not keyed yet).
+- **A pre-17d attempt carries no rung and must not retire one by accident** — `rung` is optional in
+  the TYPE (rows written before this phase have none, and a reader that assumed one would be
+  inventing history) and REQUIRED on the wire (nothing new lands without it). Tested both ways.
+- **D5 — the 15-minute target is advisory and PROVEN to be.** `minutesOpen`/`targetMinutes` colour
+  the panel and gate nothing; a test drives a call five hours past its target and it still accepts
+  every rung and still closes. A technologist holding a potassium of 6.8 is never told by software
+  that they may not make a phone call.
+- The bench draws all three rungs always — including the untried ones — with what came of each, and
+  the rung control **defaults to `nextRung`**, so re-dialling the phone that is already off is a
+  deliberate choice rather than the path of least resistance.
+
+**Mutants, each applied and each red, then reverted:**
+
+| # | mutant | killed by |
+|---|---|---|
+| 1 | any attempt retires the rung | 2 failed |
+| 2 | `minutesOpen` fixed at 0 | 1 failed |
+| 3 | web: the rung control defaults to the FIRST rung | 1 failed |
+| 4 | web: the ladder shows only rungs already tried | 1 failed |
+
+**Evidence (2026-09-03):** typecheck 0; lint **0 errors**. Core lab **27 suites, 249 tests green**.
+Web `src/screens/lab-*` + `src/lib` **14 files, 92 tests green**.

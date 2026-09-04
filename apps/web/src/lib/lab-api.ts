@@ -87,9 +87,17 @@ export type WirePrintedSpecimen = {
   specimenId: string; specimenNo: string; specimenType: string; container: string; itemIds: string[];
 };
 
+/** 17d T3 — the ladder, in escalation order. The screen reads DOWN it and never re-orders it. */
+export const CRITICAL_RUNGS = ["ordering_clinician", "duty_officer", "patient_or_attendant"] as const;
+export type CriticalRung = (typeof CRITICAL_RUNGS)[number];
+
 export type WireCriticalCall = {
   id: string; resultId: string; openedAt: string; openedBy: string;
-  attempts: { at: string; by: string; contact: string; outcome: string }[];
+  attempts: { at: string; by: string; contact: string; outcome: string; rung?: CriticalRung }[];
+  /** 17d T3 — the rung to try next, and how long this value has gone un-acknowledged (advisory). */
+  nextRung: CriticalRung | null;
+  minutesOpen: number;
+  targetMinutes: number;
   /** WHOSE value it is and WHAT it was — a ladder without these is a ladder nobody can work. */
   patientDisplay: string; patientId: string; orderNo: string; encounterNo: string;
   analyteCode: string; value: string; unit: string | null; flag: string | null;
@@ -317,7 +325,7 @@ export const openCriticals = (): Promise<WireCriticalCall[]> => api("GET", "/lab
 
 export const acknowledgeCritical = (
   callId: string,
-  body: { attempt?: { contact: string; outcome: string }; readback?: string },
+  body: { attempt?: { contact: string; outcome: string; rung: CriticalRung }; readback?: string },
 ): Promise<unknown> => api("POST", `/lab/bench/criticals/${callId}/ack`, body);
 
 /* ────────────────────────── the signature and the document ────────────────────────── */
