@@ -1,5 +1,4 @@
 import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
-import { users } from "./auth";
 import { patients } from "./patients";
 
 /**
@@ -61,8 +60,26 @@ export const printJobs = pgTable(
     dedupeKey: text("dedupe_key").notNull(),
     patientId: text("patient_id").references(() => patients.id), // nullable: a job need not be about a person
     encounterId: text("encounter_id"), // plain text, like `opd_queue_entries.encounter_id`'s sibling columns
-    /** Who asked for it. A reprint is a new row with a new requester, which is the audit answer to "who printed this again". */
-    requestedBy: text("requested_by").references(() => users.id),
+    /**
+     * Who asked for it. A reprint is a new row with a new requester, which is the audit answer to
+     * "who printed this again".
+     *
+     * ═══ NO FOREIGN KEY, AND THAT IS THE POINT — caught by `perf-opd-queue` before it shipped ═══
+     *
+     * This column HAD `.references(() => users.id)`, which read as good hygiene and was a live
+     * defect: the enqueue rides the VISIT's transaction (that is the whole design), so an actor id
+     * with no `users` row — a system path, a seeded fixture, a token whose user was later removed —
+     * made the FK reject the insert and **failed the entire visit**. A patient could not be
+     * registered because a print-audit column was fussy about its actor.
+     *
+     * That is precisely what owner ruling R7 forbids: printing is ADVISORY and must never block the
+     * counter. An audit column that can refuse a visit is not an audit column, it is a hazard.
+     *
+     * Plain text, therefore — the same call `opd_doctors.user_id` and `opd_queue_entries.encounter_id`
+     * already make in this schema for their own reasons. The audit value of "who asked" does not
+     * depend on referential integrity, and nothing joins this column in a hot path.
+     */
+    requestedBy: text("requested_by"),
     /**
      * 'queued' | 'claimed' | 'printed' | 'failed' | 'cancelled'.
      *

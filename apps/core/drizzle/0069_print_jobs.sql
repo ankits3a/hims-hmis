@@ -17,7 +17,10 @@ CREATE TABLE IF NOT EXISTS "print_jobs" (
   "dedupe_key" text NOT NULL,
   "patient_id" text REFERENCES "patients"("id"),
   "encounter_id" text,
-  "requested_by" text REFERENCES "users"("id"),
+  -- NO FK, deliberately: the enqueue rides the visit's transaction, so a `users` FK here can fail
+  -- a VISIT because of a print-audit column. Owner ruling R7 forbids printing blocking the counter.
+  -- Caught by test/perf-opd-queue.test.ts before this shipped.
+  "requested_by" text,
   "status" text DEFAULT 'queued' NOT NULL,
   "attempts" integer DEFAULT 0 NOT NULL,
   "last_error" text,

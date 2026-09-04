@@ -103,6 +103,33 @@ describe("FD-24 T1: the print outbox", () => {
     expect(await db.select().from(printJobs).where(eq(printJobs.dedupeKey, "token:e-doomed"))).toHaveLength(0);
   });
 
+  /**
+   * ═══ AN AUDIT COLUMN MAY NEVER REFUSE A VISIT (owner ruling R7) ═══
+   *
+   * `requested_by` HAD a foreign key to `users.id`. It read as hygiene and was a live defect: the
+   * enqueue rides the VISIT's transaction, so an actor id with no `users` row — a system path, a
+   * fixture, a token whose user was later removed — made the FK reject the insert and **fail the
+   * entire visit**. A patient could not be registered because a print-audit column was fussy about
+   * its actor.
+   *
+   * FOUND BY `test/perf-opd-queue.test.ts` on a full run, before it shipped:
+   *   `insert or update on table "print_jobs" violates foreign key constraint
+   *    "print_jobs_requested_by_fkey"`
+   *
+   * That is the failing-first evidence for this row. Printing is ADVISORY; nothing about it may
+   * block the counter, least of all bookkeeping about who asked.
+   */
+  it("an actor with no users row still queues — a print column must never fail a visit", async () => {
+    const id = await withTx(db, (tx) => enqueuePrintJob(tx, {
+      document: "opd_token_slip",
+      params: { encounterId: "e-sys" },
+      dedupeKey: "token:e-sys",
+      requestedBy: "not-a-real-user-id", // a system actor, a fixture, a deleted user
+    }));
+    expect(id).not.toBeNull();
+    expect((await db.select().from(printJobs))[0]!.requestedBy).toBe("not-a-real-user-id");
+  });
+
   it("a blank dedupe key is refused — it would be unique once and swallow every job after it", async () => {
     await expect(withTx(db, (tx) => enqueuePrintJob(tx, {
       document: "opd_token_slip", params: {}, dedupeKey: "   ",
