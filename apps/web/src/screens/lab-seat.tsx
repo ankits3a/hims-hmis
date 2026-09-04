@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { fmtIst } from "../lib/format";
+import { getMode } from "../lib/ops-api";
+import { useAuth } from "../lib/auth";
 
 /**
  * PLAN 17c T1 / D1 — THE LABORATORY'S SEAT FRAME, shared by the five seats.
@@ -87,4 +90,56 @@ export function sexAge(administrativeGender: string, dob: string | null): string
   const g = administrativeGender === "female" ? "F" : administrativeGender === "male" ? "M" : "—";
   const age = ageYearsFrom(dob);
   return age === null ? g : `${String(age)} ${g}`;
+}
+
+/* ═══════════ 17d T6 / D7 — DOWNTIME, AT THE SEAT (design board EdgeCases #20) ═══════════ */
+
+/**
+ * **THE LAB READS THE HOSPITAL'S MODE. IT NEVER SETS ONE.**
+ *
+ * `ModeBanner` already tells every screen in the building that the hospital is in `downtime`, and
+ * that is not what this is for. The board's case is *"server or internet down for an hour"*, and
+ * its complaint is sharper than "nobody knows": **the paper register and the later reconciliation
+ * are a habit rather than a screen.** The tube still has to be labelled and accessioned, so the
+ * seats need the pre-printed kit's serial — the field `printLabels` and `receive` have accepted
+ * since 17a T5 (E20 / 02 C3) and no screen has ever offered.
+ *
+ * A second switch here would be a second truth: a lab that could declare its own downtime would
+ * disagree with the duty manager's mode within the hour, and the reconciliation afterwards would
+ * have two registers to believe. So this is a READ, and `/ops/mode` mints no read permission
+ * precisely so that every screen may make it (`kernel/ops/manifest.ts`).
+ *
+ * Polls at `ModeBanner`'s own cadence so the two never disagree on the same screen.
+ */
+export function useDowntime(): boolean {
+  const { actor } = useAuth();
+  const mode = useQuery({
+    queryKey: ["ops", "mode"],
+    queryFn: getMode,
+    enabled: actor !== null,
+    refetchInterval: 15_000,
+  });
+  return mode.data?.mode === "downtime";
+}
+
+/**
+ * What the operator is told when the printer cannot print and the network may not answer. Named
+ * rather than inlined at two seats, because the chair and the bench must say the SAME thing about
+ * the same kit — a reconciliation that reads two different instructions is the failure this is
+ * written to prevent.
+ */
+export function DowntimeNotice({ children }: { children?: React.ReactNode }): React.ReactElement {
+  const { t } = useTranslation();
+  return (
+    <div
+      data-testid="lab-downtime"
+      role="status"
+      className="space-y-2 rounded border-2 p-2 text-sm"
+      style={{ borderColor: "var(--state-danger)" }}
+    >
+      <p className="font-bold">{t("lab.seat.downtimeTitle")}</p>
+      <p className="text-xs">{t("lab.seat.downtimeReconcile")}</p>
+      {children}
+    </div>
+  );
 }
