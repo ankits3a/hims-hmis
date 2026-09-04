@@ -296,6 +296,34 @@ describe("the stock ledger (Plan 14 T5)", () => {
     expect((await fefoPick(db, storeId, itemId, 15)).map((p) => p.batchId)).toEqual([dated, undated]);
   });
 
+  /**
+   * PLAN 16c CLOSE REVIEW — FEFO ORDERED BY EXPIRY AND NEVER FILTERED ON IT.
+   *
+   * The recall exclusion has been in this query from the start; expiry was only ever a SORT KEY. So
+   * the first batch FEFO offered was the most expired one the store held, and the pharmacy counter
+   * — which takes `offered[0]` — dispensed expired medicine by preference. `expiry_date` is the
+   * last day a batch may be used, so today's date is still good and yesterday's is not.
+   */
+  it("A10b: an EXPIRED batch is excluded, not merely sorted first — and one expiring TODAY is still good", async () => {
+    const itemId = await anItem("PCM500", "drug");
+    const storeId = await aStore("MAIN");
+    const dead = await aBatch(itemId, { batchNo: "B-DEAD", expiryDate: "2026-08-31" });
+    const today = await aBatch(itemId, { batchNo: "B-TODAY", expiryDate: "2026-09-01" });
+    const later = await aBatch(itemId, { batchNo: "B-LATER", expiryDate: "2027-01-31" });
+    await withTx(db, (tx) => postMovements(tx, HEAD, [
+      { resourceId: storeId, batchId: dead, qtyDelta: 10, reason: "grn", occurredAt: T0 },
+      { resourceId: storeId, batchId: today, qtyDelta: 10, reason: "grn", occurredAt: T0 },
+      { resourceId: storeId, batchId: later, qtyDelta: 10, reason: "grn", occurredAt: T0 },
+    ]));
+    const asOf = new Date("2026-09-01T04:00:00.000Z"); // 09:30 IST on the day B-TODAY expires (stock received T0, 27 Aug)
+    const picked = await fefoPick(db, storeId, itemId, 30, asOf);
+    expect(picked.map((p) => p.batchId)).toEqual([today, later]);
+    expect(picked.reduce((a, p) => a + p.qty, 0)).toBe(20); // the expired ten are not offered at all
+    // and the day after, today's batch drops out too
+    expect((await fefoPick(db, storeId, itemId, 30, new Date("2026-09-02T04:00:00.000Z"))).map((p) => p.batchId))
+      .toEqual([later]);
+  });
+
   it("FEFO offers only AVAILABLE quantity — reserved and frozen are subtracted", async () => {
     const itemId = await anItem();
     const storeId = await aStore("MAIN");
