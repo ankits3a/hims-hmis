@@ -14,10 +14,10 @@ import type {
   WireAdvisedTest, WirePriceListRow,
 } from "../lib/opd-api";
 import { Link } from "@tanstack/react-router";
-import { fmtPaise } from "../lib/format";
+import { fmtIst, fmtPaise } from "../lib/format";
 import { useRealtime } from "../lib/realtime";
 import { RxPrint } from "../components/rx-print";
-import { flagTone, resultsForEncounter } from "../lib/lab-api";
+import { flagTone, provisionalResultsForEncounter, resultsForEncounter } from "../lib/lab-api";
 import { CheckboxField, FormKit, SelectField, TextField } from "../components/form-kit";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -1379,13 +1379,28 @@ export function OpdConsult(): React.ReactElement {
  * the consult screen is already 1300 lines; it is defined here rather than in `components/` because
  * nothing else mounts it and a shared component with one caller is a file nobody can change safely.
  */
-function LabResultsPanel({ visitNo }: { visitNo: string | null }): React.ReactElement | null {
+export function LabResultsPanel({ visitNo }: { visitNo: string | null }): React.ReactElement | null {
   const { t } = useTranslation();
   const results = useQuery({
     queryKey: ["lab", "encounter", visitNo ?? ""],
     queryFn: () => resultsForEncounter(visitNo!),
     enabled: visitNo !== null,
     /** A 403 here means this doctor holds no `lab.results.read`; the panel simply does not render. */
+    retry: false,
+  });
+  /**
+   * 17d T5 / D6 — THE UNSIGNED NUMBERS, ASKED FOR SEPARATELY (design board EdgeCases #18).
+   *
+   * A SECOND query against a SECOND route, never a flag on the one above. The doctor wanting values
+   * before the pathologist signs is a constant request in an Indian hospital, and the honest answer
+   * is to show them with the word on them — but a screen that merged the two lists would put an
+   * unsigned number in front of a prescriber wearing a signed one's clothes, which is the exact
+   * harm `listResultsForEncounter`'s verified-only contract exists to prevent.
+   */
+  const provisional = useQuery({
+    queryKey: ["lab", "encounter", visitNo ?? "", "provisional"],
+    queryFn: () => provisionalResultsForEncounter(visitNo!),
+    enabled: visitNo !== null,
     retry: false,
   });
   if (visitNo === null) return null;
@@ -1424,6 +1439,43 @@ function LabResultsPanel({ visitNo }: { visitNo: string | null }): React.ReactEl
             </li>
           ))}
         </ul>
+      )}
+      {/*
+        ═══ THE PROVISIONAL BLOCK — ITS OWN LIST, UNDER THE SIGNED ONE, EVERY ROW STAMPED ═══
+
+        Below the verified results and never interleaved with them: a clinician scanning the panel
+        must be able to tell at a glance which numbers a pathologist has stood behind. The stamp is
+        on EVERY ROW rather than once on the heading, because a heading scrolls off and a row does
+        not — and this is the panel somebody reads on a phone at 21:40.
+
+        A failed query here renders NOTHING, not an empty state: "no provisional results" is a
+        clinical claim, and C1's lesson (a failed query is not a clinical negative) applies to the
+        unsigned list exactly as it does to the signed one.
+      */}
+      {!provisional.isError && (provisional.data ?? []).length > 0 && (
+        <div data-testid="lab-results-provisional" className="space-y-1 border-t pt-2">
+          <p className="text-xs font-semibold">{t("lab.consult.provisionalTitle")}</p>
+          <p className="text-xs text-muted-foreground">{t("lab.consult.provisionalNote")}</p>
+          <ul className="space-y-1 text-sm">
+            {(provisional.data ?? []).map((r) => (
+              <li key={`prov:${r.orderItemId}:${r.analyteCode}`} className="flex flex-wrap items-baseline gap-2">
+                <span className="rounded border px-1 text-[10px] font-bold uppercase tracking-wide">
+                  {t("lab.consult.provisionalStamp")}
+                </span>
+                <span className="text-muted-foreground">{r.orderableCode}</span>
+                <span>{r.analyteName}</span>
+                <span className={flagTone(r.flag) === "critical" ? "font-bold" : ""}>
+                  {r.value} {r.unit ?? ""}
+                </span>
+                {r.flag !== null && r.flag !== "N" && <span className="font-semibold">{r.flag}</span>}
+                <span className="text-xs text-muted-foreground">
+                  {r.refLow !== null && r.refHigh !== null ? `${r.refLow} – ${r.refHigh}` : (r.refText ?? "")}
+                </span>
+                <span className="text-xs text-muted-foreground">{fmtIst(r.enteredAt)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );

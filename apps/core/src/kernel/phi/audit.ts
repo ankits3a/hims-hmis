@@ -55,6 +55,15 @@ export type PhiSurface =
    */
   | "orders.patient" | "lab.results" | "lab.report"
   /**
+   * 17d T5 / D6 — the doctor reading UNSIGNED numbers before the pathologist has verified them
+   * (design board EdgeCases #18). Its own name for exactly the reason the sentence above gives
+   * about `lab.results` and `lab.report`: "the prescriber saw a provisional value at 21:40" and
+   * "the prescriber saw a signed report" are materially different disclosures, and a log that
+   * merged them would answer *what did they actually see* wrong — which is the only question it
+   * exists for. It is also the one an audit is most likely to ask about after a clinical incident.
+   */
+  | "lab.results.provisional"
+  /**
    * VD-1 T4 — the vitals bay's opening read: the LAST reading for one patient, the derived band,
    * and what that reading would flag today. Its own name rather than a reuse of `opd.vitals` or
    * `opd.vitals_history`, for the reason `opd.rx_history` is not `opd.prescriptions`: `opd.vitals`

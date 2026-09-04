@@ -2080,7 +2080,10 @@
       "empty": "No verified laboratory results for this visit.",
       "unpaidNote": "Results are shown whatever the bill says. The printed report is held separately.",
       "unavailable": "Laboratory results could not be loaded — this is NOT a statement that there are none. Retry, or check the laboratory system.",
-      "loading": "Loading laboratory results…"
+      "loading": "Loading laboratory results…",
+      "provisionalTitle": "Provisional — not yet verified",
+      "provisionalNote": "Keyed at the bench and not yet signed by a pathologist. Values may change.",
+      "provisionalStamp": "Provisional"
     },
     "seat": {
       "department": "Central lab",

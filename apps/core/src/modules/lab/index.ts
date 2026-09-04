@@ -94,13 +94,14 @@ export type { CancelLabItemInput, LabChargeReason, RefundOutcome } from "./money
 export { deliveryAllowed, EXEMPT_ENCOUNTER_PREFIXES, EXEMPT_PAYERS } from "./interlock";
 export type { DeliveryVerdict } from "./interlock";
 export {
-  amendReport, deliveryRegister, getReport, listResultsForEncounter, printReport, publishReport, releaseUnpaid,
+  amendReport, deliveryRegister, getReport, listResultsForEncounter, listProvisionalResultsForEncounter,
+  printReport, publishReport, releaseUnpaid,
   reportsForPatient, reportVersions, LAB_REPORTS_AMEND, LAB_REPORTS_PRINT, LAB_REPORTS_PUBLISH, LAB_RESULTS_READ,
   PATIENT_LAB_REPORT_READY,
 } from "./reports";
 export type { DeliveryRegisterRow, PatientReportRow, PatientReports, ReportDeliveryRow, ReportNotice } from "./reports";
 export type {
-  AmendReportInput, EncounterResultRow, PrintedReport, PrintReportInput, PublishedReport,
+  AmendReportInput, EncounterResultRow, PrintedReport, PrintReportInput, ProvisionalResultRow, PublishedReport,
   PublishReportInput, ReleaseUnpaidInput, ReportAnalyteLine, ReportPanel, ReportSnapshot,
   ReportVersionRow, ReportView,
 } from "./reports";
