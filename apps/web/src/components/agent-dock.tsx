@@ -123,7 +123,24 @@ export function AgentDock(
         </span>
         <form
           style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}
-          onSubmit={(e) => { e.preventDefault(); onAsk(draft); setDraft(""); }}
+          /*
+            ═══ FD-25 — ASKING OPENS THE PANEL, BECAUSE THE ANSWER LIVES IN IT ═══
+
+            `answer` is rendered ONLY inside the pull-up (`open ? … : null`). So a clerk typed a
+            question, pressed Enter, and the screen did nothing visible: the answer existed, in
+            state, behind a toggle they had no reason to press. Found by a test asserting the dock
+            said something after a question — which it did not, on any of the three screens that
+            mount this bar.
+
+            That is precisely the failure this bar's own header warns about ("a dock that renders
+            and answers nothing is worse than none") arriving one layer in: it was not that the
+            agent had no answer, it was that asking did not show it. Two screens have shipped with
+            it since FD-23.
+
+            The panel is not force-closed on submit, only opened — a clerk who opened the log to
+            read what happened keeps it open when they ask a follow-up.
+          */
+          onSubmit={(e) => { e.preventDefault(); onAsk(draft); setDraft(""); setOpen(true); }}
         >
           <input
             ref={askRef}
