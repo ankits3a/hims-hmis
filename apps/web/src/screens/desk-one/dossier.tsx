@@ -1,4 +1,7 @@
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
+import { patientTimeline } from "../../lib/opd-api";
+import { dayMonthIst } from "../../lib/format";
 import { ageOf, initialsOf, rs, sexLetter, STEPS, stepIndex, tokenStateOf } from "./model";
 import { useDesk } from "./session";
 import { PhotoPanel } from "./photo";
@@ -22,6 +25,60 @@ import { PhotoPanel } from "./photo";
  * carries are read from the same source and cannot drift. Before a visit exists there is nothing to
  * quote, and it says that rather than showing a guess.
  */
+/**
+ * The patient's own OPD history, newest first. Deliberately shallow — five rows is the "have they
+ * been here, and when" question a counter asks; a scrolling clinical record is a different screen
+ * with a different permission.
+ */
+function History({ patientId }: { patientId: string }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const history = useQuery({
+    queryKey: ["d1", "timeline", patientId],
+    queryFn: () => patientTimeline(patientId),
+    staleTime: 60_000,
+    retry: false,
+  });
+  const items = (history.data?.items ?? []).slice(0, 5);
+
+  return (
+    <>
+      <div className="tag" style={{ marginTop: 20 }}>{t("registrationCounter.history.title")}</div>
+      {history.isPending ? (
+        <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 7 }}>{t("registrationCounter.history.reading")}</div>
+      ) : items.length === 0 ? (
+        /* A first visit is a FACT worth stating — it changes how the clerk talks to the person. */
+        <div data-testid="history-none" style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 7, lineHeight: "16px" }}>
+          {t("registrationCounter.history.first")}
+        </div>
+      ) : (
+        <div data-testid="history-list" style={{ marginTop: 7 }}>
+          {items.map((h) => (
+            <div
+              key={h.encounterId}
+              data-testid="history-row"
+              style={{ display: "flex", gap: 8, alignItems: "baseline", padding: "6px 0", borderBottom: "1px solid var(--line2)" }}
+            >
+              <span className="mo" style={{ fontSize: 10.5, color: "var(--dim)", width: 62, flexShrink: 0 }}>
+                {dayMonthIst(h.serviceDate)}
+              </span>
+              <span style={{ fontSize: 11.5, minWidth: 0, flexGrow: 1, lineHeight: "15px" }}>
+                {h.departmentName ?? t("registrationCounter.history.unknownDept")}
+                {h.doctorName === null ? "" : <span style={{ color: "var(--dim)" }}> · {h.doctorName.replace(/^Dr\.\s*/, "")}</span>}
+              </span>
+              <span
+                className="tag"
+                style={{ flexShrink: 0, color: h.status === "completed" ? "var(--green)" : h.status === "abandoned" ? "var(--gold)" : "var(--faint)" }}
+              >
+                {t(`registrationCounter.history.state.${h.status}`, { defaultValue: h.status })}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 export function Dossier(): React.ReactElement {
   const d = useDesk();
   const { s } = d;
@@ -164,6 +221,27 @@ export function Dossier(): React.ReactElement {
         ))}
         <span className="tag" style={{ flexShrink: 0 }}>{STEPS[step]?.label ?? ""}</span>
       </div>
+
+      {/*
+        ═══════════════════════════════════════════════════════════════════════════════════════════
+        FD-16 — THEIR HISTORY, which the artboard puts in this rail and the desk never showed
+        ═══════════════════════════════════════════════════════════════════════════════════════════
+
+        `GET /opd/patients/:id/timeline` has existed since 07a under `opd.visits.read` — the
+        permission `front_office` holds — and the route's own comment says why that is the right gate:
+        it returns "dates, departments, a diagnosis line and a count — the shape a clerk needs to
+        answer 'when was this patient last here'". No web client had ever called it. Fourth
+        server-side rail this lane has found built and unwired.
+
+        ═══ THE DIAGNOSIS LINE IS ON THE WIRE AND IS NOT DRAWN ═══
+
+        `diagnosis` and `icd10Code` come back with every row. This rail faces a counter queue, and a
+        diagnosis readable over the patient's shoulder is a disclosure no permission check can see —
+        07d drew exactly this line when it put prescriptions and vitals behind `opd.consult` instead
+        of `opd.visits.read`. So the rail says WHEN, WHERE and HOW IT ENDED, which is what a booking
+        decision actually needs, and the clinical detail stays on the clinical screens.
+      */}
+      {p === null ? null : <History patientId={p.id} />}
 
       {/* ── benefits & links, as the SERVER recognises them ── */}
       <div className="tag" style={{ marginTop: 20 }}>benefits & links</div>

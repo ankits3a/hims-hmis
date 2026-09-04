@@ -2597,6 +2597,20 @@
         "suspended": "स्थगित",
         "cancelled": "रद्द"
       }
+    },
+    "history": {
+      "title": "इनका इतिहास",
+      "reading": "फ़ाइल पढ़ी जा रही है…",
+      "first": "पहली विज़िट — आज से पहले कुछ दर्ज नहीं है।",
+      "unknownDept": "विभाग दर्ज नहीं",
+      "state": {
+        "completed": "देखा गया",
+        "abandoned": "चले गए",
+        "registered": "दर्ज",
+        "waiting": "प्रतीक्षा",
+        "in_consultation": "डॉक्टर के पास",
+        "awaiting_results": "रिपोर्ट प्रतीक्षित"
+      }
     }
   },
   "vitalsBay": {

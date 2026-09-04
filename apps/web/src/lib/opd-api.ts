@@ -710,3 +710,34 @@ export function listQueueSummary(serviceDate: string, departmentId?: string): Pr
 export function abandonVisit(encounterId: string, reason: string): Promise<{ encounter: WireEncounter }> {
   return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/abandon`, { reason });
 }
+
+/* ══ FD-16 — the appointment screen's two reads, both already on the server ═════════════════════ */
+
+/**
+ * ONE ROW OF THE PATIENT'S OPD HISTORY. `GET /opd/patients/:id/timeline` has existed since 07a,
+ * gated on `opd.visits.read` — which `front_office` holds, deliberately: the route's own comment
+ * calls this "the shape a clerk needs to answer 'when was this patient last here'". No web client
+ * had ever called it.
+ *
+ * `diagnosis` and `icd10Code` ARE on the wire and this desk does not render them. The counter
+ * screen faces a queue, and a diagnosis line readable over the patient's shoulder is a leak the
+ * permission check cannot see. 07d already drew this line for prescriptions and vitals by putting
+ * them behind `opd.consult`; declaring the fields and not drawing them keeps that spirit without
+ * pretending the server does not send them.
+ */
+/* The type is declared above with the other wire shapes; only the CALLER was missing. */
+export function patientTimeline(patientId: string): Promise<{ items: WireTimelineItem[] }> {
+  return api("GET", `/opd/patients/${encodeURIComponent(patientId)}/timeline`);
+}
+
+/**
+ * THE DAY'S BOOK for one doctor: who is expected, and in what state. The rows carry the server's
+ * own patient summaries, so a confidential patient arrives as `restricted` with an alias and this
+ * screen renders what it was given rather than deciding for itself.
+ */
+export function listDayAppointments(doctorId: string, serviceDate: string): Promise<{ items: WireAppointment[] }> {
+  return api(
+    "GET",
+    `/opd/appointments?doctorId=${encodeURIComponent(doctorId)}&serviceDate=${encodeURIComponent(serviceDate)}`,
+  );
+}

@@ -2597,6 +2597,20 @@
         "suspended": "suspended",
         "cancelled": "cancelled"
       }
+    },
+    "history": {
+      "title": "their history",
+      "reading": "reading their file…",
+      "first": "First visit — nothing on file before today.",
+      "unknownDept": "department not recorded",
+      "state": {
+        "completed": "seen",
+        "abandoned": "left",
+        "registered": "booked in",
+        "waiting": "waited",
+        "in_consultation": "with doctor",
+        "awaiting_results": "awaiting results"
+      }
     }
   },
   "vitalsBay": {

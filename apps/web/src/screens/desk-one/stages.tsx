@@ -3,14 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { abhaCapability, matchReasonKeys, matchReasonsDiscriminate, searchPatients } from "../../lib/patients-api";
 import type { WirePatientHit } from "../../lib/patients-api";
-import { getContinuity, getSlots, opdErrorMessage } from "../../lib/opd-api";
+import { getContinuity, getSlots, listDayAppointments, opdErrorMessage } from "../../lib/opd-api";
 import { DELAY_HIGHLIGHT_MINUTES, proposeWalkIn } from "../../lib/walk-in-routing";
 import type { WireDoctorSummary, WireSlot } from "../../lib/opd-api";
 import {
   ageOf, bookableToday, etaClock, initialsOf, rs, sexLetter, vitalsAhead, waitMinutes,
 } from "./model";
 import type { DeptQueue } from "./model";
-import { monthYearIst } from "../../lib/format";
+import { dayMonthIst, monthYearIst } from "../../lib/format";
 import { EMPTY_COVERAGE, formNeedsGuardian, useDesk } from "./session";
 import type { CoverageDraft, Person } from "./session";
 
@@ -1155,6 +1155,16 @@ function DeptCard({ q, first, second }: { q: DeptQueue; first: boolean; second: 
 }
 
 /** The future lane. A held slot sits BESIDE today's session and never replaces it. */
+/**
+ * A slot's clock face in IST. One helper for the chips, the confirm button and the day's book, so
+ * the time a clerk clicks, the time the button promises and the time the book lists cannot differ.
+ */
+function slotClock(iso: string): string {
+  return new Date(iso).toLocaleTimeString("en-IN", {
+    timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: false,
+  });
+}
+
 function FutureTab(): React.ReactElement {
   const d = useDesk();
   const { s } = d;
@@ -1170,9 +1180,25 @@ function FutureTab(): React.ReactElement {
     queryFn: () => getSlots(doctorId, date),
     enabled: doctorId !== "",
   });
+  /** FD-16 — the day's book for the doctor and date in the pickers, from a route nothing called. */
+  const dayBook = useQuery({
+    queryKey: ["d1", "day-book", doctorId, date],
+    queryFn: () => listDayAppointments(doctorId, date),
+    enabled: doctorId !== "",
+    staleTime: 30_000,
+    retry: false,
+  });
+  /** The slot the clerk has SELECTED and not yet committed — the artboard's "yours". */
+  const [picked, setPicked] = useState<string | null>(null);
+
   const chosen = bookable.find((x) => x.doctor.id === doctorId) ?? null;
   const deptName = d.departments.find((x) => x.id === chosen?.doctor.departmentId)?.name ?? "";
-  const free = (slots.data?.slots ?? []).filter((x) => !x.booked && !x.past);
+  const all = slots.data?.slots ?? [];
+  const free = all.filter((x) => !x.booked && !x.past);
+  /* A cancelled or no-show booking is not somebody the desk should expect at that hour. */
+  const booked = (dayBook.data?.items ?? [])
+    .filter((a) => a.status === "booked" || a.status === "checked_in")
+    .sort((a, b) => a.slotStart.localeCompare(b.slotStart));
 
   return (
     <div style={{ maxWidth: 900 }}>
@@ -1200,26 +1226,136 @@ function FutureTab(): React.ReactElement {
         </span>
       </div>
 
+      {/*
+        ═══════════════════════════════════════════════════════════════════════════════════════════
+        FD-16 — THE WHOLE DIARY, NOT ONLY ITS GAPS, AND A BOOKING IS CONFIRMED RATHER THAN TRIPPED
+        ═══════════════════════════════════════════════════════════════════════════════════════════
+
+        Owner, 2026-09-04, against the artboard: *"the main panel shows slot booking coloring, free
+        slot, not free slot. Color of the selected slot and a confirmation button."*
+
+        This drew ONLY the free slots, so a full morning and a doctor with no session looked
+        identical — an empty box — and the clerk could not tell "all taken, try the afternoon" from
+        "this doctor is not in that day". A diary that hides what is taken cannot be read as a diary.
+
+        AND CLICKING A CHIP BOOKED IMMEDIATELY. One mis-aimed click on a dense grid of times put a
+        promise about a time into the record with no confirm step. Now a click SELECTS — the chip
+        turns pine, the legend says what the colours mean, and one button commits it.
+      */}
       <div className="box" style={{ marginTop: 14, padding: "13px 15px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 13, marginBottom: 10 }}>
+          <span className="tag">the day's slots</span>
+          <div style={{ display: "flex", gap: 11, marginLeft: "auto" }}>
+            {([["free", "var(--card)", "var(--line)"], ["taken", "var(--wash)", "var(--line)"], ["yours", "var(--green)", "var(--green)"]] as const).map(
+              ([label, bg, border]) => (
+                <span key={label} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: "var(--dim)" }}>
+                  <span style={{ width: 11, height: 11, borderRadius: 3, background: bg, border: `1px solid ${border}` }} />
+                  {label}
+                </span>
+              ),
+            )}
+          </div>
+        </div>
+
         {slots.isFetching ? <span style={{ color: "var(--faint)", fontSize: 12 }}>reading the diary…</span> : null}
-        {!slots.isFetching && free.length === 0 ? (
-          <span style={{ color: "var(--dim)", fontSize: 12 }}>
-            No free slot that day — this doctor has no session, or every slot is taken.
+        {!slots.isFetching && all.length === 0 ? (
+          <span data-testid="no-session" style={{ color: "var(--dim)", fontSize: 12 }}>
+            No session that day — this doctor is not sitting, so there is nothing to book. Try another day or another doctor.
+          </span>
+        ) : !slots.isFetching && free.length === 0 ? (
+          <span data-testid="day-full" style={{ color: "var(--gold)", fontSize: 12 }}>
+            Every slot that day is taken. The times below show who has them — try another day.
           </span>
         ) : null}
+
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {free.map((slot: WireSlot) => (
-            <button
-              key={slot.start}
-              className="sec mo"
-              style={{ height: 30, fontSize: 11.5, padding: "0 10px" }}
-              disabled={s.busy === "future" || chosen === null}
-              onClick={() => void d.holdFutureSlot(doctorId, slot, deptName, chosen?.doctor.displayName ?? "")}
-            >
-              {new Date(slot.start).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: false })}
-            </button>
-          ))}
+          {all.map((slot: WireSlot) => {
+            const unavailable = slot.booked || slot.past;
+            const isPicked = picked === slot.start;
+            return (
+              <button
+                key={slot.start}
+                data-testid={`slot-${unavailable ? "taken" : isPicked ? "picked" : "free"}`}
+                title={slot.past ? "already gone" : slot.booked ? "taken" : "free"}
+                className="mo"
+                style={{
+                  height: 30, fontSize: 11.5, padding: "0 10px", borderRadius: 6,
+                  border: `1px solid ${isPicked ? "var(--green)" : "var(--line)"}`,
+                  background: isPicked ? "var(--green)" : unavailable ? "var(--wash)" : "var(--card)",
+                  color: isPicked ? "#fff" : unavailable ? "var(--faint)" : "var(--ink)",
+                  fontWeight: isPicked ? 700 : 400,
+                  textDecoration: slot.past ? "line-through" : undefined,
+                  cursor: unavailable ? "not-allowed" : "pointer",
+                }}
+                disabled={unavailable || chosen === null}
+                onClick={() => { setPicked(slot.start); }}
+              >
+                {slotClock(slot.start)}
+              </button>
+            );
+          })}
         </div>
+
+        {/* THE CONFIRMATION. A booking is a promise about a time; it is made deliberately or not at all. */}
+        {picked === null ? null : (
+          <div style={{ display: "flex", alignItems: "center", gap: 11, marginTop: 13, paddingTop: 12, borderTop: "1px solid var(--line2)" }}>
+            <button
+              className="pri"
+              data-testid="confirm-slot"
+              disabled={s.busy === "future" || chosen === null}
+              onClick={() => {
+                const slot = all.find((x) => x.start === picked);
+                if (slot === undefined || chosen === null) return;
+                void d.holdFutureSlot(doctorId, slot, deptName, chosen.doctor.displayName);
+                setPicked(null);
+              }}
+            >
+              {s.busy === "future" ? "holding…" : `book ${slotClock(picked)} with ${chosen?.doctor.displayName ?? ""}`}
+              <span className="kb dk">⏎</span>
+            </button>
+            <button className="sec" data-testid="clear-slot" onClick={() => { setPicked(null); }}>pick another</button>
+          </div>
+        )}
+      </div>
+
+      {/*
+        ═══ THE DAY'S BOOK — who else is expected, which is the question the patient asks next ═══
+
+        Owner: *"I want panel to shows list of patient that have booked slot on that future date."*
+        `GET /opd/appointments?doctorId&serviceDate` already answered this and nothing called it. The
+        rows carry the SERVER'S patient summaries, so a confidential patient arrives `restricted`
+        with an alias and this screen renders what it was handed rather than deciding for itself.
+      */}
+      <div className="box" style={{ marginTop: 14, overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "11px 14px", borderBottom: "1px solid var(--line2)" }}>
+          <span style={{ fontSize: 13, fontWeight: 700 }}>The day&apos;s book</span>
+          <span style={{ fontSize: 11, color: "var(--dim)" }}>
+            {dayMonthIst(date)}{chosen === null ? "" : ` · ${chosen.doctor.displayName}`}
+          </span>
+          <span className="mo" data-testid="book-count" style={{ marginLeft: "auto", fontSize: 11, color: "var(--dim)" }}>
+            {booked.length} booked
+          </span>
+        </div>
+        {booked.length === 0 ? (
+          <div data-testid="book-empty" style={{ padding: "14px", fontSize: 11.5, color: "var(--faint)" }}>
+            Nobody booked with {chosen?.doctor.displayName ?? "this doctor"} that day yet.
+          </div>
+        ) : (
+          booked.map((a) => (
+            <div key={a.id} data-testid="book-row" className="drow" style={{ background: "var(--card)" }}>
+              <span className="mo" style={{ fontSize: 11.5, fontWeight: 600, width: 56 }}>{slotClock(a.slotStart)}</span>
+              <span style={{ fontSize: 12, flexGrow: 1, minWidth: 0 }}>
+                {a.patient?.restricted === true
+                  ? <span style={{ color: "var(--dim)" }}>{a.patient.alias ?? "restricted record"}</span>
+                  : a.patient?.name ?? "—"}
+              </span>
+              <span className="mo" style={{ fontSize: 10.5, color: "var(--faint)", width: 96 }}>{a.patient?.uhid ?? ""}</span>
+              <span className="tag" style={{ width: 78, color: a.status === "checked_in" ? "var(--green)" : "var(--dim)" }}>
+                {a.status.replace(/_/g, " ")}
+              </span>
+            </div>
+          ))
+        )}
       </div>
 
       {s.future === null ? null : (

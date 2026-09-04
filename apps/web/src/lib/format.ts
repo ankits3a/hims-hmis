@@ -73,6 +73,21 @@ export function monthYearIst(iso: string): string {
   return `${MONTHS_EN[shifted.getUTCMonth()]!} ${String(shifted.getUTCFullYear())}`;
 }
 
+/**
+ * FD-16 — an IST CALENDAR DATE (`YYYY-MM-DD`) → `DD Mon`, for the history rail and the day's book.
+ *
+ * NO TIMEZONE ARITHMETIC, and that is the whole point of it being a separate function from
+ * `monthYearIst` above. `serviceDate` is already the IST calendar day the server decided; running
+ * it through a UTC offset would shift it by a day near midnight and print the wrong date for the
+ * one class of visit — a late-night arrival — where getting the day right matters most.
+ */
+export function dayMonthIst(serviceDate: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(serviceDate);
+  if (m === null) return serviceDate;
+  const month = MONTHS_EN[Number(m[2]) - 1] ?? "";
+  return `${m[3]} ${month}`;
+}
+
 /** Transcribed from `patient-picker.tsx`'s private copy: the trailing value, `ms` after it settles. */
 export function useDebounced(value: string, ms: number): string {
   const [debounced, setDebounced] = useState(value);
