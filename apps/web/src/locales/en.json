@@ -1840,7 +1840,8 @@
       "compared": "{{total}} collected, against a median of {{median}}.",
       "drift": "{{total}} collected — {{first}} in the first half, {{second}} in the second."
     },
-    "failed": "The brief could not be read — try again, or ask an administrator."
+    "failed": "The brief could not be read — try again, or ask an administrator.",
+    "periodLabel": "How far back"
   },
   "staffReports": {
     "title": "Staff reports",
@@ -2602,7 +2603,8 @@
       "yourDay": "Your day",
       "yourDayHint": "the signed document: what you registered, what you took, by tender. Provisional until the day is closed.",
       "reportFailed": "Your day could not be read — nothing is printed until it can be.",
-      "everyone": "everyone's bookings —"
+      "everyone": "everyone's bookings —",
+      "noRegistrationCard": "No registration figures for you yet — this fills in once you have registered somebody."
     },
     "photo": {
       "caption": "photo",
@@ -3170,6 +3172,113 @@
       "print": "Print the inspector's file",
       "printTitle": "Radiation safety — AERB file as at {{date}}",
       "printing": "Preparing the file…"
+    }
+  },
+  "registrationSeat": {
+    "header": {
+      "title": "Registration",
+      "noDrawer": "drawer not needed here",
+      "searchHere": "Search — the cursor starts here"
+    },
+    "rail": {
+      "inHand": "Patient in hand",
+      "nobodyYet": "Nobody at the counter yet.",
+      "theirCard": "Their card",
+      "uhidPending": "allocated the moment you register — the next number is not reserved, because the counter beside you may take it first",
+      "uhidIssued": "issued to this patient, and it never changes",
+      "takePhoto": "Take a photo",
+      "guardianOnFile": "guardian on file",
+      "noAbha": "no ABHA"
+    },
+    "search": {
+      "heading": "Who is in front of you?",
+      "placeholder": "name, mobile or UHID — any part of the name",
+      "helper": "Search before you type a single form field — a duplicate stopped here costs nothing. A surname works: Kumar finds every Kumar."
+    },
+    "hits": {
+      "noneOfThese": "None of these is the person in front of you?",
+      "noneFound": "Nobody on file matches that.",
+      "registerNew": "Register new"
+    },
+    "form": {
+      "newPatient": "New patient",
+      "fourFields": "four fields open a visit — the rest is only asked when it applies",
+      "female": "Female",
+      "male": "Male",
+      "other": "Other"
+    },
+    "doors": {
+      "heading": "Who will see them?",
+      "hint": "a doctor by name, or the complaint and we route it",
+      "byName": "A doctor, by name",
+      "byNamePlaceholder": "type a name…",
+      "complaint": "Or what brings them in",
+      "complaintPlaceholder": "seene mein dard · fever · sugar-BP…"
+    },
+    "proposal": {
+      "ruleContinuity": "Rule 1 · continuity of care",
+      "ruleShortest": "Rule 2 · nobody has seen them here",
+      "ruleDepartment": "Rule 3 · the department queue",
+      "badgeSeenBefore": "seen them before",
+      "badgeShortest": "shortest wait",
+      "noDoctor": "No doctor is free in this department",
+      "waitLine": "{{ahead}} ahead · ~{{minutes}}m · {{clock}}",
+      "reasonContinuity": "{{doctor}} consulted them on {{seenOn}}. Continuity wins even when his line is longer — the history does not have to be taken again.",
+      "reasonShortest": "First visit to {{department}}. Of the doctors on today, this one has the shortest line — availability decides only when continuity has nothing to say.",
+      "reasonDepartmentQueue": "Nobody in {{department}} is taking patients right now, so this joins the department queue and is assigned when somebody opens.",
+      "reasonAnchorAway": "{{doctor}} has seen them before but is not on today's board, so this falls to the shortest line. Tell the patient that, rather than that nobody has seen them.",
+      "reasonAnchorOnLeave": "{{doctor}} has seen them before and is on leave today. That is a different sentence from 'not scheduled', and it is the one to say to a patient asking for him by name.",
+      "delayed": "That line is over 20 minutes. {{doctor}} is about {{minutes}}m — offer it, but the choice is the patient's."
+    },
+    "guardian": {
+      "required": "{{age}} years old — a guardian is required"
+    },
+    "folds": {
+      "open": "open",
+      "notLinked": "not linked",
+      "noneOnFile": "none on file",
+      "ordinary": "ordinary record",
+      "sealed": "sealed",
+      "abhaHint": "the national health id, if they have one",
+      "abhaBody": "Recorded as self-declared, which is what this hospital can honestly say — only ABDM answering can make it verified, and we are not connected to ABDM. Self-declared and verified are different facts and the record keeps them apart.",
+      "photo": "Photograph",
+      "photoHint": "taken at the counter, attached to the card",
+      "photoBody": "The photo is confirmed against the demographics before it attaches — large, side by side, an explicit yes. A photo on the wrong record is worse than no photo. It needs a UHID first, so it is taken after registration.",
+      "confidential": "Confidential record",
+      "confidentialHint": "a VIP, a staff member, a sensitive context",
+      "confidentialBody": "The alias replaces the name on furniture — the strip, the board, the queue display — for everyone, including people who may read the real name. Sealing is revocable; a UHID is not, which is why status never lives in the number."
+    },
+    "duplicate": {
+      "heading": "{{count}} record(s) on file look like this person",
+      "why": "This is a warning, not a refusal. A second real Asha Devi on a shared family phone must be registrable — a desk that cannot register her learns to invent phone numbers instead, and that is how a patient master rots.",
+      "override": "None of these is them — register anyway"
+    },
+    "footer": {
+      "registerAndOpen": "Register and open the visit",
+      "registerOnly": "Register only",
+      "cancel": "Cancel",
+      "issuesAndPrints": "issues a UHID and prints the token",
+      "issuesOnly": "issues a UHID · no visit is opened, and no token prints"
+    },
+    "log": {
+      "registered": "Registered — UHID {{uhid}}",
+      "seated": "Token {{token}} · {{doctor}}",
+      "tookHit": "Took {{uhid}} from the search",
+      "duplicate": "Refused: {{count}} near match(es). The clerk decides."
+    },
+    "agent": {
+      "placeholder": "ask about this patient, the routing or the form…",
+      "idle": "I read this screen only — the form in front of you, the search hits, the routing proposal and its wait. I have no model behind me and I cannot look anything else up.",
+      "scope": "I answer from what is on this screen: the form, the search hits, the routing proposal and the UHID once it exists. Anything else I would be guessing at, so I do not.",
+      "guardianNeeded": "The age says {{age}}, so a guardian is required before this can be registered — DPDP §9, and the server refuses without one. The block is already open. — from the age you typed.",
+      "guardianNotNeeded": "The age says {{age}}, so no guardian is required. — from the age you typed.",
+      "guardianUnknownAge": "No age is entered yet. An unknown age is deliberately not treated as a minor — the server takes the same position, and demanding a guardian from every adult who cannot recall a birth year would be its own trap. — from the form.",
+      "route": "{{doctor}}, on rule '{{rule}}', about {{minutes}} minutes' wait. — from the routing proposal on this screen.",
+      "noRoute": "No doctor is proposed yet — answer either door above and the proposal appears with the rule that chose it. — from this screen.",
+      "duplicates": "The server refused this registration on {{count}} near match(es). They are listed above, and you may override. — from the last server answer.",
+      "noDuplicates": "The search is showing {{count}} row(s) and nothing has been refused as a duplicate. — from this screen.",
+      "uhidPending": "No UHID yet — it is allocated when you register, and it is never previewed because the counter beside you may take the next number first. — from this screen.",
+      "uhidIssued": "{{uhid}}. — from the registration this screen just made."
     }
   }
 }

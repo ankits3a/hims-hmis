@@ -102,7 +102,7 @@ export function BriefPanel({ date }: { date: string }): React.ReactElement {
     <section className="no-print flex flex-col gap-2 rounded border p-3">
       <div className="flex flex-wrap items-baseline gap-3">
         <h2 className="text-sm font-semibold">{t("brief.title")}</h2>
-        <div className="flex gap-1" role="group" aria-label={t("brief.period")}>
+        <div className="flex gap-1" role="group" aria-label={t("brief.periodLabel")}>
           {BRIEF_PERIODS.map((p) => (
             <button
               key={p}

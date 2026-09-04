@@ -68,7 +68,7 @@ export function StaffReports(): React.ReactElement {
             ))}
           </select>
         </label>
-        <div className="flex gap-1" role="group" aria-label={t("brief.period")}>
+        <div className="flex gap-1" role="group" aria-label={t("brief.periodLabel")}>
           {BRIEF_PERIODS.map((p) => (
             <button
               key={p}
