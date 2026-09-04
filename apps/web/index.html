@@ -7,15 +7,15 @@
     <!--
       Desk One's type system (screens/desk-one/desk-one.css §2): IBM Plex Sans for everything human,
       IBM Plex Mono for what a clerk compares digit by digit, IBM Plex Sans Devanagari for the
-      sentence the clerk says out loud. `display=swap` so a slow font never blanks a counter screen —
-      the fallback stacks in the CSS are real, and the desk stays legible before these land.
+      sentence the clerk says out loud.
+
+      FD-23 CLOSE REVIEW — THESE ARE SERVED BY THIS HOSPITAL, and the @font-face blocks now live in
+      `src/styles/plex.css` (imported by `main.tsx`) rather than behind a render-blocking
+      `<link>` to fonts.googleapis.com. A hospital LAN that cannot resolve Google would otherwise
+      have stalled first paint on the login page and the counter until the request timed out, and
+      every page load leaked this hospital's IP and referrer to a third party from a system holding
+      patient data. `display: swap` still applies and the CSS fallback stacks are still real.
     -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans+Devanagari:wght@400;600&display=swap"
-    />
   </head>
   <body>
     <div id="root"></div>
