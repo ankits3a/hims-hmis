@@ -5,7 +5,7 @@ import { withTx } from "../../kernel/db/client";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { transition } from "../../kernel/workflow/instances";
 import { balances, fefoPick, getBatch, reserveStock } from "../materials";
-import { PICK_RESERVATION_MINUTES } from "./config";
+import { PICK_RESERVATION_MINUTES, istDateOf } from "./config";
 import { dispensePicked } from "./events";
 import { PharmacyError } from "./errors";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
@@ -74,14 +74,27 @@ export async function pickDispense(
       const rows = await balances(db, { resourceId: store, batchId: edit.batchId });
       const batch = await getBatch(db, edit.batchId);
       const available = rows.reduce((n, b) => n + b.qtyOnHand - b.qtyReserved - b.qtyFrozen, 0);
+      /**
+       * A NAMED batch is told WHY (close review, second contract sweep). `fefoPick` now excludes an
+       * expired batch silently, which is right for an automatic choice; but when the pharmacist
+       * names one — the patient asked for the longer-dated strip and read the wrong carton — the
+       * counter says what is wrong with it rather than "cannot cover 20".
+       */
+      if (batch !== undefined && batch.expiryDate !== null && batch.expiryDate < istDateOf(now)) {
+        throw new PharmacyError(
+          "batch_expired",
+          `line ${String(line.lineIdx + 1)}: batch ${batch.batchNo} expired on ${batch.expiryDate} — it cannot be dispensed`,
+          { lineIdx: line.lineIdx, batchId: edit.batchId, expiryDate: batch.expiryDate },
+        );
+      }
       if (batch === undefined || batch.itemId !== line.itemId || batch.recallStatus !== "none" || available < qty) {
         throw new PharmacyError("fefo_override_unavailable", `line ${String(line.lineIdx + 1)}: batch ${edit.batchId} cannot cover ${String(qty)} at this store`, { lineIdx: line.lineIdx, available });
       }
-      const offered = await fefoPick(db, store, line.itemId, qty);
+      const offered = await fefoPick(db, store, line.itemId, qty, now);
       plan.push({ lineId: line.id, lineIdx: line.lineIdx, itemId: line.itemId, batchId: edit.batchId, qtyBase: qty, fefoOverride: offered[0]?.batchId !== edit.batchId, pickNote: partial ? note : null });
       continue;
     }
-    const offered = await fefoPick(db, store, line.itemId, qty);
+    const offered = await fefoPick(db, store, line.itemId, qty, now);
     const first = offered[0];
     if (first === undefined || first.qty < qty) {
       const all = await balances(db, { resourceId: store, itemId: line.itemId });

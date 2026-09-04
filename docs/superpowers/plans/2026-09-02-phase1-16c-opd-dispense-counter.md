@@ -229,6 +229,43 @@ list), `alerts-parity.test.ts` (sorted names AND a separate `toHaveLength`), `al
 last-position assertion in `jobs.test.ts` was RETIRED rather than re-pointed at the newest job —
 pinning "last" makes every future registration edit that line for no assertion value.
 
+### 8.5b Second contract sweep, 2026-09-04 — a CRITICAL the first pass walked past
+
+Closing F11 meant reading `fefoPick`, and `pick.ts` turned out to check `recallStatus` on the
+explicitly-named batch path while trusting FEFO on the automatic one. That asymmetry was worth a
+question, and the answer was the worst defect in the phase.
+
+**C4 — CRITICAL (law, patient safety): the counter dispensed EXPIRED medicine by preference.**
+`fefoPick` excluded recalled batches (`recallStatus = 'none'`) from the start and ORDERED by
+`expiry_date asc nulls last` — it never EXCLUDED a date already past. First-expiring-first-out means
+the first batch offered is the most expired one the store holds, and `pickDispense` takes
+`offered[0]`. Proved at the counter before it was fixed: a Crocin batch dated **2026-08-01 was
+picked and reserved for a patient on 2026-08-17**, ahead of two good batches. Selling it is an
+offence under the Drugs and Cosmetics Act, and doc 16 §14 put "expired block" inside 16c's scope
+while §6 never listed it as deferred — so this is missing scope, not a deferral.
+
+Fixed where the recall exclusion already lives, as the same kind of clause: `fefoPick` takes the
+caller's clock (`asOf`, defaulted) and excludes `expiry_date < today`. `expiry_date` is the last day
+a batch may be used, so today's stock is still good; a NULL expiry is KEPT, because DD8 rule 3
+exempts whole item classes from carrying one and "none recorded" is not "expired". Expired stock
+stays transferable by NAMING its batch, which is how it reaches quarantine or destruction — a FEFO
+override skips the query. And when the pharmacist names an expired batch at the counter, they are
+told which batch and which date (`batch_expired`) rather than "cannot cover 20".
+
+- **R3** (drop the exclusion from `fefoPick`) — `2 failed / 8 passed` → 10 passed.
+- Blast radius measured, not assumed: **41 suites / 467 tests green** across `materials`, `ot`,
+  `pharmacy`, `materials.e2e` and `pharmacy.e2e` — `fefoPick`'s only other production caller is
+  `transfers.ts`, which has a named-batch path.
+- Tested where the guard lives (`ledger.test.ts` A10b) as well as at the counter: the batch expiring
+  TODAY is picked and the same batch is gone the next day.
+
+**What this says about the first pass.** The contract pass reads the plan's clauses against the
+code, and it found three defects that way. This one was NOT in D1–D10 or R-1..R-5 — the plan never
+wrote down "do not dispense expired stock", because nobody thinks to write it down. It surfaced only
+from an ODDITY in the code: one path checking recall and its sibling not. **A contract pass is
+bounded by what the contract happens to say; the asymmetries in the code are a second, independent
+index of things to ask about, and they are cheap to scan for.**
+
 ### 8.5a Evidence for the close
 core `modules/pharmacy` + `pharmacy.e2e`: **10 suites / 60 tests, all green** (57 before; +3 written
 here, each RED first — C1 "Received promise resolved instead of rejected", C2 the X medicine present

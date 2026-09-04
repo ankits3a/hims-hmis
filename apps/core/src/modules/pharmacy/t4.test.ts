@@ -234,4 +234,44 @@ describe("the dispense counter — pick, bill, hand over (16c T4)", () => {
       .rejects.toThrow(expect.objectContaining({ code: "invoice_not_settled" }));
     expect(await db.select().from(stockLedger).where(eq(stockLedger.reason, "consume"))).toHaveLength(0);
   });
+  /**
+   * ═══ EXPIRED STOCK IS NOT DISPENSED, AND FEFO PREFERRED IT (close review, second sweep) ═══
+   *
+   * `fefoPick` excluded RECALLED batches from the start and ORDERED by `expiry_date asc` — so the
+   * first batch it offered was the most expired one the store held, and `pickDispense` takes
+   * `offered[0]`. The OPD counter dispensed expired medicine BY PREFERENCE. Proved before it was
+   * fixed: a Crocin batch dated 2026-08-01 was picked and RESERVED for a patient on 2026-08-17,
+   * ahead of two good batches. Illegal to sell (D&C Act) and the plainest patient-safety defect in
+   * the phase.
+   */
+  it("expired stock is skipped, not preferred: FEFO takes the earliest batch that is still IN date", async () => {
+    // dated BEFORE both good batches, so any ordering-only implementation puts it first
+    await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "CR-DEAD", expiryDate: "2026-08-01", qtyBase: 50, mrpPaise: 12000 });
+    const v = await verified([line({ drug: "Crocin 500", medicineId: fx.med.crocin })], [20]);
+    const p = await pickDispense(db, fx.pharmacist.actor, fx.decls, v.id, {}, MON2);
+    expect(p.lines[0]!.batchId).toBe(crocinEarly); // the earliest IN-DATE batch, not the expired one
+    expect(p.lines[0]!.batchId).not.toBe(crocinLate);
+  });
+
+  it("a batch that expires TODAY is still good, and one that expired yesterday is refused when named", async () => {
+    // the pharma convention: the printed date is the last day the batch may be used
+    const today = await stockIn(db, fx, { itemId: fx.item.azithro, batchNo: "AZ-TODAY", expiryDate: "2026-08-17", qtyBase: 20, mrpPaise: 15000 });
+    const dead = await stockIn(db, fx, { itemId: fx.item.azithro, batchNo: "AZ-DEAD", expiryDate: "2026-08-16", qtyBase: 20, mrpPaise: 15000 });
+
+    const v = await verified([line({ drug: "Azee 500", medicineId: fx.med.azithro, frequency: "OD", durationDays: 3 })], [3]);
+    // yesterday's batch is named explicitly — the counter says WHY, not "cannot cover 3"
+    await expect(pickDispense(db, fx.pharmacist.actor, fx.decls, v.id, { lines: [{ lineIdx: 0, batchId: dead }] }, MON2))
+      .rejects.toThrow(expect.objectContaining({ code: "batch_expired" }));
+    // and today's is dispensed normally
+    const p = await pickDispense(db, fx.pharmacist.actor, fx.decls, v.id, { lines: [{ lineIdx: 0, batchId: today }] }, MON2);
+    expect(p.lines[0]!.batchId).toBe(today);
+  });
+
+  it("when the ONLY stock is expired the counter refuses the pick, and nothing is reserved", async () => {
+    await stockIn(db, fx, { itemId: fx.item.calpol, batchNo: "CP-DEAD", expiryDate: "2026-08-01", qtyBase: 40, mrpPaise: 9000 });
+    const v = await verified([line({ drug: "Calpol 500", medicineId: fx.med.calpol })], [10]);
+    await expect(pickDispense(db, fx.pharmacist.actor, fx.decls, v.id, {}, MON2))
+      .rejects.toThrow(expect.objectContaining({ code: "short_stock" }));
+    expect((await db.select().from(stockBalances)).every((b) => b.qtyReserved === 0)).toBe(true);
+  });
 });

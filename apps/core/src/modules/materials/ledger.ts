@@ -6,6 +6,7 @@ import {
 } from "../../kernel/db/schema";
 import { MaterialsError } from "./errors";
 import { batchRecalled } from "./events";
+import { istDay } from "./grn";
 import { requireStore } from "./stores";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -366,6 +367,11 @@ export async function fefoPick(
   resourceId: string,
   itemId: string,
   qtyBase: number,
+  /**
+   * The calendar day the pick happens on, IST — the caller resolves the clock, exactly as the
+   * worker's jobs thread theirs. Defaults to now for the callers that have no clock of their own.
+   */
+  asOf: Date = new Date(),
 ): Promise<{ batchId: string; qty: number }[]> {
   if (!Number.isSafeInteger(qtyBase) || qtyBase <= 0) {
     throw new MaterialsError("insufficient_stock", `a pick must be a positive integer, got ${String(qtyBase)}`);
@@ -383,6 +389,26 @@ export async function fefoPick(
       eq(stockBalances.resourceId, resourceId),
       eq(stockBalances.itemId, itemId),
       eq(stockBatches.recallStatus, "none"),
+      /**
+       * ═══ AND IT MUST NOT ALREADY BE EXPIRED (16c close review, second contract sweep) ═══
+       *
+       * FEFO ORDERS by `expiry_date asc` and, until this clause, did not EXCLUDE a date already
+       * past — so the first batch this function offered was the MOST expired one the store held,
+       * and `pickDispense` takes `offered[0]`. The OPD counter therefore dispensed expired
+       * medicine BY PREFERENCE. Proved at the counter before it was fixed: a Crocin batch dated
+       * 2026-08-01 was picked and reserved for a patient on 2026-08-17, ahead of good stock.
+       *
+       * It sits beside the recall exclusion because it is the same kind of clause and the same
+       * argument: a batch that must not reach a patient must not be OFFERED to the person handing
+       * it over. Recall was excluded here from the start; expiry was ordered by and never filtered.
+       *
+       * `expiry_date` is the last day the batch may be used (the pharma convention), so the
+       * comparison is `>= today` and not `> today`. A NULL expiry is kept: DD8 rule 3 exempts whole
+       * item classes from carrying one, and "no expiry recorded" means does-not-expire here, not
+       * expired. Stock that IS expired is still transferable by NAMING its batch — which is how it
+       * reaches a quarantine or destruction store — because a FEFO override skips this query.
+       */
+      sql`(${stockBatches.expiryDate} is null or ${stockBatches.expiryDate} >= ${istDay(asOf)}::date)`,
     ))
     .orderBy(sql`${stockBatches.expiryDate} asc nulls last`, asc(stockBatches.id));
 
