@@ -91,10 +91,31 @@ function mount(opts: {
       queueEntry: { id: "q-1", tokenNo: 7 }, tokenNo: 7, sessionId: "s-1", roomId: null,
       visitType: "walk_in", doctorScheduledToday: true, patientId: "p-1", registered: false,
     },
+    /*
+      A REAL `WireFeeQuote`, because `billOf` walks `quote.draft.lines`. An earlier fixture here
+      omitted `draft` entirely: `quote.draft === null` was false (it was UNDEFINED), so the fold ran
+      straight into `undefined.lines` and the desk threw "Something went wrong!" the moment the
+      quote landed. A fixture narrower than the type it stands in for is a test that proves nothing
+      and then fails somewhere unrelated.
+    */
     "GET /api/billing/visits/e-1/fee-quote": {
-      encounterId: "e-1", draftId: "dr-1", freeReason: null, intendedPayer: "self",
-      lines: [{ label: "OPD consultation", grossPaise: 30_000, netPaise: 30_000 }],
-      totalPaise: 30_000, adjustments: [],
+      encounterId: "e-1", visitType: "walk_in", free: false, feeServiceId: "svc-1",
+      freeReason: null, attributionCode: null,
+      draft: {
+        tariffVersionId: "tv-1", intendedPayer: "self",
+        lines: [{
+          lineId: "l-1", serviceId: "svc-1", serviceName: "OPD consultation", category: "consult",
+          qty: 1, unitPaise: 30_000, grossPaise: 30_000, regulatedClamp: null,
+          candidates: [], winner: null, discountPaise: 0, taxableBasePaise: 0,
+          gst: { sacCode: "999312", rateBps: 0, exempt: true, exemptReason: "healthcare", cgstPaise: 0, sgstPaise: 0 },
+          netPaise: 30_000,
+        }],
+        totals: {
+          grossPaise: 30_000, discountPaise: 0, taxableBasePaise: 0, cgstPaise: 0, sgstPaise: 0,
+          taxableTurnoverPaise: 0, exemptTurnoverPaise: 30_000, taxSummary: [],
+          rawTotalPaise: 30_000, netPayablePaise: 30_000, roundingPaise: 0,
+        },
+      },
     },
     "GET /api/opd/continuity": { anchor: null },
     "GET /api/billing/session/current": { session: null },

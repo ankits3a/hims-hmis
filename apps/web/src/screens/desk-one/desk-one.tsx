@@ -234,6 +234,21 @@ export function DeskOne(): React.ReactElement {
       duplicates: null,
       query: "",
       stage: "appointment",
+      /*
+        ═══ FD-15 — THE FACE BELONGS TO THE PERSON, AND IT IS CLEARED BEFORE IT IS LOADED ═══
+
+        Cleared synchronously so there is no frame in which the previous patient's face is shown
+        against this one, and so that a patient with NO photo on file cannot inherit a stale one.
+
+        HONESTLY SCOPED, because a mutant made me check rather than assume: today no route reaches
+        this line carrying somebody else's face. `clearDesk` already empties the session, and the
+        other caller — "this is them" on the duplicate list — passes a photo the clerk just took OF
+        THE PERSON STANDING THERE, which the existing record is being asserted to be. So this is a
+        GUARD against a leak that is currently unreachable, not a fix for a live one, and no test
+        below claims otherwise. It stays because `hold` is the general "put a person in hand" door
+        and the next caller through it will not necessarily have cleared the desk first.
+      */
+      photo: null,
       startedAt: Date.now(),
       log: logged(prev.log, `file open — ${person.name} · ${person.uhid}`),
     }));
@@ -256,6 +271,32 @@ export function DeskOne(): React.ReactElement {
       },
       () => { /* the search hit's fields stand; a refused detail read is not this desk's problem */ },
     );
+
+    /*
+      ═══ FD-15 — A STORED PHOTO IS READ BACK, WHICH IS WHY IT LOOKED LIKE IT NEVER SAVED ═══
+
+      The owner reported the photo "not getting saved". It WAS saving — `PUT /patients/:id/photo`
+      answers 200 and the row is written — but nothing ever fetched it again, so the next time that
+      patient was held the panel was empty and the face was gone. Saved and invisible is
+      indistinguishable from not saved, and the clerk is right to call that broken.
+
+      `hasPhoto` on the search hit is not consulted deliberately: it is a snapshot from the moment
+      the row was searched, and a photo taken by another counter a minute ago would be missed. A 404
+      is the ordinary answer for a patient with no photo and is swallowed exactly like the detail
+      read above.
+    */
+    void (async () => {
+      const { getPatientPhoto } = await import("../../lib/patients-api");
+      try {
+        const stored = await getPatientPhoto(person.id);
+        setS((prev) => (prev.person?.id !== person.id ? prev : {
+          ...prev,
+          photo: `data:${stored.mimeType};base64,${stored.imageBase64}`,
+        }));
+      } catch {
+        /* no photo on file is the common case, not an error worth a line in the log */
+      }
+    })();
   }, []);
 
   /**
@@ -289,6 +330,8 @@ export function DeskOne(): React.ReactElement {
     setS((prev) => ({
       ...prev,
       enrolling: true, person: null, duplicates: null, stage: "register",
+      // FD-15 — the previous patient's face must not follow the clerk into a new registration
+      photo: null,
       form: { ...EMPTY_FORM, name: prev.query.replace(/\d/g, "").trim(), phone: /^\d{6,}$/.test(prev.query.replace(/\s/g, "")) ? prev.query.replace(/\s/g, "") : "" },
       startedAt: Date.now(),
     }));
@@ -607,6 +650,60 @@ export function DeskOne(): React.ReactElement {
     }
   }, [s.person, s.attributionCode, queues, summaries.data, lane, patch, qc]);
 
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-15 — CHANGING THE DOCTOR WITHOUT THROWING THE PATIENT AWAY
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Owner, 2026-09-04: *"imagine the patient at the billing screen to change the doctor then the
+   * user has no option rather he has to clear desk restart the process again."*
+   *
+   * `unassign` below has existed since Desk One was built and NO UI ever called it — the third
+   * server-side-or-shared rail this lane has found built and unwired. It is also not enough on its
+   * own: it clears the CLIENT's idea of the visit and leaves the encounter and its queue entry
+   * alive, so the patient would still be holding a token for the doctor they just moved away from.
+   *
+   * So the seating is abandoned ON THE SERVER first. `abandonVisit` moves the encounter to
+   * `abandoned`, cancels the live queue entry and appends `visit.abandoned` carrying the reason —
+   * a change that happened, in the log, rather than a row nobody cleaned up.
+   *
+   * ═══ AND IT IS REFUSED ONCE THE MONEY HAS MOVED ═══
+   *
+   * An invoice already issued or settled against this encounter is not a desk correction any more:
+   * unwinding it is a credit note, with its own permission and its own audit. The screen says so
+   * instead of trying, because a half-undone bill is far worse than a clerk being told no.
+   */
+  const changeDoctor = useCallback(async (reason: string) => {
+    const visit = s.visit;
+    if (visit === null) return;
+    if (moneyTaken || s.issued !== null) {
+      patch({ error: "This bill has already been settled — changing the doctor now needs a credit note, not a desk correction." });
+      return;
+    }
+    patch({ busy: "assign", error: null });
+    try {
+      const { abandonVisit } = await import("../../lib/opd-api");
+      await abandonVisit(visit.encounterId, reason.trim() === "" ? "doctor changed at the desk" : reason.trim());
+      setS((prev) => ({
+        ...prev,
+        busy: null,
+        visit: null,
+        issued: null,
+        tender: null,
+        armedTender: null,
+        tenderRef: "",
+        stage: "appointment",
+        log: logged(prev.log, `seating withdrawn — ${visit.doctorName}'s token cancelled on the board; pick again`, "warn"),
+      }));
+      void qc.invalidateQueries({ queryKey: ["d1", "summary"] });
+    } catch (e) {
+      setS((prev) => ({
+        ...prev, busy: null, error: opdErrorMessage(e),
+        log: logged(prev.log, `could not withdraw the seating — ${opdErrorMessage(e)}`, "err"),
+      }));
+    }
+  }, [s.visit, s.issued, moneyTaken, patch, qc]);
+
   const unassign = useCallback(() => {
     setS((prev) => ({
       ...prev, visit: null, issued: null, tender: null, stage: "appointment",
@@ -736,7 +833,36 @@ export function DeskOne(): React.ReactElement {
   }, [quote, s.visit, s.issued, s.coupons, s.attributionCode, bill.free, bill.totalPaise, patch, qc]);
 
   /** Demographics, amended at the counter and audit-logged with the prior value retained. */
-  const amend = useCallback(async (body: { phone?: string; addressLine?: string }) => {
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-15 — CORRECTING WHAT WAS TYPED, FROM WHEREVER THE MISTAKE IS NOTICED
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Owner, 2026-09-04: *"in the registration page the user mistyped age of the patient which the
+   * patient points out at the appointment screen or billing screen. Currently the user has to clear
+   * desk and register again. this is not good for the operating system."*
+   *
+   * Exactly right, and it was worse than inconvenient: clearing the desk and registering again mints
+   * a SECOND UHID for one person. The remedy for a typo was to create a duplicate patient — the one
+   * thing the whole duplicate-warning apparatus exists to prevent.
+   *
+   * This took phone and address only. Age was unreachable, which is the field a patient is most
+   * likely to correct out loud, because it is the one they hear read back to them.
+   *
+   * ═══ WHY A REASON IS ASKED FOR, AND ONLY SOMETIMES ═══
+   *
+   * `name`, `dob` and `administrativeGender` are Class I — the fields a re-rendered document
+   * reprints — and the server REFUSES a Class I amendment with no `reasonClass` (22c-A T7). A phone
+   * or address correction is Class II and owes no reason at all. So the overlay asks only when the
+   * change actually needs it, rather than making a clerk justify fixing a digit in a mobile number.
+   * `clerical_error` is the honest default for a counter typo and is what the picker opens on.
+   */
+  const amend = useCallback(async (body: {
+    phone?: string; addressLine?: string;
+    name?: string; sex?: "male" | "female" | "other"; dob?: string; dobEstimated?: boolean;
+    administrativeGender?: "male" | "female" | "other";
+    reasonClass?: string;
+  }) => {
     const person = s.person;
     if (person === null) return;
     patch({ busy: "amend", error: null });
@@ -746,9 +872,17 @@ export function DeskOne(): React.ReactElement {
         ...prev,
         busy: null,
         overlay: null,
+        /*
+          The row is patched in place rather than re-fetched: the dossier is the patient session and
+          a flicker back to the OLD age while a GET lands is the desk contradicting the clerk who
+          just corrected it. Only what was actually sent is overwritten.
+        */
         person: prev.person === null ? null : {
           ...prev.person,
           phone: body.phone ?? prev.person.phone,
+          name: body.name ?? prev.person.name,
+          gender: body.sex ?? prev.person.gender,
+          dob: body.dob ?? prev.person.dob,
           hasAddress: body.addressLine === undefined ? prev.person.hasAddress : body.addressLine.trim() !== "",
         },
         log: logged(prev.log, `record amended by ${username ?? "this desk"} — audit-logged, prior values retained`, "ok"),
@@ -956,7 +1090,7 @@ export function DeskOne(): React.ReactElement {
     duesPaise: (dues.data?.items ?? []).reduce((sum, row) => sum + row.outstandingPaise, 0),
     duesCount: (dues.data?.items ?? []).filter((row) => row.outstandingPaise > 0).length,
     moneyTaken,
-    note, hold, startEnrolment, enrol, runTriage, assign, unassign, holdFutureSlot, setPhoto,
+    note, hold, startEnrolment, enrol, runTriage, assign, unassign, holdFutureSlot, setPhoto, changeDoctor,
     presentCoupon, presentSlip, settle, amend, setLane, openDrawer, clearDesk, ask, goto,
   };
 

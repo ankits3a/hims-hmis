@@ -697,3 +697,16 @@ export function listQueueSummary(serviceDate: string, departmentId?: string): Pr
   if (departmentId !== undefined && departmentId !== "") params.set("departmentId", departmentId);
   return api("GET", `/opd/queues/summary?${params.toString()}`);
 }
+
+/**
+ * FD-15 — UNDO A SEATING, SERVER-SIDE.
+ *
+ * `unassign` in the desk cleared the CLIENT's idea of the visit and nothing else, so the encounter
+ * and its queue entry lived on: a token still on the board for a doctor the patient was no longer
+ * seeing. `abandonVisit` moves the encounter to `abandoned`, cancels the live queue entry and
+ * appends `visit.abandoned` with the reason — the change becomes a thing that happened rather than
+ * a row nobody cleaned up.
+ */
+export function abandonVisit(encounterId: string, reason: string): Promise<{ encounter: WireEncounter }> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/abandon`, { reason });
+}

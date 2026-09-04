@@ -267,7 +267,18 @@ export type DeskApi = {
   presentSlip: (code: string) => void;
   /** `ref` is REQUIRED by the server for anything but cash; the bill stage arms and then calls. */
   settle: (via: TenderMode | "free", ref?: string) => Promise<void>;
-  amend: (patch: { phone?: string; addressLine?: string }) => Promise<void>;
+  /** FD-15 — the corrections a counter actually makes, age above all. Class I changes carry a reason. */
+  amend: (patch: {
+    phone?: string; addressLine?: string;
+    name?: string; sex?: "male" | "female" | "other"; dob?: string; dobEstimated?: boolean;
+    administrativeGender?: "male" | "female" | "other";
+    reasonClass?: string;
+  }) => Promise<void>;
+  /**
+   * FD-15 — send the patient back to the appointment stage with the current seating ABANDONED on
+   * the server. Refused once money has been taken: that is a credit note, not a desk correction.
+   */
+  changeDoctor: (reason: string) => Promise<void>;
   setLane: (lane: Lane) => Promise<void>;
   /** Leaves the desk for `/billing/session` — the float is counted, so it is not an inline act. */
   openDrawer: () => void;

@@ -1490,6 +1490,39 @@ function StageBill(): React.ReactElement {
         </div>
       )}
 
+      {/*
+        ═══ FD-15 — CHANGE THE DOCTOR FROM HERE, INSTEAD OF CLEARING THE DESK ═══
+
+        Owner: *"imagine the patient at the billing screen to change the doctor then the user has no
+        option rather he has to clear desk restart the process again."* Clearing the desk loses the
+        person, the complaint and the schemes already attached, and on the registration side it went
+        on to mint a second UHID. `changeDoctor` abandons the seating ON THE SERVER — the token is
+        cancelled on the board and `visit.abandoned` records why — and returns to the appointment
+        stage with the patient still in hand.
+
+        It disappears the moment money has moved, because that is a credit note and not a desk
+        correction. Saying so on the button is better than offering it and refusing.
+      */}
+      {d.moneyTaken || s.issued !== null ? (
+        <div data-testid="change-doctor-locked" style={{ fontSize: 11, color: "var(--faint)", marginTop: 14, lineHeight: "15px" }}>
+          Settled against {s.visit.doctorName}. Changing the doctor now is a credit note, not a desk correction.
+        </div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14 }}>
+          <button
+            className="sec"
+            data-testid="change-doctor"
+            disabled={s.busy === "assign"}
+            onClick={() => void d.changeDoctor("doctor changed at the desk before billing")}
+          >
+            {s.busy === "assign" ? "withdrawing…" : `change the doctor — not ${s.visit.doctorName.replace(/^Dr\.\s*/, "")}`}
+          </button>
+          <span style={{ fontSize: 11, color: "var(--faint)", lineHeight: "15px", maxWidth: 380 }}>
+            The token on the board is cancelled and the reason recorded. The patient stays in hand — nothing is re-typed.
+          </span>
+        </div>
+      )}
+
       {!d.moneyTaken && d.lane === "F1" && s.visit.tokenNo !== null ? (
         <AgentLine>
           Token <b>T-{s.visit.tokenNo}</b> is already on the board stamped UNPAID. Settling here flips the stamp — it is derived from the fee status, so it flips the moment the money lands.

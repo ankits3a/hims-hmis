@@ -329,6 +329,25 @@ export function etaClock(minutes: number, at: Date = new Date()): string {
  * its age as an em dash. Slicing to ten characters accepts both shapes, which is what a client that
  * cannot change the serializer has to do.
  */
+/**
+ * FD-15 — the age in WHOLE YEARS, for the correction sheet's input box.
+ *
+ * Separate from `ageOf` because that one is a LABEL ("41y", "7m" under a year) and this is a
+ * NUMBER the clerk edits. They share the birthday rule below deliberately: two derivations of one
+ * person's age is how a record reads 41 on one screen and 42 on another.
+ */
+export function ageYearsOf(dob: string | null): number | null {
+  if (dob === null || dob === "") return null;
+  const born = new Date(`${dob.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(born.getTime())) return null;
+  const now = new Date();
+  let years = now.getUTCFullYear() - born.getUTCFullYear();
+  const beforeBirthday = now.getUTCMonth() < born.getUTCMonth()
+    || (now.getUTCMonth() === born.getUTCMonth() && now.getUTCDate() < born.getUTCDate());
+  if (beforeBirthday) years -= 1;
+  return years < 0 ? null : years;
+}
+
 export function ageOf(dob: string | null): string {
   if (dob === null || dob === "") return "";
   const born = new Date(`${dob.slice(0, 10)}T00:00:00Z`);

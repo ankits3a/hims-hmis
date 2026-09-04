@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { bookableToday, etaClock, LANES, LANE_TEXT, rs, vitalsAhead, waitMinutes } from "./model";
+import { ageYearsOf, bookableToday, etaClock, LANES, LANE_TEXT, rs, vitalsAhead, waitMinutes } from "./model";
 import type { Lane } from "./model";
 import { useDesk } from "./session";
 
@@ -242,39 +242,145 @@ function QueuesOverlay(): React.ReactElement {
 
 /* ══════════ amend the record ══════════ */
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-15 — THE CORRECTION SHEET: EVERY FIELD A COUNTER GETS WRONG, FROM EVERY STAGE
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner, 2026-09-04: *"in the registration page the user mistyped age of the patient which the
+ * patient points out at the appointment screen or billing screen. Currently the user has to clear
+ * desk and register again."*
+ *
+ * That remedy MINTED A SECOND UHID for one person — the desk's answer to a typo was to create the
+ * exact duplicate the whole warning apparatus exists to prevent. And of all the fields, age was the
+ * one that could not be reached: it is read back to the patient out loud, so it is the one they
+ * correct.
+ *
+ * ═══ AGE IS TYPED AND A DATE IS STORED, exactly as registration does it ═══
+ *
+ * Nobody at a window knows their date of birth, so the counter takes an age and the server derives
+ * a dob marked ESTIMATED. Correcting an age therefore sends a derived `dob` with
+ * `dobEstimated: true` — the same rule registration applies, in the same shape, so a corrected
+ * record is indistinguishable from one typed right the first time. Deriving it two different ways
+ * would give the same patient two different birthdays depending on which screen fixed them.
+ *
+ * ═══ THE REASON IS ASKED FOR ONLY WHEN THE SERVER WILL DEMAND IT ═══
+ *
+ * `name`, `dob` and `administrative gender` are Class I — the fields a re-rendered document
+ * reprints — and 22c-A T7 refuses a Class I amendment carrying no `reasonClass`. Phone and address
+ * are Class II and owe nothing. So the picker appears only when one of the three is actually being
+ * changed; making a clerk justify fixing a digit in a mobile number is how a reason field becomes
+ * something everyone clicks through without reading.
+ */
 function EditOverlay(): React.ReactElement {
   const d = useDesk();
   const p = d.s.person;
+  const [name, setName] = useState(p?.name ?? "");
+  const [age, setAge] = useState(p?.dob === null || p?.dob === undefined ? "" : String(ageYearsOf(p.dob) ?? ""));
+  const [sex, setSex] = useState<"" | "male" | "female" | "other">(
+    p?.gender === "male" || p?.gender === "female" || p?.gender === "other" ? p.gender : "",
+  );
   const [phone, setPhone] = useState(p?.phone ?? "");
   const [address, setAddress] = useState("");
+  const [reason, setReason] = useState("clerical_error");
+
+  const originalAge = p?.dob === null || p?.dob === undefined ? "" : String(ageYearsOf(p.dob) ?? "");
+  const nameChanged = name.trim() !== "" && name.trim() !== (p?.name ?? "");
+  const ageChanged = age.trim() !== "" && age.trim() !== originalAge;
+  const sexChanged = sex !== "" && sex !== p?.gender;
+  /** The three Class I fields, and therefore exactly when the server will want a reason. */
+  const touchesIdentity = nameChanged || ageChanged || sexChanged;
+
+  const save = (): void => {
+    const patch: Parameters<typeof d.amend>[0] = {};
+    if (phone.replace(/\s/g, "") !== (p?.phone ?? "")) patch.phone = phone.replace(/\s/g, "");
+    if (address.trim() !== "") patch.addressLine = address.trim();
+    if (nameChanged) patch.name = name.trim();
+    if (sexChanged) { patch.sex = sex as "male" | "female" | "other"; patch.administrativeGender = sex as "male" | "female" | "other"; }
+    if (ageChanged) {
+      const years = Number.parseInt(age, 10);
+      if (Number.isFinite(years) && years >= 0 && years <= 130) {
+        const now = new Date();
+        patch.dob = new Date(Date.UTC(now.getUTCFullYear() - years, now.getUTCMonth(), now.getUTCDate()))
+          .toISOString().slice(0, 10);
+        patch.dobEstimated = true;
+      }
+    }
+    if (touchesIdentity) patch.reasonClass = reason;
+    void d.amend(patch);
+  };
 
   return (
-    <Sheet width={460}>
+    <Sheet width={470}>
       <div style={{ padding: "20px 22px" }}>
-        <div style={{ fontSize: 15, fontWeight: 700 }}>Amend {p?.name ?? "this"} record</div>
+        <div style={{ fontSize: 15, fontWeight: 700 }}>Correct {p?.name ?? "this"} record</div>
         <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 3, lineHeight: "15px" }}>
-          This desk holds update rights on demographics. Every change is audit-logged and the old value is kept beside the new
-          one — an amendment is a write, never an erase.
+          Every change is audit-logged and the old value is kept beside the new one — an amendment is a write, never an
+          erase. The UHID does not change, so nothing already issued is orphaned.
         </div>
-        <div className="tag" style={{ marginTop: 14, marginBottom: 5 }}>mobile</div>
-        <input className="in mo" value={phone} onChange={(e) => setPhone(e.target.value)} />
+
+        <div style={{ display: "grid", gridTemplateColumns: "1.5fr .6fr 1fr", gap: 10, marginTop: 14 }}>
+          <div>
+            <div className="tag" style={{ marginBottom: 5 }}>full name</div>
+            <input className="in" data-testid="amend-name" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div>
+            <div className="tag" style={{ marginBottom: 5 }}>age</div>
+            <input className="in mo" data-testid="amend-age" inputMode="numeric" value={age} onChange={(e) => setAge(e.target.value)} />
+          </div>
+          <div>
+            <div className="tag" style={{ marginBottom: 5 }}>sex</div>
+            <div style={{ display: "flex", gap: 4, height: 40 }}>
+              {([["male", "M"], ["female", "F"], ["other", "O"]] as const).map(([value, letter]) => (
+                <button
+                  key={value}
+                  data-testid={`amend-sex-${value}`}
+                  onClick={() => setSex(value)}
+                  style={{
+                    flexGrow: 1, borderRadius: 6,
+                    border: `1px solid ${sex === value ? "var(--green)" : "var(--line)"}`,
+                    background: sex === value ? "var(--green)" : "var(--card)",
+                    color: sex === value ? "#fff" : "var(--dim)",
+                    fontWeight: sex === value ? 700 : 400,
+                  }}
+                >
+                  {letter}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="tag" style={{ marginTop: 11, marginBottom: 5 }}>mobile</div>
+        <input className="in mo" data-testid="amend-phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
         <div className="tag" style={{ marginTop: 11, marginBottom: 5 }}>address</div>
         <input
           className="in"
+          data-testid="amend-address"
           placeholder={p?.hasAddress === true ? "on file — type to replace it" : "street, area, district"}
           value={address}
           onChange={(e) => setAddress(e.target.value)}
         />
+
+        {/* Only when the server is actually going to ask — see the block comment above. */}
+        {touchesIdentity ? (
+          <div data-testid="amend-reason-row" style={{ marginTop: 12 }}>
+            <div className="tag" style={{ marginBottom: 5 }}>why is this being corrected?</div>
+            <select className="in" data-testid="amend-reason" value={reason} onChange={(e) => setReason(e.target.value)} style={{ height: 38 }}>
+              <option value="clerical_error">Typed wrong at the counter</option>
+              <option value="document_correction">Brought into line with an ID document</option>
+              <option value="patient_request">The patient says the record is wrong</option>
+              <option value="legal_change">A legal change (gazette, NALSA, marriage)</option>
+            </select>
+            <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 5, lineHeight: "14px" }}>
+              Name, age and sex are printed on documents, so a corrected one is versioned — the record keeps what it said
+              before, and anything already printed can still be re-rendered as it was.
+            </div>
+          </div>
+        ) : null}
+
         <div style={{ display: "flex", gap: 8, marginTop: 15 }}>
-          <button
-            className="pri"
-            style={{ height: 36 }}
-            disabled={d.s.busy === "amend"}
-            onClick={() => void d.amend({
-              ...(phone.replace(/\s/g, "") === (p?.phone ?? "") ? {} : { phone: phone.replace(/\s/g, "") }),
-              ...(address.trim() === "" ? {} : { addressLine: address.trim() }),
-            })}
-          >
+          <button className="pri" data-testid="amend-save" style={{ height: 36 }} disabled={d.s.busy === "amend"} onClick={save}>
             {d.s.busy === "amend" ? "saving…" : "save — audited"}
           </button>
           <button className="sec" style={{ height: 36 }} onClick={() => d.patch({ overlay: null })}>cancel</button>

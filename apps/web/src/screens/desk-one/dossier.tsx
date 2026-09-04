@@ -145,7 +145,17 @@ export function Dossier(): React.ReactElement {
             title={entry.label}
             aria-label={entry.label}
             aria-current={i === step ? "step" : undefined}
-            onClick={() => d.goto(entry.stage)}
+            /*
+              FD-15 — for a patient who ALREADY HAS A UHID, "register" is not a stage to go back to:
+              the enrolment form would start a second person. What the clerk means by clicking it is
+              "the details I typed", so it opens the correction sheet instead. That is the whole of
+              the owner's "mistyped age noticed at billing" case, reachable from the same dot on
+              every stage.
+            */
+            onClick={() => {
+              if (entry.stage === "register" && p !== null) { d.patch({ overlay: "edit" }); return; }
+              d.goto(entry.stage);
+            }}
             style={{
               height: 5, flexGrow: 1, borderRadius: 99, padding: 0, border: 0, cursor: "pointer",
               background: i < step ? "var(--green)" : i === step ? "var(--ink)" : "var(--line)",
