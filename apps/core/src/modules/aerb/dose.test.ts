@@ -188,6 +188,38 @@ describe("the patient dose register (18c T3)", () => {
     await expect(write({ sourceRef: newId(), doseDlp: 1500 })).resolves.toBeDefined();
   });
 
+  /**
+   * ═══ CLOSE REVIEW — THE REGISTER WAS MERGE-BLIND ═══
+   *
+   * `merge` never rewrites another module's rows, so a dose row written before a merge keeps the
+   * LOSER's patient id for ever. Keyed on the canonical id alone, the nudge whose entire purpose is
+   * O4's *"young patient with six CTs in a year"* reported ONE — and a duplicate registration is
+   * the commonest reason an imaging history is split in the first place.
+   */
+  it("the cumulative follows a merge — the loser's examinations are the survivor's history", async () => {
+    const now = new Date("2026-06-20T00:00:00.000Z");
+    await write({ patientId: P2, doseDlp: 900, occurredAt: new Date("2026-02-10T00:00:00.000Z") });
+    await write({ sourceRef: newId(), patientId: P2, doseDlp: 1100,
+      drl: { quantity: "dlp", value: 1000, over: true }, occurredAt: new Date("2026-03-10T00:00:00.000Z") });
+    await write({ sourceRef: newId(), patientId: P1, doseDlp: 300, occurredAt: new Date("2026-06-10T00:00:00.000Z") });
+
+    /** Before the merge, each id knows only its own. */
+    expect((await patientCumulativeDose(db, radiologist, P1, { now })).studyCount).toBe(1);
+
+    /** P2 is merged INTO P1: `merge_id` on the loser is what `listMergedLoserIds` reads. */
+    await db.update(patients).set({ mergedIntoPatientId: P1, status: "merged" }).where(eq(patients.id, P2));
+
+    const after = await patientCumulativeDose(db, radiologist, P1, { now });
+    expect(after.studyCount).toBe(3);
+    expect(Number(after.totalDlp)).toBeCloseTo(2300, 3);
+    expect(after.overDrlCount).toBe(1);
+  });
+
+  it("logs NOTHING for a patient with no register rows — an unread chart is not a disclosure", async () => {
+    await patientCumulativeDose(db, radiologist, P2, { now: new Date("2026-06-20T00:00:00.000Z") });
+    expect(await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "aerb.dose_register"))).toHaveLength(0);
+  });
+
   /* ═════════════ THE UNITS 18b LEFT UNSTATED ═════════════ */
 
   it("names a unit for every quantity, and DAP is not measured in DLP's unit", () => {
@@ -196,6 +228,48 @@ describe("the patient dose register (18c T3)", () => {
     expect(DOSE_UNITS.dap).toBe("Gy·cm²");
     expect(DOSE_UNITS.fluoro_seconds).toBe("s");
     expect(DOSE_UNITS.dap).not.toBe(DOSE_UNITS.dlp);
+  });
+
+  /* ═══ CLOSE REVIEW, CRITICAL — A CONFIDENTIAL PATIENT IS ALIASED HERE TOO ═══ */
+
+  /**
+   * The register selected `patients.name` raw. Every other patient-bearing surface in this
+   * department renders through `displayName`, so a VIP, a staff member or a police case showed
+   * their alias on the worklist and their LEGAL NAME on this register — to every holder of
+   * `aerb.doses.read`, which includes every radiographer, none of whom holds
+   * `patients.confidential.read`.
+   */
+  it("shows a confidential patient's ALIAS to a reader without clearance", async () => {
+    await db.update(patients)
+      .set({ isConfidential: true, alias: "Patient A" })
+      .where(eq(patients.id, P1));
+    await write({ patientId: P1 });
+
+    const rows = await doseRegisterRows(db, rso);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.patientName).toBe("Patient A");
+    expect(JSON.stringify(rows)).not.toContain("Asha Devi");
+  });
+
+  it("shows the real name to a reader who DOES hold patients.confidential.read", async () => {
+    const registry = new ModuleRegistry();
+    registry.install(aerbManifest);
+    registry.install({
+      key: "patients", title: "Patients", menu: [], subscriptions: [],
+      permissions: ["patients.confidential.read"],
+    });
+    await syncPermissions(db, registry);
+    await ensureRole(db, "mrd_officer");
+    for (const p of [...aerbManifest.permissions, "patients.confidential.read"]) {
+      await grantPermissionToRole(db, registry, "mrd_officer", p);
+    }
+    const { actor: mrd } = await mkUser(db, "mrd.one", ["mrd_officer"]);
+    await db.update(patients)
+      .set({ isConfidential: true, alias: "Patient A" })
+      .where(eq(patients.id, P1));
+    await write({ patientId: P1 });
+    const rows = await doseRegisterRows(db, mrd);
+    expect(rows[0]!.patientName).toBe("Asha Devi");
   });
 
   it("the book reads newest first and carries the patient's name and UHID for the RSO", async () => {

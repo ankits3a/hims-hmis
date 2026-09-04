@@ -90,7 +90,10 @@ export type WireDoseRow = {
   sourceRef: string;
   patientId: string;
   patientName: string;
+  /** Empty for a confidential patient read without clearance — see `restricted`. */
   uhid: string;
+  /** PASS 2 — the client must be able to tell an aliased row from a real one. */
+  restricted: boolean;
   deviceCode: string | null;
   modality: string;
   procedureCode: string;
@@ -147,8 +150,16 @@ export type WireBadge = {
   lastPeriodEnd: string | null;
   lastHp10Msv: string | null;
   lastInvestigation: boolean | null;
-  ytdMsv: string;
-  fiveYearMsv: string;
+  /**
+   * CLOSE REVIEW — these are the WORKER's totals across every badge they have ever worn, not this
+   * badge's. A badge lost mid-year and replaced used to split the ledger, and a radiographer over
+   * the 30 mSv statutory ceiling showed as two green rows.
+   */
+  workerYtdMsv: string;
+  workerFiveYearMsv: string;
+  /** The worst calendar year on record and its total — a late Q4 report lands in ITS year. */
+  worstYear: string | null;
+  worstYearMsv: string;
   overAnnualLimit: boolean;
   overFiveYearLimit: boolean;
   readCount: number;
@@ -190,6 +201,21 @@ export type WireBadgeBook = {
 
 export function fetchBadges(): Promise<WireBadgeBook> {
   return api<WireBadgeBook>("GET", "/aerb/badges");
+}
+
+export type WireCalendarRow = {
+  kind: "licence" | "qa" | "appointment" | "badge";
+  subject: string;
+  detail: string;
+  /** null for a badge nobody has read — nothing was ever scheduled for it to be late against. */
+  dueOn: string | null;
+  state: "ok" | "due" | "overdue";
+  daysOverdue: number;
+  ref: string;
+};
+
+export function fetchCalendar(includeOk: boolean): Promise<{ rows: WireCalendarRow[] }> {
+  return api<{ rows: WireCalendarRow[] }>("GET", `/aerb/calendar?includeOk=${String(includeOk)}`);
 }
 
 export function fetchAppointments(): Promise<{ rows: WireAppointment[] }> {

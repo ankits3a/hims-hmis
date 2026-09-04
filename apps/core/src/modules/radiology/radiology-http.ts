@@ -6,6 +6,7 @@ import { WorkflowError } from "../../kernel/workflow/instances";
 import { BillingError, billingHttpStatus } from "../billing";
 import { TariffError, tariffHttpStatus } from "../tariff";
 import { PcpndtError, pcpndtHttpStatus } from "../pcpndt";
+import { AerbError, aerbHttpStatus } from "../aerb";
 import { RadiologyError, radiologyHttpStatus } from "./errors";
 
 /**
@@ -16,7 +17,8 @@ import { RadiologyError, radiologyHttpStatus } from "./errors";
  * clerk as "Internal Server Error". 17b's gate report names it as the thing its e2e existed to
  * prove. So the mapper is written ONCE, before the first route, and every route funnels through it.
  *
- * **Seven families, and every one of them is reachable from `placeImagingOrder` alone**:
+ * **EIGHT families** (close review: `AerbError` was the missing one), and every one of them is
+ * reachable from `placeImagingOrder` alone:
  * `RadiologyError` (this module's), `PcpndtError` (the register's — a Form F refusal surfaces on
  * imaging routes), `OrderError` (the kernel envelope's — `unknown_kind`, `clinician_required`,
  * `patient_encounter_mismatch`), `BillingError` (the idempotency claim), `TariffError`,
@@ -35,6 +37,16 @@ export function httpError(statusCode: number, message: string, code: string, det
 export function toHttp(e: unknown): never {
   if (e instanceof RadiologyError) throw httpError(radiologyHttpStatus(e.code), e.message, e.code, e.detail);
   if (e instanceof PcpndtError) throw httpError(pcpndtHttpStatus(e.code), e.message, e.code, e.detail);
+  /**
+   * ═══ CLOSE REVIEW — `device_not_licensed` WAS REACHING THE CONSOLE AS A 500 ═══
+   *
+   * `startAcquisition` calls `assertDeviceLicensed` and `recordAcquired` calls `recordDose`; both
+   * throw `AerbError`, and this mapper did not know the family, so `toHttp` rethrew and Nest's
+   * default filter answered `{"statusCode":500,"message":"Internal server error"}` — no code, no
+   * licence number, no date. `aerb/errors.ts` has a section header that says NOT ONE OF THESE IS A
+   * 500, and the radiographer at the console was getting exactly that. Eighth family.
+   */
+  if (e instanceof AerbError) throw httpError(aerbHttpStatus(e.code), e.message, e.code, e.detail);
   if (e instanceof OrderError) throw httpError(orderHttpStatus(e.code), e.message, e.code, e.detail);
   if (e instanceof BillingError) throw httpError(billingHttpStatus(e.code), e.message, e.code, e.detail);
   if (e instanceof TariffError) throw httpError(tariffHttpStatus(e.code), e.message, e.code);
