@@ -58,6 +58,9 @@ function mount(opts: {
   theirs?: unknown[];
   checkIns?: string[];
   moves?: { slotStart: string; doctorId?: string }[];
+  cancels?: { reason: string }[];
+  checkInRefuses?: boolean;
+  emptyBoard?: boolean;
 } = {}): void {
   stubFetch({
     "GET /api/auth/me": {
@@ -79,7 +82,19 @@ function mount(opts: {
     "GET /api/opd/patients/p-1/timeline": { items: opts.timeline ?? [] },
     "GET /api/opd/config": { flow: "queue_first_token_first", locked: false },
     "GET /api/opd/departments": { items: [{ id: "d-1", name: "Cardiology", code: "CARD" }] },
-    "GET /api/opd/queues/summary": {
+    /*
+      FD-22 — the future tab reads the doctor MASTER, not today's queue summary: a doctor who is not
+      sitting today must still be bookable for next week. That was the bug the owner's "where is the
+      department dropdown" question uncovered.
+    */
+    "GET /api/opd/doctors": {
+      items: [{
+        id: "doc-1", userId: "u-doc", displayName: "Dr. Verma", registrationNo: null,
+        departmentId: "d-1", specialty: null, active: true,
+        createdBy: "x", createdAt: "2020-01-01T00:00:00.000Z", updatedBy: "x", updatedAt: "2020-01-01T00:00:00.000Z",
+      }],
+    },
+    "GET /api/opd/queues/summary": opts.emptyBoard === true ? { items: [] } : {
       items: [{
         doctor: {
           id: "doc-1", userId: "u-doc", displayName: "Dr. Verma", registrationNo: null,
@@ -97,6 +112,20 @@ function mount(opts: {
       PATIENT's bookings (patientId + status). `stubFetch` keys on the path without its query, so
       one handler answers both and branches on what was asked for.
     */
+    "POST /api/opd/appointments/11/check-in": (): unknown => {
+      if (opts.checkInRefuses === true) throw new Error("appointment is for 2026-09-05, not 2026-09-04");
+      opts.checkIns?.push("11");
+      return {
+        encounter: { id: "e-2", patientId: "pp-11", visitNo: "V2", departmentId: "d-1", doctorId: "doc-1", status: "registered" },
+        queueEntry: { id: "q-2", tokenNo: 3 }, tokenNo: 3, sessionId: "s-1", roomId: null,
+        visitType: "new", doctorScheduledToday: true,
+      };
+    },
+    "POST /api/opd/appointments/11/cancel": (init?: RequestInit) => {
+      const b = JSON.parse(String(init?.body ?? "{}")) as { reason: string };
+      opts.cancels?.push(b);
+      return { appointment: { id: "11", status: "cancelled" } };
+    },
     "POST /api/opd/appointments/11/reschedule": (init?: RequestInit) => {
       const b = JSON.parse(String(init?.body ?? "{}")) as { slotStart: string; doctorId?: string };
       opts.moves?.push(b);
@@ -107,14 +136,6 @@ function mount(opts: {
         ? { items: opts.theirs ?? [] }
         : { items: opts.appointments ?? [] }
     ),
-    "POST /api/opd/appointments/11/check-in": () => {
-      opts.checkIns?.push("11");
-      return {
-        encounter: { id: "e-2", patientId: "pp-11", visitNo: "V2", departmentId: "d-1", doctorId: "doc-1", status: "registered" },
-        queueEntry: { id: "q-2", tokenNo: 3 }, tokenNo: 3, sessionId: "s-1", roomId: null,
-        visitType: "new", doctorScheduledToday: true,
-      };
-    },
     "POST /api/opd/appointments": (init?: RequestInit) => {
       opts.booked?.push({ body: JSON.parse(String(init?.body ?? "{}")) });
       return {
@@ -518,5 +539,94 @@ describe("FD-19: editing a future booking from the desk", () => {
 
     expect(screen.queryByTestId("moving-banner")).not.toBeInTheDocument();
     expect(moves).toHaveLength(0);
+  });
+});
+
+describe("FD-22: refusals land inline, cancelling confirms, and every doctor is bookable", () => {
+  /**
+   * Owner, 2026-09-04: *"When I tried to check in from the appointment screen, the error message
+   * 'appointment is for 2026-09-05, not 2026-09-04' appeared on top instead of inline. Claude, the
+   * error message should always be inline for any screen."*
+   *
+   * The refusal itself is CORRECT — a booking for the 5th cannot be checked in on the 4th — which
+   * makes the placement the only thing wrong with it. The clerk pressed a button beside one
+   * patient's name and the answer appeared somewhere else, with nothing tying it to which row.
+   */
+  it("a refused check-in reports under the row it came from, not in the page banner", async () => {
+    mount({ appointments: [appt("11", "09:15", "Asha Devi")], checkInRefuses: true });
+    await openFutureTab();
+    const user = userEvent.setup({ delay: null });
+
+    await user.click(await screen.findByTestId("check-in-11"));
+
+    const inline = await screen.findByTestId("row-error-11");
+    expect(inline).toHaveTextContent(/not 2026-09-04/);
+    expect(inline).toHaveAttribute("role", "alert");
+    // and the page-level banner stays out of it
+    expect(screen.queryByText(/The server refused:/)).not.toBeInTheDocument();
+  });
+
+  /* *"there's no 'Cancel' button followed by confirm dialog box."* */
+  it("cancelling asks first, and takes the reason the server requires", async () => {
+    const cancels: { reason: string }[] = [];
+    mount({ appointments: [appt("11", "09:15", "Asha Devi")], cancels });
+    await openFutureTab();
+    const user = userEvent.setup({ delay: null });
+
+    await user.click(await screen.findByTestId("cancel-11"));
+    expect(screen.getByTestId("cancel-confirm")).toHaveTextContent("Asha Devi");
+    expect(cancels).toHaveLength(0); // asking is not cancelling
+
+    await user.type(screen.getByTestId("cancel-reason"), "patient rang to cancel");
+    await user.click(screen.getByTestId("cancel-confirm-submit"));
+
+    await waitFor(() => expect(cancels).toHaveLength(1));
+    expect(cancels[0]!.reason).toBe("patient rang to cancel");
+  });
+
+  it("a cancellation with no reason is refused inline and nothing is sent", async () => {
+    const cancels: { reason: string }[] = [];
+    mount({ appointments: [appt("11", "09:15", "Asha Devi")], cancels });
+    await openFutureTab();
+    const user = userEvent.setup({ delay: null });
+
+    await user.click(await screen.findByTestId("cancel-11"));
+    await user.click(screen.getByTestId("cancel-confirm-submit"));
+
+    expect(await screen.findByTestId("row-error-11")).toBeInTheDocument();
+    expect(cancels).toHaveLength(0);
+  });
+
+  it("backing out of the confirmation cancels nothing", async () => {
+    const cancels: { reason: string }[] = [];
+    mount({ appointments: [appt("11", "09:15", "Asha Devi")], cancels });
+    await openFutureTab();
+    const user = userEvent.setup({ delay: null });
+
+    await user.click(await screen.findByTestId("cancel-11"));
+    await user.click(screen.getByTestId("cancel-abort"));
+    expect(screen.queryByTestId("cancel-confirm")).not.toBeInTheDocument();
+    expect(cancels).toHaveLength(0);
+  });
+
+  /**
+   * The owner asked whether the missing department picker was just thin data. Partly — every active
+   * doctor in the dev database is in Cardiology — but underneath it the doctor list came from
+   * `GET /opd/queues/summary` FOR TODAY, so a doctor not sitting today could not be booked for next
+   * week, which is the one thing a future booking is for.
+   *
+   * `emptyBoard` IS THE WHOLE TEST. A surviving mutant showed the first version proved nothing:
+   * the shared fixture puts this doctor on today's board too, so reverting the source to
+   * `d.summaries` passed happily. Today's board is empty here and the doctor master is not, which
+   * is the only arrangement that can tell the two sources apart.
+   */
+  it("offers a department picker, and books a doctor who is not on today's board", async () => {
+    mount({ slots: [slot("10:30")], emptyBoard: true });
+    await openFutureTab();
+
+    expect(screen.getByTestId("book-department")).toBeInTheDocument();
+    // the doctor comes from the MASTER, so an empty board does not empty the picker
+    expect(screen.getByTestId("book-doctor")).toHaveTextContent("Dr. Verma");
+    expect(screen.getAllByTestId("slot-free").length).toBeGreaterThan(0);
   });
 });

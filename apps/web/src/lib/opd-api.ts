@@ -768,3 +768,12 @@ export function rescheduleAppointment(
     slotStart, ...(doctorId === undefined ? {} : { doctorId }),
   });
 }
+
+/**
+ * FD-22 — CANCEL A BOOKING. The route has existed since D7 with the same single caller the
+ * reschedule had. The server demands a reason and refuses a blank one, which is why the desk asks
+ * for one in the confirmation rather than sending "cancelled" and calling it an audit trail.
+ */
+export function cancelAppointment(appointmentId: string, reason: string): Promise<{ appointment: WireAppointment }> {
+  return api("POST", `/opd/appointments/${encodeURIComponent(appointmentId)}/cancel`, { reason });
+}

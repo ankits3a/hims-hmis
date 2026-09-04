@@ -4,7 +4,9 @@ import { useTranslation } from "react-i18next";
 import { abhaCapability, matchReasonKeys, matchReasonsDiscriminate, searchPatients } from "../../lib/patients-api";
 import type { WirePatientHit } from "../../lib/patients-api";
 import {
-  checkInAppointment, getContinuity, getSlots, listDayAppointments, listPatientAppointments, opdErrorMessage,
+  cancelAppointment, checkInAppointment, getContinuity, getSlots, listDayAppointments, listDoctors,
+  listPatientAppointments,
+  opdErrorMessage,
   rescheduleAppointment,
 } from "../../lib/opd-api";
 import { DELAY_HIGHLIGHT_MINUTES, proposeWalkIn } from "../../lib/walk-in-routing";
@@ -1217,23 +1219,53 @@ function FutureTab(): React.ReactElement {
   const d = useDesk();
   const { s } = d;
   const { t } = useTranslation();
-  const bookable = d.summaries.filter((x) => x.doctor.active);
-  const [doctorId, setDoctorId] = useState(bookable[0]?.doctor.id ?? "");
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-22 — A FUTURE BOOKING MUST SEE EVERY DOCTOR, NOT ONLY TODAY'S BOARD
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Owner, 2026-09-04: *"when trying to book for future appointment, I can see doctor and date
+   * selection but no Department drop down selection. Is it because we don't have doctors in other
+   * department in the database?"*
+   *
+   * Partly yes — the dev database has three active doctors and ALL THREE ARE IN CARDIOLOGY, so a
+   * department picker would have had one usable option. But asking the question exposed a real bug
+   * underneath: this list was `d.summaries`, which is `GET /opd/queues/summary` FOR TODAY. A doctor
+   * who is not sitting today therefore could not be booked for next week — the one thing a future
+   * booking is for. The list now comes from the doctor MASTER, and the department picker filters it.
+   *
+   * `summaries` is still consulted for today's wait figures elsewhere; it is simply not the right
+   * source for "who can be booked on a date that is not today".
+   */
+  const doctors = useQuery({ queryKey: ["d1", "all-doctors"], queryFn: listDoctors, staleTime: 5 * 60 * 1000 });
+  const [departmentId, setDepartmentId] = useState("");
+  const allActive = (doctors.data?.items ?? []).filter((x) => x.active);
+  const bookable = (departmentId === "" ? allActive : allActive.filter((x) => x.departmentId === departmentId))
+    .map((doctor) => ({ doctor }));
+  const [doctorId, setDoctorId] = useState("");
   const [date, setDate] = useState(() => {
     const t = new Date(Date.now() + 86_400_000);
     return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(t);
   });
 
+  /*
+    The picker never points at a doctor the current department filter has hidden: an id left over
+    from another department would silently book into it. Falling back to the first of the filtered
+    list keeps the two controls telling one story, and every query below keys off the RESOLVED
+    doctor rather than the raw picker state.
+  */
+  const chosen = bookable.find((x) => x.doctor.id === doctorId) ?? bookable[0] ?? null;
+  const activeDoctorId = chosen?.doctor.id ?? "";
   const slots = useQuery({
-    queryKey: ["d1", "slots", doctorId, date],
-    queryFn: () => getSlots(doctorId, date),
-    enabled: doctorId !== "",
+    queryKey: ["d1", "slots", activeDoctorId, date],
+    queryFn: () => getSlots(activeDoctorId, date),
+    enabled: activeDoctorId !== "",
   });
   /** FD-16 — the day's book for the doctor and date in the pickers, from a route nothing called. */
   const dayBook = useQuery({
-    queryKey: ["d1", "day-book", doctorId, date],
-    queryFn: () => listDayAppointments(doctorId, date),
-    enabled: doctorId !== "",
+    queryKey: ["d1", "day-book", activeDoctorId, date],
+    queryFn: () => listDayAppointments(activeDoctorId, date),
+    enabled: activeDoctorId !== "",
     staleTime: 30_000,
     retry: false,
   });
@@ -1276,6 +1308,24 @@ function FutureTab(): React.ReactElement {
    */
   const [moving, setMoving] = useState<{ id: string; who: string; was: string } | null>(null);
 
+  /**
+   * ═══ FD-22 — A REFUSAL BELONGS WHERE THE ACTION WAS, NOT AT THE TOP OF THE SCREEN ═══
+   *
+   * Owner, 2026-09-04: *"When I tried to check in from the appointment screen, the error message
+   * 'The server refused: appointment is for 2026-09-05, not 2026-09-04' appeared on top instead of
+   * inline. Claude, the error message should always be inline for any screen."*
+   *
+   * These actions were routing their refusals into `s.error`, the desk's page-level banner. That
+   * banner is right for something that happened to the WHOLE SCREEN, and wrong for a row: the clerk
+   * pressed a button beside one patient's name and the answer appeared somewhere else entirely,
+   * with nothing tying it back to which of the day's bookings it was about.
+   *
+   * The refusal in the owner's report is also a GOOD one — a booking for the 5th cannot be checked
+   * in on the 4th — which makes the placement the only thing wrong with it. Held per appointment id
+   * so two rows cannot show each other's answer.
+   */
+  const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
+
   /** A booked patient arriving. The booking BECOMES the visit rather than a second encounter. */
   const [arriving, setArriving] = useState<string | null>(null);
   /**
@@ -1286,31 +1336,57 @@ function FutureTab(): React.ReactElement {
   const move = async (appointmentId: string, slotStart: string): Promise<void> => {
     d.patch({ busy: "future", error: null });
     try {
-      await rescheduleAppointment(appointmentId, slotStart, doctorId);
+      await rescheduleAppointment(appointmentId, slotStart, chosen?.doctor.id);
       await Promise.all([dayBook.refetch(), theirs.refetch()]);
       d.patch({ busy: null });
       d.note(`appointment moved to ${slotClock(slotStart)}`, "ok");
       setMoving(null);
       setPicked(null);
     } catch (e) {
-      d.patch({ busy: null, error: opdErrorMessage(e) });
+      d.patch({ busy: null });
+      setRowError({ id: appointmentId, message: opdErrorMessage(e) });
     }
   };
 
   const arrive = async (appointmentId: string): Promise<void> => {
     setArriving(appointmentId);
+    setRowError(null);
     try {
       await checkInAppointment(appointmentId);
       await Promise.all([dayBook.refetch(), theirs.refetch()]);
       d.note("appointment checked in — the booking is now a visit", "ok");
     } catch (e) {
-      d.patch({ error: opdErrorMessage(e) });
+      setRowError({ id: appointmentId, message: opdErrorMessage(e) });
     } finally {
       setArriving(null);
     }
   };
 
-  const chosen = bookable.find((x) => x.doctor.id === doctorId) ?? null;
+  /**
+   * FD-22 — CANCEL, BEHIND A CONFIRMATION. Owner: *"there's no 'Cancel' button followed by confirm
+   * dialog box."* A cancellation frees a slot somebody else can take and the patient is not in the
+   * room to be asked again, so it is two deliberate acts and never one click — and the server wants
+   * a reason, which is also what makes the confirmation worth having rather than a bare "are you
+   * sure".
+   */
+  const [cancelling, setCancelling] = useState<{ id: string; who: string } | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const doCancel = async (): Promise<void> => {
+    if (cancelling === null) return;
+    const reason = cancelReason.trim();
+    if (reason === "") { setRowError({ id: cancelling.id, message: t("registrationCounter.book.cancelReasonRequired") }); return; }
+    setRowError(null);
+    try {
+      await cancelAppointment(cancelling.id, reason);
+      await Promise.all([dayBook.refetch(), theirs.refetch()]);
+      d.note(`appointment cancelled — ${reason}`, "warn");
+      setCancelling(null);
+      setCancelReason("");
+    } catch (e) {
+      setRowError({ id: cancelling.id, message: opdErrorMessage(e) });
+    }
+  };
+
   const deptName = d.departments.find((x) => x.id === chosen?.doctor.departmentId)?.name ?? "";
   const all = slots.data?.slots ?? [];
   const free = all.filter((x) => !x.booked && !x.past);
@@ -1328,9 +1404,29 @@ function FutureTab(): React.ReactElement {
       </div>
 
       <div style={{ marginTop: 16, display: "flex", gap: 11, alignItems: "flex-end" }}>
-        <div style={{ width: 260 }}>
+        <div style={{ width: 200 }}>
+          <div className="tag" style={{ marginBottom: 5 }}>department</div>
+          <select
+            className="in"
+            data-testid="book-department"
+            value={departmentId}
+            onChange={(e) => { setDepartmentId(e.target.value); setDoctorId(""); }}
+          >
+            <option value="">all departments</option>
+            {d.departments.map((dep) => (
+              <option key={dep.id} value={dep.id}>{dep.code} · {dep.name}</option>
+            ))}
+          </select>
+        </div>
+        <div style={{ width: 240 }}>
           <div className="tag" style={{ marginBottom: 5 }}>doctor</div>
-          <select className="in" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}>
+          <select
+            className="in"
+            data-testid="book-doctor"
+            value={chosen?.doctor.id ?? ""}
+            onChange={(e) => setDoctorId(e.target.value)}
+          >
+            {bookable.length === 0 ? <option value="">nobody in this department</option> : null}
             {bookable.map((x) => (
               <option key={x.doctor.id} value={x.doctor.id}>{x.doctor.displayName}</option>
             ))}
@@ -1401,6 +1497,49 @@ function FutureTab(): React.ReactElement {
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {/*
+        ═══ FD-22 — CANCELLING IS TWO DELIBERATE ACTS ═══
+
+        A cancellation frees a slot somebody else immediately takes, and the patient is usually not
+        in the room to be asked twice. So it confirms — and the confirmation asks for the REASON the
+        server already requires, which makes it a useful pause rather than an "are you sure" nobody
+        reads. The refusal, if the server has one, lands on the row below like every other.
+      */}
+      {cancelling === null ? null : (
+        <div
+          className="box"
+          data-testid="cancel-confirm"
+          style={{ marginTop: 14, padding: "12px 14px", borderColor: "var(--red-line)", background: "var(--red-soft)" }}
+        >
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--red)" }}>
+            {t("registrationCounter.book.cancelTitle", { who: cancelling.who })}
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 3, lineHeight: "16px" }}>
+            {t("registrationCounter.book.cancelWhy")}
+          </div>
+          <input
+            className="in"
+            data-testid="cancel-reason"
+            style={{ marginTop: 9 }}
+            placeholder={t("registrationCounter.book.cancelReasonHint")}
+            value={cancelReason}
+            onChange={(e) => { setCancelReason(e.target.value); }}
+          />
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <button className="pri" data-testid="cancel-confirm-submit" onClick={() => void doCancel()}>
+              {t("registrationCounter.book.cancelConfirm")}
+            </button>
+            <button
+              className="sec"
+              data-testid="cancel-abort"
+              onClick={() => { setCancelling(null); setCancelReason(""); setRowError(null); }}
+            >
+              {t("registrationCounter.book.cancelAbort")}
+            </button>
+          </div>
         </div>
       )}
 
@@ -1506,7 +1645,7 @@ function FutureTab(): React.ReactElement {
                 const slot = all.find((x) => x.start === picked);
                 if (slot === undefined || chosen === null) return;
                 if (moving !== null) { void move(moving.id, slot.start); return; }
-                void d.holdFutureSlot(doctorId, slot, deptName, chosen.doctor.displayName);
+                void d.holdFutureSlot(chosen.doctor.id, slot, deptName, chosen.doctor.displayName);
                 setPicked(null);
               }}
             >
@@ -1552,7 +1691,9 @@ function FutureTab(): React.ReactElement {
           </div>
         ) : (
           booked.map((a) => (
-            <div key={a.id} data-testid="book-row" className="drow" style={{ background: "var(--card)" }}>
+            /* The row and ITS refusal are one unit, so the error can never attach to another row. */
+            <div key={a.id}>
+            <div data-testid="book-row" className="drow" style={{ background: "var(--card)" }}>
               <span className="mo" style={{ fontSize: 11.5, fontWeight: 600, width: 56 }}>{slotClock(a.slotStart)}</span>
               <span style={{ fontSize: 12, flexGrow: 1, minWidth: 0 }}>
                 {a.patient?.restricted === true
@@ -1586,6 +1727,20 @@ function FutureTab(): React.ReactElement {
                     {t("registrationCounter.book.move")}
                   </button>
                   <button
+                    className="sec"
+                    data-testid={`cancel-${a.id}`}
+                    onClick={() => {
+                      setCancelling({
+                        id: a.id,
+                        who: a.patient?.restricted === true ? (a.patient.alias ?? "this patient") : (a.patient?.name ?? "this patient"),
+                      });
+                      setCancelReason("");
+                      setRowError(null);
+                    }}
+                  >
+                    {t("registrationCounter.book.cancel")}
+                  </button>
+                  <button
                     className="sec grn"
                     data-testid={`check-in-${a.id}`}
                     disabled={arriving !== null}
@@ -1595,6 +1750,20 @@ function FutureTab(): React.ReactElement {
                   </button>
                 </>
               ) : <span style={{ width: 74 }} />}
+            </div>
+            {/* INLINE, under the row it belongs to — see the block comment on `rowError`. */}
+            {rowError?.id === a.id ? (
+              <div
+                role="alert"
+                data-testid={`row-error-${a.id}`}
+                style={{
+                  padding: "7px 14px 9px", fontSize: 11.5, color: "var(--red)",
+                  background: "var(--red-soft)", borderTop: "1px solid var(--red-line)", lineHeight: "16px",
+                }}
+              >
+                {rowError.message}
+              </div>
+            ) : null}
             </div>
           ))
         )}

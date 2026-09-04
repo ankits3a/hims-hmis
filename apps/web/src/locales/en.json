@@ -2626,7 +2626,14 @@
       "theirs": "{{name}}'s upcoming appointments",
       "theirsHint": "pick one to move it",
       "moving": "Moving {{who}} — was {{was}}",
-      "movingHint": "choose the new slot above, or leave it where it is"
+      "movingHint": "choose the new slot above, or leave it where it is",
+      "cancel": "cancel",
+      "cancelTitle": "Cancel {{who}}'s appointment?",
+      "cancelWhy": "The slot goes back on the board straight away and somebody else can take it. Say why — it is recorded against the booking.",
+      "cancelReasonHint": "why? e.g. patient rang to cancel, travelling",
+      "cancelReasonRequired": "Say why the appointment is being cancelled.",
+      "cancelConfirm": "cancel the appointment",
+      "cancelAbort": "keep it"
     },
     "reclassify": {
       "open": "Wrong visit type? (now: {{current}})",
