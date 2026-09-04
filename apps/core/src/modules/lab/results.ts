@@ -318,6 +318,25 @@ async function enterResultInTx(
      * away leaves behind, and the overridden one because "who vouched, and what for" is the
      * question an auditor asks about exactly these rows. `overridden` tells the two apart.
      */
+    /**
+     * ═══ CLOSE REVIEW — `overridden` MEANS *ACCEPTED*, NOT *OFFERED* ═══
+     *
+     * The first implementation wrote `overridden: override !== undefined`, so a refused override —
+     * the enterer vouching for themselves, or naming somebody without `lab.results.enter` — was
+     * recorded as an override that HAPPENED. `lab.tube_swap_suspected` is the row NABL counts to
+     * answer "how often did a suspected swap get waved through", and that count would have included
+     * every attempt somebody made and the control refused, which is the opposite of the truth about
+     * the control. The verdict is therefore decided BEFORE the append, and the append tells it.
+     *
+     * Every path still writes exactly one event: a near-miss nobody logged is a near-miss nobody
+     * learns from, and that includes the near-miss where the second pair of hands was refused.
+     */
+    const refusal: "no_override" | "same_actor" | "not_permitted" | null =
+      !override ? "no_override"
+        : override.by === actor.id ? "same_actor"
+          : !(await hasPermission(tx as Db, override.by, LAB_RESULTS_ENTER, "hospital")) ? "not_permitted"
+            : null;
+
     const siblings = await siblingTubesDrawnInTheSameMinute(tx, ctx);
     await withTx(db, (flagTx) => appendEvent(flagTx, labTubeSwapSuspected.make({
       actor,
@@ -327,10 +346,11 @@ async function enterResultInTx(
       payload: {
         orderItemId: ctx.orderItemId, orderGroupId: ctx.orderGroupId, analyteId: analyte.id,
         specimenId: ctx.specimenId, siblingSpecimenIds: siblings.map((sp) => sp.id),
-        breach: breach.kind, raisedBy: actor.id, overridden: override !== undefined,
+        breach: breach.kind, raisedBy: actor.id, overridden: refusal === null,
       },
     })));
-    if (!override) {
+
+    if (refusal === "no_override") {
       throw new LabError(
         "analyte_not_applicable",
         applicabilityBreachText(analyte.code, breach),
@@ -341,7 +361,7 @@ async function enterResultInTx(
         },
       );
     }
-    if (override.by === actor.id) {
+    if (refusal === "same_actor") {
       throw new LabError(
         "impossible_override_same_actor",
         "a value impossible for this patient is vouched for by a SECOND holder of " +
@@ -349,13 +369,13 @@ async function enterResultInTx(
           "is theirs, which is the whole of the control",
       );
     }
-    if (!(await hasPermission(tx as Db, override.by, LAB_RESULTS_ENTER, "hospital"))) {
+    if (refusal === "not_permitted") {
       throw new LabError(
         "permission_denied",
-        `the named override ${override.by} does not hold ${LAB_RESULTS_ENTER}`,
+        `the named override ${override!.by} does not hold ${LAB_RESULTS_ENTER}`,
       );
     }
-    impossibleOverriddenBy = override.by;
+    impossibleOverriddenBy = override!.by;
   }
 
   /**
