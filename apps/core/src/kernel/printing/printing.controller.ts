@@ -3,6 +3,7 @@ import { z } from "zod";
 import { DB } from "../tokens";
 import { CurrentActor } from "../auth/decorators";
 import { claimPrintJobs, reportFailed, reportPrinted } from "./claim";
+import { renderDocument } from "./render";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
 
@@ -31,9 +32,15 @@ import type { Db } from "../db/client";
  * **STATED PLAINLY AS A LIMITATION, because it is one:** until Plan 12 lands agent permissions, ANY
  * agent may serve the print queue. Today that set is empty — nothing else in this system uses agent
  * auth — so the practical exposure is that a future agent created for another purpose could also
- * drain print jobs. It cannot read patient records through these routes: a claim returns
- * identifiers, and the renderer resolves the record separately. Tightening this to a per-agent
- * destination grant is the obvious first use of `agent_permissions` when it exists.
+ * drain print jobs. Tightening this to a per-agent destination grant is the obvious first use of
+ * `agent_permissions` when it exists.
+ *
+ * **AND THE RELAY IS A PHI PROCESSOR — SAID PLAINLY, BECAUSE T3 CHANGED THIS.** An earlier draft of
+ * this header claimed a claim "returns identifiers, not patient data". That was true when the claim
+ * returned only `params`; it is FALSE now that the rendered document travels with the claim, and it
+ * has to be false — a relay that could not learn the patient's name could not print it on a slip.
+ * What remains true is narrower and worth keeping: the QUEUE ROW stores identifiers only, so
+ * `print_jobs` never becomes a second copy of the patient record at rest.
  */
 
 const claimBody = z.object({
@@ -65,22 +72,48 @@ export class PrintingController {
   /**
    * Claim work. The relay polls this; an empty array is the ordinary answer and not an error.
    *
-   * The response carries IDENTIFIERS, not patient data — `params` holds the encounter id and the
-   * renderer resolves names at render time. A relay that is compromised therefore learns which
-   * encounters printed, not who they are about.
+   * The response carries the RENDERED DOCUMENT, patient name and all — see the header. That is the
+   * offline guarantee, and it is why this route is the one place in the system where an agent
+   * credential reaches PHI.
    */
   @Post("claim")
   async claim(
     @CurrentActor() actor: Actor,
     @Body() body: unknown,
-  ): Promise<{ jobs: { id: string; document: string; destination: string; params: Record<string, unknown> }[] }> {
+  ): Promise<{ jobs: { id: string; document: string; destination: string; title: string; html: string }[] }> {
     const input = claimBody.parse(body);
+    const relayId = this.relayId(actor);
     const jobs = await claimPrintJobs(this.db, {
-      relayId: this.relayId(actor),
+      relayId,
       destinations: input.destinations,
       limit: input.limit,
     });
-    return { jobs: jobs.map(({ id, document, destination, params }) => ({ id, document, destination, params })) };
+
+    /*
+      ═══ THE DOCUMENT TRAVELS WITH THE CLAIM, AND THAT IS THE OFFLINE GUARANTEE ═══
+
+      The brief's binding constraint is *"patient care must never depend on internet
+      connectivity."* If the relay had to come back for the document, an outage between the claim
+      and the print would mean no paper. Carrying the rendered HTML makes the relay autonomous the
+      moment it holds a job: it can work through a queue with the uplink down.
+
+      A DOCUMENT THAT WILL NOT RENDER IS FAILED HERE, NOT HANDED OVER HALF-BUILT. The commonest
+      cause is a `vitals_slip`, which has no artboard yet and deliberately renders null — better an
+      honest advisory failure the screen reports (R7) than a slip nobody designed.
+    */
+    const out: { id: string; document: string; destination: string; title: string; html: string }[] = [];
+    for (const job of jobs) {
+      const rendered = await renderDocument(this.db, job.document, job.params);
+      if (rendered === null) {
+        await reportFailed(this.db, job.id, relayId, `no renderer produced a document for ${job.document}`);
+        continue;
+      }
+      out.push({
+        id: job.id, document: job.document, destination: job.destination,
+        title: rendered.title, html: rendered.html,
+      });
+    }
+    return { jobs: out };
   }
 
   /** Paper came out. Guarded on the claim, so a relay whose lease lapsed cannot overwrite the winner. */
