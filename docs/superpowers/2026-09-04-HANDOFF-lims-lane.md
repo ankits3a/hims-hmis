@@ -20,9 +20,7 @@ lanes on this box and is worth working with — it has been accurate and fast al
 > yourself**; it serialises the merge train and hands out the baton.
 >
 > Your job, in this order:
-> 1. Confirm **PR #71** landed (pass 2 + the D9 fix). Then **PR #76** (the walk-in race) — it is
->    deliberately NOT auto-merging: `opd/encounters.ts` is front-desk's territory and its review is
->    the gate, not CI. Read its answer before landing anything.
+> 1. Nothing is owed and nothing is in flight. **Both PRs landed** (see §1). Start at §4.
 > 2. **17-E is authored and needs the owner's approval before execution** —
 >    `docs/superpowers/plans/2026-09-04-phase1-17e-lims-analyser-interface.md`. If he has approved it,
 >    execute T1 onward, one task per PR, fail-first, each mutant named in the task. If he has not,
@@ -39,17 +37,19 @@ lanes on this box and is worth working with — it has been accurate and fast al
 
 ## 1. Where the lane is right now
 
-**TWO PRs open, both pushed, nothing unpushed.**
+**BOTH PRs MERGED — the lane is clear and owes nothing.**
 
-- **PR #71** — branch `lane/lims-17d-pass2`: 17d close-review pass 2 (2 MAJOR) **plus** the D9 flake
-  fix **plus** the 17-E phase doc and this handoff. The orchestrator runs `update-branch` on it and
-  has a watcher armed to squash-merge on green. Nothing needed from us.
-- **PR #76** — branch `lane/lims-walkin-race`, cut from `main`: the 17d §9.2 walk-in race.
-  **Front-desk has REVIEWED and cleared it**, and its one addition is taken (`541b5c8`): an assertion
-  that the refused walk-in leaves no print job behind, since FD-24 T5 put `enqueuePrintJob` inside
-  that transaction. Measured 2 jobs for the winner's encounter, 0 for the loser, asserted
-  per-encounter rather than as a total. It is the orchestrator's to slot.
-- **Verified state:** `pnpm typecheck` 0 errors · `pnpm lint` **0 errors** (2 pre-existing warnings
+- **PR #71** (merged 20:25Z) — 17d close-review pass 2 (2 MAJOR), the D9 flake fix, the 17-E phase
+  doc and this handoff.
+- **PR #76** (merged 20:05Z) — the 17d §9.2 walk-in race, reviewed by the front-desk lane.
+
+**Verify a squash-merge by CONTENT, not by SHA.** This repo squash-merges, so your commit SHAs are
+never ancestors of `main` and `git merge-base --is-ancestor` will say "not on main" about work that
+landed perfectly. What actually confirms it: `NOW_ISO` present in `lab-reports.test.tsx`,
+`pg_advisory_xact_lock` present in `opd/encounters.ts`, `lab/walkin.concurrency.test.ts` present at
+all. All three checked on `main` at `21a9503`.
+
+**Verified state:** `pnpm typecheck` 0 errors · `pnpm lint` **0 errors** (2 pre-existing warnings
   in `core/kernel/worker/scheduler.test.ts`, not ours) · **web suite 90 files / 698 tests, exit 0**.
 
 ## 2. Plan 17d — done, merged, and closed out
@@ -128,6 +128,41 @@ Four ground-truth findings that changed the plan and would otherwise be re-deriv
   never a lab hole; the missing piece is *consumption*, which belongs to the materials module.
 - **An analyser may not be an order-item transition actor** — `order_item_transitions.actor_type`
   rejects `'analyzer'` and `orders.test.ts:234` asserts it.
+
+## 4a. What tonight measured about CI and the suites — read before you debug a red
+
+None of this is lab-specific and all of it costs you nothing to know. Fuller detail is in the
+session memory notes; this is the operational core.
+
+- **You cannot re-run CI.** `gh run rerun` returns `Resource not accessible by personal access
+  token` — the box uses a fine-grained PAT without *Actions: write*. **The way to clear a stale red
+  is a NEW RUN**: push, or let the train driver's `update-branch` do it. Never claim a re-run
+  without reading the command's output; that exact false claim was made tonight.
+- **`gh pr checks` cannot be read without `link`.** `ci.yml` fires on BOTH `push:` and
+  `pull_request:`, so every check name appears **twice**, and one check can show as *both pass and
+  fail* with nothing saying which run is which. Piping through `sort -u` strips the very column that
+  disambiguates. Use `--json name,bucket,link`, or ask the runs: `gh run view <id> --json
+  event,attempt,conclusion,headSha` — `attempt=1` on both proves neither was a retry.
+- **That duplication is a free flake discriminator — but only when the PR is NOT `BEHIND`.**
+  `actions/checkout@v4` with no `ref:` takes `refs/pull/<n>/merge` on the PR event and the branch tip
+  on the push event, and the API reports the same `head_sha` for both, which hides it. Up to date →
+  identical trees → a pass/fail split IS a flake. `BEHIND` → different trees → the split may be real.
+  **Reading a twin split on a BEHIND PR as "just a flake" dismisses a genuine red.**
+- **"It only uses a fraction of its budget" is not a safety argument unless you say what it is bound
+  on.** Measured on this box: CPU-bound rendering inflates ~**1.5x** under load; DB-bound seeding
+  inflates **>7x**, because parallel jest shards contend on one Postgres. `results.test.ts`'s hook
+  sat at **2.1 s of 15 s (14%)** at rest and still blew its ceiling in CI.
+- **`lab/results.test.ts` is O(test count) in full re-seeds and every test you add makes it worse.**
+  All 21 tests run 1908–2564 ms — a ~600 ms spread across a permission refusal and an LDL
+  computation, work with no business costing the same. That flatness says the cost is the
+  `beforeEach`, not the bodies: `truncateAll` is ~15 ms, so `seedLabDeskBase` + grants + `mkUser` is
+  the ~2 s, paid 21 times. **The fix is to seed once per suite and roll back per test — not to raise
+  the ceiling**, which buys one file one night.
+- **Three load-sensitive tests tripped in one night and they are TWO diseases, not one.**
+  *Wall-clock assertions* (`kernel/worker/jobs.test.ts` V12 at 60 s, web's `vitals-bay-stories` at
+  5 s) wait on real time — the fix is to stop asserting on it. *Per-test setup cost*
+  (`lab/results.test.ts` at a 15 s hook) waits on no clock at all. A phase scoped as "remove the
+  timing assertion" fixes the first two and misses the third, which is the one that grows.
 
 ## 5. Still open
 
