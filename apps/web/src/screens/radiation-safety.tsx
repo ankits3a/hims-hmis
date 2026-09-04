@@ -675,6 +675,13 @@ function BadgeReadForm({ badges, onWritten, onCancel }: {
   const [hp007, setHp007] = useState("");
   const [reportedOn, setReportedOn] = useState(todayIst());
   const [labRef, setLabRef] = useState("");
+  /**
+   * ASYMMETRY SCAN — every other form on this screen offers `remarks` and this one hardcoded
+   * `null`, so a reading was the one entry in the register an RSO could not annotate. "The badge
+   * was left in the changing room for a fortnight" is exactly the note that explains an anomalous
+   * reading to whoever reads the register a year later.
+   */
+  const [remarks, setRemarks] = useState("");
 
   const record = useMutation({
     mutationFn: () => recordBadgeRead({
@@ -685,7 +692,7 @@ function BadgeReadForm({ badges, onWritten, onCancel }: {
       hp007Msv: hp007.trim() === "" ? null : Number(hp007),
       reportedOn,
       labRef: blankToNull(labRef),
-      remarks: null,
+      remarks: blankToNull(remarks),
     }),
     onSuccess: (out) => {
       onWritten(out.investigation
@@ -749,6 +756,7 @@ function BadgeReadForm({ badges, onWritten, onCancel }: {
         onChange={setReportedOn}
       />
       <Field label={t("aerb.write.labRef")} testId="aerb-read-lab-ref" value={labRef} onChange={setLabRef} />
+      <Field label={t("aerb.write.remarks")} testId="aerb-read-remarks" value={remarks} onChange={setRemarks} />
     </FormPanel>
   );
 }

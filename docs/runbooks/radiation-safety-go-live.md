@@ -1,4 +1,4 @@
-# Radiation safety & AERB registers go-live runbook — Plan 18c (T1–T5)
+# Radiation safety & AERB registers go-live runbook — Plan 18c (T1–T6)
 
 The registers this phase ships are `aerb`: equipment licences, the appointed people, the
 quality-assurance book, the patient dose register, the TLD badge programme, and the compliance
@@ -21,6 +21,13 @@ a register that watched it happen and said nothing would be worse than no regist
 > **File every ionising machine's licence (§2) BEFORE you deploy, or the CT, the DR units, the
 > mammography unit and the fluoroscopy suite all stop the moment the migration lands.**
 
+**T6 added the screen this is done on.** Until it landed every route below was reachable only by
+hand-rolled HTTP, which is why each section still prints its request — that is the reference for
+what the field means, not the route you are expected to take. Go to
+`/radiology/radiation-safety` → **Licences**, and work down the red *machines emitting with no
+licence* block: every row on it carries its own **File a licence** and the form opens with that
+machine already chosen. **The block emptying IS the check in §2's last bullet.**
+
 Ultrasound and MRI are unaffected — AERB licences neither, and the gate is keyed on the study's
 `ionising` flag rather than on the device.
 
@@ -34,7 +41,7 @@ failure your radiographers will meet if §2 is skipped; see it once, deliberatel
 
 | # | What | Why it blocks |
 |---|---|---|
-| 1 | Migrations `0060`–`0063` applied | the five tables |
+| 1 | Migrations `0060`–`0065` applied | the five tables, the close-review repairs (`0064`) and the licence SEQUENCE index (`0065`) |
 | 2 | `seed:roles` re-run | mints `radiation_safety_officer` and grants `aerb.doses.read` to `radiologist` and `radiographer` |
 | 3 | A human assigned `radiation_safety_officer` at hospital scope | **nobody can file a licence without it**, and the role is minted holding nothing until somebody is assigned it (`seed:roles` mints authority and assigns nobody) |
 | 4 | Each ionising machine already exists as a `device` resource | the licence points at the registry row, not at a name |
@@ -68,11 +75,26 @@ POST /aerb/licences        (aerb.registers.manage)
 - **`licence` vs `registration` is not cosmetic.** eLORA REGISTERS a plain radiography unit and
   LICENSES CT, fluoroscopy, mammography and interventional units. Enter what your document says;
   the gate treats them identically and the register prints the truth to the inspector.
-- **One active licence per device**, enforced by a partial unique index. A renewal is *suspend or
-  surrender the old row, then file the new one* — never two live rows.
+- **A RENEWAL IS THE NEXT WINDOW, NOT A SURRENDER — and this paragraph used to say the opposite.**
+  Until migration `0065` the invariant was "one active licence per device", and this runbook told
+  you to *surrender the old row, then file the new one*. **Do not do that.** `surrendered` is
+  terminal, so surrendering November's certificate in order to file January's leaves the machine
+  with no licence in force for the rest of December — every ionising study on it refused, with no
+  way back. Pass 2 of the close review measured exactly that and replaced the invariant.
+
+  What a hospital has is a **sequence of certificates with non-overlapping validity**, and *which
+  one is in force* is a question about the date. So: **file the renewal the day the paperwork
+  arrives and touch nothing else.** The screen's **Renew** button on the licence row does this —
+  it pre-fills the machine and starts the new window the day after the current one ends. Two
+  certificates on one device is normal and correct; overlapping ones are refused
+  (`licence_already_active`, naming the window it clashes with), and so are two that start on the
+  same day.
+
+  **Surrender is for a machine that is going away** (§2's status block below), never for one whose
+  paperwork is being renewed.
 - **Check your work before the deploy:** `GET /aerb/licences/gaps?onDate=YYYY-MM-DD` lists every
   non-retired `device` whose modality AERB licences and which has no live licence. **It must be
-  empty.** If it names a machine, that machine stops when you deploy.
+  empty** — on the screen, that is the red block at the top of the Licences tab being gone. If it names a machine, that machine stops when you deploy.
 
 **Surrender, when a unit is decommissioned:**
 
@@ -131,7 +153,12 @@ POST /aerb/qa             (aerb.registers.manage)
   The RSO blocks; the calendar tells them to.
 
 `values` is free-form on purpose — the measured quantities differ per protocol, and a column per
-quantity would be a migration every time the agency changed its form.
+quantity would be a migration every time the agency changed its form. **The screen does not collect
+it** (T6, stated limit): the measured numbers live on the physicist's certificate, and a JSON blob
+typed at the desk is a 500 waiting for a missing brace. The route still accepts it, so an importer
+can carry the numbers later. What the screen records is that the test happened, its verdict, who
+performed it and when the next is due — and, for a `fail`, it warns you by name that the machine is
+about to stop before it sends anything.
 
 ---
 
@@ -223,3 +250,23 @@ table. Roll back the application first, the migrations second, or neither.
 If licences are the problem — a machine stopped because its row is wrong rather than because its
 licence is — the fix is to correct the register, not to disable the gate. `POST /aerb/licences/:id/status`
 with `{"to":"suspended"}` on the wrong row, then file the right one.
+
+---
+
+## 8. Who can do any of this (T6)
+
+`aerb.registers.read` buys the book; **`aerb.registers.manage` buys the pen.** The screen asks the
+server which one you hold and renders accordingly — a quality manager showing an inspector the file
+sees five registers and not one form, and never discovers the difference by being refused.
+
+So if the forms are not there:
+
+1. Check the human has `radiation_safety_officer` at **hospital** scope (§1, precondition 3). The
+   role is minted holding the permission and assigned to nobody.
+2. Re-run `seed:roles` if the permission itself is missing — it is granted at `seed-roles.ts:1151`.
+3. There is no third cause. The screen has no other input to that decision.
+
+The machine and staff dropdowns come from `GET /aerb/pickers`, which sits behind the same
+`aerb.registers.manage`. A reader who can see the registers and not the pickers is not a bug: an
+inspector reading the file needs no dropdown of machines, and the staff roster is not part of what
+the register discloses to a reader.
