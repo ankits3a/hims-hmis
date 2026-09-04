@@ -84,7 +84,12 @@ const OWNED_BY: Record<LabErrorCode, string> = {
   specimen_not_receivable: "accession.ts",
   no_active_order: "accession.ts",
 
+  relabel_witness_required: "accession.ts",
+  relabel_witness_same_actor: "accession.ts",
+
   absurd_value: "results.ts",
+  analyte_not_applicable: "results.ts",
+  impossible_override_same_actor: "results.ts",
   absurd_override_same_actor: "results.ts",
   sod_violation: "verify.ts",
   already_verified: "verify.ts",
@@ -155,7 +160,8 @@ describe("the lab error union (Plan 17 T2)", () => {
     ]);
     // 403 is about WHO is acting — the same pair of hands twice, or a machine where a human is required.
     expect(LAB_ERROR_CODES.filter((c) => labHttpStatus(c) === 403).sort()).toEqual([
-      "absurd_override_same_actor", "permission_denied", "sod_violation", "user_actor_required",
+      "absurd_override_same_actor", "impossible_override_same_actor", "permission_denied",
+      "relabel_witness_same_actor", "sod_violation", "user_actor_required",
     ]);
     /**
      * `report_print_blocked` IS 422 AND NOT 402, and the distinction is operational rather than

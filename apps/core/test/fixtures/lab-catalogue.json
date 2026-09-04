@@ -685,7 +685,8 @@
       "nameEn": "Urine pregnancy test",
       "resultType": "coded",
       "unit": null,
-      "decimals": 1
+      "decimals": 1,
+      "appliesToSex": "female"
     },
     {
       "code": "UR_COL",
@@ -908,7 +909,8 @@
       "nameEn": "PSA, total",
       "resultType": "numeric",
       "unit": "ng/mL",
-      "decimals": 2
+      "decimals": 2,
+      "appliesToSex": "male"
     },
     {
       "code": "SEM_VOL",

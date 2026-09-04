@@ -92,9 +92,9 @@ describe("lab results — verification, SoD and reflex (17b T6)", () => {
     db.select().from(events).where(eq(events.name, name));
 
   const enter = async (itemId: string, code: string, value: string, actor: Actor, at = DAY) =>
-    withTx(db, (tx) => enterResult(tx, actor, {
+    enterResult(db, actor, {
       orderItemId: itemId, analyteId: analyteIds.get(code)!, value, entryMode: "manual",
-    }, at));
+    }, at);
 
   /** Cached per test: `analyteIdFor` in a loop is 16 round-trips for one CBC. */
   let analyteIds: Map<string, string>;
