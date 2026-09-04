@@ -2,11 +2,12 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
-  DOSE_UNITS, aerbErrorText, fetchAppointments, fetchBadges, fetchDoseRegister, fetchLicenceGaps,
-  fetchLicences, fetchQaRecords,
+  DOSE_UNITS, aerbErrorText, fetchAppointments, fetchBadges, fetchCalendar, fetchDoseRegister,
+  fetchLicenceGaps, fetchLicences, fetchQaRecords,
 } from "../lib/aerb-api";
 import type {
-  WireAppointment, WireBadge, WireBadgeGap, WireDoseRow, WireLicence, WireLicenceGap, WireQaRecord,
+  WireAppointment, WireBadge, WireBadgeGap, WireCalendarRow, WireDoseRow, WireLicence,
+  WireLicenceGap, WireQaRecord,
 } from "../lib/aerb-api";
 
 /**
@@ -20,13 +21,13 @@ import type {
  * which modalities AERB licences at all is a regulatory fact, and a client-side list of them would
  * be the copy that drifted the day somebody added a modality.
  *
- * The Calendar tab arrives with T5. They are declared here as disabled
- * rather than absent so that the screen's shape is the register's shape from the first commit, and
- * so a reader can see what is coming without reading the phase document.
+ * All five registers are built as of T5. The tab list is still declared as a constant rather than
+ * inlined, because `BUILT` is what a future phase narrows if it ever adds a sixth.
  */
 const TABS = ["licences", "people", "qa", "dose", "badges", "calendar"] as const;
 type Tab = (typeof TABS)[number];
-const BUILT: readonly Tab[] = ["licences", "people", "qa", "dose", "badges"];
+/** T5 — every register the inspector asks for is built. */
+const BUILT: readonly Tab[] = [...TABS];
 
 /**
  * The measured numbers, each with the unit `aerb/units.ts` names for it. 18b's close review found a
@@ -80,6 +81,12 @@ export function RadiationSafety(): React.ReactElement {
     queryFn: fetchBadges,
     enabled: tab === "badges",
   });
+  const [calendarIncludeOk, setCalendarIncludeOk] = useState(false);
+  const calendar = useQuery({
+    queryKey: ["aerb", "calendar", calendarIncludeOk],
+    queryFn: () => fetchCalendar(calendarIncludeOk),
+    enabled: tab === "calendar",
+  });
   const people = useQuery({
     queryKey: ["aerb", "persons"],
     queryFn: fetchAppointments,
@@ -92,6 +99,7 @@ export function RadiationSafety(): React.ReactElement {
   const doseRows: WireDoseRow[] = doses.data?.rows ?? [];
   const badgeRows: WireBadge[] = badges.data?.rows ?? [];
   const badgeGapRows: WireBadgeGap[] = badges.data?.gaps ?? [];
+  const calendarRows: WireCalendarRow[] = calendar.data?.rows ?? [];
   const peopleRows: WireAppointment[] = people.data?.rows ?? [];
   /** A machine sitting in `qa_blocked` is the state the QA tab exists to make impossible to miss. */
   const blockedNow = qaRows.filter((r) => r.deviceStatus === "qa_blocked");
@@ -371,6 +379,76 @@ export function RadiationSafety(): React.ReactElement {
                           {b.fiveYearMsv} mSv{b.overFiveYearLimit ? ` · ${t("aerb.badges.overLimit")}` : ""}
                         </td>
                         <td>{t(`aerb.badgeStatus.${b.status}`)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+          </section>
+        )
+        : null}
+
+      {tab === "calendar"
+        ? (
+          <section className="space-y-4">
+            <div className="flex items-center justify-between gap-4 print:hidden">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  data-testid="aerb-calendar-include-ok"
+                  checked={calendarIncludeOk}
+                  onChange={(e) => { setCalendarIncludeOk(e.target.checked); }}
+                />
+                {t("aerb.calendar.includeOk")}
+              </label>
+              {/*
+                * D12 — the inspector's file is a PRINT of this list with everything shown, not a
+                * separate document rail. One register read two ways; a PDF service would be a
+                * second copy of the same rows.
+                */}
+              <button
+                type="button"
+                data-testid="aerb-print"
+                className="border px-3 py-1 text-sm"
+                onClick={() => { setCalendarIncludeOk(true); setTimeout(() => { window.print(); }, 0); }}
+              >
+                {t("aerb.calendar.print")}
+              </button>
+            </div>
+
+            <h2 className="hidden print:block font-semibold">
+              {t("aerb.calendar.printTitle", { date: onDate })}
+            </h2>
+
+            {calendar.isError ? <p role="alert" className="text-red-600">{aerbErrorText(calendar.error)}</p> : null}
+            {calendar.isPending ? <p>{t("common.loading")}</p> : null}
+            {!calendar.isPending && calendarRows.length === 0
+              ? <p data-testid="aerb-calendar-empty">{t("aerb.calendar.empty")}</p>
+              : (
+                <table className="w-full text-sm" data-testid="aerb-calendar">
+                  <thead>
+                    <tr className="text-left">
+                      <th>{t("aerb.calendar.what")}</th>
+                      <th>{t("aerb.calendar.subject")}</th>
+                      <th>{t("aerb.calendar.due")}</th>
+                      <th>{t("aerb.calendar.state")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {calendarRows.map((r) => (
+                      <tr key={`${r.kind}-${r.ref}`} data-testid={`aerb-calendar-${r.ref}`}>
+                        <td>{t(`aerb.calendar.kind.${r.kind}`)}</td>
+                        <td>{r.subject} · {r.detail}</td>
+                        <td>{r.dueOn ?? t("aerb.calendar.neverRead")}</td>
+                        <td className={r.state === "overdue" ? "text-red-700 font-semibold" : r.state === "due" ? "text-amber-700" : ""}>
+                          {r.state === "overdue"
+                            ? t("aerb.calendar.overdue", { days: r.daysOverdue })
+                            : r.state === "due"
+                              ? (r.daysOverdue === 0
+                                  ? t("aerb.calendar.dueToday")
+                                  : t("aerb.calendar.dueIn", { days: -r.daysOverdue }))
+                              : t("aerb.calendar.ok")}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

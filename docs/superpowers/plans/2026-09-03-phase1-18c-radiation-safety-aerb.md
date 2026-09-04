@@ -276,3 +276,40 @@ the study did not carry stores NULL, not `under`"*. Restored; `diff -q` proved i
   (regenerated, with its id and prevId re-stitched into the chain), and `drizzle-kit generate` on
   this branch now says *"No schema changes, nothing to migrate"*. That is the state the next lane
   inherits, and it is the first time in this repo's history that it is true.
+
+### 8.2 Findings — T5
+
+- **F23 (T5) — the calendar's hard part is "which QA record is the LIVE one".** A machine tested
+  annually carries last year's record with a date long past AND this year's with a date a year out.
+  A `select … where next_due_on < today` shows an inspector a machine overdue for a test it has
+  already had — **worse than no calendar**. The latest record per (device, test type) is the one
+  with a live date; the mutant that drops the grouping kills exactly the test that says so.
+- **F24 (T5) — the badge gap has NO due date, which is why it needed its own leg.** Nothing was
+  ever scheduled for it, so it is invisible to every date-driven query in the function, and it is
+  the row that means a person is wearing a dosimeter nobody has read. It is always `overdue` and
+  its `daysOverdue` is how long that has been true.
+- **F25 (T5, D4 restated and pinned)** — an OVERDUE QA leaves the machine `available`. The only
+  automatic block in this phase is a FAILED test, because a physicist measured something and said
+  so. Asserted directly, so a later phase cannot quietly make the calendar a second lockout.
+- **F26 (T5, the walk) — the e2e's `radiographer` holds NO `aerb.*` string, and that is right.**
+  The walk's first draft asserted 200 on `/aerb/doses` for them; the e2e mints per-test roles from
+  explicit permission lists rather than from `seed-roles`, so the assertion was about the fixture.
+  Rewritten as D2's actual claim: a reader holding **exactly** `aerb.doses.read` opens the dose
+  register and is 403 on every other AERB route.
+- **F27 (T5, the walk again) — the first draft's badge assertion depended on the day it ran.** A
+  reading entered for Q1 is stale by September; the walk now passes `onDate=${DAY}` and enters the
+  reading for the quarter that closed a month before it. 18a's F28 — *"a test whose correctness
+  depends on what day it is run is a test that will fail for somebody who did not write it, on a
+  morning when nothing is wrong"* — caught here before CI could find it.
+
+### 8.3 Assertion book as executed — T5
+**Mutant:** list EVERY QA record carrying a `next_due_on`, rather than the latest per device and
+test type. **Result: 1 failed / 11 passed** — *"shows only the LATEST QA record per device and test
+type"*. Restored; `diff -q` proved identical.
+
+### 8.4 Evidence — T5
+| task | batch | counts |
+|---|---|---|
+| T5 | `src/modules/aerb` + `test/` ENTIRE + `src/modules/radiology` | **78 suites / 768 tests, exit 0**; tsc 0, lint 0 errors |
+| T5 (web) | full `@hmis/web` suite | **81 files / 669 tests, exit 0** |
+| the walk | `test/radiology.e2e.test.ts` | 5 tests, exit 0 — **THE AERB WALK** is the fifth |

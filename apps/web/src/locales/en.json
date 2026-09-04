@@ -2845,6 +2845,28 @@
       "active": "Active",
       "returned": "Returned",
       "lost": "Lost"
+    },
+    "calendar": {
+      "title": "What is out of date",
+      "empty": "Nothing is due or overdue.",
+      "includeOk": "Show everything, including what is in date (the inspector's file)",
+      "what": "What",
+      "subject": "Subject",
+      "due": "Due",
+      "state": "State",
+      "kind": {
+        "licence": "AERB licence",
+        "qa": "Quality assurance",
+        "appointment": "Appointment",
+        "badge": "TLD badge"
+      },
+      "overdue": "{{days}} days overdue",
+      "dueIn": "due in {{days}} days",
+      "dueToday": "due today",
+      "ok": "in date",
+      "neverRead": "never read",
+      "print": "Print the inspector's file",
+      "printTitle": "Radiation safety — AERB file as at {{date}}"
     }
   }
 }

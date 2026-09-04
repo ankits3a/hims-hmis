@@ -23,6 +23,9 @@ export { doseRegisterRows, patientCumulativeDose, recordDose } from "./dose";
 export type { CumulativeDose, DoseRegisterRow, RecordDoseInput } from "./dose";
 export { DOSE_QUANTITIES, DOSE_QUANTITY_COLUMNS, DOSE_UNITS } from "./units";
 export type { DoseQuantity } from "./units";
+// PLAN 18c T5 — the compliance calendar: one read over all four registers.
+export { DUE_WINDOW_DAYS, complianceCalendar } from "./calendar";
+export type { CalendarRow, CalendarState } from "./calendar";
 // PLAN 18c T4 — the TLD badge programme and the record-only investigation ladder.
 export {
   STATUTORY_LIMITS, badgeGaps, badgeReads, badgeRegister, closeBadge, investigationLevelPerMonth,

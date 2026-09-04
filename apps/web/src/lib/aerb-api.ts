@@ -192,6 +192,21 @@ export function fetchBadges(): Promise<WireBadgeBook> {
   return api<WireBadgeBook>("GET", "/aerb/badges");
 }
 
+export type WireCalendarRow = {
+  kind: "licence" | "qa" | "appointment" | "badge";
+  subject: string;
+  detail: string;
+  /** null for a badge nobody has read — nothing was ever scheduled for it to be late against. */
+  dueOn: string | null;
+  state: "ok" | "due" | "overdue";
+  daysOverdue: number;
+  ref: string;
+};
+
+export function fetchCalendar(includeOk: boolean): Promise<{ rows: WireCalendarRow[] }> {
+  return api<{ rows: WireCalendarRow[] }>("GET", `/aerb/calendar?includeOk=${String(includeOk)}`);
+}
+
 export function fetchAppointments(): Promise<{ rows: WireAppointment[] }> {
   return api<{ rows: WireAppointment[] }>("GET", "/aerb/persons");
 }

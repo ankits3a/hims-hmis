@@ -42,6 +42,7 @@ const PERSONS = "GET /api/aerb/persons";
 const QA = "GET /api/aerb/qa";
 const DOSES = "GET /api/aerb/doses";
 const BADGES = "GET /api/aerb/badges";
+const CALENDAR = "GET /api/aerb/calendar";
 
 describe("the radiation-safety register (18c T1)", () => {
   beforeEach(() => { setToken("t"); });
@@ -176,14 +177,93 @@ describe("the radiation-safety register (18c T1)", () => {
     expect(row).toHaveTextContent("open-ended");
   });
 
-  /** The Calendar tab T5 builds is declared and disabled, so the shape is visible from here. */
-  it("the unbuilt calendar tab is present and disabled", async () => {
+  /** T5 — every register the inspector asks for is now built; no tab is disabled. */
+  it("all five registers are reachable", async () => {
     mockRoutes({
       [LICENCES]: { status: 200, body: { rows: [] } },
       [GAPS]: { status: 200, body: { rows: [] } },
     });
     renderWithProviders(<RadiationSafety />);
-    expect(await screen.findByTestId("aerb-tab-calendar")).toBeDisabled();
+    for (const k of ["licences", "people", "qa", "dose", "badges", "calendar"]) {
+      expect(await screen.findByTestId(`aerb-tab-${k}`)).not.toBeDisabled();
+    }
+  });
+
+  /* ═════════════════════ PLAN 18c T5 — THE CALENDAR ═════════════════════ */
+
+  const calRow = (over: Record<string, unknown> = {}) => ({
+    kind: "licence", subject: "CT-1 — CT machine", detail: "AERB/CT/2026/1",
+    dueOn: "2026-06-01", state: "overdue", daysOverdue: 14, ref: "L1", ...over,
+  });
+
+  /**
+   * The three states read as three different sentences. "14 days overdue" and "due in 9 days" are
+   * different instructions; a screen that rendered both as a date would make the RSO do the
+   * subtraction, which is the arithmetic a calendar exists to have already done.
+   */
+  it("says how late each thing is, in words, and never just a date", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [CALENDAR]: { status: 200, body: { rows: [
+        calRow({ ref: "L1", state: "overdue", daysOverdue: 14 }),
+        calRow({ ref: "Q1", kind: "qa", state: "due", daysOverdue: -9 }),
+        calRow({ ref: "A1", kind: "appointment", state: "due", daysOverdue: 0 }),
+      ] } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-calendar"));
+    expect(await screen.findByTestId("aerb-calendar-L1")).toHaveTextContent("14 days overdue");
+    expect(screen.getByTestId("aerb-calendar-Q1")).toHaveTextContent("due in 9 days");
+    expect(screen.getByTestId("aerb-calendar-A1")).toHaveTextContent("due today");
+  });
+
+  /** A badge nobody has read has no date to be late against, and must not render as blank. */
+  it("renders the badge with no reading as `never read` rather than an empty cell", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [CALENDAR]: { status: 200, body: { rows: [
+        calRow({ ref: "B1", kind: "badge", subject: "A. Devi", detail: "TLD-002", dueOn: null, daysOverdue: 200 }),
+      ] } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-calendar"));
+    const row = await screen.findByTestId("aerb-calendar-B1");
+    expect(row).toHaveTextContent("never read");
+    expect(row).toHaveTextContent("TLD-002");
+  });
+
+  it("a clean file says so rather than showing an empty table", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [CALENDAR]: { status: 200, body: { rows: [] } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-calendar"));
+    expect(await screen.findByTestId("aerb-calendar-empty")).toBeInTheDocument();
+  });
+
+  /**
+   * D12 — the inspector's file is the SAME list with everything shown. Pressing print switches the
+   * view to the whole file first, because a file that omitted the licences that are in date would
+   * be exactly the wrong half to hand an inspector.
+   */
+  it("printing switches to the whole file first, then prints", async () => {
+    const print = vi.fn();
+    vi.stubGlobal("print", print);
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [CALENDAR]: { status: 200, body: { rows: [calRow()] } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-calendar"));
+    expect(screen.getByTestId("aerb-calendar-include-ok")).not.toBeChecked();
+    await userEvent.click(screen.getByTestId("aerb-print"));
+    expect(screen.getByTestId("aerb-calendar-include-ok")).toBeChecked();
+    await waitFor(() => { expect(print).toHaveBeenCalled(); });
   });
 
   /* ═════════════════════ PLAN 18c T4 — THE BADGES TAB ═════════════════════ */

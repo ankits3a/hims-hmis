@@ -26,7 +26,7 @@ import { aerbManifest, fileLicence } from "../src/modules/aerb";
 import { recordSecondFactor } from "../src/kernel/auth/totp";
 import {
   events, imagingDefinitions, imagingStudies, opdEncounters, orderItems, orders, patients,
-  phiAccessLog, registrationConfig, services as servicesTable,
+  phiAccessLog, registrationConfig, resources, services as servicesTable,
 } from "../src/kernel/db/schema";
 import {
   RADIOLOGY_RESOURCE_KINDS, RADIOLOGY_WORKFLOW_DEFINITIONS,
@@ -109,6 +109,8 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
   let bridge: { id: string; token: string; sessionId: string };
   let services: Record<string, string>;
   let devices: Record<string, string>;
+  /** PLAN 18c — the Radiological Safety Officer: the AERB registers' only writer. */
+  let rso: { id: string; token: string; sessionId: string };
 
   beforeEach(async () => {
     await truncateAll(db);
@@ -219,7 +221,7 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
      * running a CT without this row is a hospital that must be stopped. The ultrasound gets none,
      * because AERB licences no ultrasound machine and STUDY TWO must pass without one.
      */
-    const rso = await staff([...aerbManifest.permissions], "rso");
+    rso = await staff([...aerbManifest.permissions], "rso");
     await withTx(db, (tx) => fileLicence(tx, { type: "user", id: rso.id }, {
       deviceResourceId: devices.ct!, licenceType: "licence", licenceNo: "AERB/CT/2026/E2E",
       eloraRef: "ELORA-E2E", validFrom: "2020-01-01", validTo: "2099-12-31",
@@ -568,4 +570,180 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     for (const m of ALL_MANIFESTS) registry.install(m);
     expect(collectOrderKinds(registry).map((k) => k.kind).sort()).toContain("imaging");
   });
+
+  /**
+   * ═══ PLAN 18c T5 — THE PHASE'S FINISH LINE, OVER HTTP AND THROUGH THE REAL MANIFEST ═══
+   *
+   * §1's sentence, walked: the CT carries a live AERB licence or it cannot be acquired; a failed QA
+   * record BLOCKS the machine and a pass releases it; the acquired study writes a dose row compared
+   * against a published reference level; a quarterly badge reading over the investigation level
+   * raises the RSO's row; and one date range comes back as the inspector's file.
+   *
+   * It is one `it` deliberately: five registers that each pass alone and do not add up is exactly
+   * what a phase-closing walk exists to catch, and the state each step leaves is the next step's
+   * precondition.
+   */
+  it("THE AERB WALK — licence, QA lockout and release, dose against a DRL, a badge flag, and the file", async () => {
+    /** ── 1. THE LICENCE. Filed in the fixture; the register shows it and names no gap. ── */
+    const licences = await get("/aerb/licences", rso.token);
+    expect(licences.status).toBe(200);
+    expect((licences.body as { rows: { licenceNo: string }[] }).rows.map((r) => r.licenceNo))
+      .toContain("AERB/CT/2026/E2E");
+
+    const gaps = await get(`/aerb/licences/gaps?onDate=${DAY}`, rso.token);
+    expect(gaps.status).toBe(200);
+    /** The USG is not licensable and the CT is licensed, so nothing is unaccounted for. */
+    expect((gaps.body as { rows: unknown[] }).rows).toEqual([]);
+
+    /** ── 2. THE QA LOCKOUT. A failure stops the machine — through the resource registry. ── */
+    const failed = await post("/aerb/qa", rso.token, {
+      deviceResourceId: devices.ct, qaType: "AERB annual QA", result: "fail",
+      performedBy: "S. Iyer, medical physicist", performedOn: DAY,
+      values: { outputRepeatabilityPct: 12.4 }, nextDueOn: "2027-08-31",
+    });
+    expect(failed.status).toBe(201);
+    expect((failed.body as { blocked: boolean }).blocked).toBe(true);
+
+    const blocked = await db.select().from(resources).where(eq(resources.id, devices.ct!));
+    expect(blocked[0]!.status).toBe("qa_blocked");
+
+    /** ── 3. THE RELEASE. A pass returns it, and names the record it released. ── */
+    const passed = await post("/aerb/qa", rso.token, {
+      deviceResourceId: devices.ct, qaType: "AERB annual QA", result: "pass",
+      performedBy: "S. Iyer, medical physicist", performedOn: DAY, nextDueOn: "2027-08-31",
+    });
+    expect(passed.status).toBe(201);
+    expect((passed.body as { releasedRecordId: string | null }).releasedRecordId)
+      .toBe((failed.body as { recordId: string }).recordId);
+    const released = await db.select().from(resources).where(eq(resources.id, devices.ct!));
+    expect(released[0]!.status).toBe("available");
+
+    /**
+     * ── 4. THE DOSE. A CT walked from order to acquisition, against a PUBLISHED reference level. ──
+     *
+     * The DRL book is published as an active definition rather than drafted through the approval
+     * ceremony, which `definitions.test.ts` owns; what this walk is about is that the level the
+     * book carries reaches the register row the acquisition writes.
+     */
+    await db.insert(imagingDefinitions).values({
+      id: "01DEF00000000000000000003", kind: "dose_reference_levels", version: 1, status: "active",
+      draftedBy: "e2e", publishedBy: "e2e", publishedAt: NOW,
+      body: { levels: [{ study_type_code: "CT-ABDO-CONTRAST", quantity: "dlp", value: 1000, source: "ICRP 135" }] },
+    });
+
+    const placed = await post("/radiology/orders", doctor.token, {
+      patientId: PATIENT, encounterNo: VISIT, serviceDate: DAY,
+      orderingClinicianId: doctor.id, indication: "abdominal pain, ?abscess",
+      items: [{ serviceId: services["CT-ABDO-CONTRAST"] }],
+    });
+    expect(placed.status).toBe(201);
+    expect(await pump()).toBeGreaterThan(0);
+    const [study] = await db.select().from(imagingStudies).where(eq(imagingStudies.patientId, PATIENT));
+
+    expect((await post(`/radiology/studies/${study!.id}/schedule`, radiographer.token, {
+      deviceResourceId: devices.ct, scheduledAt: "2026-08-31T09:00:00.000Z",
+    })).status).toBe(201);
+    expect((await post(`/radiology/studies/${study!.id}/check-in`, radiographer.token)).status).toBe(201);
+
+    const satisfy = (kind: string, evidence: unknown) =>
+      post(`/radiology/studies/${study!.id}/gates/${kind}/satisfy`, radiographer.token, evidence);
+    await satisfy("identity_two_factor", { secondIdentifier: "uhid", value: "HMS-00000001-5" });
+    await satisfy("pregnancy_screen", { declared: true, lmpDate: new Date(Date.now() - 5 * 86_400_000).toISOString() });
+    await satisfy("renal_function", { creatinineUmolL: 72, sampledAt: new Date().toISOString(), source: "internal" });
+    await satisfy("prior_contrast_reaction", {});
+    await satisfy("contrast_consent", {
+      procedureCode: "CT-ABDO-CONTRAST", templateVersion: "rad-contrast-v3", language: "hi",
+      signer: "patient", conversionCovered: false, laterality: null, signedAt: new Date().toISOString(),
+    });
+
+    await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study!.id));
+    expect((await post(`/radiology/studies/${study!.id}/acquisition/start`, radiographer.token, {})).status).toBe(201);
+    expect((await post(`/radiology/studies/${study!.id}/acquisition/acquired`, radiographer.token, {
+      imageSource: "pacs", doseCtdivol: 6.4, doseDlp: 1200.5,
+      contrastGiven: true, contrastAgent: "Iohexol", contrastVolumeMl: 80,
+    })).status).toBe(201);
+
+    const doses = await get("/aerb/doses", rso.token);
+    expect(doses.status).toBe(200);
+    const doseRows = (doses.body as {
+      rows: { procedureCode: string; overDrl: boolean | null; drlValue: string | null; doseDlp: string | null }[];
+    }).rows;
+    expect(doseRows).toHaveLength(1);
+    /** 1200.5 mGy·cm against a published 1000 — the comparison the book made, stored on the row. */
+    expect(doseRows[0]).toMatchObject({ procedureCode: "CT-ABDO-CONTRAST", overDrl: true, drlValue: "1000.000" });
+    expect(doseRows[0]!.doseDlp).toBe("1200.500");
+
+    /** And the disclosure was logged on its own surface, one row for the one patient shown. */
+    const doseLog = await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "aerb.dose_register"));
+    expect(doseLog).toHaveLength(1);
+    expect(doseLog[0]!.patientId).toBe(PATIENT);
+
+    /** The radiologist's cumulative nudge reads the same register, and NEVER refuses. */
+    const cumulative = await get(`/aerb/doses/patient/${PATIENT}`, rso.token);
+    expect(cumulative.status).toBe(200);
+    expect((cumulative.body as { studyCount: number; overDrlCount: number }).studyCount).toBe(1);
+    expect((cumulative.body as { overDrlCount: number }).overDrlCount).toBe(1);
+
+    /** ── 5. THE BADGE. A quarterly reading over the pro-rated level raises the RSO's row. ── */
+    const issued = await post("/aerb/badges", rso.token, {
+      userId: radiographer.id, badgeNo: "TLD-E2E-001", issuedOn: "2026-01-01",
+    });
+    expect(issued.status).toBe(201);
+    const badgeId = (issued.body as { badgeId: string }).badgeId;
+
+    const reading = await post("/aerb/badges/reads", rso.token, {
+      badgeId, periodStart: "2026-05-01", periodEnd: "2026-07-31",
+      hp10Msv: 4.2, hp007Msv: 4.9, reportedOn: "2026-08-20", labRef: "TLD/2026/Q2",
+    });
+    expect(reading.status).toBe(201);
+    expect((reading.body as { investigation: boolean }).investigation).toBe(true);
+
+    const book = await get("/aerb/badges", rso.token);
+    expect(book.status).toBe(200);
+    const badgeBody = book.body as {
+      rows: { badgeNo: string; ytdMsv: string; lastInvestigation: boolean | null }[];
+      limits: { annualMsv: number };
+    };
+    const mine = badgeBody.rows.find((r) => r.badgeNo === "TLD-E2E-001");
+    expect(mine!.lastInvestigation).toBe(true);
+    expect(Number(mine!.ytdMsv)).toBeCloseTo(4.2, 3);
+    /** The screen never states a limit the server did not send. */
+    expect(badgeBody.limits.annualMsv).toBe(30);
+
+    /**
+     * ── 6. THE FILE. One read, and it carries what every register above just produced. ──
+     *
+     * `onDate` is the fixture's own DAY rather than the wall clock, so this walk asserts the same
+     * thing on every morning it is run — F28's lesson, which cost five radiology suites a day.
+     */
+    const file = await get(`/aerb/calendar?includeOk=true&onDate=${DAY}`, rso.token);
+    expect(file.status).toBe(200);
+    const rows = (file.body as { rows: { kind: string; state: string; detail: string }[] }).rows;
+    expect(rows.some((r) => r.kind === "licence" && r.detail === "AERB/CT/2026/E2E")).toBe(true);
+    expect(rows.some((r) => r.kind === "qa" && r.detail === "AERB annual QA")).toBe(true);
+    /**
+     * The badge was read for the quarter that ended a month ago, so it is NOT a gap — and this is
+     * the assertion that the file says what is TRUE rather than what is convenient. A reading
+     * entered for a period that closed six months ago would put the row back.
+     */
+    expect(rows.some((r) => r.kind === "badge")).toBe(false);
+
+    /**
+     * ── 7. THE DOORS, AND D2's SEPARATION IS THE POINT OF THEM ──
+     *
+     * `aerb.doses.read` is a THIRD permission rather than part of `aerb.registers.read`, because
+     * the cumulative-dose nudge belongs on a radiologist's study screen and the licence file, the
+     * QA book and the badge register do not. A reader holding exactly that one string proves it:
+     * the dose register opens, every other AERB route is 403.
+     */
+    const doseReader = await staff(["aerb.doses.read"], "dosr");
+    for (const path of ["/aerb/licences", "/aerb/qa", "/aerb/badges", "/aerb/calendar", "/aerb/persons"]) {
+      expect([path, (await get(path, doseReader.token)).status]).toEqual([path, 403]);
+    }
+    expect((await get("/aerb/doses", doseReader.token)).status).toBe(200);
+
+    /** And the radiographer who acquires holds none of it at all — not even the doses. */
+    expect((await get("/aerb/doses", radiographer.token)).status).toBe(403);
+    expect((await get("/aerb/licences", "")).status).toBe(401);
+  }, 60_000);
 });
