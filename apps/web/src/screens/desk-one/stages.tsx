@@ -3,7 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { abhaCapability, matchReasonKeys, matchReasonsDiscriminate, searchPatients } from "../../lib/patients-api";
 import type { WirePatientHit } from "../../lib/patients-api";
-import { getSlots, opdErrorMessage } from "../../lib/opd-api";
+import { getContinuity, getSlots, opdErrorMessage } from "../../lib/opd-api";
+import { DELAY_HIGHLIGHT_MINUTES, proposeWalkIn } from "../../lib/walk-in-routing";
 import type { WireDoctorSummary, WireSlot } from "../../lib/opd-api";
 import {
   ageOf, bookableToday, etaClock, initialsOf, rs, sexLetter, vitalsAhead, waitMinutes,
@@ -25,12 +26,14 @@ import type { CoverageDraft, Person } from "./session";
 
 /** §3 — the machine speaks on pine ink and nowhere else. There is no light variant of this chip. */
 function AgentLine({
-  children, action, onAct, busy,
+  children, action, onAct, busy, actionTestId,
 }: {
   children: React.ReactNode;
   action?: string;
   onAct?: () => void;
   busy?: boolean;
+  /** The dept cards carry an "assign" button too, so the PROPOSAL's needs to be addressable. */
+  actionTestId?: string;
 }): React.ReactElement {
   return (
     <div style={{ marginTop: 18, display: "flex" }}>
@@ -38,7 +41,7 @@ function AgentLine({
         <span style={{ width: 6, height: 6, borderRadius: 99, background: "var(--mint)", flexShrink: 0 }} />
         <span>{children}</span>
         {action === undefined ? null : (
-          <button className="agdo" onClick={onAct} disabled={busy === true}>{busy === true ? "…" : action}</button>
+          <button className="agdo" data-testid={actionTestId} onClick={onAct} disabled={busy === true}>{busy === true ? "…" : action}</button>
         )}
       </span>
     </div>
@@ -903,13 +906,47 @@ function StageAppointment(): React.ReactElement {
     });
   }, [d.queues, s.triage]);
 
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-13 — RULE 1 AND THE 20-MINUTE RULE, FINALLY ASKED FOR
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * `proposeWalkIn` and `GET /opd/continuity` were built and tested in FD-7 T2 and then imported by
+   * NOTHING. The FD-9 rebuild collapsed three routes into this one screen and left the routing rail
+   * behind, so this stage picked the shortest line and no more — a patient who saw Dr Sharma last
+   * month was sent to whoever happened to be free, every time, and the owner's own 20-minute ruling
+   * had no renderer.
+   *
+   * The hook sits ABOVE the future-tab return because a hook after a conditional return changes hook
+   * order between renders. `topDeptId` therefore has to be read off `ranked` here rather than from
+   * `pick` below, which is the same value computed before the branch instead of after it.
+   *
+   * The read is narrow BY DESIGN and the narrowness is the privacy design (see `continuity.ts`): the
+   * clerk names the department they are already routing to, and the server answers about THAT
+   * department only. It never enumerates where a patient has been — "she has been to Psychiatry" is
+   * a clinical fact, and 07a/07b were spent closing exactly that class of leak.
+   */
+  const topDeptId = ranked[0]?.departmentId ?? null;
+  const personId = s.person?.id ?? null;
+  const continuity = useQuery({
+    queryKey: ["continuity", personId, topDeptId],
+    queryFn: () => getContinuity(personId ?? "", topDeptId ?? ""),
+    enabled: personId !== null && topDeptId !== null,
+    staleTime: 60_000,
+    retry: false,
+  });
+
   if (s.tab === "future") return <FutureTab />;
 
   const pick = ranked[0] ?? null;
-  const pickDoctor = pick === null ? null : (() => {
-    const open = pick.doctors.filter(bookableToday);
-    return open.length === 0 ? null : open.reduce((a, b) => (waitMinutes(a) <= waitMinutes(b) ? a : b));
-  })();
+  /*
+    THE PROPOSAL IS THE PURE FUNCTION'S, NOT THIS COMPONENT'S. What used to live here was
+    `open.reduce(shortest wait)` — rule 2 alone, with rules 1 and 3 missing and the delay rule
+    unrenderable. Every ordering decision now belongs to `walk-in-routing.ts`, where each rule is
+    killed by its own test; this file only draws the answer and never re-derives it.
+  */
+  const proposal = pick === null ? null : proposeWalkIn(pick.departmentId, pick.doctors, continuity.data?.anchor ?? null);
+  const pickDoctor = proposal?.doctor ?? null;
   const suggested = (s.triage?.departmentIds ?? []).length > 0;
 
   return (
@@ -959,14 +996,76 @@ function StageAppointment(): React.ReactElement {
             {suggested ? <><b>{pick.departmentName}</b> fits the complaint, but nobody there is on today's board.</> : "Nobody in the shortest department is on today's board — try another."}
           </AgentLine>
         ) : (
-          <AgentLine
-            action="assign"
-            busy={s.busy === "assign"}
-            onAct={() => void d.assign(pick.departmentId, pickDoctor.doctor.id)}
-          >
-            {suggested ? <><b>{s.complaint}</b> → {pick.departmentName}.</> : <><b>Shortest open line</b> is {pick.departmentName}.</>}{" "}
-            {pickDoctor.doctor.displayName} has {pickDoctor.waitingCount} waiting, about {waitMinutes(pickDoctor)} min — called around {etaClock(waitMinutes(pickDoctor))}.
-          </AgentLine>
+          <>
+            <AgentLine
+              action="assign"
+              actionTestId="propose-assign"
+              busy={s.busy === "assign"}
+              onAct={() => void d.assign(pick.departmentId, pickDoctor.doctor.id)}
+            >
+              {/*
+                RULE 1 SAYS WHO AND WHEN, not merely "you have been here before". A clerk who can say
+                "Dr Sharma saw you on 14 March" is making a promise the desk can keep; "you have been
+                here before" is small talk.
+              */}
+              {proposal?.rule === "continuity" && proposal.anchor !== null ? (
+                <><b data-testid="continuity-anchor">Seen here before</b> — {proposal.anchor.doctorName} on {proposal.anchor.seenOn}. Back to the same doctor.</>
+              ) : suggested ? (
+                <><b>{s.complaint}</b> → {pick.departmentName}.</>
+              ) : (
+                <><b>Shortest open line</b> is {pick.departmentName}.</>
+              )}{" "}
+              {pickDoctor.doctor.displayName} has {pickDoctor.waitingCount} waiting, about {proposal?.waitMinutes ?? waitMinutes(pickDoctor)} min — called around {etaClock(proposal?.waitMinutes ?? waitMinutes(pickDoctor))}.
+            </AgentLine>
+
+            {/*
+              ═══ THE 20-MINUTE RULE — A HIGHLIGHT, NEVER A RE-ROUTE ═══
+
+              Owner, 2026-09-03: *"If the wait time exceeds 20 minutes, highlight the user about the
+              delay and suggest lower wait time based doctor."* Continuity still WINS: the clerk is
+              told the line is long, shown who is genuinely quicker, and decides. Switching the
+              patient away from the doctor who knows them, silently, would be rule 2 wearing rule 1's
+              name — so the alternative is a second button and never a replacement for the first.
+            */}
+            {proposal?.delayed === true ? (
+              <div
+                className="box"
+                data-testid="delay-highlight"
+                style={{ marginTop: 10, padding: "10px 13px", borderColor: "var(--gold-line)", background: "var(--gold-soft)" }}
+              >
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--gold)" }}>
+                  About {proposal.waitMinutes} minutes — longer than {DELAY_HIGHLIGHT_MINUTES}. Tell them before they sit down.
+                </div>
+                {proposal.alternative === null ? (
+                  <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 3, lineHeight: "16px" }}>
+                    Nobody in {pick.departmentName} is quicker right now — this is already the shortest line.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 7, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 11.5, color: "var(--dim)", lineHeight: "16px" }}>
+                      {proposal.alternative.doctor.displayName} could see them in about {proposal.alternativeWaitMinutes} min.
+                    </span>
+                    <button
+                      className="sec grn"
+                      data-testid="take-alternative"
+                      disabled={s.busy === "assign"}
+                      onClick={() => void d.assign(pick.departmentId, proposal.alternative!.doctor.id)}
+                    >
+                      seat with {proposal.alternative.doctor.displayName.replace(/^Dr\.\s*/, "")} instead
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {/* The anchor doctor exists but is not on the board — say the TRUE reason, not the vague one. */}
+            {proposal?.anchorUnavailable === true && proposal.anchor !== null ? (
+              <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 8, lineHeight: "16px" }} data-testid="anchor-unavailable">
+                {proposal.anchor.doctorName} saw them on {proposal.anchor.seenOn} but is{" "}
+                {proposal.anchorOnLeave ? "on leave today" : "not on today's board"} — so this is the shortest line instead.
+              </div>
+            ) : null}
+          </>
         )}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
