@@ -78,7 +78,10 @@ export {
   NIGHT_MODE_FROM_HOUR_IST, NIGHT_MODE_TO_HOUR_IST,
 } from "./verify";
 export type { ReflexPlacement, ReflexRefusal, VerifyResultInput, VerifyResultOutcome } from "./verify";
-export { acknowledgeCritical, openCriticalCalls, LAB_CRITICALS_CLOSE } from "./criticals";
+export {
+  acknowledgeCritical, openCriticalCalls, nextRung, RUNGS, CRITICAL_CALL_TARGET_MINUTES,
+  LAB_CRITICALS_CLOSE,
+} from "./criticals";
 export type {
   AcknowledgeCriticalInput, AcknowledgeCriticalOutcome, CriticalAttempt, OpenCriticalCall,
 } from "./criticals";

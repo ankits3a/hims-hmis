@@ -4,13 +4,13 @@ import { useTranslation } from "react-i18next";
 import { newIdempotencyKey } from "../lib/api";
 import {
   acknowledgeCritical, benchArrivals, benchWorklist, enterResult, flagTone, LAB_BENCH_TOPIC, LAB_CRITICAL_TOPIC,
-  labErrorText, labRefusal, openCriticals, receiveSpecimen, rejectSpecimen,
+  CRITICAL_RUNGS, labErrorText, labRefusal, openCriticals, receiveSpecimen, rejectSpecimen,
 } from "../lib/lab-api";
 import { useRealtime } from "../lib/realtime";
 import { Button } from "@/components/ui/button";
 import { capFor } from "../components/specimen-label";
 import { LabSeatFrame } from "./lab-seat";
-import type { WireBenchArrival, WireWorklistRow } from "../lib/lab-api";
+import type { CriticalRung, WireBenchArrival, WireWorklistRow } from "../lib/lab-api";
 
 /**
  * PLAN 17c T3 — **THE BENCH**: Abha Rani's seat (design board 3).
@@ -82,6 +82,12 @@ export function LabBench(): React.ReactElement {
   const [contacts, setContacts] = useState<Record<string, string>>({});
   const [readbacks, setReadbacks] = useState<Record<string, string>>({});
   const [outcomes, setOutcomes] = useState<Record<string, CallOutcome>>({});
+  /**
+   * 17d T3 — the rung the technologist is on. Defaulted from the server's `nextRung` rather than to
+   * the first rung, so re-dialling the doctor whose phone is off is a deliberate choice and not the
+   * path of least resistance.
+   */
+  const [rungs, setRungs] = useState<Record<string, CriticalRung>>({});
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   /**
@@ -179,10 +185,14 @@ export function LabBench(): React.ReactElement {
   });
 
   const ack = useMutation({
-    mutationFn: (v: { callId: string; outcome: CallOutcome }) => acknowledgeCritical(v.callId, {
+    mutationFn: (v: { callId: string; outcome: CallOutcome; rung: CriticalRung }) => acknowledgeCritical(v.callId, {
       ...((contacts[v.callId] ?? "") === ""
         ? {}
-        : { attempt: { contact: contacts[v.callId]!, outcome: (readbacks[v.callId] ?? "") === "" ? v.outcome : "spoke" } }),
+        : { attempt: {
+          contact: contacts[v.callId]!,
+          outcome: (readbacks[v.callId] ?? "") === "" ? v.outcome : "spoke",
+          rung: v.rung,
+        } }),
       ...((readbacks[v.callId] ?? "") === "" ? {} : { readback: readbacks[v.callId]! }),
     }),
     onSuccess: (_r, v) => {
@@ -190,6 +200,7 @@ export function LabBench(): React.ReactElement {
       setContacts((c) => ({ ...c, [v.callId]: "" }));
       setReadbacks((r) => ({ ...r, [v.callId]: "" }));
       setOutcomes((o) => ({ ...o, [v.callId]: "no_answer" }));
+      setRungs((r) => { const next = { ...r }; delete next[v.callId]; return next; });
       refresh();
     },
     onError: (e: unknown) => setError(labErrorText(e)),
@@ -503,7 +514,45 @@ export function LabBench(): React.ReactElement {
               <p className="text-xs">
                 {c.orderNo} · {t("lab.bench.callOpenedAt")} {c.openedAt} · {t("lab.bench.attempts")}: {c.attempts.length}
               </p>
+              {/*
+                17d T3 / D5 — THE CLOCK IS ADVISORY AND SAYS SO. It colours past the target and
+                refuses nothing: a technologist holding a potassium of 6.8 is never told by software
+                that they may not make a phone call.
+              */}
+              <p className="text-xs font-semibold tabular-nums"
+                style={c.minutesOpen > c.targetMinutes ? { color: "var(--state-danger)" } : undefined}>
+                {t("lab.bench.openFor", { minutes: c.minutesOpen, target: c.targetMinutes })}
+              </p>
+              {/*
+                D4 — THE LADDER, DRAWN. Three rows, each saying who was tried and what came of it,
+                so the person taking over at 07:00 reads the hospital's attempts rather than
+                re-deriving them from a count.
+              */}
+              <ol className="space-y-0.5 text-xs" aria-label={t("lab.bench.ladder")}>
+                {CRITICAL_RUNGS.map((rung) => {
+                  const tries = c.attempts.filter((at) => at.rung === rung);
+                  const spoken = tries.some((at) => at.outcome === "spoke");
+                  return (
+                    <li key={rung} className={spoken ? "font-semibold" : "text-muted-foreground"}>
+                      {spoken ? "✓" : tries.length > 0 ? "·" : "○"} {t(`lab.bench.rung_${rung}`)}
+                      {tries.length > 0 && (
+                        <span> — {tries.map((at) => `${at.contact} (${t(`lab.bench.outcome_${at.outcome}`)})`).join("; ")}</span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
+              {c.nextRung !== null && (
+                <p className="text-xs font-semibold">{t("lab.bench.tryNext", { rung: t(`lab.bench.rung_${c.nextRung}`) })}</p>
+              )}
               <div className="flex flex-wrap items-end gap-2">
+                <select className="rounded border border-input px-2 py-1" aria-label={t("lab.bench.rung")}
+                  value={rungs[c.id] ?? c.nextRung ?? "ordering_clinician"}
+                  onChange={(e) => setRungs((x) => ({ ...x, [c.id]: e.target.value as CriticalRung }))}>
+                  {CRITICAL_RUNGS.map((r) => (
+                    <option key={r} value={r}>{t(`lab.bench.rung_${r}`)}</option>
+                  ))}
+                </select>
                 <input className="rounded border border-input px-2 py-1" placeholder={t("lab.bench.contact")}
                   aria-label={`${t("lab.bench.contact")} ${c.patientDisplay}`}
                   value={contacts[c.id] ?? ""}
@@ -520,7 +569,10 @@ export function LabBench(): React.ReactElement {
                   value={readbacks[c.id] ?? ""}
                   onChange={(e) => setReadbacks((x) => ({ ...x, [c.id]: e.target.value }))} />
                 <Button type="button" disabled={ack.isPending}
-                  onClick={() => ack.mutate({ callId: c.id, outcome: outcomes[c.id] ?? "no_answer" })}>
+                  onClick={() => ack.mutate({
+                    callId: c.id, outcome: outcomes[c.id] ?? "no_answer",
+                    rung: rungs[c.id] ?? c.nextRung ?? "ordering_clinician",
+                  })}>
                   {t("lab.bench.record")}
                 </Button>
               </div>
