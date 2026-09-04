@@ -5,17 +5,17 @@ import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useTranslation } from "react-i18next";
+import { AgentDock } from "../components/agent-dock";
+import type { AgentLine } from "../components/agent-dock";
 import { api } from "../lib/api";
 import { CONFIDENTIAL_CAPTURE_ENABLED } from "../lib/confidential-capture";
 import { FormKit, TextField, SelectField, CheckboxField } from "../components/form-kit";
 import { SubmitButton } from "../components/submit-button";
 import { PatientPhoto } from "../components/patient-photo";
 import { QrCard, type QrCardData } from "../components/qr-card";
-import { Button } from "@/components/ui/button";
 import { usePatientInHand } from "../lib/patient-in-hand";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 // Wire shapes (patients.controller.ts) — every Date column arrives JSON-serialized as an
 // ISO string, so these are the on-the-wire types, not the drizzle $inferSelect ones.
@@ -170,9 +170,9 @@ function DeceasedSection({ patient }: { patient: PatientRow }): React.ReactEleme
 
   return (
     <section className="space-y-2">
-      <Button size="sm" variant="outline" onClick={() => setConfirmOpen(true)}>{t("patient.markDeceased")}</Button>
+      <button className="sec" onClick={() => setConfirmOpen(true)}>{t("patient.markDeceased")}</button>
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent>
+        <DialogContent className="pp">
           <DialogHeader><DialogTitle>{t("patient.markDeceased")}</DialogTitle></DialogHeader>
           <p>{t("patient.markDeceasedWarning")}</p>
           <div>
@@ -382,7 +382,7 @@ function DemographicsSection({ patient }: { patient: PatientRow }): React.ReactE
             )}
           </fieldset>
           {serverError !== null && <p role="alert" className="text-sm text-red-600">{serverError}</p>}
-          <Button type="submit" disabled={form.formState.isSubmitting}>{t("patient.save")}</Button>
+          <button className="pri" type="submit" disabled={form.formState.isSubmitting}>{t("patient.save")}</button>
         </FormKit>
       </FormProvider>
     </section>
@@ -422,9 +422,9 @@ function AddAllergyDialog({ patientId }: { patientId: string }): React.ReactElem
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm">{t("patient.addAllergy")}</Button>
+        <button className="sec grn">{t("patient.addAllergy")}</button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="pp">
         <DialogHeader><DialogTitle>{t("patient.addAllergy")}</DialogTitle></DialogHeader>
         <FormProvider {...form}>
           <FormKit onSubmit={submit}>
@@ -439,7 +439,7 @@ function AddAllergyDialog({ patientId }: { patientId: string }): React.ReactElem
                 { value: "severe", label: t("patient.severe") },
               ]}
             />
-            <Button type="submit">{t("patient.addAllergy")}</Button>
+            <button className="pri" type="submit">{t("patient.addAllergy")}</button>
           </FormKit>
         </FormProvider>
       </DialogContent>
@@ -465,9 +465,9 @@ function EnteredInErrorDialog({ patientId, allergyId }: { patientId: string; all
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline">{t("patient.markError")}</Button>
+        <button className="sec">{t("patient.markError")}</button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="pp">
         <DialogHeader><DialogTitle>{t("patient.markError")}</DialogTitle></DialogHeader>
         <div>
           <label className="block text-sm font-medium" htmlFor="correction-reason">{t("patient.reason")}</label>
@@ -480,9 +480,9 @@ function EnteredInErrorDialog({ patientId, allergyId }: { patientId: string; all
           />
         </div>
         <div className="flex justify-end">
-          <Button onClick={() => void submit()} disabled={reason.trim() === ""}>
+          <button className="pri" onClick={() => void submit()} disabled={reason.trim() === ""}>
             {t("patient.markError")}
-          </Button>
+          </button>
         </div>
       </DialogContent>
     </Dialog>
@@ -502,36 +502,36 @@ function AllergiesSection({ patientId }: { patientId: string }): React.ReactElem
         <h2 className="text-lg font-semibold">{t("patient.allergies")}</h2>
         <AddAllergyDialog patientId={patientId} />
       </div>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{t("patient.substance")}</TableHead>
-            <TableHead>{t("patient.reaction")}</TableHead>
-            <TableHead>{t("patient.severity")}</TableHead>
-            <TableHead />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
+      <div role="table" className="box" style={{ overflow: "hidden" }}>
+        <div role="rowgroup">
+          <div role="row" style={{ display: "flex", gap: 10, padding: "9px 13px", borderBottom: "1px solid var(--line2)" }}>
+            <span role="columnheader" className="tag" style={{ flexGrow: 1 }}>{t("patient.substance")}</span>
+            <span role="columnheader" className="tag" style={{ flexGrow: 1 }}>{t("patient.reaction")}</span>
+            <span role="columnheader" className="tag" style={{ flexGrow: 1 }}>{t("patient.severity")}</span>
+            <span role="columnheader" className="tag" style={{ flexGrow: 1 }} />
+          </div>
+        </div>
+        <div role="rowgroup">
           {allergies.data?.items.map((a) => {
             const corrected = a.status === "entered_in_error";
             const strike = corrected ? "text-neutral-400 line-through" : "";
             return (
-              <TableRow key={a.id}>
-                <TableCell className={strike}>{a.substance}</TableCell>
-                <TableCell className={strike}>{a.reaction ?? "—"}</TableCell>
-                <TableCell className={strike}>{a.severity !== null ? t(`patient.${a.severity}`) : "—"}</TableCell>
-                <TableCell>
+              <div role="row" className="drow" key={a.id}>
+                <span role="cell" className={strike} style={{ flexGrow: 1, fontSize: 12 }}>{a.substance}</span>
+                <span role="cell" className={strike} style={{ flexGrow: 1, fontSize: 12 }}>{a.reaction ?? "—"}</span>
+                <span role="cell" className={strike} style={{ flexGrow: 1, fontSize: 12 }}>{a.severity !== null ? t(`patient.${a.severity}`) : "—"}</span>
+                <span role="cell" style={{ flexGrow: 1, fontSize: 12 }}>
                   {corrected ? (
                     <span className="text-xs text-neutral-500">{t("patient.reason")}: {a.correctionReason}</span>
                   ) : (
                     <EnteredInErrorDialog patientId={patientId} allergyId={a.id} />
                   )}
-                </TableCell>
-              </TableRow>
+                </span>
+              </div>
             );
           })}
-        </TableBody>
-      </Table>
+        </div>
+      </div>
     </section>
   );
 }
@@ -585,9 +585,9 @@ function AddGuardianDialog({ patientId }: { patientId: string }): React.ReactEle
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm">{t("patient.addGuardian")}</Button>
+        <button className="sec grn">{t("patient.addGuardian")}</button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="pp">
         <DialogHeader><DialogTitle>{t("patient.addGuardian")}</DialogTitle></DialogHeader>
         <FormProvider {...form}>
           <FormKit onSubmit={submit}>
@@ -595,7 +595,7 @@ function AddGuardianDialog({ patientId }: { patientId: string }): React.ReactEle
             <TextField name="phone" label={t("register.guardianPhone")} />
             <SelectField name="relationship" label={t("register.relationship")} options={relationshipOptions} />
             <TextField name="consentNote" label={t("register.consentNote")} />
-            <Button type="submit">{t("patient.addGuardian")}</Button>
+            <button className="pri" type="submit">{t("patient.addGuardian")}</button>
           </FormKit>
         </FormProvider>
       </DialogContent>
@@ -650,8 +650,8 @@ function GuardianCard({ patientId, item }: { patientId: string; item: GuardianIt
       </div>
       {g.status === "active" && (
         <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => setEditing((v) => !v)}>{t("patient.authority")}</Button>
-          <Button size="sm" variant="outline" onClick={() => void end()}>{t("patient.endGuardian")}</Button>
+          <button className="sec" onClick={() => setEditing((v) => !v)}>{t("patient.authority")}</button>
+          <button className="sec" onClick={() => void end()}>{t("patient.endGuardian")}</button>
         </div>
       )}
       {editing && (
@@ -678,7 +678,7 @@ function GuardianCard({ patientId, item }: { patientId: string; item: GuardianIt
             onChange={(e) => setValidTo(e.target.value)}
             className="rounded border px-2 py-1 text-sm"
           />
-          <Button size="sm" onClick={() => void saveAuthority()}>{t("patient.save")}</Button>
+          <button className="sec grn" onClick={() => void saveAuthority()}>{t("patient.save")}</button>
         </div>
       )}
     </div>
@@ -736,15 +736,15 @@ function CardSection({ patient }: { patient: PatientRow }): React.ReactElement {
     <section className="space-y-2">
       <QrCard data={data} />
       <p className="font-mono text-xs text-neutral-400">{data.payload}</p>
-      <Button variant="outline" className="no-print" onClick={() => setConfirmOpen(true)}>
+      <button className="sec no-print" onClick={() => setConfirmOpen(true)}>
         {t("card.reissue")}
-      </Button>
+      </button>
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent>
+        <DialogContent className="pp">
           <DialogHeader><DialogTitle>{t("card.reissue")}</DialogTitle></DialogHeader>
           <p>{t("card.reissueWarning")}</p>
           <div className="flex justify-end">
-            <Button onClick={() => void reissue()}>{t("card.reissue")}</Button>
+            <button className="pri" onClick={() => void reissue()}>{t("card.reissue")}</button>
           </div>
         </DialogContent>
       </Dialog>
@@ -774,15 +774,15 @@ function OnwardActions({ patientId }: { patientId: string }): React.ReactElement
   };
   return (
     <div className="no-print flex flex-wrap gap-2" data-testid="onward-actions">
-      <Button data-testid="onward-open-visit" onClick={() => { go("/opd/desk"); }}>
+      <button className="pri" data-testid="onward-open-visit" onClick={() => { go("/opd/desk"); }}>
         {t("patientDetail.onward.openVisit")}
-      </Button>
-      <Button variant="outline" data-testid="onward-book" onClick={() => { go("/opd/appointments"); }}>
+      </button>
+      <button className="sec" data-testid="onward-book" onClick={() => { go("/opd/appointments"); }}>
         {t("patientDetail.onward.book")}
-      </Button>
-      <Button variant="outline" data-testid="onward-bill" onClick={() => { go("/billing"); }}>
+      </button>
+      <button className="sec" data-testid="onward-bill" onClick={() => { go("/billing"); }}>
         {t("patientDetail.onward.bill")}
-      </Button>
+      </button>
     </div>
   );
 }
@@ -794,25 +794,92 @@ export function PatientDetail(): React.ReactElement {
   const { patientId } = useParams({ from: "/authed/patients/$patientId" });
   const { t } = useTranslation();
 
+  const [log] = useState<AgentLine[]>([]);
+  const [answer, setAnswer] = useState<string | null>(null);
+
   const patientQuery = useQuery({
     queryKey: ["patient", patientId],
     queryFn: () => api<{ patient: PatientRow; resolvedFrom: string | null }>("GET", `/patients/${patientId}`),
   });
 
+  /**
+   * WHAT THE AGENT CAN HONESTLY SAY ABOUT THIS RECORD. Everything comes from the row already
+   * fetched, so the answer is instant and cannot be wrong in a way the screen is not. No model, no
+   * lookup: a question it does not recognise says so rather than inventing an answer about a
+   * patient.
+   */
+  const ask = (question: string): void => {
+    const q = question.trim().toLowerCase();
+    if (q === "") return;
+    const row = patientQuery.data?.patient;
+    if (row === undefined) return;
+    if (q.includes("age") || q.includes("dob") || q.includes("born")) {
+      setAnswer(row.dob === null
+        ? "No date of birth on this record. — from the patient row."
+        : `Date of birth ${String(row.dob).slice(0, 10)}${row.dobEstimated ? " (estimated from an age given at the counter)" : ""}. — from the patient row.`);
+    } else if (q.includes("phone") || q.includes("mobile")) {
+      setAnswer(`${row.phone ?? "No mobile"}${row.altPhone === null ? "" : ` · alternate ${row.altPhone}`}. — from the patient row.`);
+    } else if (q.includes("abha")) {
+      setAnswer(row.abhaNumber === null && row.abhaAddress === null
+        ? "No ABHA recorded. It can be added at registration or here. — from the patient row."
+        : `ABHA ${row.abhaNumber ?? row.abhaAddress ?? ""} · ${row.abhaVerificationStatus}. — from the patient row.`);
+    } else if (q.includes("uhid") || q.includes("number")) {
+      setAnswer(`UHID ${row.uhid}${row.legacyUhid === null ? "" : `; the old paper file is ${row.legacyUhid}`}. — from the patient row.`);
+    } else {
+      setAnswer("I answer from this patient's record only — UHID, date of birth, contact, ABHA. I cannot look anything else up from here.");
+    }
+  };
+
   if (!patientQuery.data) return <div className="p-6">{t("app.loading")}</div>;
 
   const { patient, resolvedFrom } = patientQuery.data;
 
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-23 — THE PATIENT RECORD, IN THE COUNTER'S LANGUAGE
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Owner ruling 2026-09-04: *"redesign /opd/appointments and /patients/ screens aligned to /counter
+   * UI and UX. Remember to add AI agent/Co-pilot into it as well."*
+   *
+   * A CLERK'S EYE, NOT A FORM'S. This was eight stacked cards of equal weight, so the deceased flag,
+   * the allergies and the marketing opt-in all shouted equally. It is now the counter's shape: WHO
+   * this is on the left and stays there, and the amendable record on the right — the same division
+   * `/counter` makes between the dossier and the stage, for the same reason.
+   *
+   * `.pp` and not `.d1`, because this screen lives inside the application shell and keeps its
+   * topbar; the primitives come from the same file so nothing can drift.
+   *
+   * EVERY TESTID, HANDLER AND SECTION IS UNCHANGED — fifteen tests pin what this screen DOES, and a
+   * redesign that quietly changed behaviour would be the worst outcome.
+   */
   return (
-    <div className="space-y-6 p-6">
-      <Header patient={patient} resolvedFrom={resolvedFrom} />
-      <OnwardActions patientId={patient.id} />
-      <DeceasedSection patient={patient} />
-      <DemographicsSection patient={patient} />
-      <OptInSection patient={patient} />
-      <AllergiesSection patientId={patient.id} />
-      <GuardiansSection patient={patient} />
-      <CardSection patient={patient} />
+    <div className="pp" style={{ display: "flex", flexDirection: "column", minHeight: "calc(100vh - 96px)" }}>
+      <div style={{ flexGrow: 1, display: "flex", gap: 18, padding: "20px 24px", alignItems: "flex-start" }}>
+        {/* WHO THIS IS — the column that does not change as the clerk works down the record. */}
+        <aside style={{ width: 320, flexShrink: 0, display: "flex", flexDirection: "column", gap: 13 }}>
+          <Header patient={patient} resolvedFrom={resolvedFrom} />
+          <OnwardActions patientId={patient.id} />
+          <CardSection patient={patient} />
+        </aside>
+
+        {/* WHAT CAN BE AMENDED — deceased first, because it is the one that changes every other read. */}
+        <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 13 }}>
+          <DeceasedSection patient={patient} />
+          <DemographicsSection patient={patient} />
+          <AllergiesSection patientId={patient.id} />
+          <GuardiansSection patient={patient} />
+          <OptInSection patient={patient} />
+        </div>
+      </div>
+
+      <AgentDock
+        answer={answer}
+        log={log}
+        onAsk={ask}
+        placeholder={t("patient.askPlaceholder")}
+        idle={t("patient.agentIdle")}
+      />
     </div>
   );
 }

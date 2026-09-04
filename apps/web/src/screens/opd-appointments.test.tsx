@@ -64,7 +64,14 @@ function bodyOf(method: string, path: string): Record<string, unknown> {
 
 async function pickDeptAndDoctor(user: ReturnType<typeof userEvent.setup>): Promise<void> {
   const departmentSelect = await screen.findByLabelText("Department");
-  await waitFor(() => expect(within(departmentSelect).getByText("General medicine")).toBeInTheDocument());
+  /*
+    FD-23 — the option now reads "MED · General medicine". The CODE was added deliberately: it is
+    the prefix the department token series prints on the slip (FD-20), and a clerk who sees "MED-4"
+    called should be able to find MED in this list without translating a name into a code. A
+    substring matcher keeps the test about "the department is listed" rather than about its exact
+    label, which is what it was always trying to say.
+  */
+  await waitFor(() => expect(within(departmentSelect).getByText(/General medicine/)).toBeInTheDocument());
   await user.selectOptions(departmentSelect, "dep-1");
   const doctorSelect = await screen.findByLabelText("Doctor");
   await waitFor(() => expect(within(doctorSelect).getByText("Dr Meera Rao")).toBeInTheDocument());
@@ -271,5 +278,25 @@ describe("OpdAppointments", () => {
     expect(within(slipDoc).getByText("MED · General medicine")).toBeInTheDocument();
     expect(within(slipDoc).getByText("Dr Meera Rao")).toBeInTheDocument();
     expect(within(slipDoc).getByText("Room: 12")).toBeInTheDocument();
+  });
+
+  /**
+   * FD-23 — the redesign's two structural claims, asserted rather than eyeballed: this screen wears
+   * the counter's design scope, and the agent is on it. Without these a later refactor could quietly
+   * drop either and every behavioural test above would stay green.
+   */
+  it("wears the counter's paper-pine scope and carries the desk agent", async () => {
+    stubFetch({
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/doctors": { items: [DOCTOR_1] },
+      "GET /api/opd/rooms": { items: ROOMS },
+      "GET /api/opd/slots": { slots: SLOTS },
+      "GET /api/opd/appointments": { items: [] },
+    });
+    renderWithProviders(<OpdAppointments />);
+    await screen.findByLabelText("Department");
+    expect(document.querySelector(".pp")).not.toBeNull();
+    expect(screen.getByTestId("agent-dock")).toBeInTheDocument();
+    expect(screen.getByTestId("agent-ticker")).toHaveTextContent(/I read the filters/);
   });
 });

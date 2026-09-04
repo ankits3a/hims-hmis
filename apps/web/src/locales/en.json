@@ -218,7 +218,9 @@
       "document_correction": "Corrected against a document",
       "patient_request": "Patient says the record is wrong",
       "merge_reconciliation": "Settled while resolving a duplicate"
-    }
+    },
+    "askPlaceholder": "ask — \"what is their ABHA?\"",
+    "agentIdle": "I read this patient's record only — UHID, date of birth, contact, ABHA. I cannot look anything else up."
   },
   "merge": {
     "title": "Merge review",
@@ -400,7 +402,9 @@
       "no_show": "No-show",
       "needs_rebooking": "Needs rebooking",
       "rescheduled": "Rescheduled"
-    }
+    },
+    "askPlaceholder": "ask — \"which doctor am I looking at?\"",
+    "agentIdle": "I read the filters on this screen, the doctor master and the day's bookings — and I say which one an answer came from."
   },
   "opdDesk": {
     "title": "OPD desk",
