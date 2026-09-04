@@ -468,6 +468,67 @@ describe("lab reports — publish, interlock, print, amend (17b T7)", () => {
       .from(workflowInstances).where(eq(workflowInstances.subjectId, run.itemIds[0]!));
     expect([instance!.state, instance!.status]).toEqual(["published", "completed"]);
   });
+
+  /* ═════ 17d T7 / D9 — AN AMENDMENT AFTER A RELEASE RE-HOLDS, AND THE APPROVAL IS SPENT ═════ */
+
+  /**
+   * ═══ 17c §8.9 CARRIED THIS AS A WORRY. IT IS ALREADY THE BEHAVIOUR — SO IT IS PINNED, NOT BUILT ═══
+   *
+   * The worry was a per-VERSION delivery fact meeting a per-ORDER approval: v1 released against an
+   * unpaid balance, then amended, and v2 walking out on v1's decision. Reading the code, two
+   * independent things already prevent it, and neither was written for this case:
+   *
+   * · `deliveryAllowed` holds no memory of a release. It recomputes from the ORDER GROUP's balance
+   *   every time it is asked, so v2 is judged on the money as it stands, not on what was decided
+   *   about v1 (`releasedByApproval` is a per-CALL option the caller must supply).
+   * · The approval is spent by its DELIVERY ROW (`release_approval_invalid`), so the same decision
+   *   cannot be presented twice — "a release is one decision about one hand-over".
+   *
+   * A behaviour nobody tested is a behaviour the next refactor may remove, and this one is money
+   * leaving the building. So the test exists even though the code does not change: the correction
+   * a hospital most wants to hand over free is the one it just corrected.
+   */
+  it("17d T7 / D9: v2 after a released v1 is HELD again, and v1's approval cannot release it", async () => {
+    await registerLabApprovalTypes(db, fx.pathologist.actor);
+    const run = await runLabOrder(db, fx, ["TSH"], { at: AT });
+    const v1 = await publishReport(db, fx.pathologist.actor, { orderId: run.orderId }, AT);
+
+    const { approvalId } = await withTx(db, (tx) => requestApproval(tx, fx.desk.actor, {
+      typeKey: RELEASE_UNPAID_APPROVAL_TYPE,
+      subject: { type: "lab_report", id: run.orderId },
+      patientId: fx.patientId,
+      requestNote: "patient travelling tonight",
+    }));
+    await approveRequest(db, billingManager.actor, { approvalId, note: "carry the receivable" });
+    const released = await releaseUnpaid(db, billingManager.actor, {
+      reportId: v1.reportId, approvalId, collectorIdentity: "the patient, UHID card seen",
+    }, AT);
+    expect(released.verdict.reason).toBe("released_by_approval");
+
+    /** The correction. The money has not moved — the balance is exactly what it was. */
+    const later = new Date(AT.getTime() + 60 * 60_000);
+    const v2 = await amendReport(db, fx.pathologist.actor, {
+      reportId: v1.reportId, reasonCode: "clerical",
+    }, later);
+    expect(v2.version).toBe(2);
+
+    /**
+     * THE KILL: a verdict that remembered v1's release would read `released_by_approval` here and
+     * the counter would hand v2 over against money nobody has paid.
+     */
+    const view = await getReport(db, fx.desk.actor, v2.reportId);
+    expect(view.delivery.allowed).toBe(false);
+    expect(view.delivery.reason).not.toBe("released_by_approval");
+    expect(view.delivery.outstandingPaise).toBeGreaterThan(0);
+
+    /** And v1's decision cannot be presented a second time for the new document. */
+    await expect(releaseUnpaid(db, billingManager.actor, {
+      reportId: v2.reportId, approvalId, collectorIdentity: "the patient",
+    }, later)).rejects.toMatchObject({ code: "release_approval_invalid" });
+
+    /** One delivery row in the register, still — the refused second hand-over wrote nothing. */
+    expect(await db.select().from(labReportDeliveries)).toHaveLength(1);
+  });
 });
 
 /**

@@ -4,7 +4,7 @@ import { pharmacyDispenseLines, pharmacyDispenses } from "../../kernel/db/schema
 import { withTx } from "../../kernel/db/client";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { transition } from "../../kernel/workflow/instances";
-import { balances, fefoPick, getBatch, reserveStock } from "../materials";
+import { availableQty, balances, fefoPick, getBatch, reserveStock } from "../materials";
 import { PICK_RESERVATION_MINUTES, istDateOf } from "./config";
 import { dispensePicked } from "./events";
 import { PharmacyError } from "./errors";
@@ -97,8 +97,10 @@ export async function pickDispense(
     const offered = await fefoPick(db, store, line.itemId, qty, now);
     const first = offered[0];
     if (first === undefined || first.qty < qty) {
-      const all = await balances(db, { resourceId: store, itemId: line.itemId });
-      const available = all.reduce((n, b) => n + b.qtyOnHand - b.qtyReserved - b.qtyFrozen, 0);
+      // The number in a REFUSAL has to mean the same thing as the number on the screen, or the
+      // sentence reads as a contradiction: "the earliest batch holds 0 of 20 (50 across batches)"
+      // when all fifty are expired. `availableQty` is the one definition the pick itself obeys.
+      const available = await availableQty(db, store, line.itemId, now);
       throw new PharmacyError(
         "short_stock",
         `line ${String(line.lineIdx + 1)}: the earliest batch holds ${String(first?.qty ?? 0)} of ${String(qty)} (${String(available)} across batches) — dispense a partial quantity with a reason, or choose a batch that covers it`,

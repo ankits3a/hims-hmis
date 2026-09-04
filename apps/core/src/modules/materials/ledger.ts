@@ -344,6 +344,77 @@ export async function postMovements(
 // ═══════════════════════════════════ FEFO ═══════════════════════════════════
 
 /**
+ * ═══ ONE DEFINITION OF "STOCK THIS STORE CAN ACTUALLY GIVE OUT" ═══
+ *
+ * Both `fefoPick` (what to hand over) and `availableQty` (what to TELL the person handing it over)
+ * read this, and they read it through the same function on purpose. The 16c close review found the
+ * expired-stock defect precisely because two sibling code paths asked different questions about the
+ * same batch, and fixing it by writing the predicate out twice would have rebuilt that trap: the
+ * counter would say "50 available" and the pick would refuse, which is how a pharmacist stops
+ * trusting the stock number (doc 16 §5's interview question 12, in as many words).
+ *
+ * Excluded: recalled batches, and batches whose printed expiry has passed. Reserved and frozen
+ * quantities are subtracted by the callers, which is where "available" and "offered" diverge.
+ */
+async function sellableBatchRows(
+  db: Db | Tx,
+  resourceId: string,
+  itemId: string,
+  asOf: Date,
+): Promise<{ batchId: string; onHand: number; reserved: number; frozen: number; expiryDate: string | null }[]> {
+  return db.select({
+    batchId: stockBalances.batchId,
+    onHand: stockBalances.qtyOnHand,
+    reserved: stockBalances.qtyReserved,
+    frozen: stockBalances.qtyFrozen,
+    expiryDate: stockBatches.expiryDate,
+  })
+    .from(stockBalances)
+    .innerJoin(stockBatches, eq(stockBatches.id, stockBalances.batchId))
+    .where(and(
+      eq(stockBalances.resourceId, resourceId),
+      eq(stockBalances.itemId, itemId),
+      eq(stockBatches.recallStatus, "none"),
+      /**
+       * ═══ AND IT MUST NOT ALREADY BE EXPIRED (16c close review, second contract sweep) ═══
+       *
+       * FEFO ORDERS by `expiry_date asc` and, until this clause, did not EXCLUDE a date already
+       * past — so the first batch it offered was the MOST expired one the store held, and
+       * `pickDispense` takes `offered[0]`. The OPD counter therefore dispensed expired medicine BY
+       * PREFERENCE. Proved at the counter before it was fixed: a Crocin batch dated 2026-08-01 was
+       * picked and reserved for a patient on 2026-08-17, ahead of good stock.
+       *
+       * It sits beside the recall exclusion because it is the same kind of clause and the same
+       * argument: a batch that must not reach a patient must not be OFFERED to the person handing
+       * it over. Recall was excluded here from the start; expiry was ordered by and never filtered.
+       *
+       * `expiry_date` is the last day the batch may be used (the pharma convention), so the
+       * comparison is `>= today` and not `> today`. A NULL expiry is kept: DD8 rule 3 exempts whole
+       * item classes from carrying one, and "no expiry recorded" means does-not-expire here, not
+       * expired. Stock that IS expired is still transferable by NAMING its batch — which is how it
+       * reaches a quarantine or destruction store — because a FEFO override skips this query.
+       */
+      sql`(${stockBatches.expiryDate} is null or ${stockBatches.expiryDate} >= ${istDay(asOf)}::date)`,
+    ))
+    .orderBy(sql`${stockBatches.expiryDate} asc nulls last`, asc(stockBatches.id));
+}
+
+/**
+ * How much of an item this store could hand out right now — the number a COUNTER shows. Same
+ * exclusions as the pick, minus what is already reserved or frozen, so the figure on the screen and
+ * the batches the pick offers can never disagree.
+ */
+export async function availableQty(
+  db: Db | Tx,
+  resourceId: string,
+  itemId: string,
+  asOf: Date = new Date(),
+): Promise<number> {
+  const rows = await sellableBatchRows(db, resourceId, itemId, asOf);
+  return rows.reduce((n, r) => n + Math.max(0, r.onHand - r.reserved - r.frozen), 0);
+}
+
+/**
  * **FIRST-EXPIRED, FIRST-OUT (DD9, A10).** The earliest-expiring available batch first.
  *
  * `order by expiry_date asc NULLS LAST, id` — and every clause is load-bearing:
@@ -376,41 +447,7 @@ export async function fefoPick(
   if (!Number.isSafeInteger(qtyBase) || qtyBase <= 0) {
     throw new MaterialsError("insufficient_stock", `a pick must be a positive integer, got ${String(qtyBase)}`);
   }
-  const rows = await db.select({
-    batchId: stockBalances.batchId,
-    onHand: stockBalances.qtyOnHand,
-    reserved: stockBalances.qtyReserved,
-    frozen: stockBalances.qtyFrozen,
-    expiryDate: stockBatches.expiryDate,
-  })
-    .from(stockBalances)
-    .innerJoin(stockBatches, eq(stockBatches.id, stockBalances.batchId))
-    .where(and(
-      eq(stockBalances.resourceId, resourceId),
-      eq(stockBalances.itemId, itemId),
-      eq(stockBatches.recallStatus, "none"),
-      /**
-       * ═══ AND IT MUST NOT ALREADY BE EXPIRED (16c close review, second contract sweep) ═══
-       *
-       * FEFO ORDERS by `expiry_date asc` and, until this clause, did not EXCLUDE a date already
-       * past — so the first batch this function offered was the MOST expired one the store held,
-       * and `pickDispense` takes `offered[0]`. The OPD counter therefore dispensed expired
-       * medicine BY PREFERENCE. Proved at the counter before it was fixed: a Crocin batch dated
-       * 2026-08-01 was picked and reserved for a patient on 2026-08-17, ahead of good stock.
-       *
-       * It sits beside the recall exclusion because it is the same kind of clause and the same
-       * argument: a batch that must not reach a patient must not be OFFERED to the person handing
-       * it over. Recall was excluded here from the start; expiry was ordered by and never filtered.
-       *
-       * `expiry_date` is the last day the batch may be used (the pharma convention), so the
-       * comparison is `>= today` and not `> today`. A NULL expiry is kept: DD8 rule 3 exempts whole
-       * item classes from carrying one, and "no expiry recorded" means does-not-expire here, not
-       * expired. Stock that IS expired is still transferable by NAMING its batch — which is how it
-       * reaches a quarantine or destruction store — because a FEFO override skips this query.
-       */
-      sql`(${stockBatches.expiryDate} is null or ${stockBatches.expiryDate} >= ${istDay(asOf)}::date)`,
-    ))
-    .orderBy(sql`${stockBatches.expiryDate} asc nulls last`, asc(stockBatches.id));
+  const rows = await sellableBatchRows(db, resourceId, itemId, asOf);
 
   const picked: { batchId: string; qty: number }[] = [];
   let remaining = qtyBase;
