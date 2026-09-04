@@ -41,6 +41,7 @@ const GAPS = "GET /api/aerb/licences/gaps";
 const PERSONS = "GET /api/aerb/persons";
 const QA = "GET /api/aerb/qa";
 const DOSES = "GET /api/aerb/doses";
+const BADGES = "GET /api/aerb/badges";
 
 describe("the radiation-safety register (18c T1)", () => {
   beforeEach(() => { setToken("t"); });
@@ -175,16 +176,84 @@ describe("the radiation-safety register (18c T1)", () => {
     expect(row).toHaveTextContent("open-ended");
   });
 
-  /** The two registers T4–T5 build are declared and disabled, so the shape is visible from here. */
-  it("the two unbuilt tabs are present and disabled", async () => {
+  /** The Calendar tab T5 builds is declared and disabled, so the shape is visible from here. */
+  it("the unbuilt calendar tab is present and disabled", async () => {
     mockRoutes({
       [LICENCES]: { status: 200, body: { rows: [] } },
       [GAPS]: { status: 200, body: { rows: [] } },
     });
     renderWithProviders(<RadiationSafety />);
-    for (const k of ["badges", "calendar"]) {
-      expect(await screen.findByTestId(`aerb-tab-${k}`)).toBeDisabled();
-    }
+    expect(await screen.findByTestId("aerb-tab-calendar")).toBeDisabled();
+  });
+
+  /* ═════════════════════ PLAN 18c T4 — THE BADGES TAB ═════════════════════ */
+
+  const badge = (over: Record<string, unknown> = {}) => ({
+    badgeId: "B1", userId: "U1", userName: "R. Singh", badgeNo: "TLD-001",
+    issuedOn: "2026-01-01", returnedOn: null, status: "active",
+    lastPeriodEnd: "2026-03-31", lastHp10Msv: "1.400", lastInvestigation: false,
+    ytdMsv: "1.400", fiveYearMsv: "1.400", overAnnualLimit: false, overFiveYearLimit: false,
+    readCount: 1, ...over,
+  });
+
+  const badgeBook = (over: Record<string, unknown> = {}) => ({
+    rows: [badge()], gaps: [], reads: [],
+    limits: { annualMsv: 30, fiveYearAverageMsv: 20, fiveYearTotalMsv: 100 },
+    investigationLevelMsvPerMonth: 1, ...over,
+  });
+
+  /**
+   * THE ONE THAT MATTERS. A badge nobody is reading is a person whose occupational exposure is
+   * unknown, and a book that listed only the readings it HAS could never show one.
+   */
+  it("names the badges nobody is reading, above the book", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [BADGES]: { status: 200, body: badgeBook({ gaps: [
+        { badgeId: "B2", userId: "U2", userName: "A. Devi", badgeNo: "TLD-002",
+          issuedOn: "2026-01-01", lastPeriodEnd: null, daysSince: 134 },
+      ] }) },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-badges"));
+    const gaps = await screen.findByTestId("aerb-badge-gaps");
+    expect(gaps).toHaveTextContent("A. Devi");
+    expect(gaps).toHaveTextContent("TLD-002");
+    expect(gaps).toHaveTextContent("never read");
+  });
+
+  /**
+   * The screen states the limits the SERVER sent, never its own. A number a screen invented is a
+   * number an inspector was shown that nothing in the system stands behind.
+   */
+  it("states the statutory limits and the investigation level from the server", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [BADGES]: { status: 200, body: badgeBook({ investigationLevelMsvPerMonth: 0.4 }) },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-badges"));
+    const limits = await screen.findByTestId("aerb-badge-limits");
+    expect(limits).toHaveTextContent("30 mSv");
+    expect(limits).toHaveTextContent("100 mSv");
+    expect(limits).toHaveTextContent("0.4 mSv per month");
+  });
+
+  it("marks a reading that met the investigation level, and a year over the statutory limit", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [BADGES]: { status: 200, body: badgeBook({ rows: [
+        badge({ badgeId: "B1", lastHp10Msv: "3.200", lastInvestigation: true }),
+        badge({ badgeId: "B2", userName: "S. Iyer", badgeNo: "TLD-002", ytdMsv: "31.000", overAnnualLimit: true }),
+      ] }) },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-badges"));
+    expect(await screen.findByTestId("aerb-badge-B1")).toHaveTextContent("investigate");
+    expect(screen.getByTestId("aerb-badge-B2")).toHaveTextContent("over the statutory limit");
   });
 
   /* ═════════════════════ PLAN 18c T2 — THE QA TAB ═════════════════════ */
