@@ -370,10 +370,27 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // is 48, and the number below is what the merged tree MEASURED, not what this arithmetic
     // predicted. `/radiology/radiation-safety` arrives from main; `/appointment` and
     // `/registration` leave with FD-9.
-    expect(routes).toHaveLength(48);
+    // FD-25 T0 — 48 -> 49 with `/registration`, the first of the three front-desk seats to come
+    // back. MEASURED: the run reported `Received length: 49` against `expect(48)` and 49 is what is
+    // written here. Note it is NOT the 50 the obvious arithmetic gives — the build plan predicted
+    // `/registration` AND `/appointment` together, and `/appointment` is a later task with its own
+    // screen. Predicting would have pinned a number this tree does not have, which is precisely
+    // what this file's rule exists to stop.
+    expect(routes).toHaveLength(49);
     expect(routes).toContain("/radiology/radiation-safety");
+    /*
+      FD-9 recorded the deletion of both as negative assertions. FD-25 reverses ONE of them.
+
+      `/registration` is a real route again, and it is not a second name for Desk One — the reason
+      that would have been a defect is written on `registrationRoute` in `router.tsx`. It is a
+      second SEAT: `patients.register` rather than `opd.visits.open`, a clerk with no drawer.
+
+      `/appointment` stays deleted for now and its negative assertion STAYS, deliberately. It comes
+      back with its own screen and its own task, and until then the assertion is true and is what
+      would catch a route re-added without one.
+    */
+    expect(routes).toContain("/registration");
     expect(routes).not.toContain("/appointment");
-    expect(routes).not.toContain("/registration");
     expect(routes).toContain("/counter");
     expect(routes).toContain("/lab/reports");
     expect(routes).toContain("/counter/figures");

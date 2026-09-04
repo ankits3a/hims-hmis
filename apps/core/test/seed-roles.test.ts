@@ -367,6 +367,40 @@ const OT_PAIRS: readonly string[] = [
  */
 const DOCTOR_TARIFF_PAIRS: readonly string[] = ["doctor/tariff.read"];
 
+/** The README prose line that authorises FD-25's cashier grants. Quoted, not paraphrased. */
+const CASHIER_SEAT_README_PROSE =
+  "Owner ruling of 2026-09-04 gives the `cashier` the four strings its own screen already calls";
+
+/**
+ * ═══ FD-25 / OWNER RULING 2026-09-04 — THE SIXTEENTH NON-TABLE SET ═══
+ *
+ * Four strings, one role, and not one of them is a billing-table cell — which is the whole reason
+ * they are here: `cashier` HAS a column in the billing table, so a `billing.*` grant would be
+ * table-derived and invisible to this list. These are a TARIFF string, a PATIENTS string and two
+ * OPD strings held by a billing role, and they belong to no table by construction.
+ *
+ * Two of them close a live defect rather than serving new work. `cashier` held no `tariff.*` at
+ * all, while `billing-counter.tsx`'s line editor calls `GET /tariff/services` — so the deployed
+ * counter 403s the moment a cashier types two characters into it. And `cashier` held no `opd.*`,
+ * while the counter is entered as `/billing?encounterId=…`, which has to be resolved to a person.
+ *
+ * `cashier/patients.read` IS THE ONE THAT NEEDED A RULING RATHER THAN A DECISION. `billing.controller.ts`
+ * documents the absence deliberately; widening who may read patient identity is a DPDP question,
+ * and `CLAUDE.md` reserves law to the owner. Ruled YES: the cashier already has the patient at the
+ * window and reads the name off the bill. A counter that takes money without being able to say
+ * whose bill it is showing is not more private, only less accountable.
+ *
+ * `cashier/opd.visits.open` is FD-24's print pair — `GET /print/jobs` and `POST /print/reprint`
+ * share that guard, whose own docstring says "anyone who may create the slip may see whether it
+ * printed". Granting it was the alternative to re-cutting the guard, which `CLAUDE.md` forbids.
+ */
+const CASHIER_SEAT_PAIRS: readonly string[] = [
+  "cashier/opd.visits.open",
+  "cashier/opd.visits.read",
+  "cashier/patients.read",
+  "cashier/tariff.read",
+];
+
 /**
  * PLAN 07c T9 / DD14 — OWNER RULING 2026-08-29. The THIRTEENTH non-table set: a role of its own,
  * carrying both staff-report strings, so the person who may open patient rows from a colleague's
@@ -544,6 +578,7 @@ const NON_TABLE_PAIRS: readonly string[] = [
   ...RULING_7_PAIRS, ...WORKFLOW_RULING_PAIRS, ...PLAN_09_PAIRS, ...GROUP_C_PAIRS, ...GROUP_A_PAIRS,
   ...MERGE_LANE_PAIRS, ...GROUP_B_PAIRS, ...FORMULARY_PAIRS, ...RESOURCES_PAIRS, ...OT_PAIRS,
   ...STAFF_REPORT_PAIRS, ...DOCTOR_TARIFF_PAIRS, ...STAFF_AUDITOR_PAIRS, ...COUNTER_COVER_PAIRS,
+  ...CASHIER_SEAT_PAIRS,
   ...PRIVACY_WRITE_PAIRS, ...LAB_PAIRS, ...RADIOLOGY_PAIRS, ...RC2_ENROL_PAIRS, ...PHARMACY_PAIRS, ...LAB_RELEASE_REQUEST_PAIRS,
 ];
 
@@ -935,7 +970,11 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // as `CROC500` in three stores is curating half a fact.
       // PLAN 16c T1: 8 -> 19, the counter (four pharmacy.*, three orders.*, four billing.*).
       pharmacy: 19,
-      cashier: 11,
+      // FD-25 / owner ruling 2026-09-04 — 11 -> 15: `tariff.read`, `patients.read`,
+      // `opd.visits.read`, `opd.visits.open`. Two close a live 403 on the deployed counter, one is
+      // the DPDP ruling on reading patient identity, one is FD-24's print pair. See
+      // `CASHIER_SEAT_PAIRS` for why none of the four is a billing-table cell.
+      cashier: 15,
       // PLAN 07b O-1, OWNER RULING 2026-08-29 — 11 -> 18. Seven strings that let this role WORK A
       // COUNTER while a cashier's drawer is locked pending its variance approval. Under R-4's
       // one-staffer counter that lockout closes the hospital's front door, and a cover that first
@@ -1025,7 +1064,11 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     // VD-1 T4 — 274 -> 276: `opd.vitals.history.read` to `vitals_desk` and to `doctor`.
     // 18c T1 — 297 -> 302: the RSO's three, plus `aerb.doses.read` to `radiologist` and to
     // `radiographer` (D2 — the cumulative-dose nudge is clinical; the licence file is not).
-    expect(modelPairs()).toHaveLength(302); // 17c owner ruling: +1, approvals.requests.create to lab_reception; RC-2 T4: +2, the enrol grants; 18b T1: +2 (radiology.mwl.read); 16c T1: +16 (pharmacy +11, pharmacy_assistant +5)
+    // FD-25 / owner ruling 2026-09-04: 302 -> 306, the cashier's four. `modelPermissions` and
+    // `heldPermissions` do NOT move with it — all four strings already existed and were already
+    // held by somebody, so this ruling adds GRANTS and not vocabulary. A ruling that moved the
+    // permission census too would be declaring a new power, which this one deliberately is not.
+    expect(modelPairs()).toHaveLength(306); // 17c owner ruling: +1, approvals.requests.create to lab_reception; RC-2 T4: +2, the enrol grants; 18b T1: +2 (radiology.mwl.read); 16c T1: +16 (pharmacy +11, pharmacy_assistant +5)
     // PLAN 07c T9 — 83 → 84 DISTINCT: one new string (`staff.reports.read`) across two roles.
     // 84 -> 85 DISTINCT: only `staff.reports.drill` is new to the MODEL. Every other string the
     // two rulings grant was already held by another role — the counter cover moves WHO may act,
@@ -1487,7 +1530,8 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     // 106 -> 119 with Plan 18a T2's thirteen: the four new roles' kernel `orders.*` and the
     // receptionist's counter set, plus this phase's own strings held by `doctor` and
     // `billing_manager`, which are not columns in the radiology table. See `RADIOLOGY_PAIRS`.
-    expect(NON_TABLE_PAIRS).toHaveLength(132); // 17c owner ruling: +1 (lab_reception/approvals.requests.create); 16c T1: +10, PHARMACY_PAIRS
+    // 132 -> 136 with FD-25's four: the cashier's seat (owner ruling 2026-09-04), CASHIER_SEAT_PAIRS.
+    expect(NON_TABLE_PAIRS).toHaveLength(136); // 17c owner ruling: +1 (lab_reception/approvals.requests.create); 16c T1: +10, PHARMACY_PAIRS
     expect(nonTable.filter((p) => p.includes("/materials."))).toEqual([]);
     // AMENDED BY PLAN 17 T2 — the guard was written as "no pair whose ROLE is an OT role", and that
     // stopped being the right claim the moment `surgeon` and `ot_incharge` gained lab strings for
@@ -1510,6 +1554,8 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     // The two 2026-08-29 owner rulings, held to exactly the standard of the eleven below.
     expect(readme).toContain(STAFF_AUDITOR_README_PROSE);
     expect(readme).toContain(COUNTER_COVER_README_PROSE);
+    // FD-25's own source sentence, held to exactly the standard of the twelve below.
+    expect(readme).toContain(CASHIER_SEAT_README_PROSE);
     // Plan 13 / DD14's own source sentence, held to exactly the standard of the eight below.
     expect(readme).toContain(RESOURCES_README_PROSE);
     // Plan 16a / DD10's own source sentence, held to exactly the standard of the seven below.
@@ -1609,7 +1655,12 @@ describe("seed:roles — executed against a database (V5)", () => {
     // RC-2 T4 — the SECOND again (15 -> 16) and the FIFTEENTH (membership_admin 2 -> 3) by the
     // enrol split. INDEX 14, not 12: `staff_auditor` also holds two grants, and the first `2` in
     // this array is not the one that moves. A bare-integer census gives you no name to check.
-    expect(first.roles.map((r) => r.granted.length)).toEqual([12, 16, 6, 20, 8, 1, 19, 11, 20, 10, 10, 1, 2, 3, 3, 5, 1, 11, 6, 15, 9, 4, 4, 3, 6, 16, 8, 4, 17, 15, 10, 13, 4, 3, 1, 5]); // 17c owner ruling: lab_reception 16 -> 17; 18b T1: radiographer 9, modality_bridge 1; 16c T1: pharmacy 8 -> 19, pharmacy_assistant 5; 18c T1: radiologist 14 -> 15, radiographer 9 -> 10, and radiation_safety_officer's 3 inserted after pcpndt_incharge
+    // FD-25 — the EIGHTH entry moves, `cashier` 11 -> 15, and nothing else does. In ROLE_MODEL order
+    // that is front_office, front_office_supervisor, vitals_desk, doctor, opd_admin, display,
+    // pharmacy, THEN cashier — checked by name against the model rather than counted along the row,
+    // because this array's own comment records that a bare-integer census gives you no name to check
+    // and that somebody has already moved the wrong `2` in it.
+    expect(first.roles.map((r) => r.granted.length)).toEqual([12, 16, 6, 20, 8, 1, 19, 15, 20, 10, 10, 1, 2, 3, 3, 5, 1, 11, 6, 15, 9, 4, 4, 3, 6, 16, 8, 4, 17, 15, 10, 13, 4, 3, 1, 5]); // 17c owner ruling: lab_reception 16 -> 17; 18b T1: radiographer 9, modality_bridge 1; 16c T1: pharmacy 8 -> 19, pharmacy_assistant 5; 18c T1: radiologist 14 -> 15, radiographer 9 -> 10, and radiation_safety_officer's 3 inserted after pcpndt_incharge
     expect(first.roles.every((r) => r.already.length === 0)).toBe(true);
     expect(first.declared).toBe(157); // RC-1 T2's flow lock, VD-1 T4's history read, RC-2 T4's enrol, 18b T1's mwl read, 16c T1's four pharmacy.* strings, 18c T1's three aerb.* strings
     // MEASURED from role_permissions, not derived from the model. On this database only seed:roles
@@ -1646,7 +1697,10 @@ describe("seed:roles — executed against a database (V5)", () => {
     // PLAN 07c T9 — the same two entries as the first run's `granted` census above.
     // The FIRST run's `granted` census, read back — see the note there for Plan 17 T2's changes.
     // RC-1 T2 — the second run's `already` mirrors the first run's `granted`: 15 and 8.
-    expect(second.roles.map((r) => r.already.length)).toEqual([12, 16, 6, 20, 8, 1, 19, 11, 20, 10, 10, 1, 2, 3, 3, 5, 1, 11, 6, 15, 9, 4, 4, 3, 6, 16, 8, 4, 17, 15, 10, 13, 4, 3, 1, 5]); // 17c owner ruling: lab_reception 16 -> 17; 18b T1: radiographer 9, modality_bridge 1; 16c T1: pharmacy 19, pharmacy_assistant 5
+    // FD-25 — the eighth entry again, `cashier` 11 -> 15. This is the SECOND of the two places, and
+    // the comment below is why it is called out rather than quietly edited: nothing names this array
+    // and no grep finds it from the grant that moved it.
+    expect(second.roles.map((r) => r.already.length)).toEqual([12, 16, 6, 20, 8, 1, 19, 15, 20, 10, 10, 1, 2, 3, 3, 5, 1, 11, 6, 15, 9, 4, 4, 3, 6, 16, 8, 4, 17, 15, 10, 13, 4, 3, 1, 5]); // 17c owner ruling: lab_reception 16 -> 17; 18b T1: radiographer 9, modality_bridge 1; 16c T1: pharmacy 19, pharmacy_assistant 5
     // The SAME bare-integer array as the granted-length pin above, duplicated for the idempotence
     // leg — so every permission moves it TWICE. Nothing names it and no grep finds it.
 

@@ -60,7 +60,8 @@
     "labReports": "Report centre",
     "pharmacyCounter": "Dispense counter",
     "pharmacyItems": "Pharmacy sale items",
-    "radiationSafety": "Radiation safety"
+    "radiationSafety": "Radiation safety",
+    "registration": "Registration"
   },
   "palette": {
     "title": "Search",

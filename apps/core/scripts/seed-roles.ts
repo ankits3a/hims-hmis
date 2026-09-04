@@ -386,6 +386,42 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "membership.instrument.read",
       "membership.instrument.recognise",
       "membership.grace_honor.request",
+      /**
+       * ═══ FD-25 / OWNER RULING 2026-09-04 — THE CASHIER'S SEAT, AND THE 403 IT HAS BEEN HITTING ═══
+       *
+       * Two of these close a defect that is LIVE on the deployed system, and two are what the
+       * redesigned `/billing` seat needs to name the person it is billing.
+       *
+       * `tariff.read` — THE LIVE ONE. `billing-counter.tsx`'s line editor calls `listServices()` →
+       * `GET /tariff/services`, which is `@RequirePermission("tariff.read", "hospital")`. Neither
+       * `cashier` nor `billing_manager` held any `tariff.*` string; the only holders in the whole
+       * model were `doctor`, `owner` and `tariff_editor`. So nobody who actually works the billing
+       * counter could read the service catalogue their own screen searches — a cashier who typed
+       * two characters into the line editor got a 403 and no explanation.
+       *
+       * `patients.read` — THE ONE THAT IS LAW, AND IT IS AN OWNER RULING FOR THAT REASON.
+       * `billing.controller.ts` documents, in the codebase's own words, that the cashier holds no
+       * `patients.read`. Widening who may read patient identity is a DPDP question, which
+       * `CLAUDE.md` reserves to the owner alongside money and procurement — so it was put to them
+       * as a ruling and not decided here. Ruled YES on the standard Indian-corporate-hospital
+       * argument: the cashier already has the patient standing at the window and reads their name
+       * off the bill they are handing over. A counter that can take a person's money and not say
+       * whose bill it is showing is not safer, it is only less accountable.
+       *
+       * `opd.visits.read` — the counter is entered as `/billing?encounterId=…`, and resolving that
+       * encounter to a person is an `opd.visits.*` read. `cashier` held no `opd.*` string at all.
+       *
+       * `opd.visits.open` — FD-24's print pair. `GET /print/jobs` and `POST /print/reprint` are
+       * both guarded on it, with the docstring's reason: "anyone who may create the slip may see
+       * whether it printed." A cashier who prints a receipt must be able to see whether it printed
+       * and reprint it when the paper jams. The alternative was re-cutting the guard, which
+       * `CLAUDE.md` forbids: never weaken a permission check to make a screen work — grant the
+       * permission or change the screen.
+       */
+      "tariff.read",
+      "patients.read",
+      "opd.visits.read",
+      "opd.visits.open",
     ],
   },
   {
