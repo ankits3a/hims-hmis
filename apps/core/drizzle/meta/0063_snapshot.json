@@ -17610,6 +17610,24 @@
           "primaryKey": false,
           "notNull": false
         },
+        "applies_to_sex": {
+          "name": "applies_to_sex",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "applies_min_age_days": {
+          "name": "applies_min_age_days",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "applies_max_age_days": {
+          "name": "applies_max_age_days",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "delta_abs": {
           "name": "delta_abs",
           "type": "numeric(14, 4)",
@@ -17680,6 +17698,14 @@
         "lab_analytes_absurd_ck": {
           "name": "lab_analytes_absurd_ck",
           "value": "\"lab_analytes\".\"absurd_low\" is null or \"lab_analytes\".\"absurd_high\" is null or \"lab_analytes\".\"absurd_low\" <= \"lab_analytes\".\"absurd_high\""
+        },
+        "lab_analytes_applies_sex_ck": {
+          "name": "lab_analytes_applies_sex_ck",
+          "value": "\"lab_analytes\".\"applies_to_sex\" is null or \"lab_analytes\".\"applies_to_sex\" in ('male', 'female')"
+        },
+        "lab_analytes_applies_age_ck": {
+          "name": "lab_analytes_applies_age_ck",
+          "value": "\"lab_analytes\".\"applies_min_age_days\" is null or \"lab_analytes\".\"applies_max_age_days\" is null or \"lab_analytes\".\"applies_min_age_days\" < \"lab_analytes\".\"applies_max_age_days\""
         }
       },
       "isRLSEnabled": false
@@ -18994,6 +19020,12 @@
         },
         "absurd_overridden_by": {
           "name": "absurd_overridden_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "impossible_overridden_by": {
+          "name": "impossible_overridden_by",
           "type": "text",
           "primaryKey": false,
           "notNull": false

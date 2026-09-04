@@ -252,3 +252,27 @@ the study did not carry stores NULL, not `under`"*. Restored; `diff -q` proved i
 |---|---|---|
 | T4 | `src/modules/aerb` + **`test/` ENTIRE** + `src/modules/radiology` | **77 suites / 755 tests, exit 0**; tsc 0, lint 0 errors |
 | T4 (web) | full `@hmis/web` suite | **81 files / 663 tests, exit 0** |
+
+### 8.2 Findings — the rebase, and two things it cost
+
+- **F20 — THE MIGRATION NUMBERS MOVED, ALL FOUR OF THEM.** The LIMS lane merged `0059` while this
+  lane held it, so `0059→0060 · 0060→0061 · 0061→0062 · 0062→0063`, renumbered branch by branch as
+  each merge came up the stack. CLAUDE.md says migration numbers are taken AT REBASE and this is
+  what that sentence is for. The journal is one file four branches append to; the conflict is
+  mechanical every time and resolving it by keeping BOTH entries and re-indexing is the whole job.
+- **F21 — A LANE'S TEST DATABASE CAN SKIP A MIGRATION FOR EVER, AND IT LOOKS LIKE A CODE FAILURE.**
+  After merging `main`, ten `lab.e2e` tests failed on `column "applies_to_sex" does not exist` — a
+  column the LIMS lane's `0059` adds. **Nothing was wrong with the code.** Drizzle's migrator applies
+  entries NEWER than the last one applied; this lane's database had already run the migration that
+  was numbered 0059 before the merge, whose timestamp is later than the lab's, so the lab's was
+  skipped and would have been skipped for ever. **The fix is to DROP the lane's worker databases**
+  (`hmis_lane_<name>_test_1/_2`) and let `setupTestDb` re-migrate: 52 suites / 418 tests, exit 0,
+  same commit. **For every lane: after merging main, if a suite you did not touch fails on a missing
+  column, drop the lane databases before reading one line of the diff.**
+- **F22 — THE SNAPSHOT BASELINE WAS STALE AND WOULD HAVE HANDED THE NEXT LANE F1.** With the four
+  migrations renumbered, `drizzle-kit generate` on this branch emitted a migration containing
+  **only the LIMS lane's already-applied delta** — F1's mechanism, aimed at whoever generates next.
+  Repaired at the top of the stack: `0063_snapshot.json` now carries the TRUE picture of the schema
+  (regenerated, with its id and prevId re-stitched into the chain), and `drizzle-kit generate` on
+  this branch now says *"No schema changes, nothing to migrate"*. That is the state the next lane
+  inherits, and it is the first time in this repo's history that it is true.
