@@ -8,7 +8,7 @@ import { transition } from "../../kernel/workflow/instances";
 import { listMedicines, resolveMedicines } from "../formulary";
 import { balances, listItems, releaseReservation } from "../materials";
 import { getEncounter, getPrescription, runRxChecks } from "../opd";
-import { PHARMACY_SUBSTITUTION_ENABLED, SCHEDULED_FLAGS, istDateOf } from "./config";
+import { PHARMACY_SUBSTITUTION_ENABLED, REFUSED_FLAGS, SCHEDULED_FLAGS, istDateOf } from "./config";
 import { dispenseCancelled, dispenseLineDeclined, dispenseVerified, substitutionRecorded } from "./events";
 import { PharmacyError } from "./errors";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
@@ -44,6 +44,8 @@ export async function alternativesFor(db: Db, dispenseId: string, lineIdx: numbe
   for (const m of all) {
     if (m.id === from.id) continue;
     if (saltSet(m.id) !== wanted || (m.strengthLabel ?? "") !== (from.strengthLabel ?? "") || m.form !== from.form || m.routeClass !== from.routeClass) continue;
+    // R-3 — what this counter may not dispense, it may not offer either (close review, §8.5 pass 1)
+    if (m.scheduleFlag !== null && (REFUSED_FLAGS as readonly string[]).includes(m.scheduleFlag)) continue;
     const item = itemByMedicine.get(m.id);
     if (item === undefined) continue;
     const sale = await getSaleItem(db, item.id);
@@ -158,7 +160,24 @@ export async function verifyDispense(
       throw new PharmacyError("unknown_sale_item", `line ${String(line.lineIdx + 1)} (${rxLine.drug}) is not a stocked sale item — substitute or decline it`, { lineIdx: line.lineIdx });
     }
     const med = medicines.get(dispensedMedicineId);
-    settled.push({ line, qtyBase, dispensedMedicineId, itemId: item.id, serviceId: sale.serviceId, substitution, scheduleFlag: med?.scheduleFlag ?? null });
+    const scheduleFlag = med?.scheduleFlag ?? null;
+    /**
+     * R-3, AT THE SECOND GATE TOO (close review, 16c §8.5 pass 1). `claimDispense` refuses a
+     * Schedule X line before any line is written — but it judges the medicine the PRESCRIPTION
+     * named, and this function is allowed to change it: a substitution swaps in a different
+     * medicine, and the equality it must satisfy (salts, strength, form, route) says nothing about
+     * schedule. A controlled brand sharing a salt set with an uncontrolled one — or one row whose
+     * `schedule_flag` was typed wrong — walked past the claim's guard and out of the window, with
+     * no double custody and no register. The law is asked at every gate that can name a medicine.
+     */
+    if (scheduleFlag !== null && (REFUSED_FLAGS as readonly string[]).includes(scheduleFlag)) {
+      throw new PharmacyError(
+        "schedule_x_not_dispensed_here",
+        `line ${String(line.lineIdx + 1)} would dispense ${med?.brandName ?? rxLine.drug}, Schedule ${scheduleFlag} — not dispensed at the OPD counter until double custody (16d)`,
+        { lineIdx: line.lineIdx, scheduleFlag },
+      );
+    }
+    settled.push({ line, qtyBase, dispensedMedicineId, itemId: item.id, serviceId: sale.serviceId, substitution, scheduleFlag });
   }
   if (settled.length === 0) throw new PharmacyError("nothing_to_dispense", "every line is declined — cancel the dispense instead");
 

@@ -138,8 +138,84 @@ T0b guard: DIED (category guard dropped → priced instead of thrown). T1: boot 
 ### 8.4 Evidence (local, the suites touched; CI runs everything per PR)
 core: `modules/pharmacy` 55/55 + `pharmacy.e2e` 2/2 + `seed-pharmacy` 1/1 + schema 4/4 + parity (deploy, caddy, nav, manifests, orders) green + `seed-roles` 16/16 + `seed-tariff` 5/5 + `opd/prescriptions` 21/21 + `tariff/pricing` 16/16. web: 71 files, 514/514. `pnpm typecheck` 0 errors; `pnpm lint` 0 errors (2 pre-existing warnings on main).
 
-### 8.5 Close review
-Not yet run. Two fresh passes owed before deploy (§2.140), pass 2 briefed at the fixes.
+### 8.5 Close review — RUN 2026-09-03 (contract pass + one review pass + a pass over the fixes)
+
+**Instrument order, §5A:** the contract pass (§5A.1) ran FIRST, clause by clause over D1–D10 and
+R-1..R-5 against the shipped code; then the assembly check (§5A.3); then a pass over the fixes
+themselves (§5A.4 / §2.140). Three defects found, three fixed, each red before its fix and green
+after. **Both reviewing passes were run by the closing session, not by two fresh reviewers** — the
+session was instructed not to spawn subagents. That is a real weakening of §2.140, whose whole
+finding is that a reviewer briefed at the fixes catches what the author cannot; it is recorded here
+rather than papered over. **One independent pass is still owed before deploy.**
+
+**C1 — MAJOR (money, D8) — the drug left against money that had been given back.**
+`handOverDispense` asked `status = 'billed'`, a column, where D8 promises *"money moves before the
+drug leaves"*, an amount. Settlement is DERIVED (`settlement.ts` — no status column on `invoices`,
+which is what keeps the immutability triggers total), and it is derived from allocations and credit
+notes that the billing desk can still write while the patient stands at our window: one
+`reverseAllocation` (a receipt voided as taken on the wrong invoice) and the invoice is unpaid, the
+column still says `billed`, and the medicine goes out. Fixed: the money is re-read at the
+irreversible act. **The short-tender road is NOT a defect** — `issueInvoice` refuses to leave a
+remainder unsettled (`unsettled_issue_refused`, `invoices.ts:880`) and pharmacy requests no credit
+extension; a test now pins that inheritance, because the counter's own suite never tried a short
+tender (its `amountPaise: 1` call is refused for being the SECOND bill — the two behaviours agree on
+that fixture, §5A.1's exact warning).
+
+**C2 — MAJOR (law, R-3) — a substitution walked Schedule X past the claim's guard, and the screen
+offered it.** `claimDispense` refuses X on the medicine the PRESCRIPTION named; `verifyDispense` may
+then name a different one, and the substitution equality (salts + strength + form + route) says
+nothing about schedule. Worse than a missing check: `alternativesFor` **listed the X medicine in the
+counter's substitution dropdown**, so the pharmacist was offered it. One mistyped `schedule_flag`
+looks the same. Fixed at both points — verify refuses it, the offer never includes it — and, in the
+pass over the fixes, at hand over too: claim and verify each judge a medicine the next step can
+still change, so the law is asked at every gate that can name one.
+
+**C3 — MAJOR (§5A.3, the assembly) — the desk was not cleared between two patients.** Every screen
+test took ONE patient in ONE state (3 renders of the assembly, 0 of its parts — the ratio was not
+RC-3's problem; the CYCLE was). `take()` reset what belongs to the prescription — lines,
+alternatives, picks, draft, label — and nothing that belongs to the transaction. So patient B's
+Schedule H1 hand-over went out with **patient A's token already sitting in the identity box**. The
+server refuses the mismatch, which is exactly why 537 green tests never saw it; but D7's second
+identity confirmation (doc 16 A1) is an act the pharmacist performs for THIS patient, and a
+prefilled box is that control answered before anyone looked up. Fixed: taking a patient clears the
+identity, the tender, the cancel reason and the last refusal. The two-patient cycle is now asserted.
+
+**The pass over the fixes returned two INCOMPLETE — both in this session's own C1/C2 fixes:**
+- the settlement was read BEFORE `withTx`, so a reversal landing in the gap would still hand the
+  drug over — the same defect, only narrower. Moved inside the transaction that consumes the stock.
+- R-3 was fixed at verify and at the offer, but not at hand over, the one gate that reads a line
+  already written. Added, with the caller enumeration as its comment (§5A.4's RC-4 amendment); it is
+  defence in depth over state that verify now refuses, and carries no test of its own rather than a
+  fabricated one.
+
+**F11 — MAJOR, NOT FIXED, owner named: the pick reservation never expires.** D2 and
+`PICK_RESERVATION_MINUTES = 30` promise that a pick "holds a batch before the ledger may release it
+to somebody else". `pick.ts` writes `expiresAt`; **nothing in `apps/core/src` reads it** — no sweeper,
+no job, and `releaseReservation` is called only by decline and cancel. So an abandoned picked
+dispense holds `qty_reserved` for ever, and since `fefoPick`/`balances` subtract reserved stock, the
+counter reports short stock while the shelf is full. Recoverable by hand today (cancel releases).
+Not fixed here: the mechanism belongs in `materials` — a shared module whose manifest is census-
+pinned — and 16d already owns abandoned-dispense handling and the paid-not-collected refund path.
+**16d inherits it.** Until then the constant promises a behaviour that does not exist.
+
+### 8.5a Evidence for the close
+core `modules/pharmacy` + `pharmacy.e2e`: **10 suites / 60 tests, all green** (57 before; +3 written
+here, each RED first — C1 "Received promise resolved instead of rejected", C2 the X medicine present
+in the alternatives array, C3 the identity box holding `"14"`). web `pharmacy-counter`: **4/4**.
+`pnpm typecheck` 0 errors; `pnpm lint` 0 errors, the same 2 pre-existing warnings §8.4 recorded.
+
+**Full web suite: 78 files / 595 pass, 1 FAIL — `lab-reports.test.tsx` D9.** CORRECTED: this was
+first written up here as a red `origin/main`. **It is not.** It is a FLAKE on a loaded build host.
+
+The record, because the first reading was wrong and the evidence is what settles it: D9 failed three
+times consecutively between 23:16 and 23:23 UTC — including once with this lane's work stashed, which
+is what made "red main" look right — and **passed on this box at 23:32 UTC** with the work restored,
+and the `web` job is **green in CI on this branch's exact SHA `9cad87c`**. The failure is
+`todays.length === 0` where the fixture is dated today, so the tempting reading is the FD-6 date bomb
+in that file's own header comment. **That reading was tested and disproved:** inside jsdom the
+screen's `istToday()` (`Intl`, `Asia/Kolkata`) and the fixture's `IST_TODAY` (arithmetic) both return
+`2026-09-04` and compare equal. Cause not identified; four lanes were running suites at the time.
+**Do not search a pharmacy diff for it, and do not report a frozen main on it — re-run it.**
 
 ### 8.6 Actuals
 One authoring-plus-execution session; token count not readable by the session about itself (the 11e precedent). Stop-loss 2,120,000 not breached by the visible token meter.
