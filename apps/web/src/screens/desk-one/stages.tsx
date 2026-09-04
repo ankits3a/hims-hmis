@@ -13,6 +13,7 @@ import {
 } from "./model";
 import type { DeptQueue } from "./model";
 import { dayMonthIst, monthYearIst } from "../../lib/format";
+import { SubmitButton } from "../../components/submit-button";
 import { EMPTY_COVERAGE, formNeedsGuardian, useDesk } from "./session";
 import type { CoverageDraft, Person } from "./session";
 
@@ -1746,6 +1747,35 @@ function StageBill(): React.ReactElement {
       )}
 
       {/*
+        ═══════════════════════════════════════════════════════════════════════════════════════════
+        FD-18 — THE OVERRIDE, WHEN THE DESK KNOWS SOMETHING THE CLASSIFIER DID NOT
+        ═══════════════════════════════════════════════════════════════════════════════════════════
+
+        Owner, 2026-09-04: *"there should be a manual override button or something in case of AI
+        agent failure or system failure in case billing the patient in revisit."* — and then the
+        ruling on how: *"re-classify the visit, not the price"*, *"cashier alone, fully audited"*.
+
+        `classifyVisit` is right about the data it has and can be wrong about the world: it needs the
+        previous consultation to be `completed` with a timestamp, so a doctor who never closed one
+        leaves no anchor, the visit reads `new`, and a patient plainly on a revisit is charged. The
+        arithmetic is correct on a wrong premise, so the premise is what the clerk corrects. The
+        quote then re-derives free ON ITS OWN — no discount, no category, and nothing that would book
+        this mistake as charity and overstate charity forever after.
+
+        ONLY ONCE AN INVOICE EXISTS IS IT HIDDEN. An issued invoice is immutable; correcting the type
+        afterwards changes the next quote and leaves that bill untouched, so offering it then would
+        let a clerk believe they had fixed something they had not. Unwinding money is a credit note.
+
+        THE TEST IS `s.issued`, NOT `d.moneyTaken`, and a surviving mutant is what forced the
+        distinction. `moneyTaken` is TRUE FOR ANY FREE QUOTE — `s.issued !== null || bill.free` —
+        so gating on it would hide the override on precisely the visits that are already free. That
+        breaks the mirror image of the owner's case: a visit the classifier wrongly marked `revisit`
+        would be uncorrectable, and the hospital would silently not charge for it. A free quote has
+        no invoice and nothing settled; correcting it then is exactly right.
+      */}
+      {s.issued !== null ? null : <ReclassifyControl />}
+
+      {/*
         ═══ FD-15 — CHANGE THE DOCTOR FROM HERE, INSTEAD OF CLEARING THE DESK ═══
 
         Owner: *"imagine the patient at the billing screen to change the doctor then the user has no
@@ -1786,6 +1816,84 @@ function StageBill(): React.ReactElement {
       </div>
 
       <SchemesRail />
+    </div>
+  );
+}
+
+/**
+ * The correction, opt-in and reason-first: a button, then what it should be and why, then the write.
+ * Never one click — this changes what a patient pays.
+ */
+function ReclassifyControl(): React.ReactElement {
+  const d = useDesk();
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [target, setTarget] = useState<"new" | "revisit" | "renewal">("revisit");
+  const [error, setError] = useState<string | null>(null);
+  const current = d.quote?.visitType ?? "";
+
+  if (!open) {
+    return (
+      <div style={{ marginTop: 12 }}>
+        <button className="sec" data-testid="reclassify-open" onClick={() => { setOpen(true); setError(null); }}>
+          {t("registrationCounter.reclassify.open", { current: current === "" ? "?" : current })}
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="box" data-testid="reclassify-form" style={{ marginTop: 12, padding: "11px 14px", background: "var(--wash)" }}>
+      <div style={{ fontSize: 12.5, fontWeight: 700 }}>{t("registrationCounter.reclassify.title")}</div>
+      <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 3, lineHeight: "16px" }}>
+        {t("registrationCounter.reclassify.explain")}
+      </div>
+      <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+        {(["revisit", "new", "renewal"] as const).map((v) => (
+          <button
+            key={v}
+            data-testid={`reclassify-${v}`}
+            onClick={() => { setTarget(v); }}
+            className="pill"
+            style={{
+              borderColor: target === v ? "var(--green)" : "var(--line)",
+              background: target === v ? "var(--green)" : "var(--card)",
+              color: target === v ? "#fff" : "var(--dim)",
+              fontWeight: target === v ? 700 : 400,
+            }}
+          >
+            {v}{v === "revisit" ? " · free" : ""}
+          </button>
+        ))}
+      </div>
+      <input
+        className="in"
+        data-testid="reclassify-reason"
+        style={{ marginTop: 9 }}
+        placeholder={t("registrationCounter.reclassify.reasonHint")}
+        value={reason}
+        onChange={(e) => { setReason(e.target.value); }}
+      />
+      {error === null ? null : (
+        <div role="alert" data-testid="reclassify-error" style={{ fontSize: 11, color: "var(--red)", marginTop: 6 }}>{error}</div>
+      )}
+      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+        <SubmitButton
+          data-testid="reclassify-submit"
+          onClick={async () => {
+            if (reason.trim() === "") { setError(t("registrationCounter.reclassify.reasonRequired")); return; }
+            setError(null);
+            await d.reclassify(target, reason.trim());
+            setOpen(false);
+            setReason("");
+          }}
+        >
+          {t("registrationCounter.reclassify.submit")}
+        </SubmitButton>
+        <button className="sec" data-testid="reclassify-cancel" onClick={() => { setOpen(false); setError(null); }}>
+          {t("registrationCounter.reclassify.cancel")}
+        </button>
+      </div>
     </div>
   );
 }

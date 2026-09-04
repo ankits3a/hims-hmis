@@ -43,9 +43,10 @@ type Calls = {
   patches: Record<string, unknown>[];
   abandons: { id: string; reason: string }[];
   photoGets: string[];
+  reclassifies: { visitType: string; reason: string }[];
 };
 
-function mount(calls: Calls, opts: { storedPhoto?: boolean; searchItems?: unknown[] } = {}): void {
+function mount(calls: Calls, opts: { storedPhoto?: boolean; searchItems?: unknown[]; freeQuote?: boolean } = {}): void {
   stubFetch({
     "GET /api/auth/me": {
       actor: { type: "user", id: "u1" },
@@ -92,6 +93,11 @@ function mount(calls: Calls, opts: { storedPhoto?: boolean; searchItems?: unknow
       queueEntry: { id: "q-1", tokenNo: 7 }, tokenNo: 7, sessionId: "s-1", roomId: null,
       visitType: "walk_in", doctorScheduledToday: true, patientId: "p-1", registered: false,
     },
+    "POST /api/opd/visits/e-1/reclassify": (init?: RequestInit) => {
+      const b = JSON.parse(String(init?.body ?? "{}")) as { visitType: string; reason: string };
+      calls.reclassifies.push(b);
+      return { encounter: { id: "e-1", visitType: b.visitType } };
+    },
     "POST /api/opd/visits/e-1/abandon": (init?: RequestInit) => {
       const b = JSON.parse(String(init?.body ?? "{}")) as { reason: string };
       calls.abandons.push({ id: "e-1", reason: b.reason });
@@ -104,7 +110,11 @@ function mount(calls: Calls, opts: { storedPhoto?: boolean; searchItems?: unknow
       quote landed. A fixture narrower than the type it stands in for is a test that proves nothing
       and then fails somewhere unrelated.
     */
-    "GET /api/billing/visits/e-1/fee-quote": {
+    "GET /api/billing/visits/e-1/fee-quote": opts.freeQuote === true ? {
+      encounterId: "e-1", visitType: "revisit", free: true, feeServiceId: null, draft: null,
+      freeReason: { kind: "review_window", doctorName: "Dr. Verma", seenOn: "2026-08-30", windowEndsOn: "2026-09-29" },
+      attributionCode: null,
+    } : {
       encounterId: "e-1", visitType: "walk_in", free: false, feeServiceId: "svc-1",
       freeReason: null, attributionCode: null,
       draft: {
@@ -140,7 +150,7 @@ function mount(calls: Calls, opts: { storedPhoto?: boolean; searchItems?: unknow
   );
 }
 
-function emptyCalls(): Calls { return { patches: [], abandons: [], photoGets: [] }; }
+function emptyCalls(): Calls { return { patches: [], abandons: [], photoGets: [], reclassifies: [] }; }
 
 async function holdFirstHit(): Promise<void> {
   await act(async () => { await router.navigate({ to: "/counter" }); });
@@ -291,5 +301,78 @@ describe("FD-15: changing the doctor from the bill", () => {
     // back at the appointment, with the SAME person — nothing re-typed, no second UHID
     await waitFor(() => expect(screen.getByPlaceholderText(/seene mein dard/)).toBeInTheDocument());
     expect(screen.getByText("Ramesh Kumar")).toBeInTheDocument();
+  });
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-18 — THE BILLING OVERRIDE, ON THE SCREEN
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner ruling 2026-09-04: *"re-classify the visit, not the price"* and *"cashier alone, fully
+ * audited"*. What matters on this side is that the clerk sends a CORRECTION and never a discount,
+ * that a reason is mandatory, and that the control disappears once a bill exists — because after
+ * that it would change the next quote and leave the issued bill untouched, which would let a clerk
+ * believe they had fixed something they had not.
+ */
+describe("FD-18: correcting a misread visit type from the bill", () => {
+  async function toBill(calls: Calls): Promise<void> {
+    mount(calls);
+    await holdFirstHit();
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByTestId("propose-assign"));
+    await waitFor(() => expect(screen.getByTestId("reclassify-open")).toBeInTheDocument());
+  }
+
+  it("sends a visit-type correction with a reason — no discount, no category", async () => {
+    const calls = emptyCalls();
+    await toBill(calls);
+    const user = userEvent.setup({ delay: null });
+
+    await user.click(screen.getByTestId("reclassify-open"));
+    await user.click(screen.getByTestId("reclassify-revisit"));
+    await user.type(screen.getByTestId("reclassify-reason"), "seen here on 28 Aug, consult never closed");
+    await user.click(screen.getByTestId("reclassify-submit"));
+
+    await waitFor(() => expect(calls.reclassifies).toHaveLength(1));
+    expect(calls.reclassifies[0]).toEqual({
+      visitType: "revisit", reason: "seen here on 28 Aug, consult never closed",
+    });
+  });
+
+  it("refuses a correction with no reason, and posts nothing", async () => {
+    const calls = emptyCalls();
+    await toBill(calls);
+    const user = userEvent.setup({ delay: null });
+
+    await user.click(screen.getByTestId("reclassify-open"));
+    await user.type(screen.getByTestId("reclassify-reason"), "   ");
+    await user.click(screen.getByTestId("reclassify-submit"));
+
+    expect(await screen.findByTestId("reclassify-error")).toBeInTheDocument();
+    expect(calls.reclassifies).toHaveLength(0);
+  });
+
+  /**
+   * THE MIRROR IMAGE OF THE OWNER'S CASE, and the one a surviving mutant caught. A visit the
+   * classifier wrongly marked `revisit` quotes FREE — and `moneyTaken` is true for any free quote,
+   * so gating the override on it would hide the control on exactly the visits the hospital is about
+   * to not charge for. Nothing has been invoiced or settled; the correction must still be offered.
+   */
+  it("is still offered on a FREE quote — a wrongly-free visit must be correctable too", async () => {
+    const calls = emptyCalls();
+    mount(calls, { freeQuote: true });
+    await holdFirstHit();
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByTestId("propose-assign"));
+
+    /*
+      WAIT FOR THE FREE QUOTE TO LAND FIRST. Asserting the control straight after the click passed
+      whatever the guard said, because `moneyTaken` reads `quote.data`, which was still undefined —
+      the assertion ran before the thing it was meant to be sensitive to existed. Anchoring on the
+      free line makes the test actually see a free bill.
+    */
+    await waitFor(() => { expect(screen.getAllByText(/free till 2026-09-29/).length).toBeGreaterThan(0); });
+    expect(screen.getByTestId("reclassify-open")).toBeInTheDocument();
   });
 });

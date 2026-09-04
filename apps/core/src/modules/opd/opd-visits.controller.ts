@@ -7,7 +7,8 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { opdQueueEntries } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { bookAppointment, cancelAppointment, checkInAppointment, listAppointments, rescheduleAppointment } from "./appointments";
-import { abandonVisit, counterState, getVisit, joinQueue, listVisits, openVisit, patientTimeline, reEnterVisit } from "./encounters";
+import { abandonVisit, counterState, getVisit, joinQueue, listVisits, openVisit, patientTimeline, reEnterVisit, reclassifyVisit,
+} from "./encounters";
 import { patientRxHistory, patientVitalsHistory } from "./history";
 import { listDepartments } from "./masters";
 import type { RxHistoryItem, VitalsHistoryItem } from "./history";
@@ -98,6 +99,10 @@ const walkInBody = z.object({
   // RC-1 T3 / D4 — bill-first defers the QUEUE JOIN, never the doctor: the visit opens with its
   // assignment, the token arrives with POST /opd/visits/:id/join-queue after the money.
   join: z.enum(["queue", "defer"]).optional(),
+});
+const reclassifyBody = z.object({
+  visitType: z.enum(["new", "revisit", "renewal"]),
+  reason: z.string().min(1).max(400),
 });
 const visitsQuery = z.object({
   status: z.enum(["registered", "waiting", "in_consultation", "awaiting_results", "completed", "abandoned"]).optional(),
@@ -409,6 +414,28 @@ export class OpdVisitsController {
     const b = parsed(reasonBody, body);
     try {
       return await abandonVisit(this.db, actor, id, b.reason);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * FD-18 — the owner's billing override, built as a CORRECTION rather than a discount.
+   *
+   * ON `opd.visits.open`, which is the counter's own permission — the seat that opens a visit is
+   * the seat that corrects what kind of visit it was, and the owner ruled the cashier acts alone
+   * (2026-09-04). A dedicated permission would be tidier and would also mean editing `seed-roles`,
+   * a file CLAUDE.md marks as shared and count-pinned; that is a coordination cost this correction
+   * does not justify while the audit event carries the whole control.
+   */
+  @RequirePermission("opd.visits.open", "hospital")
+  @Post("visits/:id/reclassify")
+  async reclassify(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown,
+  ): Promise<{ encounter: EncounterRow }> {
+    const b = parsed(reclassifyBody, body);
+    try {
+      return await reclassifyVisit(this.db, actor, id, { visitType: b.visitType, reason: b.reason });
     } catch (e) {
       toHttp(e);
     }

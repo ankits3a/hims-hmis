@@ -704,6 +704,34 @@ export function DeskOne(): React.ReactElement {
     }
   }, [s.visit, s.issued, moneyTaken, patch, qc]);
 
+  /**
+   * FD-18 — THE BILLING OVERRIDE, AS A CORRECTION. Owner ruling 2026-09-04, choosing between three
+   * designs: *"re-classify the visit, not the price"* and *"cashier alone, fully audited"*.
+   *
+   * The quote is keyed on the encounter, so invalidating it is what makes the new figure appear —
+   * `feeServiceFor` re-reads `visitType` and a revisit reaches the free branch with no discount,
+   * no category, and nothing to explain away in the discount reporting later.
+   */
+  const reclassify = useCallback(async (visitType: "new" | "revisit" | "renewal", reason: string) => {
+    const visit = s.visit;
+    if (visit === null) return;
+    patch({ busy: "assign", error: null });
+    try {
+      const { reclassifyVisit } = await import("../../lib/opd-api");
+      await reclassifyVisit(visit.encounterId, visitType, reason);
+      await qc.invalidateQueries({ queryKey: ["d1", "quote"] });
+      setS((prev) => ({
+        ...prev, busy: null,
+        log: logged(prev.log, `visit corrected to ${visitType} — ${reason}`, "ok"),
+      }));
+    } catch (e) {
+      setS((prev) => ({
+        ...prev, busy: null, error: opdErrorMessage(e),
+        log: logged(prev.log, `correction REFUSED — ${opdErrorMessage(e)}`, "err"),
+      }));
+    }
+  }, [s.visit, patch, qc]);
+
   const unassign = useCallback(() => {
     setS((prev) => ({
       ...prev, visit: null, issued: null, tender: null, stage: "appointment",
@@ -1090,7 +1118,7 @@ export function DeskOne(): React.ReactElement {
     duesPaise: (dues.data?.items ?? []).reduce((sum, row) => sum + row.outstandingPaise, 0),
     duesCount: (dues.data?.items ?? []).filter((row) => row.outstandingPaise > 0).length,
     moneyTaken,
-    note, hold, startEnrolment, enrol, runTriage, assign, unassign, holdFutureSlot, setPhoto, changeDoctor,
+    note, hold, startEnrolment, enrol, runTriage, assign, unassign, holdFutureSlot, setPhoto, changeDoctor, reclassify,
     presentCoupon, presentSlip, settle, amend, setLane, openDrawer, clearDesk, ask, goto,
   };
 

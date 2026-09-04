@@ -741,3 +741,14 @@ export function listDayAppointments(doctorId: string, serviceDate: string): Prom
     `/opd/appointments?doctorId=${encodeURIComponent(doctorId)}&serviceDate=${encodeURIComponent(serviceDate)}`,
   );
 }
+
+/**
+ * FD-18 — correct a misread visit type. The owner's billing override, built as a correction to the
+ * PREMISE rather than a discount on the price, so a revisit reaches `feeServiceFor`'s free branch on
+ * its own and nothing is booked as charity that was really a classification mistake.
+ */
+export function reclassifyVisit(
+  encounterId: string, visitType: "new" | "revisit" | "renewal", reason: string,
+): Promise<{ encounter: WireEncounter }> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/reclassify`, { visitType, reason });
+}

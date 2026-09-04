@@ -4,7 +4,7 @@ import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, s
 import { withTx } from "../../kernel/db/client";
 import { events, opdQueueEntries, opdQueueSessions, patients, workflowInstances } from "../../kernel/db/schema";
 import {
-  abandonVisit, getEncounter, moveEncounter, openVisit, patientTimeline, reEnterVisit, transferQueue,
+  abandonVisit, getEncounter, moveEncounter, openVisit, patientTimeline, reEnterVisit, transferQueue, reclassifyVisit,
 } from "./encounters";
 import type { EncounterRow } from "./encounters";
 import type { Db } from "../../kernel/db/client";
@@ -304,5 +304,88 @@ describe("opd encounters (the spine: open / abandon / re-enter / transfer / time
     expect(items[1]!.serviceDate).toBe("2026-08-10");
     const viaLoser = await patientTimeline(db, clerk.actor, loser.id);
     expect(viaLoser.map((i) => i.encounterId)).toEqual(items.map((i) => i.encounterId));
+  });
+
+  /**
+   * ═════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-18 — THE BILLING OVERRIDE, BUILT AS A CORRECTION TO THE PREMISE
+   * ═════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Owner, 2026-09-04: *"there should be a manual override button or something in case of AI agent
+   * failure or system failure in case billing the patient in revisit."* — then, choosing between
+   * three designs: *"re-classify the visit, not the price"*, and *"cashier alone, fully audited"*.
+   *
+   * The failure is real and reachable: `classifyVisit` needs the previous consult to be COMPLETED
+   * with a timestamp, so a doctor who never closed one leaves no anchor and a patient plainly on a
+   * revisit opens as `new` and is charged. The first test below MANUFACTURES exactly that.
+   */
+  describe("FD-18: correcting a misread visit type", () => {
+    it("the failure mode is real: an unclosed consult makes a genuine revisit open as new", async () => {
+      // seen four days ago, but the consult was never completed — so there is no anchor
+      const opened = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, T0);
+      await withTx(db, (tx) => moveEncounter(tx, vd.actor, opened.encounter, "waiting", {}, T0));
+
+      const today = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+      expect(today.visitType).toBe("new"); // …and `feeServiceFor` will therefore charge them
+    });
+
+    it("corrects the type, and the correction is what makes the fee free — not a discount", async () => {
+      const today = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+      expect(today.encounter.visitType).toBe("new");
+
+      const { encounter } = await reclassifyVisit(
+        db, clerk.actor, today.encounter.id,
+        { visitType: "revisit", reason: "seen here on 8 Aug; the consult was never closed" }, MON,
+      );
+      expect(encounter.visitType).toBe("revisit");
+      /*
+        THE FEE CONSEQUENCE IS ASSERTED IN BILLING, NOT HERE, and the module boundary is why: a
+        module may only import another's `index.ts`, and `feeServiceFor` is billing's internal.
+        Reaching into it — or widening billing's public interface to make a test convenient — would
+        be a worse trade than stating the seam plainly. What OPD owns and proves is that the TYPE is
+        corrected; that `revisit` maps to the free branch is `charge-rules.ts`'s own invariant and
+        its own tests', and this correction reaches it through the ordinary quote path.
+      */
+    });
+
+    /* The audit IS the control, because the owner ruled the cashier acts alone. */
+    it("records who corrected it, from what, to what and why", async () => {
+      const today = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+      await reclassifyVisit(db, clerk.actor, today.encounter.id, { visitType: "revisit", reason: "consult never closed" }, MON);
+
+      const logged = await db.select().from(events).where(eq(events.name, "visit.reclassified"));
+      expect(logged).toHaveLength(1);
+      const payload = logged[0]!.payload as Record<string, unknown>;
+      expect(payload["from"]).toBe("new");
+      expect(payload["to"]).toBe("revisit");
+      expect(payload["reason"]).toBe("consult never closed");
+      expect(logged[0]!.actorId).toBe(clerk.actor.id);
+    });
+
+    it("a correction with no reason is refused — an unreviewable correction is not a control", async () => {
+      const today = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+      await expect(reclassifyVisit(db, clerk.actor, today.encounter.id, { visitType: "revisit", reason: "   " }, MON))
+        .rejects.toMatchObject({ code: "reason_required" });
+      expect(await db.select().from(events).where(eq(events.name, "visit.reclassified"))).toHaveLength(0);
+    });
+
+    it("re-asserting the type it already has writes nothing at all", async () => {
+      const today = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+      const { encounter } = await reclassifyVisit(db, clerk.actor, today.encounter.id, { visitType: "new", reason: "no change" }, MON);
+      expect(encounter.visitType).toBe("new");
+      expect(await db.select().from(events).where(eq(events.name, "visit.reclassified"))).toHaveLength(0);
+    });
+
+    it("an abandoned visit is not re-classified", async () => {
+      const today = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+      await abandonVisit(db, clerk.actor, today.encounter.id, "left the queue", MON);
+      await expect(reclassifyVisit(db, clerk.actor, today.encounter.id, { visitType: "revisit", reason: "x" }, MON))
+        .rejects.toMatchObject({ code: "encounter_state_conflict" });
+    });
+
+    it("an unknown encounter is refused", async () => {
+      await expect(reclassifyVisit(db, clerk.actor, "no-such-encounter", { visitType: "revisit", reason: "x" }, MON))
+        .rejects.toMatchObject({ code: "unknown_encounter" });
+    });
   });
 });

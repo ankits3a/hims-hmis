@@ -279,6 +279,11 @@ export type DeskApi = {
    * the server. Refused once money has been taken: that is a credit note, not a desk correction.
    */
   changeDoctor: (reason: string) => Promise<void>;
+  /**
+   * FD-18 — correct a misread visit type (the owner's billing override). Not a discount: the fee
+   * quote re-derives from the corrected type, so a revisit is free because it IS a revisit.
+   */
+  reclassify: (visitType: "new" | "revisit" | "renewal", reason: string) => Promise<void>;
   setLane: (lane: Lane) => Promise<void>;
   /** Leaves the desk for `/billing/session` — the float is counted, so it is not an inline act. */
   openDrawer: () => void;

@@ -149,6 +149,44 @@ export const visitAbandoned = defineEvent("visit.abandoned", MODULE, z.object({
   fromState: z.enum(["registered", "waiting", "awaiting_results"]), reason: z.string().min(1),
 }));
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-18 — THE DESK CORRECTS A MISREAD VISIT TYPE, IN THE OPEN
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner ruling 2026-09-04, choosing between three ways to build a billing override: *"re-classify
+ * the visit, not the price"*, and *"cashier alone, fully audited"*.
+ *
+ * WHY THAT IS THE RIGHT SHAPE. The failure the owner described — a patient on a revisit being
+ * charged — is a CLASSIFICATION that went wrong, not a price that needs adjusting. `classifyVisit`
+ * needs the previous consult to be `completed` with a `consultCompletedAt`; when a doctor never
+ * closed it properly the anchor does not exist, the visit reads `new`, and the fee follows
+ * correctly from a wrong premise. Discounting the fee would paper over that and book the correction
+ * as charity, overstating charity by exactly these mistakes forever after. Correcting the premise
+ * lets `feeServiceFor` reach the free branch on its own, and the money reporting stays true.
+ *
+ * THE AUDIT IS THE CONTROL, because the owner ruled the cashier acts alone. With one supervisor in
+ * the building an approval gate would strand the patient at the counter — the FD-11 drawer trap,
+ * rebuilt. So every correction carries WHO, FROM WHAT, TO WHAT and WHY, and the reason is mandatory.
+ */
+export const visitReclassified = defineEvent("visit.reclassified", MODULE, z.object({
+  encounterId: id, patientId: id,
+  /*
+    NOT the `...where` envelope the queue events carry. That one answers "which session, room and
+    token" — a correction to what KIND of visit this is happens at a counter and has nothing to do
+    with where the patient is sitting, and `sessionId`/`tokenNo` would be required and meaningless.
+    Department and doctor travel because they are what the classification was made AGAINST, and both
+    are nullable on an encounter.
+  */
+  departmentId: z.string().nullable(),
+  doctorId: z.string().nullable(),
+  serviceDate: isoDate,
+  from: z.enum(["new", "revisit", "renewal"]),
+  to: z.enum(["new", "revisit", "renewal"]),
+  /** Free text: the clerk is explaining a judgement, and an enum cannot anticipate these. */
+  reason: z.string().min(1),
+}));
+
 export const vitalsRecorded = defineEvent("vitals.recorded", MODULE, z.object({
   encounterId: id, patientId: id, vitalsId: id, ...where,
   band: z.enum(["infant", "child_1_5", "child_6_12", "adult"]),

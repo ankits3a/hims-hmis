@@ -14,7 +14,8 @@ import type { EncounterFeeStatus } from "../billing";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { loadOpdConfig } from "./config";
 import { OpdError } from "./errors";
-import { patientCheckedIn, visitAbandoned, visitOpened, visitTransferred } from "./events";
+import { patientCheckedIn, visitAbandoned, visitOpened, visitTransferred, visitReclassified,
+} from "./events";
 import { allocateToken, getOrCreateSession, roomForDoctorDay } from "./sessions";
 import { istDate } from "./time";
 import { classifyVisit } from "./visit-type";
@@ -478,6 +479,83 @@ async function newestEntryWhere(
 }
 
 /** §11.1 walk-away. One transaction: the mirror move, the queue entry cancelled, one visit.abandoned. */
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-18 — CORRECT A MISREAD VISIT TYPE. The owner's chosen override: the premise, not the price.
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * `classifyVisit` is right about the data it has and can be wrong about the world: it needs the
+ * previous consultation to be `completed` with a `consultCompletedAt`, so a doctor who never closed
+ * one leaves no anchor, the visit reads `new`, and a patient plainly on a revisit is charged. The
+ * fee is then correct arithmetic on a wrong premise, which is why this corrects the premise.
+ *
+ * ═══ WHAT THIS DOES AND DOES NOT REACH ═══
+ *
+ * `feeServiceFor` reads `encounter.visitType` live, so a corrected encounter re-quotes on its own —
+ * a revisit reaches the free branch with no discount, no category and nothing to explain away in
+ * the discount reporting.
+ *
+ * IT DOES NOT REWRITE AN ISSUED INVOICE, and it must not: an invoice is immutable and its lines are
+ * money that has been quoted or taken. Correcting the type afterwards changes what the NEXT quote
+ * says and leaves the issued bill exactly as it was — which is why the desk refuses to offer this
+ * once a bill exists, rather than letting a clerk believe they have fixed one. Unwinding money is a
+ * credit note, and it has its own permission and its own audit.
+ *
+ * NO APPROVAL GATE, BY OWNER RULING (2026-09-04): *"cashier alone, fully audited"*. With one
+ * supervisor in the building, gating this would strand the patient at the counter — the exact dead
+ * end FD-11's drawer re-count had to undo. The event below is the control: who, from what, to what,
+ * and a mandatory why.
+ */
+export async function reclassifyVisit(
+  db: Db,
+  actor: Actor,
+  encounterId: string,
+  input: { visitType: VisitType; reason: string },
+  now: Date = new Date(),
+): Promise<{ encounter: EncounterRow }> {
+  const reason = input.reason.trim();
+  if (reason === "") throw new OpdError("reason_required", "a corrected visit type records why");
+  const current = await getEncounter(db, encounterId);
+  if (!current) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
+  if (current.status === "abandoned") {
+    throw new OpdError("encounter_state_conflict", "an abandoned visit is not re-classified");
+  }
+  if (current.visitType === input.visitType) {
+    // Not an error and not a write: the clerk asked for the state it is already in.
+    return { encounter: current };
+  }
+
+  return withTx(db, async (tx) => {
+    const updated = await tx
+      .update(opdEncounters)
+      .set({ visitType: input.visitType, updatedBy: actor.id, updatedAt: now })
+      .where(and(eq(opdEncounters.id, encounterId), eq(opdEncounters.visitType, current.visitType)))
+      .returning();
+    if (updated.length === 0) {
+      // Somebody else re-classified it between the read and the write.
+      throw new OpdError("encounter_state_conflict", "the visit type moved while you were correcting it");
+    }
+    const encounter = updated[0]!;
+    await appendEvent(tx, visitReclassified.make({
+      actor,
+      patientId: encounter.patientId,
+      encounterId,
+      correlationId: encounter.workflowInstanceId,
+      payload: {
+        encounterId,
+        patientId: encounter.patientId,
+        departmentId: encounter.departmentId,
+        doctorId: encounter.doctorId,
+        serviceDate: encounter.serviceDate,
+        from: current.visitType as VisitType,
+        to: input.visitType,
+        reason,
+      },
+    }));
+    return { encounter };
+  });
+}
+
 export async function abandonVisit(db: Db, actor: Actor, encounterId: string, reason: string, now: Date = new Date()): Promise<{ encounter: EncounterRow }> {
   if (reason.trim() === "") throw new OpdError("reason_required", "an abandoned visit records why");
   const current = await getEncounter(db, encounterId);

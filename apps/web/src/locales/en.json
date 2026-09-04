@@ -2622,6 +2622,15 @@
       "alreadyBooked": "{{name}} already has {{count}} booking that day",
       "alreadyBookedHint": "book a second only if it is genuinely a second appointment",
       "checkIn": "check in"
+    },
+    "reclassify": {
+      "open": "Wrong visit type? (now: {{current}})",
+      "title": "Correct what kind of visit this is",
+      "explain": "This does not discount the bill — it corrects the record, and the fee is recalculated from it. A revisit inside the doctor's follow-up window carries no consultation fee. Your name and reason are recorded.",
+      "reasonHint": "why is this the wrong type? e.g. seen here on 28 Aug, consult was never closed",
+      "reasonRequired": "Say why — a correction with no reason cannot be reviewed later.",
+      "submit": "Correct it — audited",
+      "cancel": "leave it"
     }
   },
   "vitalsBay": {
