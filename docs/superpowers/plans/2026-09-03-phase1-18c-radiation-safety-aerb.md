@@ -216,3 +216,63 @@ the study did not carry stores NULL, not `under`"*. Restored; `diff -q` proved i
 |---|---|---|
 | T3 | `aerb` + radiology + pcpndt + seed-roles + caddyfile-parity + radiology.e2e + `kernel/modules` + `kernel/phi` | **36 suites / 442 tests, exit 0**; tsc 0, lint 0 errors |
 | T3 (web) | full `@hmis/web` suite | **81 files / 660 tests, exit 0** (10 more than T1's run) |
+
+### 8.2 Findings — T4
+
+- **F15 (T1, found by CI not by the lane) — `test/seed-staff.test.ts` pins the role-key vocabulary
+  and was in no task's Files list.** `seed:staff` REFUSES a roster naming a key outside
+  `KNOWN_ROLE_KEYS`, so until the fix the roster hiring the hospital's RSO — the person AERB
+  requires by name before a licence is issued at all — would have been rejected as a typo and the
+  WHOLE roster refused. The same shape as 18a's F11, and the fifth census file found this way.
+  **The lesson is the batch, not the file:** T1 ran the suites it had touched and the census suites
+  it knew about; from T4 on, this lane's batch is `test/` ENTIRE (51 suites, 395 tests) plus the
+  modules, which is 20 seconds longer and would have caught it.
+- **F16 (T4, D10) — the level is PRO-RATED onto the wearing period, and that is the whole ladder.**
+  A quarterly badge reading 1.4 mSv is an ordinary quarter against a 1 mSv/month programme; compared
+  against the un-pro-rated monthly figure it is an incident. A register that cried wolf every
+  quarter is a register an RSO stops opening, which is a worse failure than a late flag. The mutant
+  (`const level = perMonth`) kills six tests.
+- **F17 (T4) — Hp(10) and Hp(0.07) are different DEPTHS, and only one is compared.** The shallow
+  (skin) dose has its own, far higher limit; measuring it against the whole-body trigger would flag
+  a radiographer for a dose the Rules do not consider one. Recorded, rendered, compared against
+  nothing here — and a phase that starts comparing it must say so.
+- **F18 (T4, D10 sharpened at execution)** — `setInvestigationLevel` REFUSES a level whose annual
+  equivalent reaches the statutory single-year limit. A trigger at or above the ceiling it exists to
+  warn about never fires; that is a typo, not a policy. Not in the plan; taken here and recorded.
+- **F19 (T4, the gap's threshold)** — `badgeGaps` defaults to 120 days, and the test walks BOTH
+  sides: at 104 days a badge issued and never read is NOT a gap (a Q1 report typically arrives in
+  mid-May), at 134 days it is. A gap list that cried on day 105 would be one an RSO stopped opening.
+
+### 8.3 Assertion book as executed — T4
+**Mutant:** compare the period's reading against the MONTHLY level rather than the pro-rated one
+(D10's named one). **Result: 6 failed / 13 passed.** Restored; `diff -q` proved identical.
+
+### 8.4 Evidence — T4
+| task | batch | counts |
+|---|---|---|
+| T4 | `src/modules/aerb` + **`test/` ENTIRE** + `src/modules/radiology` | **77 suites / 755 tests, exit 0**; tsc 0, lint 0 errors |
+| T4 (web) | full `@hmis/web` suite | **81 files / 663 tests, exit 0** |
+
+### 8.2 Findings — the rebase, and two things it cost
+
+- **F20 — THE MIGRATION NUMBERS MOVED, ALL FOUR OF THEM.** The LIMS lane merged `0059` while this
+  lane held it, so `0059→0060 · 0060→0061 · 0061→0062 · 0062→0063`, renumbered branch by branch as
+  each merge came up the stack. CLAUDE.md says migration numbers are taken AT REBASE and this is
+  what that sentence is for. The journal is one file four branches append to; the conflict is
+  mechanical every time and resolving it by keeping BOTH entries and re-indexing is the whole job.
+- **F21 — A LANE'S TEST DATABASE CAN SKIP A MIGRATION FOR EVER, AND IT LOOKS LIKE A CODE FAILURE.**
+  After merging `main`, ten `lab.e2e` tests failed on `column "applies_to_sex" does not exist` — a
+  column the LIMS lane's `0059` adds. **Nothing was wrong with the code.** Drizzle's migrator applies
+  entries NEWER than the last one applied; this lane's database had already run the migration that
+  was numbered 0059 before the merge, whose timestamp is later than the lab's, so the lab's was
+  skipped and would have been skipped for ever. **The fix is to DROP the lane's worker databases**
+  (`hmis_lane_<name>_test_1/_2`) and let `setupTestDb` re-migrate: 52 suites / 418 tests, exit 0,
+  same commit. **For every lane: after merging main, if a suite you did not touch fails on a missing
+  column, drop the lane databases before reading one line of the diff.**
+- **F22 — THE SNAPSHOT BASELINE WAS STALE AND WOULD HAVE HANDED THE NEXT LANE F1.** With the four
+  migrations renumbered, `drizzle-kit generate` on this branch emitted a migration containing
+  **only the LIMS lane's already-applied delta** — F1's mechanism, aimed at whoever generates next.
+  Repaired at the top of the stack: `0063_snapshot.json` now carries the TRUE picture of the schema
+  (regenerated, with its id and prevId re-stitched into the chain), and `drizzle-kit generate` on
+  this branch now says *"No schema changes, nothing to migrate"*. That is the state the next lane
+  inherits, and it is the first time in this repo's history that it is true.

@@ -353,3 +353,135 @@ export const doseRegister = pgTable(
     ),
   ],
 );
+
+/**
+ * ═══ 5. THE TLD BADGE PROGRAMME — occupational monitoring, and the ONE register about STAFF ═══
+ *
+ * Everything else in this file is about a machine or a patient. This is about the radiographer:
+ * a thermoluminescent dosimeter badge worn for a period, sent to an accredited laboratory, and a
+ * reading that comes back weeks later.
+ *
+ * **`tld_badge_reads` is deliberately not keyed on the person.** It is keyed on the BADGE, which is
+ * issued to a person and can be re-issued: a badge lost and replaced starts a new row, and a badge
+ * handed to a new joiner after a leaver returned it must not carry the leaver's readings into the
+ * new person's cumulative. `aerb_tld_badges.user_id` is what connects them, per issue.
+ *
+ * ═══ THE GAP IS THE POINT (the brainstorm's negative space) ═══
+ *
+ * *"A badge period with no read"* — the badge that was never sent, the reading that never came
+ * back, the technologist who has not worn one. A register that only lists the readings it HAS
+ * cannot show any of those, so `tldGaps` reads the badges against the periods and the screen leads
+ * with what is missing. It is the same argument the licence gap makes one register over.
+ */
+export const TLD_BADGE_STATUSES = ["active", "returned", "lost"] as const;
+export type TldBadgeStatus = (typeof TLD_BADGE_STATUSES)[number];
+
+export const aerbTldBadges = pgTable(
+  "aerb_tld_badges",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    /** As printed on the badge and as the laboratory reports it. */
+    badgeNo: text("badge_no").notNull(),
+    issuedOn: date("issued_on", { mode: "string" }).notNull(),
+    returnedOn: date("returned_on", { mode: "string" }),
+    status: text("status").notNull().default("active"),
+    remarks: text("remarks"),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    /**
+     * ONE ACTIVE BADGE PER PERSON. A worker wearing two badges has two partial pictures of one
+     * exposure and neither is their dose — the `aerb_licences_device_active_ux` shape, third time.
+     */
+    uniqueIndex("aerb_tld_badges_user_active_ux").on(t.userId).where(sql`${t.status} = 'active'`),
+    /** A badge NUMBER is reusable across time but not concurrently: the laboratory reports by it. */
+    uniqueIndex("aerb_tld_badges_no_active_ux").on(t.badgeNo).where(sql`${t.status} = 'active'`),
+    index("aerb_tld_badges_user_idx").on(t.userId, t.issuedOn),
+    check("aerb_tld_badges_status_ck", inList(t.status, TLD_BADGE_STATUSES)),
+    /** A returned or lost badge carries the date it stopped being worn; an active one does not. */
+    check(
+      "aerb_tld_badges_returned_ck",
+      sql`(${t.status} = 'active') = (${t.returnedOn} is null)`,
+    ),
+    check("aerb_tld_badges_dates_ck", sql`${t.returnedOn} is null or ${t.returnedOn} >= ${t.issuedOn}`),
+  ],
+);
+
+/**
+ * One laboratory report for one badge over one wearing period.
+ *
+ * **Hp(10) and Hp(0.07) are different depths, not two names for one number**: Hp(10) is the deep
+ * dose that the effective-dose limits are compared against, Hp(0.07) the shallow (skin) dose with
+ * its own, far higher limit. Storing one and calling it "the dose" is how a skin reading gets
+ * compared against a whole-body limit.
+ */
+export const aerbTldReads = pgTable(
+  "aerb_tld_reads",
+  {
+    id: text("id").primaryKey(),
+    badgeId: text("badge_id").notNull().references(() => aerbTldBadges.id),
+    periodStart: date("period_start", { mode: "string" }).notNull(),
+    periodEnd: date("period_end", { mode: "string" }).notNull(),
+    /** mSv. Deep dose — the one the annual limits are about. */
+    hp10Msv: numeric("hp10_msv", { precision: 8, scale: 3 }).notNull(),
+    /** mSv. Shallow (skin) dose, its own limit and NOT interchangeable with the above. */
+    hp007Msv: numeric("hp007_msv", { precision: 8, scale: 3 }),
+    reportedOn: date("reported_on", { mode: "string" }).notNull(),
+    /** The accredited laboratory's own reference for the report. */
+    labRef: text("lab_ref"),
+    /**
+     * TRUE when this reading met or exceeded the INVESTIGATION level in force when it was entered
+     * — a stored verdict, like `over_drl`, because a hospital that lowers its investigation level
+     * next year must not retroactively turn last year's readings into incidents.
+     */
+    investigationFlag: boolean("investigation_flag").notNull().default(false),
+    /** The level it was compared against, in mSv for THIS period. Travels with the verdict. */
+    investigationLevelMsv: numeric("investigation_level_msv", { precision: 8, scale: 3 }),
+    remarks: text("remarks"),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    /** ONE READING PER BADGE PER PERIOD. A re-entered report is a correction, not a second dose. */
+    uniqueIndex("aerb_tld_reads_badge_period_ux").on(t.badgeId, t.periodStart, t.periodEnd),
+    index("aerb_tld_reads_period_idx").on(t.periodStart, t.periodEnd),
+    check("aerb_tld_reads_period_ck", sql`${t.periodEnd} >= ${t.periodStart}`),
+    /** A dose is not negative. A laboratory reporting one has reported an error. */
+    check("aerb_tld_reads_hp10_ck", sql`${t.hp10Msv} >= 0`),
+    check("aerb_tld_reads_hp007_ck", sql`${t.hp007Msv} is null or ${t.hp007Msv} >= 0`),
+    /** The comparison travels whole: a flag with no level is a verdict nobody can check. */
+    check(
+      "aerb_tld_reads_investigation_ck",
+      sql`${t.investigationFlag} = false or ${t.investigationLevelMsv} is not null`,
+    ),
+  ],
+);
+
+/**
+ * ═══ 6. THE ONE SETTINGS ROW — and it holds exactly what is POLICY rather than LAW ═══
+ *
+ * The statutory limits are constants in `aerb/limits.ts` with the Rules cited beside them, and no
+ * screen may edit them: a hospital that could type its own annual dose limit would be a hospital
+ * whose register proves nothing. The **investigation level** is the opposite — it is institutional
+ * policy, set by the RSO, and a hospital choosing a more conservative one must not need a deploy.
+ */
+export const aerbSettings = pgTable(
+  "aerb_settings",
+  {
+    /** Always `main`, the `registration_config` precedent — one hospital, one policy. */
+    id: text("id").primaryKey(),
+    /**
+     * mSv per MONTH, pro-rated to whatever period a badge was worn for. Default 1.0, the common
+     * Indian corporate-hospital figure; R3 is the owner's to lower.
+     */
+    investigationLevelMsvPerMonth: numeric("investigation_level_msv_per_month", { precision: 8, scale: 3 })
+      .notNull().default("1.000"),
+    updatedBy: text("updated_by").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check("aerb_settings_level_ck", sql`${t.investigationLevelMsvPerMonth} > 0`),
+  ],
+);
