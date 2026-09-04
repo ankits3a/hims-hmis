@@ -175,11 +175,33 @@ async function holdPatient(): Promise<void> {
   await waitFor(() => expect(screen.getByPlaceholderText(/seene mein dard/)).toBeInTheDocument());
 }
 
+/**
+ * ═══ FD-23 CLOSE REVIEW — THIS HELPER HAS TO WAIT FOR THE DIARY, NOT JUST FOR ITS HEADING ═══
+ *
+ * CI failed here on `getByTestId("day-full")` while the same SHA passed on its other run and the
+ * file passed 3/3 locally. It is not a flake to re-run: it is a race this helper opened, and TEN
+ * assertion sites in this file were sitting on it.
+ *
+ * `stages.tsx` gates the grid's verdicts on the QUERY, not on the tab:
+ *
+ *     {slots.isFetching ? <span>reading the diary…</span> : null}
+ *     {!slots.isFetching && all.length === 0 ? <no-session/> : !slots.isFetching && free.length === 0 ? <day-full/> : null}
+ *
+ * "The day's book" paints the moment the tab opens — BEFORE the slots query resolves. So a
+ * synchronous `getByTestId` immediately after this helper asks for an element that provably does
+ * not exist yet whenever the fetch has not settled. A warm stub on an idle machine wins that race;
+ * a loaded CI runner does not always.
+ *
+ * Waiting for `isFetching` to clear fixes every one of those sites at once, which is the right
+ * granularity — a fix aimed at the one assertion that happened to lose would leave the other nine.
+ * No assertion is weakened: they assert exactly what they asserted before, on a settled grid.
+ */
 async function openFutureTab(): Promise<void> {
   await holdPatient();
   const user = userEvent.setup({ delay: null });
   await user.click(screen.getByRole("button", { name: /future appointment/i }));
   await waitFor(() => expect(screen.getByText("The day's book")).toBeInTheDocument());
+  await waitFor(() => { expect(screen.queryByText("reading the diary…")).not.toBeInTheDocument(); });
 }
 
 afterEach(() => { setToken(null); });
