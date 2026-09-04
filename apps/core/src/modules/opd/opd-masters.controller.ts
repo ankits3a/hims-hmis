@@ -56,6 +56,13 @@ const OPD_CONFLICT_CODES = new Set<OpdErrorCode>([
    * supervisor's call now" — which is 409's meaning exactly.
    */
   "vitals_gate", "carried_value_locked", "escalation_window_closed",
+  /**
+   * 17d T4 — 409, and named here rather than left to the `_state_conflict` suffix rule so the
+   * reason is written down: the request is well-formed and the caller's correct response is to
+   * RE-READ (the refusal carries the open visit's number) rather than to fix its body. That is
+   * 409's meaning, and it is what lets the reception seat offer "add to the visit already open".
+   */
+  "lab_walkin_already_open",
 ]);
 
 function opdStatus(code: OpdErrorCode): number {
