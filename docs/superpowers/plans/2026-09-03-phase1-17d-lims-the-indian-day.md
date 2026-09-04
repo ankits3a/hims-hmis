@@ -452,3 +452,56 @@ before anybody else adds a file.**
 
 **Evidence (2026-09-04):** typecheck 0; lint **0 errors**. Core lab **27 suites, 255 tests green**.
 **Full web suite 83 files / 674 tests green** (run clean-tree first to attribute the failure).
+
+### 8.4 T4 — The outside referrer (ALREADY SHIPPED), and one walk-in a day (executed 2026-09-04)
+
+**§2's row for edge case #4 WAS WRONG, and this is the correction.** It said *"no `referredBy`
+anywhere in the repository"* — true of the literal identifier and false about the capability. The
+concept ships end to end under a different name and has since 17c T1:
+
+| the board asked for | where it already lives |
+|---|---|
+| "referred by" as a named outside doctor | `orders.authority = 'external_prescription'` with `external_referrer_id` / `referrer_name`, held by a CHECK constraint (`orders_authority_ck`) |
+| on the reception seat | `lab-desk.tsx:549` — a `referrerName` field the clerk fills, sent by `deskWalkinOrder` |
+| the report goes to the patient only | true by construction: an outside doctor has no login and no channel. Nothing pushes to them because there is nowhere to push |
+| the doctor's-screen column reads "outside" | **no such column exists** on any screen — there is nothing to label. Not built, and recorded rather than invented |
+
+The lesson is the measurement, not the code: **grepping for the name a design document uses finds
+the name, not the capability.** The board was written 2026-09-01 and 17c shipped 2026-09-02; two of
+the board's nine CHANGEs (#3 and #4) were answered by 17c before this phase read them.
+
+**So T4's only real work was 17c §8.9's may-carry: one open lab walk-in per patient per day, on the
+server.** 17c closed the ordinary browser path (the seat re-finds by the minted visit); what the
+browser cannot close is a SECOND CLERK, a reloaded tab or a retried request. Two `V` numbers for one
+attendance is two encounters the report, the queue and every departmental count then disagree about.
+
+- **Scoped to the LAB door, never to `openVisitInTx`.** A general same-day guard would change every
+  department: OPD legitimately opens a second visit the same day, and 07d's re-entry exists because
+  one visit can be resumed. The laboratory is the case where a second visit is always a mistake — a
+  walk-in is one draw, and tests remembered on the way out are an ADD-ON (DD9).
+- The refusal **names the open visit** (`detail.visitNo`) so the seat can re-find rather than guess,
+  and answers **409** — the caller's correct response is to re-read, not to fix its body.
+- `completed` and `abandoned` release it: the patient who left without giving a sample must not be
+  locked out until midnight.
+
+**A MUTANT SURVIVED, on the claim I had said was "asserted by construction".** Dropping the
+DEPARTMENT filter passed every test, because no test gave the patient a visit anywhere else. Without
+it the guard reads *"any open visit today"* — a patient seen in General Medicine at 10:00 could not
+give blood at 15:00, which is a worse failure than the duplicate it prevents. Construction was not
+evidence; there is a test now.
+
+**Mutants, each applied and each red, then reverted:**
+
+| # | mutant | killed by |
+|---|---|---|
+| 1 | the guard forgets the DATE | 1 failed |
+| 2 | a COMPLETED visit still blocks | 1 failed |
+| 3 | the guard forgets the DEPARTMENT | **survived first; killed by the new cross-department test** |
+
+**A pre-existing test changed meaning and was repaired, not deleted.** `desk.test.ts` A2 asserts
+*"a refused order opens no visit"* by re-attempting on the same patient — who by that line already
+has today's walk-in open, so the new guard refused first and the assertion would have measured the
+guard rather than the rollback. It attempts on `otherPatientId` now, with the reason written in.
+
+**Evidence (2026-09-04):** typecheck 0; lint **0 errors**. **Full OPD + lab surface: 63 suites, 552
+tests green** — the whole hub, because this task touched one.

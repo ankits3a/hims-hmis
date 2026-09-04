@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, notInArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
@@ -296,6 +296,14 @@ export type OpenLabWalkinInput = {
 };
 
 /** Tx-first, so the walk-in and the order it exists for are ONE transaction (DD6). */
+/**
+ * 17d T4 — the states in which a lab visit is OVER and a new walk-in is a genuinely new attendance.
+ * `abandoned` is here because a walk-in the patient left without giving a sample must not lock them
+ * out of coming back after lunch; `completed` because the tests were reported and this is a second
+ * visit in every sense.
+ */
+const LAB_WALKIN_CLOSED_STATES = ["completed", "abandoned"] as const;
+
 export async function openLabWalkinInTx(
   tx: Tx, actor: Actor, input: OpenLabWalkinInput & { chainIds: string[] }, now: Date,
 ): Promise<OpenVisitResult> {
@@ -310,6 +318,47 @@ export async function openLabWalkinInTx(
     );
   }
   if (!dept.active) throw new OpdError("department_inactive", `department ${LAB_DEPARTMENT_CODE} is inactive`);
+
+  /**
+   * ═══ 17d T4 — ONE OPEN LAB WALK-IN PER PATIENT PER DAY, ON THE SERVER (17c §8.9's may-carry) ═══
+   *
+   * 17c closed the ORDINARY path: the reception seat re-finds by the minted visit, so the clerk who
+   * saves twice rides the first visit. What it could not close from the browser is a second CLERK,
+   * a reloaded tab, or a retried request — each of which opened a SECOND `V` number for the same
+   * person on the same morning. Two visit numbers for one walk-in is two encounters the report,
+   * the queue and every departmental count then disagree about, and the patient has been to the
+   * laboratory once.
+   *
+   * ═══ SCOPED TO THE LAB WALK-IN, DELIBERATELY, AND NOT TO `openVisitInTx` ═══
+   *
+   * A general same-day guard would change every department's behaviour: OPD legitimately opens a
+   * second visit the same day (a morning physician and an evening orthopaedic are two consultations
+   * with two fees), and 07d's re-entry path exists precisely because one visit can be resumed. The
+   * laboratory is the case where a second visit is always a mistake — a walk-in is one draw, and
+   * the tests a patient remembers on the way out are an ADD-ON to the order that exists (DD9),
+   * never a new visit.
+   *
+   * The refusal NAMES the open visit so the seat can re-find it instead of guessing, which is what
+   * makes this a conflict to resolve rather than a wall.
+   */
+  const openToday = await tx
+    .select({ visitNo: opdEncounters.visitNo, status: opdEncounters.status })
+    .from(opdEncounters)
+    .where(and(
+      inArray(opdEncounters.patientId, input.chainIds),
+      eq(opdEncounters.departmentId, dept.id),
+      eq(opdEncounters.serviceDate, istDate(now)),
+      notInArray(opdEncounters.status, [...LAB_WALKIN_CLOSED_STATES]),
+    ))
+    .limit(1);
+  if (openToday[0]) {
+    throw new OpdError(
+      "lab_walkin_already_open",
+      `this patient already has an open laboratory visit today (${openToday[0].visitNo}) — add the ` +
+        "tests to that order rather than opening a second visit for one draw",
+      { visitNo: openToday[0].visitNo, status: openToday[0].status },
+    );
+  }
 
   /**
    * THE PATHOLOGIST OF RECORD. Named by the caller, or the sole ACTIVE doctor in the department.

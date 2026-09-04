@@ -10,7 +10,7 @@ import { withIdempotency } from "../billing";
 import { BillingError } from "../billing";
 import { openLabWalkin } from "../opd";
 import { mkCashier, openSessionFor } from "../../../test/helpers/billing";
-import { mkPatient, openOpdVisit } from "../../../test/helpers/opd";
+import { mkPatient, mkUser, openOpdVisit } from "../../../test/helpers/opd";
 import { grantPermissionToRole } from "../../kernel/auth/permissions";
 import { registerEncounterResolver } from "../../kernel/episodes/encounter-resolvers";
 import { getEncounter } from "../opd";
@@ -411,12 +411,128 @@ describe("the reception seat (17c T1)", () => {
     const [item] = await db.select().from(labItems).where(eq(labItems.orderItemId, placed.itemIds[0]!));
     expect(item!.chargeReason).toBe("lab_walkin");
 
+    /**
+     * ═══ THE REFUSED ATTEMPT IS A DIFFERENT PATIENT NOW, AND 17d T4 IS WHY ═══
+     *
+     * This half asserts TRANSACTIONALITY — an order that fails opens no visit — and it used to
+     * re-attempt on `fx.patientId`, who by this line already has today's walk-in open. 17d T4's
+     * server guard refuses that second attempt with `lab_walkin_already_open` BEFORE the unknown
+     * service is ever reached, so the assertion would have been measuring the new guard rather than
+     * the rollback it was written for. `otherPatientId` has no visit today and restores the claim.
+     */
     const before = (await db.select().from(opdEncounters)).length;
     await expect(withTx(db, (tx) => deskWalkinOrder(tx, fx.desk.actor, fx.decls, {
-      patientId: fx.patientId, serviceDate: fx.serviceDate, walkIn: {},
+      patientId: fx.otherPatientId, serviceDate: fx.serviceDate, walkIn: {},
       items: [{ serviceId: "svc-not-a-test" }], credit: { reason: "x" },
     }))).rejects.toMatchObject({ code: "unknown_service" });
     expect((await db.select().from(opdEncounters)).length).toBe(before);
+  });
+
+  /* ═══ 17d T4 — ONE OPEN LAB WALK-IN PER PATIENT PER DAY, ON THE SERVER (17c §8.9's may-carry) ═══ */
+
+  /**
+   * 17c closed the ORDINARY path from the browser: the seat re-finds by the minted visit, so the
+   * clerk who saves twice rides the first visit. What the browser could not close is a SECOND
+   * CLERK, a reloaded tab or a retried request — and two `V` numbers for one walk-in is two
+   * encounters that the report, the queue and every departmental count then disagree about, for a
+   * patient who came to the laboratory once.
+   */
+  it("17d T4: a second walk-in for the same patient today is refused and NAMES the open visit", async () => {
+    fx.unregister();
+    fx.unregister = registerEncounterResolver("V", async (exec, no) => {
+      const e = await getEncounter(exec, no);
+      return e ? { patientId: e.patientId, intendedPayer: e.intendedPayer } : null;
+    });
+    const first = await withTx(db, (tx) => deskWalkinOrder(tx, fx.desk.actor, fx.decls, {
+      patientId: fx.patientId, serviceDate: fx.serviceDate,
+      walkIn: { referrerName: "Dr Sharma" },
+      items: [{ serviceId: serviceIdForLabCode("CBC") }],
+      credit: { reason: "outside prescription" },
+    }));
+    const after1 = (await db.select().from(opdEncounters)).length;
+
+    /** A DIFFERENT clerk, which is the case the client-side re-find cannot see. */
+    const clerk2 = await mkUser(db, "lab.counter2", ["lab_reception"]);
+    await expect(withTx(db, (tx) => deskWalkinOrder(tx, clerk2.actor, fx.decls, {
+      patientId: fx.patientId, serviceDate: fx.serviceDate,
+      walkIn: { referrerName: "Dr Sharma" },
+      items: [{ serviceId: serviceIdForLabCode("LFT") }],
+      credit: { reason: "outside prescription" },
+    }))).rejects.toMatchObject({
+      code: "lab_walkin_already_open",
+      detail: { visitNo: first.encounterNo },
+    });
+
+    /** THE KILL: a second `V` number minted for one attendance. */
+    expect((await db.select().from(opdEncounters)).length).toBe(after1);
+  });
+
+  /**
+   * The guard is scoped to the DAY as well as to the laboratory. A guard that over-reached would
+   * lock a patient out of the laboratory tomorrow, which is a worse failure than the one it
+   * prevents — a phlebotomy is a daily event for an inpatient on a fluid balance.
+   *
+   * That it does not touch OPD is not asserted here but by CONSTRUCTION and by the suite: the check
+   * lives inside `openLabWalkinInTx`, which no other department's door calls, and the whole OPD
+   * suite runs green beside this one.
+   */
+  it("17d T4: the same patient walks in again TOMORROW and the visit opens normally", async () => {
+    const today = new Date("2026-08-29T06:00:00Z");
+    const tomorrow = new Date("2026-08-30T06:00:00Z");
+    await openLabWalkin(db, fx.desk.actor, { patientId: fx.patientId }, today);
+    const afterFirst = (await db.select().from(opdEncounters)).length;
+
+    await expect(openLabWalkin(db, fx.desk.actor, { patientId: fx.patientId }, today))
+      .rejects.toMatchObject({ code: "lab_walkin_already_open" });
+    expect((await db.select().from(opdEncounters)).length).toBe(afterFirst);
+
+    // THE KILL: a guard that forgot the date locks the patient out for good.
+    await openLabWalkin(db, fx.desk.actor, { patientId: fx.patientId }, tomorrow);
+    expect((await db.select().from(opdEncounters)).length).toBe(afterFirst + 1);
+  });
+
+  /**
+   * ═══ THE MUTANT THAT SURVIVED: THE GUARD MUST FILTER ON THE **DEPARTMENT** ═══
+   *
+   * Dropping `eq(opdEncounters.departmentId, dept.id)` passed every other test in this file, because
+   * none of them gives the patient a visit anywhere else. Without it the guard reads "any open visit
+   * today" and a patient seen in General Medicine at 10:00 could not give blood at 15:00 — the
+   * over-reach the guard's own header warns about, and a far worse failure than the duplicate it
+   * prevents. `by construction` was not evidence; this is.
+   */
+  it("17d T4: an OPD visit in ANOTHER department today does not block the lab walk-in", async () => {
+    const today = new Date("2026-08-29T06:00:00Z");
+    const genDeptId = newId();
+    await db.insert(opdDepartments).values({
+      id: genDeptId, code: "GENMED", name: "General Medicine", active: true, createdBy: "t", updatedBy: "t",
+    });
+    const physician = await mkUser(db, "dr.general", ["doctor"]);
+    const genDoctorId = newId();
+    await db.insert(opdDoctors).values({
+      id: genDoctorId, userId: physician.id, departmentId: genDeptId, displayName: "Dr General",
+      registrationNo: "MCI/GEN/7001", active: true, createdBy: "t", updatedBy: "t",
+    });
+
+    await openOpdVisit(db, {
+      clerk: fx.desk.actor, patientId: fx.patientId, departmentId: genDeptId, doctorId: genDoctorId,
+    }, today);
+    const afterOpd = (await db.select().from(opdEncounters)).length;
+
+    // THE KILL: a guard blind to the department refuses this, and the patient cannot give blood.
+    await openLabWalkin(db, fx.desk.actor, { patientId: fx.patientId }, today);
+    expect((await db.select().from(opdEncounters)).length).toBe(afterOpd + 1);
+  });
+
+  /** A COMPLETED visit is over: the patient who comes back after lunch is a new attendance. */
+  it("17d T4: once the earlier visit is COMPLETED, a fresh walk-in is allowed the same day", async () => {
+    const today = new Date("2026-08-29T06:00:00Z");
+    const first = await openLabWalkin(db, fx.desk.actor, { patientId: fx.patientId }, today);
+    await db.update(opdEncounters).set({ status: "completed" })
+      .where(eq(opdEncounters.id, first.encounter.id));
+    const afterFirst = (await db.select().from(opdEncounters)).length;
+
+    await openLabWalkin(db, fx.desk.actor, { patientId: fx.patientId }, today);
+    expect((await db.select().from(opdEncounters)).length).toBe(afterFirst + 1);
   });
 
   it("A3: a line ON CREDIT beside paid lines is HELD at delivery until the invoice settles (D3)", async () => {
