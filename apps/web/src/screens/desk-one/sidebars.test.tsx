@@ -50,6 +50,7 @@ function mount(opts: {
   registered?: { body: unknown }[];
   memberships?: unknown[];
   coupons?: unknown[];
+  storedPhotoFor?: string;
 } = {}): void {
   stubFetch({
     "GET /api/auth/me": {
@@ -132,6 +133,10 @@ function mount(opts: {
       memberships: opts.memberships ?? [],
       coupons: opts.coupons ?? [],
       disclosure: "This hospital honours the card shown.",
+    },
+    "GET /api/patients/p-1/photo": (): unknown => {
+      if (opts.storedPhotoFor !== "p-1") throw new Error("no photo");
+      return { mimeType: "image/jpeg", imageBase64: "QUJD" };
     },
     "PUT /api/patients/p-1/photo": (init?: RequestInit) => {
       opts.photoPuts?.push({ id: "p-1", body: String(init?.body ?? "") });
@@ -251,7 +256,7 @@ describe("FD-14: the photo", () => {
     const file = new File([new Uint8Array([1, 2, 3])], "face.jpg", { type: "image/jpeg" });
     await user.upload(screen.getByTestId("photo-file"), file);
 
-    await waitFor(() => expect(screen.getByTestId("photo-preview")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("avatar-photo")).toBeInTheDocument());
     await waitFor(() => expect(photoPuts).toHaveLength(1));
     expect(photoPuts[0]!.id).toBe("p-1");
     // the bare base64 travels, never the data URL preamble
@@ -276,7 +281,7 @@ describe("FD-14: the photo", () => {
 
     const file = new File([new Uint8Array([1, 2, 3])], "face.jpg", { type: "image/jpeg" });
     await user.upload(screen.getByTestId("photo-file"), file);
-    await waitFor(() => expect(screen.getByTestId("photo-preview")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("avatar-photo")).toBeInTheDocument());
 
     // nothing has been posted yet, because there is nobody to post it against
     expect(photoPuts).toHaveLength(0);
@@ -382,5 +387,64 @@ describe("FD-19/FD-20: the avatar and the token a patient is holding", () => {
     const avatar = screen.getByTestId("patient-avatar");
     expect(avatar).toHaveStyle({ width: "44px", height: "44px" });
     expect(avatar).not.toHaveTextContent("RK");
+  });
+});
+
+describe("FD-21: a photo on file says nothing in the rail; Retake lives with the corrections", () => {
+  /**
+   * Owner, 2026-09-04: *"don't show 'registrationCounter.photo.onFile' in the UI and 'Retake' button
+   * when there's already a photo … Instead move the button 'Retake' inside the box that appears
+   * after clicking 'edit record - audited'."*
+   *
+   * The status line was a RAW i18n KEY — `photo.onFile` was written into the component and never
+   * into either locale file, so the rail printed the key itself. Locale parity compares en against
+   * hi and is structurally blind to a key that exists in neither, which is why the last test below
+   * sweeps the rendered rail for the shape of a key instead.
+   */
+  it("with a photo on file the rail offers no Retake and no status line", async () => {
+    mount({ storedPhotoFor: "p-1" });
+    await holdPatient();
+
+    await waitFor(() => expect(screen.getByTestId("avatar-photo")).toBeInTheDocument());
+    // the square answers it; the panel adds nothing
+    expect(screen.queryByTestId("photo-clear")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("photo-upload")).not.toBeInTheDocument();
+  });
+
+  it("with NO photo the rail still offers capture — that is what it is for", async () => {
+    mount();
+    await holdPatient();
+    expect(screen.getByTestId("photo-upload")).toBeInTheDocument();
+    expect(screen.queryByTestId("photo-clear")).not.toBeInTheDocument();
+  });
+
+  it("Retake is in the correction sheet, beside the other amendments", async () => {
+    mount({ storedPhotoFor: "p-1" });
+    await holdPatient();
+    await waitFor(() => expect(screen.getByTestId("avatar-photo")).toBeInTheDocument());
+
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByRole("button", { name: /edit record/i }));
+
+    expect(await screen.findByTestId("photo-clear")).toBeInTheDocument();
+    expect(screen.getByTestId("photo-preview")).toBeInTheDocument();
+    // …and it sits with the fields it belongs with
+    expect(screen.getByTestId("amend-age")).toBeInTheDocument();
+  });
+
+  /**
+   * THE CLASS, NOT THE INSTANCE. `photo.onFile` reached the screen because a component named a key
+   * neither locale file had, and parity could not see it. This sweeps the rendered rail for
+   * anything shaped like a dotted i18n path, so the NEXT missing key fails here rather than in
+   * front of a clerk.
+   */
+  it("no raw i18n key is ever rendered in the rail", async () => {
+    mount({ storedPhotoFor: "p-1", dues: [{ outstandingPaise: 4500 }] });
+    await holdPatient();
+    await waitFor(() => expect(screen.getByTestId("avatar-photo")).toBeInTheDocument());
+
+    const rail = document.querySelector("aside.rail")?.textContent ?? "";
+    expect(rail.length).toBeGreaterThan(0);
+    expect(rail).not.toMatch(/registrationCounter\.[a-zA-Z.]+/);
   });
 });

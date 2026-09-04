@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { ageYearsOf, bookableToday, etaClock, LANES, LANE_TEXT, rs, vitalsAhead, waitMinutes } from "./model";
 import type { Lane } from "./model";
 import { useDesk } from "./session";
+import { PhotoPanel } from "./photo";
 
 /**
  * ═══ THE OVERLAYS — five, and each one answers a question a clerk asks WITHOUT LEAVING ═══
@@ -350,6 +351,28 @@ function EditOverlay(): React.ReactElement {
             </div>
           </div>
         </div>
+
+        {/*
+          ═══ FD-21 — REPLACING THE FACE IS AN AMENDMENT, SO IT LIVES WITH THE OTHER AMENDMENTS ═══
+
+          Owner, 2026-09-04: *"move the button 'Retake' inside the box that appears after clicking
+          'edit record - audited'."* Correcting a photo is the same kind of act as correcting a name
+          or an age — a change to the record somebody already relied on — and it now sits with them
+          rather than in the rail, where it competed with the patient's history for the eye.
+
+          `d.setPhoto` uploads immediately for a patient in hand, so this needs no save of its own
+          and deliberately does not wait for the sheet's "save — audited": that button carries the
+          demographic PATCH, and making a photo ride it would mean a clerk who only wanted to fix a
+          face had to submit a form full of unchanged fields.
+        */}
+        <div className="tag" style={{ marginTop: 13, marginBottom: 0 }}>photo</div>
+        <PhotoPanel
+          dataUrl={d.s.photo}
+          showExisting
+          caption=""
+          onCapture={(url) => { d.setPhoto(url); }}
+          onClear={() => { d.setPhoto(null); }}
+        />
 
         <div className="tag" style={{ marginTop: 11, marginBottom: 5 }}>mobile</div>
         <input className="in mo" data-testid="amend-phone" value={phone} onChange={(e) => setPhone(e.target.value)} />

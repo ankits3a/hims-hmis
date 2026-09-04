@@ -171,7 +171,12 @@ describe("FD-15: the photo is read back, and belongs to the patient in hand", ()
     await holdFirstHit();
 
     await waitFor(() => expect(calls.photoGets).toContain("p-1"));
-    const img = await screen.findByTestId("photo-preview");
+    /*
+      FD-21 — THE AVATAR IS WHERE A HELD PHOTO SHOWS. The rail's panel is capture-only now: with a
+      photo on file it renders nothing, because the 44px square beside the name already answers the
+      question and the Retake moved into the correction sheet.
+    */
+    const img = await screen.findByTestId("avatar-photo");
     expect(img).toHaveAttribute("src", "data:image/jpeg;base64,QUJD");
   });
 
@@ -182,7 +187,7 @@ describe("FD-15: the photo is read back, and belongs to the patient in hand", ()
 
     await waitFor(() => expect(calls.photoGets).toContain("p-1"));
     expect(screen.getByTestId("photo-upload")).toBeInTheDocument();
-    expect(screen.queryByTestId("photo-preview")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("avatar-photo")).not.toBeInTheDocument();
     expect(screen.queryByTestId("photo-error")).not.toBeInTheDocument();
   });
 
@@ -203,7 +208,7 @@ describe("FD-15: the photo is read back, and belongs to the patient in hand", ()
     const calls = emptyCalls();
     mount(calls, { storedPhoto: true, searchItems: [PATIENT, OTHER] });
     await holdFirstHit();
-    await waitFor(() => expect(screen.getByTestId("photo-preview")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("avatar-photo")).toBeInTheDocument());
 
     // clear the desk and take the OTHER patient, who has no photo on file
     const user = userEvent.setup({ delay: null });
@@ -213,7 +218,7 @@ describe("FD-15: the photo is read back, and belongs to the patient in hand", ()
     await user.click(screen.getAllByRole("button", { name: /this is them/i })[1]!);
 
     await waitFor(() => expect(calls.photoGets).toContain("p-2"));
-    expect(screen.queryByTestId("photo-preview")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("avatar-photo")).not.toBeInTheDocument();
   });
 });
 

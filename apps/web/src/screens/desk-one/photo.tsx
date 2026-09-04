@@ -84,13 +84,19 @@ export function cameraAvailable(): boolean {
 }
 
 export function PhotoPanel(
-  { dataUrl, onCapture, onClear, caption }: {
+  { dataUrl, onCapture, onClear, caption, showExisting = false }: {
     dataUrl: string | null;
     onCapture: (dataUrl: string) => void;
     onClear: () => void;
     caption: string;
+    /**
+     * Whether a photo ALREADY HELD should be drawn here with a Retake beside it. False in the rail,
+     * where the 44px square beside the name is the answer and a second copy is noise; true in the
+     * correction sheet, which is where replacing one belongs.
+     */
+    showExisting?: boolean;
   },
-): React.ReactElement {
+): React.ReactElement | null {
   const { t } = useTranslation();
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState(false);
@@ -146,26 +152,44 @@ export function PhotoPanel(
     }
   };
 
+  // Nothing to offer and nothing to show: the rail draws no empty heading.
+  if (dataUrl !== null && !showExisting) return null;
+
   return (
     <div style={{ marginTop: 14 }}>
       <div className="tag">{caption}</div>
 
       {/*
-        FD-19 — NO FULL-SIZE PREVIEW. The picture is shown in the 44px square beside the name (see
-        `dossier.tsx`); repeating it here at 250px was the same information twice and cost the rail
-        the space the history and the account now use. `photo-preview` is kept as a ZERO-SIZE marker
-        so a test can still ask "is a photo held" without the layout paying for the answer — the
-        square is where a human looks.
+        ═══ FD-21 — A PHOTO ON FILE SAYS NOTHING HERE; THE SQUARE BESIDE THE NAME IS THE ANSWER ═══
+
+        Owner, 2026-09-04: *"don't show 'registrationCounter.photo.onFile' in the UI and 'Retake'
+        button when there's already a photo in the database. Instead move the button 'Retake' inside
+        the box that appears after clicking 'edit record - audited'."*
+
+        Two things were wrong. The status line WAS A RAW i18n KEY — `photo.onFile` was written into
+        the component and never into the locale files, so the rail printed the key itself; the
+        locale-parity check compares en against hi and cannot see a key that exists in neither.
+        And it was redundant even when it rendered: the avatar already shows the photo, so a line
+        saying "on file" beside it was the screen telling the clerk what they were looking at.
+
+        Retake belongs with the other corrections, not in the rail. Replacing a face is an amendment
+        to the record — the same act as fixing a name or an age — and it now sits in the correction
+        sheet with them. `showExisting` is what lets ONE component serve both: the rail passes false
+        and therefore only ever offers CAPTURE, the sheet passes true and offers replacement.
       */}
-      {dataUrl !== null ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
-          <img data-testid="photo-preview" src={dataUrl} alt="" style={{ width: 0, height: 0 }} />
-          <span style={{ fontSize: 11.5, color: "var(--green)" }}>{t("registrationCounter.photo.onFile")}</span>
+      {dataUrl !== null ? (showExisting ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+          <img
+            data-testid="photo-preview"
+            src={dataUrl}
+            alt=""
+            style={{ width: 44, height: 44, borderRadius: 6, objectFit: "cover", border: "1px solid var(--line)" }}
+          />
           <button className="sec" data-testid="photo-clear" onClick={onClear}>
             {t("registrationCounter.photo.retake")}
           </button>
         </div>
-      ) : live ? (
+      ) : null) : live ? (
         <div style={{ marginTop: 8 }}>
           {/* A live camera preview carries no audio track, so there is nothing to caption. */}
           <video

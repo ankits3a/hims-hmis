@@ -134,9 +134,31 @@ export function Dossier(): React.ReactElement {
       {/* ── identity ── */}
       {p === null ? (
         <>
-          <div className="tag">registering…</div>
-          <div style={{ fontSize: 14, fontWeight: 600, marginTop: 6 }}>{s.form.name === "" ? "New walk-in" : s.form.name}</div>
-          <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 4 }}>no UHID yet — it is allocated when you register</div>
+          {/*
+            FD-21 — THE ENROLMENT BRANCH GETS THE SAME SQUARE, because otherwise a face captured
+            before the UHID exists had nowhere to appear: the panel below is capture-only now, and
+            the identity block it would have shown in belongs to a patient who does not exist yet.
+            A clerk who has just taken a photo must be able to see that it took.
+          */}
+          <div style={{ display: "flex", gap: 11, alignItems: "center" }}>
+            <div
+              data-testid="patient-avatar"
+              style={{
+                width: 44, height: 44, borderRadius: 6, background: "var(--wash)", border: "1px dashed var(--line)",
+                display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, color: "var(--faint)",
+                overflow: "hidden", flexShrink: 0, fontSize: 12,
+              }}
+            >
+              {s.photo === null
+                ? (s.form.name.trim() === "" ? "—" : initialsOf(s.form.name))
+                : <img data-testid="avatar-photo" src={s.photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div className="tag">registering…</div>
+              <div style={{ fontSize: 14, fontWeight: 600, marginTop: 3 }}>{s.form.name === "" ? "New walk-in" : s.form.name}</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 6 }}>no UHID yet — it is allocated when you register</div>
         </>
       ) : (
         <>
