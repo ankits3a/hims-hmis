@@ -24,11 +24,19 @@ import type { ModuleRegistry } from "../../kernel/modules/loader";
  * is the dialog people learn to click. The field is a `users.id`, the service refuses it when it
  * equals the enterer, and it is STORED — so "who let a glucose of 1600 through" is answerable.
  */
-const receiveBody = z.object({
+export const receiveBody = z.object({
   specimenNo: z.string().min(1).max(32),
   containerSeen: z.string().max(48).optional(),
   identityRecheckBy: z.string().max(120).optional(),
   downtimeKitSerial: z.string().max(64).optional(),
+  /**
+   * 17d T2 — REQUIRED on the wire and optional in the service, and the asymmetry is deliberate. The
+   * service cannot observe whether a barcode was scanned or keyed; only the screen can, so the
+   * declaration is enforced at the boundary a person actually comes through. `receive`'s `"scan"`
+   * default exists so that internal fixtures which genuinely scan are not rewritten to say so.
+   */
+  identifiedBy: z.enum(["scan", "typed"]),
+  relabel: z.object({ witnessedBy: idSchema, reason: z.string().min(1).max(200) }).optional(),
 });
 const rejectBody = z.object({
   specimenNo: z.string().min(1).max(32),
@@ -46,6 +54,8 @@ const resultBody = z.object({
   entryMode: z.enum(["manual", "manual_from_printout"]),
   remarks: z.string().max(500).nullish(),
   absurdOverride: z.object({ by: idSchema }).optional(),
+  /** 17d T1 — the same shape, and never a boolean, for the same reason the header above gives. */
+  impossibleOverride: z.object({ by: idSchema }).optional(),
 });
 const ackBody = z.object({
   attempt: z.object({
@@ -115,7 +125,8 @@ export class LabBenchController {
         this.db,
         { actorId: actor.id, route: LAB_IDEMPOTENT_ROUTES.enterResult, key },
         input,
-        () => withTx(this.db, (tx) => enterResult(tx, actor, input)),
+        /** 17d T1 — `enterResult` is `Db`-FIRST: its swap flag is written outside the rollback. */
+        () => enterResult(this.db, actor, input),
       );
     } catch (e) { toHttp(e); }
   }

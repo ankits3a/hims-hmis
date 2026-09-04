@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { newIdempotencyKey } from "../lib/api";
 import {
   acknowledgeCritical, benchArrivals, benchWorklist, enterResult, flagTone, LAB_BENCH_TOPIC, LAB_CRITICAL_TOPIC,
-  labErrorText, openCriticals, receiveSpecimen, rejectSpecimen,
+  labErrorText, labRefusal, openCriticals, receiveSpecimen, rejectSpecimen,
 } from "../lib/lab-api";
 import { useRealtime } from "../lib/realtime";
 import { Button } from "@/components/ui/button";
@@ -66,6 +66,14 @@ export function LabBench(): React.ReactElement {
   const [scan, setScan] = useState("");
   const [focusNo, setFocusNo] = useState<string | null>(null);
   const [recheckBy, setRecheckBy] = useState("");
+  /**
+   * 17d T2 — the label could not be read, so the number was keyed by eye and the tube gets a new
+   * label. Declared by the operator rather than sniffed from typing speed: a heuristic that decided
+   * this by keystroke timing would be a control that a fast typist switches off by accident.
+   */
+  const [relabelling, setRelabelling] = useState(false);
+  const [relabelWitness, setRelabelWitness] = useState("");
+  const [relabelReason, setRelabelReason] = useState("");
   const [rejectReason, setRejectReason] = useState<(typeof REJECT_REASONS)[number]>("haemolysed");
   const [attributableTo, setAttributableTo] = useState("collection");
   const [values, setValues] = useState<Record<string, string>>({});
@@ -76,6 +84,12 @@ export function LabBench(): React.ReactElement {
   const [outcomes, setOutcomes] = useState<Record<string, CallOutcome>>({});
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  /**
+   * 17d T1 — the suspected swap, held per CELL. A banner that outlived the cell it came from would
+   * follow the technologist onto the next patient's tube, which is the opposite of what it is for.
+   */
+  const [swap, setSwap] = useState<{ cell: string; message: string; suspectSpecimenNos: string[] } | null>(null);
+  const [vouchBy, setVouchBy] = useState("");
 
   const work = useQuery({ queryKey: ["lab", "bench"], queryFn: benchWorklist, refetchInterval: 30_000 });
   const arrivals = useQuery({ queryKey: ["lab", "bench", "arrivals"], queryFn: benchArrivals, refetchInterval: 30_000 });
@@ -91,10 +105,19 @@ export function LabBench(): React.ReactElement {
 
   const accession = useMutation({
     mutationFn: (specimenNo: string) => receiveSpecimen(
-      { specimenNo, ...(recheckBy === "" ? {} : { identityRecheckBy: recheckBy }) },
+      {
+        specimenNo,
+        ...(recheckBy === "" ? {} : { identityRecheckBy: recheckBy }),
+        identifiedBy: relabelling ? "typed" : "scan",
+        ...(relabelling ? { relabel: { witnessedBy: relabelWitness.trim(), reason: relabelReason.trim() } } : {}),
+      },
       newIdempotencyKey(),
     ),
-    onSuccess: () => { setError(null); setRecheckBy(""); refresh(); },
+    onSuccess: () => {
+      setError(null); setRecheckBy("");
+      setRelabelling(false); setRelabelWitness(""); setRelabelReason("");
+      refresh();
+    },
     onError: (e: unknown) => setError(labErrorText(e)),
   });
   const refuse = useMutation({
@@ -105,20 +128,37 @@ export function LabBench(): React.ReactElement {
 
   const key = (itemId: string, analyteId: string): string => `${itemId}:${analyteId}`;
   const post = useMutation({
-    mutationFn: (v: { orderItemId: string; analyteId: string; value: string; by?: string }) =>
+    mutationFn: (v: { orderItemId: string; analyteId: string; value: string; by?: string; vouch?: string }) =>
       enterResult({
         orderItemId: v.orderItemId, analyteId: v.analyteId, value: v.value, entryMode: "manual",
         ...(v.by === undefined ? {} : { absurdOverride: { by: v.by } }),
+        ...(v.vouch === undefined ? {} : { impossibleOverride: { by: v.vouch } }),
       }, newIdempotencyKey()),
     onSuccess: (r, v) => {
       setError(null);
       setOverrideFor(null);
       setOverrideBy("");
+      setSwap(null);
+      setVouchBy("");
       setValues((prev) => { const next = { ...prev }; delete next[key(v.orderItemId, v.analyteId)]; return next; });
       setNotice(r.criticalCallId !== null ? t("lab.bench.criticalOpened") : null);
       refresh();
     },
-    onError: (e: unknown) => setError(labErrorText(e)),
+    /**
+     * 17d T1 — an impossible value is not just another red line of text. It is the only refusal on
+     * this screen that says ANOTHER TUBE, in somebody else's hand, may be the wrong way round, so
+     * it gets the barcode numbers and a field of its own rather than the shared error strip.
+     */
+    onError: (e: unknown, v) => {
+      const refusal = labRefusal(e);
+      if (refusal.code === "analyte_not_applicable") {
+        setSwap({ cell: key(v.orderItemId, v.analyteId), message: refusal.message, suspectSpecimenNos: refusal.suspectSpecimenNos });
+        setError(null);
+        return;
+      }
+      setSwap(null);
+      setError(refusal.message);
+    },
   });
 
   /** D6 — N values, N calls, in order; the first refusal stops the run and is shown verbatim. */
@@ -243,7 +283,36 @@ export function LabBench(): React.ReactElement {
                           onChange={(e) => setRecheckBy(e.target.value)} />
                       </label>
                     )}
-                    <Button type="button" disabled={accession.isPending || (!a.wristbandScanned && recheckBy.trim() === "")}
+                    {/*
+                      17d T2 — design board EdgeCases #12. Typing the number stays ALLOWED: a
+                      laboratory that refused the tube would be discarding a patient's blood over a
+                      printer. What it may not be is SILENT, so declaring it opens a witness and a
+                      reason, and Receive waits for both.
+                    */}
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={relabelling}
+                        onChange={(e) => setRelabelling(e.target.checked)} />
+                      {t("lab.bench.relabelToggle")}
+                    </label>
+                    {relabelling && (
+                      <div className="space-y-2 rounded border border-border p-2">
+                        <p className="text-xs text-muted-foreground">{t("lab.bench.relabelHint")}</p>
+                        <label className="block text-sm">
+                          {t("lab.bench.relabelWitness")}
+                          <input className="mt-1 block w-full rounded border border-input px-2 py-1"
+                            value={relabelWitness} onChange={(e) => setRelabelWitness(e.target.value)} />
+                        </label>
+                        <label className="block text-sm">
+                          {t("lab.bench.relabelReason")}
+                          <input className="mt-1 block w-full rounded border border-input px-2 py-1"
+                            value={relabelReason} onChange={(e) => setRelabelReason(e.target.value)} />
+                        </label>
+                      </div>
+                    )}
+                    <Button type="button"
+                      disabled={accession.isPending
+                        || (!a.wristbandScanned && recheckBy.trim() === "")
+                        || (relabelling && (relabelWitness.trim() === "" || relabelReason.trim() === ""))}
                       onClick={() => accession.mutate(a.specimenNo)}>
                       {t("lab.bench.receive")}
                     </Button>
@@ -359,6 +428,42 @@ export function LabBench(): React.ReactElement {
                                     value={overrideBy}
                                     onChange={(e) => setOverrideBy(e.target.value)}
                                   />
+                                )}
+                                {/*
+                                  17d T1 — THE SUSPECTED SWAP. Not a line in the shared error strip:
+                                  it names the OTHER barcode so the technologist can pick that tube
+                                  up, and it asks for a second person by login before the value is
+                                  allowed through. The server refuses again if the second person is
+                                  the enterer — this field is the prompt, never the control.
+                                */}
+                                {swap !== null && swap.cell === cell && (
+                                  <div role="alert" className="mt-2 rounded border-2 p-2 text-xs"
+                                    style={{ borderColor: "var(--state-danger)" }}>
+                                    <p className="font-bold">{t("lab.bench.swapSuspected")}</p>
+                                    <p className="mt-1">{swap.message}</p>
+                                    {swap.suspectSpecimenNos.length > 0 && (
+                                      <p className="mt-1 font-semibold tabular-nums">
+                                        {t("lab.bench.swapCheckTubes", { nos: swap.suspectSpecimenNos.join(", ") })}
+                                      </p>
+                                    )}
+                                    <label className="mt-2 flex items-center gap-2">
+                                      <span>{t("lab.bench.vouchBy")}</span>
+                                      <input
+                                        className="rounded border border-input px-2 py-0.5"
+                                        placeholder={t("lab.bench.overrideByHint")}
+                                        aria-label={t("lab.bench.vouchBy")}
+                                        value={vouchBy}
+                                        onChange={(e) => setVouchBy(e.target.value)}
+                                      />
+                                      <Button type="button" size="sm" variant="outline"
+                                        disabled={vouchBy.trim() === ""}
+                                        onClick={() => post.mutate({
+                                          orderItemId: row.orderItemId, analyteId: a.analyteId,
+                                          value: values[cell] ?? "", vouch: vouchBy.trim(),
+                                        })}
+                                      >{t("lab.bench.vouchSave")}</Button>
+                                    </label>
+                                  </div>
                                 )}
                               </>
                             )}

@@ -137,6 +137,21 @@ export const labAnalytes = pgTable(
     /** DD12 — the default critical band; a resolved range row may override it per age band. */
     criticalLow: numeric("critical_low", { precision: 14, scale: 4 }),
     criticalHigh: numeric("critical_high", { precision: 14, scale: 4 }),
+    /**
+     * 17d T1 / D1 — **WHO THIS TEST IS FOR AT ALL**, which is a different question from what its
+     * range is. `lab_reference_ranges.sex` says a woman's haemoglobin reads lower than a man's;
+     * these say a beta-hCG has nothing to report about a man in the first place. An absent row in
+     * the range book falls back to `any` and footnotes itself (`pickBySex`) — right for a
+     * potassium, and the one wrong answer in the module when an analyte is MEANINGLESS for this
+     * patient rather than merely unranged.
+     *
+     * All three NULL = applies to everybody, which is every analyte seeded before this phase. The
+     * age pair is half-open `[min, max)` in DAYS AT COLLECTION, the clock `resolveRange` already
+     * bands on, so one reader answers both questions the same way.
+     */
+    appliesToSex: text("applies_to_sex"),
+    appliesMinAgeDays: integer("applies_min_age_days"),
+    appliesMaxAgeDays: integer("applies_max_age_days"),
     /** 02 H2 — delta check against the previous VERIFIED result for the CANONICAL patient. */
     deltaAbs: numeric("delta_abs", { precision: 14, scale: 4 }),
     deltaPct: numeric("delta_pct", { precision: 6, scale: 2 }),
@@ -154,6 +169,16 @@ export const labAnalytes = pgTable(
       sql`(${t.resultType} = 'formula') = (${t.formula} is not null)`,
     ),
     check("lab_analytes_absurd_ck", sql`${t.absurdLow} is null or ${t.absurdHigh} is null or ${t.absurdLow} <= ${t.absurdHigh}`),
+    /**
+     * 17d T1 — `male`/`female` only. `other` and `unknown` are administrative genders a PATIENT may
+     * carry, never a claim an ANALYTE makes about who it is for, and a laboratory that refused
+     * those patients' results would be withholding care on a data-entry default.
+     */
+    check("lab_analytes_applies_sex_ck", sql`${t.appliesToSex} is null or ${t.appliesToSex} in ('male', 'female')`),
+    check(
+      "lab_analytes_applies_age_ck",
+      sql`${t.appliesMinAgeDays} is null or ${t.appliesMaxAgeDays} is null or ${t.appliesMinAgeDays} < ${t.appliesMaxAgeDays}`,
+    ),
   ],
 );
 
@@ -443,6 +468,12 @@ export const labResults = pgTable(
     deltaPrevResultId: text("delta_prev_result_id"),
     /** 02 H1 — who let an absurd value through. Null means it was never outside the envelope. */
     absurdOverriddenBy: text("absurd_overridden_by"),
+    /**
+     * 17d T1 — its twin: who vouched that a value impossible for this patient's sex or age is
+     * nonetheless theirs. Null means the applicability rule never fired for this row — which is a
+     * different fact from "somebody declined to override it", a state that leaves no row at all.
+     */
+    impossibleOverriddenBy: text("impossible_overridden_by"),
     enteredByType: text("entered_by_type").notNull(),
     enteredById: text("entered_by_id").notNull(),
     enteredAt: timestamp("entered_at", { withTimezone: true }).notNull().defaultNow(),

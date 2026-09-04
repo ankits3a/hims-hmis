@@ -273,7 +273,8 @@ describe("the laboratory over HTTP (17b T8)", () => {
       .toEqual([["Ram Kumar", true], ["Ram Kumar", true]]);
     for (const [i, s] of specimens.entries()) {
       await request(server()).post("/lab/bench/receive").set(...auth(op.token))
-        .set("Idempotency-Key", `e2e-five-receive-${String(i)}`).send({ specimenNo: s.specimenNo }).expect(201);
+        .set("Idempotency-Key", `e2e-five-receive-${String(i)}`)
+        .send({ specimenNo: s.specimenNo, identifiedBy: "scan" }).expect(201);
     }
     expect(await request(server()).get("/lab/bench/arrivals").set(...auth(op.token)).expect(200).then((r) => r.body)).toEqual([]);
     const bench = await request(server()).get("/lab/bench/worklist").set(...auth(op.token)).expect(200);
@@ -470,7 +471,7 @@ describe("the laboratory over HTTP (17b T8)", () => {
       .send({ specimenId: specimen.specimenId, wristbandScanned: true }).expect(201);
     await request(server()).post("/lab/bench/receive").set(...auth(op.token))
       .set("Idempotency-Key", "e2e-receive-1")
-      .send({ specimenNo: specimen.specimenNo }).expect(201);
+      .send({ specimenNo: specimen.specimenNo, identifiedBy: "scan" }).expect(201);
     const [afterReceive] = await db.select().from(labItems)
       .where(eq(labItems.orderItemId, itemIds[0]!));
     expect(afterReceive!.tatStartedAt).not.toBeNull();
@@ -594,7 +595,7 @@ describe("the laboratory over HTTP (17b T8)", () => {
 
     /** `LabError` — 409, a CAS/state refusal: a tube that was never drawn cannot be accessioned. */
     const notReceivable = await request(server()).post("/lab/bench/receive").set(...auth(op.token))
-      .send({ specimenNo: "S0000000000" }).expect(404);
+      .send({ specimenNo: "S0000000000", identifiedBy: "scan" }).expect(404);
     expect((notReceivable.body as { code: string }).code).toBe("unknown_specimen");
 
     /** A zod refusal is a 400 carrying the ISSUES — a counter cannot fix "invalid body". */

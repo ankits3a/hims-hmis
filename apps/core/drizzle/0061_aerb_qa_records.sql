@@ -15,7 +15,7 @@
 -- migration every time the agency changed its form. What is NOT in jsonb is the thing the system
 -- acts on: `result`.
 --
--- This migration was generated clean — 0059's snapshot repaired the baseline that made 0059 itself
+-- This migration was generated clean — 0060's snapshot repaired the baseline that made it itself
 -- sweep up two other lanes' hand-written deltas (see that file's header).
 
 CREATE TABLE "aerb_qa_records" (

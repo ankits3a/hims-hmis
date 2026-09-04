@@ -38,6 +38,9 @@ type Fixture = {
     unit?: string | null; decimals?: number; formula?: string | null; formulaGuard?: string | null;
     absurdLow?: string | null; absurdHigh?: string | null; criticalLow?: string | null; criticalHigh?: string | null;
     deltaAbs?: string | null; deltaPct?: string | null; deltaWindowHours?: number | null;
+    /** 17d T1 — who the analyte is for. Absent = everybody, which is nearly every row. */
+    appliesToSex?: "male" | "female" | null;
+    appliesMinAgeDays?: number | null; appliesMaxAgeDays?: number | null;
   }[];
   orderables: {
     code: string; nameEn: string; discipline: string; specimenType: string; container: string;

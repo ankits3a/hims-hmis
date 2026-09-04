@@ -94,6 +94,14 @@ export type AnalyteInput = {
   deltaPct?: string | null;
   deltaWindowHours?: number | null;
   loincCode?: string | null;
+  /**
+   * 17d T1 / D1 — who this analyte is FOR, which the range book cannot say (an absent sex row is a
+   * gap in curation, not a claim). All three optional and NULL by default: an undeclared analyte
+   * applies to everybody, which is every analyte the catalogue carried before this phase.
+   */
+  appliesToSex?: "male" | "female" | null;
+  appliesMinAgeDays?: number | null;
+  appliesMaxAgeDays?: number | null;
 };
 
 /**
@@ -122,6 +130,16 @@ export async function upsertAnalyte(exec: Db | Tx, actor: Actor, input: AnalyteI
       && Number(input.absurdLow) > Number(input.absurdHigh)) {
     throw new LabError("catalogue_invalid", `analyte ${input.code}: the absurd envelope is inverted`);
   }
+  /**
+   * 17d T1 — refused HERE as well as by `lab_analytes_applies_age_ck`, and for the reason the
+   * inverted envelope above is: a curator at a screen gets a sentence naming their analyte, and the
+   * table constraint is the backstop for everything that never passes through this function.
+   */
+  if (input.appliesMinAgeDays !== null && input.appliesMinAgeDays !== undefined
+      && input.appliesMaxAgeDays !== null && input.appliesMaxAgeDays !== undefined
+      && input.appliesMinAgeDays >= input.appliesMaxAgeDays) {
+    throw new LabError("catalogue_invalid", `analyte ${input.code}: the applicable age band is inverted`);
+  }
 
   const existing = (await (exec as Db).select({ id: labAnalytes.id })
     .from(labAnalytes).where(eq(labAnalytes.code, input.code)))[0];
@@ -133,6 +151,9 @@ export async function upsertAnalyte(exec: Db | Tx, actor: Actor, input: AnalyteI
     criticalLow: input.criticalLow ?? null, criticalHigh: input.criticalHigh ?? null,
     deltaAbs: input.deltaAbs ?? null, deltaPct: input.deltaPct ?? null,
     deltaWindowHours: input.deltaWindowHours ?? null,
+    appliesToSex: input.appliesToSex ?? null,
+    appliesMinAgeDays: input.appliesMinAgeDays ?? null,
+    appliesMaxAgeDays: input.appliesMaxAgeDays ?? null,
     updatedBy: actor.id, updatedAt: new Date(),
   };
   if (existing) {
