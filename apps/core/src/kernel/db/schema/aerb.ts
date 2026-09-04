@@ -1,7 +1,8 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, date, index, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, check, date, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import type { SQL } from "drizzle-orm";
 import { resources } from "./resources";
+import { patients } from "./patients";
 import { users } from "./auth";
 
 /**
@@ -255,6 +256,100 @@ export const qaRecords = pgTable(
     check(
       "aerb_qa_records_block_ck",
       sql`${t.blockApplied} = false or ${t.result} <> 'pass'`,
+    ),
+  ],
+);
+
+/**
+ * ═══ 4. THE PATIENT DOSE REGISTER — a TABLE its sources write, not a projection it reads (D5) ═══
+ *
+ * The obvious build is a view over `imaging_studies.dose_*`. It is the wrong one, and the reason is
+ * the whole of D1: the cath lab (63) records a fluoroscopy dose against a `Procedure`, radiation
+ * oncology (64) against a fraction, and neither is an imaging study. A register that JOINED
+ * radiology's table would have one source for ever and would make the second one a schema change.
+ *
+ * So the sources CALL `recordDose` with the facts, and this module never reads `imaging_studies` —
+ * which is also what keeps the dependency running one way.
+ *
+ * ═══ THE UNITS ARE STATED HERE, ONCE, BECAUSE 18b LEFT THEM UNSTATED ═══
+ *
+ * 18b's close review found DAP rendered with a unit the tree never named, and ruled the unit 18c's.
+ * They are: **CTDIvol mGy · DLP mGy·cm · DAP Gy·cm² · fluoroscopy time in seconds.** `aerb/units.ts`
+ * carries them as constants and every screen renders them beside the number; nothing infers one.
+ *
+ * ═══ `over_drl` IS A STORED FACT, NOT A COMPUTED ONE ═══
+ *
+ * The comparison is made by the CALLER — radiology, which holds the published diagnostic reference
+ * levels — and stored with the row, because a DRL republished next year must not retroactively
+ * change what an examination in March was compared against. `imaging_studies.ionising` is
+ * snapshotted for exactly the same reason and says so in its own comment.
+ */
+export const DOSE_SOURCES = ["imaging", "cath_lab", "radiotherapy"] as const;
+export type DoseSource = (typeof DOSE_SOURCES)[number];
+
+export const doseRegister = pgTable(
+  "radiation_dose_register",
+  {
+    id: text("id").primaryKey(),
+    source: text("source").notNull(),
+    /**
+     * The source's own row id — an imaging study, a cath-lab procedure, an RT fraction. PLAIN TEXT
+     * and NOT a foreign key, the `pcpndt_form_f.study_id` decision and the same reasoning: an FK
+     * would name one consumer and lock the other two out.
+     */
+    sourceRef: text("source_ref").notNull(),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    deviceResourceId: text("device_resource_id").references(() => resources.id),
+    modality: text("modality").notNull(),
+    /** The examination's code in its own department's book — `CT-HEAD`, and later a cath procedure. */
+    procedureCode: text("procedure_code").notNull(),
+    /** mGy · mGy·cm · Gy·cm² · seconds. See `units.ts`; nothing here infers a unit. */
+    doseCtdivol: numeric("dose_ctdivol", { precision: 10, scale: 3 }),
+    doseDlp: numeric("dose_dlp", { precision: 10, scale: 3 }),
+    doseDap: numeric("dose_dap", { precision: 10, scale: 3 }),
+    fluoroSeconds: integer("fluoro_seconds"),
+    /** PROVENANCE: a human read the console because the machine emits no dose SR. 18a's word. */
+    doseManual: boolean("dose_manual").notNull().default(false),
+    /** Which quantity the DRL was set on, the level itself, and the verdict — all three or none. */
+    drlQuantity: text("drl_quantity"),
+    drlValue: numeric("drl_value", { precision: 10, scale: 3 }),
+    /** NULL means "no published DRL for this examination" — which is NOT the same as "under". */
+    overDrl: boolean("over_drl"),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    /**
+     * ONE ROW PER SOURCE EVENT. A double-clicked acquisition, a retried transaction or a replayed
+     * consumer must not put a patient's dose in the register twice — 18a refuses a second
+     * `recordAcquired` with `already_acquired` and its own comment says the mutant "counts the dose
+     * twice"; this index is the half that holds even if that guard is ever weakened.
+     */
+    uniqueIndex("radiation_dose_register_source_ux").on(t.source, t.sourceRef),
+    /** D8's cumulative read: this patient, this window. */
+    index("radiation_dose_register_patient_idx").on(t.patientId, t.occurredAt),
+    /** The RSO's book, and the over-DRL review. */
+    index("radiation_dose_register_occurred_idx").on(t.occurredAt),
+    check("radiation_dose_register_source_ck", inList(t.source, DOSE_SOURCES)),
+    /**
+     * A register row with no number in it is a row that cannot answer the question the register
+     * exists for. 18a's `imaging_studies_dose_ck` says the same thing about the study, and says
+     * `dose_manual` is a provenance flag rather than an excuse.
+     */
+    check(
+      "radiation_dose_register_dose_ck",
+      sql`${t.doseCtdivol} is not null or ${t.doseDlp} is not null
+          or ${t.doseDap} is not null or ${t.fluoroSeconds} is not null`,
+    ),
+    /**
+     * The comparison travels whole or not at all: quantity, level and verdict together. A row with
+     * `over_drl = true` and no level is a verdict nobody can check.
+     */
+    check(
+      "radiation_dose_register_drl_ck",
+      sql`(${t.drlQuantity} is null and ${t.drlValue} is null and ${t.overDrl} is null)
+          or (${t.drlQuantity} is not null and ${t.drlValue} is not null and ${t.overDrl} is not null)`,
     ),
   ],
 );

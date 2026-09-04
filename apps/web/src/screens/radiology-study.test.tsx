@@ -215,3 +215,73 @@ it("18b T3: a refusal from the door is shown with its code, and nothing opens", 
   expect(await screen.findByRole("alert")).toHaveTextContent(/no viewer is published.*pacs_not_configured/);
   expect(opened).not.toHaveBeenCalled();
 });
+
+/* ═══════════ PLAN 18c T3 / D8 / O4 — THE CUMULATIVE-DOSE NUDGE ═══════════ */
+
+const CUMULATIVE = "GET /api/aerb/doses/patient/P1";
+
+/**
+ * O4's ruling in one screen: *"nudge, not block"*. The line appears, it names the count and the
+ * exceedances, and **nothing on this screen is disabled by it** — the decision belongs to the
+ * radiologist holding the referral.
+ */
+it("18c T3: an ionising study shows the patient's twelve-month history, and blocks nothing", async () => {
+  mockRoutes({
+    "GET /api/radiology/studies/S1": { status: 200, body: { study: { ...STUDY, ionising: true, studyTypeCode: "CT-HEAD" } } },
+    "GET /api/radiology/studies/S1/readiness": { status: 200, body: READINESS },
+    [CUMULATIVE]: { status: 200, body: {
+      patientId: "P1", months: 12, studyCount: 6, totalDlp: "7200.000", totalDap: null,
+      totalFluoroSeconds: null, overDrlCount: 2, lastOccurredAt: "2026-06-10T00:00:00.000Z",
+    } },
+  });
+  renderWithProviders(<RadiologyStudy />);
+  const nudge = await screen.findByTestId("dose-cumulative");
+  expect(nudge).toHaveTextContent("6");
+  expect(nudge).toHaveTextContent("2");
+  expect(nudge).toHaveTextContent("7200.000 mGy·cm");
+  /** Nothing is disabled and nothing is an alert: it is a line of text, which is the whole ruling. */
+  expect(nudge).not.toHaveAttribute("role", "alert");
+});
+
+it("18c T3: a NON-ionising study asks nothing and shows no line — an ultrasound accumulates no dose", async () => {
+  mockRoutes({
+    "GET /api/radiology/studies/S1": { status: 200, body: { study: STUDY } },
+    "GET /api/radiology/studies/S1/readiness": { status: 200, body: READINESS },
+  });
+  renderWithProviders(<RadiologyStudy />);
+  await screen.findByText(/X2608310001/);
+  expect(screen.queryByTestId("dose-cumulative")).not.toBeInTheDocument();
+  expect(calls.some((c) => c.includes("/aerb/doses"))).toBe(false);
+});
+
+/**
+ * A reader without `aerb.doses.read` sees NO LINE rather than an error. A permission they do not
+ * hold is not a problem they can fix, and an alert about it on a study console is noise at the
+ * exact moment a radiologist is reading a scan.
+ */
+it("18c T3: a reader refused the dose read sees no line and no error", async () => {
+  mockRoutes({
+    "GET /api/radiology/studies/S1": { status: 200, body: { study: { ...STUDY, ionising: true } } },
+    "GET /api/radiology/studies/S1/readiness": { status: 200, body: READINESS },
+    [CUMULATIVE]: { status: 403, body: { statusCode: 403, code: "not_appointed", message: "forbidden" } },
+  });
+  renderWithProviders(<RadiologyStudy />);
+  await screen.findByText(/X2608310001/);
+  expect(screen.queryByTestId("dose-cumulative")).not.toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+/** A patient with no ionising history at all gets no line — zero is not worth a sentence. */
+it("18c T3: a first-ever ionising examination shows no line", async () => {
+  mockRoutes({
+    "GET /api/radiology/studies/S1": { status: 200, body: { study: { ...STUDY, ionising: true } } },
+    "GET /api/radiology/studies/S1/readiness": { status: 200, body: READINESS },
+    [CUMULATIVE]: { status: 200, body: {
+      patientId: "P1", months: 12, studyCount: 0, totalDlp: null, totalDap: null,
+      totalFluoroSeconds: null, overDrlCount: 0, lastOccurredAt: null,
+    } },
+  });
+  renderWithProviders(<RadiologyStudy />);
+  await screen.findByText(/X2608310001/);
+  expect(screen.queryByTestId("dose-cumulative")).not.toBeInTheDocument();
+});

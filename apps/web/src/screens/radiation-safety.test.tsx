@@ -40,6 +40,7 @@ const LICENCES = "GET /api/aerb/licences";
 const GAPS = "GET /api/aerb/licences/gaps";
 const PERSONS = "GET /api/aerb/persons";
 const QA = "GET /api/aerb/qa";
+const DOSES = "GET /api/aerb/doses";
 
 describe("the radiation-safety register (18c T1)", () => {
   beforeEach(() => { setToken("t"); });
@@ -105,6 +106,58 @@ describe("the radiation-safety register (18c T1)", () => {
     expect(screen.getAllByRole("alert").some((n) => n.textContent?.includes("permission_denied"))).toBe(true);
   });
 
+  /* ═════════════════════ PLAN 18c T3 — THE DOSE TAB ═════════════════════ */
+
+  const doseRow = (over: Record<string, unknown> = {}) => ({
+    id: "R1", source: "imaging", sourceRef: "S1", patientId: "P1", patientName: "Asha Devi",
+    uhid: "HMS-00000001-5", deviceCode: "CT-1", modality: "ct", procedureCode: "CT-HEAD",
+    doseCtdivol: "42.000", doseDlp: "1200.000", doseDap: null, fluoroSeconds: null,
+    doseManual: false, drlQuantity: "dlp", drlValue: "1000.000", overDrl: true,
+    occurredAt: "2026-06-15T09:00:00.000Z", ...over,
+  });
+
+  /**
+   * THREE STATES, NOT TWO. `overDrl === null` means no published reference level, and rendering it
+   * as "within DRL" would be a claim of compliance nobody measured — the same distinction the
+   * register's own CHECK enforces one layer down.
+   */
+  it("renders over, within and NO LEVEL as three different things", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [DOSES]: { status: 200, body: { rows: [
+        doseRow({ id: "R1", overDrl: true }),
+        doseRow({ id: "R2", overDrl: false }),
+        doseRow({ id: "R3", overDrl: null, drlQuantity: null, drlValue: null }),
+      ] } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-dose"));
+    expect(await screen.findByTestId("aerb-dose-R1")).toHaveTextContent("over DRL");
+    expect(screen.getByTestId("aerb-dose-R2")).toHaveTextContent("within DRL");
+    const noLevel = screen.getByTestId("aerb-dose-R3");
+    expect(noLevel).toHaveTextContent("no level published");
+    expect(noLevel).not.toHaveTextContent("within DRL");
+  });
+
+  /** 18b's close review found a DAP figure with a unit the tree never named. These are the names. */
+  it("renders every dose with its own unit, and DAP is not measured in DLP's", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [DOSES]: { status: 200, body: { rows: [
+        doseRow({ id: "R1", doseCtdivol: "42.000", doseDlp: "1200.000" }),
+        doseRow({ id: "R2", doseCtdivol: null, doseDlp: null, doseDap: "3.400", drlQuantity: null, drlValue: null, overDrl: null }),
+      ] } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-dose"));
+    const r1 = await screen.findByTestId("aerb-dose-R1");
+    expect(r1).toHaveTextContent("CTDIvol 42.000 mGy");
+    expect(r1).toHaveTextContent("DLP 1200.000 mGy·cm");
+    expect(screen.getByTestId("aerb-dose-R2")).toHaveTextContent("DAP 3.400 Gy·cm²");
+  });
+
   it("the people tab lists the appointment, and an open-ended one says so", async () => {
     mockRoutes({
       [LICENCES]: { status: 200, body: { rows: [] } },
@@ -122,14 +175,14 @@ describe("the radiation-safety register (18c T1)", () => {
     expect(row).toHaveTextContent("open-ended");
   });
 
-  /** The three registers T3–T5 build are declared and disabled, so the shape is visible from here. */
-  it("the three unbuilt tabs are present and disabled", async () => {
+  /** The two registers T4–T5 build are declared and disabled, so the shape is visible from here. */
+  it("the two unbuilt tabs are present and disabled", async () => {
     mockRoutes({
       [LICENCES]: { status: 200, body: { rows: [] } },
       [GAPS]: { status: 200, body: { rows: [] } },
     });
     renderWithProviders(<RadiationSafety />);
-    for (const k of ["dose", "badges", "calendar"]) {
+    for (const k of ["badges", "calendar"]) {
       expect(await screen.findByTestId(`aerb-tab-${k}`)).toBeDisabled();
     }
   });

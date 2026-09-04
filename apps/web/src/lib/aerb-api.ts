@@ -84,6 +84,58 @@ export function fetchQaRecords(): Promise<{ rows: WireQaRecord[] }> {
   return api<{ rows: WireQaRecord[] }>("GET", "/aerb/qa");
 }
 
+export type WireDoseRow = {
+  id: string;
+  source: string;
+  sourceRef: string;
+  patientId: string;
+  patientName: string;
+  uhid: string;
+  deviceCode: string | null;
+  modality: string;
+  procedureCode: string;
+  doseCtdivol: string | null;
+  doseDlp: string | null;
+  doseDap: string | null;
+  fluoroSeconds: number | null;
+  doseManual: boolean;
+  drlQuantity: string | null;
+  drlValue: string | null;
+  /** NULL means no published reference level — which is NOT the same as "under". */
+  overDrl: boolean | null;
+  occurredAt: string;
+};
+
+export type WireCumulativeDose = {
+  patientId: string;
+  months: number;
+  studyCount: number;
+  totalDlp: string | null;
+  totalDap: string | null;
+  totalFluoroSeconds: number | null;
+  overDrlCount: number;
+  lastOccurredAt: string | null;
+};
+
+/**
+ * PLAN 18c T3 / D6 — the units, transcribed from `aerb/units.ts`. 18b's close review found DAP
+ * rendered with a unit the tree never named; these are the names, and nothing here infers one.
+ */
+export const DOSE_UNITS: Readonly<Record<string, string>> = {
+  ctdivol: "mGy",
+  dlp: "mGy·cm",
+  dap: "Gy·cm²",
+  fluoro_seconds: "s",
+};
+
+export function fetchDoseRegister(overDrlOnly: boolean): Promise<{ rows: WireDoseRow[] }> {
+  return api<{ rows: WireDoseRow[] }>("GET", `/aerb/doses?overDrlOnly=${String(overDrlOnly)}`);
+}
+
+export function fetchCumulativeDose(patientId: string): Promise<WireCumulativeDose> {
+  return api<WireCumulativeDose>("GET", `/aerb/doses/patient/${patientId}`);
+}
+
 export function fetchAppointments(): Promise<{ rows: WireAppointment[] }> {
   return api<{ rows: WireAppointment[] }>("GET", "/aerb/persons");
 }

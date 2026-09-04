@@ -145,11 +145,46 @@ export const pacsSettingsBodySchema = z.object({
   enabled: z.boolean(),
 });
 
+/**
+ * PLAN 18c T3 / D6 — **DIAGNOSTIC REFERENCE LEVELS, a governed book like every other.**
+ *
+ * A DRL is the dose a typical patient receives for a typical examination on typical equipment: it
+ * is not a limit and exceeding it is not an error, it is a signal to look at the protocol. So the
+ * book is published through the same draft → approval → publish as the study types, and the
+ * comparison it drives is STORED with the dose row rather than recomputed — a level republished
+ * next year must not retroactively change what an examination in March was measured against.
+ *
+ * `study_type_code` first, `modality` as the fallback: a hospital that has not set a level for
+ * `CT-HEAD` may still have one for CT. A row matching neither leaves the register's verdict NULL,
+ * which is deliberately NOT the same as "under" — an examination nobody has set a level for has not
+ * passed anything.
+ *
+ * The quantity is named per row because DRLs are set on different quantities for different
+ * examinations: DLP for a CT protocol, DAP for an interventional room, fluoroscopy seconds for a
+ * screening procedure. `aerb/units.ts` owns what each one is measured in.
+ */
+export const DRL_QUANTITIES = ["ctdivol", "dlp", "dap", "fluoro_seconds"] as const;
+
+export const doseReferenceLevelsBodySchema = z.object({
+  levels: z.array(z.object({
+    /** Exactly one of the two is the key; `study_type_code` wins where both match. */
+    study_type_code: z.string().min(1).max(40).optional(),
+    modality: z.string().min(1).max(40).optional(),
+    quantity: z.enum(DRL_QUANTITIES),
+    value: z.number().positive(),
+    /** Free text: "ICRP 135 national survey 2023", "local 75th percentile, n=142". */
+    source: z.string().max(200).optional(),
+  }).refine((r) => r.study_type_code !== undefined || r.modality !== undefined, {
+    message: "a reference level must name a study_type_code or a modality",
+  })).min(1),
+});
+
 const SCHEMA_BY_KIND = {
   study_types: studyTypesBodySchema,
   pregnancy_policy: pregnancyPolicyBodySchema,
   critical_categories: criticalCategoriesBodySchema,
   pacs_settings: pacsSettingsBodySchema,
+  dose_reference_levels: doseReferenceLevelsBodySchema,
 } as const;
 
 export type StudyTypesBody = z.infer<typeof studyTypesBodySchema>;
@@ -157,6 +192,8 @@ export type StudyType = z.infer<typeof studyTypeSchema>;
 export type PregnancyPolicyBody = z.infer<typeof pregnancyPolicyBodySchema>;
 export type CriticalCategoriesBody = z.infer<typeof criticalCategoriesBodySchema>;
 export type PacsSettingsBody = z.infer<typeof pacsSettingsBodySchema>;
+export type DoseReferenceLevelsBody = z.infer<typeof doseReferenceLevelsBodySchema>;
+export type DoseReferenceLevel = DoseReferenceLevelsBody["levels"][number];
 export type ImagingDefinitionRow = typeof imagingDefinitions.$inferSelect;
 
 export const IMAGING_DEFINITION_KINDS = IMAGING_DEFINITION_KIND_VALUES;

@@ -177,3 +177,42 @@ Restored; `diff -q` proved identical.
 |---|---|---|
 | T2 | `src/modules/aerb` + radiology + pcpndt + seed-roles + caddyfile-parity + radiology.e2e + `kernel/modules` + `kernel/resources` | **38 suites / 468 tests, exit 0**; tsc 0, lint 0 errors |
 | T2 (web) | `radiation-safety` + i18n parity | **11 tests, exit 0** (10 in the screen suite, 3 of them new) |
+
+### 8.2 Findings — T3
+
+- **F10 (T3, D5 held and it mattered)** — the obvious build is a VIEW over `imaging_studies.dose_*`,
+  and 18a's own §6 promised 18c "a projection of them". D5 refused the projection and the refusal
+  paid immediately: `radiation_dose_register` is written by `recordDose` from inside the SOURCE's
+  transaction, so the cath lab (63) and radiation oncology (64) call the same function against a
+  procedure and a fraction, and `aerb` still reads nothing of radiology's. The unique index on
+  `(source, source_ref)` also closes, at the database, the double-count 18a's own A6 comment names.
+- **F11 (T3) — `null` is not `false`, in three places at once.** An examination with no published
+  reference level, and one whose level is set on a QUANTITY the study did not carry (a DLP measured
+  against a CTDIvol level), both store `over_drl = null`. A verdict of "under" would be a claim of
+  compliance nobody measured. It is enforced at the CHECK (quantity, level and verdict travel
+  together or not at all), in the writer, and on the screen, which renders three states rather than
+  two. The mutant that survives everything else is `(measured ?? 0) > level.value`.
+- **F12 (T3, D6) — the DRL book does NOT throw when it is unpublished.** `activeStudyTypes` throws
+  `definition_not_active` because a hospital with no study-type book cannot scan at all; copying
+  that here would have made "the RSO has not published the reference levels yet" into "no CT may be
+  acquired", which is a rule nobody wrote. `activeDoseReferenceLevels` returns an empty list.
+- **F13 (T3, the units 18b left unstated)** — `aerb/units.ts` names them once: **CTDIvol mGy · DLP
+  mGy·cm · DAP Gy·cm² · fluoroscopy seconds**, and the client transcribes the same table. 18b's
+  close review MAJOR B3 found DAP rendered with a unit the tree never declared and ruled the units
+  18c's; this discharges that.
+- **F14 (T3, D8/O4)** — the cumulative nudge NEVER refuses. Pinned by a test that records a seventh
+  CT for a patient with six over-DRL examinations behind them, and by a screen test that asserts the
+  line is not even an `alert`. A reader without `aerb.doses.read` sees NO line rather than an error:
+  a permission they do not hold is not a problem they can fix, and an alert about it on a study
+  console is noise at the moment a radiologist is reading a scan.
+
+### 8.3 Assertion book as executed — T3
+**Mutant:** a published level with no matching measurement stores `over_drl = false` instead of
+`null` (`(measured ?? 0) > level.value`). **Result: 1 failed / 32 passed** — *"a level on a quantity
+the study did not carry stores NULL, not `under`"*. Restored; `diff -q` proved identical.
+
+### 8.4 Evidence — T3
+| task | batch | counts |
+|---|---|---|
+| T3 | `aerb` + radiology + pcpndt + seed-roles + caddyfile-parity + radiology.e2e + `kernel/modules` + `kernel/phi` | **36 suites / 442 tests, exit 0**; tsc 0, lint 0 errors |
+| T3 (web) | full `@hmis/web` suite | **81 files / 660 tests, exit 0** (10 more than T1's run) |

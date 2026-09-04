@@ -7,6 +7,7 @@ import { AERB_LICENCE_TYPES, AERB_PERSON_ROLES, QA_RESULTS } from "../../kernel/
 import { appointPerson, changeLicenceStatus, endAppointment, fileLicence } from "./licences";
 import { appointments, licenceRegister, unlicensedDevices } from "./read";
 import { qaRegister, recordQa } from "./qa";
+import { doseRegisterRows, patientCumulativeDose } from "./dose";
 import { collectResourceKinds } from "../../kernel/resources/kinds";
 import { idSchema, isoDateSchema, parsed, toHttp } from "./aerb-http";
 import type { Actor } from "@hmis/contracts";
@@ -160,6 +161,42 @@ export class AerbController {
         nextDueOn: input.nextDueOn ?? null,
         remarks: input.remarks ?? null,
       }));
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * PLAN 18c T3 — the dose register. **`aerb.doses.read`, not `aerb.registers.read`** (D2): this is
+   * the one AERB surface that is PHI, and the radiologist who needs the cumulative nudge has no
+   * business in the licence file. `doseRegisterRows` logs the disclosure itself.
+   */
+  @Get("doses")
+  @RequirePermission("aerb.doses.read", "hospital")
+  async doses(
+    @CurrentActor() actor: Actor,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("overDrlOnly") overDrlOnly?: string,
+  ): Promise<unknown> {
+    const opts = {
+      ...(from === undefined ? {} : { from: parsed(isoDateSchema, from) }),
+      ...(to === undefined ? {} : { to: parsed(isoDateSchema, to) }),
+      overDrlOnly: overDrlOnly === "true",
+    };
+    try {
+      return { rows: await doseRegisterRows(this.db, actor, opts) };
+    } catch (e) { toHttp(e); }
+  }
+
+  /** D8 / O4 — the twelve-month cumulative. A NUDGE: there is no refusal behind this route. */
+  @Get("doses/patient/:patientId")
+  @RequirePermission("aerb.doses.read", "hospital")
+  async cumulative(
+    @CurrentActor() actor: Actor, @Param("patientId") patientId: string, @Query("months") months?: string,
+  ): Promise<unknown> {
+    const id = parsed(idSchema, patientId);
+    const window = months === undefined ? 12 : parsed(z.coerce.number().int().min(1).max(120), months);
+    try {
+      return await patientCumulativeDose(this.db, actor, id, { months: window });
     } catch (e) { toHttp(e); }
   }
 

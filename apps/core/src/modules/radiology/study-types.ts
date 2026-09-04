@@ -1,6 +1,6 @@
-import { activeDefinition } from "./definitions";
+import { activeDefinition, activeDefinitionRow, parseDefinitionBody } from "./definitions";
 import { RadiologyError } from "./errors";
-import type { StudyType, StudyTypesBody } from "./definitions";
+import type { DoseReferenceLevel, StudyType, StudyTypesBody } from "./definitions";
 import type { Db, Tx } from "../../kernel/db/client";
 
 /**
@@ -154,4 +154,35 @@ export async function requireStudyType(exec: Db | Tx, code: string): Promise<Stu
     );
   }
   return type;
+}
+
+/**
+ * PLAN 18c T3 / D6 — the published diagnostic reference levels, or NONE.
+ *
+ * Unlike `activeStudyTypes` this returns an EMPTY LIST when nothing is published, and does not
+ * throw: a hospital with no study-type book cannot scan at all, but a hospital that has not yet set
+ * its reference levels scans perfectly lawfully and simply has no comparison to store. Making this
+ * throw would have turned "the RSO has not published the DRL book yet" into "no CT may be
+ * acquired", which is not a rule anybody wrote.
+ */
+export async function activeDoseReferenceLevels(exec: Db | Tx): Promise<DoseReferenceLevel[]> {
+  const row = await activeDefinitionRow(exec, "dose_reference_levels");
+  if (!row) return [];
+  return parseDefinitionBody("dose_reference_levels", row.body).levels;
+}
+
+/**
+ * The level that applies to ONE examination, or `null`.
+ *
+ * `study_type_code` beats `modality` — a hospital that has set a level for `CT-HEAD` means that one
+ * rather than its generic CT figure. A study matching neither has NO level, and the register stores
+ * `null` for the verdict, which is deliberately not the same as "under": an examination nobody has
+ * set a level for has not passed anything.
+ */
+export function drlFor(
+  levels: readonly DoseReferenceLevel[], studyTypeCode: string, modality: string,
+): DoseReferenceLevel | null {
+  return levels.find((l) => l.study_type_code === studyTypeCode)
+    ?? levels.find((l) => l.study_type_code === undefined && l.modality === modality)
+    ?? null;
 }
