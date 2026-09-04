@@ -2832,6 +2832,26 @@
       "manual": "typed from the console",
       "cumulative": "{{count}} ionising examinations in {{months}} months — {{total}}",
       "cumulativeOver": "{{count}} ionising examinations in {{months}} months, {{over}} over their reference level — {{total}}"
+    },
+    "badges": {
+      "gapsTitle": "Badges nobody is reading",
+      "empty": "No TLD badge has been issued yet.",
+      "worker": "Worker",
+      "badge": "Badge",
+      "last": "Last reading",
+      "ytd": "This year",
+      "fiveYear": "Five years",
+      "noRead": "no reading yet",
+      "investigate": "investigate",
+      "overLimit": "over the statutory limit",
+      "neverRead": "never read, worn {{days}} days",
+      "staleRead": "last read for the period ending {{since}}, {{days}} days ago",
+      "limits": "Statutory limits: {{annual}} mSv in any single year, {{fiveYear}} mSv over five. Investigation level: {{level}} mSv per month, pro-rated to the wearing period."
+    },
+    "badgeStatus": {
+      "active": "Active",
+      "returned": "Returned",
+      "lost": "Lost"
     }
   }
 }

@@ -136,6 +136,62 @@ export function fetchCumulativeDose(patientId: string): Promise<WireCumulativeDo
   return api<WireCumulativeDose>("GET", `/aerb/doses/patient/${patientId}`);
 }
 
+export type WireBadge = {
+  badgeId: string;
+  userId: string;
+  userName: string;
+  badgeNo: string;
+  issuedOn: string;
+  returnedOn: string | null;
+  status: string;
+  lastPeriodEnd: string | null;
+  lastHp10Msv: string | null;
+  lastInvestigation: boolean | null;
+  ytdMsv: string;
+  fiveYearMsv: string;
+  overAnnualLimit: boolean;
+  overFiveYearLimit: boolean;
+  readCount: number;
+};
+
+export type WireBadgeGap = {
+  badgeId: string;
+  userId: string;
+  userName: string;
+  badgeNo: string;
+  issuedOn: string;
+  lastPeriodEnd: string | null;
+  daysSince: number;
+};
+
+export type WireBadgeRead = {
+  id: string;
+  badgeId: string;
+  badgeNo: string;
+  userName: string;
+  periodStart: string;
+  periodEnd: string;
+  hp10Msv: string;
+  hp007Msv: string | null;
+  reportedOn: string;
+  labRef: string | null;
+  investigationFlag: boolean;
+  investigationLevelMsv: string | null;
+};
+
+export type WireBadgeBook = {
+  rows: WireBadge[];
+  gaps: WireBadgeGap[];
+  reads: WireBadgeRead[];
+  /** The statutory numbers, so a screen never states a limit the server did not. */
+  limits: { annualMsv: number; fiveYearAverageMsv: number; fiveYearTotalMsv: number };
+  investigationLevelMsvPerMonth: number;
+};
+
+export function fetchBadges(): Promise<WireBadgeBook> {
+  return api<WireBadgeBook>("GET", "/aerb/badges");
+}
+
 export function fetchAppointments(): Promise<{ rows: WireAppointment[] }> {
   return api<{ rows: WireAppointment[] }>("GET", "/aerb/persons");
 }
