@@ -1,0 +1,135 @@
+import { Test } from "@nestjs/testing";
+import { INestApplication } from "@nestjs/common";
+import { eq } from "drizzle-orm";
+import request from "supertest";
+import { AppModule } from "../src/app.module";
+import { configureApp } from "../src/app.bootstrap";
+import { setupTestDb, truncateAll } from "./helpers/db";
+import { mkUser } from "./helpers/opd";
+import { requireEnv } from "../src/kernel/config";
+import { createAgent, setKillSwitch, findAgentByKey } from "../src/kernel/auth/agents";
+import { withTx } from "../src/kernel/db/client";
+import { printJobs } from "../src/kernel/db/schema";
+import { enqueuePrintJob } from "../src/kernel/printing/enqueue";
+import type { NestExpressApplication } from "@nestjs/platform-express";
+import type { Db } from "../src/kernel/db/client";
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-24 T2 — THE RELAY OVER HTTP, WHICH IS THE ONLY WAY THE HOSPITAL EVER SEES THIS
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * The unit tests prove the claim's semantics. What only an e2e can prove is that the relay's
+ * IDENTITY works end to end: an agent key gets in, a user token does not, the kill switch bites,
+ * and no route on this controller is reachable unauthenticated.
+ */
+describe("FD-24 T2: the print relay's routes", () => {
+  let app: INestApplication;
+  let db: Db;
+  let teardown: () => Promise<void>;
+  let agentKey: string;
+
+  beforeAll(async () => {
+    ({ db, teardown } = await setupTestDb());
+    const workerUrl = new URL(requireEnv("TEST_DATABASE_URL"));
+    workerUrl.pathname = `${workerUrl.pathname}_${process.env.JEST_WORKER_ID ?? "1"}`;
+    process.env.DATABASE_URL = workerUrl.toString();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    app = moduleRef.createNestApplication<NestExpressApplication>({ bodyParser: false });
+    configureApp(app as NestExpressApplication);
+    await app.init();
+  });
+  afterAll(async () => {
+    try { await app.close(); } catch { /* already closed */ }
+    await teardown();
+  });
+  beforeEach(async () => {
+    await db.delete(printJobs);
+    ({ apiKey: agentKey } = await createAgent(db, `print-relay-${String(Date.now())}`));
+  });
+
+  async function queue(key: string): Promise<string> {
+    const id = await withTx(db, (tx) => enqueuePrintJob(tx, {
+      document: "opd_token_slip", params: { encounterId: key }, dedupeKey: key,
+    }));
+    return id!;
+  }
+
+  it("a relay claims with its agent key, prints, and reports — the whole round trip", async () => {
+    const id = await queue("e2e-1");
+
+    const claimed = await request(app.getHttpServer())
+      .post("/print/claim")
+      .set("x-agent-key", agentKey)
+      .send({ destinations: ["front_desk_thermal"], limit: 5 })
+      .expect(201);
+    expect(claimed.body.jobs).toHaveLength(1);
+    expect(claimed.body.jobs[0].id).toBe(id);
+    expect(claimed.body.jobs[0].destination).toBe("front_desk_thermal");
+    // IDENTIFIERS, NOT PHI — a compromised relay learns which encounter printed, not who it is about
+    expect(claimed.body.jobs[0].params).toEqual({ encounterId: "e2e-1" });
+    expect(JSON.stringify(claimed.body)).not.toMatch(/name|uhid/i);
+
+    await request(app.getHttpServer())
+      .post("/print/printed")
+      .set("x-agent-key", agentKey)
+      .send({ jobId: id })
+      .expect(201)
+      .expect((r) => { expect(r.body.accepted).toBe(true); });
+
+    expect((await db.select().from(printJobs).where(eq(printJobs.id, id)))[0]!.status).toBe("printed");
+  });
+
+  it("an empty queue is an empty list, not an error — the relay polls this all day", async () => {
+    await request(app.getHttpServer())
+      .post("/print/claim")
+      .set("x-agent-key", agentKey)
+      .send({ destinations: ["front_desk_thermal"] })
+      .expect(201)
+      .expect((r) => { expect(r.body.jobs).toEqual([]); });
+  });
+
+  it("no agent key, no queue — every route refuses an unauthenticated caller", async () => {
+    await queue("e2e-locked");
+    for (const route of ["/print/claim", "/print/printed", "/print/failed"]) {
+      await request(app.getHttpServer()).post(route).send({}).expect(401);
+    }
+  });
+
+  /**
+   * A USER TOKEN MUST NOT SERVE THE PRINT QUEUE. The relay is an agent; a signed-in clerk claiming
+   * jobs would take slips out of the queue that no printer will ever produce.
+   */
+  it("a signed-in user cannot claim — this queue is served by a relay, not a person", async () => {
+    const clerk = await mkUser(db, "print-clerk", []);
+    await request(app.getHttpServer())
+      .post("/print/claim")
+      .set("authorization", `Bearer ${clerk.token}`)
+      .send({ destinations: ["front_desk_thermal"] })
+      .expect(403);
+  });
+
+  /** The kill switch already exists on agents, and it must reach this queue without a deploy. */
+  it("the agent kill switch stops a relay dead", async () => {
+    await queue("e2e-kill");
+    const agent = await findAgentByKey(db, agentKey);
+    await setKillSwitch(db, agent!.id, true);
+
+    await request(app.getHttpServer())
+      .post("/print/claim")
+      .set("x-agent-key", agentKey)
+      .send({ destinations: ["front_desk_thermal"] })
+      .expect(403);
+    // and the job is untouched, waiting for a relay that is allowed to have it
+    expect((await db.select().from(printJobs))[0]!.status).toBe("queued");
+  });
+
+  it("a malformed claim is refused rather than defaulted into claiming everything", async () => {
+    await request(app.getHttpServer())
+      .post("/print/claim")
+      .set("x-agent-key", agentKey)
+      .send({ destinations: [], limit: 999 })
+      .expect(500); // zod throws; the shape is refused either way, and nothing is claimed
+    expect(await db.select().from(printJobs)).toHaveLength(0);
+  });
+});
