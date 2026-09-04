@@ -271,9 +271,9 @@ describe("OpdAppointments", () => {
     await waitFor(() => expect(screen.getByTestId("visit-no")).toHaveTextContent("V2608180007"));
     await waitFor(() => expect(callsTo("GET", "/api/patients/p-1/qr")).toHaveLength(1));
 
-    expect(await screen.findByTestId("token-no")).toHaveTextContent("7");
+    expect(await screen.findByTestId("token-no")).toHaveTextContent("MED-7"); // FD-20 grammar
     // Scoped to the slip itself: the header's own Doctor <select> also contains "Dr Meera Rao".
-    const slipDoc = container.querySelector(".print-doc") as HTMLElement;
+    const slipDoc = container.querySelector("[data-testid='token-card']") as HTMLElement;
     expect(slipDoc).not.toBeNull();
     expect(within(slipDoc).getByText("MED · General medicine")).toBeInTheDocument();
     expect(within(slipDoc).getByText("Dr Meera Rao")).toBeInTheDocument();

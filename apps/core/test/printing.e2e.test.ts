@@ -9,6 +9,9 @@ import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, s
 import { openVisit } from "../src/modules/opd/encounters";
 import { requireEnv } from "../src/kernel/config";
 import { createAgent, setKillSwitch, findAgentByKey } from "../src/kernel/auth/agents";
+import { createRole, grantPermissionToRole, syncPermissions } from "../src/kernel/auth/permissions";
+import { ModuleRegistry } from "../src/kernel/modules/loader";
+import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
 import { withTx } from "../src/kernel/db/client";
 import { printJobs } from "../src/kernel/db/schema";
 import { enqueuePrintJob } from "../src/kernel/printing/enqueue";
@@ -54,7 +57,7 @@ describe("FD-24 T2: the print relay's routes", () => {
    * department code and the token from the database — an invented id renders nothing, which is
    * exactly what the "unrenderable document" row below asserts.
    */
-  async function realVisit(): Promise<{ encounterId: string; patientName: string }> {
+  async function realVisit(): Promise<{ encounterId: string; patientName: string; slipJobId: string }> {
     await seedOpdBase(db);
     await activateOpdVisitDefinition(db);
     const { deptId, roomId } = await seedOpdMasters(db);
@@ -63,26 +66,25 @@ describe("FD-24 T2: the print relay's routes", () => {
     const patient = await mkPatient(db, clerk.actor, { name: "Muskan Arora", sex: "female", ageYears: 28 });
     const MON = new Date("2026-08-17T04:00:00.000Z");
     const visit = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: doctor.doctorId }, MON);
-    return { encounterId: visit.encounter.id, patientName: "Muskan Arora" };
-  }
-
-  async function queue(key: string, encounterId: string, unpaid = false): Promise<string> {
-    const id = await withTx(db, (tx) => enqueuePrintJob(tx, {
-      document: "opd_token_slip", params: { encounterId, unpaid }, dedupeKey: key,
-    }));
-    return id!;
+    /*
+      OPENING THE VISIT ALREADY QUEUED BOTH SLIPS — that is FD-24 T5, and it happens inside the
+      visit's own transaction. These tests drive the REAL flow rather than hand-queuing a job the
+      counter would never have created that way.
+    */
+    const queued = await db.select().from(printJobs).where(eq(printJobs.encounterId, visit.encounter.id));
+    const slip = queued.find((j) => j.document === "opd_token_slip")!;
+    return { encounterId: visit.encounter.id, patientName: "Muskan Arora", slipJobId: slip.id };
   }
 
   it("a relay claims with its agent key, prints, and reports — the whole round trip", async () => {
-    const { encounterId, patientName } = await realVisit();
-    const id = await queue("e2e-1", encounterId, true);
+    const { encounterId, patientName, slipJobId: id } = await realVisit();
 
     const claimed = await request(app.getHttpServer())
       .post("/print/claim")
       .set("x-agent-key", agentKey)
       .send({ destinations: ["front_desk_thermal"], limit: 5 })
       .expect(201);
-    expect(claimed.body.jobs).toHaveLength(1);
+    expect(claimed.body.jobs).toHaveLength(1); // the A4 is a different destination, served by another relay
     expect(claimed.body.jobs[0].id).toBe(id);
     expect(claimed.body.jobs[0].destination).toBe("front_desk_thermal");
     /*
@@ -139,8 +141,7 @@ describe("FD-24 T2: the print relay's routes", () => {
 
   /** The kill switch already exists on agents, and it must reach this queue without a deploy. */
   it("the agent kill switch stops a relay dead", async () => {
-    const { encounterId } = await realVisit();
-    await queue("e2e-kill", encounterId);
+    await realVisit();
     const agent = await findAgentByKey(db, agentKey);
     await setKillSwitch(db, agent!.id, true);
 
@@ -149,32 +150,62 @@ describe("FD-24 T2: the print relay's routes", () => {
       .set("x-agent-key", agentKey)
       .send({ destinations: ["front_desk_thermal"] })
       .expect(403);
-    // and the job is untouched, waiting for a relay that is allowed to have it
-    expect((await db.select().from(printJobs))[0]!.status).toBe("queued");
+    // and the jobs are untouched, waiting for a relay that is allowed to have them
+    expect((await db.select().from(printJobs)).every((r) => r.status === "queued")).toBe(true);
   });
 
   /**
-   * R7 — AN UNRENDERABLE DOCUMENT FAILS ADVISORY, IT DOES NOT HAND THE RELAY A HALF-BUILT SLIP.
-   * `vitals_slip` is the live case: owner ruling R3 created it this session and it is the one
-   * document of the four with NO ARTBOARD, so it deliberately renders null rather than being
-   * improvised in code.
+   * ═══ WHAT THE COUNTER SEES, AND WHAT IT MAY DO ABOUT IT (R7) ═══
+   *
+   * Advisory is not the same as silent. If the slip did not come out, the clerk must know while the
+   * patient is still standing there — otherwise "advisory" means the hospital finds out from the
+   * patient.
    */
-  it("a document with no renderer is failed, not handed over half-built", async () => {
+  it("the desk can read the print status for the patient in front of it, and reprint", async () => {
     const { encounterId } = await realVisit();
-    const id = await withTx(db, (tx) => enqueuePrintJob(tx, {
-      document: "vitals_slip", params: { encounterId }, dedupeKey: "vitals-1",
-    }));
+    /*
+      `mkUser` ASSIGNS a role; it does not grant that role its permissions — those come from
+      `seed-roles` in a real deployment. So the grant is explicit here, exactly as the approvals
+      e2es do it, and the permission asserted is the real one the route requires.
+    */
+    const registry = new ModuleRegistry();
+    for (const m of ALL_MANIFESTS) registry.install(m);
+    await syncPermissions(db, registry);
+    await createRole(db, "front_desk_print", "Front desk (print status)");
+    await grantPermissionToRole(db, registry, "front_desk_print", "opd.visits.open");
+    const clerk = await mkUser(db, `desk-${String(Date.now())}`, ["front_desk_print"]);
 
+    const listed = await request(app.getHttpServer())
+      .get(`/print/jobs?encounterId=${encounterId}`)
+      .set("authorization", `Bearer ${clerk.token}`)
+      .expect(200);
+    // opening the visit queued both, in the same transaction as the token
+    expect(listed.body.jobs.map((j: { document: string }) => j.document).sort())
+      .toEqual(["opd_prescription", "opd_token_slip"]);
+    const slip = listed.body.jobs.find((j: { document: string }) => j.document === "opd_token_slip");
+    expect(slip.status).toBe("queued");
+
+    const again = await request(app.getHttpServer())
+      .post("/print/reprint")
+      .set("authorization", `Bearer ${clerk.token}`)
+      .send({ jobId: slip.id })
+      .expect(201);
+    expect(again.body.id).not.toBeNull();
+
+    // A NEW ROW, not a resurrected one — both attempts survive, which is what makes "who printed
+    // this again" answerable about a document carrying a patient's name.
+    const after = await db.select().from(printJobs).where(eq(printJobs.encounterId, encounterId));
+    expect(after).toHaveLength(3);
+    expect(after.filter((r) => r.document === "opd_token_slip")).toHaveLength(2);
+    expect(new Set(after.map((r) => r.dedupeKey)).size).toBe(3);
+  });
+
+  it("a relay agent cannot read the desk's status route — it holds no permissions", async () => {
+    const { encounterId } = await realVisit();
     await request(app.getHttpServer())
-      .post("/print/claim")
+      .get(`/print/jobs?encounterId=${encounterId}`)
       .set("x-agent-key", agentKey)
-      .send({ destinations: ["vitals_thermal"] })
-      .expect(201)
-      .expect((r) => { expect(r.body.jobs).toEqual([]); });
-
-    const row = (await db.select().from(printJobs).where(eq(printJobs.id, id!)))[0]!;
-    expect(row.attempts).toBe(1);
-    expect(row.lastError).toContain("vitals_slip");
+      .expect(403);
   });
 
   it("a malformed claim is refused rather than defaulted into claiming everything", async () => {
@@ -184,5 +215,17 @@ describe("FD-24 T2: the print relay's routes", () => {
       .send({ destinations: [], limit: 999 })
       .expect(500); // zod throws; the shape is refused either way, and nothing is claimed
     expect(await db.select().from(printJobs)).toHaveLength(0);
+  });
+
+  it("a document with no renderer is failed after its own visit, not silently dropped", async () => {
+    const { encounterId } = await realVisit();
+    const id = await withTx(db, (tx) => enqueuePrintJob(tx, {
+      document: "vitals_slip", params: { encounterId }, dedupeKey: `vitals:${encounterId}`,
+    }));
+    await request(app.getHttpServer())
+      .post("/print/claim").set("x-agent-key", agentKey)
+      .send({ destinations: ["vitals_thermal"] }).expect(201)
+      .expect((r) => { expect(r.body.jobs).toEqual([]); });
+    expect((await db.select().from(printJobs).where(eq(printJobs.id, id!)))[0]!.attempts).toBe(1);
   });
 });

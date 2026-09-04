@@ -17,6 +17,7 @@ import { OpdError } from "./errors";
 import { patientCheckedIn, visitAbandoned, visitOpened, visitTransferred, visitReclassified,
 } from "./events";
 import { allocateToken, getOrCreateSession, roomForDoctorDay } from "./sessions";
+import { enqueuePrintJob } from "../../kernel/printing/enqueue";
 import { istDate } from "./time";
 import { classifyVisit } from "./visit-type";
 import { OPD_VISIT_DEF_KEY } from "./workflow-def";
@@ -139,7 +140,7 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput 
     return { encounter: encounter!, queueEntry: null, tokenNo: null, sessionId: null, roomId, visitType, doctorScheduledToday: roomId !== null };
   }
 
-  const joined = await joinSessionInTx(tx, { id: encounterId, doctorId: doctor.id, serviceDate, departmentId: doctor.departmentId }, input.appointment ?? null);
+  const joined = await joinSessionInTx(tx, { id: encounterId, doctorId: doctor.id, serviceDate, departmentId: doctor.departmentId, patientId: input.patientId }, input.appointment ?? null, actor);
   await appendEvent(tx, visitOpened.make({ ...env, payload: {
     ...openedPayload, sessionId: joined.sessionId, roomId: joined.roomId, tokenNo: joined.tokenNo,
   } }));
@@ -164,8 +165,9 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput 
  */
 async function joinSessionInTx(
   tx: Tx,
-  encounter: { id: string; doctorId: string; serviceDate: string; departmentId: string | null },
+  encounter: { id: string; doctorId: string; serviceDate: string; departmentId: string | null; patientId: string },
   appointment: { id: string; slotStart: Date } | null,
+  actor: Actor,
 ): Promise<{ queueEntry: QueueEntryRow; tokenNo: number; sessionId: string; roomId: string | null }> {
   const roomId = await roomForDoctorDay(tx, encounter.doctorId, encounter.serviceDate);
   const session = await getOrCreateSession(tx, encounter.doctorId, encounter.serviceDate, roomId);
@@ -178,6 +180,43 @@ async function joinSessionInTx(
     id: newId(), sessionId: session.id, encounterId: encounter.id, tokenNo,
     kind: appointment ? "appointment" : "walk_in", appointmentAt: appointment?.slotStart ?? null, status: "waiting_vitals",
   }).returning();
+
+  /*
+    ═══ FD-24 T5 — THE PAPER IS QUEUED HERE, AND HERE IS THE ONLY HONEST PLACE FOR IT ═══
+
+    Owner ruling R2: the A4 prescription prints at the FRONT DESK, **after the token number is
+    generated**. This function is the one place a token is generated, so a token existing and its
+    slips being queued are the SAME EVENT — not two, with a window between them.
+
+    IT RIDES THIS TRANSACTION, which is why `enqueuePrintJob` takes a `Tx` and not a `Db`. A visit
+    that rolls back queues no slip, and a queued slip is queued against a visit that exists. The
+    alternative — the screen enqueuing after the call returns — is how a patient ends up holding a
+    token for a visit that was never opened, or a visit opens and nothing prints because a browser
+    tab was closed in between.
+
+    The dedupe keys are the ENCOUNTER's, so a re-entry or a retried request queues one slip, not two.
+
+    R7 KEEPS THIS SAFE: printing is advisory. These are single INSERTs with `on conflict do nothing`
+    — the only way they fail is a database failure that would have failed the visit anyway. Nothing
+    here reaches a printer, a network or a renderer; the relay does all of that, later and elsewhere.
+  */
+  await enqueuePrintJob(tx, {
+    document: "opd_token_slip",
+    params: { encounterId: encounter.id, unpaid: true },
+    dedupeKey: `token:${encounter.id}`,
+    patientId: encounter.patientId,
+    encounterId: encounter.id,
+    requestedBy: actor.type === "user" ? actor.id : null,
+  });
+  await enqueuePrintJob(tx, {
+    document: "opd_prescription",
+    params: { encounterId: encounter.id },
+    dedupeKey: `rx:${encounter.id}`,
+    patientId: encounter.patientId,
+    encounterId: encounter.id,
+    requestedBy: actor.type === "user" ? actor.id : null,
+  });
+
   return { queueEntry: queueEntry!, tokenNo, sessionId: session.id, roomId: session.roomId };
 }
 
@@ -235,7 +274,7 @@ export async function joinQueueInTx(tx: Tx, actor: Actor, encounterId: string, n
     return { encounter, queueEntry: existing, tokenNo: existing.tokenNo, sessionId: session.id, roomId: session.roomId, alreadyJoined: true };
   }
 
-  const joined = await joinSessionInTx(tx, { id: encounter.id, doctorId: encounter.doctorId, serviceDate: encounter.serviceDate, departmentId: encounter.departmentId }, null);
+  const joined = await joinSessionInTx(tx, { id: encounter.id, doctorId: encounter.doctorId, serviceDate: encounter.serviceDate, departmentId: encounter.departmentId, patientId: encounter.patientId }, null, actor);
   await appendEvent(tx, patientCheckedIn.make({
     actor, patientId: encounter.patientId, encounterId, correlationId: encounter.workflowInstanceId,
     payload: {

@@ -1,8 +1,13 @@
-import { Body, Controller, ForbiddenException, Inject, Post } from "@nestjs/common";
+import { Body, Controller, ForbiddenException, Get, Inject, Post, Query } from "@nestjs/common";
 import { z } from "zod";
 import { DB } from "../tokens";
-import { CurrentActor } from "../auth/decorators";
+import { CurrentActor, RequirePermission } from "../auth/decorators";
+import { desc, eq } from "drizzle-orm";
+import { newId } from "@hmis/contracts";
+import { printJobs } from "../db/schema";
 import { claimPrintJobs, reportFailed, reportPrinted } from "./claim";
+import { enqueuePrintJob } from "./enqueue";
+import { withTx } from "../db/client";
 import { renderDocument } from "./render";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
@@ -56,6 +61,11 @@ const failedBody = z.object({
 });
 
 const printedBody = z.object({ jobId: z.string().min(1) });
+
+const reprintBody = z.object({
+  jobId: z.string().min(1),
+  reason: z.string().max(300).optional(),
+});
 
 /** What one claimed job looks like on the wire. `page` is the geometry the relay prints at. */
 type PrintJobPayload = {
@@ -128,6 +138,76 @@ export class PrintingController {
   async printed(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ accepted: boolean }> {
     const { jobId } = printedBody.parse(body);
     return { accepted: await reportPrinted(this.db, jobId, this.relayId(actor)) };
+  }
+
+  /**
+   * ═══ WHAT THE COUNTER SEES — owner ruling R7, and the reason this route exists at all ═══
+   *
+   * A print failure is ADVISORY: nothing in the money or queue path waits on a printer. But advisory
+   * is not the same as silent. If the slip did not come out, the clerk has to KNOW, while the
+   * patient is still standing there — otherwise "advisory" just means the hospital finds out from
+   * the patient. This is the read the screen polls to say so.
+   *
+   * It is scoped to ONE ENCOUNTER, deliberately: this is the desk asking about the patient in front
+   * of it, not a queue browser. `opd.visits.open` is the permission because opening the visit is
+   * what queued the paper — anyone who may create the slip may see whether it printed.
+   */
+  @Get("jobs")
+  @RequirePermission("opd.visits.open", "hospital")
+  async jobsFor(@Query("encounterId") encounterId: string): Promise<{
+    jobs: { id: string; document: string; status: string; attempts: number; lastError: string | null; printedAt: string | null }[];
+  }> {
+    if (typeof encounterId !== "string" || encounterId.trim() === "") return { jobs: [] };
+    const rows = await this.db
+      .select()
+      .from(printJobs)
+      .where(eq(printJobs.encounterId, encounterId))
+      .orderBy(desc(printJobs.createdAt));
+    return {
+      jobs: rows.map((r) => ({
+        id: r.id,
+        document: r.document,
+        status: r.status,
+        attempts: r.attempts,
+        lastError: r.lastError,
+        printedAt: r.printedAt === null ? null : r.printedAt.toISOString(),
+      })),
+    };
+  }
+
+  /**
+   * ═══ REPRINT — A NEW ROW, NEVER A RESURRECTED ONE ═══
+   *
+   * A reprint is a NEW job with a NEW dedupe key and a NEW requester, not a `failed` row flipped
+   * back to `queued`. Two reasons and the second is the one that matters:
+   *
+   *   · the dedupe key exists so the SAME slip is queued once; a reprint is deliberately a second
+   *     slip, and re-using the key would make it silently do nothing;
+   *   · "who printed this again, and when" is a question a hospital asks about a document carrying a
+   *     patient's name. Reviving the row erases the first attempt; a new row keeps both.
+   *
+   * The paper is identical because the renderer resolves the record at render time — which is also
+   * why a reprint after a name correction hands over the CORRECTED name.
+   */
+  @Post("reprint")
+  @RequirePermission("opd.visits.open", "hospital")
+  async reprint(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ id: string | null }> {
+    const { jobId, reason } = reprintBody.parse(body);
+    const rows = await this.db.select().from(printJobs).where(eq(printJobs.id, jobId));
+    const original = rows[0];
+    if (original === undefined) return { id: null };
+
+    const id = await withTx(this.db, (tx) => enqueuePrintJob(tx, {
+      document: original.document as Parameters<typeof enqueuePrintJob>[1]["document"],
+      params: original.params,
+      // A fresh key: a reprint is a SECOND slip on purpose, and the original key would swallow it.
+      dedupeKey: `reprint:${original.id}:${newId()}`,
+      patientId: original.patientId,
+      encounterId: original.encounterId,
+      requestedBy: actor.type === "user" ? actor.id : null,
+    }));
+    void reason; // recorded by the request log; the row carries who and when
+    return { id };
   }
 
   /**

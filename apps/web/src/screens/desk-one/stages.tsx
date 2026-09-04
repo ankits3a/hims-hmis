@@ -10,6 +10,7 @@ import {
   rescheduleAppointment,
 } from "../../lib/opd-api";
 import { DELAY_HIGHLIGHT_MINUTES, proposeWalkIn } from "../../lib/walk-in-routing";
+import { listPrintJobs, printSummary, reprintJob, PRINT_DOCUMENT_LABEL } from "../../lib/print-api";
 import type { WireDoctorSummary, WireSlot } from "../../lib/opd-api";
 import {
   ageOf, bookableToday, etaClock, initialsOf, rs, sexLetter, tokenLabel, vitalsAhead, waitMinutes,
@@ -2360,6 +2361,60 @@ function SchemesRail(): React.ReactElement {
    5 · DONE — the sentence Ramesh says out loud, then the slip
    ══════════════════════════════════════════════════════════════════════════════════════════════ */
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-24 T5 — DID THE PAPER ACTUALLY COME OUT?
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * The line above this one tells the clerk to "hand the slip". Until FD-24 that instruction was a
+ * LIE: nothing printed anywhere in this screen, and it said so anyway. This is the half that makes
+ * it true — and, when the printer is jammed, the half that says so IN TIME.
+ *
+ * Owner ruling R7 makes a print failure ADVISORY: the visit is open, the token is allocated and the
+ * money is taken, none of which waited on a printer. **Advisory is not silent.** A hospital that
+ * finds out about a jam from the patient at the vitals desk has a hidden failure wearing an advisory
+ * label. So the bad news is loud, it is HERE — where the clerk is looking, with the patient still at
+ * the window — and it arrives with the one action that helps.
+ *
+ * THERE IS NO PRINT BUTTON, deliberately. Opening the visit queued the paper inside the visit's own
+ * transaction, so a token and its slip are ONE event. A button would invite a second slip and imply
+ * the first had never been sent.
+ *
+ * It polls rather than subscribing: this lives for the few seconds a clerk spends on the hand-over
+ * screen, and a socket for that is more moving parts than the question deserves.
+ */
+function PrintStatus({ encounterId }: { encounterId: string }): React.ReactElement | null {
+  const jobs = useQuery({
+    queryKey: ["print", "jobs", encounterId],
+    queryFn: () => listPrintJobs(encounterId),
+    refetchInterval: 3000,
+  });
+  const [asked, setAsked] = useState<string[]>([]);
+  const summary = printSummary(jobs.data?.jobs ?? []);
+  if (summary.state === "none") return null;
+
+  const tone = summary.state === "failed" ? "var(--red)" : summary.state === "printed" ? "var(--green)" : "var(--dim)";
+  return (
+    <div data-testid="print-status" style={{ marginTop: 9, fontSize: 12, color: tone, display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+      <span data-testid="print-status-text">{summary.text}</span>
+      {summary.failed.map((job) => (
+        <button
+          key={job.id}
+          className="sec"
+          data-testid={`print-reprint-${job.document}`}
+          disabled={asked.includes(job.id)}
+          onClick={() => {
+            setAsked((prev) => [...prev, job.id]);
+            void reprintJob(job.id).then(() => jobs.refetch());
+          }}
+        >
+          {asked.includes(job.id) ? "sent again" : `print the ${PRINT_DOCUMENT_LABEL[job.document] ?? job.document} again`}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function StageDone(): React.ReactElement {
   const d = useDesk();
   const { s } = d;
@@ -2416,6 +2471,7 @@ function StageDone(): React.ReactElement {
           <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 7 }}>
             “Your token is {tokenLabel(deptCode, token)}.{v.roomCode === null ? "" : ` Room ${v.roomCode}.`} Your turn in about {v.waitMinutes} minutes.” Say it, then hand the slip.
           </div>
+          <PrintStatus encounterId={v.encounterId} />
         </>
       )}
 
