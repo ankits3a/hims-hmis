@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import {
+ describe, expect, it } from "vitest";
 import {
   ageOf, billOf, bookableToday, deptQueues, firstFreeDoctor, flowOf, inHall, laneOf,
-  rs, shortestLine, shouldJoinNow, stepIndex, tokenStateOf, vitalsAhead, waitMinutes,
+  rs, shortestLine, shouldJoinNow, stepIndex, tokenStateOf, vitalsAhead, waitMinutes, tokenLabel,
 } from "./model";
 import type { WireDoctorSummary } from "../../lib/opd-api";
 import type { WireFeeQuote } from "../../lib/billing-api";
@@ -282,5 +283,23 @@ describe("small truths a counter shows a hundred times a day", () => {
     expect(stepIndex("appointment")).toBe(1);
     expect(stepIndex("bill")).toBe(2);
     expect(stepIndex("done")).toBe(3);
+  });
+});
+
+/**
+ * FD-20 — the token a patient is actually holding. Owner ruling 2026-09-04: *"the token number
+ * should be not according to the doctor but Department. For Example it should be 'MED - 4',
+ * 'PED - 290'."* The series moved server-side; this is the face of it.
+ */
+describe("tokenLabel", () => {
+  it("prefixes the department's code", () => {
+    expect(tokenLabel("MED", 4)).toBe("MED-4");
+    expect(tokenLabel("PED", 290)).toBe("PED-290");
+  });
+
+  /* A code the desk has not loaded yet falls back to the bare form — never to a guessed department. */
+  it("falls back to T- when the code is unknown, rather than inventing one", () => {
+    expect(tokenLabel(null, 4)).toBe("T-4");
+    expect(tokenLabel("", 4)).toBe("T-4");
   });
 });

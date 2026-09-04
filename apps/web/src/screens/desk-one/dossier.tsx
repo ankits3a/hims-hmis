@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { patientTimeline } from "../../lib/opd-api";
 import { dayMonthIst } from "../../lib/format";
-import { ageOf, initialsOf, rs, sexLetter, STEPS, stepIndex, tokenStateOf } from "./model";
+import { ageOf, initialsOf, rs, sexLetter, STEPS, stepIndex, tokenLabel, tokenStateOf } from "./model";
 import { useDesk } from "./session";
 import { PhotoPanel } from "./photo";
 
@@ -126,6 +126,8 @@ export function Dossier(): React.ReactElement {
   const memberships = (d.recognition?.memberships ?? []).filter((m) => m.usable);
   const coupons = d.recognition?.coupons ?? [];
   const freeReason = d.quote?.freeReason ?? null;
+  /** FD-20 — the department's code prefixes the token the patient is holding. */
+  const deptCode = d.departments.find((x) => x.id === s.visit?.departmentId)?.code ?? null;
 
   return (
     <div style={{ padding: "18px 18px 26px" }}>
@@ -139,11 +141,36 @@ export function Dossier(): React.ReactElement {
       ) : (
         <>
           <div style={{ display: "flex", gap: 11, alignItems: "center" }}>
-            <div style={{
-              width: 44, height: 44, borderRadius: 6, background: "var(--wash)", border: "1px solid var(--line)",
-              display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, color: "var(--dim)",
-            }}>
-              {initialsOf(p.name)}
+            {/*
+              ═══ FD-19 — THE FACE LIVES IN THE 44px SQUARE, NOT IN A PANEL OF ITS OWN ═══
+
+              Owner, 2026-09-04: *"there's no need to show the current size of the picture of the
+              patient in the left panel. Instead show the thumbnail size of the picture in square
+              shape that we have near Name … In case of unavailibity of the picture intials should
+              be show."*
+
+              Right, and the full-width preview was costing the column its most valuable space —
+              the rail holds the history, the account and the live bill, and a 250px portrait pushed
+              all three below the fold. The square was already there carrying initials; it becomes
+              the photo when there is one and keeps the initials when there is not, so the slot
+              never changes size and nothing below it moves as the picture loads.
+            */}
+            <div
+              data-testid="patient-avatar"
+              style={{
+                width: 44, height: 44, borderRadius: 6, background: "var(--wash)", border: "1px solid var(--line)",
+                display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, color: "var(--dim)",
+                overflow: "hidden", flexShrink: 0,
+              }}
+            >
+              {s.photo === null ? initialsOf(p.name) : (
+                <img
+                  data-testid="avatar-photo"
+                  src={s.photo}
+                  alt=""
+                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                />
+              )}
             </div>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 15, fontWeight: 600, lineHeight: "19px" }}>{p.name}</div>
@@ -290,7 +317,7 @@ export function Dossier(): React.ReactElement {
               </>
             ) : (
               <>
-                <span className="mo" style={{ fontSize: 22, fontWeight: 700 }}>T-{token.tokenNo}</span>
+                <span className="mo" data-testid="token-label" style={{ fontSize: 22, fontWeight: 700 }}>{tokenLabel(deptCode, token.tokenNo)}</span>
                 <span className={token.paid ? "stamp pd" : "stamp un"}>{token.paid ? "PAID" : "UNPAID"}</span>
               </>
             )}

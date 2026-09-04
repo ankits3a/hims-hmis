@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  bigserial, boolean, date, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex,
+  bigserial, boolean, date, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, primaryKey,
 } from "drizzle-orm/pg-core";
 import { patients } from "./patients";
 import { resources } from "./resources";
@@ -179,6 +179,40 @@ export const opdAppointments = pgTable(
 );
 
 /** One row per doctor per IST day: the token counter, the call counter, in/out status, the room. */
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-20 — THE TOKEN SERIES IS THE DEPARTMENT'S, NOT THE DOCTOR'S
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner, 2026-09-04: *"the token number should be not according to the doctor but Department. For
+ * Example it should be 'MED - 4', 'PED - 290'."*
+ *
+ * This is what `opd_departments.code` was always for — its own comment has said "e.g. 'MED', 'PED'
+ * — printed on token slips" since it was written, and nothing printed them.
+ *
+ * ═══ WHY A TABLE AND NOT `opd_queue_sessions.next_token` ═══
+ *
+ * A session is a DOCTOR-DAY, so its counter restarts per doctor: three doctors sitting in Medicine
+ * all issued a token 1, and the hall heard "number 4" called three times for three different
+ * people. The counter has to live where the series does — one per department per day — and the
+ * allocation is the same UPDATE … RETURNING pattern `allocateToken` already used, moved one level
+ * out. `next_token` stays on the session: existing rows keep meaning what they meant, and nothing
+ * reads it after this change.
+ *
+ * DAY-SCOPED, so Monday starts at 1 again. `service_date` is the IST calendar day the rest of this
+ * schema already keys visits by, not a timestamp.
+ */
+export const opdDepartmentTokens = pgTable(
+  "opd_department_tokens",
+  {
+    departmentId: text("department_id").notNull().references(() => opdDepartments.id),
+    serviceDate: date("service_date", { mode: "string" }).notNull(),
+    /** Allocated by INSERT … ON CONFLICT DO UPDATE SET next_token = next_token + 1 RETURNING. */
+    nextToken: integer("next_token").notNull().default(1),
+  },
+  (t) => [primaryKey({ columns: [t.departmentId, t.serviceDate] })],
+);
+
 export const opdQueueSessions = pgTable(
   "opd_queue_sessions",
   {

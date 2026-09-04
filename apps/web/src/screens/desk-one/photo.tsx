@@ -150,15 +150,18 @@ export function PhotoPanel(
     <div style={{ marginTop: 14 }}>
       <div className="tag">{caption}</div>
 
+      {/*
+        FD-19 — NO FULL-SIZE PREVIEW. The picture is shown in the 44px square beside the name (see
+        `dossier.tsx`); repeating it here at 250px was the same information twice and cost the rail
+        the space the history and the account now use. `photo-preview` is kept as a ZERO-SIZE marker
+        so a test can still ask "is a photo held" without the layout paying for the answer — the
+        square is where a human looks.
+      */}
       {dataUrl !== null ? (
-        <div style={{ marginTop: 8 }}>
-          <img
-            data-testid="photo-preview"
-            src={dataUrl}
-            alt=""
-            style={{ width: "100%", borderRadius: 6, border: "1px solid var(--line)", display: "block" }}
-          />
-          <button className="sec" data-testid="photo-clear" style={{ marginTop: 7 }} onClick={onClear}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+          <img data-testid="photo-preview" src={dataUrl} alt="" style={{ width: 0, height: 0 }} />
+          <span style={{ fontSize: 11.5, color: "var(--green)" }}>{t("registrationCounter.photo.onFile")}</span>
+          <button className="sec" data-testid="photo-clear" onClick={onClear}>
             {t("registrationCounter.photo.retake")}
           </button>
         </div>

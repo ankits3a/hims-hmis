@@ -2,7 +2,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
 import { withTx } from "../../kernel/db/client";
-import { events, opdQueueEntries, opdQueueSessions, patients, workflowInstances } from "../../kernel/db/schema";
+import { events, opdDepartmentTokens, opdQueueEntries, opdQueueSessions, patients, workflowInstances } from "../../kernel/db/schema";
 import {
   abandonVisit, getEncounter, moveEncounter, openVisit, patientTimeline, reEnterVisit, transferQueue, reclassifyVisit,
 } from "./encounters";
@@ -104,20 +104,36 @@ describe("opd encounters (the spine: open / abandon / re-enter / transfer / time
     });
   });
 
-  it("tokens climb inside one doctor-day; another doctor and an unscheduled day start their own session", async () => {
+  /**
+   * ═══ FD-20 — THE SERIES IS THE DEPARTMENT'S, AND THIS TEST IS WHERE THAT IS PINNED ═══
+   *
+   * Owner ruling 2026-09-04: *"the token number should be not according to the doctor but
+   * Department."* This test previously asserted the opposite — a second doctor started at 1 — which
+   * is precisely the behaviour that made a hall hear "number four" called three times for three
+   * different people. The SESSION is still the doctor's; only the NUMBER moved.
+   */
+  it("tokens climb across the whole DEPARTMENT-day; another doctor continues the same series", async () => {
     const first = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    expect(first.tokenNo).toBe(1);
     const second = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, new Date(MON.getTime() + 5 * 60_000));
     expect(second.tokenNo).toBe(2);
     expect(second.sessionId).toBe(first.sessionId);
 
+    // ANOTHER DOCTOR IN THE SAME DEPARTMENT TAKES THE NEXT NUMBER, not a fresh 1 — the whole ruling
+    const other = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: drb.doctorId }, MON);
+    expect(other.tokenNo).toBe(3);
+    expect(other.sessionId).not.toBe(first.sessionId); // …while the doctor-day session is still his own
+
+    // a DIFFERENT department counts separately: 'MED-3' and 'PED-1' can exist at the same moment
+    const otherDept = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: dept2Id, doctorId: drp.doctorId }, MON);
+    expect(otherDept.tokenNo).toBe(1);
+
+    // and a different DAY starts the series again
     const sunday = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, SUN);
     expect(sunday.roomId).toBeNull();
     expect(sunday.doctorScheduledToday).toBe(false);
     expect(sunday.tokenNo).toBe(1);
     expect(sunday.sessionId).not.toBe(first.sessionId);
-
-    const other = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: drb.doctorId }, MON);
-    expect(other.tokenNo).toBe(1);
   });
 
   it("visit type anchors on the newest completed consult in the SAME department, across the merge chain", async () => {
@@ -138,19 +154,33 @@ describe("opd encounters (the spine: open / abandon / re-enter / transfer / time
     expect((await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: dept2Id, doctorId: drp.doctorId }, aug15)).visitType).toBe("revisit");
   });
 
-  it("six concurrent opens on one doctor-day allocate tokens 1..6 from a single session", async () => {
+  /**
+   * FD-20 — the concurrency property that matters is UNCHANGED and now guards a WIDER series: six
+   * counters opening at once across a department must still produce six distinct numbers. The
+   * upsert takes the row lock on conflict exactly as the per-session UPDATE did.
+   */
+  it("six concurrent opens across TWO doctors of one department allocate 1..6 with no collision", async () => {
     const six: { id: string; uhid: string }[] = [];
     for (let i = 0; i < 6; i++) six.push(await mkPatient(db, clerk.actor, { phone: `98765100${i}0` }));
     const results = await Promise.all(
-      six.map((p) => openVisit(db, clerk.actor, { patientId: p.id, departmentId: deptId, doctorId: dra.doctorId }, MON)),
+      six.map((p, i) => openVisit(
+        db, clerk.actor,
+        { patientId: p.id, departmentId: deptId, doctorId: i % 2 === 0 ? dra.doctorId : drb.doctorId },
+        MON,
+      )),
     );
+    // ONE series across BOTH doctors — the numbers do not repeat and nothing is skipped
     expect(results.map((r) => r.tokenNo).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6]);
+
+    const counter = await db.select().from(opdDepartmentTokens)
+      .where(and(eq(opdDepartmentTokens.departmentId, deptId), eq(opdDepartmentTokens.serviceDate, "2026-08-17")));
+    expect(counter).toHaveLength(1);
+    expect(counter[0]!.nextToken).toBe(7);
+
+    // …while the doctor-day sessions stayed two, because a session is still a doctor's
     const sessions = await db.select().from(opdQueueSessions)
-      .where(and(eq(opdQueueSessions.doctorId, dra.doctorId), eq(opdQueueSessions.serviceDate, "2026-08-17")));
-    expect(sessions).toHaveLength(1);
-    expect(sessions[0]!.nextToken).toBe(7);
-    const entries = await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.sessionId, sessions[0]!.id));
-    expect(entries).toHaveLength(6);
+      .where(eq(opdQueueSessions.serviceDate, "2026-08-17"));
+    expect(sessions).toHaveLength(2);
   });
 
   it("abandon cancels the queue entry, completes the instance and events once; a blank reason and a repeat refuse", async () => {

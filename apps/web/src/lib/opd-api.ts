@@ -752,3 +752,19 @@ export function reclassifyVisit(
 ): Promise<{ encounter: WireEncounter }> {
   return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/reclassify`, { visitType, reason });
 }
+
+/**
+ * FD-19 — MOVE A BOOKING. `POST /opd/appointments/:id/reschedule` has existed since D7 and the only
+ * caller was the standalone `/opd/appointments` screen — the front desk, where the patient actually
+ * says "can we make it Thursday", had no way to do it.
+ *
+ * `doctorId` is optional and travels when the new slot belongs to somebody else, which is what makes
+ * the owner's second route — find the doctor, move the patient off them — the same call as the first.
+ */
+export function rescheduleAppointment(
+  appointmentId: string, slotStart: string, doctorId?: string,
+): Promise<{ from: WireAppointment; to: WireAppointment }> {
+  return api("POST", `/opd/appointments/${encodeURIComponent(appointmentId)}/reschedule`, {
+    slotStart, ...(doctorId === undefined ? {} : { doctorId }),
+  });
+}

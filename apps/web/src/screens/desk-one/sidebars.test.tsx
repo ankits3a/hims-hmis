@@ -350,3 +350,37 @@ describe("FD-14: the schemes rail at billing", () => {
 expect(await screen.findByTestId("scheme-coupon-DIWALI50")).toHaveTextContent("already redeemed on 2 March");
   });
 });
+
+describe("FD-19/FD-20: the avatar and the token a patient is holding", () => {
+  /**
+   * Owner, 2026-09-04: *"there's no need to show the current size of the picture of the patient in
+   * the left panel. Instead show the thumbnail size of the picture in square shape that we have near
+   * Name … In case of unavailibity of the picture intials should be show."*
+   *
+   * The full-width portrait was pushing the history, the account and the live bill below the fold —
+   * the three things the rail exists for.
+   */
+  it("with no photo the 44px square carries the initials", async () => {
+    mount();
+    await holdPatient();
+    const avatar = await screen.findByTestId("patient-avatar");
+    expect(avatar).toHaveTextContent("RK"); // Ramesh Kumar
+    expect(screen.queryByTestId("avatar-photo")).not.toBeInTheDocument();
+  });
+
+  it("with a photo the SAME square carries it, and no full-size portrait is drawn", async () => {
+    stubCanvas();
+    mount({ photoPuts: [] });
+    await holdPatient();
+
+    const user = userEvent.setup({ delay: null });
+    await user.upload(screen.getByTestId("photo-file"), new File([new Uint8Array([1])], "f.jpg", { type: "image/jpeg" }));
+
+    const img = await screen.findByTestId("avatar-photo");
+    expect(img).toHaveAttribute("src", "data:image/jpeg;base64,QUJD");
+    // the square never changes size as the picture lands, so nothing below it moves
+    const avatar = screen.getByTestId("patient-avatar");
+    expect(avatar).toHaveStyle({ width: "44px", height: "44px" });
+    expect(avatar).not.toHaveTextContent("RK");
+  });
+});

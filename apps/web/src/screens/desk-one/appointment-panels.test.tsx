@@ -57,6 +57,7 @@ function mount(opts: {
   anchor?: unknown;
   theirs?: unknown[];
   checkIns?: string[];
+  moves?: { slotStart: string; doctorId?: string }[];
 } = {}): void {
   stubFetch({
     "GET /api/auth/me": {
@@ -96,6 +97,11 @@ function mount(opts: {
       PATIENT's bookings (patientId + status). `stubFetch` keys on the path without its query, so
       one handler answers both and branches on what was asked for.
     */
+    "POST /api/opd/appointments/11/reschedule": (init?: RequestInit) => {
+      const b = JSON.parse(String(init?.body ?? "{}")) as { slotStart: string; doctorId?: string };
+      opts.moves?.push(b);
+      return { from: { id: "11" }, to: { id: "11", slotStart: b.slotStart } };
+    },
     "GET /api/opd/appointments": (init?: RequestInit, url?: string) => (
       String(url ?? "").includes("patientId=")
         ? { items: opts.theirs ?? [] }
@@ -431,5 +437,86 @@ describe("FD-17: the appointment's type, and the bookings the desk did not warn 
     await openFutureTab();
     await screen.findAllByTestId("book-row");
     expect(screen.queryByTestId("check-in-11")).not.toBeInTheDocument();
+  });
+});
+
+describe("FD-19: editing a future booking from the desk", () => {
+  const tomorrow = tomorrowIst();
+  const theirBooking = {
+    id: "11", patientId: "p-1", doctorId: "doc-1", departmentId: "d-1", serviceDate: tomorrow,
+    slotStart: `${tomorrow}T09:15:00.000Z`, slotEnd: `${tomorrow}T09:30:00.000Z`,
+    status: "booked", source: "desk", note: null, encounterId: null, rescheduledToId: null,
+    rescheduledFromId: null, cancelReason: null, leaveId: null, bookedBy: "u1",
+    bookedAt: "2026-09-04T00:00:00.000Z", updatedBy: "u1", updatedAt: "2026-09-04T00:00:00.000Z",
+  };
+
+  /**
+   * Owner, 2026-09-04: *"if patient decides to reschedule the future appointment then the operating
+   * system must allow the user to edit the future booking."* `POST /appointments/:id/reschedule` has
+   * existed since D7; its only caller was the standalone `/opd/appointments` screen, so the desk —
+   * where the patient actually says "can we make it Thursday" — could not do it.
+   */
+  it("ROUTE 1 — find the patient, see their bookings, move one into a chosen slot", async () => {
+    const moves: { slotStart: string; doctorId?: string }[] = [];
+    mount({ slots: [slot("10:30")], theirs: [theirBooking], moves });
+    await openFutureTab();
+    const user = userEvent.setup({ delay: null });
+
+    // their upcoming bookings are listed beside the diary, no second lookup
+    expect(await screen.findByTestId("their-bookings")).toBeInTheDocument();
+    await user.click(screen.getByTestId("move-theirs-11"));
+
+    // the grid becomes the picker and says so, so "book" has not silently become "move"
+    expect(screen.getByTestId("moving-banner")).toBeInTheDocument();
+    await user.click(screen.getAllByTestId("slot-free")[0]!);
+    await user.click(screen.getByTestId("confirm-move"));
+
+    await waitFor(() => expect(moves).toHaveLength(1));
+    expect(moves[0]!.slotStart).toContain("10:30");
+  });
+
+  /* *"Second way is to search the doctor and change the patient schedule from there."* */
+  it("ROUTE 2 — find the doctor, move a patient off their day's book", async () => {
+    const moves: { slotStart: string; doctorId?: string }[] = [];
+    mount({ slots: [slot("10:30")], appointments: [appt("11", "09:15", "Asha Devi")], moves });
+    await openFutureTab();
+    const user = userEvent.setup({ delay: null });
+
+    await user.click(await screen.findByTestId("move-11"));
+    await user.click(screen.getAllByTestId("slot-free")[0]!);
+    await user.click(screen.getByTestId("confirm-move"));
+
+    await waitFor(() => expect(moves).toHaveLength(1));
+    // the doctor travels, which is what makes moving BETWEEN doctors the same call
+    expect(moves[0]!.doctorId).toBe("doc-1");
+  });
+
+  it("booking is still booking — an unarmed grid does not move anything", async () => {
+    const moves: { slotStart: string; doctorId?: string }[] = [];
+    const booked: { body: unknown }[] = [];
+    mount({ slots: [slot("10:30")], theirs: [theirBooking], moves, booked });
+    await openFutureTab();
+    const user = userEvent.setup({ delay: null });
+
+    await user.click(screen.getAllByTestId("slot-free")[0]!);
+    expect(screen.getByTestId("confirm-slot")).toBeInTheDocument();
+    expect(screen.queryByTestId("confirm-move")).not.toBeInTheDocument();
+    await user.click(screen.getByTestId("confirm-slot"));
+    await waitFor(() => expect(booked).toHaveLength(1));
+    expect(moves).toHaveLength(0);
+  });
+
+  it("changing your mind about moving leaves the booking alone", async () => {
+    const moves: { slotStart: string; doctorId?: string }[] = [];
+    mount({ slots: [slot("10:30")], theirs: [theirBooking], moves });
+    await openFutureTab();
+    const user = userEvent.setup({ delay: null });
+
+    await user.click(screen.getByTestId("move-theirs-11"));
+    await user.click(screen.getAllByTestId("slot-free")[0]!);
+    await user.click(screen.getByTestId("clear-slot"));
+
+    expect(screen.queryByTestId("moving-banner")).not.toBeInTheDocument();
+    expect(moves).toHaveLength(0);
   });
 });

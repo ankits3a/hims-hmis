@@ -139,7 +139,7 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput 
     return { encounter: encounter!, queueEntry: null, tokenNo: null, sessionId: null, roomId, visitType, doctorScheduledToday: roomId !== null };
   }
 
-  const joined = await joinSessionInTx(tx, { id: encounterId, doctorId: doctor.id, serviceDate }, input.appointment ?? null);
+  const joined = await joinSessionInTx(tx, { id: encounterId, doctorId: doctor.id, serviceDate, departmentId: doctor.departmentId }, input.appointment ?? null);
   await appendEvent(tx, visitOpened.make({ ...env, payload: {
     ...openedPayload, sessionId: joined.sessionId, roomId: joined.roomId, tokenNo: joined.tokenNo,
   } }));
@@ -153,15 +153,27 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput 
   };
 }
 
-/** The ONE place a visit joins its doctor-day: session get-or-create, token allocation, queue-entry insert. Both callers — the immediate open above and `joinQueue` below — run it inside their own transaction. */
+/**
+ * The ONE place a visit joins its doctor-day: session get-or-create, token allocation, queue-entry
+ * insert. Both callers — the immediate open above and `joinQueue` below — run it inside their own
+ * transaction.
+ *
+ * FD-20 — `departmentId` travels because the TOKEN SERIES is the department's while the SESSION is
+ * still the doctor's. The queue entry belongs to a doctor-day; the number on the slip belongs to the
+ * department-day. Those are two different facts and this function is where they meet.
+ */
 async function joinSessionInTx(
   tx: Tx,
-  encounter: { id: string; doctorId: string; serviceDate: string },
+  encounter: { id: string; doctorId: string; serviceDate: string; departmentId: string | null },
   appointment: { id: string; slotStart: Date } | null,
 ): Promise<{ queueEntry: QueueEntryRow; tokenNo: number; sessionId: string; roomId: string | null }> {
   const roomId = await roomForDoctorDay(tx, encounter.doctorId, encounter.serviceDate);
   const session = await getOrCreateSession(tx, encounter.doctorId, encounter.serviceDate, roomId);
-  const tokenNo = await allocateToken(tx, session.id);
+  if (encounter.departmentId === null) {
+    // Every OPD encounter has one; a null here would silently mint a series of its own.
+    throw new OpdError("invalid_transfer", "a visit cannot join a queue without a department");
+  }
+  const tokenNo = await allocateToken(tx, encounter.departmentId, encounter.serviceDate);
   const [queueEntry] = await tx.insert(opdQueueEntries).values({
     id: newId(), sessionId: session.id, encounterId: encounter.id, tokenNo,
     kind: appointment ? "appointment" : "walk_in", appointmentAt: appointment?.slotStart ?? null, status: "waiting_vitals",
@@ -223,7 +235,7 @@ export async function joinQueueInTx(tx: Tx, actor: Actor, encounterId: string, n
     return { encounter, queueEntry: existing, tokenNo: existing.tokenNo, sessionId: session.id, roomId: session.roomId, alreadyJoined: true };
   }
 
-  const joined = await joinSessionInTx(tx, { id: encounter.id, doctorId: encounter.doctorId, serviceDate: encounter.serviceDate }, null);
+  const joined = await joinSessionInTx(tx, { id: encounter.id, doctorId: encounter.doctorId, serviceDate: encounter.serviceDate, departmentId: encounter.departmentId }, null);
   await appendEvent(tx, patientCheckedIn.make({
     actor, patientId: encounter.patientId, encounterId, correlationId: encounter.workflowInstanceId,
     payload: {
@@ -659,7 +671,14 @@ export async function transferQueue(
         .returning({ id: opdQueueEntries.id });
       if (claimed.length === 0) continue; // moved concurrently — skip, never overwrite
       const encounter = (await tx.select().from(opdEncounters).where(eq(opdEncounters.id, entry.encounterId)))[0]!;
-      const tokenNo = await allocateToken(tx, toSession.id);
+      /*
+        FD-20 — THE TOKEN SURVIVES THE TRANSFER, and that is the department series paying for
+        itself. A transfer is same-department by the guard above, so the number on the patient's
+        slip is still valid: moving them from one doctor to another inside Medicine used to mint a
+        SECOND number and leave them holding a stale one. Now they keep "MED-4" and simply wait in
+        front of a different door.
+      */
+      const tokenNo = entry.tokenNo;
       await tx.insert(opdQueueEntries).values({
         id: newId(), sessionId: toSession.id, encounterId: entry.encounterId, tokenNo, kind: entry.kind,
         appointmentAt: entry.appointmentAt, status: entry.status === "called" ? "waiting" : entry.status,

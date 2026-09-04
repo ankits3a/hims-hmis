@@ -2621,7 +2621,12 @@
     "book": {
       "alreadyBooked": "{{name}} already has {{count}} booking that day",
       "alreadyBookedHint": "book a second only if it is genuinely a second appointment",
-      "checkIn": "check in"
+      "checkIn": "check in",
+      "move": "move",
+      "theirs": "{{name}}'s upcoming appointments",
+      "theirsHint": "pick one to move it",
+      "moving": "Moving {{who}} — was {{was}}",
+      "movingHint": "choose the new slot above, or leave it where it is"
     },
     "reclassify": {
       "open": "Wrong visit type? (now: {{current}})",

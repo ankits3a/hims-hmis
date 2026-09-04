@@ -5,11 +5,12 @@ import { abhaCapability, matchReasonKeys, matchReasonsDiscriminate, searchPatien
 import type { WirePatientHit } from "../../lib/patients-api";
 import {
   checkInAppointment, getContinuity, getSlots, listDayAppointments, listPatientAppointments, opdErrorMessage,
+  rescheduleAppointment,
 } from "../../lib/opd-api";
 import { DELAY_HIGHLIGHT_MINUTES, proposeWalkIn } from "../../lib/walk-in-routing";
 import type { WireDoctorSummary, WireSlot } from "../../lib/opd-api";
 import {
-  ageOf, bookableToday, etaClock, initialsOf, rs, sexLetter, vitalsAhead, waitMinutes,
+  ageOf, bookableToday, etaClock, initialsOf, rs, sexLetter, tokenLabel, vitalsAhead, waitMinutes,
 } from "./model";
 import type { DeptQueue } from "./model";
 import { dayMonthIst, monthYearIst } from "../../lib/format";
@@ -1259,8 +1260,43 @@ function FutureTab(): React.ReactElement {
   });
   const sameDay = (theirs.data?.items ?? []).filter((a) => a.serviceDate === date);
 
+  /**
+   * ═══ FD-19 — THE BOOKING BEING MOVED ═══
+   *
+   * Owner, 2026-09-04: *"if patient decides to reschedule the future appointment then the operating
+   * system must allow the user to edit the future booking … 1st is to search the patient and look at
+   * the history & scheduled appointment … Second way is to search the doctor and change the patient
+   * schedule from there."*
+   *
+   * `POST /opd/appointments/:id/reschedule` has existed since D7 and its only caller was the
+   * standalone `/opd/appointments` screen — the desk, where the patient actually says "can we make
+   * it Thursday", could not do it. Both of the owner's routes are the SAME act with a different way
+   * in, so they share one mechanism: mark a booking as the one being moved, then pick a slot. The
+   * grid and its confirmation are the ones already on screen; only the verb changes.
+   */
+  const [moving, setMoving] = useState<{ id: string; who: string; was: string } | null>(null);
+
   /** A booked patient arriving. The booking BECOMES the visit rather than a second encounter. */
   const [arriving, setArriving] = useState<string | null>(null);
+  /**
+   * The move itself. `doctorId` travels whenever the chosen slot belongs to a doctor other than the
+   * booking's own — which is exactly the owner's second route, "search the doctor and change the
+   * patient schedule from there", reaching the same endpoint as the first.
+   */
+  const move = async (appointmentId: string, slotStart: string): Promise<void> => {
+    d.patch({ busy: "future", error: null });
+    try {
+      await rescheduleAppointment(appointmentId, slotStart, doctorId);
+      await Promise.all([dayBook.refetch(), theirs.refetch()]);
+      d.patch({ busy: null });
+      d.note(`appointment moved to ${slotClock(slotStart)}`, "ok");
+      setMoving(null);
+      setPicked(null);
+    } catch (e) {
+      d.patch({ busy: null, error: opdErrorMessage(e) });
+    }
+  };
+
   const arrive = async (appointmentId: string): Promise<void> => {
     setArriving(appointmentId);
     try {
@@ -1325,6 +1361,65 @@ function FutureTab(): React.ReactElement {
         promise about a time into the record with no confirm step. Now a click SELECTS — the chip
         turns pine, the legend says what the colours mean, and one button commits it.
       */}
+      {/*
+        ═══ FD-19 — THE OWNER'S FIRST ROUTE: FIND THE PATIENT, SEE WHAT THEY HAVE, MOVE IT ═══
+
+        *"1st is to search the patient and look at the history & scheduled appointment and select the
+        the appointment the patient want to reschedule and do it."*
+
+        The patient is already in hand — the left column has held them since the search — so their
+        bookings belong here beside the diary, not behind another lookup. Every upcoming one, not
+        only today's: a patient who rings to move next Tuesday's slot is the ordinary case.
+
+        Selecting one arms the SAME move the day's book arms, and the grid above becomes the picker.
+        One mechanism, two ways in, so the two cannot drift apart.
+      */}
+      {(theirs.data?.items ?? []).length === 0 ? null : (
+        <div className="box" data-testid="their-bookings" style={{ marginTop: 14, overflow: "hidden" }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "10px 14px", borderBottom: "1px solid var(--line2)" }}>
+            <span style={{ fontSize: 12.5, fontWeight: 700 }}>
+              {t("registrationCounter.book.theirs", { name: s.person?.name ?? "" })}
+            </span>
+            <span style={{ fontSize: 11, color: "var(--dim)" }}>{t("registrationCounter.book.theirsHint")}</span>
+          </div>
+          {(theirs.data?.items ?? []).map((a) => (
+            <div key={a.id} className="drow" style={{ background: "var(--card)" }}>
+              <span className="mo" style={{ fontSize: 11.5, fontWeight: 600, width: 74 }}>{dayMonthIst(a.serviceDate)}</span>
+              <span className="mo" style={{ fontSize: 11.5, width: 52 }}>{slotClock(a.slotStart)}</span>
+              <span style={{ fontSize: 11.5, color: "var(--dim)", flexGrow: 1, minWidth: 0 }}>
+                {d.summaries.find((x) => x.doctor.id === a.doctorId)?.doctor.displayName ?? ""}
+              </span>
+              <button
+                className="sec"
+                data-testid={`move-theirs-${a.id}`}
+                onClick={() => {
+                  setMoving({ id: a.id, who: s.person?.name ?? "this patient", was: slotClock(a.slotStart) });
+                  setPicked(null);
+                }}
+              >
+                {t("registrationCounter.book.move")}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* The banner that says what the grid is now FOR — otherwise "book" silently became "move". */}
+      {moving === null ? null : (
+        <div
+          className="box"
+          data-testid="moving-banner"
+          style={{ marginTop: 14, padding: "11px 14px", borderColor: "var(--green-line)", background: "var(--green-soft)" }}
+        >
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--green)" }}>
+            {t("registrationCounter.book.moving", { who: moving.who, was: moving.was })}
+          </span>
+          <span style={{ fontSize: 11.5, color: "var(--dim)", marginLeft: 7 }}>
+            {t("registrationCounter.book.movingHint")}
+          </span>
+        </div>
+      )}
+
       {/*
         A WARNING, NOT A GATE — the same discipline the duplicate-registration warning follows. A
         second slot on one day is usually a mistake and is occasionally deliberate (two departments,
@@ -1405,19 +1500,30 @@ function FutureTab(): React.ReactElement {
           <div style={{ display: "flex", alignItems: "center", gap: 11, marginTop: 13, paddingTop: 12, borderTop: "1px solid var(--line2)" }}>
             <button
               className="pri"
-              data-testid="confirm-slot"
+              data-testid={moving === null ? "confirm-slot" : "confirm-move"}
               disabled={s.busy === "future" || chosen === null}
               onClick={() => {
                 const slot = all.find((x) => x.start === picked);
                 if (slot === undefined || chosen === null) return;
+                if (moving !== null) { void move(moving.id, slot.start); return; }
                 void d.holdFutureSlot(doctorId, slot, deptName, chosen.doctor.displayName);
                 setPicked(null);
               }}
             >
-              {s.busy === "future" ? "holding…" : `book ${slotClock(picked)} with ${chosen?.doctor.displayName ?? ""}`}
+              {s.busy === "future"
+                ? "holding…"
+                : moving === null
+                  ? `book ${slotClock(picked)} with ${chosen?.doctor.displayName ?? ""}`
+                  : `move ${moving.who} to ${slotClock(picked)}`}
               <span className="kb dk">⏎</span>
             </button>
-            <button className="sec" data-testid="clear-slot" onClick={() => { setPicked(null); }}>pick another</button>
+            <button
+              className="sec"
+              data-testid="clear-slot"
+              onClick={() => { setPicked(null); setMoving(null); }}
+            >
+              {moving === null ? "pick another" : "leave it where it is"}
+            </button>
           </div>
         )}
       </div>
@@ -1464,14 +1570,30 @@ function FutureTab(): React.ReactElement {
                 encounter and loses the booking. Only offered on a booking still waiting to arrive.
               */}
               {a.status === "booked" ? (
-                <button
-                  className="sec grn"
-                  data-testid={`check-in-${a.id}`}
-                  disabled={arriving !== null}
-                  onClick={() => void arrive(a.id)}
-                >
-                  {arriving === a.id ? "…" : t("registrationCounter.book.checkIn")}
-                </button>
+                <>
+                  <button
+                    className="sec"
+                    data-testid={`move-${a.id}`}
+                    onClick={() => {
+                      setMoving({
+                        id: a.id,
+                        who: a.patient?.restricted === true ? (a.patient.alias ?? "this patient") : (a.patient?.name ?? "this patient"),
+                        was: slotClock(a.slotStart),
+                      });
+                      setPicked(null);
+                    }}
+                  >
+                    {t("registrationCounter.book.move")}
+                  </button>
+                  <button
+                    className="sec grn"
+                    data-testid={`check-in-${a.id}`}
+                    disabled={arriving !== null}
+                    onClick={() => void arrive(a.id)}
+                  >
+                    {arriving === a.id ? "…" : t("registrationCounter.book.checkIn")}
+                  </button>
+                </>
               ) : <span style={{ width: 74 }} />}
             </div>
           ))
@@ -1793,24 +1915,52 @@ function StageBill(): React.ReactElement {
           Settled against {s.visit.doctorName}. Changing the doctor now is a credit note, not a desk correction.
         </div>
       ) : (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14 }}>
+        <>
+        {/*
+          ═══ FD-19 — THE SEATING IS A DECISION THE SCREEN SHOULD SHOW, NOT A LINK UNDER THE BILL ═══
+
+          Owner, 2026-09-04: *"at the billing page 'Change the doctor' button should be on better and
+          highlighted way. should have Better UX."*
+
+          It was a grey secondary button in a row of small print, below the tender keys — the same
+          weight as "dismiss". But WHO the patient is seeing is the second most consequential thing
+          on this screen after the money, and it is the one a patient changes their mind about while
+          standing there. So it states the seating as a fact, in a card of its own, with the doctor
+          and the token the patient is holding, and the change beside it as a real action.
+        */}
+        <div
+          className="box"
+          data-testid="seating-card"
+          style={{ marginTop: 16, padding: "12px 14px", display: "flex", alignItems: "center", gap: 13 }}
+        >
+          <div style={{ minWidth: 0, flexGrow: 1 }}>
+            <div className="tag" style={{ marginBottom: 3 }}>seeing</div>
+            <div style={{ fontSize: 14, fontWeight: 700, lineHeight: "18px" }}>{s.visit.doctorName}</div>
+            <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 2 }}>
+              {s.visit.departmentName}
+              {s.visit.roomCode === null ? "" : ` · ${s.visit.roomCode}`}
+              {s.visit.tokenNo === null ? "" : ` · token ${String(s.visit.tokenNo)}`}
+            </div>
+          </div>
           <button
-            className="sec"
+            className="sec grn"
             data-testid="change-doctor"
+            style={{ flexShrink: 0, height: 36 }}
             disabled={s.busy === "assign"}
             onClick={() => void d.changeDoctor("doctor changed at the desk before billing")}
           >
-            {s.busy === "assign" ? "withdrawing…" : `change the doctor — not ${s.visit.doctorName.replace(/^Dr\.\s*/, "")}`}
+            {s.busy === "assign" ? "withdrawing…" : "change the doctor"}
           </button>
-          <span style={{ fontSize: 11, color: "var(--faint)", lineHeight: "15px", maxWidth: 380 }}>
-            The token on the board is cancelled and the reason recorded. The patient stays in hand — nothing is re-typed.
-          </span>
         </div>
+        <div style={{ fontSize: 11, color: "var(--faint)", lineHeight: "15px", marginTop: 6, maxWidth: 460 }}>
+          Changing it cancels this token on the board and records why. The patient stays in hand — nothing is re-typed.
+        </div>
+        </>
       )}
 
       {!d.moneyTaken && d.lane === "F1" && s.visit.tokenNo !== null ? (
         <AgentLine>
-          Token <b>T-{s.visit.tokenNo}</b> is already on the board stamped UNPAID. Settling here flips the stamp — it is derived from the fee status, so it flips the moment the money lands.
+          Token <b>{tokenLabel(d.departments.find((x) => x.id === s.visit?.departmentId)?.code ?? null, s.visit.tokenNo)}</b> is already on the board stamped UNPAID. Settling here flips the stamp — it is derived from the fee status, so it flips the moment the money lands.
         </AgentLine>
       ) : null}
       </div>
@@ -2027,6 +2177,8 @@ function StageDone(): React.ReactElement {
   const { s } = d;
   const p = s.person;
   const v = s.visit;
+  /* FD-20 — the same label the dossier shows, so the slip and the sentence cannot disagree. */
+  const deptCode = d.departments.find((x) => x.id === v?.departmentId)?.code ?? null;
   if (p === null) {
     return (
       <div style={{ maxWidth: 700 }}>
@@ -2070,11 +2222,11 @@ function StageDone(): React.ReactElement {
             fontSize: 19, marginTop: 18, padding: "15px 18px", border: "2px solid var(--ink)",
             borderRadius: 8, background: "var(--card)",
           }}>
-            आपका टोकन <b className="mo">T-{token}</b> है। {v.roomCode === null ? "" : <>कक्ष <b className="mo">{v.roomCode}</b>, </>}
+            आपका टोकन <b className="mo">{tokenLabel(deptCode, token)}</b> है। {v.roomCode === null ? "" : <>कक्ष <b className="mo">{v.roomCode}</b>, </>}
             लगभग <b className="mo">{v.waitMinutes}</b> मिनट में नंबर आएगा।
           </div>
           <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 7 }}>
-            “Your token is T-{token}.{v.roomCode === null ? "" : ` Room ${v.roomCode}.`} Your turn in about {v.waitMinutes} minutes.” Say it, then hand the slip.
+            “Your token is {tokenLabel(deptCode, token)}.{v.roomCode === null ? "" : ` Room ${v.roomCode}.`} Your turn in about {v.waitMinutes} minutes.” Say it, then hand the slip.
           </div>
         </>
       )}
@@ -2130,7 +2282,7 @@ function StageDone(): React.ReactElement {
         {token === null
           ? <>Settled, and the queue join has not come back yet. Nothing to hand over until it does — it lands in the left column.</>
           : d.lane === "F3"
-            ? <>Paid first, so <b>T-{token}</b> left the printer PAID and the position was taken at settlement. Hand over the slip.</>
+            ? <>Paid first, so <b>{tokenLabel(deptCode, token)}</b> left the printer PAID and the position was taken at settlement. Hand over the slip.</>
             : d.lane === "F2"
               ? <>The position was taken at assignment and the slip released on payment — <b>T-{token}</b>, stamped PAID. Hand it over.</>
               : <>The board flipped <b>T-{token}</b> from UNPAID to PAID when the money landed. The stamp is derived from the fee status, so it is right on every screen that draws it.</>}

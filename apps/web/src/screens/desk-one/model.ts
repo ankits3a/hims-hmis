@@ -336,6 +336,23 @@ export function etaClock(minutes: number, at: Date = new Date()): string {
  * NUMBER the clerk edits. They share the birthday rule below deliberately: two derivations of one
  * person's age is how a record reads 41 on one screen and 42 on another.
  */
+/**
+ * ═══ FD-20 — WHAT A PATIENT IS ACTUALLY HOLDING: "MED-4", NOT "T-4" ═══
+ *
+ * Owner, 2026-09-04: *"the token number should be not according to the doctor but Department. For
+ * Example it should be 'MED - 4', 'PED - 290'."* The series moved server-side; this is the face of
+ * it, and `opd_departments.code` is the prefix its own schema comment always said it was for
+ * ("printed on token slips").
+ *
+ * ONE function for every place a token is shown — the dossier, the bill, and the two scripts the
+ * clerk reads out loud. A token the screen prints one way and the clerk says another is a patient
+ * standing in front of the wrong door. The bare "T-" fallback is for a code the desk has not
+ * loaded yet, never a guess at what the department might be called.
+ */
+export function tokenLabel(departmentCode: string | null, tokenNo: number): string {
+  return departmentCode === null || departmentCode === "" ? `T-${String(tokenNo)}` : `${departmentCode}-${String(tokenNo)}`;
+}
+
 export function ageYearsOf(dob: string | null): number | null {
   if (dob === null || dob === "") return null;
   const born = new Date(`${dob.slice(0, 10)}T00:00:00Z`);

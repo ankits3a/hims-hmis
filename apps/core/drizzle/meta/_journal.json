@@ -428,6 +428,13 @@
       "when": 1788370828796,
       "tag": "0060_registration_demographics_coverage",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1788370828797,
+      "tag": "0061_department_token_series",
+      "breakpoints": true
     }
   ]
 }
