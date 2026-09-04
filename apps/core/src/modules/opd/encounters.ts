@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, notInArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
@@ -403,6 +403,30 @@ export async function openLabWalkinInTx(
    * The refusal NAMES the open visit so the seat can re-find it instead of guessing, which is what
    * makes this a conflict to resolve rather than a wall.
    */
+  /**
+   * ═══ 17d CLOSE §9.2 — THE GUARD BELOW IS A READ-THEN-WRITE, AND THIS IS WHAT SERIALISES IT ═══
+   *
+   * Without this line the check that follows is advisory under concurrency: two clerks registering
+   * one patient in the same instant both SELECT nothing, both pass, and both mint a `V` number for
+   * one attendance — the exact defect the guard exists to prevent, arriving through the one door it
+   * did not cover. `walkin.concurrency.test.ts` opens TWO visits with this line removed.
+   *
+   * **A lock and not a unique index**, which is what §9.2 first proposed, for two measured reasons.
+   * `department_id` is DATA, so no immutable index predicate can name the LAB department, and an
+   * index without that predicate would constrain EVERY department — precisely what the note above
+   * refuses ("a general same-day guard would change every department's behaviour"). And a
+   * unique index on `patient_id` cannot see the MERGE CHAIN, while the guard deliberately can.
+   *
+   * **Not `SELECT … FOR UPDATE`**, for the reason `kernel/ops/mode.ts` already writes down: a row
+   * lock can only serialise callers that can find a row, and here neither racer can find one. This
+   * is `lab/desk.ts`'s order-group idiom, inherited rather than invented.
+   *
+   * The key is the CANONICAL patient — both entry points resolve the chain before calling — so two
+   * registrations of one person serialise against each other. It is an `xact` lock, so it is
+   * released by commit or rollback and there is nothing to unlock by hand.
+   */
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`lab_walkin:${input.patientId}:${dept.id}:${istDate(now)}`}))`);
+
   const openToday = await tx
     .select({ visitNo: opdEncounters.visitNo, status: opdEncounters.status })
     .from(opdEncounters)
