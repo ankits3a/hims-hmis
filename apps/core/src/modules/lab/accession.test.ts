@@ -8,6 +8,7 @@ import {
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { deskOrder } from "./desk";
 import { receive, reject } from "./accession";
+import { receiveBody } from "./lab-bench.controller";
 import { printLabels } from "./specimens";
 import { collect, collectionQueue } from "./collection";
 import { LabError } from "./errors";
@@ -79,6 +80,72 @@ describe("lab accession (17a T5)", () => {
     const [row] = await db.select().from(labItems).where(eq(labItems.orderItemId, placed.itemIds[0]!));
     /** Stored, not merely required: "somebody checked" that names nobody is not a control. */
     expect(row!.identityRecheckBy).toBe(fx.pathologist.id);
+  });
+
+  /* ─────── 17d T2 — THE SMUDGED LABEL: A TYPED NUMBER IS A RE-LABEL (design EdgeCases #12) ─────── */
+
+  /**
+   * The board's case: *"Label smudged in the ice box; the bench scanner cannot read it."* Typing the
+   * number stays ALLOWED — a laboratory that refused the tube would be discarding a patient's blood
+   * over a printer — but the tube leaves the bench wearing a new label, and a mislabel one person
+   * can make silently is what puts one patient's result on another's report.
+   */
+  it("17d T2: a typed tube number needs a NAMED witness and a reason; a scanned one needs neither", async () => {
+    const placed = await deskAndLabel(db, fx, ["CBC"]);
+    const specimenNo = placed.specimens[0]!.specimenNo;
+
+    // Declared typed, nothing else said: refused, and the tube stays where it was.
+    await expect(withTx(db, (tx) => receive(tx, fx.bench.actor, fx.decls, {
+      specimenNo, identifiedBy: "typed",
+    }))).rejects.toMatchObject({ code: "relabel_witness_required" });
+
+    // A witness with no reason is not a record: "somebody watched" that says nothing is not a control.
+    await expect(withTx(db, (tx) => receive(tx, fx.bench.actor, fx.decls, {
+      specimenNo, identifiedBy: "typed", relabel: { witnessedBy: fx.pathologist.id, reason: "   " },
+    }))).rejects.toMatchObject({ code: "relabel_witness_required" });
+
+    // The receiver cannot witness their own re-labelling — 02 H1's rule, one act over.
+    await expect(withTx(db, (tx) => receive(tx, fx.bench.actor, fx.decls, {
+      specimenNo, identifiedBy: "typed", relabel: { witnessedBy: fx.bench.id, reason: "frozen over" },
+    }))).rejects.toMatchObject({ code: "relabel_witness_same_actor" });
+
+    const [before] = await db.select().from(labSpecimens).where(eq(labSpecimens.specimenNo, specimenNo));
+    expect(before!.status).toBe("collected"); // THE KILL: a refusal that received the tube anyway
+
+    await withTx(db, (tx) => receive(tx, fx.bench.actor, fx.decls, {
+      specimenNo, identifiedBy: "typed",
+      relabel: { witnessedBy: fx.pathologist.id, reason: "label frozen over in the ice box" },
+    }));
+    const [after] = await db.select().from(labSpecimens).where(eq(labSpecimens.specimenNo, specimenNo));
+    expect(after!.status).toBe("received");
+
+    const relabels = await eventsNamed("lab.specimen_relabelled");
+    expect(relabels).toHaveLength(1);
+    expect(relabels[0]!.payload).toMatchObject({
+      relabelledBy: fx.bench.id, witnessedBy: fx.pathologist.id,
+      reason: "label frozen over in the ice box",
+    });
+  });
+
+  it("17d T2: a SCANNED tube is received with no witness and writes no re-label record", async () => {
+    // MUTANT: a guard that fires on every receive turns the ordinary morning into a two-person job.
+    const placed = await deskAndLabel(db, fx, ["CBC"]);
+    await withTx(db, (tx) => receive(tx, fx.bench.actor, fx.decls, {
+      specimenNo: placed.specimens[0]!.specimenNo, identifiedBy: "scan",
+    }));
+    expect(await eventsNamed("lab.specimen_relabelled")).toHaveLength(0);
+  });
+
+  /**
+   * 17d T2 — THE WIRE IS WHERE THE DECLARATION IS ENFORCED, and this pins the door. `receive`'s
+   * `identifiedBy` default is `"scan"` so that fixtures which genuinely scan need not say so; that
+   * default would be a hole if the ROUTE also let it be omitted, because then a screen could reach
+   * the witness-free path by forgetting a field. `receiveBody` requires it.
+   */
+  it("17d T2: the route's schema REFUSES a receive body with no identifiedBy", () => {
+    expect(receiveBody.safeParse({ specimenNo: "S2608300001" }).success).toBe(false);
+    expect(receiveBody.safeParse({ specimenNo: "S2608300001", identifiedBy: "scan" }).success).toBe(true);
+    expect(receiveBody.safeParse({ specimenNo: "S2608300001", identifiedBy: "guessed" }).success).toBe(false);
   });
 
   /* ───────────── A7 — THE TAT CLOCK STARTS AT RECEIVE ───────────── */

@@ -17,7 +17,7 @@
 -- (already applied by 0057) and `entitlement_counters.unit` (already applied by 0058). Both of
 -- those migrations were hand-written by other lanes without regenerating the drizzle snapshot, so
 -- the generator's baseline was 0056 and it re-derived their deltas. They are removed here: this
--- migration is additive and its own. `0059_snapshot.json` is kept as generated — it is the correct
+-- migration is additive and its own. `0060_snapshot.json` is kept as generated — it is the correct
 -- new baseline, because the schema files it was read from do carry those two changes.
 
 CREATE TABLE "aerb_licences" (

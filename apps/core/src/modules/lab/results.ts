@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, lte, ne, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import {
@@ -11,11 +11,13 @@ import { resolvePatientId } from "../patients";
 import { analytesFor, rangesFor } from "./catalogue";
 import { LabError } from "./errors";
 import { evaluateFormula } from "./formula";
-import { flagFor, resolveRange } from "./ranges";
+import { applicabilityBreach, applicabilityBreachText, flagFor, resolveRange } from "./ranges";
 import {
   labNotifiableFlagged, labResultCriticalFlagged, labResultDeltaFlagged, labResultEntered,
+  labTubeSwapSuspected,
 } from "./events";
 import type { Actor } from "@hmis/contracts";
+import { withTx } from "../../kernel/db/client";
 import type { Tx } from "../../kernel/db/client";
 import type { Db } from "../../kernel/db/client";
 import type { Siblings } from "./formula";
@@ -72,6 +74,14 @@ export type EnterResultInput = {
    * and it may not be the enterer: an envelope one person can wave through is not an envelope.
    */
   absurdOverride?: { by: string };
+  /**
+   * 17d T1 / D2 — the SECOND holder of `lab.results.enter` who vouched that a value impossible for
+   * this patient's sex or age is nonetheless theirs. Its twin above and its rules are identical: a
+   * `users.id`, never the enterer, and STORED. Separate from `absurdOverride` on purpose — the two
+   * refusals are about different things (the number, and the person the number is standing next
+   * to), and one field covering both would let a decimal-point waiver excuse a swapped tube.
+   */
+  impossibleOverride?: { by: string };
   /** DD13 / E40 — a rerun's result supersedes the row it replaces. Set by `requestRerun`'s caller. */
   supersedesResultId?: string | null;
   rerunOf?: string | null;
@@ -237,11 +247,29 @@ function isoDay(d: Date): string {
 /**
  * KEY ONE VALUE.
  *
- * `Tx`-first: every refusal here is a plain refusal that writes nothing, so there is no audit lane
- * to keep alive across a rollback and nothing is gained by the `Db`-first shape `printLabels` and
- * `verifyResult` need (17a §6.8, F20/F27's mechanism).
+ * ═══ 17d T1 FLIPPED THIS TO `Db`-FIRST, AND THE OLD HEADER SAID EXACTLY WHY IT HAD TO ═══
+ *
+ * It used to read: *"every refusal here is a plain refusal that writes nothing, so there is no audit
+ * lane to keep alive across a rollback"*. That stopped being true the moment one refusal here
+ * became a SUSPECTED TUBE SWAP. `lab.tube_swap_suspected` is the whole point of the applicability
+ * rule — the other half of the pair is in somebody's hand right now — and an audit row appended on
+ * the transaction that is about to roll back is an audit row that never existed. That is F20 for
+ * `printLabels` and F27 for `verifyResult`, and this is the third time the module has met it.
+ *
+ * So the shape is now theirs exactly: a `Db`-first entry point wrapping a `Tx`-first body that
+ * holds BOTH handles, and writes its near-miss on `db` before it throws on `tx`.
  */
 export async function enterResult(
+  db: Db,
+  actor: Actor,
+  input: EnterResultInput,
+  now: Date = new Date(),
+): Promise<EnterResultOutcome> {
+  return await withTx(db, (tx) => enterResultInTx(db, tx, actor, input, now));
+}
+
+async function enterResultInTx(
+  db: Db,
   tx: Tx,
   actor: Actor,
   input: EnterResultInput,
@@ -265,6 +293,69 @@ export async function enterResult(
       `${analyte.code} is a CALCULATED analyte — it is computed from its siblings on this specimen ` +
         "(DD3) and keying it by hand would put a typed number where an arithmetic one belongs",
     );
+  }
+
+  /**
+   * ═══ 17d T1 / D2 — IS THIS TEST ABOUT THIS PATIENT AT ALL? ═══
+   *
+   * FIRST, before the number is even parsed, because it is the graver refusal and the cheaper one:
+   * the absurd envelope asks whether a number is plausible, and this asks whether the PATIENT is
+   * the right one. A beta-hCG of 4200 passes every envelope in the catalogue; what is wrong with it
+   * is the man beside it, and the ordinary explanation is two tubes swapped at the chair.
+   *
+   * Ordering matters for the message as much as for the cost. Had the envelope run first, a swapped
+   * tube whose value also happened to be absurd would be reported to the technologist as a decimal
+   * point — and answered by a second person waving through the decimal point.
+   */
+  const breach = applicabilityBreach(analyte, ctx.subject, ctx.collectedAt);
+  let impossibleOverriddenBy: string | null = null;
+  if (breach !== null) {
+    const override = input.impossibleOverride;
+    /**
+     * ═══ D3 — THE NEAR-MISS IS WRITTEN ON `db`, AND ONLY THEN IS THE ENTRY REFUSED ═══
+     *
+     * Both paths write: the refused one because the flag is the only trace a technologist who walks
+     * away leaves behind, and the overridden one because "who vouched, and what for" is the
+     * question an auditor asks about exactly these rows. `overridden` tells the two apart.
+     */
+    const siblings = await siblingTubesDrawnInTheSameMinute(tx, ctx);
+    await withTx(db, (flagTx) => appendEvent(flagTx, labTubeSwapSuspected.make({
+      actor,
+      patientId: ctx.patientId,
+      encounterId: ctx.encounterNo,
+      correlationId: ctx.orderId,
+      payload: {
+        orderItemId: ctx.orderItemId, orderGroupId: ctx.orderGroupId, analyteId: analyte.id,
+        specimenId: ctx.specimenId, siblingSpecimenIds: siblings.map((sp) => sp.id),
+        breach: breach.kind, raisedBy: actor.id, overridden: override !== undefined,
+      },
+    })));
+    if (!override) {
+      throw new LabError(
+        "analyte_not_applicable",
+        applicabilityBreachText(analyte.code, breach),
+        {
+          analyteCode: analyte.code, breach: breach.kind,
+          /** What the bench screen puts in front of the technologist: the tubes to go and look at. */
+          suspectSpecimenNos: siblings.map((sp) => sp.specimenNo),
+        },
+      );
+    }
+    if (override.by === actor.id) {
+      throw new LabError(
+        "impossible_override_same_actor",
+        "a value impossible for this patient is vouched for by a SECOND holder of " +
+          "lab.results.enter — the person who keyed it cannot be the person who confirms the tube " +
+          "is theirs, which is the whole of the control",
+      );
+    }
+    if (!(await hasPermission(tx as Db, override.by, LAB_RESULTS_ENTER, "hospital"))) {
+      throw new LabError(
+        "permission_denied",
+        `the named override ${override.by} does not hold ${LAB_RESULTS_ENTER}`,
+      );
+    }
+    impossibleOverriddenBy = override.by;
   }
 
   /**
@@ -324,7 +415,7 @@ export async function enterResult(
     .orderBy(desc(labResults.enteredAt)).limit(1);
   const primary = await writeResult(tx, actor, ctx, {
     analyte, value: input.value, numeric, unit: input.unit ?? analyte.unit,
-    entryMode: input.entryMode, remarks: input.remarks ?? null, absurdOverriddenBy,
+    entryMode: input.entryMode, remarks: input.remarks ?? null, absurdOverriddenBy, impossibleOverriddenBy,
     supersedesResultId: input.supersedesResultId ?? priorForAnalyte?.id ?? null,
     rerunOf: input.rerunOf ?? priorForAnalyte?.id ?? null,
   }, now);
@@ -383,9 +474,50 @@ type WriteResultInput = {
   entryMode: LabEntryMode;
   remarks: string | null;
   absurdOverriddenBy: string | null;
+  /** 17d T1 — null for every computed analyte: an LDL nobody keyed cannot be a swapped tube's. */
+  impossibleOverriddenBy: string | null;
   supersedesResultId: string | null;
   rerunOf: string | null;
 };
+
+/**
+ * 17d T1 / D3 — **THE OTHER HALF OF THE SWAP.**
+ *
+ * A tube swapped at the chair is never one tube: the phlebotomist labelled two in the wrong order,
+ * so the suspect set is every OTHER tube of this order group drawn within a minute of this one.
+ * The design board says "flags both tubes drawn in that minute" and this is that sentence.
+ *
+ * ═══ WHY THE ORDER GROUP AND NOT THE CHAIR ═══
+ *
+ * The chair would be the truer unit — the swap is between two PATIENTS at one chair — and the
+ * schema cannot express it: `lab_specimens` carries `collection_site` (`opd`/`ward`/…), never the
+ * chair or the phlebotomist's station. Reaching across patients on a timestamp alone would name
+ * every tube drawn in the building in that minute, which is a flag nobody can act on. So the honest
+ * scope is the group in front of this technologist, and its limit is recorded rather than hidden:
+ * **a swap between two DIFFERENT patients' tubes is not found by this query.** What finds that one
+ * is the refusal itself — the message tells the technologist to go and look at the chair.
+ *
+ * ±60 seconds, inclusive, around this tube's own collection instant. A tube with no `collected_at`
+ * (received without a recorded draw) can neither be the sibling of a swap nor rule one out, and is
+ * left out rather than guessed at.
+ */
+async function siblingTubesDrawnInTheSameMinute(
+  tx: Tx,
+  ctx: ResultContext,
+): Promise<{ id: string; specimenNo: string }[]> {
+  const from = new Date(ctx.collectedAt.getTime() - 60_000);
+  const to = new Date(ctx.collectedAt.getTime() + 60_000);
+  return await tx.select({ id: labSpecimens.id, specimenNo: labSpecimens.specimenNo })
+    .from(labSpecimens)
+    .where(and(
+      eq(labSpecimens.orderGroupId, ctx.orderGroupId),
+      isNotNull(labSpecimens.collectedAt),
+      gte(labSpecimens.collectedAt, from),
+      lte(labSpecimens.collectedAt, to),
+      ne(labSpecimens.id, ctx.specimenId),
+    ))
+    .orderBy(labSpecimens.specimenNo);
+}
 
 /**
  * ONE ROW, WITH ITS RANGE SNAPSHOT, ITS FLAG, ITS DELTA AND ITS CALL.
@@ -431,6 +563,7 @@ async function writeResult(
     deltaFlag: delta !== null,
     deltaPrevResultId: delta?.priorResultId ?? null,
     absurdOverriddenBy: input.absurdOverriddenBy,
+    impossibleOverriddenBy: input.impossibleOverriddenBy,
     enteredByType: actor.type,
     enteredById: actor.id,
     enteredAt: now,
@@ -719,6 +852,7 @@ async function computeFormulaAnalytes(
         entryMode,
         remarks: null,
         absurdOverriddenBy: null,
+        impossibleOverriddenBy: null,
         /** DD13 — a recomputation REPLACES rather than edits, and names what it replaced. */
         supersedesResultId: existing?.id ?? null,
         rerunOf: null,
@@ -1032,6 +1166,7 @@ export async function amendResult(
     refNote: prior.refNote,
     deltaFlag: false,
     absurdOverriddenBy: null,
+    impossibleOverriddenBy: null,
     enteredByType: actor.type,
     enteredById: actor.id,
     enteredAt: now,
