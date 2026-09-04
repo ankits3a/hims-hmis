@@ -116,8 +116,32 @@ function Panel({ panel, t }: { panel: WireReportPanel; t: (k: string) => string 
   );
 }
 
-export function LabReportPrint({ report }: { report: WireReportView }): React.ReactElement {
-  const { t } = useTranslation();
+/**
+ * ═══ 17d T7 / D8 — THE PATIENT'S COPY MAY SPEAK HINDI, AND IT IS THE SAME DOCUMENT ═══
+ *
+ * Design board EdgeCases #25: *"Patient reads Hindi only."* The SMS and WhatsApp text are already
+ * bilingual; the paper was not. What changes is the FURNITURE — the column headings, the flag
+ * words, the standing notes — and nothing else:
+ *
+ * · **No value, unit or reference interval is translated.** `4.94`, `mg/dL` and `0.35 – 4.94` are
+ *   the same in every language, and a report whose NUMBERS depended on a toggle would be two
+ *   different documents claiming one signature. The one thing this feature must not do is change
+ *   what the report says.
+ * · Analyte names already print `nameEn` with `nameHi` beside them and are untouched here: that is
+ *   the catalogue's bilingual data, not this component's presentation.
+ * · **The doctor's copy stays English** by NABL convention, which is why `lang` is a parameter the
+ *   caller passes rather than a global the app switches: the same screen prints both copies, and a
+ *   patient asking for Hindi must not change what the ward receives.
+ *
+ * `getFixedT("hi")` rather than switching the app's language: this renders a Hindi document inside
+ * an English SPA, and a component that reached for `i18n.changeLanguage` would repaint the whole
+ * screen behind the clerk who pressed print.
+ */
+export function LabReportPrint({
+  report, lang = "en",
+}: { report: WireReportView; lang?: "en" | "hi" }): React.ReactElement {
+  const { t: tApp, i18n } = useTranslation();
+  const t = lang === "hi" ? i18n.getFixedT("hi") : tApp;
   const s = report.snapshot;
   return (
     <div className="print-doc lab-report-a4 w-[760px] space-y-3 rounded-lg border bg-white p-6 text-black">

@@ -60,6 +60,12 @@ export function LabReports(): React.ReactElement {
   const { can } = useAuth();
   const [picked, setPicked] = useState<PatientPickerHit | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  /**
+   * 17d T7 — which reports the counter is showing in Hindi. Per REPORT rather than per seat: the
+   * clerk hands one patient a Hindi copy and the next an English one without touching a setting,
+   * and the doctor's copy of the same report is unaffected either way (D8).
+   */
+  const [hindiFor, setHindiFor] = useState<Set<string>>(() => new Set());
   /** Pass 2 NEW-1 — the print dialog opens only AFTER the document has mounted (`window.print` in the same tick printed a blank page). */
   const [printPending, setPrintPending] = useState<string | null>(null);
   /** Pass 1 F14 — per REPORT, never shared across cards: a channel chosen for one report is not another's. */
@@ -319,8 +325,33 @@ export function LabReports(): React.ReactElement {
                                 {t("lab.reports.printPaper")}
                               </Button>
                             )}
+                            {/*
+                              17d T7 / D8 — THE PATIENT'S COPY, IN HINDI (design board EdgeCases #25).
+                              A per-report toggle at the COUNTER, where the person asking is standing.
+                              It changes the headings, the flag words and the notes; it never touches
+                              a value, a unit or a reference interval — those are the same number in
+                              every language, and a report whose numbers moved with a toggle would be
+                              two documents under one signature.
+                            */}
+                            {isOpen && view !== null && (
+                              <label className="no-print flex items-center gap-1 text-xs">
+                                <input
+                                  type="checkbox"
+                                  checked={hindiFor.has(r.reportId)}
+                                  aria-label={t("lab.reports.hindiCopy")}
+                                  onChange={(e) => setHindiFor((prev) => {
+                                    const next = new Set(prev);
+                                    if (e.target.checked) next.add(r.reportId); else next.delete(r.reportId);
+                                    return next;
+                                  })}
+                                />
+                                {t("lab.reports.hindiCopy")}
+                              </label>
+                            )}
                           </div>
-                          {isOpen && view !== null && <LabReportPrint report={view} />}
+                          {isOpen && view !== null && (
+                            <LabReportPrint report={view} lang={hindiFor.has(r.reportId) ? "hi" : "en"} />
+                          )}
                         </div>
                       )}
                     </article>

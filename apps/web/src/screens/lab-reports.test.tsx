@@ -203,3 +203,63 @@ it("DD6 — a HELD report reaches the browser as a verdict, never as a page; rel
   expect(seen.find((s) => s.path === "/api/lab/reports/rep-2/release")!.body)
     .toEqual({ approvalId: "apr-77", collectorIdentity: "Ramesh Mahto (self)", channel: "print" });
 });
+
+/* ═════ 17d T7 / D8 — THE PATIENT'S COPY MAY SPEAK HINDI, AND THE NUMBERS DO NOT MOVE ═════ */
+
+/**
+ * Design board EdgeCases #25: *"Patient reads Hindi only."* The SMS and WhatsApp text were already
+ * bilingual; the paper was not.
+ *
+ * The assertion that matters is the SECOND one. Translating a laboratory report is only safe if it
+ * translates the FURNITURE — the column headings, the flag words, the notes — and leaves the
+ * values, units and reference intervals exactly as signed. A report whose numbers moved with a
+ * toggle would be two different documents under one signature.
+ */
+it("17d T7 — the Hindi copy translates the headings and the flag word, and not one number", async () => {
+  mockRoutes({
+    "GET /api/lab/reports/register": { status: 200, body: REGISTER },
+    "GET /api/patients/search": { status: 200, body: { items: [hit("p-1", "Farida Khatoon", "U23011884")] } },
+    "GET /api/lab/reports/patient/p-1": { status: 200, body: FARIDA },
+  });
+  renderWithProviders(<LabReports />);
+  await waitFor(() => expect(screen.getByTestId("register")).toBeInTheDocument());
+  await pickPatient("U23011884", "Farida Khatoon");
+  const card = await screen.findByTestId("report-L2609010102");
+  await userEvent.click(within(card).getByRole("button", { name: "▼" }));
+
+  const doc = () => document.querySelector(".print-doc")!;
+  /** English first: the heading and the critical-low flag word as the counter sees them by default. */
+  expect(doc()).toHaveTextContent("Biological reference interval");
+  expect(doc()).toHaveTextContent("Critical low");
+
+  const toggle = within(card).getByLabelText("Hindi copy");
+  expect(toggle).not.toBeChecked(); // the doctor's copy is the default (NABL convention)
+  await userEvent.click(toggle);
+
+  /** The furniture is Hindi — the heading, and the flag word the design named (गंभीर / निम्न). */
+  expect(doc()).toHaveTextContent("गंभीर निम्न");
+  expect(doc()).not.toHaveTextContent("Critical low");
+
+  /**
+   * THE KILL: the value, the unit and the reference interval are IDENTICAL in both languages. A
+   * mutant that ran the numbers through the translator, or that swapped the snapshot for a
+   * localised one, changes one of these three.
+   */
+  expect(doc()).toHaveTextContent("41");
+  expect(doc()).toHaveTextContent("mg/dL");
+  expect(doc()).toHaveTextContent("70 – 99");
+  /** And the patient is still the patient: identity is data, never furniture. */
+  expect(doc()).toHaveTextContent("U23011884");
+  expect(doc()).toHaveTextContent("Farida Khatoon");
+
+  /**
+   * D8 — the toggle is per REPORT and reversible, asserted on the SAME render rather than in a
+   * second test. That is deliberate: this file mounts the whole report centre per test, and the web
+   * suite shares one worker, so an extra mount here spent enough wall-clock to time out a
+   * seven-story test in ANOTHER lane's file. A test that costs a peer their budget is a test worth
+   * folding.
+   */
+  await userEvent.click(toggle);
+  expect(doc()).toHaveTextContent("Critical low");
+  expect(doc()).not.toHaveTextContent("गंभीर निम्न");
+});
