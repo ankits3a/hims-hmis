@@ -37,6 +37,8 @@ export const PHARMACY_ERROR_CODES = [
   "short_stock",
   "fefo_override_unavailable",
   "identity_mismatch",
+  // ── the close review (16c §8.5 pass 1): money before the drug, D8 ──
+  "invoice_not_settled",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -83,6 +85,7 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   short_stock: 409,
   fefo_override_unavailable: 409,
   identity_mismatch: 409,
+  invoice_not_settled: 409,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {
