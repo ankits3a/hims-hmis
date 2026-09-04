@@ -1052,6 +1052,11 @@ export type AmendResultInput = {
   value: string;
   unit?: string | null;
   remarks?: string | null;
+  /**
+   * CLOSE REVIEW PASS 2, F1 — the SECOND pair of hands, on this path too. `enterResult` has carried
+   * one since 17d T1; an amendment that did not would be the same control with a door beside it.
+   */
+  impossibleOverride?: { by: string };
 };
 
 /**
@@ -1076,7 +1081,22 @@ export type AmendResultInput = {
  * It writes no report. `amendReport` publishes version n+1 over the rows this leaves behind, so a
  * correction that is never published is a correction nobody acted on — visible, and not delivered.
  */
+/**
+ * CLOSE REVIEW PASS 2, F1 — `Db`-FIRST, for `enterResult`'s reason and now on this path too: the
+ * applicability refusal must WRITE its near-miss before it throws, and an audit row appended on the
+ * transaction that is about to roll back is an audit row that never existed (F20/F27).
+ */
 export async function amendResult(
+  db: Db,
+  actor: Actor,
+  input: AmendResultInput,
+  now: Date = new Date(),
+): Promise<EnteredResult> {
+  return await withTx(db, (tx) => amendResultInTx(db, tx, actor, input, now));
+}
+
+async function amendResultInTx(
+  db: Db,
   tx: Tx,
   actor: Actor,
   input: AmendResultInput,
@@ -1146,6 +1166,82 @@ export async function amendResult(
       sex: subjectRow?.administrativeGender ?? null,
     },
   };
+  /**
+   * ═══ CLOSE REVIEW PASS 2, F1 — AND NEITHER IS AN AMENDMENT AN EXEMPTION FROM *THIS* ═══
+   *
+   * The sentence below — *"an amendment is not an override, and a corrected value is still a
+   * value"* — was already true of the absurd envelope and was never applied to applicability. So
+   * the one control 17d T1 exists to impose could be walked round by CORRECTING a value instead of
+   * keying one: the record's sex changes after the fact, or the analyte is curated afterwards, and
+   * the amendment writes a value impossible for this patient with nobody vouching for it.
+   *
+   * The age band is taken at COLLECTION, as everywhere else in this file — the amendment's own
+   * instant is when somebody typed, which is not a fact about the patient.
+   */
+  const [tube] = prior.specimenId === null ? [] : await tx
+    .select({ id: labSpecimens.id, collectedAt: labSpecimens.collectedAt, receivedAt: labSpecimens.receivedAt })
+    .from(labSpecimens).where(eq(labSpecimens.id, prior.specimenId));
+  const amendCollectedAt = tube?.collectedAt ?? tube?.receivedAt ?? now;
+  const breach = applicabilityBreach(analyte, row.subject, amendCollectedAt);
+  let impossibleOverriddenBy: string | null = null;
+  if (breach !== null) {
+    const override = input.impossibleOverride;
+    const refusal: "no_override" | "same_actor" | "not_permitted" | null =
+      !override ? "no_override"
+        : override.by === actor.id ? "same_actor"
+          : !(await hasPermission(tx as Db, override.by, LAB_RESULTS_ENTER, "hospital")) ? "not_permitted"
+            : null;
+
+    const siblings = prior.specimenId === null ? [] : await tx
+      .select({ id: labSpecimens.id, specimenNo: labSpecimens.specimenNo })
+      .from(labSpecimens)
+      .where(and(
+        eq(labSpecimens.orderGroupId, base.orderGroupId),
+        isNotNull(labSpecimens.collectedAt),
+        gte(labSpecimens.collectedAt, new Date(amendCollectedAt.getTime() - 60_000)),
+        lte(labSpecimens.collectedAt, new Date(amendCollectedAt.getTime() + 60_000)),
+        ne(labSpecimens.id, prior.specimenId),
+      ))
+      .orderBy(labSpecimens.specimenNo);
+    await withTx(db, (flagTx) => appendEvent(flagTx, labTubeSwapSuspected.make({
+      actor,
+      patientId: canonical,
+      encounterId: base.encounterNo,
+      correlationId: base.orderId,
+      payload: {
+        orderItemId: prior.orderItemId, orderGroupId: base.orderGroupId, analyteId: analyte.id,
+        specimenId: prior.specimenId ?? base.orderGroupId,
+        siblingSpecimenIds: siblings.map((sp) => sp.id),
+        breach: breach.kind, raisedBy: actor.id, overridden: refusal === null,
+      },
+    })));
+
+    if (refusal === "no_override") {
+      throw new LabError(
+        "analyte_not_applicable",
+        applicabilityBreachText(analyte.code, breach),
+        {
+          analyteCode: analyte.code, breach: breach.kind,
+          suspectSpecimenNos: siblings.map((sp) => sp.specimenNo),
+        },
+      );
+    }
+    if (refusal === "same_actor") {
+      throw new LabError(
+        "impossible_override_same_actor",
+        "a value impossible for this patient is vouched for by a SECOND holder of " +
+          "lab.results.enter — correcting it rather than keying it changes nothing about that",
+      );
+    }
+    if (refusal === "not_permitted") {
+      throw new LabError(
+        "permission_denied",
+        `the named override ${override!.by} does not hold ${LAB_RESULTS_ENTER}`,
+      );
+    }
+    impossibleOverriddenBy = override!.by;
+  }
+
   const numeric = analyte.resultType === "numeric" ? parseNumeric(input.value, analyte.code) : null;
   if (numeric !== null && outsideAbsurdEnvelope(numeric, analyte)) {
     throw new LabError(
@@ -1186,7 +1282,7 @@ export async function amendResult(
     refNote: prior.refNote,
     deltaFlag: false,
     absurdOverriddenBy: null,
-    impossibleOverriddenBy: null,
+    impossibleOverriddenBy,
     enteredByType: actor.type,
     enteredById: actor.id,
     enteredAt: now,

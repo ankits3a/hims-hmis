@@ -248,7 +248,7 @@ export class LabVerifyController {
         this.db,
         { actorId: actor.id, route: LAB_REPORT_ROUTES.amendResult, key },
         input,
-        () => withTx(this.db, (tx) => amendResult(tx, actor, input)),
+        () => amendResult(this.db, actor, input),
       );
     } catch (e) { toHttp(e); }
   }
