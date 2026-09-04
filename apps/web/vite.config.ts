@@ -24,7 +24,18 @@ export default defineConfig({
     // realtime gateway on the same key — vite applies `rewrite` to the upgrade URL too.
     proxy: {
       "/api": {
-        target: "http://localhost:3000",
+        /*
+          THE TARGET IS THE ONE THING HERE THAT IS PER-LANE, so it is the one thing that is not
+          hardcoded. Every lane runs its own API on its own port (`tools/lane.sh` gives each lane its
+          own database; the ports follow), and a fixed 3000 means `pnpm dev` in any lane but the
+          first silently proxies to somebody else's server — or, more often, to nothing, which is a
+          dev server that loads and whose every call fails with no clue why.
+
+          The DEFAULT IS UNCHANGED, so nothing that works today stops working: only a lane that sets
+          `VITE_API_TARGET` moves. The prefix above is still the single key the caddyfile-parity pin
+          reads, and that pin is about PREFIXES, not about which host answers them.
+        */
+        target: process.env["VITE_API_TARGET"] ?? "http://localhost:3000",
         ws: true,
         rewrite: (path: string) => path.replace(/^\/api/, ""),
       },
