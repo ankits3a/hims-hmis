@@ -34,7 +34,12 @@ export type OpdErrorCode =
   // PLAN 16a T5 — the hard-warning grammar EXTENDS rather than forks (DD3): these two carry their
   // hits in `detail` and are cleared by an override with a reason, exactly as `allergy_conflict` is.
   // A severe interaction, and the same moiety twice on one slip under two brand names.
-  | "interaction_conflict" | "duplicate_salt_conflict";
+  | "interaction_conflict" | "duplicate_salt_conflict"
+  // 17d T4 — a SECOND open laboratory walk-in for one patient on one day. Scoped to the lab door,
+  // never to `openVisitInTx`: OPD legitimately opens a second visit the same day, and the lab is
+  // the case where it is always a mistake — a walk-in is one draw, and tests remembered on the way
+  // out are an add-on to the order that exists.
+  | "lab_walkin_already_open";
 
 export class OpdError extends Error {
   constructor(
