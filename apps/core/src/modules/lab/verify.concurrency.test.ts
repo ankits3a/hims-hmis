@@ -61,9 +61,16 @@ describe("lab verification, concurrency (17b T6)", () => {
      * Eight single-analyte orderables the fixture PRICES, each reporting one analyte whose code is
      * the orderable's own — and each with a value inside its own absurd envelope, which the first
      * run of this row proved is enforced (a GLUF of 2.0 was refused: the envelope is 5 … 1500).
+     *
+     * **17d T1 swapped `UPT` for `ESR`.** The fixture patient is male and the catalogue now declares
+     * the urine pregnancy test female-only, so a UPT round would be refused `analyte_not_applicable`
+     * before any verify raced anything — the applicability rule working, and A2 measuring nothing.
+     * `ESR` is the remaining priced orderable that shares no analyte with the other seven, which is
+     * the property this round needs (the duplicate detector refuses an overlapping re-order).
+     * `PSA` STAYS: male-only against a male patient is applicable, and the round proves it.
      */
     const ROUND: readonly (readonly [string, string])[] = [
-      ["TSH", "2.0"], ["GLUF", "90"], ["UPT", "Negative"], ["HBSAG", "Non-reactive"],
+      ["TSH", "2.0"], ["GLUF", "90"], ["ESR", "12"], ["HBSAG", "Non-reactive"],
       ["HCV", "Non-reactive"], ["VDRL", "Non-reactive"], ["PSA", "1.2"], ["VITD", "30"],
     ];
     const analytes = new Map(
@@ -92,9 +99,9 @@ describe("lab verification, concurrency (17b T6)", () => {
         await withTx(db, (tx) => collect(tx, fx.bench.actor, { specimenId: s.specimenId, wristbandScanned: true }, at));
         await withTx(db, (tx) => receive(tx, fx.bench.actor, fx.decls, { specimenNo: s.specimenNo }, at));
       }
-      const entered = await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+      const entered = await enterResult(db, fx.bench.actor, {
         orderItemId: placed.itemIds[0]!, analyteId: analytes.get(code)!, value, entryMode: "manual",
-      }, at));
+      }, at);
 
       const before = (await db.select().from(events).where(eq(events.name, "lab.result_verified"))).length;
 

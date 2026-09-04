@@ -114,14 +114,21 @@ describe("lab results — entry (17b T6)", () => {
   const rowsFor = async (itemId: string) =>
     db.select().from(labResults).where(eq(labResults.orderItemId, itemId));
 
+  /** 17d T1 — the item for ONE code of a multi-code order, resolved by service rather than by index. */
+  const itemIdForCode = async (placed: Resultable, code: string): Promise<string> => {
+    const rows = await db.select({ id: orderItems.id, serviceId: orderItems.serviceId })
+      .from(orderItems).where(eq(orderItems.orderId, placed.orderId));
+    return rows.find((r) => r.serviceId === serviceIdForLabCode(code))!.id;
+  };
+
   /* ═══════════════════ the precondition — 17a §6.2, all three parts ═══════════════════ */
 
   it("refuses item_not_resultable on an item whose tube has not been received", async () => {
     const placed = await resultable(["TSH"], { receiveTube: false });
     const tsh = await analyteIdFor("TSH");
-    await expect(withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+    await expect(enterResult(db, fx.bench.actor, {
       orderItemId: placed.itemIds[0]!, analyteId: tsh, value: "2.1", entryMode: "manual",
-    }))).rejects.toMatchObject({ code: "item_not_resultable" });
+    })).rejects.toMatchObject({ code: "item_not_resultable" });
     expect(await rowsFor(placed.itemIds[0]!)).toHaveLength(0);
   });
 
@@ -129,9 +136,9 @@ describe("lab results — entry (17b T6)", () => {
     const { itemIds } = await resultable(["TSH"]);
     const stranger = await mkUser(db, "ward.clerk", ["nurse"]);
     const tsh = await analyteIdFor("TSH");
-    await expect(withTx(db, (tx) => enterResult(tx, stranger.actor, {
+    await expect(enterResult(db, stranger.actor, {
       orderItemId: itemIds[0]!, analyteId: tsh, value: "2.1", entryMode: "manual",
-    }))).rejects.toMatchObject({ code: "permission_denied" });
+    })).rejects.toMatchObject({ code: "permission_denied" });
   });
 
   /* ═══════════════════════ A6 — THE RANGE IS SNAPSHOTTED AT ENTRY ═══════════════════════ */
@@ -140,9 +147,9 @@ describe("lab results — entry (17b T6)", () => {
     const { itemIds } = await resultable(["TSH"]);
     const tsh = await analyteIdFor("TSH");
     /** 5.5 against 0.35–4.94 is HIGH; TSH declares no critical band, so the flag is `H`, not `HH`. */
-    const entered = await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+    const entered = await enterResult(db, fx.bench.actor, {
       orderItemId: itemIds[0]!, analyteId: tsh, value: "5.5", entryMode: "manual",
-    }));
+    });
     expect(entered.flag).toBe("H");
 
     const before = (await rowsFor(itemIds[0]!))[0]!;
@@ -173,22 +180,22 @@ describe("lab results — entry (17b T6)", () => {
     const t2 = new Date("2026-08-30T06:00:00Z");
 
     const first = await resultable(["RFT"], { at: t0 });
-    const entered0 = await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+    const entered0 = await enterResult(db, fx.bench.actor, {
       orderItemId: first.itemIds[0]!, analyteId: crea, value: "0.9", entryMode: "manual",
-    }, t0));
+    }, t0);
     await verifyResult(db, fx.pathologist.actor, fx.decls, { resultId: entered0.resultId }, t0);
 
     /** A SECOND, MORE RECENT prior — keyed, never signed. The mutant compares against this one. */
     const second = await resultable(["RFT"], { at: t1 });
-    await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+    await enterResult(db, fx.bench.actor, {
       orderItemId: second.itemIds[0]!, analyteId: crea, value: "4.2", entryMode: "manual",
-    }, t1));
+    }, t1);
 
     /** TODAY: 4.1. Against 0.9 that is a move of 3.2 (flagged); against 4.2 it is 0.1 (not). */
     const today = await resultable(["RFT"], { at: t2 });
-    const outcome = await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+    const outcome = await enterResult(db, fx.bench.actor, {
       orderItemId: today.itemIds[0]!, analyteId: crea, value: "4.1", entryMode: "manual",
-    }, t2));
+    }, t2);
 
     expect(outcome.deltaFlagged).toBe(true);
     const row = (await rowsFor(today.itemIds[0]!)).find((r) => r.analyteId === crea)!;
@@ -213,10 +220,10 @@ describe("lab results — entry (17b T6)", () => {
      * envelope is 5 … 1500 mg/dL, so 1200 is INSIDE it: the plan's own input would have asserted
      * nothing and passed against an implementation with no envelope check at all.
      */
-    const enter = async (over?: { by: string }) => withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+    const enter = async (over?: { by: string }) => enterResult(db, fx.bench.actor, {
       orderItemId: itemIds[0]!, analyteId: gluf, value: "1600", entryMode: "manual",
       absurdOverride: over,
-    }));
+    });
 
     await expect(enter()).rejects.toMatchObject({ code: "absurd_value" });
     expect(await rowsFor(itemIds[0]!)).toHaveLength(0);
@@ -236,14 +243,123 @@ describe("lab results — entry (17b T6)", () => {
     expect(ok.flag).toBe("HH");
   });
 
+  /* ═══════ 17d T1 — THE VALUE THAT IS IMPOSSIBLE FOR THIS PATIENT (design EdgeCases #15) ═══════ */
+
+  /**
+   * The design board's case, walked end to end on the fixture's own male patient: **a man's tube
+   * reports a pregnancy test.** `UPT` is `coded`, so no absurd envelope can see it and no range can
+   * flag it — the only thing wrong with "Positive" is the patient beside it, and the ordinary
+   * explanation is that two tubes were swapped at the chair a minute ago.
+   *
+   * `["UPT", "TSH"]` orders a urine container AND an SST, drawn in the same `resultable()` run, so
+   * the suspect set has something real in it rather than being empty by construction.
+   */
+  it("17d T1: a female-only analyte on a male record is refused, and NAMES the other tube drawn with it", async () => {
+    const placed = await resultable(["UPT", "TSH"]);
+    const upt = await analyteIdFor("UPT");
+    const uptItem = await itemIdForCode(placed, "UPT");
+    expect(placed.specimenNos).toHaveLength(2); // the urine container and the SST — a real pair
+
+    await expect(enterResult(db, fx.bench.actor, {
+      orderItemId: uptItem, analyteId: upt, value: "Positive", entryMode: "manual",
+    })).rejects.toMatchObject({
+      code: "analyte_not_applicable",
+      detail: { analyteCode: "UPT", breach: "sex" },
+    });
+    expect(await rowsFor(uptItem)).toHaveLength(0);
+
+    /**
+     * THE POINT OF THE RULE: the other half of the swap, named, so somebody can go and look. One
+     * sibling and not two — the tube in the hand is excluded, which is the difference between a
+     * screen that says "check this other tube" and one that says "check the tube you are holding".
+     */
+    const refused = await enterResult(db, fx.bench.actor, {
+      orderItemId: uptItem, analyteId: upt, value: "Positive", entryMode: "manual",
+    }).then(() => null, (e: unknown) => e as { detail: { suspectSpecimenNos: string[] } });
+    const nos = refused!.detail.suspectSpecimenNos;
+    expect(nos).toHaveLength(1);
+    expect(placed.specimenNos).toEqual(expect.arrayContaining(nos));
+  });
+
+  /**
+   * ═══ D3 — THE NEAR-MISS SURVIVES THE ROLLBACK, WHICH IS THE WHOLE REASON THIS FILE WENT `Db`-FIRST ═══
+   *
+   * THE MUTANT: append `lab.tube_swap_suspected` on `tx` instead of on its own transaction. Every
+   * other assertion in this suite still passes — the refusal still refuses, the row is still absent
+   * — and the count below goes to ZERO, because the throw takes the audit record with it. That is
+   * F20 for `printLabels` and F27 for `verifyResult`, met a third time.
+   */
+  it("17d T1 / D3: the suspected swap is EVENTED even though the entry rolls back", async () => {
+    const placed = await resultable(["UPT", "TSH"]);
+    const upt = await analyteIdFor("UPT");
+    const uptItem = await itemIdForCode(placed, "UPT");
+
+    await expect(enterResult(db, fx.bench.actor, {
+      orderItemId: uptItem, analyteId: upt, value: "Positive", entryMode: "manual",
+    })).rejects.toMatchObject({ code: "analyte_not_applicable" });
+
+    const flagged = await eventsNamed("lab.tube_swap_suspected");
+    expect(flagged).toHaveLength(1); // THE KILL: 0 when the event rides the rolled-back transaction
+    const payload = flagged[0]!.payload as {
+      breach: string; overridden: boolean; siblingSpecimenIds: string[]; analyteId: string;
+    };
+    expect([payload.breach, payload.overridden, payload.analyteId]).toEqual(["sex", false, upt]);
+    expect(payload.siblingSpecimenIds).toHaveLength(1); // the SST drawn in the same minute
+    /** 17c F4 — a departmental topic carries ids, never the value or the patient's sex. */
+    expect(JSON.stringify(payload)).not.toContain("Positive");
+  });
+
+  it("17d T1 / D2: the enterer may not vouch for their own tube; a second holder may, and it is stored", async () => {
+    const placed = await resultable(["UPT", "TSH"]);
+    const upt = await analyteIdFor("UPT");
+    const uptItem = await itemIdForCode(placed, "UPT");
+    const enter = async (over?: { by: string }) => enterResult(db, fx.bench.actor, {
+      orderItemId: uptItem, analyteId: upt, value: "Positive", entryMode: "manual",
+      impossibleOverride: over,
+    });
+
+    await expect(enter({ by: fx.bench.id })).rejects
+      .toMatchObject({ code: "impossible_override_same_actor" });
+    expect(await rowsFor(uptItem)).toHaveLength(0);
+
+    const outsider = await mkUser(db, "reception.desk2", ["lab_reception"]);
+    await expect(enter({ by: outsider.id })).rejects.toMatchObject({ code: "permission_denied" });
+    expect(await rowsFor(uptItem)).toHaveLength(0);
+
+    /**
+     * AND THE OVERRIDE IS A REAL CLINICAL PATH, not a formality — which is why the rule refuses
+     * rather than rejects. A beta-hCG IS ordered for men, as a germ-cell tumour marker; the second
+     * pair of hands is how that order gets its result without the swap going unexamined.
+     */
+    await enter({ by: bench2.id });
+    const row = (await rowsFor(uptItem))[0]!;
+    expect([row.valueCoded, row.impossibleOverriddenBy, row.absurdOverriddenBy])
+      .toEqual(["Positive", bench2.id, null]);
+
+    /** The near-miss is evented on the overridden path too, and says it was overridden. */
+    const flagged = await eventsNamed("lab.tube_swap_suspected");
+    expect(flagged.map((e) => (e.payload as { overridden: boolean }).overridden)).toEqual([true, true, true]);
+  });
+
+  it("17d T1: an APPLICABLE analyte is never flagged — PSA is male-only and the patient is male", async () => {
+    // MUTANT: a rule that fires whenever `appliesToSex` is non-null refuses every declared analyte.
+    const placed = await resultable(["PSA"]);
+    const psa = await analyteIdFor("PSA");
+    const entered = await enterResult(db, fx.bench.actor, {
+      orderItemId: placed.itemIds[0]!, analyteId: psa, value: "1.2", entryMode: "manual",
+    });
+    expect(entered.resultId).toBeTruthy();
+    expect(await eventsNamed("lab.tube_swap_suspected")).toHaveLength(0);
+  });
+
   /* ═════════ A5's ENTRY HALF — THE CRITICAL CALL OPENS AT ENTRY, NOT AT VERIFY ═════════ */
 
   it("A5: K+ 6.8 opens exactly ONE call at ENTRY, before any verification", async () => {
     const { itemIds } = await resultable(["RFT"]);
     const k = await analyteIdFor("K");
-    const entered = await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+    const entered = await enterResult(db, fx.bench.actor, {
       orderItemId: itemIds[0]!, analyteId: k, value: "6.8", entryMode: "manual",
-    }));
+    });
 
     expect(entered.flag).toBe("HH");
     expect(entered.criticalCallId).not.toBeNull();
@@ -268,18 +384,18 @@ describe("lab results — entry (17b T6)", () => {
     const [tc, tg, hdl, ldl] = await Promise.all(["TC", "TG", "HDL", "LDL"].map((c) => analyteIdFor(c)));
 
     /** TC alone: LDL's inputs are incomplete, so NO calculated row is written yet. */
-    await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+    await enterResult(db, fx.bench.actor, {
       orderItemId: item, analyteId: tc!, value: "200", entryMode: "manual",
-    }));
+    });
     expect((await rowsFor(item)).map((r) => r.analyteId)).toEqual([tc]);
 
-    await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+    await enterResult(db, fx.bench.actor, {
       orderItemId: item, analyteId: hdl!, value: "50", entryMode: "manual",
-    }));
+    });
     /** TG 450 — E38: every input is present and the GUARD refuses, so the answer is TEXT. */
-    const last = await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+    const last = await enterResult(db, fx.bench.actor, {
       orderItemId: item, analyteId: tg!, value: "450", entryMode: "manual",
-    }));
+    });
 
     expect(last.computed.map((c) => c.analyteId)).toContain(ldl);
     const ldlRow = (await rowsFor(item)).find((r) => r.analyteId === ldl)!;
@@ -292,9 +408,9 @@ describe("lab results — entry (17b T6)", () => {
     const item = itemIds[0]!;
     const [tc, hdl, tg, ldl] = await Promise.all(["TC", "HDL", "TG", "LDL"].map((c) => analyteIdFor(c)));
     for (const [id, value] of [[tc, "200"], [hdl, "50"], [tg, "150"]] as const) {
-      await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+      await enterResult(db, fx.bench.actor, {
         orderItemId: item, analyteId: id!, value, entryMode: "manual",
-      }));
+      });
     }
     /** 200 − 50 − 150/5 = 120 */
     const ldlRow = (await rowsFor(item)).find((r) => r.analyteId === ldl)!;
@@ -306,9 +422,9 @@ describe("lab results — entry (17b T6)", () => {
   it("emits lab.notifiable_flagged for HBsAg and nothing for TSH", async () => {
     const tshOrder = await resultable(["TSH"]);
     const tsh = await analyteIdFor("TSH");
-    await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+    await enterResult(db, fx.bench.actor, {
       orderItemId: tshOrder.itemIds[0]!, analyteId: tsh, value: "2.0", entryMode: "manual",
-    }));
+    });
     expect(await eventsNamed("lab.notifiable_flagged")).toHaveLength(0);
 
     /**
@@ -318,10 +434,10 @@ describe("lab results — entry (17b T6)", () => {
      */
     const mpOrder = await resultable(["HBSAG"]);
     const mpAg = await analyteIdFor("HBSAG");
-    await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+    await enterResult(db, fx.bench.actor, {
       orderItemId: mpOrder.itemIds[0]!, analyteId: mpAg,
       value: "Reactive", entryMode: "manual",
-    }));
+    });
     const flagged = await eventsNamed("lab.notifiable_flagged");
     expect(flagged).toHaveLength(1);
     expect(flagged[0]!.payload).toMatchObject({ orderItemId: mpOrder.itemIds[0]! });
@@ -336,17 +452,17 @@ describe("lab results — entry (17b T6)", () => {
 
     /** A transposition: 500 for 150. LDL computes to 500 − 50 − 24 = 426. */
     for (const [id, value] of [[tc, "500"], [hdl, "50"], [tg, "120"]] as const) {
-      await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+      await enterResult(db, fx.bench.actor, {
         orderItemId: item, analyteId: id!, value, entryMode: "manual",
-      }));
+      });
     }
     const before = (await rowsFor(item)).filter((r) => r.analyteId === ldl);
     expect(Number(before.at(-1)!.valueNumeric)).toBe(426);
 
     /** The bench re-keys the cholesterol. */
-    await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+    await enterResult(db, fx.bench.actor, {
       orderItemId: item, analyteId: tc!, value: "150", entryMode: "manual",
-    }));
+    });
 
     /**
      * `done` counted ANY row for the analyte, so the LDL was SKIPPED and a signed report would have
@@ -362,12 +478,12 @@ describe("lab results — entry (17b T6)", () => {
   it("M3: a re-keyed value names the row it supersedes, without the caller remembering to", async () => {
     const { itemIds } = await resultable(["TSH"]);
     const tsh = await analyteIdFor("TSH");
-    const first = await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+    const first = await enterResult(db, fx.bench.actor, {
       orderItemId: itemIds[0]!, analyteId: tsh, value: "2.0", entryMode: "manual",
-    }));
-    const second = await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+    });
+    const second = await enterResult(db, fx.bench.actor, {
       orderItemId: itemIds[0]!, analyteId: tsh, value: "3.1", entryMode: "manual",
-    }));
+    });
 
     /**
      * `EnterResultInput` declared these fields and the ROUTE's schema named neither, so zod stripped
@@ -383,9 +499,9 @@ describe("lab results — entry (17b T6)", () => {
     const { itemIds } = await resultable(["TSH"]);
     const tsh = await analyteIdFor("TSH");
     /** `Number("")` is 0 and finite, so this parsed, then died in Postgres on an empty numeric. */
-    await expect(withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+    await expect(enterResult(db, fx.bench.actor, {
       orderItemId: itemIds[0]!, analyteId: tsh, value: "   ", entryMode: "manual",
-    }))).rejects.toMatchObject({ code: "catalogue_invalid" });
+    })).rejects.toMatchObject({ code: "catalogue_invalid" });
     expect(await rowsFor(itemIds[0]!)).toHaveLength(0);
   });
 
@@ -393,9 +509,9 @@ describe("lab results — entry (17b T6)", () => {
     const { itemIds } = await resultable(["RFT"]);
     const k = await analyteIdFor("K");
     /** Signed at 22:00 as a transposition of 6.9. */
-    const entered = await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+    const entered = await enterResult(db, fx.bench.actor, {
       orderItemId: itemIds[0]!, analyteId: k, value: "4.2", entryMode: "manual",
-    }));
+    });
     await verifyResult(db, fx.pathologist.actor, fx.decls, { resultId: entered.resultId });
     expect(await db.select().from(labCriticalCalls)).toHaveLength(0);
 
@@ -423,9 +539,9 @@ describe("lab results — entry (17b T6)", () => {
     const { itemIds } = await resultable(["TSH"]);
     const item = itemIds[0]!;
     const tsh = await analyteIdFor("TSH");
-    const outcome = await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+    const outcome = await enterResult(db, fx.bench.actor, {
       orderItemId: item, analyteId: tsh, value: "2.0", entryMode: "manual",
-    }));
+    });
     /** TSH reports ONE analyte, so a single entry takes the item all the way to `resulted`. */
     expect(outcome.itemState).toBe("resulted");
     const [envelope] = await db.select({ status: orderItems.status })
@@ -437,9 +553,9 @@ describe("lab results — entry (17b T6)", () => {
     const { itemIds } = await resultable(["TSH"]);
     const item = itemIds[0]!;
     const tsh = await analyteIdFor("TSH");
-    const entered = await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+    const entered = await enterResult(db, fx.bench.actor, {
       orderItemId: item, analyteId: tsh, value: "2.0", entryMode: "manual",
-    }));
+    });
     const invoicesBefore = (await eventsNamed("invoice.issued")).length;
 
     const rerun = await withTx(db, (tx) => requestRerun(tx, fx.pathologist.actor, {

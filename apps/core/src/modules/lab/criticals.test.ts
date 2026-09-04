@@ -57,9 +57,9 @@ describe("lab critical calls (17b T6)", () => {
       await withTx(db, (tx) => receive(tx, fx.bench.actor, fx.decls, { specimenNo: s.specimenNo }, AT));
     }
     const [k] = await db.select({ id: labAnalytes.id }).from(labAnalytes).where(eq(labAnalytes.code, "K"));
-    const entered = await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+    const entered = await enterResult(db, fx.bench.actor, {
       orderItemId: placed.itemIds[0]!, analyteId: k!.id, value: "6.8", entryMode: "manual",
-    }, AT));
+    }, AT);
     return { callId: entered.criticalCallId!, resultId: entered.resultId };
   }
 

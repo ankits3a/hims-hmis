@@ -1972,7 +1972,15 @@
       "live": "live",
       "offline": "offline",
       "min": "min",
-      "inTransit": "in transit"
+      "inTransit": "in transit",
+      "swapSuspected": "Check the tube before this value goes in",
+      "swapCheckTubes": "Also drawn in that minute: {{nos}}",
+      "vouchBy": "Confirmed by (second person’s login)",
+      "vouchSave": "Vouch & save",
+      "relabelToggle": "The label cannot be read — I typed the number",
+      "relabelHint": "Re-labelling a tube is witnessed. Name the second person and say why the label could not be read.",
+      "relabelWitness": "Witnessed by (second person’s login)",
+      "relabelReason": "Why the label could not be read"
     },
     "verify": {
       "title": "Verify & report",

@@ -1,4 +1,4 @@
-import { ageInDaysIst, flagFor, resolveRange } from "./ranges";
+import { ageInDaysIst, applicabilityBreach, flagFor, resolveRange } from "./ranges";
 import type { AnalyteRow, RangeRow } from "./ranges";
 
 /**
@@ -123,5 +123,78 @@ describe("the reference-range resolver (17a T3)", () => {
     const textOnly = resolveRange(ANALYTE(), [range({ low: null, high: null, text: "Negative" })],
       { dob: "1990-01-01", sex: "male" }, new Date());
     expect([textOnly.text, flagFor(1, textOnly)]).toEqual(["Negative", null]);
+  });
+
+  /* ═════════ 17d T1 — APPLICABILITY: is this test ABOUT this patient? (design EdgeCases #15) ═════════ */
+
+  /**
+   * ═══ FAIL-FIRST, BY MUTANT, FOR THE REASON THIS FILE'S HEADER ALREADY GIVES ═══
+   *
+   * `applicabilityBreach` is a new pure function, so a test written before it fails on an
+   * unresolved import and proves nothing (§2.5). Each assertion below is therefore paired with the
+   * plausible wrong implementation it kills, named in the test.
+   */
+  const APPLIES = (over: Partial<AnalyteRow> = {}): Pick<
+    AnalyteRow, "appliesToSex" | "appliesMinAgeDays" | "appliesMaxAgeDays"
+  > => ({ appliesToSex: null, appliesMinAgeDays: null, appliesMaxAgeDays: null, ...over });
+
+  const AT = new Date("2026-09-03T06:30:00Z");
+
+  it("an undeclared analyte applies to everybody — which is every analyte seeded before 17d", () => {
+    // MUTANT: a rule that treats `null` as "declared for nobody" refuses the whole catalogue.
+    expect(applicabilityBreach(APPLIES(), { dob: "1990-05-10", sex: "male" }, AT)).toBeNull();
+    expect(applicabilityBreach(APPLIES(), { dob: null, sex: null }, AT)).toBeNull();
+  });
+
+  it("a female-only analyte on a male record is a SEX breach, and names both sides of it", () => {
+    // MUTANT: `subject.sex !== declared` written as a truthiness check passes `null !== "female"`
+    // and refuses every patient of unrecorded sex — see the next test for why that is wrong.
+    expect(applicabilityBreach(APPLIES({ appliesToSex: "female" }), { dob: "1990-05-10", sex: "male" }, AT))
+      .toEqual({ kind: "sex", declared: "female", patient: "male" });
+    expect(applicabilityBreach(APPLIES({ appliesToSex: "male" }), { dob: "1990-05-10", sex: "male" }, AT))
+      .toBeNull();
+  });
+
+  /**
+   * The two silences the rule keeps on purpose. Both are the same principle: this rule exists to
+   * catch a SWAPPED TUBE, and neither an unrecorded sex nor an unrecorded birthday is evidence of
+   * one — while refusing on either would withhold a result over a registration default.
+   */
+  it("`other`, `unknown` and an absent sex are NEVER refused by the sex rule", () => {
+    // MUTANT: `subject.sex !== declared` without the male/female guard refuses all three.
+    for (const sex of ["other", "unknown", null]) {
+      expect(applicabilityBreach(APPLIES({ appliesToSex: "female" }), { dob: "1990-05-10", sex }, AT))
+        .toBeNull();
+    }
+  });
+
+  it("a patient with no recorded date of birth is NEVER refused by the age rule", () => {
+    // MUTANT: `ageInDaysIst(subject.dob!, …)` on a null dob yields NaN, and every comparison with
+    // NaN is false — so the mutant does not refuse either, it silently stops CHECKING. The kill is
+    // the row below it: a real dob outside the band must still breach.
+    expect(applicabilityBreach(APPLIES({ appliesMinAgeDays: 0, appliesMaxAgeDays: 29 }), { dob: null, sex: "female" }, AT))
+      .toBeNull();
+    expect(applicabilityBreach(APPLIES({ appliesMinAgeDays: 0, appliesMaxAgeDays: 29 }), { dob: "1990-05-10", sex: "female" }, AT))
+      .toMatchObject({ kind: "age", declaredMinDays: 0, declaredMaxDays: 29 });
+  });
+
+  it("the age band is half-open [min, max) at COLLECTION, and an open end is honoured", () => {
+    const neonatal = APPLIES({ appliesMinAgeDays: 0, appliesMaxAgeDays: 29 });
+    const born = "2026-08-06"; // 28 days old at AT, 29 the next day
+    // MUTANT: `days <= max` makes the 29th day applicable, which is a whole day of wrong ranges.
+    expect(applicabilityBreach(neonatal, { dob: born, sex: "female" }, new Date("2026-09-03T06:30:00Z")))
+      .toBeNull();
+    expect(applicabilityBreach(neonatal, { dob: born, sex: "female" }, new Date("2026-09-04T06:30:00Z")))
+      .toMatchObject({ kind: "age", patientDays: 29 });
+    // An open lower end: declared only for adults, nothing said about the top.
+    const adult = APPLIES({ appliesMinAgeDays: 6570, appliesMaxAgeDays: null });
+    expect(applicabilityBreach(adult, { dob: "1990-05-10", sex: "male" }, AT)).toBeNull();
+    expect(applicabilityBreach(adult, { dob: "2020-05-10", sex: "male" }, AT)).toMatchObject({ kind: "age" });
+  });
+
+  it("SEX is reported before AGE when both breach — the tube is the graver of the two", () => {
+    // MUTANT: age checked first turns a swapped tube into a paediatric range query.
+    const both = APPLIES({ appliesToSex: "female", appliesMinAgeDays: 0, appliesMaxAgeDays: 29 });
+    expect(applicabilityBreach(both, { dob: "1990-05-10", sex: "male" }, AT)).toMatchObject({ kind: "sex" });
   });
 });
