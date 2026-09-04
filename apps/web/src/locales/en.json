@@ -2399,7 +2399,13 @@
         "spouse": "Spouse",
         "sibling": "Sibling",
         "legal": "Legal guardian",
-        "other": "Other"
+        "other": "Other",
+        "authority": "what they may do",
+        "authorityMessages": "messages",
+        "authorityBills": "bills",
+        "authorityConsents": "consents",
+        "authorityRecords": "records",
+        "authorityWhy": "What the guardian may do on this child's behalf is recorded now, and it is revocable. Consent is not the same as billing — the two are separate switches on purpose."
       },
       "abha": {
         "title": "ABHA",
@@ -2487,7 +2493,11 @@
         "promotional": "The patient agreed to receive health-camp and offer messages",
         "promotionalWhy": "DPDP consent. Leave unticked unless the patient actually said yes — silence is not consent.",
         "legacyUhid": "old paper UHID",
-        "language": "messages in"
+        "language": "messages in",
+        "alias": "alias shown on every screen",
+        "aliasPlaceholder": "Patient 44",
+        "sensitiveContext": "A sensitive context — a staff member, a VIP, a legal matter",
+        "sensitiveContextWhy": "Recorded beside the seal rather than inferred from it. It changes nothing a reader may see; it records why the record was sealed."
       }
     },
     "quote": {
