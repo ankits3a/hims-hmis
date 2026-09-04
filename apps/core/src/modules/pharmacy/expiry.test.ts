@@ -7,10 +7,10 @@ import { stockBalances, stockReservations } from "../../kernel/db/schema";
 import { previewDispenseBill, billDispense } from "./bill";
 import { claimDispense, findAtCounter } from "./claim";
 import { PICK_RESERVATION_MINUTES } from "./config";
-import { sweepExpiredPicks } from "./expiry";
+import { PHARMACY_PICK_SWEEP_ACTOR, PICK_EXPIRED_REASON, sweepExpiredPicks } from "./expiry";
 import { pickDispense } from "./pick";
 import { getDispense } from "./queue";
-import { verifyDispense } from "./verify";
+import { cancelDispense, verifyDispense } from "./verify";
 import type { PharmacyFixture } from "../../../test/helpers/pharmacy";
 import type { Db } from "../../kernel/db/client";
 
@@ -83,5 +83,45 @@ describe("the pick reservation expires (16c F11)", () => {
     expect(await reservedNow()).toBe(10); // still held FOR this patient, not released to the shelf
     const [res] = await db.select().from(stockReservations).where(eq(stockReservations.status, "held"));
     expect(res).toBeDefined();
+  });
+
+  /**
+   * ═══ PASS 2 — THE RACE THE SWEEP SAID IT HANDLED, AND DID NOT ═══
+   *
+   * `sweepExpiredPicks` swallows exactly one error, `PharmacyError("dispense_not_in_state")`, and
+   * its comment justified that narrowness by pointing at the conditional UPDATE inside
+   * `cancelDispense`. But that UPDATE ran AFTER the per-line loop, so a pharmacist cancelling the
+   * same abandoned dispense — the ordinary end of an abandoned pick, not an exotic interleaving —
+   * made the sweep lose inside `advanceOrderItem` instead, with `OrderError("stale_state")`. That
+   * is not a `PharmacyError`: the filter rethrew, the tick aborted, and every remaining expired
+   * pick in that batch waited another minute.
+   *
+   * Two cancellers on one dispense is the whole mechanism, and Postgres decides it for us: both
+   * read `picked`, both enter their transaction, and the dispense row's lock serialises them. What
+   * this pins is not WHO wins — it is that the loser fails as the pharmacy module's own
+   * concurrency error, which is the contract the sweep's filter is written against.
+   */
+  it("two cancellers race on one abandoned pick: the loser fails as dispense_not_in_state, and the stock returns once", async () => {
+    const id = await picked();
+    expect(await reservedNow()).toBe(10);
+
+    const results = await Promise.allSettled([
+      cancelDispense(db, PHARMACY_PICK_SWEEP_ACTOR, fx.decls, id, PICK_EXPIRED_REASON, AFTER),
+      cancelDispense(db, fx.pharmacist.actor, fx.decls, id, "patient never came back for it", AFTER),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+    expect(rejected).toHaveLength(1);
+    // the error the sweep is written to swallow — NOT OrderError("stale_state") from a child row
+    expect((rejected[0]!.reason as { code?: string }).code).toBe("dispense_not_in_state");
+
+    // one cancel, one release: the loser's whole transaction rolled back, so the ten tablets came
+    // back to the shelf exactly once and `qty_reserved` was never double-decremented.
+    expect((await getDispense(db, fx.pharmacist.actor, id)).status).toBe("cancelled");
+    expect(await reservedNow()).toBe(0);
+    const released = await db.select().from(stockReservations).where(eq(stockReservations.status, "released"));
+    expect(released).toHaveLength(1);
+    const [bal] = await db.select().from(stockBalances);
+    expect(bal?.qtyOnHand).toBe(100);
   });
 });
