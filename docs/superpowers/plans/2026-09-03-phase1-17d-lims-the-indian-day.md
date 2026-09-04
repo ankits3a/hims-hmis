@@ -409,3 +409,46 @@ pinned now and the mutant dies.
 
 **Evidence (2026-09-04):** typecheck 0; lint **0 errors**. Web-only change (no core file touched):
 **the FULL web suite, 83 files / 673 tests green.**
+
+### 8.7 T7 — The patient's copy speaks Hindi; an amendment re-holds (executed 2026-09-04)
+
+**The Hindi copy (design board EdgeCases #25).** The SMS and WhatsApp text were already bilingual;
+the paper was not. `LabReportPrint` takes `lang: "en" | "hi"` and binds `i18n.getFixedT("hi")` —
+never `changeLanguage`, which would repaint the whole SPA behind the clerk who pressed print.
+
+- **What changes is the FURNITURE and nothing else**: column headings, flag words
+  (**गंभीर निम्न** / **उच्च** / **निम्न** — already in `hi.json`, the exact words the board named),
+  the standing notes. **No value, unit or reference interval is translated.** A report whose numbers
+  moved with a toggle would be two different documents under one signature, and that is the one
+  thing this feature must not do. The test asserts `41`, `mg/dL` and `70 – 99` are identical either
+  way, and a mutant that ran the value through the translator dies on it.
+- **Per REPORT, at the counter**, defaulting to English: the same screen prints the patient's Hindi
+  copy and the ward's English one, and NABL convention keeps the doctor's copy English (D8).
+
+**The amendment re-hold (D9) — 17c §8.9 carried it as a worry; it is ALREADY the behaviour, so it
+is PINNED rather than built.** Two independent things prevent v2 walking out on v1's decision, and
+neither was written for this case: `deliveryAllowed` holds no memory of a release (it recomputes
+from the order group's balance every call), and the approval is spent by its delivery row. A
+behaviour nobody tested is a behaviour the next refactor removes, and this one is money leaving the
+building — so the test exists though the code does not change. A mutant on the spent-approval guard
+kills it.
+
+**Mutants, each applied and each red, then reverted:**
+
+| # | mutant | killed by |
+|---|---|---|
+| 1 | the approval is not spent by its delivery row | 1 failed |
+| 2 | web: the `lang` toggle is ignored | the test failed |
+| 3 | web: the VALUE is run through the translator | the test failed |
+
+**A CROSS-LANE COST, CAUGHT AND PAID BY ME.** The first cut added two report-centre renders and the
+full web suite began failing `vitals-bay-stories.test.tsx` — the FRONT-DESK lane's file — with
+`Test timed out in 5000ms`. It was not a flake and I proved it: the clean tree passed 83/83 twice,
+mine failed twice at 5046 ms, and the story test alone takes 2745 ms against a 5 s budget. The web
+suite shares one worker, so my extra mount spent a peer's wall-clock. Folded the two Hindi tests
+into one render rather than edit another lane's file: suite back to green and **7 s faster**
+(49.56 s → 42.94 s). **Worth telling the front-desk lane: that test sits at 55% of its timeout
+before anybody else adds a file.**
+
+**Evidence (2026-09-04):** typecheck 0; lint **0 errors**. Core lab **27 suites, 255 tests green**.
+**Full web suite 83 files / 674 tests green** (run clean-tree first to attribute the failure).
