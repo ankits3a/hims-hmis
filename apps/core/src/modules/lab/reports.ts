@@ -1031,6 +1031,123 @@ export async function listResultsForEncounter(
   }));
 }
 
+/* ═════════ 17d T5 / D6 — THE PROVISIONAL READ, A SEPARATE DOOR (design EdgeCases #18) ═════════ */
+
+/**
+ * A resulted value the pathologist has not signed. The extra fields over `EncounterResultRow` are
+ * the ones that make it safe to look at: **who** keyed it and **when**, so a clinician acting on an
+ * unsigned number knows whose bench it came off and how old it is.
+ */
+export type ProvisionalResultRow = Omit<EncounterResultRow, "verifiedAt"> & {
+  /** Always `false`. A literal, not a column — see the reader's header for why it is here at all. */
+  verified: false;
+  enteredAt: string;
+  enteredById: string;
+  entryMode: string;
+};
+
+/**
+ * ═══ WHY THIS IS A SECOND READER AND NOT A FLAG ON THE FIRST (D6) ═══
+ *
+ * Design board EdgeCases #18: *"Doctor wants the numbers by phone before the pathologist signs."*
+ * That is a real and constant request in an Indian hospital, and the honest answer is to show the
+ * numbers **with the word `unverified` on them** rather than to pretend they do not exist.
+ *
+ * The obvious implementation — a `includeUnverified` parameter on `listResultsForEncounter` — is
+ * the one this deliberately does not do. That function's contract is stated in THREE files'
+ * headers (`reports.ts`, `interlock.ts`, `approval-types.ts`) as *"returns verified results"*, and
+ * 22c-A's C1 is what widening a shared reader costs: every existing caller silently acquires the
+ * new behaviour, and the one that matters here is `opd-consult.tsx`, which puts values in front of
+ * a prescriber. A separate door cannot be walked through by accident.
+ *
+ * ═══ `verified: false` IS A LITERAL, AND THAT IS THE POINT ═══
+ *
+ * Every row this returns is unsigned, so the field carries no information — it exists so that a
+ * screen, a test or a future reader CANNOT hold one of these rows without seeing that it is
+ * provisional. A shape that merely omitted `verifiedAt` would be one careless spread away from
+ * looking exactly like the signed kind.
+ *
+ * ═══ THE SUPERSEDED ARE EXCLUDED, THE AUTOVERIFIED ARE NOT MINE ═══
+ *
+ * A re-keyed value supersedes the row it replaces (`results.ts`'s M3 chain), and a doctor reading
+ * the ladder of every attempt would be reading the laboratory's working-out. Only the current
+ * unsigned value for each analyte is returned.
+ *
+ * `verification_status` admits three values and this filters on `unverified` EXACTLY — never on
+ * `!= 'verified'`, which would report an AUTOVERIFIED result as provisional when it is signed by
+ * rule. (Recorded, not fixed here: `listResultsForEncounter` filters `= 'verified'` and so would
+ * drop autoverified rows from the doctor's screen entirely. Nothing is autoverified today —
+ * auto-verification shipped with zero rules — and widening that reader is exactly what D6 forbids.
+ * It is 17d §8.5's found-not-taken.)
+ */
+export async function listProvisionalResultsForEncounter(
+  db: Db,
+  actor: Actor,
+  encounterNo: string,
+  now: Date = new Date(),
+): Promise<ProvisionalResultRow[]> {
+  await assertMay(db, actor, LAB_RESULTS_READ, "read lab results");
+
+  const rows = await db
+    .select({
+      orderId: orders.id,
+      patientId: orders.patientId,
+      orderItemId: orderItems.id,
+      orderableCode: labOrderables.code,
+      orderableName: labOrderables.nameEn,
+      analyteCode: labAnalytes.code,
+      analyteName: labAnalytes.nameEn,
+      result: labResults,
+    })
+    .from(labResults)
+    .innerJoin(orderItems, eq(orderItems.id, labResults.orderItemId))
+    .innerJoin(orders, eq(orders.id, orderItems.orderId))
+    .innerJoin(labOrderables, eq(labOrderables.serviceId, orderItems.serviceId))
+    .innerJoin(labAnalytes, eq(labAnalytes.id, labResults.analyteId))
+    .where(and(
+      eq(orders.encounterNo, encounterNo),
+      eq(labResults.verificationStatus, "unverified"),
+    ))
+    .orderBy(labResults.enteredAt);
+
+  /** The rows this encounter's own values have replaced — the laboratory's working-out, not a result. */
+  const superseded = new Set(rows.map((r) => r.result.supersedesResultId).filter((x): x is string => x !== null));
+  const current = rows.filter((r) => !superseded.has(r.result.id));
+
+  /** The same PHI rule as the signed read: a named patient was disclosed, so it is logged. */
+  const subject = current[0];
+  if (subject) {
+    const canonical = (await resolvePatientId(db, subject.patientId)) ?? subject.patientId;
+    const [sealed] = await db.select({ isConfidential: patients.isConfidential })
+      .from(patients).where(eq(patients.id, canonical));
+    await recordPhiAccess(db, {
+      actor, patientId: canonical, surface: "lab.results.provisional", encounterId: encounterNo,
+      sealed: sealed?.isConfidential ?? false, now,
+    });
+  }
+
+  return current.map((r) => ({
+    orderId: r.orderId,
+    orderItemId: r.orderItemId,
+    orderableCode: r.orderableCode,
+    orderableName: r.orderableName,
+    analyteCode: r.analyteCode,
+    analyteName: r.analyteName,
+    value: r.result.valueNumeric ?? r.result.valueText ?? r.result.valueCoded ?? "",
+    unit: r.result.unit,
+    flag: r.result.flag,
+    refLow: r.result.refLow,
+    refHigh: r.result.refHigh,
+    refText: r.result.refText,
+    deltaFlag: r.result.deltaFlag,
+    pathologistReviewPending: r.result.pathologistReviewPending,
+    verified: false,
+    enteredAt: r.result.enteredAt.toISOString(),
+    enteredById: r.result.enteredById,
+    entryMode: r.result.entryMode,
+  }));
+}
+
 export type ReportVersionRow = {
   reportId: string;
   version: number;
