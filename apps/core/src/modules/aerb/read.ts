@@ -222,3 +222,73 @@ export async function unlicensedDevices(
      */
     .filter((r) => !AERB_UNLICENSABLE_MODALITIES.includes(r.modality.trim().toLowerCase()));
 }
+
+export interface AerbDeviceChoice {
+  resourceId: string;
+  code: string;
+  name: string;
+  modality: string;
+  /** The machine's status TODAY — `qa_blocked` is the one an RSO must see before recording a pass. */
+  status: string;
+  /**
+   * Whether AERB licences this machine at all, decided HERE by the same list the gap check reads.
+   * A screen that worked it out from the modality string would be the second copy of a regulatory
+   * rule, and the first thing to drift the day a modality is added.
+   */
+  licensable: boolean;
+}
+
+export interface AerbUserChoice {
+  userId: string;
+  fullName: string;
+}
+
+/**
+ * PLAN 18c T6 — **THE CHOICES THE PEN MAY WRITE ABOUT.**
+ *
+ * ═══ WHY THE REGISTER SERVES ITS OWN PICKERS ═══
+ *
+ * The write surface needs two lists the RSO cannot otherwise obtain: the machines (to licence, and
+ * to record QA against) and the people (to name as RSO, to appoint as physicist, to issue a badge
+ * to). Both exist behind doors the RSO does not hold — `resources.read` on the device registry and
+ * `auth.users.manage` on the staff directory — so a form built on those routes would render an
+ * empty dropdown for the one person the screen is for, and the RSO would be back to pasting ULIDs.
+ *
+ * The alternative considered and rejected was widening the RSO's role to hold `resources.read`:
+ * that buys the whole estate tree — beds, theatres, wards — to fill one dropdown, and a permission
+ * granted for a dropdown is a permission nobody can later reason about.
+ *
+ * **Behind `aerb.registers.manage`, not `…read`.** An inspector reading the book needs no picker,
+ * and the staff roster is not part of what the book discloses to a reader.
+ */
+export async function aerbPickers(
+  db: Db,
+): Promise<{ devices: AerbDeviceChoice[]; users: AerbUserChoice[] }> {
+  const deviceRows = await db.select({
+    id: resources.id, code: resources.code, name: resources.name,
+    status: resources.status, attributes: resources.attributes,
+  })
+    .from(resources)
+    .where(and(eq(resources.kind, "device"), sql`${resources.status} <> 'retired'`))
+    .orderBy(asc(resources.code));
+
+  const userRows = await db.select({ userId: users.id, fullName: users.fullName })
+    .from(users)
+    .where(eq(users.active, true))
+    .orderBy(asc(users.fullName));
+
+  return {
+    devices: deviceRows.map((r) => {
+      const modality = typeof r.attributes?.modality === "string" ? r.attributes.modality : "";
+      return {
+        resourceId: r.id,
+        code: r.code,
+        name: r.name,
+        modality,
+        status: r.status,
+        licensable: !AERB_UNLICENSABLE_MODALITIES.includes(modality.trim().toLowerCase()),
+      };
+    }),
+    users: userRows,
+  };
+}
