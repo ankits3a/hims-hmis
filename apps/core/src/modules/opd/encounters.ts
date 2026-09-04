@@ -140,7 +140,7 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput 
     return { encounter: encounter!, queueEntry: null, tokenNo: null, sessionId: null, roomId, visitType, doctorScheduledToday: roomId !== null };
   }
 
-  const joined = await joinSessionInTx(tx, { id: encounterId, doctorId: doctor.id, serviceDate, departmentId: doctor.departmentId, patientId: input.patientId }, input.appointment ?? null, actor);
+  const joined = await joinSessionInTx(tx, { id: encounterId, doctorId: doctor.id, serviceDate, departmentId: doctor.departmentId, patientId: input.patientId, visitType }, input.appointment ?? null, actor);
   await appendEvent(tx, visitOpened.make({ ...env, payload: {
     ...openedPayload, sessionId: joined.sessionId, roomId: joined.roomId, tokenNo: joined.tokenNo,
   } }));
@@ -165,7 +165,14 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput 
  */
 async function joinSessionInTx(
   tx: Tx,
-  encounter: { id: string; doctorId: string; serviceDate: string; departmentId: string | null; patientId: string },
+  /*
+    FD-24 CLOSE — `visitType` joins this shape because the TOKEN SLIP's paid stamp now resolves the
+    real fee status here rather than asserting a literal, and `encounterFeeStatuses` reads
+    `visitType` to decide which fee service applies (a revisit inside its window is `free`). It is a
+    field both callers already hold, so carrying it costs nothing and stops the projection being
+    handed a half-encounter.
+  */
+  encounter: { id: string; doctorId: string; serviceDate: string; departmentId: string | null; patientId: string; visitType: VisitType },
   appointment: { id: string; slotStart: Date } | null,
   actor: Actor,
 ): Promise<{ queueEntry: QueueEntryRow; tokenNo: number; sessionId: string; roomId: string | null }> {
@@ -200,9 +207,21 @@ async function joinSessionInTx(
     — the only way they fail is a database failure that would have failed the visit anyway. Nothing
     here reaches a printer, a network or a renderer; the relay does all of that, later and elsewhere.
   */
+  /*
+    FD-24 CLOSE — NO `unpaid` PARAM. It used to be the literal `true` here, which was wrong on every
+    road where the money was already done: `queueFeeStatusHook` calls into this function EXACTLY
+    when the fee is settled, free or credit-extended, so a bill-first patient was handed a slip
+    stamped UNPAID and sent to the counter they had just left. Resolving it here would fix that road
+    and still be wrong for a REPRINT an hour later.
+
+    The stamp is resolved at RENDER time instead — `renderTokenSlip` reads `encounterFeeStatuses`,
+    the one projection of the ledger — because printing is asynchronous by design and the only
+    moment the stamp has to be true is the moment paper comes out. The queue row keeps identifiers
+    and nothing else, which is what it was for.
+  */
   await enqueuePrintJob(tx, {
     document: "opd_token_slip",
-    params: { encounterId: encounter.id, unpaid: true },
+    params: { encounterId: encounter.id },
     dedupeKey: `token:${encounter.id}`,
     patientId: encounter.patientId,
     encounterId: encounter.id,
@@ -274,7 +293,7 @@ export async function joinQueueInTx(tx: Tx, actor: Actor, encounterId: string, n
     return { encounter, queueEntry: existing, tokenNo: existing.tokenNo, sessionId: session.id, roomId: session.roomId, alreadyJoined: true };
   }
 
-  const joined = await joinSessionInTx(tx, { id: encounter.id, doctorId: encounter.doctorId, serviceDate: encounter.serviceDate, departmentId: encounter.departmentId, patientId: encounter.patientId }, null, actor);
+  const joined = await joinSessionInTx(tx, { id: encounter.id, doctorId: encounter.doctorId, serviceDate: encounter.serviceDate, departmentId: encounter.departmentId, patientId: encounter.patientId, visitType: encounter.visitType as VisitType }, null, actor);
   await appendEvent(tx, patientCheckedIn.make({
     actor, patientId: encounter.patientId, encounterId, correlationId: encounter.workflowInstanceId,
     payload: {

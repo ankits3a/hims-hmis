@@ -55,6 +55,28 @@ export type PhiSurface =
    */
   | "orders.patient" | "lab.results" | "lab.report"
   /**
+   * ═══ FD-24 CLOSE — THE RELAY, AND THE ONE PLACE AN AGENT CREDENTIAL READS PHI ═══
+   *
+   * `POST /print/claim` hands a relay the fully RENDERED document — patient name, UHID, age and
+   * sex, visit number, doctor, department — because the brief's binding constraint is that patient
+   * care must never depend on internet connectivity, so the relay has to be autonomous the moment
+   * it holds a job. The controller's own header says this in as many words and calls it "the one
+   * place in the system where an agent credential reaches PHI". It then logged nothing.
+   *
+   * That is the worst shape an audit gap can take: the disclosure was noticed, written down, and
+   * not recorded. `imaging.worklist` is the exact analogue — a machine-facing export that discloses
+   * one row per patient to a device credential — and it is followed here, including its close
+   * review's rule of ONE ROW PER PATIENT DISCLOSED rather than one per request.
+   *
+   * `print.reprint` is separate rather than a reuse. A relay claiming a queue is a machine draining
+   * work it was assigned; a clerk pressing Reprint is a NAMED PERSON asking for a second copy of one
+   * patient's document, minutes or hours later. "The relay printed 40 slips at 09:00" and "Sunita
+   * reprinted Farida Khatoon's prescription at 16:20" are materially different disclosures, and a
+   * log that merged them would answer *what did they actually see* wrong — which is the only
+   * question it exists for.
+   */
+  | "print.claim" | "print.reprint"
+  /**
    * 17d T5 / D6 — the doctor reading UNSIGNED numbers before the pathologist has verified them
    * (design board EdgeCases #18). Its own name for exactly the reason the sentence above gives
    * about `lab.results` and `lab.report`: "the prescriber saw a provisional value at 21:40" and
