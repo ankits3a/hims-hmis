@@ -1,5 +1,7 @@
+import { useTranslation } from "react-i18next";
 import { ageOf, initialsOf, rs, sexLetter, STEPS, stepIndex, tokenStateOf } from "./model";
 import { useDesk } from "./session";
+import { PhotoPanel } from "./photo";
 
 /**
  * ═══ THE DOSSIER — §3: "the left column IS the patient session" ═══
@@ -23,6 +25,7 @@ import { useDesk } from "./session";
 export function Dossier(): React.ReactElement {
   const d = useDesk();
   const { s } = d;
+  const { t } = useTranslation();
 
   /* ── nobody in hand: the day's figures and the keys ── */
   if (s.person === null && !s.enrolling) {
@@ -103,42 +106,53 @@ export function Dossier(): React.ReactElement {
         </>
       )}
 
-      {/* ── the flow steps ── */}
-      <div className="tag" style={{ marginTop: 22 }}>flow · {d.lane}</div>
-      <div style={{ display: "flex", flexDirection: "column", marginTop: 8 }}>
+      {/*
+        ═══ FD-14 — THE FACE, BESIDE EVERY STAGE ═══
+
+        The counter's only defence against the wrong-patient error nothing else here can see: two
+        Asha Devis, one village, one shared family mobile, and no field that says which of them is
+        standing at the window. During enrolment it is held in the session and uploaded the moment a
+        UHID exists — `PUT /patients/:id/photo` needs a patient, and the patient does not exist yet
+        while the clerk is still typing their name.
+      */}
+      <PhotoPanel
+        dataUrl={s.photo}
+        caption={p === null ? t("registrationCounter.photo.captionNew") : t("registrationCounter.photo.caption")}
+        onCapture={(dataUrl) => { d.setPhoto(dataUrl); }}
+        onClear={() => { d.setPhoto(null); }}
+      />
+
+      {/*
+        ═══ FD-14 — THE FLOW IS A STRIP, NOT A PARAGRAPH ═══
+
+        Owner, 2026-09-04: *"instead of showing texts 'Flow · F1 Register Appointment Bill' in the
+        left sidebar, show important info that would enhance the usability for the user."*
+
+        The owner is right about the text and the navigation is still worth keeping, so the words go
+        and the affordance stays. What was there listed three stage names down the column — the same
+        three the main pane is already showing, in a column whose whole justification is holding what
+        the main pane CANNOT. It also led with `flow · F1`, which is lane jargon a clerk never needs
+        to read: F1/F2/F3 name the hospital's counter flow, not anything this person does next.
+
+        Three dots and the current stage's name say where you are and where you can jump, in one
+        line instead of nine, and the space they gave back goes to the face and the money below.
+      */}
+      <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 18 }} data-testid="flow-strip">
         {STEPS.map((entry, i) => (
-          <div key={entry.stage} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 0" }}>
-            <span style={{
-              width: 18, height: 18, borderRadius: 99, display: "flex", alignItems: "center",
-              justifyContent: "center", fontSize: 10, flexShrink: 0,
-              ...(i < step
-                ? { background: "var(--green)", color: "#fff" }
-                : i === step
-                  ? { border: "2px solid var(--ink)", fontWeight: 700 }
-                  : { border: "1px solid var(--line)", color: "var(--faint)" }),
-            }}>
-              {i < step ? "✓" : i + 1}
-            </span>
-            <button
-              onClick={() => d.goto(entry.stage)}
-              style={{
-                fontSize: 12.5,
-                fontWeight: i === step ? 700 : 400,
-                color: i < step ? "var(--dim)" : i === step ? "var(--ink)" : "var(--faint)",
-              }}
-            >
-              {entry.label}
-            </button>
-            {entry.stage === "appointment" && s.visit !== null ? (
-              <span className="mo" style={{ fontSize: 10.5, color: "var(--dim)", marginLeft: "auto" }}>
-                {s.visit.doctorName.replace(/^Dr\.\s*/, "")}{s.visit.roomCode === null ? "" : ` · ${s.visit.roomCode}`}
-              </span>
-            ) : null}
-            {entry.stage === "bill" && d.moneyTaken ? (
-              <span className="mo" style={{ fontSize: 10.5, color: "var(--green)", marginLeft: "auto" }}>settled</span>
-            ) : null}
-          </div>
+          <button
+            key={entry.stage}
+            data-testid={`flow-dot-${entry.stage}`}
+            title={entry.label}
+            aria-label={entry.label}
+            aria-current={i === step ? "step" : undefined}
+            onClick={() => d.goto(entry.stage)}
+            style={{
+              height: 5, flexGrow: 1, borderRadius: 99, padding: 0, border: 0, cursor: "pointer",
+              background: i < step ? "var(--green)" : i === step ? "var(--ink)" : "var(--line)",
+            }}
+          />
         ))}
+        <span className="tag" style={{ flexShrink: 0 }}>{STEPS[step]?.label ?? ""}</span>
       </div>
 
       {/* ── benefits & links, as the SERVER recognises them ── */}
@@ -196,6 +210,34 @@ export function Dossier(): React.ReactElement {
           {s.visit?.joinError === null || s.visit === undefined ? null : (
             <div style={{ fontSize: 11, color: "var(--red)", marginTop: 6 }}>{s.visit?.joinError}</div>
           )}
+        </>
+      )}
+
+      {/*
+        ═══ FD-14 / the artboard's "On their account" ═══
+
+        What this person already owes, BEFORE the clerk quotes today's figure. It is the number that
+        changes what the counter says out loud, and it lived on a different screen entirely — a
+        clerk had to leave the patient to find it. Zero is rendered as a fact and not hidden: "nothing
+        carried forward" is information a clerk can act on, and a panel that vanished when it was
+        clear would make its own absence ambiguous.
+      */}
+      {p === null ? null : (
+        <>
+          <div className="tag" style={{ marginTop: 20 }}>{t("registrationCounter.account.title")}</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 8 }}>
+            <span className="mo" data-testid="account-outstanding" style={{
+              fontSize: 17, fontWeight: 700, color: d.duesPaise > 0 ? "var(--gold)" : "var(--dim)",
+            }}>
+              {rs(d.duesPaise)}
+            </span>
+            <span style={{ fontSize: 11, color: "var(--faint)" }}>{t("registrationCounter.account.outstanding")}</span>
+          </div>
+          <div style={{ fontSize: 10.5, color: "var(--faint)", lineHeight: "14px", marginTop: 4 }}>
+            {d.duesPaise > 0
+              ? t("registrationCounter.account.carried", { count: d.duesCount })
+              : t("registrationCounter.account.clear")}
+          </div>
         </>
       )}
 

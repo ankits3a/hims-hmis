@@ -1270,7 +1270,27 @@ function StageBill(): React.ReactElement {
   const noDrawer = d.cashSession !== null && !d.cashSession.open;
 
   return (
-    <div style={{ maxWidth: 720 }}>
+    /*
+      ═══════════════════════════════════════════════════════════════════════════════════════════
+      FD-14 — THE BILLING SCREEN GETS THE ARTBOARD'S TWO RAILS
+      ═══════════════════════════════════════════════════════════════════════════════════════════
+
+      Owner, 2026-09-04, pointing at the "Three Seats, One Desk" artboard's `/billing`: *"check the
+      left sidebar and right sidebar."* The artboard's billing body is three columns — a 290px rail
+      of WHO IS PAYING and WHAT THEY OWE, the bill and the tender in the middle, and a 296px rail of
+      SCHEMES.
+
+      Desk One already HAS the left rail: the dossier is that column, on every stage rather than
+      only this one, and FD-14 gave it the outstanding-dues panel the artboard puts there. So what
+      was missing was the right one, and it is built here inside the bill stage rather than as a
+      fourth column on the shell — the schemes rail is about the money being taken RIGHT NOW, and a
+      rail that stood empty through find, register and appointment would be furniture.
+
+      Owner ruling, same message: this stays inside Desk One rather than resurrecting a standalone
+      `/billing` route. FD-9 deleted the separate front-desk routes deliberately.
+    */
+    <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+      <div style={{ flexGrow: 1, minWidth: 0, maxWidth: 720 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 11 }}>
         <span style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-.01em" }}>Nothing to compute — it's computed</span>
         <span style={{ fontSize: 12, color: "var(--dim)" }}>the left column has been pricing this since the assignment</span>
@@ -1475,7 +1495,130 @@ function StageBill(): React.ReactElement {
           Token <b>T-{s.visit.tokenNo}</b> is already on the board stamped UNPAID. Settling here flips the stamp — it is derived from the fee status, so it flips the moment the money lands.
         </AgentLine>
       ) : null}
+      </div>
+
+      <SchemesRail />
     </div>
+  );
+}
+
+/**
+ * ═══ THE SCHEMES RAIL — "attach before you take the money" ═══
+ *
+ * The artboard's own words, and they are the design: every one of these changes the figure, and
+ * every one of them is useless the second after the receipt prints. A card the patient produces
+ * while the clerk is counting change is a refund, an amendment and an apology; the same card thirty
+ * seconds earlier is just a smaller number. So the rail sits BESIDE the tender keys, where it is
+ * read while there is still time to act on it.
+ *
+ * ═══ EVERY STATE HERE IS THE SERVER'S RECOGNITION, NEVER THIS SCREEN'S GUESS ═══
+ *
+ * `usable` and `unusableReason` come from `GET /membership/recognition`. A card that is on file but
+ * cannot be used TODAY is shown saying so, rather than hidden: "expired 2 March" is something the
+ * clerk can tell the patient, and a card that silently vanished would be reported as a bug by the
+ * patient holding it. The disclosure sentence is the SERVER'S string (E-32) and is rendered rather
+ * than composed here, because what a member is told when the hospital honours a card is a decision
+ * of the system and not of whichever screen happens to be drawing it.
+ */
+function SchemesRail(): React.ReactElement {
+  const d = useDesk();
+  const { t } = useTranslation();
+  const memberships = d.recognition?.memberships ?? [];
+  const coupons = d.recognition?.coupons ?? [];
+  const freeReason = d.quote?.freeReason ?? null;
+  const nothing = memberships.length === 0 && coupons.length === 0 && freeReason === null;
+
+  return (
+    <aside data-testid="schemes-rail" style={{ width: 296, flexShrink: 0 }}>
+      <div className="box" style={{ padding: "12px 14px" }}>
+        <div style={{ fontSize: 13, fontWeight: 700 }}>{t("registrationCounter.schemes.title")}</div>
+        <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{t("registrationCounter.schemes.hint")}</div>
+
+        {freeReason === null ? null : (
+          <div className="box" data-testid="scheme-free" style={{ marginTop: 11, padding: "9px 11px", borderColor: "var(--green-line)", background: "var(--green-soft)" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--green)" }}>{t("registrationCounter.schemes.review")}</div>
+            <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2, lineHeight: "15px" }}>
+              {t("registrationCounter.schemes.reviewUntil", { date: freeReason.windowEndsOn })}
+            </div>
+          </div>
+        )}
+
+        {memberships.map((m) => (
+          <div
+            key={m.instanceId}
+            data-testid={`scheme-card-${m.instanceId}`}
+            className="box"
+            style={{
+              marginTop: 11, padding: "9px 11px",
+              borderColor: m.usable ? "var(--green-line)" : "var(--line)",
+              background: m.usable ? "var(--green-soft)" : "var(--wash)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
+              <span style={{ fontSize: 12, fontWeight: 700 }}>{m.planTitle}</span>
+              <span className="tag" style={{ marginLeft: "auto", color: m.usable ? "var(--green)" : "var(--faint)" }}>
+                {m.usable ? t("registrationCounter.schemes.active") : t("registrationCounter.schemes.notUsable")}
+              </span>
+            </div>
+            {m.usable
+              ? m.benefits.map((b) => (
+                <div key={b.title} style={{ fontSize: 11, color: "var(--dim)", marginTop: 3, lineHeight: "15px" }}>{b.title}</div>
+              ))
+              : (
+                /*
+                  A card on file that cannot be used TODAY says WHY from the fields the server
+                  actually sends — `status` and `validTo`. There is no `unusableReason` on a
+                  membership (coupons have one; cards do not), and inventing a sentence for it would
+                  be this screen asserting something the server never said.
+                */
+                <div style={{ fontSize: 11, color: "var(--gold)", marginTop: 3, lineHeight: "15px" }}>
+                  {t(`registrationCounter.schemes.status.${m.status}`)}
+                  {m.status === "expired" ? ` · ${m.validTo.slice(0, 10)}` : ""}
+                  {m.verified ? "" : ` · ${t("registrationCounter.schemes.unverified")}`}
+                </div>
+              )}
+          </div>
+        ))}
+
+        {coupons.map((c) => (
+          <div
+            key={c.code}
+            data-testid={`scheme-coupon-${c.code}`}
+            className="box"
+            style={{
+              marginTop: 11, padding: "9px 11px",
+              borderColor: c.unusableReason === null ? "var(--green-line)" : "var(--gold-line)",
+              background: c.unusableReason === null ? "var(--green-soft)" : "var(--gold-soft)",
+            }}
+          >
+            <div className="mo" style={{ fontSize: 12, fontWeight: 700 }}>{c.code}</div>
+            <div style={{ fontSize: 11, color: c.unusableReason === null ? "var(--dim)" : "var(--gold)", marginTop: 3, lineHeight: "15px" }}>
+              {c.unusableReason ?? t("registrationCounter.schemes.couponReady")}
+            </div>
+          </div>
+        ))}
+
+        {nothing ? (
+          <div data-testid="schemes-none" style={{ fontSize: 11.5, color: "var(--faint)", marginTop: 11, lineHeight: "16px" }}>
+            {t("registrationCounter.schemes.none")}
+          </div>
+        ) : null}
+
+        {/*
+          THE CONTEST IS SHOWN, AND THE LOSER IS NAMED. Only the best single benefit applies and they
+          do not stack — so a clerk asked "why didn't my card work" can answer from the screen instead
+          of guessing. A hidden loser is how a patient comes to believe the hospital dropped their card.
+        */}
+        <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 13, lineHeight: "14px", borderTop: "1px solid var(--line2)", paddingTop: 9 }}>
+          {t("registrationCounter.schemes.noStack")}
+        </div>
+        {d.recognition?.disclosure === undefined || memberships.length === 0 ? null : (
+          <div style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 7, lineHeight: "14px" }}>
+            {d.recognition.disclosure}
+          </div>
+        )}
+      </div>
+    </aside>
   );
 }
 

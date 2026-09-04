@@ -87,21 +87,18 @@ function mount(
       const b = JSON.parse(String(init?.body ?? "{}")) as { departmentId: string; doctorId: string };
       assigned.push({ departmentId: b.departmentId, doctorId: b.doctorId });
       return {
-        status: 200,
-        body: {
-          encounter: {
-            id: "e-1", patientId: "p-1", visitNo: "V1", departmentId: b.departmentId,
-            doctorId: b.doctorId, status: "open",
-          },
-          queueEntry: { id: "q-1", tokenNo: 4 },
-          tokenNo: 4,
-          sessionId: "s-1",
-          roomId: null,
-          visitType: "walk_in",
-          doctorScheduledToday: true,
-          patientId: "p-1",
-          registered: false,
+        encounter: {
+          id: "e-1", patientId: "p-1", visitNo: "V1", departmentId: b.departmentId,
+          doctorId: b.doctorId, status: "open",
         },
+        queueEntry: { id: "q-1", tokenNo: 4 },
+        tokenNo: 4,
+        sessionId: "s-1",
+        roomId: null,
+        visitType: "walk_in",
+        doctorScheduledToday: true,
+        patientId: "p-1",
+        registered: false,
       };
     },
   });

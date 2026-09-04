@@ -166,6 +166,12 @@ export type Session = {
   form: Form;
   /** The near matches `POST /patients` refused on, rendered as a warning the clerk may override. */
   duplicates: WirePatientHit[] | null;
+  /**
+   * FD-14 — the patient's face, as a data URL. Held HERE and not posted immediately, because during
+   * enrolment there is no patient to post it against: `PUT /patients/:id/photo` needs a UHID and the
+   * UHID is what registration is on its way to allocating. `enrol` uploads it the instant one exists.
+   */
+  photo: string | null;
   complaint: string;
   /** The server's department ranking for `complaint`, and whether a model or the table produced it. */
   triage: { departmentIds: string[]; source: "model" | "keywords" } | null;
@@ -206,6 +212,7 @@ export type Session = {
 export function emptySession(): Session {
   return {
     stage: "find", query: "", person: null, enrolling: false, form: EMPTY_FORM, duplicates: null,
+    photo: null,
     complaint: "", triage: null, triageBusy: false, tab: "now", visit: null, future: null,
     coupons: [], attributionCode: "", issued: null, tender: null, armedTender: null, tenderRef: "", takenPaise: 0,
     log: [], busy: null, error: null, overlay: null, drawer: false, answer: null, startedAt: null,
@@ -241,6 +248,9 @@ export type DeskApi = {
   clerkName: string;
   waiting: number;
   canSetFlow: boolean;
+  /** FD-14 — what this patient already owes, before today's figure is quoted. 0 when clear. */
+  duesPaise: number;
+  duesCount: number;
 
   /** THE MONEY IS TAKEN — settled, credit-extended, or a free visit with nothing to collect. */
   moneyTaken: boolean;
@@ -264,6 +274,11 @@ export type DeskApi = {
   clearDesk: () => void;
   ask: (question: string) => void;
   goto: (stage: Stage) => void;
+  /**
+   * FD-14 — set or clear the held face. When a patient is already in hand it uploads immediately;
+   * during enrolment it only holds, because there is no UHID to upload against yet.
+   */
+  setPhoto: (dataUrl: string | null) => void;
 };
 
 const DeskContext = createContext<DeskApi | null>(null);

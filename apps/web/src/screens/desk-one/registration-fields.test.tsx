@@ -73,12 +73,9 @@ function mountDesk(
     "POST /api/patients": (init?: RequestInit) => {
       posted.push({ body: JSON.parse(String(init?.body ?? "{}")) });
       return {
-        status: 200,
-        body: {
-          patient: {
-            id: "p-new", uhid: "U00210130", name: "Chhotu Kumar", phone: null,
-            dob: "2021-01-01", addressLine: null,
-          },
+        patient: {
+          id: "p-new", uhid: "U00210130", name: "Chhotu Kumar", phone: null,
+          dob: "2021-01-01", addressLine: null,
         },
       };
     },

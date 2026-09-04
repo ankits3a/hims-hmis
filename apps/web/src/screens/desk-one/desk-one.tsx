@@ -9,7 +9,7 @@ import {
   triage, walkIn, joinQueue, bookAppointment, todayIst,
 } from "../../lib/opd-api";
 import type { WireSlot } from "../../lib/opd-api";
-import { fetchFeeQuote, issueInvoice, billingErrorMessage, fetchCurrentSession } from "../../lib/billing-api";
+import { fetchFeeQuote, issueInvoice, billingErrorMessage, fetchCurrentSession, listDues } from "../../lib/billing-api";
 import type { TenderMode } from "../../lib/billing-api";
 import { fetchRecognition } from "../../lib/membership-api";
 import { fetchDesk } from "../../lib/desk-api";
@@ -140,6 +140,20 @@ export function DeskOne(): React.ReactElement {
     enabled: encounterId !== null,
   });
 
+  /**
+   * FD-14 — WHAT THIS PERSON ALREADY OWES, read beside the patient rather than on another screen.
+   *
+   * The artboard calls it "On their account" and it is the number that changes what the clerk says
+   * out loud before quoting today's figure. It lived only on `/billing/dues`, so finding it meant
+   * leaving the patient — which at a counter means not looking.
+   */
+  const dues = useQuery({
+    queryKey: ["d1", "dues", s.person?.id ?? null],
+    queryFn: () => listDues(s.person!.id),
+    enabled: s.person !== null,
+    staleTime: 30_000,
+  });
+
   const recognition = useQuery({
     queryKey: ["d1", "recognition", s.person?.id ?? null],
     queryFn: () => fetchRecognition({ patientId: s.person!.id }),
@@ -244,6 +258,33 @@ export function DeskOne(): React.ReactElement {
     );
   }, []);
 
+  /**
+   * ═══ FD-14 — THE FACE: HELD WHILE ENROLLING, UPLOADED THE MOMENT THERE IS SOMEBODY TO ATTACH IT TO ═══
+   *
+   * `PUT /patients/:id/photo` needs a patient id, and during enrolment there is not one yet — the
+   * UHID is precisely what registration is on its way to allocating. So the data URL lives on the
+   * session and `enrol` posts it after the row exists. With a patient already in hand there is
+   * nothing to wait for and it uploads at once.
+   *
+   * A FAILED UPLOAD NEVER LOSES THE PICTURE. It stays on the session and the log says what happened,
+   * because the clerk cannot ask the patient to sit down again and the retake button is right there.
+   */
+  const setPhoto = useCallback((dataUrl: string | null) => {
+    setS((prev) => ({ ...prev, photo: dataUrl }));
+    const person = s.person;
+    if (dataUrl === null || person === null) return;
+    void (async () => {
+      const { putPatientPhoto } = await import("../../lib/patients-api");
+      const { base64Of } = await import("./photo");
+      try {
+        await putPatientPhoto(person.id, base64Of(dataUrl));
+        setS((prev) => ({ ...prev, log: logged(prev.log, `photo saved for ${person.name}`) }));
+      } catch {
+        setS((prev) => ({ ...prev, log: logged(prev.log, "the photo could not be saved — it is still on screen, try again", "warn") }));
+      }
+    })();
+  }, [s.person]);
+
   const startEnrolment = useCallback(() => {
     setS((prev) => ({
       ...prev,
@@ -290,6 +331,7 @@ export function DeskOne(): React.ReactElement {
       const t = (v: string): string => v.trim();
       const opt = (key: string, v: string): Record<string, string> => (t(v) === "" ? {} : { [key]: t(v) });
       const income = Number.parseInt(f.monthlyIncome, 10);
+      const heldPhoto = s.photo;
       const res = await registerPatient({
         name: f.name.trim(),
         sex: f.sex,
@@ -394,6 +436,27 @@ export function DeskOne(): React.ReactElement {
         log: logged(prev.log, `registered — ${res.patient.uhid} allocated to ${res.patient.name}`, "ok"),
       }));
       void qc.invalidateQueries({ queryKey: ["d1", "my-desk"] });
+
+      /*
+        ═══ FD-14 — THE FACE FOLLOWS THE UHID ═══
+
+        Now, and not before: `PUT /patients/:id/photo` needs a patient, and until this line there
+        was not one. The upload is deliberately NOT awaited into the registration result — a photo
+        that fails to store must not make a successful registration look failed, and the picture is
+        still on screen with a retake button under it either way.
+      */
+      if (heldPhoto !== null) {
+        void (async () => {
+          const { putPatientPhoto } = await import("../../lib/patients-api");
+          const { base64Of } = await import("./photo");
+          try {
+            await putPatientPhoto(res.patient.id, base64Of(heldPhoto));
+            setS((prev) => ({ ...prev, log: logged(prev.log, `photo saved for ${res.patient.name}`) }));
+          } catch {
+            setS((prev) => ({ ...prev, log: logged(prev.log, "the photo could not be saved — it is still on screen, try again", "warn") }));
+          }
+        })();
+      }
     } catch (e) {
       const candidates = duplicateCandidates(e);
       if (candidates !== null) {
@@ -408,7 +471,7 @@ export function DeskOne(): React.ReactElement {
         log: logged(prev.log, `registration REFUSED — ${opdErrorMessage(e)}`, "err"),
       }));
     }
-  }, [s.form, patch, qc]);
+  }, [s.form, s.photo, patch, qc]);
 
   /**
    * §FD-8 — the complaint, in the patient's own words, ranked SERVER-SIDE. The gateway credential
@@ -889,8 +952,11 @@ export function DeskOne(): React.ReactElement {
     clerkName: username ?? "this desk",
     waiting,
     canSetFlow: can("opd.counter.flow.manage"),
+    /* Summed from the server's own rows — this desk never re-derives an amount it was handed. */
+    duesPaise: (dues.data?.items ?? []).reduce((sum, row) => sum + row.outstandingPaise, 0),
+    duesCount: (dues.data?.items ?? []).filter((row) => row.outstandingPaise > 0).length,
     moneyTaken,
-    note, hold, startEnrolment, enrol, runTriage, assign, unassign, holdFutureSlot,
+    note, hold, startEnrolment, enrol, runTriage, assign, unassign, holdFutureSlot, setPhoto,
     presentCoupon, presentSlip, settle, amend, setLane, openDrawer, clearDesk, ask, goto,
   };
 

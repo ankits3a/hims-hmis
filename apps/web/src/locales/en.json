@@ -2562,6 +2562,41 @@
       "yourDayHint": "the signed document: what you registered, what you took, by tender. Provisional until the day is closed.",
       "reportFailed": "Your day could not be read — nothing is printed until it can be.",
       "everyone": "everyone's bookings —"
+    },
+    "photo": {
+      "caption": "photo",
+      "captionNew": "photo — taken now, saved with the UHID",
+      "camera": "Camera",
+      "upload": "Upload",
+      "snap": "Take it",
+      "cancel": "cancel",
+      "retake": "Retake",
+      "noCamera": "No camera available on this machine — upload a file instead.",
+      "failed": "That image could not be read."
+    },
+    "account": {
+      "title": "on their account",
+      "outstanding": "outstanding",
+      "clear": "Nothing carried forward.",
+      "carried": "Carried forward from {{count}} earlier bill(s) — it travels onto this one."
+    },
+    "schemes": {
+      "title": "Schemes",
+      "hint": "attach before you take the money",
+      "review": "Review visit — nothing to collect",
+      "reviewUntil": "The free window runs to {{date}}.",
+      "active": "in force",
+      "notUsable": "not usable",
+      "unverified": "not verified",
+      "couponReady": "presented — applies if it wins the contest",
+      "none": "Nothing recognised. A card or coupon attaches here, or at registration.",
+      "noStack": "Only the best single benefit applies — they do not stack. The bill names the one that won and the one that lost, so you can say why.",
+      "status": {
+        "active": "in force",
+        "expired": "expired",
+        "suspended": "suspended",
+        "cancelled": "cancelled"
+      }
     }
   },
   "vitalsBay": {

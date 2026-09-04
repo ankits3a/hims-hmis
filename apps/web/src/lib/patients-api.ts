@@ -238,3 +238,20 @@ export function duplicateCandidates(e: unknown): WirePatientHit[] | null {
   const candidates = body.detail?.candidates;
   return Array.isArray(candidates) ? (candidates as WirePatientHit[]) : null;
 }
+
+/* ══ FD-14 — THE PATIENT'S PHOTO ════════════════════════════════════════════════════════════════ */
+
+/**
+ * The server caps the stored image at 512,000 bytes and refuses anything larger with
+ * `photo_too_large`, whose message says in as many words that "the client must downscale". So the
+ * client downscales — see `downscaleToDataUrl` — and this function only carries what it is given.
+ */
+export const PHOTO_MAX_BYTES = 512_000;
+
+export function putPatientPhoto(patientId: string, imageBase64: string): Promise<unknown> {
+  return api("PUT", `/patients/${encodeURIComponent(patientId)}/photo`, { imageBase64 });
+}
+
+export function getPatientPhoto(patientId: string): Promise<{ mimeType: string; imageBase64: string }> {
+  return api("GET", `/patients/${encodeURIComponent(patientId)}/photo`);
+}
