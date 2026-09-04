@@ -44,11 +44,11 @@ lanes on this box and is worth working with — it has been accurate and fast al
 - **PR #71** — branch `lane/lims-17d-pass2`: 17d close-review pass 2 (2 MAJOR) **plus** the D9 flake
   fix **plus** the 17-E phase doc and this handoff. The orchestrator runs `update-branch` on it and
   has a watcher armed to squash-merge on green. Nothing needed from us.
-- **PR #76** — branch `lane/lims-walkin-race`, cut from current `main`: the 17d §9.2 walk-in race,
-  **and it is NOT waiting on CI.** `opd/encounters.ts` is the front-desk lane's territory and it
-  offered a review; the orchestrator has been asked not to auto-merge on green. **Front-desk's read
-  is the gate.** If it has answered, act on it; if it has not, leave the PR sitting rather than
-  landing it.
+- **PR #76** — branch `lane/lims-walkin-race`, cut from `main`: the 17d §9.2 walk-in race.
+  **Front-desk has REVIEWED and cleared it**, and its one addition is taken (`541b5c8`): an assertion
+  that the refused walk-in leaves no print job behind, since FD-24 T5 put `enqueuePrintJob` inside
+  that transaction. Measured 2 jobs for the winner's encounter, 0 for the loser, asserted
+  per-encounter rather than as a total. It is the orchestrator's to slot.
 - **Verified state:** `pnpm typecheck` 0 errors · `pnpm lint` **0 errors** (2 pre-existing warnings
   in `core/kernel/worker/scheduler.test.ts`, not ours) · **web suite 90 files / 698 tests, exit 0**.
 
@@ -98,10 +98,15 @@ import**. Two readings of one clock, so a run whose import and render straddle *
 time in 43 s wall clock), not "83 files in one worker"; the test genuinely near the cliff is
 front-desk's `vitals-bay-stories` at **3584 ms / 5000 ms (72%)**, not anything of ours.
 
-**Two front-desk files still carry the identical defect** — reported to the orchestrator, marked
-time-critical, deliberately NOT touched because they are another lane's:
-`src/screens/desk-one/appointment-panels.test.tsx` (`tomorrowIst()`) and
-`src/screens/counter-figures.test.tsx:155`.
+**Two front-desk files carried the identical defect** — reported rather than touched, and
+**front-desk has since fixed both** (`1f66195`, pinned to midday IST with a guard test asserting the
+frozen instant is the day its fixtures are dated).
+
+Its finding is worse than the one this lane reported, and the correction is the part to carry:
+`appointment-panels.test.tsx` evaluates `tomorrowIst()` at **`describe` level**, i.e. module
+*collection* time — so in a full run the gap to the render is **minutes**, not the sub-second window
+the `lab-reports` shape had. Same defect, materially wider target. Anyone still holding the original
+framing is understating it.
 
 ## 4. Plan 17-E — authored, NOT approved, NOT started
 
