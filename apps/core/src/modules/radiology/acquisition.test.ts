@@ -585,4 +585,56 @@ describe("acquisition: the patient is on the table (18a T7)", () => {
     const [row] = await db.select().from(imagingStudies).where(eq(imagingStudies.id, study.studyId));
     expect(row!.studyInstanceUid).toBeNull();
   });
+
+  /* ═══════════════ PLAN 18c T1 / D3 — THE OTHER STATUTE, AT THE SAME DOOR ═══════════════ */
+
+  /**
+   * The refusal lands BEFORE the machine is occupied, which is the half a test asserting only the
+   * error would miss: an AERB refusal that arrives after `assignResource` has locked the CT is a
+   * record of an offence, not a block on one. So the study's status and the device's occupancy are
+   * both read afterwards, the A1 pattern this suite is built on.
+   */
+  it("18c T1: an ionising study cannot START on a machine with no AERB licence, and the CT stays free", async () => {
+    fx.unregister();
+    await truncateAll(db);
+    fx = await setupRadiologyFixture(db, { serviceDate: DAY, now: NOW, unlicensedModalities: ["ct"] });
+    const registry = new ModuleRegistry();
+    registry.install({
+      key: "pcpndt", title: "PCPNDT", menu: [], permissions: [...PCPNDT_PERMISSIONS], subscriptions: [],
+    });
+    await syncPermissions(db, registry);
+    for (const p of ["pcpndt.form_f.write", "pcpndt.form_f.read"]) {
+      await grantPermissionToRole(db, registry, "radiographer", p);
+    }
+
+    const study = await readyStudy("CT-HEAD", "ct");
+    /**
+     * `stat` clears DD12a's money gate, which runs BEFORE both statutory gates — so a routine
+     * self-pay study is refused `payment_required` and the licence is never reached. That ordering
+     * is 18a's and is left alone: the machine is blocked either way, and a counter that heard
+     * "unlicensed" before "unpaid" would be told about a problem it cannot fix.
+     */
+    await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
+    await expect(start(study.studyId)).rejects.toMatchObject({
+      code: "device_not_licensed",
+      detail: { deviceResourceId: fx.devices.ct },
+    });
+
+    const [row] = await db.select().from(imagingStudies).where(eq(imagingStudies.id, study.studyId));
+    expect(row!.status).toBe("ready"); // never entered acquisition
+    const [device] = await db.select().from(resources).where(eq(resources.id, fx.devices.ct!));
+    expect(device!.status).toBe("available"); // the machine was never taken
+    expect(device!.occupantRef).toBeNull();
+  });
+
+  /**
+   * The other half, and the one that stops D3 from being a blunt instrument: **ultrasound is not
+   * licensed by AERB and must not be blocked by it.** The fixture files no USG licence at all, so
+   * a gate keyed on the device rather than on `ionising` would fail this test.
+   */
+  it("18c T1: a NON-ionising study starts on an unlicensed machine — AERB licences neither USG nor MRI", async () => {
+    const study = await readyStudy("USG-ABDO", "usg");
+    await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
+    await expect(start(study.studyId)).resolves.toBeDefined();
+  });
 });

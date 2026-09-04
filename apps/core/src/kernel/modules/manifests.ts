@@ -18,6 +18,7 @@ import { materialsManifest } from "../../modules/materials";
 import { otManifest } from "../../modules/ot";
 import { labManifest } from "../../modules/lab";
 import { pcpndtManifest } from "../../modules/pcpndt";
+import { aerbManifest } from "../../modules/aerb";
 import { radiologyManifest } from "../../modules/radiology";
 import { pharmacyManifest } from "../../modules/pharmacy";
 
@@ -164,6 +165,13 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
    * that direction so a reader sees which module may import which.
    */
   pcpndtManifest,
+  /**
+   * PLAN 18c T1 — **`aerb` BEFORE `radiology`, for the reason the paragraph above gives about
+   * `pcpndt`.** Radiology's acquisition calls `assertDeviceLicensed` and its MWL withholds an
+   * unlicensed machine, so radiology reaches into aerb; aerb reaches into nothing. The dependency
+   * runs one way and this list is written in that direction.
+   */
+  aerbManifest,
   radiologyManifest,
   // PLAN 16c T1 — appended, so the twenty above keep the order they were installed in. It claims
   // the `medication` order kind (`parity.test.ts` grew by one) and, this task, no menu and no subscription.
