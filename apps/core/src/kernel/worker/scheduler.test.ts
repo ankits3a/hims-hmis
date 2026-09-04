@@ -16,6 +16,7 @@ import { tariffManifest } from "../../modules/tariff";
 import { opdManifest } from "../../modules/opd";
 import { billingManifest } from "../../modules/billing";
 import * as labSweepsMod from "../../modules/lab/sweeps";
+import * as pharmacyExpiryMod from "../../modules/pharmacy/expiry";
 import * as dispatcherMod from "../events/dispatcher";
 import * as timersMod from "../workflow/timers";
 import * as tempRolesMod from "../auth/temp-roles";
@@ -302,10 +303,14 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("sweepLabSla");
       return { breached: [] };
     }),
+    jest.spyOn(pharmacyExpiryMod, "sweepExpiredPicks").mockImplementation(async () => {
+      invoked.push("sweepExpiredPharmacyPicks");
+      return { cancelled: [] };
+    }),
   ];
 }
 
-const THE_FIFTEEN = [
+const THE_SIXTEEN = [
   "runDispatchCycle",
   "runDueTimers",
   "sweepExpiredTempRoles",
@@ -336,6 +341,14 @@ const THE_FIFTEEN = [
    */
   "sweepLabNonReturn",
   "sweepLabSla",
+  /**
+   * PLAN 16c CLOSE / F11 — the SIXTEENTH, registered last, which is where `jobs.ts` puts it. An
+   * `every(60_000)` job that widened NOTHING: it takes its cadence as a literal, exactly as
+   * `flagLateSurgeons` does, so no `JobIntervals` literal announced it and this list is the only
+   * census that had to change. It releases a pharmacy pick whose 30-minute reservation ran out —
+   * `pick.ts` had written `expires_at` since 16c T4 and no job had ever read it.
+   */
+  "sweepExpiredPharmacyPicks",
 ];
 
 /**
@@ -602,7 +615,7 @@ describe("Scheduler", () => {
         .map(([atMs, daily]) => ({ atMs, daily }));
     })();
 
-    it("invokes all fifteen jobs across a stepwise advance from a pinned instant", async () => {
+    it("invokes all sixteen jobs across a stepwise advance from a pinned instant", async () => {
       expect(process.env.DATABASE_URL).toBeUndefined(); // CI's environment, reproduced here
       const invoked: string[] = [];
       const spies = spyOnTheThirteen(invoked);
@@ -612,7 +625,7 @@ describe("Scheduler", () => {
       try {
         const scheduler = new Scheduler(fresh.db, fresh.pool, stubLocks(), CENSUS_DAILY_TICK_MS);
         registerAllJobs(scheduler, fresh.db, registry, {}, CENSUS_INTERVALS);
-        expect(scheduler.jobs()).toEqual(THE_FIFTEEN);
+        expect(scheduler.jobs()).toEqual(THE_SIXTEEN);
 
         // Fake milliseconds advanced so far, measured from the pin. The walk only moves forward,
         // so a target already behind the cursor is a no-op rather than a rewind.
@@ -648,18 +661,18 @@ describe("Scheduler", () => {
         // and the post-await re-check then correctly drops any run whose read had not come back,
         // so calling it too early is exactly how this census came back short on CI twice while
         // being green on the build host every single time.
-        const settled = await settleUntil(() => new Set(invoked).size >= THE_FIFTEEN.length);
+        const settled = await settleUntil(() => new Set(invoked).size >= THE_SIXTEEN.length);
         await scheduler.stop();
         // Reported, not asserted: on a bound hit the assertion below fails on its own SET and
         // names the missing jobs, which is a better failure message than a bare timeout.
         if (!settled) {
           // eslint-disable-next-line no-console
           console.warn(
-            `census: settleUntil hit its bound with ${new Set(invoked).size}/${THE_FIFTEEN.length} invoked`,
+            `census: settleUntil hit its bound with ${new Set(invoked).size}/${THE_SIXTEEN.length} invoked`,
           );
         }
 
-        expect(new Set(invoked)).toEqual(new Set(THE_FIFTEEN));
+        expect(new Set(invoked)).toEqual(new Set(THE_SIXTEEN));
         expect(scheduler.leakedErrors()).toEqual([]);
       } finally {
         jest.useRealTimers();

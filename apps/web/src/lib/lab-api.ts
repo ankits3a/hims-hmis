@@ -197,6 +197,15 @@ export type WireEncounterResult = {
   deltaFlag: boolean; verifiedAt: string | null; pathologistReviewPending: boolean;
 };
 
+/**
+ * 17d T5 / D6 — a resulted value the pathologist has NOT signed. A separate type from the signed
+ * kind, with `verified: false` on every row, so a component cannot hold one without seeing that it
+ * is provisional — the same reason the server declares the field.
+ */
+export type WireProvisionalResult = Omit<WireEncounterResult, "verifiedAt"> & {
+  verified: false; enteredAt: string; enteredById: string; entryMode: string;
+};
+
 /* ─────────────────────────────── the catalogue ─────────────────────────────── */
 
 export const searchOrderables = (q: string): Promise<WireOrderable[]> =>
@@ -421,6 +430,10 @@ export const releaseReport = (
 
 export const resultsForEncounter = (encounterNo: string): Promise<WireEncounterResult[]> =>
   api("GET", `/lab/results/encounter/${encounterNo}`);
+
+/** 17d T5 — the unsigned numbers, asked for deliberately. Never a flag on the reader above. */
+export const provisionalResultsForEncounter = (encounterNo: string): Promise<WireProvisionalResult[]> =>
+  api("GET", `/lab/results/encounter/${encounterNo}/provisional`);
 
 /**
  * ═══ THE ONE PIECE OF PRESENTATION LOGIC, AND IT IS A COLOUR ═══
