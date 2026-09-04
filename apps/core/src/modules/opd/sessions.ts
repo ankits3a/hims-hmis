@@ -1,7 +1,7 @@
 import { and, count, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
-import { opdDoctorSchedules, opdEncounters, opdQueueSessions,
+import { opdDoctorSchedules, opdEncounters, opdQueueSessions, opdDepartmentTokens,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { OpdError } from "./errors";
@@ -78,24 +78,60 @@ export async function allocateToken(tx: Tx, departmentId: string, serviceDate: s
     the same instant serialise on it. Two concurrent FIRST inserts are safe for the same reason —
     one wins with the seeded value, the other conflicts and increments off the row that landed.
   */
+  /*
+    THE FAST PATH IS THE ONLY PATH MOST PATIENTS TAKE, so it stays a single upsert and nothing else.
+
+    The first draft of this fix wrote the seed as `INSERT … SELECT max(token_no) … ON CONFLICT DO
+    UPDATE`, which is wrong for a reason Postgres does not warn about: **the SELECT is evaluated to
+    build the candidate row on EVERY call, conflict or not.** That put an aggregate over the day's
+    queue entries — joined to `opd_encounters`, 200 000 rows deep in the perf fixture — in front of
+    every token this hospital issues, and `test/perf-opd-queue.test.ts` caught it in CI at 107 ms
+    against a 100 ms budget. Measured, not guessed.
+
+    `xmax = 0` is the standard "this row was INSERTed, not UPDATEd" test on an upsert's RETURNING.
+    The seed lookup therefore runs once per department per DAY — the only moment it can matter — and
+    every patient after the first pays exactly what they paid before this fix existed.
+  */
   const res = await tx.execute(sql`
     insert into opd_department_tokens (department_id, service_date, next_token)
-    select ${departmentId}, ${serviceDate}, coalesce(max(q.token_no), 0) + 2
+    values (${departmentId}, ${serviceDate}, 2)
+    on conflict (department_id, service_date)
+      do update set next_token = opd_department_tokens.next_token + 1
+    returning next_token, (xmax = 0) as inserted
+  `);
+  const row = res.rows[0]!;
+  const next = Number(row.next_token);
+  if (!Number.isSafeInteger(next) || next < 2) {
+    throw new Error(`opd_department_tokens returned unusable next_token: ${String(row.next_token)}`);
+  }
+  // The conflict branch — every patient but the day's first in this department. Nothing to seed.
+  if (row.inserted !== true) return next - 1;
+
+  /*
+    THE DAY'S FIRST TOKEN IN THIS DEPARTMENT, and the only place the cut-over can bite: until FD-20
+    deployed, the numbers came from `opd_queue_sessions.next_token`, a DOCTOR-day counter. A
+    department can therefore already have handed out 1..5 this morning, on slips patients are
+    holding, printed with the same `MED-n` label this series mints — and `opd_queue_entries` has no
+    unique index on `(session_id, token_no)` to refuse a repeat.
+
+    SAFE UNDER CONCURRENCY because this runs inside the caller's transaction and the upsert above
+    already took the row lock: a second counter registering the same department blocks on that lock
+    until this transaction commits, so it increments off the CORRECTED value and never off the 2.
+  */
+  const high = await tx.execute(sql`
+    select coalesce(max(q.token_no), 0) as hi
       from opd_queue_entries q
       join opd_encounters e on e.id = q.encounter_id
      where e.department_id = ${departmentId} and e.service_date = ${serviceDate}
-    on conflict (department_id, service_date)
-      do update set next_token = opd_department_tokens.next_token + 1
-    returning next_token
   `);
-  // The insert branch stores "what the next patient gets, plus one" and the conflict branch returns
-  // the incremented value. Both therefore describe the SAME thing, and the token is one less than
-  // what is stored.
-  const next = Number(res.rows[0]!.next_token);
-  if (!Number.isSafeInteger(next) || next < 2) {
-    throw new Error(`opd_department_tokens returned unusable next_token: ${String(res.rows[0]!.next_token)}`);
-  }
-  return next - 1;
+  const hi = Number(high.rows[0]!.hi);
+  if (!Number.isSafeInteger(hi) || hi < 1) return next - 1; // an ordinary day: nothing issued yet, take 1
+
+  await tx
+    .update(opdDepartmentTokens)
+    .set({ nextToken: hi + 2 })
+    .where(and(eq(opdDepartmentTokens.departmentId, departmentId), eq(opdDepartmentTokens.serviceDate, serviceDate)));
+  return hi + 1;
 }
 
 /**
