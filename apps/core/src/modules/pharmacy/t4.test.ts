@@ -4,7 +4,8 @@ import { openSessionFor } from "../../../test/helpers/billing";
 import { MON2, MON3, issueRx, line, seedPharmacyBase, stockIn } from "../../../test/helpers/pharmacy";
 import { testCfg } from "../../../test/helpers/opd";
 import { withTx } from "../../kernel/db/client";
-import { events, orderItems, pharmacyRegH1, stockBalances, stockLedger } from "../../kernel/db/schema";
+import { allocations, events, orderItems, pharmacyRegH1, stockBalances, stockLedger } from "../../kernel/db/schema";
+import { invoiceSettlement, reverseAllocation } from "../billing";
 import { setPriceRegulation } from "../materials";
 import { billDispense, previewDispenseBill } from "./bill";
 import { claimDispense, findAtCounter } from "./claim";
@@ -180,5 +181,57 @@ describe("the dispense counter — pick, bill, hand over (16c T4)", () => {
     await billDispense(db, fx.pharmacist.actor, s.id, { tenders: [{ mode: "cash", amountPaise: p2.totals.netPayablePaise }] }, MON2);
     await expect(handOverDispense(db, fx.pharmacist.actor, fx.decls, s.id, { identity: { via: "token", value: "T-99" } }, MON3))
       .rejects.toThrow(expect.objectContaining({ code: "identity_mismatch" }));
+  });
+  /**
+   * ═══ CLOSE REVIEW (16c §8.5, pass 1) — D8: "MONEY MOVES BEFORE THE DRUG LEAVES" ═══
+   *
+   * Nothing in the pharmacy checks that the tender covers the bill, and the counter's own suite
+   * never tried one that did not (its `amountPaise: 1` call is refused for being the SECOND bill,
+   * not for being short — the two behaviours agree on that fixture, §5A.1). The guard is real but
+   * it lives one module over: `issueInvoice` refuses to leave a remainder unsettled unless a
+   * credit extension was asked for, and pharmacy asks for none. This pins that inheritance, so a
+   * later phase that adds a credit lane to the counter cannot quietly drop it.
+   */
+  it("a short tender does not buy the medicine: the bill is refused, no invoice exists, and nothing leaves the shelf", async () => {
+    const v = await verified(twoLines(), [20, 3]);
+    await pickDispense(db, fx.pharmacist.actor, fx.decls, v.id, {}, MON2);
+    const preview = await previewDispenseBill(db, fx.pharmacist.actor, v.id, MON2);
+
+    await expect(billDispense(db, fx.pharmacist.actor, v.id, { tenders: [{ mode: "cash", amountPaise: preview.totals.netPayablePaise - 100 }] }, MON2))
+      .rejects.toThrow(expect.objectContaining({ code: "unsettled_issue_refused" }));
+
+    // the refusal rolled everything back: still picked, no invoice, and the drug cannot leave
+    const after = await getDispense(db, fx.pharmacist.actor, v.id);
+    expect(after.status).toBe("picked");
+    expect(after.invoiceId).toBeNull();
+    await expect(handOverDispense(db, fx.pharmacist.actor, fx.decls, v.id, { identity: { via: "phone_last4", value: "3210" } }, MON3))
+      .rejects.toThrow(expect.objectContaining({ code: "dispense_not_in_state" }));
+    expect(await db.select().from(stockLedger).where(eq(stockLedger.reason, "consume"))).toHaveLength(0);
+
+    // and the full amount still completes the sale
+    const b = await billDispense(db, fx.pharmacist.actor, v.id, { tenders: [{ mode: "cash", amountPaise: preview.totals.netPayablePaise }] }, MON2);
+    expect(b.status).toBe("billed");
+  });
+
+  /**
+   * The second guard, at the irreversible act. A settled invoice can stop being settled after the
+   * bill — a cashier reverses the allocation — and the status column does not change when it does.
+   * §5A.4's amendment: the road is built from ANOTHER module, so the guard is not "unreachable by
+   * construction". The drug leaves only against money that is still there.
+   */
+  it("hand over re-reads the money: an allocation reversed after billing stops the drug at the window", async () => {
+    const v = await verified([line({ drug: "Crocin 500", medicineId: fx.med.crocin })], [10]);
+    await pickDispense(db, fx.pharmacist.actor, fx.decls, v.id, {}, MON2);
+    const preview = await previewDispenseBill(db, fx.pharmacist.actor, v.id, MON2);
+    const b = await billDispense(db, fx.pharmacist.actor, v.id, { tenders: [{ mode: "cash", amountPaise: preview.totals.netPayablePaise }] }, MON2);
+    expect((await invoiceSettlement(db, b.invoiceId!)).state).toBe("settled");
+
+    const [alloc] = await db.select().from(allocations).where(eq(allocations.invoiceId, b.invoiceId!));
+    await reverseAllocation(db, fx.base.owner, { allocationId: alloc!.id, reason: "receipt voided at the counter" }, MON3);
+    expect((await invoiceSettlement(db, b.invoiceId!)).state).not.toBe("settled");
+
+    await expect(handOverDispense(db, fx.pharmacist.actor, fx.decls, v.id, {}, MON3))
+      .rejects.toThrow(expect.objectContaining({ code: "invoice_not_settled" }));
+    expect(await db.select().from(stockLedger).where(eq(stockLedger.reason, "consume"))).toHaveLength(0);
   });
 });

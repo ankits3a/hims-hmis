@@ -59,7 +59,8 @@
     "vitalsBay": "Vitals bay",
     "labReports": "Report centre",
     "pharmacyCounter": "Dispense counter",
-    "pharmacyItems": "Pharmacy sale items"
+    "pharmacyItems": "Pharmacy sale items",
+    "radiationSafety": "Radiation safety"
   },
   "palette": {
     "title": "Search",
@@ -2042,7 +2043,22 @@
       "live": "live",
       "offline": "offline",
       "min": "min",
-      "inTransit": "in transit"
+      "inTransit": "in transit",
+      "swapSuspected": "Check the tube before this value goes in",
+      "swapCheckTubes": "Also drawn in that minute: {{nos}}",
+      "vouchBy": "Confirmed by (second person’s login)",
+      "vouchSave": "Vouch & save",
+      "relabelToggle": "The label cannot be read — I typed the number",
+      "relabelHint": "Re-labelling a tube is witnessed. Name the second person and say why the label could not be read.",
+      "relabelWitness": "Witnessed by (second person’s login)",
+      "relabelReason": "Why the label could not be read",
+      "ladder": "The call ladder",
+      "rung": "Who you are calling",
+      "rung_ordering_clinician": "Ordering doctor",
+      "rung_duty_officer": "Duty medical officer / casualty",
+      "rung_patient_or_attendant": "Patient or attendant",
+      "tryNext": "Try next: {{rung}}",
+      "openFor": "Open {{minutes}} min · target {{target}} min"
     },
     "verify": {
       "title": "Verify & report",
@@ -2317,8 +2333,6 @@
       "title": "Who is in front of you?",
       "placeholder": "name, mobile or UHID",
       "hint": "Search before you type a single form field — a duplicate stopped here costs nothing.",
-      "noDistrict": "no area on file",
-      "onFileSince": "on file since {{since}}",
       "none": "Nobody on file matches that",
       "registerNew": "Register new",
       "noneOfThese": "None of these is the person in front of you?",
@@ -2328,7 +2342,9 @@
         "name": "same name",
         "onFile": "on file"
       },
-      "searchFailed": "Search is unavailable — do not register a new record until it works"
+      "searchFailed": "Search is unavailable — do not register a new record until it works",
+      "noDistrict": "no area on file",
+      "onFileSince": "on file since {{since}}"
     },
     "register": {
       "title": "New patient",
@@ -3007,5 +3023,86 @@
     "themDefault": "them",
     "bySuggestion": "suggested from the complaint",
     "byKeyword": "matched on keywords"
+  },
+  "aerb": {
+    "title": "Radiation safety (AERB)",
+    "tabsLabel": "Registers",
+    "notYet": "This register arrives with a later task of Plan 18c.",
+    "tab": {
+      "licences": "Licences",
+      "people": "RSO & physicist",
+      "qa": "Quality assurance",
+      "dose": "Patient dose",
+      "badges": "TLD badges",
+      "calendar": "Calendar"
+    },
+    "licenceType": {
+      "licence": "Licence",
+      "registration": "Registration"
+    },
+    "status": {
+      "active": "Active",
+      "suspended": "Suspended",
+      "surrendered": "Surrendered"
+    },
+    "personRole": {
+      "rso": "Radiological Safety Officer",
+      "physicist": "Medical physicist"
+    },
+    "gaps": {
+      "title": "Machines emitting with no licence on file ({{date}})"
+    },
+    "licences": {
+      "includeInactive": "Show suspended and surrendered licences",
+      "empty": "No AERB licence has been filed yet.",
+      "device": "Machine",
+      "no": "Licence no.",
+      "type": "Type",
+      "validity": "Valid",
+      "rso": "RSO",
+      "status": "Status",
+      "noRso": "not named"
+    },
+    "people": {
+      "empty": "No RSO or medical physicist has been appointed yet.",
+      "role": "Role",
+      "name": "Name",
+      "qualification": "Qualification",
+      "approval": "AERB approval",
+      "openEnded": "open-ended"
+    },
+    "qa": {
+      "blockedTitle": "Machines stopped by a failed QA",
+      "empty": "No quality-assurance result has been recorded yet.",
+      "type": "Test",
+      "result": "Result",
+      "performed": "Performed",
+      "nextDue": "Next due",
+      "effect": "Effect",
+      "blocked": "machine stopped",
+      "released": "stopped, then released"
+    },
+    "qaResult": {
+      "pass": "Pass",
+      "fail": "Fail",
+      "conditional": "Conditional"
+    },
+    "dose": {
+      "title": "Patient dose register",
+      "empty": "No dose has been registered yet.",
+      "overDrlOnly": "Show only examinations over their reference level",
+      "patient": "Patient",
+      "exam": "Examination",
+      "dose": "Dose",
+      "drl": "Reference level",
+      "verdict": "Verdict",
+      "when": "When",
+      "over": "over DRL",
+      "under": "within DRL",
+      "noLevel": "no level published",
+      "manual": "typed from the console",
+      "cumulative": "{{count}} ionising examinations in {{months}} months — {{total}}",
+      "cumulativeOver": "{{count}} ionising examinations in {{months}} months, {{over}} over their reference level — {{total}}"
+    }
   }
 }

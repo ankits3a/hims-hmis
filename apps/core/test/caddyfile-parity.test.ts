@@ -362,7 +362,16 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // `/counter` with all three as STAGES of one session. Deleted rather than redirected — a second
     // name for one screen is what put the owner on the wrong counter in FD-1.
     // MEASURED against the tree rather than predicted, which is what pinning a count is for.
-    expect(routes).toHaveLength(47);
+    // PLAN 18c T1 — 49 -> 50 with `/radiology/radiation-safety`, the AERB register. ONE route for
+    // five registers (D11): the inspector asks for the licences, the QA records, the dose register,
+    // the badge readings and what is overdue, and they are five tabs of one screen because they are
+    // one file. MEASURED against the tree, raised to what the run reported, never predicted.
+    // FD-23 REBASE, 2026-09-04 — the two histories meet here: 18c's 50 minus FD-9's two deletions
+    // is 48, and the number below is what the merged tree MEASURED, not what this arithmetic
+    // predicted. `/radiology/radiation-safety` arrives from main; `/appointment` and
+    // `/registration` leave with FD-9.
+    expect(routes).toHaveLength(48);
+    expect(routes).toContain("/radiology/radiation-safety");
     expect(routes).not.toContain("/appointment");
     expect(routes).not.toContain("/registration");
     expect(routes).toContain("/counter");

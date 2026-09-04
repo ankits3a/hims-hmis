@@ -135,4 +135,61 @@ describe("PharmacyCounter (16c T3)", () => {
     expect(await screen.findByTestId("label-0")).toHaveTextContent("Crocin 500 500 mg tablet");
     expect(screen.getByTestId("label-0")).toHaveTextContent("Batch CR-EARLY · Exp 2027-01-31");
   });
+  /**
+   * ═══ 5A.3 — THE ASSEMBLY, THROUGH A FULL CYCLE, WITH TWO PATIENTS ═══
+   *
+   * Every test above takes ONE patient and one state, which is the shape RC-3's close warned about:
+   * the parts were proved and the whole was trusted. A counter's own cycle is take A, act, clear
+   * the desk, take B — and the second identity confirmation D7 requires (doc 16 A1) is an ACT, not
+   * a field left lying on the desk. `take()` reset the lines, the alternatives, the picks, the
+   * draft and the label; it did not reset the identity, so B's Schedule H1 hand-over went out
+   * confirmed by A's token. The server refuses the mismatch, which is why no suite noticed — but
+   * the control the law asks for is the pharmacist confirming THIS patient, and a prefilled box
+   * that says "14" is the control already answered.
+   */
+  it("two patients: the desk is clear between them, and B's identity is never A's", async () => {
+    const RAM = { id: "p2", uhid: "HMS-00000002-2", name: "Ram Prasad", alias: null, restricted: false };
+    let a = dispense("billed", { dispenseNo: "P2608170001", orderId: "o1", invoiceId: "inv1" });
+    const b = dispense("billed", { id: "d2", dispenseNo: "P2608170002", orderId: "o2", invoiceId: "inv2", patient: RAM });
+    const label = (no: string, who: string): unknown => ({ dispenseNo: no, status: "handed_over", patient: { display: who, uhid: "u" }, handedOverAt: "2026-08-17T04:40:00.000Z",
+      lines: [{ lineIdx: 0, drug: "Crocin 500", strength: "500 mg", form: "tablet", qtyBase: 20, unit: "tablet", packs: "2 strip", batchNo: "CR-EARLY", expiryDate: "2027-01-31", directions: "1 tab · TDS · 5 days", substitutedFor: null }] });
+
+    mockRoutes({
+      "GET /api/pharmacy/queue": { status: 200, body: { items: [
+        { dispenseId: "d1", status: "billed", dispenseNo: "P2608170001", scheduled: true, lineCount: 2, createdAt: "2026-08-17T04:00:00.000Z", claimedAt: null, patient: PATIENT },
+        { dispenseId: "d2", status: "billed", dispenseNo: "P2608170002", scheduled: true, lineCount: 2, createdAt: "2026-08-17T04:05:00.000Z", claimedAt: null, patient: RAM },
+      ] } },
+      "GET /api/pharmacy/dispenses/d1": () => ({ status: 200, body: a }),
+      "GET /api/pharmacy/dispenses/d2": { status: 200, body: b },
+      "POST /api/pharmacy/dispenses/d1/handover": () => { a = dispense("handed_over", { dispenseNo: "P2608170001", orderId: "o1", invoiceId: "inv1", identityConfirmedVia: "token" }); return { status: 201, body: a }; },
+      "POST /api/pharmacy/dispenses/d2/handover": { status: 201, body: dispense("handed_over", { id: "d2", dispenseNo: "P2608170002", orderId: "o2", invoiceId: "inv2", patient: RAM, identityConfirmedVia: "token" }) },
+      "GET /api/pharmacy/dispenses/d1/label": { status: 200, body: label("P2608170001", "Sita Devi") },
+      "GET /api/pharmacy/dispenses/d2/label": { status: 200, body: label("P2608170002", "Ram Prasad") },
+    });
+    renderWithProviders(<PharmacyCounter />);
+
+    // ── patient A: hand over against her own token ──
+    await userEvent.click(await screen.findByText(/Sita Devi/));
+    await userEvent.type(await screen.findByRole("textbox", { name: "Value" }), "14");
+    await userEvent.click(screen.getByRole("button", { name: "Hand over" }));
+    await waitFor(() => expect(bodiesOf("POST", "/pharmacy/dispenses/d1/handover")).toEqual([{ identity: { via: "token", value: "14" } }]));
+    expect(await screen.findByTestId("label-0")).toBeInTheDocument();
+
+    // ── clear the desk: take patient B off the queue ──
+    await userEvent.click(await screen.findByText(/Ram Prasad/));
+    // the QUEUE still lists both patients, rightly; it is the DESK that must be clear
+    const desk = await screen.findByTestId("in-hand");
+    await within(desk).findByText(/HMS-00000002-2/);
+
+    // nothing of A survives: not her label, not her name, and above all not her token
+    expect(within(desk).queryByTestId("label-0")).not.toBeInTheDocument();
+    expect(within(desk).queryByText(/Sita Devi/)).not.toBeInTheDocument();
+    const identity = await within(desk).findByRole("textbox", { name: "Value" });
+    expect(identity).toHaveValue("");
+
+    // and B goes out against B's token
+    await userEvent.type(identity, "27");
+    await userEvent.click(screen.getByRole("button", { name: "Hand over" }));
+    await waitFor(() => expect(bodiesOf("POST", "/pharmacy/dispenses/d2/handover")).toEqual([{ identity: { via: "token", value: "27" } }]));
+  });
 });

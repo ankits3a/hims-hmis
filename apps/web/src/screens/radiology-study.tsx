@@ -6,6 +6,7 @@ import {
   fetchReadiness, fetchStudy, openImages, overrideGate, radiologyErrorText, recordAcquired, satisfyGate,
   startAcquisition, waiveGate,
 } from "../lib/radiology-api";
+import { DOSE_UNITS, fetchCumulativeDose } from "../lib/aerb-api";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -40,6 +41,17 @@ export function RadiologyStudy(): React.ReactElement {
 
   const study = useQuery({ queryKey: ["radiology", "study", studyId], queryFn: () => fetchStudy(studyId) });
   const gates = useQuery({ queryKey: ["radiology", "gates", studyId], queryFn: () => fetchReadiness(studyId) });
+  /**
+   * PLAN 18c T3 — the patient's twelve-month ionising history, for the nudge below. `enabled` on the
+   * study's own `ionising` flag: an ultrasound accumulates nothing, and asking would be a PHI read
+   * with no question behind it. A reader without `aerb.doses.read` gets a 403 the screen swallows.
+   */
+  const cumulative = useQuery({
+    queryKey: ["aerb", "cumulative", study.data?.study?.patientId],
+    queryFn: () => fetchCumulativeDose(study.data!.study!.patientId),
+    enabled: study.data?.study?.ionising === true,
+    retry: false,
+  });
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["radiology", "study", studyId] });
     void qc.invalidateQueries({ queryKey: ["radiology", "gates", studyId] });
@@ -134,6 +146,37 @@ export function RadiologyStudy(): React.ReactElement {
               )
               : null}
             {s.ionising ? <span className="ml-2 rounded bg-slate-200 px-1">{t("radiology.study.ionising")}</span> : null}
+          </p>
+        )
+        : null}
+
+      {/*
+        * PLAN 18c T3 / D8 / O4 — **THE CUMULATIVE-DOSE NUDGE, AND IT IS A NUDGE.**
+        *
+        * The brainstorm's O4 is the young patient with six CTs in a year, and its ruling is
+        * explicit: it *"surfaces to the radiologist at protocolling; nudge, not block"*. So this is
+        * a line of text beside the study and there is no refusal anywhere behind it — the decision
+        * belongs to the radiologist holding the referral, and a system that silently refused the
+        * seventh CT would be making it for them.
+        *
+        * It renders only for an IONISING study, because an ultrasound has no dose to accumulate,
+        * and only when there is something to say. `aerb.doses.read` gates the route; a reader who
+        * lacks it sees no line rather than an error, because a permission they do not have is not
+        * a problem they can fix.
+        */}
+      {cumulative.data !== undefined && cumulative.data.studyCount > 0
+        ? (
+          <p data-testid="dose-cumulative" className="rounded bg-amber-50 border border-amber-300 px-2 py-1 text-sm">
+            {cumulative.data.overDrlCount > 0
+              ? t("aerb.dose.cumulativeOver", {
+                  count: cumulative.data.studyCount, months: cumulative.data.months,
+                  over: cumulative.data.overDrlCount,
+                  total: cumulative.data.totalDlp === null ? "—" : `${cumulative.data.totalDlp} ${DOSE_UNITS.dlp ?? ""}`,
+                })
+              : t("aerb.dose.cumulative", {
+                  count: cumulative.data.studyCount, months: cumulative.data.months,
+                  total: cumulative.data.totalDlp === null ? "—" : `${cumulative.data.totalDlp} ${DOSE_UNITS.dlp ?? ""}`,
+                })}
           </p>
         )
         : null}

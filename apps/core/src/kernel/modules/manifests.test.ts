@@ -162,16 +162,22 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       // The SECOND manifest to claim an order kind (`imaging`), and the first to claim a RESOURCE
       // kind that no manifest had claimed before (`device` — the vocabulary the cath lab and
       // biomedical engineering inherit, because `collectResourceKinds` refuses a second declarer).
+      // PLAN 18c T1 — **`aerb` BETWEEN `pcpndt` AND `radiology`, and the position is load-bearing
+      // for the same reason `pcpndt` precedes `radiology`.** Radiology's `startAcquisition` reaches
+      // into the AERB register for the licence gate and its MWL export reads the same window; the
+      // register reaches into nothing. The cath lab (63) and radiation oncology (64) will install
+      // `aerb` WITHOUT radiology, which is the whole reason it is a module of its own.
+      "aerb",
       "radiology",
       // PLAN 16c T1 — appended, so the twenty above keep the order they were installed in.
       "pharmacy",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(21); // PLAN 16c T1: 20 -> 21, the pharmacy
+    expect(ALL_MANIFESTS).toHaveLength(22); // PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(21);
+    expect(registry.all()).toHaveLength(22);
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -278,7 +284,14 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //      `app.module.ts`, so a module declaring `orderKinds` meets the seam's three boot refusals
     //      in both processes. Plan 13 shipped a collector the worker never called and Plan 14 had to
     //      close it; this one is wired into both in the commit that creates it.
-    expect(allKeys.filter((k) => !workerKeys.includes(k))).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders"]);
+    // (1i) PLAN 18c T1 — the TWENTY-SECOND, `aerb`, and it falls on the APP-ONLY side, which is the
+    //      `desk` shape: no subscription, no job, and nothing in the worker asks `hasPermission`
+    //      about an `aerb.*` string. The licence gate runs inside `startAcquisition`, an HTTP path,
+    //      and radiology's `order.placed` consumer — the one thing that DOES run in the worker —
+    //      touches the PCPNDT register and not this one. If a later phase gives the register a
+    //      consumer (T4's badge ladder is the candidate, if it ever stops being record-only), its
+    //      subscription and its worker install land in ONE commit — the (1b) discipline, unchanged.
+    expect(allKeys.filter((k) => !workerKeys.includes(k))).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb"]);
 
     // (2) The worker ADDS `notify`. It declares five `kernel.notify` subscriptions, and
     //     `buildSubscriptionBus` (kernel/worker/jobs.ts) makes a declared subscription with no

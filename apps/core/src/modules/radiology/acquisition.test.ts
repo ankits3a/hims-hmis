@@ -6,8 +6,8 @@ import {
 import { PCPNDT_PERMISSIONS } from "../../../test/helpers/pcpndt";
 import { ensureRole, mkUser } from "../../../test/helpers/opd";
 import {
-  events, imagingBillDecisions, imagingDefinitions, imagingStudies, orderItems, pcpndtFormF,
-  resources,
+  doseRegister, events, imagingBillDecisions, imagingDefinitions, imagingStudies, orderItems,
+  pcpndtFormF, resources,
 } from "../../kernel/db/schema";
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
@@ -584,5 +584,142 @@ describe("acquisition: the patient is on the table (18a T7)", () => {
     await acquired(study.studyId, { imageSource: "no_pacs_images" });
     const [row] = await db.select().from(imagingStudies).where(eq(imagingStudies.id, study.studyId));
     expect(row!.studyInstanceUid).toBeNull();
+  });
+
+  /* ═══════════════ PLAN 18c T1 / D3 — THE OTHER STATUTE, AT THE SAME DOOR ═══════════════ */
+
+  /**
+   * The refusal lands BEFORE the machine is occupied, which is the half a test asserting only the
+   * error would miss: an AERB refusal that arrives after `assignResource` has locked the CT is a
+   * record of an offence, not a block on one. So the study's status and the device's occupancy are
+   * both read afterwards, the A1 pattern this suite is built on.
+   */
+  it("18c T1: an ionising study cannot START on a machine with no AERB licence, and the CT stays free", async () => {
+    fx.unregister();
+    await truncateAll(db);
+    fx = await setupRadiologyFixture(db, { serviceDate: DAY, now: NOW, unlicensedModalities: ["ct"] });
+    const registry = new ModuleRegistry();
+    registry.install({
+      key: "pcpndt", title: "PCPNDT", menu: [], permissions: [...PCPNDT_PERMISSIONS], subscriptions: [],
+    });
+    await syncPermissions(db, registry);
+    for (const p of ["pcpndt.form_f.write", "pcpndt.form_f.read"]) {
+      await grantPermissionToRole(db, registry, "radiographer", p);
+    }
+
+    const study = await readyStudy("CT-HEAD", "ct");
+    /**
+     * `stat` clears DD12a's money gate, which runs BEFORE both statutory gates — so a routine
+     * self-pay study is refused `payment_required` and the licence is never reached. That ordering
+     * is 18a's and is left alone: the machine is blocked either way, and a counter that heard
+     * "unlicensed" before "unpaid" would be told about a problem it cannot fix.
+     */
+    await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
+    await expect(start(study.studyId)).rejects.toMatchObject({
+      code: "device_not_licensed",
+      detail: { deviceResourceId: fx.devices.ct },
+    });
+
+    const [row] = await db.select().from(imagingStudies).where(eq(imagingStudies.id, study.studyId));
+    expect(row!.status).toBe("ready"); // never entered acquisition
+    const [device] = await db.select().from(resources).where(eq(resources.id, fx.devices.ct!));
+    expect(device!.status).toBe("available"); // the machine was never taken
+    expect(device!.occupantRef).toBeNull();
+  });
+
+  /**
+   * The other half, and the one that stops D3 from being a blunt instrument: **ultrasound is not
+   * licensed by AERB and must not be blocked by it.** The fixture files no USG licence at all, so
+   * a gate keyed on the device rather than on `ionising` would fail this test.
+   */
+  it("18c T1: a NON-ionising study starts on an unlicensed machine — AERB licences neither USG nor MRI", async () => {
+    const study = await readyStudy("USG-ABDO", "usg");
+    await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
+    await expect(start(study.studyId)).resolves.toBeDefined();
+  });
+
+  /* ═════════ PLAN 18c T3 / D5 — THE DOSE REGISTER, WRITTEN IN THIS TRANSACTION ═════════ */
+
+  /** Publishes a DRL book the way the runbook does: draft, approve, activate — not an INSERT. */
+  const publishDrls = async (levels: unknown[]) => {
+    await db.insert(imagingDefinitions).values({
+      id: `drl-${String(seq)}-${String(Date.now())}`, kind: "dose_reference_levels", version: 1,
+      body: { levels }, status: "active", draftedBy: fx.radiologist.id,
+      publishedBy: fx.radiologist.id, publishedAt: NOW,
+    });
+  };
+
+  it("18c T3: an acquired ionising study lands ONE register row, with the comparison stored", async () => {
+    await publishDrls([{ study_type_code: "CT-HEAD", quantity: "dlp", value: 1000, source: "ICRP 135" }]);
+    const study = await readyStudy("CT-HEAD", "ct");
+    /** `stat` clears DD12a's money gate, which runs before everything this test is about. */
+    await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
+    await start(study.studyId);
+    await acquired(study.studyId, { imageSource: "pacs", doseDlp: 1200, doseCtdivol: 42 });
+
+    const rows = await db.select().from(doseRegister).where(eq(doseRegister.sourceRef, study.studyId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      source: "imaging", patientId: fx.patientId, modality: "ct", procedureCode: "CT-HEAD",
+      drlQuantity: "dlp", overDrl: true,
+    });
+    expect(rows[0]!.drlValue).toBe("1000.000");
+    expect(rows[0]!.deviceResourceId).toBe(fx.devices.ct);
+  });
+
+  /**
+   * The comparison is made against the quantity the LEVEL names. A study carrying a DLP where the
+   * level is set on CTDIvol has nothing to compare, and `null` is the honest answer — `false` would
+   * be a claim of compliance nobody measured.
+   */
+  it("18c T3: a level on a quantity the study did not carry stores NULL, not `under`", async () => {
+    await publishDrls([{ study_type_code: "CT-HEAD", quantity: "ctdivol", value: 60 }]);
+    const study = await readyStudy("CT-HEAD", "ct");
+    /** `stat` clears DD12a's money gate, which runs before everything this test is about. */
+    await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
+    await start(study.studyId);
+    await acquired(study.studyId, { imageSource: "pacs", doseDlp: 1200 });
+    const rows = await db.select().from(doseRegister).where(eq(doseRegister.sourceRef, study.studyId));
+    expect(rows[0]!.overDrl).toBeNull();
+    expect(rows[0]!.drlQuantity).toBeNull();
+  });
+
+  it("18c T3: with NO published DRL book at all the study still registers, uncompared", async () => {
+    const study = await readyStudy("XR-CHEST", "xray");
+    /** `stat` clears DD12a's money gate, which runs before everything this test is about. */
+    await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
+    await start(study.studyId);
+    await acquired(study.studyId, { imageSource: "no_pacs_images", doseDap: 1.4 });
+    const rows = await db.select().from(doseRegister).where(eq(doseRegister.sourceRef, study.studyId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.overDrl).toBeNull();
+  });
+
+  /**
+   * A study type's own level beats the modality fallback — a hospital that set a figure for
+   * `CT-HEAD` meant that one and not its generic CT number.
+   */
+  it("18c T3: the study type's level wins over the modality's", async () => {
+    await publishDrls([
+      { modality: "ct", quantity: "dlp", value: 2000 },
+      { study_type_code: "CT-HEAD", quantity: "dlp", value: 1000 },
+    ]);
+    const study = await readyStudy("CT-HEAD", "ct");
+    /** `stat` clears DD12a's money gate, which runs before everything this test is about. */
+    await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
+    await start(study.studyId);
+    await acquired(study.studyId, { imageSource: "pacs", doseDlp: 1500 });
+    const rows = await db.select().from(doseRegister).where(eq(doseRegister.sourceRef, study.studyId));
+    expect(rows[0]!.drlValue).toBe("1000.000");
+    expect(rows[0]!.overDrl).toBe(true);
+  });
+
+  /** An ultrasound has no dose. A register full of zeroes for USG would bury the CTs. */
+  it("18c T3: a NON-ionising study writes no register row at all", async () => {
+    const study = await readyStudy("USG-ABDO", "usg");
+    await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
+    await start(study.studyId);
+    await acquired(study.studyId, { imageSource: "no_pacs_images" });
+    expect(await db.select().from(doseRegister).where(eq(doseRegister.sourceRef, study.studyId))).toHaveLength(0);
   });
 });

@@ -2,10 +2,11 @@ import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { placeAndCreateStudy, setupRadiologyFixture, studyTypeRow } from "../../../test/helpers/radiology";
 import { ensureRole, mkUser } from "../../../test/helpers/opd";
-import { imagingDefinitions, patients, phiAccessLog, resources } from "../../kernel/db/schema";
+import { aerbLicences, imagingDefinitions, patients, phiAccessLog, resources } from "../../kernel/db/schema";
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
+import { changeLicenceStatus } from "../aerb";
 import { addMachine, createRegistration } from "../pcpndt";
 import { cancelStudy, scheduleStudy } from "./schedule";
 import { AE_TITLE_RE, MWL_READ, istDayWindow, mwlExport, renderMwlDump, renderMwlDumpHeader, toPersonName } from "./mwl";
@@ -151,6 +152,36 @@ describe("the modality worklist export (18b T1)", () => {
     const after = await mwlExport(db, bridge, { date: DAY });
     expect(after.rows.map((r) => r.studyId)).toEqual([study.studyId]);
     expect(after.withheld).toBe(0);
+  });
+
+  /**
+   * PLAN 18c T1 / D3 — the same argument for the other statute. Offering an ionising study to an
+   * unlicensed console is the AERB refusal arriving after the images exist, so the row is withheld
+   * at the export and COUNTED — an empty worklist that says nothing sends a radiographer looking
+   * for a network fault.
+   *
+   * The fixture licenses the CT, so the licence is SURRENDERED here rather than never filed: it is
+   * the harder case, and the one a lapsed renewal actually produces.
+   */
+  it("18c T1 — an ionising study is withheld from a machine whose AERB licence is gone, and the USG beside it is not", async () => {
+    const ct = await place("CT-HEAD");
+    await schedule(ct.studyId, "ct", SLOT);
+    const usg = await place("USG-ABDO");
+    await schedule(usg.studyId, "usg", new Date(SLOT.getTime() + 3_600_000));
+
+    const before = await mwlExport(db, bridge, { date: DAY });
+    expect(before.rows.map((r) => r.studyId).sort()).toEqual([ct.studyId, usg.studyId].sort());
+    expect(before.withheld).toBe(0);
+
+    const [licence] = await db.select().from(aerbLicences)
+      .where(eq(aerbLicences.deviceResourceId, fx.devices["ct"]!));
+    await withTx(db, (tx) => changeLicenceStatus(tx, fx.rso, licence!.id, "surrendered", {
+      decommissionRef: "DECOM/2026/9",
+    }));
+
+    const after = await mwlExport(db, bridge, { date: DAY });
+    expect(after.rows.map((r) => r.studyId)).toEqual([usg.studyId]);
+    expect(after.withheld).toBe(1);
   });
 
   it("writes one `imaging.worklist` PHI row per patient per pull, and refuses a reader without the permission", async () => {

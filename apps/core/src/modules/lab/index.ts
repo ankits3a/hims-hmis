@@ -63,10 +63,11 @@ export {
 } from "./sweeps";
 export type { NonReturnSweepReport, SlaSweepReport } from "./sweeps";
 // ── PLAN 17b T6 — the number, the signature, the call ladder ──
-// `enterResult` is `Tx`-first and `verifyResult` is `Db`-first, and the asymmetry is the same one
-// 17a §6.8 records for `printLabels`: verification must WRITE on its refusal path
-// (`lab.sod_violation_blocked`), and an audit row appended on the transaction that is about to roll
-// back is an audit row that never existed (F20, and F27 one module over).
+// 17d T1 — `enterResult`, `verifyResult` and `printLabels` are now ALL `Db`-first, and the
+// asymmetry 17a §6.8 recorded is gone. Each of the three must WRITE on its refusal path
+// (`lab.tube_swap_suspected`, `lab.sod_violation_blocked`, `lab.tube_mismatch_flagged`), and an
+// audit row appended on the transaction that is about to roll back is an audit row that never
+// existed (F20, F27, and the third time the module has met it).
 export { amendResult, enterResult, requestRerun, resultContext, LAB_RESULTS_ENTER } from "./results";
 export type {
   AmendResultInput, EnteredResult, EnterResultInput, EnterResultOutcome, LabEntryMode,
@@ -77,7 +78,10 @@ export {
   NIGHT_MODE_FROM_HOUR_IST, NIGHT_MODE_TO_HOUR_IST,
 } from "./verify";
 export type { ReflexPlacement, ReflexRefusal, VerifyResultInput, VerifyResultOutcome } from "./verify";
-export { acknowledgeCritical, openCriticalCalls, LAB_CRITICALS_CLOSE } from "./criticals";
+export {
+  acknowledgeCritical, openCriticalCalls, nextRung, RUNGS, CRITICAL_CALL_TARGET_MINUTES,
+  LAB_CRITICALS_CLOSE,
+} from "./criticals";
 export type {
   AcknowledgeCriticalInput, AcknowledgeCriticalOutcome, CriticalAttempt, OpenCriticalCall,
 } from "./criticals";

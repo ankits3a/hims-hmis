@@ -34,18 +34,60 @@ import type { Db, Tx } from "../../kernel/db/client";
 
 export const LAB_CRITICALS_CLOSE = "lab.criticals.close";
 
+/**
+ * ═══ 17d T3 / D4 — THE LADDER HAS NAMED RUNGS (design board EdgeCases #17) ═══
+ *
+ * The board's case: *"Potassium 6.8 at 21:10; OPD over, ordering doctor's phone off."* The call
+ * opened itself and every attempt was logged — and the technologist was left dialling ONE number
+ * with nothing telling them who to try next. An escalation path that lives in a technologist's head
+ * at 21:10 is an escalation path the hospital does not have.
+ *
+ * So the rung is an ENUM and the contact stays free text: a ward extension is not an entity, but
+ * "the ordering clinician" and "the duty medical officer" are roles a hospital can be held to.
+ * `RUNGS` is in escalation order and `nextRung` reads down it.
+ */
+export const RUNGS = ["ordering_clinician", "duty_officer", "patient_or_attendant"] as const;
+export type CriticalRung = (typeof RUNGS)[number];
+
 /** One rung of the ladder. Free-text `contact` because a ward extension is not an entity. */
 export type CriticalAttempt = {
   at: string;
   by: string;
   contact: string;
   outcome: "no_answer" | "engaged" | "message_left" | "spoke";
+  /**
+   * 17d T3 — WHICH rung this attempt was made on. Optional in the TYPE because rows written before
+   * this phase have none, and a reader that assumed one would be inventing history; required on the
+   * WIRE, so nothing new lands without it.
+   */
+  rung?: CriticalRung;
 };
+
+/**
+ * D5 — THE TARGET, AND IT IS ADVISORY. NABL's own language for telephoning a critical value is
+ * "immediately"; 15 minutes is the standard Indian corporate-hospital SOP and what the bench shows
+ * elapsed against. **Nothing in this module refuses anything because of it.** A technologist holding
+ * a potassium of 6.8 is never told by software that they may not make a phone call.
+ */
+export const CRITICAL_CALL_TARGET_MINUTES = 15;
+
+/**
+ * The rung to try next: the first one nobody has SPOKEN to yet. An attempt that reached nobody
+ * (no answer, engaged, a message with a ward clerk) does not retire its rung — that is the whole
+ * distinction 02 §3.6 draws between an attempt and an acknowledgement, read one level up.
+ *
+ * `null` when every rung has been spoken to and the call is still open, which is a real state: the
+ * patient's attendant was told and the read-back has not been keyed yet.
+ */
+export function nextRung(attempts: readonly CriticalAttempt[]): CriticalRung | null {
+  const spokenTo = new Set(attempts.filter((a) => a.outcome === "spoke").map((a) => a.rung));
+  return RUNGS.find((r) => !spokenTo.has(r)) ?? null;
+}
 
 export type AcknowledgeCriticalInput = {
   callId: string;
   /** A rung: recorded, and the call stays OPEN. */
-  attempt?: { contact: string; outcome: CriticalAttempt["outcome"] };
+  attempt?: { contact: string; outcome: CriticalAttempt["outcome"]; rung?: CriticalRung };
   /** The words the clinician said back. Non-empty, and the ONLY thing that closes the call. */
   readback?: string;
 };
@@ -219,6 +261,14 @@ export type OpenCriticalCall = {
    * and that is both numbers.
    */
   supersededBy: { value: string; flag: string | null } | null;
+  /**
+   * 17d T3 / D4 — what the bench needs in order to make the NEXT call rather than to re-read the
+   * last one: the rung to try, and how long this value has been un-acknowledged.
+   */
+  nextRung: CriticalRung | null;
+  /** D5 — advisory. It colours a screen; it refuses nothing. */
+  minutesOpen: number;
+  targetMinutes: number;
 };
 
 /**
@@ -234,7 +284,11 @@ export type OpenCriticalCall = {
  * `displayName` with the CALLER's own clearance: a sealed patient's ladder shows the alias, and a
  * technologist telephoning about "Patient A" is what DD14 requires of every other reader here.
  */
-export async function openCriticalCalls(db: Db, actor: Actor): Promise<OpenCriticalCall[]> {
+export async function openCriticalCalls(
+  db: Db,
+  actor: Actor,
+  now: Date = new Date(),
+): Promise<OpenCriticalCall[]> {
   if (actor.type !== "user") {
     throw new LabError("user_actor_required", `a ${actor.type} actor may not read the critical ladder`);
   }
@@ -297,6 +351,9 @@ export async function openCriticalCalls(db: Db, actor: Actor): Promise<OpenCriti
     unit: r.result.unit,
     flag: r.result.flag,
     supersededBy: supersededBy.get(r.call.resultId) ?? null,
+    nextRung: nextRung(r.call.attempts as CriticalAttempt[]),
+    minutesOpen: Math.max(0, Math.floor((now.getTime() - r.call.openedAt.getTime()) / 60_000)),
+    targetMinutes: CRITICAL_CALL_TARGET_MINUTES,
   }));
 }
 

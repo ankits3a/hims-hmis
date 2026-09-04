@@ -8,7 +8,9 @@ import { withTx } from "../../kernel/db/client";
 import { events, labAnalytes, labCriticalCalls } from "../../kernel/db/schema";
 import { receive } from "./accession";
 import { collect } from "./collection";
-import { acknowledgeCritical, openCriticalCalls } from "./criticals";
+import {
+  acknowledgeCritical, CRITICAL_CALL_TARGET_MINUTES, nextRung, openCriticalCalls, RUNGS,
+} from "./criticals";
 import { deskOrder } from "./desk";
 import { enterResult } from "./results";
 import { printLabels } from "./specimens";
@@ -57,9 +59,9 @@ describe("lab critical calls (17b T6)", () => {
       await withTx(db, (tx) => receive(tx, fx.bench.actor, fx.decls, { specimenNo: s.specimenNo }, AT));
     }
     const [k] = await db.select({ id: labAnalytes.id }).from(labAnalytes).where(eq(labAnalytes.code, "K"));
-    const entered = await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+    const entered = await enterResult(db, fx.bench.actor, {
       orderItemId: placed.itemIds[0]!, analyteId: k!.id, value: "6.8", entryMode: "manual",
-    }, AT));
+    }, AT);
     return { callId: entered.criticalCallId!, resultId: entered.resultId };
   }
 
@@ -136,5 +138,71 @@ describe("lab critical calls (17b T6)", () => {
     }, AT))).rejects.toMatchObject({ code: "permission_denied" });
 
     expect(await openCriticalCalls(db, fx.bench.actor)).toHaveLength(1);
+  });
+
+  /* ═══════ 17d T3 — THE LADDER IS NAMED AND THE CLOCK IS VISIBLE (design EdgeCases #17) ═══════ */
+
+  /**
+   * The board's case: *"Potassium 6.8 at 21:10; OPD over, ordering doctor's phone off."* The call
+   * opened itself and every attempt was logged — and the technologist was left dialling ONE number
+   * with nothing saying who to try next.
+   */
+  it("17d T3: `nextRung` walks down the ladder, and only SPEAKING to somebody retires their rung", () => {
+    // MUTANT: counting any attempt as retiring the rung — three unanswered rings would "finish" the
+    // ordering doctor, which is the exact distinction 02 §3.6 draws between an attempt and an
+    // acknowledgement.
+    expect(nextRung([])).toBe("ordering_clinician");
+    expect(nextRung([
+      { at: AT.toISOString(), by: "u", contact: "mobile", outcome: "no_answer", rung: "ordering_clinician" },
+      { at: AT.toISOString(), by: "u", contact: "mobile", outcome: "engaged", rung: "ordering_clinician" },
+      { at: AT.toISOString(), by: "u", contact: "ward clerk", outcome: "message_left", rung: "ordering_clinician" },
+    ])).toBe("ordering_clinician");
+
+    expect(nextRung([
+      { at: AT.toISOString(), by: "u", contact: "mobile", outcome: "spoke", rung: "ordering_clinician" },
+    ])).toBe("duty_officer");
+
+    /** Every rung spoken to and the call still open is a REAL state: the read-back is not keyed yet. */
+    expect(nextRung(RUNGS.map((rung) => (
+      { at: AT.toISOString(), by: "u", contact: "x", outcome: "spoke" as const, rung }
+    )))).toBeNull();
+
+    /** A pre-17d row carries no rung at all and must not retire one by accident. */
+    expect(nextRung([{ at: AT.toISOString(), by: "u", contact: "x", outcome: "spoke" }]))
+      .toBe("ordering_clinician");
+  });
+
+  it("17d T3: the open ladder carries the rung to try, the minutes open and the advisory target", async () => {
+    const { callId } = await criticalCall();
+    await withTx(db, (tx) => acknowledgeCritical(tx, fx.bench.actor, {
+      callId, attempt: { contact: "Dr Rao, mobile", outcome: "no_answer", rung: "ordering_clinician" },
+    }, AT));
+
+    const [open] = await openCriticalCalls(db, fx.bench.actor, new Date(AT.getTime() + 22 * 60_000));
+    expect(open!.attempts[0]!.rung).toBe("ordering_clinician");
+    // Unanswered: the doctor's rung is NOT retired, so the ladder still points at them.
+    expect(open!.nextRung).toBe("ordering_clinician");
+    expect([open!.minutesOpen, open!.targetMinutes]).toEqual([22, CRITICAL_CALL_TARGET_MINUTES]);
+
+    await withTx(db, (tx) => acknowledgeCritical(tx, fx.bench.actor, {
+      callId, attempt: { contact: "Dr Rao, mobile", outcome: "spoke", rung: "ordering_clinician" },
+    }, AT));
+    const [after] = await openCriticalCalls(db, fx.bench.actor, AT);
+    expect(after!.nextRung).toBe("duty_officer");
+  });
+
+  /**
+   * D5 — THE TARGET REFUSES NOTHING. A technologist holding a potassium of 6.8 is never told by
+   * software that they may not make a phone call, and the ladder never blocks the read-back either.
+   */
+  it("17d T3 / D5: a call far past its target still accepts every rung and still closes", async () => {
+    const { callId } = await criticalCall();
+    const late = new Date(AT.getTime() + 5 * 60 * 60_000);
+    const out = await withTx(db, (tx) => acknowledgeCritical(tx, fx.bench.actor, {
+      callId,
+      attempt: { contact: "the patient's son", outcome: "spoke", rung: "patient_or_attendant" },
+      readback: "six point eight, coming to casualty now",
+    }, late));
+    expect(out.closed).toBe(true); // THE KILL: a clock that became a gate
   });
 });

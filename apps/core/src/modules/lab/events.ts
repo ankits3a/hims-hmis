@@ -89,6 +89,21 @@ export const labSpecimenRejected = defineEvent("lab.specimen_rejected", MODULE, 
   rejectedBy: id, at: iso,
 }));
 
+/**
+ * 17d T2 — **THE RE-LABEL**, design board EdgeCases #12. A tube identified by a typed number rather
+ * than by its barcode is a tube whose label could not be read, and it leaves the bench wearing a new
+ * one. NABL asks how many of those there were and whose hands were on them, so it is its own fact
+ * with both names on it — not a boolean buried in the accession's payload, which is not a number
+ * anybody can count.
+ *
+ * No specimen NUMBER on the payload: this rides the same departmental topic as its neighbours and
+ * the ids are enough to find the row (17c F4's rule, kept).
+ */
+export const labSpecimenRelabelled = defineEvent("lab.specimen_relabelled", MODULE, z.object({
+  specimenId: id, orderGroupId: id, relabelledBy: id, witnessedBy: id,
+  reason: z.string().min(1), at: iso,
+}));
+
 export const labRecollectionRequested = defineEvent("lab.recollection_requested", MODULE, z.object({
   priorSpecimenId: id, specimenId: id, specimenNo: id, orderGroupId: id, itemIds: z.array(id).min(1), reason: z.string().min(1),
 }));
@@ -103,6 +118,34 @@ export const labRecollectionRequested = defineEvent("lab.recollection_requested"
 export const labResultEntered = defineEvent("lab.result_entered", MODULE, z.object({
   resultId: id, orderItemId: id, orderGroupId: id, analyteId: id, enteredBy: id,
   entryMode: z.string().min(1), absurdOverridden: z.boolean(),
+}));
+
+/**
+ * 17d T1 / D3 — **THE SWAP, SUSPECTED**, appended on its OWN transaction before the entry is
+ * refused (`printLabels`'s F20 shape). A near-miss nobody logged is a near-miss nobody learns from,
+ * and NABL asks for the count; an audit row written on the transaction that is about to roll back
+ * is an audit row that never existed.
+ *
+ * **Structural ids only, and 17c F4 is why.** This rides `lab:bench`, a topic held by reception and
+ * the phlebotomist as well as the bench. `breach` says WHICH rule fired and nothing more — the
+ * patient's sex, the patient's age and the value that triggered it are all readable from the rows
+ * by somebody holding `lab.results.read`, and none of them belongs on a departmental feed.
+ *
+ * `siblingSpecimenIds` is the point of the event rather than a detail of it: the tube in the hand is
+ * only half of a swap, and the other half is on the same order group with a collection time in the
+ * same minute.
+ */
+export const labTubeSwapSuspected = defineEvent("lab.tube_swap_suspected", MODULE, z.object({
+  orderItemId: id, orderGroupId: id, analyteId: id, specimenId: id,
+  siblingSpecimenIds: z.array(id),
+  breach: z.enum(["sex", "age"]),
+  /**
+   * `raisedBy` and never `flaggedBy`: `realtime.test.ts` censuses this topic's payload keys for
+   * anything matching `/value|flag|…/`, and a field whose name borrows the word a RESULT FLAG owns
+   * would have had to weaken that census to ship. The census is right and the name was wrong.
+   */
+  raisedBy: id,
+  overridden: z.boolean(),
 }));
 
 export const labResultVerified = defineEvent("lab.result_verified", MODULE, z.object({
@@ -189,8 +232,8 @@ export const labNotifiableFlagged = defineEvent("lab.notifiable_flagged", MODULE
 export const LAB_EVENTS = [
   labOrderDesked, labAttributionUnverifiedFlagged,
   labLabelPrinted, labTubeMismatchFlagged, labSpecimenCollected, labSpecimenReceived,
-  labSpecimenRejected, labRecollectionRequested,
-  labResultEntered, labResultVerified, labResultCriticalFlagged, labCriticalAcknowledged,
+  labSpecimenRejected, labSpecimenRelabelled, labRecollectionRequested,
+  labResultEntered, labResultVerified, labTubeSwapSuspected, labResultCriticalFlagged, labCriticalAcknowledged,
   labResultDeltaFlagged, labReflexAdded, labSodViolationBlocked,
   labReportPublished, labReportPrintBlocked, labReportReleasedUnpaid, labReportPrinted,
   labReportAmended,

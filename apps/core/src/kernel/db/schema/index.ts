@@ -80,3 +80,8 @@ export * from "./pcpndt";
 // materials); it references `orders`/`order_items` (the `medication` kind's envelope), `opd_prescriptions`
 // (what is dispensed), `invoices`/`invoice_lines` (what it was billed as) and `services` (the bridge).
 export * from "./pharmacy";
+// PLAN 18c T1 — the AERB registers. `aerb.ts` reads `resources` (the licensed machine) and
+// `auth.users` (the appointed RSO/physicist) and NOTHING of radiology's: it is its own MANIFEST for
+// the reason `pcpndt` is (D1), so the cath lab (63) and radiation oncology (64) file a licence and
+// write a dose row without installing a department. Radiology is its first CONSUMER, not its owner.
+export * from "./aerb";

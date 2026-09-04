@@ -87,9 +87,17 @@ export type WirePrintedSpecimen = {
   specimenId: string; specimenNo: string; specimenType: string; container: string; itemIds: string[];
 };
 
+/** 17d T3 — the ladder, in escalation order. The screen reads DOWN it and never re-orders it. */
+export const CRITICAL_RUNGS = ["ordering_clinician", "duty_officer", "patient_or_attendant"] as const;
+export type CriticalRung = (typeof CRITICAL_RUNGS)[number];
+
 export type WireCriticalCall = {
   id: string; resultId: string; openedAt: string; openedBy: string;
-  attempts: { at: string; by: string; contact: string; outcome: string }[];
+  attempts: { at: string; by: string; contact: string; outcome: string; rung?: CriticalRung }[];
+  /** 17d T3 — the rung to try next, and how long this value has gone un-acknowledged (advisory). */
+  nextRung: CriticalRung | null;
+  minutesOpen: number;
+  targetMinutes: number;
   /** WHOSE value it is and WHAT it was — a ladder without these is a ladder nobody can work. */
   patientDisplay: string; patientId: string; orderNo: string; encounterNo: string;
   analyteCode: string; value: string; unit: string | null; flag: string | null;
@@ -259,8 +267,16 @@ export const benchArrivals = (): Promise<WireBenchArrival[]> => api("GET", "/lab
 export const LAB_BENCH_TOPIC = "lab:bench";
 export const LAB_CRITICAL_TOPIC = "lab_critical";
 
+/**
+ * 17d T2 — `identifiedBy` is REQUIRED by the route. The server cannot tell a scanned barcode from a
+ * keyed one and this screen can, so the declaration is the screen's to make; a typed number means
+ * the label could not be read and the tube is about to be re-labelled, which is a witnessed act.
+ */
 export const receiveSpecimen = (
-  body: { specimenNo: string; containerSeen?: string; identityRecheckBy?: string }, key: string,
+  body: {
+    specimenNo: string; containerSeen?: string; identityRecheckBy?: string;
+    identifiedBy: "scan" | "typed"; relabel?: { witnessedBy: string; reason: string };
+  }, key: string,
 ): Promise<unknown> => api("POST", "/lab/bench/receive", body, key);
 
 export const rejectSpecimen = (
@@ -275,7 +291,31 @@ export type EnterResultRequest = {
    * It is a `users.id`, which is why the screen asks for a login rather than a name.
    */
   absurdOverride?: { by: string };
+  /**
+   * 17d T1 / D2 — its twin, and SEPARATE on purpose: this one vouches that a value impossible for
+   * the patient's sex or age is nonetheless theirs. One field covering both would let a
+   * decimal-point waiver excuse a swapped tube, which is the one thing the rule exists to catch.
+   */
+  impossibleOverride?: { by: string };
 };
+
+/**
+ * 17d T1 — what a refused entry carries back. `analyte_not_applicable` names the OTHER tubes drawn
+ * from this order group in the same minute; the screen puts those numbers in front of the
+ * technologist, because "check the other tube" is only actionable with the barcode on it.
+ */
+export type LabRefusal = { code: string | null; message: string; suspectSpecimenNos: string[] };
+
+export function labRefusal(e: unknown): LabRefusal {
+  const body = e instanceof ApiError ? (e.body as { code?: unknown; detail?: unknown } | null) : null;
+  const detail = (body?.detail ?? null) as { suspectSpecimenNos?: unknown } | null;
+  const nos = Array.isArray(detail?.suspectSpecimenNos) ? detail.suspectSpecimenNos.filter((n): n is string => typeof n === "string") : [];
+  return {
+    code: typeof body?.code === "string" ? body.code : null,
+    message: labErrorText(e),
+    suspectSpecimenNos: nos,
+  };
+}
 
 export const enterResult = (body: EnterResultRequest, key: string): Promise<{
   resultId: string; flag: string | null; deltaFlagged: boolean; criticalCallId: string | null;
@@ -285,7 +325,7 @@ export const openCriticals = (): Promise<WireCriticalCall[]> => api("GET", "/lab
 
 export const acknowledgeCritical = (
   callId: string,
-  body: { attempt?: { contact: string; outcome: string }; readback?: string },
+  body: { attempt?: { contact: string; outcome: string; rung: CriticalRung }; readback?: string },
 ): Promise<unknown> => api("POST", `/lab/bench/criticals/${callId}/ack`, body);
 
 /* ────────────────────────── the signature and the document ────────────────────────── */

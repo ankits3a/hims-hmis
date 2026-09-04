@@ -411,11 +411,11 @@ export async function runLabOrder(
       if (analyte.resultType === "formula") continue;
       const ranges = await db.select({ low: labReferenceRanges.low, high: labReferenceRanges.high })
         .from(labReferenceRanges).where(eq(labReferenceRanges.analyteId, analyte.id));
-      const out = await withTx(db, (tx) => enterResult(tx, enterActor, {
+      const out = await enterResult(db, enterActor, {
         orderItemId: itemId, analyteId: analyte.id,
         value: opts.values?.[analyte.code] ?? safeValueFor(analyte, ranges),
         entryMode: "manual",
-      }, now));
+      }, now);
       resultIds.push(out.resultId, ...out.computed.map((c) => c.resultId));
     }
   }

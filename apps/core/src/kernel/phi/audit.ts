@@ -83,7 +83,19 @@ export type PhiSurface =
    *     sealed patient's REAL name by design (DD14/J1). A read of it is a read of a pregnancy, and
    *     a log that could not name it separately could not answer for it separately.
    */
-  | "imaging.worklist" | "imaging.study" | "imaging.report" | "pcpndt.form_f";
+  | "imaging.worklist" | "imaging.study" | "imaging.report" | "pcpndt.form_f"
+  /**
+   * PLAN 18c T3 / D7 — **THE PATIENT DOSE REGISTER, and it is a surface of its own for the reason
+   * `imaging.worklist` is.**
+   *
+   * The AERB registers are almost entirely about MACHINES — a licence, a QA report, a badge — and
+   * none of those is patient data. This one is the exception: a dose register is a list of patients
+   * and what was done to them, and reading a date range of it is a materially different disclosure
+   * from opening one study. It is also the surface a radiologist touches through the cumulative
+   * nudge, under `aerb.doses.read` rather than any `imaging.*` permission, so a log that folded it
+   * into `imaging.study` could not answer for it separately.
+   */
+  | "aerb.dose_register";
 
 /** How the reader was connected to this patient's care AT THE MOMENT OF THE READ. */
 export type CareContext = "treating" | "serving" | "none";
