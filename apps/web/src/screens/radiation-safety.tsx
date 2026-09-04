@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { aerbErrorText, fetchAppointments, fetchLicenceGaps, fetchLicences } from "../lib/aerb-api";
-import type { WireAppointment, WireLicence, WireLicenceGap } from "../lib/aerb-api";
+import { aerbErrorText, fetchAppointments, fetchLicenceGaps, fetchLicences, fetchQaRecords } from "../lib/aerb-api";
+import type { WireAppointment, WireLicence, WireLicenceGap, WireQaRecord } from "../lib/aerb-api";
 
 /**
  * PLAN 18c T1 / D11 — **THE RADIATION-SAFETY REGISTER: one screen, the tabs an inspector asks for.**
@@ -15,13 +15,13 @@ import type { WireAppointment, WireLicence, WireLicenceGap } from "../lib/aerb-a
  * which modalities AERB licences at all is a regulatory fact, and a client-side list of them would
  * be the copy that drifted the day somebody added a modality.
  *
- * The tabs QA, Dose, Badges and Calendar arrive with T2, T3, T4 and T5. They are declared here as
- * disabled rather than absent so that the screen's shape is the register's shape from the first
- * commit, and so a reader can see what is coming without reading the phase document.
+ * The tabs Dose, Badges and Calendar arrive with T3, T4 and T5. They are declared here as disabled
+ * rather than absent so that the screen's shape is the register's shape from the first commit, and
+ * so a reader can see what is coming without reading the phase document.
  */
 const TABS = ["licences", "people", "qa", "dose", "badges", "calendar"] as const;
 type Tab = (typeof TABS)[number];
-const BUILT: readonly Tab[] = ["licences", "people"];
+const BUILT: readonly Tab[] = ["licences", "people", "qa"];
 
 function istToday(): string {
   const now = new Date();
@@ -45,6 +45,11 @@ export function RadiationSafety(): React.ReactElement {
     queryFn: () => fetchLicenceGaps(onDate),
     enabled: tab === "licences",
   });
+  const qa = useQuery({
+    queryKey: ["aerb", "qa"],
+    queryFn: fetchQaRecords,
+    enabled: tab === "qa",
+  });
   const people = useQuery({
     queryKey: ["aerb", "persons"],
     queryFn: fetchAppointments,
@@ -53,7 +58,10 @@ export function RadiationSafety(): React.ReactElement {
 
   const licenceRows: WireLicence[] = licences.data?.rows ?? [];
   const gapRows: WireLicenceGap[] = gaps.data?.rows ?? [];
+  const qaRows: WireQaRecord[] = qa.data?.rows ?? [];
   const peopleRows: WireAppointment[] = people.data?.rows ?? [];
+  /** A machine sitting in `qa_blocked` is the state the QA tab exists to make impossible to miss. */
+  const blockedNow = qaRows.filter((r) => r.deviceStatus === "qa_blocked");
 
   return (
     <div className="p-4 space-y-4">
@@ -134,6 +142,63 @@ export function RadiationSafety(): React.ReactElement {
                         <td>{l.validFrom} → {l.validTo}</td>
                         <td>{l.rsoName ?? t("aerb.licences.noRso")}</td>
                         <td>{t(`aerb.status.${l.status}`)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+          </section>
+        )
+        : null}
+
+      {tab === "qa"
+        ? (
+          <section className="space-y-4">
+            {/*
+              * The stopped machines first, for the same reason the licence gap comes first: the
+              * register's job is to surface the state that must not be missed, and a machine the
+              * system has taken out of service is exactly that.
+              */}
+            {blockedNow.length > 0
+              ? (
+                <div role="alert" data-testid="aerb-qa-blocked" className="border border-red-600 p-3">
+                  <h2 className="font-semibold text-red-700">{t("aerb.qa.blockedTitle")}</h2>
+                  <ul className="list-disc pl-5 text-sm">
+                    {[...new Set(blockedNow.map((r) => r.deviceCode))].map((code) => <li key={code}>{code}</li>)}
+                  </ul>
+                </div>
+              )
+              : null}
+
+            {qa.isError ? <p role="alert" className="text-red-600">{aerbErrorText(qa.error)}</p> : null}
+            {qa.isPending ? <p>{t("common.loading")}</p> : null}
+            {!qa.isPending && qaRows.length === 0
+              ? <p data-testid="aerb-qa-empty">{t("aerb.qa.empty")}</p>
+              : (
+                <table className="w-full text-sm" data-testid="aerb-qa">
+                  <thead>
+                    <tr className="text-left">
+                      <th>{t("aerb.licences.device")}</th>
+                      <th>{t("aerb.qa.type")}</th>
+                      <th>{t("aerb.qa.result")}</th>
+                      <th>{t("aerb.qa.performed")}</th>
+                      <th>{t("aerb.qa.nextDue")}</th>
+                      <th>{t("aerb.qa.effect")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {qaRows.map((r) => (
+                      <tr key={r.id} data-testid={`aerb-qa-${r.id}`}>
+                        <td>{r.deviceCode}</td>
+                        <td>{r.qaType}</td>
+                        <td>{t(`aerb.qaResult.${r.result}`)}</td>
+                        <td>{r.performedOn} · {r.performedBy}</td>
+                        <td>{r.nextDueOn ?? "—"}</td>
+                        <td>
+                          {r.blockApplied
+                            ? (r.releasedAt === null ? t("aerb.qa.blocked") : t("aerb.qa.released"))
+                            : "—"}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

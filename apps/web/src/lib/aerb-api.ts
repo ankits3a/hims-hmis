@@ -62,6 +62,28 @@ export function fetchLicenceGaps(onDate: string): Promise<{ rows: WireLicenceGap
   return api<{ rows: WireLicenceGap[] }>("GET", `/aerb/licences/gaps?onDate=${onDate}`);
 }
 
+export type WireQaRecord = {
+  id: string;
+  deviceResourceId: string;
+  deviceCode: string;
+  deviceName: string;
+  /** The machine's status TODAY. The record says what happened on the day; this says where it is. */
+  deviceStatus: string;
+  qaType: string;
+  result: string;
+  performedBy: string;
+  performedOn: string;
+  agencyRef: string | null;
+  nextDueOn: string | null;
+  blockApplied: boolean;
+  releasedAt: string | null;
+  remarks: string | null;
+};
+
+export function fetchQaRecords(): Promise<{ rows: WireQaRecord[] }> {
+  return api<{ rows: WireQaRecord[] }>("GET", "/aerb/qa");
+}
+
 export function fetchAppointments(): Promise<{ rows: WireAppointment[] }> {
   return api<{ rows: WireAppointment[] }>("GET", "/aerb/persons");
 }
