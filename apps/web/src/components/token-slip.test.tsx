@@ -1,5 +1,4 @@
 import { screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "../test-utils";
 import { TokenSlip } from "./token-slip";
 
@@ -28,13 +27,15 @@ describe("TokenSlip", () => {
     expect(screen.getByText("MED · General medicine")).toBeInTheDocument();
     expect(screen.getByText("Dr Meera Rao")).toBeInTheDocument();
     expect(screen.getByText("Room: 12")).toBeInTheDocument();
-    expect(screen.getByTestId("token-no")).toHaveTextContent("7");
+    // `MED-7`, not `7`: since FD-20 the series is per DEPARTMENT, so MED-7 and PED-7 exist at the
+    // same moment and a bare number beside a prefixed slip sends a patient to the wrong door.
+    expect(screen.getByTestId("token-no")).toHaveTextContent("MED-7");
     expect(screen.getByTestId("visit-no")).toHaveTextContent("V2608180001");
     expect(screen.getByText("HMS0000001234")).toBeInTheDocument();
 
-    const doc = container.querySelector(".print-doc");
-    expect(doc).not.toBeNull();
-    expect(doc?.querySelector("svg")).not.toBeNull();
+    const card = container.querySelector("[data-testid='token-card']");
+    expect(card).not.toBeNull();
+    expect(card?.querySelector("svg")).not.toBeNull();
   });
 
   it("prints the visit number WITH a spelled-month date, never the bare id", async () => {
@@ -48,20 +49,26 @@ describe("TokenSlip", () => {
     expect(screen.queryByText("2026-08-18")).toBeNull(); // the raw ISO date does not reach paper
   });
 
-  it("print isolation: the root carries .print-doc and the .no-print button calls window.print", async () => {
-    const printSpy = vi.fn();
-    vi.stubGlobal("print", printSpy);
+  /**
+   * ═══ FD-24 T6 — THIS ASSERTED THE OPPOSITE, AND IS INVERTED DELIBERATELY ═══
+   *
+   * This card used to BE the printed slip: `.print-doc` plus a `window.print()` button, on the
+   * global A5 page. Owner ruling R1 made printing server-side, and checking a patient in now queues
+   * a real 72 mm slip inside the visit's own transaction. Leaving the browser path would put TWO
+   * DIFFERENT TOKEN SLIPS in circulation for one patient — an A5 one reading `7` and a thermal one
+   * reading `MED-7` — and a clerk handing over whichever appeared first.
+   *
+   * So the property that must now hold is the absence of the old one, asserted on the CLASS and on
+   * the button, because a component that merely stopped rendering the button while keeping
+   * `.print-doc` would still hijack the page on any other screen's `window.print()`.
+   */
+  it("FD-24 T6: it is a screen card, not a document — no .print-doc, no print button", () => {
     const { container } = renderWithProviders(<TokenSlip {...PROPS} />);
-    const user = userEvent.setup();
 
-    // K43: an absence/presence assertion on the CLASS, not merely on the element existing.
-    expect(container.querySelector(".print-doc")).not.toBeNull();
-
-    const button = screen.getByRole("button", { name: "Print slip" });
-    expect(button).toHaveClass("no-print");
-
-    await user.click(button);
-
-    expect(printSpy).toHaveBeenCalledTimes(1);
+    expect(container.querySelector(".print-doc")).toBeNull();
+    expect(screen.queryByRole("button", { name: /print/i })).toBeNull();
+    // …and it is still the confirmation the clerk reads aloud
+    expect(screen.getByTestId("token-card")).toBeInTheDocument();
+    expect(screen.getByTestId("token-no")).toHaveTextContent("MED-7");
   });
 });

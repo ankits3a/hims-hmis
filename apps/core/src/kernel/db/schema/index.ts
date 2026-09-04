@@ -85,3 +85,7 @@ export * from "./pharmacy";
 // the reason `pcpndt` is (D1), so the cath lab (63) and radiation oncology (64) file a licence and
 // write a dose row without installing a department. Radiology is its first CONSUMER, not its owner.
 export * from "./aerb";
+// FD-24 T1 — the print outbox. `printing.ts` references `patients` (what a job is about) and
+// `auth.users` (who asked). It knows nothing of opd or billing: the counter, the vitals bay and the
+// cashier all enqueue through the same kernel, for the reason `notify` is a kernel and not a module.
+export * from "./printing";
