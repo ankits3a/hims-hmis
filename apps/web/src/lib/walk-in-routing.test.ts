@@ -1,4 +1,5 @@
 import { DELAY_HIGHLIGHT_MINUTES, proposeWalkIn } from "./walk-in-routing";
+import type { WireContinuityAnchor } from "./walk-in-routing";
 import type { WireDoctorSummary } from "./opd-api";
 
 /**
@@ -28,7 +29,15 @@ function doc(over: {
   };
 }
 
-const ANCHOR = { doctorId: "d-long", doctorName: "Dr Long", seenOn: "2026-07-12" };
+/*
+  FD-17 widened the anchor with the visit-type projection. `proposeWalkIn` does not read any of the
+  three — routing is about WHO and WHEN, not about what the visit will be charged as — so they are
+  filled in once here and never asserted on. `satisfies` keeps them honest against the wire type.
+*/
+const ANCHOR = {
+  doctorId: "d-long", doctorName: "Dr Long", seenOn: "2026-07-12",
+  followUpDays: 7, windowEndsOn: "2026-07-19", wouldBe: "revisit",
+} satisfies WireContinuityAnchor;
 const ANCHOR_LONG = ANCHOR;
 
 describe("walk-in routing (FD-7 T2)", () => {

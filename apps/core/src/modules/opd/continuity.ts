@@ -3,6 +3,8 @@ import { opdDoctors, opdEncounters } from "../../kernel/db/schema";
 import { getPatient, listMergedLoserIds } from "../patients";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { istDate } from "./time";
+import { classifyVisit } from "./visit-type";
+import type { VisitType } from "./visit-type";
 import { OpdError } from "./errors";
 import type { Db } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
@@ -25,6 +27,30 @@ export type ContinuityAnchor = {
   doctorName: string;
   /** The IST calendar date of that consultation — what the clerk reads out. */
   seenOn: string;
+  /**
+   * ═══ FD-17 — WHAT THIS VISIT WILL BE CHARGED AS, ANSWERED BEFORE IT IS SEATED ═══
+   *
+   * Owner, 2026-09-04: *"where is type of the appointment… is it new or revisit… how is our system
+   * picking up if it's a fresh new visit or revisit as per doctor prescribed tenure."*
+   *
+   * The classification has always existed and has always been INVISIBLE UNTIL AFTER SEATING:
+   * `openVisitInTx` stamps `visitType` when the encounter is created, and the fee quote then
+   * explains it. So the clerk learned a visit was free only once the patient was already in a
+   * queue — too late to tell them at the window, which is the moment they ask.
+   *
+   * These three fields are the SAME projection `classifyVisit` makes, computed from the SAME anchor
+   * row this function already reads. No new query, no new leak: the department is still the one the
+   * caller named, and nothing here enumerates where else the patient has been.
+   *
+   * IT IS AN INDICATION AND THE ENCOUNTER IS THE FACT. `openVisitInTx` re-derives at seating time
+   * and its answer wins — a patient seated tomorrow morning crosses the window overnight, and the
+   * desk must not have promised otherwise. The screen says "would be", not "is".
+   */
+  followUpDays: number;
+  /** The last IST day this anchor's follow-up window covers, inclusive. */
+  windowEndsOn: string;
+  /** `revisit` is free (`feeServiceFor`); `renewal` and `new` are charged. */
+  wouldBe: VisitType;
 };
 
 function windowStart(now: Date): Date {
@@ -70,6 +96,8 @@ export async function continuityDoctorFor(
     .select({
       doctorId: opdEncounters.doctorId,
       consultCompletedAt: opdEncounters.consultCompletedAt,
+      // FD-17 — the doctor's own prescribed tenure; the window is derived from it, never assumed.
+      followUpDays: opdEncounters.followUpDays,
       displayName: opdDoctors.displayName,
     })
     .from(opdEncounters)
@@ -103,5 +131,19 @@ export async function continuityDoctorFor(
     .limit(1))[0];
 
   if (row === undefined || row.doctorId === null || row.consultCompletedAt === null) return null;
-  return { doctorId: row.doctorId, doctorName: row.displayName, seenOn: istDate(row.consultCompletedAt) };
+  /*
+    The default is SEVEN and it is `reviewAnchorFor`'s and `openVisitInTx`'s default too, spelled
+    the same way. Three readers of one rule that each invent their own fallback is how a patient is
+    told "free until the 14th" at the desk and charged on the 12th at the counter.
+  */
+  const days = row.followUpDays ?? 7;
+  const windowEnd = new Date(row.consultCompletedAt.getTime() + days * 24 * 3600 * 1000);
+  return {
+    doctorId: row.doctorId,
+    doctorName: row.displayName,
+    seenOn: istDate(row.consultCompletedAt),
+    followUpDays: days,
+    windowEndsOn: istDate(windowEnd),
+    wouldBe: classifyVisit({ consultCompletedAt: row.consultCompletedAt, followUpDays: days }, now),
+  };
 }

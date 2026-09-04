@@ -3,7 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { abhaCapability, matchReasonKeys, matchReasonsDiscriminate, searchPatients } from "../../lib/patients-api";
 import type { WirePatientHit } from "../../lib/patients-api";
-import { getContinuity, getSlots, listDayAppointments, opdErrorMessage } from "../../lib/opd-api";
+import {
+  checkInAppointment, getContinuity, getSlots, listDayAppointments, listPatientAppointments, opdErrorMessage,
+} from "../../lib/opd-api";
 import { DELAY_HIGHLIGHT_MINUTES, proposeWalkIn } from "../../lib/walk-in-routing";
 import type { WireDoctorSummary, WireSlot } from "../../lib/opd-api";
 import {
@@ -882,6 +884,7 @@ function QueueBar({ doc }: { doc: WireDoctorSummary }): React.ReactElement {
 function StageAppointment(): React.ReactElement {
   const d = useDesk();
   const { s } = d;
+  const { t } = useTranslation();
 
   /*
     THE RANKING IS THE SERVER'S, BROKEN ONLY BY THE SHORTEST OPEN LINE.
@@ -1027,6 +1030,49 @@ function StageAppointment(): React.ReactElement {
               patient away from the doctor who knows them, silently, would be rule 2 wearing rule 1's
               name — so the alternative is a second button and never a replacement for the first.
             */}
+            {/*
+              ═══ FD-17 — NEW, REVISIT OR RENEWAL, SAID BEFORE THE PATIENT IS SEATED ═══
+
+              Owner: *"where is type of the appointment… is it new or revisit… Usually if the patient
+              is visiting same department under set revisit tenure, the patient would not be charged."*
+
+              The rule has always existed — `classifyVisit` against the last COMPLETED consultation in
+              the SAME department, inside the tenure that consult's own doctor prescribed — and it was
+              invisible until after seating, because `openVisitInTx` stamps `visitType` when the
+              encounter is created and the fee quote explains it only then. The clerk learned a visit
+              was free once the patient was already in a queue, which is after they asked.
+
+              IT SAYS "WOULD BE" AND MEANS IT. `openVisitInTx` re-derives at seating and its answer
+              wins; a patient seated tomorrow morning may have crossed the window overnight. A desk
+              that promised "free" and then charged would be worse than one that said nothing.
+            */}
+            {proposal?.anchor == null ? null : (
+              <div
+                data-testid="visit-type"
+                className="box"
+                style={{
+                  marginTop: 10, padding: "9px 13px",
+                  borderColor: proposal.anchor.wouldBe === "revisit" ? "var(--green-line)" : "var(--line)",
+                  background: proposal.anchor.wouldBe === "revisit" ? "var(--green-soft)" : "var(--wash)",
+                }}
+              >
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: proposal.anchor.wouldBe === "revisit" ? "var(--green)" : "var(--ink)" }}>
+                  {proposal.anchor.wouldBe === "revisit"
+                    ? t("registrationCounter.visitType.revisit")
+                    : t("registrationCounter.visitType.renewal")}
+                </span>
+                <span style={{ fontSize: 11.5, color: "var(--dim)", marginLeft: 7, lineHeight: "16px" }}>
+                  {proposal.anchor.wouldBe === "revisit"
+                    ? t("registrationCounter.visitType.revisitWhy", {
+                      days: proposal.anchor.followUpDays, until: proposal.anchor.windowEndsOn,
+                    })
+                    : t("registrationCounter.visitType.renewalWhy", {
+                      days: proposal.anchor.followUpDays, ended: proposal.anchor.windowEndsOn,
+                    })}
+                </span>
+              </div>
+            )}
+
             {proposal?.delayed === true ? (
               <div
                 className="box"
@@ -1168,6 +1214,7 @@ function slotClock(iso: string): string {
 function FutureTab(): React.ReactElement {
   const d = useDesk();
   const { s } = d;
+  const { t } = useTranslation();
   const bookable = d.summaries.filter((x) => x.doctor.active);
   const [doctorId, setDoctorId] = useState(bookable[0]?.doctor.id ?? "");
   const [date, setDate] = useState(() => {
@@ -1190,6 +1237,41 @@ function FutureTab(): React.ReactElement {
   });
   /** The slot the clerk has SELECTED and not yet committed — the artboard's "yours". */
   const [picked, setPicked] = useState<string | null>(null);
+
+  /**
+   * ═══ FD-17 — WHAT THIS PATIENT ALREADY HAS BOOKED ═══
+   *
+   * Owner, 2026-09-04: *"in future appointment, there's no warning for same patient booking another
+   * slot in the same day."*
+   *
+   * `listPatientAppointments` has existed since the seat was built and its own comment calls it
+   * "the seat's third door, and its duplicate-booking guard". Nothing called it. A clerk could book
+   * the same person twice into the same morning and the desk said nothing — and the day's book,
+   * which now renders them, would show one patient occupying two slots another patient wanted.
+   */
+  const theirs = useQuery({
+    queryKey: ["d1", "their-appointments", s.person?.id ?? null],
+    queryFn: () => listPatientAppointments(s.person!.id),
+    enabled: s.person !== null,
+    staleTime: 30_000,
+    retry: false,
+  });
+  const sameDay = (theirs.data?.items ?? []).filter((a) => a.serviceDate === date);
+
+  /** A booked patient arriving. The booking BECOMES the visit rather than a second encounter. */
+  const [arriving, setArriving] = useState<string | null>(null);
+  const arrive = async (appointmentId: string): Promise<void> => {
+    setArriving(appointmentId);
+    try {
+      await checkInAppointment(appointmentId);
+      await Promise.all([dayBook.refetch(), theirs.refetch()]);
+      d.note("appointment checked in — the booking is now a visit", "ok");
+    } catch (e) {
+      d.patch({ error: opdErrorMessage(e) });
+    } finally {
+      setArriving(null);
+    }
+  };
 
   const chosen = bookable.find((x) => x.doctor.id === doctorId) ?? null;
   const deptName = d.departments.find((x) => x.id === chosen?.doctor.departmentId)?.name ?? "";
@@ -1242,6 +1324,27 @@ function FutureTab(): React.ReactElement {
         promise about a time into the record with no confirm step. Now a click SELECTS — the chip
         turns pine, the legend says what the colours mean, and one button commits it.
       */}
+      {/*
+        A WARNING, NOT A GATE — the same discipline the duplicate-registration warning follows. A
+        second slot on one day is usually a mistake and is occasionally deliberate (two departments,
+        a procedure and a review), so the desk says what it knows and the clerk decides.
+      */}
+      {sameDay.length === 0 ? null : (
+        <div
+          className="box"
+          data-testid="already-booked"
+          style={{ marginTop: 14, padding: "11px 14px", borderColor: "var(--gold-line)", background: "var(--gold-soft)" }}
+        >
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--gold)" }}>
+            {t("registrationCounter.book.alreadyBooked", { count: sameDay.length, name: s.person?.name ?? "" })}
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 3, lineHeight: "16px" }}>
+            {sameDay.map((a) => `${slotClock(a.slotStart)}${a.doctorId === doctorId ? "" : " (another doctor)"}`).join(" · ")}
+            {" — "}{t("registrationCounter.book.alreadyBookedHint")}
+          </div>
+        </div>
+      )}
+
       <div className="box" style={{ marginTop: 14, padding: "13px 15px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 13, marginBottom: 10 }}>
           <span className="tag">the day's slots</span>
@@ -1353,6 +1456,22 @@ function FutureTab(): React.ReactElement {
               <span className="tag" style={{ width: 78, color: a.status === "checked_in" ? "var(--green)" : "var(--dim)" }}>
                 {a.status.replace(/_/g, " ")}
               </span>
+              {/*
+                THE ARTBOARD'S ACTION COLUMN. `checkInAppointment` is another client nothing called:
+                a booked patient could arrive at the counter and there was no way to turn their
+                booking into a visit — the clerk had to open a walk-in instead, which is a different
+                encounter and loses the booking. Only offered on a booking still waiting to arrive.
+              */}
+              {a.status === "booked" ? (
+                <button
+                  className="sec grn"
+                  data-testid={`check-in-${a.id}`}
+                  disabled={arriving !== null}
+                  onClick={() => void arrive(a.id)}
+                >
+                  {arriving === a.id ? "…" : t("registrationCounter.book.checkIn")}
+                </button>
+              ) : <span style={{ width: 74 }} />}
             </div>
           ))
         )}

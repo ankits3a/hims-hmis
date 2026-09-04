@@ -20,7 +20,11 @@ import type { WireDoctorSummary } from "./opd-api";
 export type RoutingRule = "continuity" | "shortest_wait" | "department_queue";
 
 /** What the server answers for rule 1 (`GET /opd/continuity`). */
-export type WireContinuityAnchor = { doctorId: string; doctorName: string; seenOn: string };
+export type WireContinuityAnchor = {
+  doctorId: string; doctorName: string; seenOn: string;
+  /** FD-17 — the doctor's prescribed tenure and what today would classify as under it. */
+  followUpDays: number; windowEndsOn: string; wouldBe: "new" | "revisit" | "renewal";
+};
 
 /**
  * THE 20-MINUTE RULE — owner, 2026-09-03: *"If the wait time exceeds 20 minutes, highlight the user

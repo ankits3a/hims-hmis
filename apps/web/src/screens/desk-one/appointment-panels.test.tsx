@@ -54,6 +54,9 @@ function mount(opts: {
   slots?: unknown[];
   appointments?: unknown[];
   booked?: { body: unknown }[];
+  anchor?: unknown;
+  theirs?: unknown[];
+  checkIns?: string[];
 } = {}): void {
   stubFetch({
     "GET /api/auth/me": {
@@ -86,9 +89,26 @@ function mount(opts: {
         scheduledToday: true, roomCode: "R1", avgConsultMinutes: 10, onLeaveToday: false,
       }],
     },
-    "GET /api/opd/continuity": { anchor: null },
+    "GET /api/opd/continuity": { anchor: opts.anchor ?? null },
     "GET /api/opd/slots": { slots: opts.slots ?? [] },
-    "GET /api/opd/appointments": { items: opts.appointments ?? [] },
+    /*
+      Two different reads land on this path — the DAY's book (doctorId + serviceDate) and THIS
+      PATIENT's bookings (patientId + status). `stubFetch` keys on the path without its query, so
+      one handler answers both and branches on what was asked for.
+    */
+    "GET /api/opd/appointments": (init?: RequestInit, url?: string) => (
+      String(url ?? "").includes("patientId=")
+        ? { items: opts.theirs ?? [] }
+        : { items: opts.appointments ?? [] }
+    ),
+    "POST /api/opd/appointments/11/check-in": () => {
+      opts.checkIns?.push("11");
+      return {
+        encounter: { id: "e-2", patientId: "pp-11", visitNo: "V2", departmentId: "d-1", doctorId: "doc-1", status: "registered" },
+        queueEntry: { id: "q-2", tokenNo: 3 }, tokenNo: 3, sessionId: "s-1", roomId: null,
+        visitType: "new", doctorScheduledToday: true,
+      };
+    },
     "POST /api/opd/appointments": (init?: RequestInit) => {
       opts.booked?.push({ body: JSON.parse(String(init?.body ?? "{}")) });
       return {
@@ -240,15 +260,16 @@ describe("FD-16: the slot grid says what is free, what is taken, and what you pi
   });
 });
 
-describe("FD-16: the day's book", () => {
-  const appt = (id: string, time: string, name: string, status = "booked"): unknown => ({
+const appt = (id: string, time: string, name: string, status = "booked"): unknown => ({
     id, patientId: `pp-${id}`, doctorId: "doc-1", departmentId: "d-1", serviceDate: tomorrowIst(),
     slotStart: `${tomorrowIst()}T${time}:00.000Z`, slotEnd: `${tomorrowIst()}T${time}:00.000Z`,
     status, source: "desk", note: null, encounterId: null, rescheduledToId: null,
     rescheduledFromId: null, cancelReason: null, leaveId: null, bookedBy: "u1",
     bookedAt: "2026-09-04T00:00:00.000Z", updatedBy: "u1", updatedAt: "2026-09-04T00:00:00.000Z",
-    patient: { requestedId: `pp-${id}`, id: `pp-${id}`, uhid: `U0011${id}`, name, alias: null, restricted: false, administrativeGender: "female", dob: null },
-  });
+  patient: { requestedId: `pp-${id}`, id: `pp-${id}`, uhid: `U0011${id}`, name, alias: null, restricted: false, administrativeGender: "female", dob: null },
+});
+
+describe("FD-16: the day's book", () => {
 
   it("lists who is booked that day, in time order", async () => {
     mount({ appointments: [appt("22", "11:30", "Sunita Devi"), appt("11", "09:15", "Asha Devi")] });
@@ -308,5 +329,107 @@ describe("FD-16: the day's book", () => {
     mount({ appointments: [] });
     await openFutureTab();
     expect(await screen.findByTestId("book-empty")).toBeInTheDocument();
+  });
+});
+
+describe("FD-17: the appointment's type, and the bookings the desk did not warn about", () => {
+  const ANCHOR = (wouldBe: string, days: number, ends: string): unknown => ({
+    doctorId: "doc-1", doctorName: "Dr. Verma", seenOn: "2026-08-30",
+    followUpDays: days, windowEndsOn: ends, wouldBe,
+  });
+
+  /**
+   * Owner: *"Usually if the patient is visiting same department under set revisit tenure, the
+   * patient would not be charged/billed."* That has always been true — `feeServiceFor` returns null
+   * for a revisit — and the clerk could not learn it until after the patient was seated.
+   */
+  it("says a revisit is free, and names the tenure the doctor set", async () => {
+    mount({ anchor: ANCHOR("revisit", 30, "2026-09-29") });
+    await holdPatient();
+
+    const badge = await screen.findByTestId("visit-type");
+    expect(badge).toHaveTextContent("Revisit — no consultation fee");
+    expect(badge).toHaveTextContent("30-day");
+    expect(badge).toHaveTextContent("2026-09-29");
+  });
+
+  it("says a renewal is chargeable, and why the window no longer covers it", async () => {
+    mount({ anchor: ANCHOR("renewal", 7, "2026-09-06") });
+    await holdPatient();
+
+    const badge = await screen.findByTestId("visit-type");
+    expect(badge).toHaveTextContent("chargeable");
+    expect(badge).toHaveTextContent("2026-09-06");
+  });
+
+  it("a patient never seen in this department gets no claim either way", async () => {
+    mount({ anchor: null });
+    await holdPatient();
+    expect(screen.queryByTestId("visit-type")).not.toBeInTheDocument();
+  });
+
+  /*
+    Owner: *"in future appointment, there's no warning for same patient booking another slot in the
+    same day."* `listPatientAppointments` — whose own comment calls it "the duplicate-booking
+    guard" — had no caller.
+  */
+  it("warns when this patient already holds a slot that day, and still allows it", async () => {
+    const tomorrow = tomorrowIst();
+    mount({
+      slots: [slot("10:30")],
+      theirs: [{
+        id: "a-9", patientId: "p-1", doctorId: "doc-1", departmentId: "d-1", serviceDate: tomorrow,
+        slotStart: `${tomorrow}T09:15:00.000Z`, slotEnd: `${tomorrow}T09:30:00.000Z`,
+        status: "booked", source: "desk", note: null, encounterId: null, rescheduledToId: null,
+        rescheduledFromId: null, cancelReason: null, leaveId: null, bookedBy: "u1",
+        bookedAt: "2026-09-04T00:00:00.000Z", updatedBy: "u1", updatedAt: "2026-09-04T00:00:00.000Z",
+      }],
+    });
+    await openFutureTab();
+
+    const warn = await screen.findByTestId("already-booked");
+    expect(warn).toHaveTextContent("already has 1 booking that day");
+    /*
+      09:15Z IS 14:45 IST, and asserting the IST face rather than the raw wire string is deliberate:
+      it pins that `slotClock` converts. A test that matched "09:15" would pass just as happily if
+      the desk printed UTC at an Indian counter.
+    */
+    expect(warn).toHaveTextContent("14:45");
+    // a WARNING, never a gate — two departments in one day is a real thing
+    await userEvent.setup({ delay: null }).click(screen.getAllByTestId("slot-free")[0]!);
+    expect(screen.getByTestId("confirm-slot")).toBeEnabled();
+  });
+
+  it("a booking on ANOTHER day is not a same-day clash", async () => {
+    mount({
+      slots: [slot("10:30")],
+      theirs: [{
+        id: "a-8", patientId: "p-1", doctorId: "doc-1", departmentId: "d-1", serviceDate: "2026-12-25",
+        slotStart: "2026-12-25T09:15:00.000Z", slotEnd: "2026-12-25T09:30:00.000Z",
+        status: "booked", source: "desk", note: null, encounterId: null, rescheduledToId: null,
+        rescheduledFromId: null, cancelReason: null, leaveId: null, bookedBy: "u1",
+        bookedAt: "2026-09-04T00:00:00.000Z", updatedBy: "u1", updatedAt: "2026-09-04T00:00:00.000Z",
+      }],
+    });
+    await openFutureTab();
+    expect(screen.queryByTestId("already-booked")).not.toBeInTheDocument();
+  });
+
+  /* `checkInAppointment` was the other client nothing called: a booked patient arriving had no door. */
+  it("a booked patient can be checked in from the day's book", async () => {
+    const checkIns: string[] = [];
+    mount({ appointments: [appt("11", "09:15", "Asha Devi")], checkIns });
+    await openFutureTab();
+
+    const user = userEvent.setup({ delay: null });
+    await user.click(await screen.findByTestId("check-in-11"));
+    await waitFor(() => expect(checkIns).toEqual(["11"]));
+  });
+
+  it("a patient already checked in is not offered check-in again", async () => {
+    mount({ appointments: [appt("11", "09:15", "Asha Devi", "checked_in")] });
+    await openFutureTab();
+    await screen.findAllByTestId("book-row");
+    expect(screen.queryByTestId("check-in-11")).not.toBeInTheDocument();
   });
 });

@@ -2611,6 +2611,17 @@
         "in_consultation": "with doctor",
         "awaiting_results": "awaiting results"
       }
+    },
+    "visitType": {
+      "revisit": "Revisit — no consultation fee",
+      "revisitWhy": "Within the {{days}}-day follow-up the doctor set; the window runs to {{until}}.",
+      "renewal": "Renewal — the consultation is chargeable",
+      "renewalWhy": "The {{days}}-day follow-up window ended on {{ended}}, so this counts as a fresh consultation."
+    },
+    "book": {
+      "alreadyBooked": "{{name}} already has {{count}} booking that day",
+      "alreadyBookedHint": "book a second only if it is genuinely a second appointment",
+      "checkIn": "check in"
     }
   },
   "vitalsBay": {
