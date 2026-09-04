@@ -26,6 +26,7 @@ FD-9 deleted that screen.
 | R4 | A **relay inside the hospital** is acceptable. | 2026-09-04 |
 | R5 | The A4 **keeps its blank vitals strip** for manual writing, despite R3's slip. | 2026-09-04 |
 | R6 | (Earlier, `PrinterChoice.dc.html`) Three printer classes; 4×6 label printers off the list for billing. | 2026-08-29 |
+| R7 | A print failure is **advisory, with a reprint option** — it does not block the counter. | 2026-09-04 |
 
 **Why browser printing was ruled out, recorded so it is not proposed again:** Chrome's
 `--kiosk-printing` prints silently to the machine's **default** printer and there is no browser API
@@ -98,9 +99,10 @@ FD-10/FD-11 already paid for getting Devanagari wrong on screen; a thermal print
 
 ## 5 · Open, needs the owner
 
-1. **Does a print failure block the counter, or is it advisory?** A patient can be sent to the doctor
-   on a spoken token; a hospital that stops taking money because a printer jammed is worse than one
-   that prints late. Default assumption if unanswered: **advisory**, loudly, with reprint.
+1. ~~Does a print failure block the counter?~~ **RULED (R7): advisory, with reprint.** A patient can
+   be sent to the doctor on a spoken token; a hospital that stops taking money because a printer
+   jammed is worse than one that prints late. T5 shows the failure on the screen and offers reprint;
+   nothing in the money or queue path waits on a printer.
 2. **The vitals slip needs an artboard** before T5.
 3. **Procurement:** all three printers should be **network** printers, not USB, so the relay reaches
    them without being physically attached. Worth specifying before they are bought.
