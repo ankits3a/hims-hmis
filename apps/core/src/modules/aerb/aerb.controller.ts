@@ -8,6 +8,10 @@ import { appointPerson, changeLicenceStatus, endAppointment, fileLicence } from 
 import { appointments, licenceRegister, unlicensedDevices } from "./read";
 import { qaRegister, recordQa } from "./qa";
 import { doseRegisterRows, patientCumulativeDose } from "./dose";
+import {
+  STATUTORY_LIMITS, badgeGaps, badgeReads, badgeRegister, closeBadge, investigationLevelPerMonth,
+  issueBadge, recordBadgeRead, setInvestigationLevel,
+} from "./badges";
 import { collectResourceKinds } from "../../kernel/resources/kinds";
 import { idSchema, isoDateSchema, parsed, toHttp } from "./aerb-http";
 import type { Actor } from "@hmis/contracts";
@@ -65,6 +69,29 @@ const qaBody = z.object({
   agencyRef: z.string().max(64).nullish(),
   values: z.record(z.string(), z.unknown()).optional(),
   nextDueOn: isoDateSchema.nullish(),
+  remarks: z.string().max(500).nullish(),
+});
+
+const issueBadgeBody = z.object({
+  userId: idSchema,
+  badgeNo: z.string().min(1).max(40),
+  issuedOn: isoDateSchema,
+  remarks: z.string().max(500).nullish(),
+});
+
+const closeBadgeBody = z.object({
+  status: z.enum(["returned", "lost"]),
+  onDate: isoDateSchema,
+});
+
+const badgeReadBody = z.object({
+  badgeId: idSchema,
+  periodStart: isoDateSchema,
+  periodEnd: isoDateSchema,
+  hp10Msv: z.number().nonnegative(),
+  hp007Msv: z.number().nonnegative().nullish(),
+  reportedOn: isoDateSchema,
+  labRef: z.string().max(64).nullish(),
   remarks: z.string().max(500).nullish(),
 });
 
@@ -197,6 +224,72 @@ export class AerbController {
     const window = months === undefined ? 12 : parsed(z.coerce.number().int().min(1).max(120), months);
     try {
       return await patientCumulativeDose(this.db, actor, id, { months: window });
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * PLAN 18c T4 — the badge book, its gaps, the statutory limits it is compared against, and the
+   * institution's own investigation level. All four in one answer, because a screen that showed a
+   * cumulative without saying what it was measured against would be showing a number.
+   */
+  @Get("badges")
+  @RequirePermission("aerb.registers.read", "hospital")
+  async badges(@Query("onDate") onDate?: string): Promise<unknown> {
+    const asOf = onDate === undefined ? undefined : parsed(isoDateSchema, onDate);
+    try {
+      return {
+        rows: await badgeRegister(this.db, asOf === undefined ? {} : { onDate: asOf }),
+        gaps: await badgeGaps(this.db, asOf === undefined ? {} : { onDate: asOf }),
+        reads: await badgeReads(this.db),
+        limits: STATUTORY_LIMITS,
+        investigationLevelMsvPerMonth: await investigationLevelPerMonth(this.db),
+      };
+    } catch (e) { toHttp(e); }
+  }
+
+  @Post("badges")
+  @RequirePermission("aerb.registers.manage", "hospital")
+  async issue(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(issueBadgeBody, body);
+    try {
+      return await withTx(this.db, (tx) => issueBadge(tx, actor, { ...input, remarks: input.remarks ?? null }));
+    } catch (e) { toHttp(e); }
+  }
+
+  @Post("badges/:id/close")
+  @RequirePermission("aerb.registers.manage", "hospital")
+  async close(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<unknown> {
+    const badgeId = parsed(idSchema, id);
+    const input = parsed(closeBadgeBody, body);
+    try {
+      await withTx(this.db, (tx) => closeBadge(tx, actor, badgeId, input.status, input.onDate));
+      return { ok: true };
+    } catch (e) { toHttp(e); }
+  }
+
+  /** One laboratory report. D9 — it records, it flags, and it changes nothing anywhere else. */
+  @Post("badges/reads")
+  @RequirePermission("aerb.registers.manage", "hospital")
+  async enterRead(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(badgeReadBody, body);
+    try {
+      return await withTx(this.db, (tx) => recordBadgeRead(tx, actor, {
+        ...input,
+        hp007Msv: input.hp007Msv ?? null,
+        labRef: input.labRef ?? null,
+        remarks: input.remarks ?? null,
+      }));
+    } catch (e) { toHttp(e); }
+  }
+
+  /** R3 — the owner's number, and it is DATA. The statutory limits above are not. */
+  @Post("settings/investigation-level")
+  @RequirePermission("aerb.registers.manage", "hospital")
+  async investigationLevel(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(z.object({ perMonthMsv: z.number().positive() }), body);
+    try {
+      await withTx(this.db, (tx) => setInvestigationLevel(tx, actor, input.perMonthMsv));
+      return { ok: true };
     } catch (e) { toHttp(e); }
   }
 

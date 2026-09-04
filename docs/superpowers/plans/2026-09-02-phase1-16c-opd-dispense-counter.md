@@ -188,15 +188,83 @@ identity, the tender, the cancel reason and the last refusal. The two-patient cy
   defence in depth over state that verify now refuses, and carries no test of its own rather than a
   fabricated one.
 
-**F11 — MAJOR, NOT FIXED, owner named: the pick reservation never expires.** D2 and
-`PICK_RESERVATION_MINUTES = 30` promise that a pick "holds a batch before the ledger may release it
-to somebody else". `pick.ts` writes `expiresAt`; **nothing in `apps/core/src` reads it** — no sweeper,
-no job, and `releaseReservation` is called only by decline and cancel. So an abandoned picked
-dispense holds `qty_reserved` for ever, and since `fefoPick`/`balances` subtract reserved stock, the
-counter reports short stock while the shelf is full. Recoverable by hand today (cancel releases).
-Not fixed here: the mechanism belongs in `materials` — a shared module whose manifest is census-
-pinned — and 16d already owns abandoned-dispense handling and the paid-not-collected refund path.
-**16d inherits it.** Until then the constant promises a behaviour that does not exist.
+**F11 — MAJOR, FIXED 2026-09-04 (this was recorded as "16d inherits it" and that call was
+reversed).** D2 and `PICK_RESERVATION_MINUTES = 30` promise that a pick "holds a batch before the
+ledger may release it to somebody else". `pick.ts` wrote `expires_at` from T4; **nothing in
+`apps/core/src` ever read it** — no sweeper, no job, and `releaseReservation` is called only by
+decline and cancel. An abandoned pick therefore held `qty_reserved` for ever, and because `fefoPick`
+and `balances` both subtract reserved stock, the counter reported short stock on a full shelf.
+
+It was deferred on the grounds that the mechanism belongs in `materials` (a shared, census-pinned
+module) and that 16d owns abandoned-dispense handling. **16d is gated on the IPD cluster's first
+plan, which does not exist**, so the deferral had no date on it — and this is a live defect in
+shipped code, not a missing feature. Closed here instead, entirely in the pharmacy module plus the
+worker registration every module's sweep uses.
+
+- **`sweepExpiredPicks`** (`modules/pharmacy/expiry.ts`), the worker's SIXTEENTH job, `every: 60_000`
+  — a cadence finer than the 30-minute window it enforces, as a literal rather than a new
+  `JobIntervals` key (widening that `Pick` is a type event that stops every census literal
+  compiling, and this job has no operator knob worth that).
+- **DECIDED — an expired pick is an abandoned one:** the stock goes back on the shelf and the
+  dispense is CANCELLED with the reason recorded, which is what D2 already describes. The patient
+  re-presents, the Rx is still active, and the same scan queues a fresh dispense. No new transition
+  and no new state: `picked → cancelled` is in the definition and `cancelDispense` already releases
+  every reservation, cancels every order item and closes the instance in one transaction.
+- **`billed` is never swept.** A paid-for medicine belongs to the patient; releasing that stock
+  would sell it twice. Paid-not-collected stays a REFUND path and stays 16d's (D8, §6).
+- Revert pairs: **R1** (drop the expiry clause) `1 failed / 1 passed` → 2 passed. **R2** (drop the
+  `status = 'picked'` filter) **SURVIVED — recorded, not hidden**: `cancelDispense` refuses a
+  `billed` dispense independently, so the protection is doubled and the suite asserts the outcome.
+  Per §5A.4's amendment the filter is KEPT with its caller enumeration written in as a comment: a
+  reservation is written only by `pickDispense`, which moves the dispense to `picked` in the same
+  transaction, so no road to a non-`picked` row exists **today** — which is not the same as none.
+
+**And a finding about the method, not the code: the job census tax is FIVE places, not four.** Every
+comment in the repo that names it says "`jobs.ts`, both censuses, `alerts.yml`, and that number" —
+four — and four separate plans have repeated it. Registering this job turned **five** tests red:
+`jobs.test.ts` (a count AND a last-position pin), `scheduler.test.ts` (`THE_SIXTEEN` and its spy
+list), `alerts-parity.test.ts` (sorted names AND a separate `toHaveLength`), `alerts.yml`, and
+`test/worker-runtime.e2e.test.ts`. The prediction has been undercounting itself since Plan 14, and
+`worker-runtime.e2e.test.ts` now says so at the point a sixth registrant will read it. The
+last-position assertion in `jobs.test.ts` was RETIRED rather than re-pointed at the newest job —
+pinning "last" makes every future registration edit that line for no assertion value.
+
+### 8.5b Second contract sweep, 2026-09-04 — a CRITICAL the first pass walked past
+
+Closing F11 meant reading `fefoPick`, and `pick.ts` turned out to check `recallStatus` on the
+explicitly-named batch path while trusting FEFO on the automatic one. That asymmetry was worth a
+question, and the answer was the worst defect in the phase.
+
+**C4 — CRITICAL (law, patient safety): the counter dispensed EXPIRED medicine by preference.**
+`fefoPick` excluded recalled batches (`recallStatus = 'none'`) from the start and ORDERED by
+`expiry_date asc nulls last` — it never EXCLUDED a date already past. First-expiring-first-out means
+the first batch offered is the most expired one the store holds, and `pickDispense` takes
+`offered[0]`. Proved at the counter before it was fixed: a Crocin batch dated **2026-08-01 was
+picked and reserved for a patient on 2026-08-17**, ahead of two good batches. Selling it is an
+offence under the Drugs and Cosmetics Act, and doc 16 §14 put "expired block" inside 16c's scope
+while §6 never listed it as deferred — so this is missing scope, not a deferral.
+
+Fixed where the recall exclusion already lives, as the same kind of clause: `fefoPick` takes the
+caller's clock (`asOf`, defaulted) and excludes `expiry_date < today`. `expiry_date` is the last day
+a batch may be used, so today's stock is still good; a NULL expiry is KEPT, because DD8 rule 3
+exempts whole item classes from carrying one and "none recorded" is not "expired". Expired stock
+stays transferable by NAMING its batch, which is how it reaches quarantine or destruction — a FEFO
+override skips the query. And when the pharmacist names an expired batch at the counter, they are
+told which batch and which date (`batch_expired`) rather than "cannot cover 20".
+
+- **R3** (drop the exclusion from `fefoPick`) — `2 failed / 8 passed` → 10 passed.
+- Blast radius measured, not assumed: **41 suites / 467 tests green** across `materials`, `ot`,
+  `pharmacy`, `materials.e2e` and `pharmacy.e2e` — `fefoPick`'s only other production caller is
+  `transfers.ts`, which has a named-batch path.
+- Tested where the guard lives (`ledger.test.ts` A10b) as well as at the counter: the batch expiring
+  TODAY is picked and the same batch is gone the next day.
+
+**What this says about the first pass.** The contract pass reads the plan's clauses against the
+code, and it found three defects that way. This one was NOT in D1–D10 or R-1..R-5 — the plan never
+wrote down "do not dispense expired stock", because nobody thinks to write it down. It surfaced only
+from an ODDITY in the code: one path checking recall and its sibling not. **A contract pass is
+bounded by what the contract happens to say; the asymmetries in the code are a second, independent
+index of things to ask about, and they are cheap to scan for.**
 
 ### 8.5a Evidence for the close
 core `modules/pharmacy` + `pharmacy.e2e`: **10 suites / 60 tests, all green** (57 before; +3 written

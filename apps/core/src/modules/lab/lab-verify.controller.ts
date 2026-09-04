@@ -7,7 +7,8 @@ import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { withIdempotency } from "../billing";
 import { deliveryAllowed } from "./interlock";
 import {
-  amendReport, getReport, listResultsForEncounter, printReport, publishReport, releaseUnpaid, reportVersions, deliveryRegister, reportsForPatient,
+  amendReport, getReport, listResultsForEncounter, listProvisionalResultsForEncounter,
+  printReport, publishReport, releaseUnpaid, reportVersions, deliveryRegister, reportsForPatient,
 } from "./reports";
 import { amendResult, requestRerun } from "./results";
 import { verifyResult } from "./verify";
@@ -280,5 +281,24 @@ export class LabVerifyController {
     @Param("encounterNo") encounterNo: string,
   ): Promise<unknown> {
     try { return await listResultsForEncounter(this.db, actor, encounterNo); } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * 17d T5 / D6 — THE UNSIGNED NUMBERS, ON THEIR OWN ROUTE. Design board EdgeCases #18: the doctor
+   * wants the values before the pathologist signs, which is a constant and legitimate request. A
+   * SEPARATE path, never a query parameter on the read above: a caller reaches unsigned values by
+   * asking for them and cannot arrive at them by forgetting a flag.
+   *
+   * The same permission as the signed read (`lab.results.read`) — this is not a MORE privileged
+   * fact, it is a less finished one, and gating it behind a second grant would send clinicians back
+   * to telephoning the bench, which is the practice this route exists to replace.
+   */
+  @Get("results/encounter/:encounterNo/provisional")
+  @RequirePermission("lab.results.read", "hospital")
+  async provisionalForEncounter(
+    @CurrentActor() actor: Actor,
+    @Param("encounterNo") encounterNo: string,
+  ): Promise<unknown> {
+    try { return await listProvisionalResultsForEncounter(this.db, actor, encounterNo); } catch (e) { toHttp(e); }
   }
 }

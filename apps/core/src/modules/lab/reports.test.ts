@@ -16,9 +16,11 @@ import {
 import { patientBalance } from "../billing";
 import { registerLabApprovalTypes, RELEASE_UNPAID_APPROVAL_TYPE } from "./approval-types";
 import {
-  amendReport, deliveryRegister, getReport, listResultsForEncounter, printReport, publishReport, releaseUnpaid, reportVersions, reportsForPatient,
+  amendReport, deliveryRegister, getReport, listResultsForEncounter,
+  listProvisionalResultsForEncounter, printReport, publishReport, releaseUnpaid, reportVersions,
+  reportsForPatient,
 } from "./reports";
-import { amendResult } from "./results";
+import { amendResult, enterResult } from "./results";
 import { verifyResult } from "./verify";
 import type { LabDeskFixture } from "../../../test/helpers/lab";
 import type { Db } from "../../kernel/db/client";
@@ -563,5 +565,96 @@ describe("the report centre (17c T5)", () => {
     const stranger = await mkUser(db, "lab.centre.stranger", []);
     await expect(reportsForPatient(db, stranger.actor, fx.patientId, AT)).rejects.toMatchObject({ code: "permission_denied" });
     await expect(deliveryRegister(db, stranger.actor, "2026-08-29")).rejects.toMatchObject({ code: "permission_denied" });
+  });
+
+  /* ═════ 17d T5 / D6 — THE UNSIGNED NUMBERS, ON THEIR OWN DOOR (design EdgeCases #18) ═════ */
+
+  /**
+   * The board's case: *"Doctor wants the numbers by phone before the pathologist signs."* That is a
+   * constant and legitimate request in an Indian hospital, and the honest answer is to show the
+   * numbers with the word `unverified` on them rather than to pretend they do not exist.
+   */
+  it("17d T5: the provisional reader returns the UNSIGNED values, each stamped verified:false", async () => {
+    const run = await runLabOrder(db, fx, ["TSH"], { at: AT, verify: false });
+    expect(run.resultIds.length).toBeGreaterThan(0);
+
+    /** The SIGNED door still says there is nothing — the pathologist has not signed. */
+    expect(await listResultsForEncounter(db, fx.pathologist.actor, fx.encounterNo, AT)).toEqual([]);
+
+    const provisional = await listProvisionalResultsForEncounter(db, fx.pathologist.actor, fx.encounterNo, AT);
+    expect(provisional.length).toBeGreaterThan(0);
+    // THE KILL: a row that does not carry its own unsignedness is one careless spread from
+    // looking exactly like a signed one.
+    expect(provisional.every((r) => r.verified === false)).toBe(true);
+    // Who keyed it and when — what makes an unsigned number safe to look at.
+    expect(provisional[0]!.enteredById).toBe(fx.bench.id);
+    expect(provisional[0]!.enteredAt).toBe(AT.toISOString());
+    expect(provisional[0]!.analyteCode).toBe("TSH");
+  });
+
+  it("17d T5: once SIGNED, the value leaves the provisional door and appears on the signed one", async () => {
+    const run = await runLabOrder(db, fx, ["TSH"], { at: AT });
+    expect(run.resultIds.length).toBeGreaterThan(0);
+    expect(await listProvisionalResultsForEncounter(db, fx.pathologist.actor, fx.encounterNo, AT)).toEqual([]);
+    expect((await listResultsForEncounter(db, fx.pathologist.actor, fx.encounterNo, AT)).length)
+      .toBeGreaterThan(0);
+  });
+
+  /**
+   * ═══ THE MUTANT THAT SURVIVED, AND THE TEST IT ASKED FOR ═══
+   *
+   * `!= 'verified'` in place of `= 'unverified'` passed every other assertion in this file, because
+   * nothing in the fixture — or in the product — ever writes an `autoverified` row: auto-verification
+   * shipped with zero rules (17b DD8). The two filters are therefore indistinguishable on today's
+   * data and would diverge the day the first rule is switched on, which is the worst moment to find
+   * out. `verification_status` admits THREE values and the reader must mean the one it names.
+   *
+   * The row is written directly because there is no writer for it yet. `lab_results` enforces
+   * `(verification_status = 'unverified') = (verified_by is null)`, so an autoverified row must
+   * carry a verifier — which is exactly what makes it a SIGNED result rather than a provisional one.
+   */
+  it("17d T5: an AUTOVERIFIED result is signed by rule and is NOT provisional", async () => {
+    const run = await runLabOrder(db, fx, ["TSH"], { at: AT, verify: false });
+    await db.update(labResults)
+      .set({ verificationStatus: "autoverified", verifiedBy: fx.pathologist.id, verifiedAt: AT })
+      .where(eq(labResults.id, run.resultIds[0]!));
+
+    const provisional = await listProvisionalResultsForEncounter(db, fx.pathologist.actor, fx.encounterNo, AT);
+    // THE KILL: `!= 'verified'` returns the autoverified row and calls a signed value provisional.
+    expect(provisional.map((r) => r.orderItemId)).not.toContain(
+      (await db.select({ id: labResults.orderItemId }).from(labResults)
+        .where(eq(labResults.id, run.resultIds[0]!)))[0]!.id,
+    );
+  });
+
+  /**
+   * A re-keyed value supersedes the row it replaces (`results.ts`'s M3 chain). A doctor reading
+   * every attempt would be reading the laboratory's working-out rather than its current answer.
+   */
+  it("17d T5: a re-keyed value REPLACES its predecessor on the provisional door, never joins it", async () => {
+    const run = await runLabOrder(db, fx, ["TSH"], { at: AT, verify: false, values: { TSH: "2.1" } });
+    const first = await listProvisionalResultsForEncounter(db, fx.pathologist.actor, fx.encounterNo, AT);
+    const tsh = first.find((r) => r.analyteCode === "TSH")!;
+    expect(tsh.value).toBe("2.1000");
+
+    const analyte = (await db.select({ id: labAnalytes.id }).from(labAnalytes)
+      .where(eq(labAnalytes.code, "TSH")))[0]!;
+    await enterResult(db, fx.bench.actor, {
+      orderItemId: tsh.orderItemId, analyteId: analyte.id, value: "5.5", entryMode: "manual",
+    }, AT);
+
+    const after = await listProvisionalResultsForEncounter(db, fx.pathologist.actor, fx.encounterNo, AT);
+    const tshRows = after.filter((r) => r.analyteCode === "TSH");
+    expect(tshRows).toHaveLength(1); // THE KILL: 2 — the working-out shown as two live answers
+    expect(tshRows[0]!.value).toBe("5.5000");
+  });
+
+  /** The same PHI rule as the signed read, under its OWN surface name — see `phi/audit.ts`. */
+  it("17d T5: reading provisional values is logged under `lab.results.provisional`", async () => {
+    await runLabOrder(db, fx, ["TSH"], { at: AT, verify: false });
+    await listProvisionalResultsForEncounter(db, fx.pathologist.actor, fx.encounterNo, AT);
+    const logged = await db.select().from(phiAccessLog)
+      .where(eq(phiAccessLog.surface, "lab.results.provisional"));
+    expect(logged).toHaveLength(1); // THE KILL: 0 — an unsigned disclosure nobody can audit
   });
 });

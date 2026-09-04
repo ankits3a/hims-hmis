@@ -19,6 +19,7 @@ import { istDayString } from "../approvals/cumulative";
 import { collectDeskProviders } from "../desk/registry";
 import { rollupAll } from "../desk/rollup";
 import { sweepInterfaceHeartbeats } from "../ops/interfaces";
+import { sweepExpiredPicks } from "../../modules/pharmacy";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
 
@@ -393,5 +394,27 @@ export function registerAllJobs(
     name: "sweepLabSla",
     every: intervals.workerLabSweepIntervalMs,
     run: async (now) => { await sweepLabSla(db, now); },
+  });
+  /**
+   * PLAN 16c CLOSE / F11 — THE SIXTEENTH JOB, and it exists because a constant lied.
+   *
+   * `PICK_RESERVATION_MINUTES = 30` and D2 promised that a pharmacy pick releases its batch if the
+   * patient never pays. `pick.ts` wrote `expires_at`; nothing read it. An abandoned pick therefore
+   * held `qty_reserved` for ever, and because `fefoPick` and `balances` both subtract reserved
+   * stock, the counter reported short stock on a full shelf.
+   *
+   * EVERY MINUTE, not daily: the window it enforces is thirty minutes, and a sweep coarser than the
+   * thing it measures cannot enforce it. The literal cadence follows `flagLateSurgeons` (Plan 15
+   * T4) rather than a new config key — widening `JobIntervals` is a type event that stops every
+   * census literal in the suite from compiling, and this job has no operator knob worth that.
+   *
+   * It takes `orderKinds` for the same reason `sweepLabNonReturn` does: cancelling a dispense
+   * cancels its `medication` order items, and `advanceOrderItem` validates against the INSTALLED
+   * manifests' declarations rather than a captured constant.
+   */
+  scheduler.register({
+    name: "sweepExpiredPharmacyPicks",
+    every: 60_000,
+    run: async (now) => { await sweepExpiredPicks(db, orderKinds, now); },
   });
 }
