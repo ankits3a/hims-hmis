@@ -524,3 +524,170 @@ own number held: one fix in six was incomplete and one was wrong.**
 dead mutants did not. Pass 2 found that one of pass 1's fixes was worse than the defect, that a
 CRITICAL was half-closed, and that four of the tests written to prove the fixes proved nothing.
 **Neither pass found anything by running tests. Both found everything by reading.**
+
+---
+
+## 9. T6 — THE AERB WRITE SURFACE (added 2026-09-04, after the two close passes)
+
+§8.5 recorded it as a MAJOR left unfixed and §8.8 declared it as the phase's largest open item:
+**there was no write surface in the web app at all.** Nine `aerb.registers.manage` routes existed
+and none was reachable but by hand-rolled HTTP. This is that task.
+
+### 9.1 What was already there — measured, not assumed
+
+The dispatch that opened this task assumed hours of server work then twenty minutes of shared
+files. **It is inverted, and three of the four "shared" files were fiction:**
+
+| assumed | measured |
+|---|---|
+| nine endpoints to build | **all nine exist**, with DTOs, zod bodies, guards and tests |
+| `scripts/seed-roles.ts` grant | `aerb.registers.manage` already granted to `radiation_safety_officer` (`seed-roles.ts:1151`) |
+| a new SPA route in `router.tsx` | `/radiology/radiation-safety` exists with five tabs; forms go inside them |
+| `caddyfile-parity.test.ts` count | pins the single `/api` prefix and SPA routes. An API route moves nothing |
+
+Reading the repo before touching it removed three files from the shared-surface contention and, per
+the orchestrator, dissolved a lane collision that had been scheduled around.
+
+### 9.2 DECIDED — D13…D18, none of them money, procurement or law
+
+- **D13 — Inline disclosure forms per tab, not modals.** At go-live the RSO files a dozen licences
+  in one sitting, working down the gap list. A modal per row hides the list being worked down.
+- **D14 — The gap list is the landing surface.** Every row of the red "machines emitting with no
+  licence" block carries its own *file a licence*, and the form opens beneath it with the machine
+  already chosen. That is the deploy blocker's own workflow (runbook §0).
+- **D15 — `canManage` rides the read; the client renders what the server said.** 18b's close review
+  settled this one register over (MAJOR B4: an "Open images" button that 403'd). It rides the FOUR
+  reads that have a write behind them; the dose register and the calendar carry no flag, because a
+  flag on them would be a claim about a form that does not exist.
+- **D16 — The register serves its own pickers** (`GET /aerb/pickers`, behind the PEN not the book).
+  The RSO holds neither `resources.read` nor `auth.users.manage`, so a device or staff dropdown
+  built on those doors renders empty for the one person the screen is for. Widening the RSO's role
+  to hold the whole estate tree in order to fill a dropdown was considered and rejected: a
+  permission granted for a dropdown is a permission nobody can later reason about. `licensable` is
+  the SERVER's verdict, from the same list the gap check reads.
+- **D17 — Field order follows the certificate**, not the schema: licence no., type, eLORA ref, type
+  approval, layout approval, validity, RSO.
+- **D18 — Refusals show the server's own `code: message`.** `device_not_licensed`,
+  `licence_already_active`, `already_occupied` and `read_already_recorded` are each a sentence with
+  an action in it.
+
+### 9.3 One decision about who holds the pen
+
+`assertMayManage` was written three times — `licences.ts`, `qa.ts`, `badges.ts` — each over its own
+`const MANAGE = "aerb.registers.manage"`. T6 needs the same decision as a READABLE predicate, and a
+fourth copy for the read side is precisely how the client's answer and the server's drift apart. New
+`aerb/access.ts` holds one permission string, one predicate (`mayManage`) and one refusal
+(`requireManage`); each caller keeps its own sentence for a system actor, because *"a badge is
+issued to a person by a person"* is not interchangeable with *"a QA result is recorded by a person
+— a system actor cannot stop or release a machine"*. **Shared decision, separate sentences.**
+
+### 9.4 The three close-review findings guarded where they would come back
+
+- **A renewal is the next window, not a surrender** (pass 2's WRONG). The renewal control defaults
+  `validFrom` to the day AFTER the outgoing certificate expires, states in the form that the
+  certificate in force stays in force, and **the test asserts on an ABSENCE**: no status call is
+  made at all, and the body carries no `supersedesLicenceId`.
+- **A QA fail stops the machine**, and the form says so, naming it, before the record is sent. The
+  `already_occupied` refusal is rendered rather than swallowed into a green tick.
+- **The dose register gets no writer.** Written by the source inside its own transaction (D5), and
+  the one PHI surface (D7) — pass 2 found the UHID going out raw beside a confidential patient's
+  alias. A form here is the obvious way to hand it straight back, so a test pins its absence.
+
+**And one trap this form could have walked into on its own: a badge reading of ZERO** is the
+commonest result in a well-run department, and the obvious spelling of "has this field been filled
+in" — `Number(hp10) > 0` — rejects exactly that. A form that cannot record a zero forces the RSO to
+invent a number or skip the entry, and a skipped entry becomes a badge gap the register then reports
+as unmonitored exposure.
+
+### 9.5 Fail-first — the revert pairs, and what they found
+
+Every new guard was neutralised and counted. **A guard whose removal changes nothing is not a
+guard.**
+
+| # | mutant | expected | result |
+|---|---|---|---|
+| — | the whole T6 source reverted, tests kept | the new legs go red | **11 of 13 red**, 32 passed |
+| M1 | `hp10Given` → `Number(hp10) > 0` | the ZERO leg dies | **killed** |
+| M2 | the renew button also surrenders the outgoing row (pass 2's WRONG, restored) | the renewal leg dies | **killed** |
+| M3 | the licences tab decides its own authority | the `canManage` leg dies | **killed** |
+| M4 | a `canManage`-guarded form added to the dose tab | the dose-absence leg dies | **SURVIVED — see below** |
+| M4b | the same form rendered UNCONDITIONALLY on the dose tab | " | **killed** |
+| M5 | a bare UHID field added to the dose tab, nothing else | " | **killed** |
+| C1 | `canManage: true` in all four controller sites | the e2e leg dies | **killed** |
+| C2 | `GET /aerb/pickers` moved from the pen to the book | " | **killed** |
+| C3 | `licensable: true` for every device | " | **killed** |
+
+**Two findings worth carrying, and neither came from a failing test.**
+
+1. **The whole-revert left 2 of 13 green, and both are the ABSENCE tests** — "no write control when
+   the reader may not write" and "no writer on the dose tab". That is not a defect in them; it is
+   what an absence test IS. Deleting the feature satisfies "the feature is not here" trivially.
+   **An absence test is invisible to a revert pair and can only be proven by a mutant that ADDS the
+   thing it forbids.** Both were then proven that way. A close review that runs only the revert
+   would have marked both vacuous and been wrong; one that runs only the revert and marks them
+   *proven* would have been wrong in the more expensive direction.
+2. **M4 survived for a reason worth keeping.** `canManage` is derived per tab and has **no arm for
+   `dose` or `calendar`**, so it is false there by construction — a `canManage`-guarded form on the
+   dose tab renders nothing and the mutant neutralised itself. That is a second, structural guard
+   nobody wrote down: the PHI register cannot grow a writer by the ordinary route, only by an
+   unguarded one. M4b and M5 took the unguarded route and both died.
+
+### 9.6 Evidence
+
+| batch | counts |
+|---|---|
+| core — `test/` ENTIRE + `src/modules/aerb` + `src/modules/radiology` (the lane's batch, §4.3 of the handoff) | **78 suites / 797 tests, exit 0** |
+| full `@hmis/web` | **82 files / 699 tests, exit 0** |
+| static | tsc 0, lint 0 errors (2 pre-existing warnings, neither in a touched file) |
+| locale sweep | 131 literal `t()` keys resolve to STRINGS in both `en` and `hi`; all 9 template families' arms checked by hand; 0 orphan `aerb.write` leaves |
+
+Run under the orchestrator's mutex, one runner at a time, on the branch tip. No migration, so the
+lane databases were not dropped and did not need to be.
+
+### 9.7 Stated limits, rather than left to be discovered
+
+- **The QA form collects no `values` map.** The measured numbers live on the physicist's QA
+  certificate; a free-text JSON blob typed at the desk is a 500 waiting for a missing brace. The
+  register records that the test happened, its verdict, who performed it and when the next is due.
+  The route still accepts `values`, so a later importer can carry the numbers without a change here.
+- **A licence FEE and any procurement commitment remain the owner's** (§7, unchanged).
+- **`GET /aerb/pickers` ships every active user**, ordered by name, behind
+  `aerb.registers.manage`. At this hospital's scale that is a short list; a hospital with thousands
+  of staff would want it searched server-side, and that is the phase that adds the search.
+- **The status-change form offers no `decommissionRef`.** It is on the route and null from the
+  screen; a surrender that needs the decommissioning reference is a slice of its own.
+
+### 9.8 WHAT T6 DOES **NOT** DO — the deploy is still blocked
+
+**T6 makes licence entry POSSIBLE. It does not make it DONE.** Before 18c can go live somebody has
+to enter every ionising machine's certificate — number, validity dates, machine mapping — through
+this screen, and then see `GET /aerb/licences/gaps?onDate=<today>` come back **empty** (runbook §0).
+That is a real-world task against physical AERB certificates and the data is the owner's to supply.
+Until it is done, deploying 18c stops the CT, the DR units, the mammography unit and the fluoroscopy
+suite the moment the migration lands — which is D3 working exactly as designed, and is why this note
+is here rather than in a commit message nobody re-reads.
+
+### 9.9 THE RUNBOOK WAS TELLING A HUMAN TO DO THE THING PASS 2 FIXED
+
+Found by reading `docs/runbooks/radiation-safety-go-live.md` while wiring the renewal control, not
+by any test. §2 said, in bold:
+
+> **One active licence per device**, enforced by a partial unique index. A renewal is *suspend or
+> surrender the old row, then file the new one* — never two live rows.
+
+**That is pass 2's WRONG, written as an instruction.** Migration `0065` deleted that index and
+replaced the invariant precisely because surrendering the outgoing certificate to file the incoming
+one leaves the machine dark for the rest of the window, with no way back — `surrendered` is
+terminal. The code was fixed on 2026-09-04; the document that tells a human what to do at go-live
+still said the old thing, and go-live is the one moment somebody reads it start to finish and does
+exactly what it says.
+
+**The lesson is not "update the docs".** It is that a close-review pass which changes an INVARIANT
+has to sweep for every place the old invariant was WRITTEN DOWN, not only where it was enforced.
+The index, the service, the test and the wire comment were all corrected in one commit. The runbook
+was not in the Files list of any task, so nothing pointed at it.
+
+Also corrected while there: the precondition table said migrations `0060`–`0063` when the phase
+shipped `0060`–`0065`, and every register's section printed raw HTTP because when it was written
+there was no screen. A new §8 says which permission puts the forms on the screen and what to check
+when they are missing.

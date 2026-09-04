@@ -902,7 +902,10 @@ describe("the AERB write surface (18c T6)", () => {
     await userEvent.click(screen.getByTestId("aerb-read-submit"));
     await waitFor(() => { expect(sentBodies(RECORD_READ)).toHaveLength(1); });
     expect(sentBodies(RECORD_READ)[0]).toMatchObject({
-      badgeId: "B1", periodStart: "2026-04-01", periodEnd: "2026-06-30", hp10Msv: 0, hp007Msv: null,
+      badgeId: "B1", periodStart: "2026-04-01", periodEnd: "2026-06-30", hp10Msv: 0,
+      /** An untouched optional field is null on this form too — including `remarks`, which every
+       *  other form on the screen offered and this one used to hardcode away. */
+      hp007Msv: null, labRef: null, remarks: null,
     });
   });
 
