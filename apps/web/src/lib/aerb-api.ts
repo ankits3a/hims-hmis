@@ -54,8 +54,21 @@ export type WireAppointment = {
   active: boolean;
 };
 
-export function fetchLicences(includeInactive: boolean): Promise<{ rows: WireLicence[] }> {
-  return api<{ rows: WireLicence[] }>("GET", `/aerb/licences?includeInactive=${String(includeInactive)}`);
+/**
+ * PLAN 18c T6 — **`canManage` ARRIVES ON THE BOOK; THE SCREEN NEVER GUESSES AT IT.**
+ *
+ * 18b's close review (MAJOR B4) found the receptionist's console rendering an "Open images" button
+ * that 403'd, and the fix was `canOpenImages` on the study view. This is that fix on this register:
+ * a quality manager showing an inspector the file holds `aerb.registers.read` and not the pen, and
+ * a screen that decided for itself would either hide the RSO's forms or offer forms that refuse.
+ *
+ * It rides the four reads that HAVE a write behind them. The dose register and the calendar carry
+ * no flag, because there is no form on either.
+ */
+export type WireLicenceBook = { rows: WireLicence[]; canManage: boolean };
+
+export function fetchLicences(includeInactive: boolean): Promise<WireLicenceBook> {
+  return api<WireLicenceBook>("GET", `/aerb/licences?includeInactive=${String(includeInactive)}`);
 }
 
 export function fetchLicenceGaps(onDate: string): Promise<{ rows: WireLicenceGap[] }> {
@@ -80,8 +93,10 @@ export type WireQaRecord = {
   remarks: string | null;
 };
 
-export function fetchQaRecords(): Promise<{ rows: WireQaRecord[] }> {
-  return api<{ rows: WireQaRecord[] }>("GET", "/aerb/qa");
+export type WireQaBook = { rows: WireQaRecord[]; canManage: boolean };
+
+export function fetchQaRecords(): Promise<WireQaBook> {
+  return api<WireQaBook>("GET", "/aerb/qa");
 }
 
 export type WireDoseRow = {
@@ -197,6 +212,7 @@ export type WireBadgeBook = {
   /** The statutory numbers, so a screen never states a limit the server did not. */
   limits: { annualMsv: number; fiveYearAverageMsv: number; fiveYearTotalMsv: number };
   investigationLevelMsvPerMonth: number;
+  canManage: boolean;
 };
 
 export function fetchBadges(): Promise<WireBadgeBook> {
@@ -218,8 +234,152 @@ export function fetchCalendar(includeOk: boolean): Promise<{ rows: WireCalendarR
   return api<{ rows: WireCalendarRow[] }>("GET", `/aerb/calendar?includeOk=${String(includeOk)}`);
 }
 
-export function fetchAppointments(): Promise<{ rows: WireAppointment[] }> {
-  return api<{ rows: WireAppointment[] }>("GET", "/aerb/persons");
+export type WireAppointmentBook = { rows: WireAppointment[]; canManage: boolean };
+
+export function fetchAppointments(): Promise<WireAppointmentBook> {
+  return api<WireAppointmentBook>("GET", "/aerb/persons");
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════ */
+/*  PLAN 18c T6 — THE WRITE HALF. Nine routes, transcribed the way the reads above are.            */
+/* ══════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * ═══ THE PICKERS COME FROM THE REGISTER, NOT FROM THE RESOURCE TREE ═══
+ *
+ * The RSO holds `aerb.registers.manage` and neither `resources.read` nor `auth.users.manage`, so
+ * the device and staff lists a form needs are served by this module behind its own door. `read.ts`
+ * carries the argument. `licensable` is the SERVER's answer to "does AERB licence this machine at
+ * all" — the same list the gap check reads, never re-derived here.
+ */
+export type WireDeviceChoice = {
+  resourceId: string;
+  code: string;
+  name: string;
+  modality: string;
+  status: string;
+  licensable: boolean;
+};
+
+export type WireUserChoice = { userId: string; fullName: string };
+
+export function fetchAerbPickers(): Promise<{ devices: WireDeviceChoice[]; users: WireUserChoice[] }> {
+  return api<{ devices: WireDeviceChoice[]; users: WireUserChoice[] }>("GET", "/aerb/pickers");
+}
+
+/**
+ * ═══ A RENEWAL IS THE NEXT WINDOW, NOT A SURRENDER ═══
+ *
+ * There is no `supersedesLicenceId` and there must never be one again. Pass 2 of 18c's close review
+ * found the fix that added it surrendered the outgoing certificate the moment the incoming one was
+ * filed — so entering the 2027 licence in November left the CT with **no licence in force on 20
+ * November**, every ionising study refused from the day the paperwork arrived until 1 January, with
+ * no way back because `surrendered` is terminal. A device holds a SEQUENCE of certificates with
+ * non-overlapping validity and *which is in force* is a function of the date. Filing next year's
+ * touches nothing of this year's.
+ */
+export type FileLicenceBody = {
+  deviceResourceId: string;
+  licenceType: string;
+  licenceNo: string;
+  eloraRef: string | null;
+  typeApprovalRef: string | null;
+  layoutApprovalRef: string | null;
+  validFrom: string;
+  validTo: string;
+  rsoUserId: string | null;
+  remarks: string | null;
+};
+
+export function fileLicence(body: FileLicenceBody): Promise<{ licenceId: string }> {
+  return api<{ licenceId: string }>("POST", "/aerb/licences", body);
+}
+
+export function changeLicenceStatus(
+  licenceId: string, to: "active" | "suspended" | "surrendered",
+  opts: { reason: string | null; decommissionRef: string | null },
+): Promise<{ ok: true }> {
+  return api<{ ok: true }>("POST", `/aerb/licences/${licenceId}/status`, { to, ...opts });
+}
+
+export type AppointPersonBody = {
+  userId: string;
+  personRole: string;
+  approvalRef: string | null;
+  qualification: string;
+  validFrom: string;
+  validTo: string | null;
+};
+
+export function appointPerson(body: AppointPersonBody): Promise<{ personId: string }> {
+  return api<{ personId: string }>("POST", "/aerb/persons", body);
+}
+
+export function endAppointment(personId: string): Promise<{ ok: true }> {
+  return api<{ ok: true }>("POST", `/aerb/persons/${personId}/end`, {});
+}
+
+/**
+ * ═══ A `fail` STOPS THE MACHINE, IN THE SAME TRANSACTION ═══
+ *
+ * `blocked` comes back true when this record drove the device into `qa_blocked`, and
+ * `releasedRecordId` names the failure a pass cleared. Both are rendered: a write whose whole
+ * consequence is invisible is a write the RSO has to go and verify somewhere else.
+ *
+ * A `fail` on a machine with a patient on the table is REFUSED (`already_occupied`, 409) and the
+ * record rolls back with it. That refusal is shown, never swallowed.
+ */
+export type RecordQaBody = {
+  deviceResourceId: string;
+  qaType: string;
+  result: string;
+  performedBy: string;
+  performedOn: string;
+  agencyRef: string | null;
+  nextDueOn: string | null;
+  remarks: string | null;
+};
+
+export function recordQa(
+  body: RecordQaBody,
+): Promise<{ recordId: string; blocked: boolean; releasedRecordId: string | null }> {
+  return api<{ recordId: string; blocked: boolean; releasedRecordId: string | null }>("POST", "/aerb/qa", body);
+}
+
+export type IssueBadgeBody = { userId: string; badgeNo: string; issuedOn: string; remarks: string | null };
+
+export function issueBadge(body: IssueBadgeBody): Promise<{ badgeId: string }> {
+  return api<{ badgeId: string }>("POST", "/aerb/badges", body);
+}
+
+export function closeBadge(
+  badgeId: string, status: "returned" | "lost", onDate: string,
+): Promise<{ ok: true }> {
+  return api<{ ok: true }>("POST", `/aerb/badges/${badgeId}/close`, { status, onDate });
+}
+
+export type RecordBadgeReadBody = {
+  badgeId: string;
+  periodStart: string;
+  periodEnd: string;
+  hp10Msv: number;
+  hp007Msv: number | null;
+  reportedOn: string;
+  labRef: string | null;
+  remarks: string | null;
+};
+
+export function recordBadgeRead(
+  body: RecordBadgeReadBody,
+): Promise<{ readId: string; investigation: boolean; investigationLevelMsv: number }> {
+  return api<{ readId: string; investigation: boolean; investigationLevelMsv: number }>(
+    "POST", "/aerb/badges/reads", body,
+  );
+}
+
+/** D10 — the statutory limits are constants in the server; THIS number is institutional policy. */
+export function setInvestigationLevel(perMonthMsv: number): Promise<{ ok: true }> {
+  return api<{ ok: true }>("POST", "/aerb/settings/investigation-level", { perMonthMsv });
 }
 
 /**

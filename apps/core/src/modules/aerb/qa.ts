@@ -1,11 +1,11 @@
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
-import { hasPermission } from "../../kernel/auth/permissions";
 import { changeResourceStatus } from "../../kernel/resources/registry";
 import { istDayString } from "../../kernel/approvals/cumulative";
 import { QA_RESULTS, qaRecords } from "../../kernel/db/schema/aerb";
 import { resources } from "../../kernel/db/schema/resources";
 import { AerbError } from "./errors";
+import { requireManage } from "./access";
 import type { ResourceKindDecl } from "../../kernel/resources/kinds";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
@@ -40,7 +40,6 @@ import type { QaResult } from "../../kernel/db/schema/aerb";
  * inspector's print. The RSO blocks; the calendar tells them to.
  */
 
-const MANAGE = "aerb.registers.manage";
 
 export type QaRecordRow = typeof qaRecords.$inferSelect;
 
@@ -54,16 +53,14 @@ function isRealDate(value: string): boolean {
   return parsed.getUTCFullYear() === y && parsed.getUTCMonth() === m - 1 && parsed.getUTCDate() === d;
 }
 
+/**
+ * T6 — the DECISION is `access.ts`'s and is made in exactly one place; this file keeps only the
+ * sentence a machine gets when it tries to write the QA register.
+ */
 async function assertMayManage(exec: Db | Tx, actor: Actor): Promise<void> {
-  if (actor.type !== "user") {
-    throw new AerbError(
-      "not_appointed",
-      "a QA result is recorded by a person — a system actor cannot stop or release a machine",
-    );
-  }
-  if (!(await hasPermission(exec as Db, actor.id, MANAGE, "hospital"))) {
-    throw new AerbError("not_appointed", `${actor.id} does not hold ${MANAGE}`, { permission: MANAGE });
-  }
+  await requireManage(exec, actor, 
+    "a QA result is recorded by a person — a system actor cannot stop or release a machine",
+  );
 }
 
 export interface RecordQaInput {

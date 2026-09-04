@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { renderWithProviders } from "../test-utils";
@@ -549,5 +549,489 @@ describe("the radiation-safety register (18c T1)", () => {
     await userEvent.click(await screen.findByTestId("aerb-tab-qa"));
     expect(await screen.findByTestId("aerb-qa-Q1")).toHaveTextContent("machine stopped");
     expect(screen.getByTestId("aerb-qa-Q2")).toHaveTextContent("stopped, then released");
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════ */
+/*  PLAN 18c T6 — THE WRITE SURFACE                                                                */
+/* ══════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * ═══ WHAT THESE TESTS GUARD, AND WHY EACH ONE IS HERE ═══
+ *
+ * T6 exists because 18c shipped nine `aerb.registers.manage` routes and no way to reach any of
+ * them. The register could be READ and not WRITTEN, which is why the phase is code-complete and
+ * still cannot be deployed: an ionising study on a machine with no licence on file is refused from
+ * the moment 18c lands (D3), and there was no screen to put a licence there.
+ *
+ * Three of these legs guard defects the two close-review passes already paid for, in the place
+ * where they would come back:
+ *
+ *   · **the renewal that stopped the machine** — pass 2's WRONG. Filing next year's certificate
+ *     must not touch this year's, so the assertion is on the ABSENCE of a status call.
+ *   · **`canManage` decided by the server** — 18b's MAJOR B4, one register over.
+ *   · **a refusal rendered as the server's own sentence** rather than swallowed into a green tick.
+ *
+ * And one leg guards a trap this form could have walked into on its own: **a badge reading of ZERO
+ * is a real and common result**, so "is this field filled in" cannot be `Number(hp10) > 0`.
+ */
+const PICKERS = "GET /api/aerb/pickers";
+const FILE_LICENCE = "POST /api/aerb/licences";
+const RECORD_QA = "POST /api/aerb/qa";
+const APPOINT = "POST /api/aerb/persons";
+const ISSUE_BADGE = "POST /api/aerb/badges";
+const RECORD_READ = "POST /api/aerb/badges/reads";
+const SET_LEVEL = "POST /api/aerb/settings/investigation-level";
+
+const PICKER_BOOK = {
+  devices: [
+    { resourceId: "D1", code: "CT-1", name: "CT machine", modality: "ct", status: "available", licensable: true },
+    { resourceId: "D2", code: "DR-1", name: "DR machine", modality: "xray", status: "available", licensable: true },
+    { resourceId: "D3", code: "MRI-1", name: "MRI", modality: "mri", status: "available", licensable: false },
+  ],
+  users: [{ userId: "U1", fullName: "Manoj Bhat" }, { userId: "U2", fullName: "S. Iyer" }],
+};
+
+const GAP_DR = { deviceResourceId: "D2", code: "DR-1", name: "DR machine", modality: "xray" };
+
+/** The recorded requests, so a test can assert what was SENT rather than only what was rendered. */
+function sentBodies(key: string): Record<string, unknown>[] {
+  const mock = globalThis.fetch as unknown as {
+    mock: { calls: [RequestInfo | URL, RequestInit | undefined][] };
+  };
+  return mock.mock.calls
+    .filter(([input, init]) => {
+      const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      return `${init?.method ?? "GET"} ${raw.split("?")[0]!}` === key;
+    })
+    .map(([, init]) => JSON.parse(String(init?.body ?? "null")) as Record<string, unknown>);
+}
+
+/** Every request path this render made, method included — for asserting a call did NOT happen. */
+function requestedKeys(): string[] {
+  const mock = globalThis.fetch as unknown as {
+    mock: { calls: [RequestInfo | URL, RequestInit | undefined][] };
+  };
+  return mock.mock.calls.map(([input, init]) => {
+    const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    return `${init?.method ?? "GET"} ${raw.split("?")[0]!}`;
+  });
+}
+
+describe("the AERB write surface (18c T6)", () => {
+  beforeEach(() => { setToken("t"); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  /* ═════════════════════ THE DOOR ═════════════════════ */
+
+  /**
+   * ═══ THE ONE THAT MATTERS MOST, AND IT IS 18b's B4 IN A SECOND PLACE ═══
+   *
+   * A quality manager showing an inspector the file holds `aerb.registers.read` and NOT the pen.
+   * They must see a register, not five forms that 403. The screen reads no role and compares no
+   * permission string: `canManage` is the server's answer and the only input to this decision.
+   */
+  it("renders NOT ONE write control when the server says the reader may not write", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [licence()], canManage: false } },
+      [GAPS]: { status: 200, body: { rows: [GAP_DR] } },
+      [PICKERS]: { status: 200, body: PICKER_BOOK },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await screen.findByTestId("aerb-gaps");
+
+    for (const id of [
+      "aerb-licence-file-open", "aerb-gap-file-D2", "aerb-licence-renew-L1",
+      "aerb-licence-suspend-L1", "aerb-licence-surrender-L1", "aerb-licence-status-reason",
+    ]) {
+      expect(screen.queryByTestId(id), id).not.toBeInTheDocument();
+    }
+    /** And it does not even ASK for the pickers — they are behind the pen's own permission. */
+    expect(requestedKeys()).not.toContain(PICKERS);
+  });
+
+  it("renders the write controls when the server says the reader MAY write", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [licence()], canManage: true } },
+      [GAPS]: { status: 200, body: { rows: [GAP_DR] } },
+      [PICKERS]: { status: 200, body: PICKER_BOOK },
+    });
+    renderWithProviders(<RadiationSafety />);
+    expect(await screen.findByTestId("aerb-gap-file-D2")).toBeInTheDocument();
+    expect(screen.getByTestId("aerb-licence-file-open")).toBeInTheDocument();
+    expect(screen.getByTestId("aerb-licence-renew-L1")).toBeInTheDocument();
+  });
+
+  /* ═════════════════════ THE LICENCE, AND THE DEPLOY BLOCKER'S OWN WORKFLOW ═════════════════════ */
+
+  /**
+   * The gap list is the landing surface (§0 of the go-live runbook): `GET /aerb/licences/gaps` must
+   * come back EMPTY before 18c may be deployed, and this is the control that empties it. The
+   * machine travels with the click, because an RSO working down twelve rows must not have to find
+   * the right machine in a dropdown twelve times.
+   */
+  it("files a licence from the gap row with the machine ALREADY CHOSEN", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [], canManage: true } },
+      [GAPS]: { status: 200, body: { rows: [GAP_DR] } },
+      [PICKERS]: { status: 200, body: PICKER_BOOK },
+      [FILE_LICENCE]: { status: 201, body: { licenceId: "L9" } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-gap-file-D2"));
+    await screen.findByTestId("aerb-licence-form");
+    await waitFor(() => { expect(screen.getByTestId("aerb-licence-device")).toHaveValue("D2"); });
+
+    await userEvent.type(screen.getByTestId("aerb-licence-no"), "AERB/DR/2026/9");
+    fireEvent.change(screen.getByTestId("aerb-licence-valid-from"), { target: { value: "2026-09-04" } });
+    fireEvent.change(screen.getByTestId("aerb-licence-valid-to"), { target: { value: "2027-09-03" } });
+    await userEvent.selectOptions(screen.getByTestId("aerb-licence-rso"), "U1");
+    await userEvent.click(screen.getByTestId("aerb-licence-submit"));
+
+    await waitFor(() => { expect(sentBodies(FILE_LICENCE)).toHaveLength(1); });
+    expect(sentBodies(FILE_LICENCE)[0]).toMatchObject({
+      deviceResourceId: "D2", licenceNo: "AERB/DR/2026/9",
+      validFrom: "2026-09-04", validTo: "2027-09-03", rsoUserId: "U1",
+    });
+    /** An untouched optional field goes over the wire as null, never as "". */
+    expect(sentBodies(FILE_LICENCE)[0]).toMatchObject({ eloraRef: null, typeApprovalRef: null });
+    expect(await screen.findByTestId("aerb-outcome")).toHaveTextContent("AERB/DR/2026/9");
+  });
+
+  /**
+   * ═══ THE RENEWAL, AND THIS ASSERTION IS ON AN ABSENCE ON PURPOSE ═══
+   *
+   * Pass 2 of 18c's close review found pass 1's renewal fix **stopped the machine it was written to
+   * keep running**: it surrendered the outgoing certificate the moment the incoming one was filed,
+   * so the CT had no licence in force on 20 November and every ionising study on it was refused
+   * from the day the paperwork arrived until 1 January — with no way back, because `surrendered` is
+   * terminal. The regression would come back here, as a screen that "helpfully" closed the old row.
+   *
+   * So: the form defaults to the day AFTER the outgoing certificate expires, it says the old one
+   * stays in force, and **no status call is made at all.**
+   */
+  it("a renewal files the NEXT window and never touches the certificate in force", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [licence()], canManage: true } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [PICKERS]: { status: 200, body: PICKER_BOOK },
+      [FILE_LICENCE]: { status: 201, body: { licenceId: "L2" } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-licence-renew-L1"));
+
+    const note = await screen.findByTestId("aerb-licence-renewal-note");
+    expect(note).toHaveTextContent("AERB/CT/2026/1");
+    expect(note).toHaveTextContent("2026-12-31");
+    expect(note).toHaveTextContent("stays in force");
+    /** The next window opens the day after this one closes — 2026-12-31 → 2027-01-01. */
+    expect(screen.getByTestId("aerb-licence-valid-from")).toHaveValue("2027-01-01");
+
+    await userEvent.type(screen.getByTestId("aerb-licence-no"), "AERB/CT/2027/1");
+    fireEvent.change(screen.getByTestId("aerb-licence-valid-to"), { target: { value: "2027-12-31" } });
+    await userEvent.click(screen.getByTestId("aerb-licence-submit"));
+
+    await waitFor(() => { expect(sentBodies(FILE_LICENCE)).toHaveLength(1); });
+    expect(sentBodies(FILE_LICENCE)[0]).toMatchObject({
+      deviceResourceId: "D1", validFrom: "2027-01-01", validTo: "2027-12-31",
+    });
+    /** THE POINT: nothing was posted against the outgoing licence. */
+    expect(requestedKeys()).not.toContain("POST /api/aerb/licences/L1/status");
+    expect(sentBodies(FILE_LICENCE)[0]).not.toHaveProperty("supersedesLicenceId");
+  });
+
+  /**
+   * `device_not_licensed` and `licence_already_active` are sentences with actions in them. A
+   * console that rendered "Something went wrong" would be throwing away the only part of the
+   * answer the RSO can act on.
+   */
+  it("shows the server's OWN refusal, code and all, and files nothing", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [licence()], canManage: true } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [PICKERS]: { status: 200, body: PICKER_BOOK },
+      [FILE_LICENCE]: {
+        status: 409,
+        body: {
+          statusCode: 409, code: "licence_already_active",
+          message: "CT-1 already holds a certificate covering 2027-01-01",
+        },
+      },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-licence-renew-L1"));
+    await screen.findByTestId("aerb-licence-form");
+    await userEvent.type(screen.getByTestId("aerb-licence-no"), "AERB/CT/2027/1");
+    fireEvent.change(screen.getByTestId("aerb-licence-valid-to"), { target: { value: "2027-12-31" } });
+    await userEvent.click(screen.getByTestId("aerb-licence-submit"));
+
+    const error = await screen.findByTestId("aerb-licence-error");
+    expect(error).toHaveTextContent("already holds a certificate covering 2027-01-01");
+    expect(error).toHaveTextContent("licence_already_active");
+    /** The form is still open with the entry in it, and no success line was printed. */
+    expect(screen.getByTestId("aerb-licence-form")).toBeInTheDocument();
+    expect(screen.queryByTestId("aerb-outcome")).not.toBeInTheDocument();
+  });
+
+  /* ═════════════════════ THE QA REGISTER, AND THE MACHINE IT STOPS ═════════════════════ */
+
+  /**
+   * D4 — a fail drives the device to `qa_blocked` in the same transaction and only a later pass
+   * returns it. Correct, and also a consequence nobody should discover after the fact.
+   */
+  it("warns that a FAIL takes the machine out of service, naming it, before the record is sent", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [], canManage: true } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [QA]: { status: 200, body: { rows: [], canManage: true } },
+      [PICKERS]: { status: 200, body: PICKER_BOOK },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-qa"));
+    await userEvent.click(await screen.findByTestId("aerb-qa-record-open"));
+    await waitFor(() => { expect(screen.getByTestId("aerb-qa-device")).toBeInTheDocument(); });
+
+    expect(screen.queryByTestId("aerb-qa-fail-warning")).not.toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByTestId("aerb-qa-device"), "D1");
+    await userEvent.selectOptions(screen.getByTestId("aerb-qa-result"), "fail");
+
+    const warning = await screen.findByTestId("aerb-qa-fail-warning");
+    expect(warning).toHaveTextContent("CT-1");
+    expect(warning).toHaveTextContent("OUT OF SERVICE");
+    expect(sentBodies(RECORD_QA)).toHaveLength(0);
+  });
+
+  it("records the fail and says the machine has stopped", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [], canManage: true } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [QA]: { status: 200, body: { rows: [], canManage: true } },
+      [PICKERS]: { status: 200, body: PICKER_BOOK },
+      [RECORD_QA]: { status: 201, body: { recordId: "Q9", blocked: true, releasedRecordId: null } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-qa"));
+    await userEvent.click(await screen.findByTestId("aerb-qa-record-open"));
+    await waitFor(() => { expect(screen.getByTestId("aerb-qa-device")).toBeInTheDocument(); });
+    await userEvent.selectOptions(screen.getByTestId("aerb-qa-device"), "D1");
+    await userEvent.selectOptions(screen.getByTestId("aerb-qa-result"), "fail");
+    await userEvent.type(screen.getByTestId("aerb-qa-type"), "AERB annual QA");
+    await userEvent.type(screen.getByTestId("aerb-qa-performed-by"), "S. Iyer, medical physicist");
+    await userEvent.click(screen.getByTestId("aerb-qa-submit"));
+
+    await waitFor(() => { expect(sentBodies(RECORD_QA)).toHaveLength(1); });
+    expect(sentBodies(RECORD_QA)[0]).toMatchObject({
+      deviceResourceId: "D1", result: "fail", qaType: "AERB annual QA",
+      performedBy: "S. Iyer, medical physicist",
+    });
+    expect(await screen.findByTestId("aerb-outcome")).toHaveTextContent("CT-1 is out of service");
+  });
+
+  /**
+   * A fail on an occupied machine is REFUSED — stopping a tube with a patient on the table is a
+   * decision a person makes at the console, not one a register makes behind their back. The record
+   * rolls back with it, and the RSO must be told that rather than shown a green tick.
+   */
+  it("shows the `already_occupied` refusal instead of swallowing it into a success", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [], canManage: true } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [QA]: { status: 200, body: { rows: [], canManage: true } },
+      [PICKERS]: { status: 200, body: PICKER_BOOK },
+      [RECORD_QA]: {
+        status: 409,
+        body: { statusCode: 409, code: "already_occupied", message: "CT-1 has a study in progress" },
+      },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-qa"));
+    await userEvent.click(await screen.findByTestId("aerb-qa-record-open"));
+    await waitFor(() => { expect(screen.getByTestId("aerb-qa-device")).toBeInTheDocument(); });
+    await userEvent.selectOptions(screen.getByTestId("aerb-qa-device"), "D1");
+    await userEvent.selectOptions(screen.getByTestId("aerb-qa-result"), "fail");
+    await userEvent.type(screen.getByTestId("aerb-qa-type"), "AERB annual QA");
+    await userEvent.type(screen.getByTestId("aerb-qa-performed-by"), "S. Iyer");
+    await userEvent.click(screen.getByTestId("aerb-qa-submit"));
+
+    expect(await screen.findByTestId("aerb-qa-error")).toHaveTextContent("CT-1 has a study in progress");
+    expect(screen.queryByTestId("aerb-outcome")).not.toBeInTheDocument();
+  });
+
+  /* ═════════════════════ THE BADGES ═════════════════════ */
+
+  const t6Badge = {
+    badgeId: "B1", userId: "U1", userName: "R. Singh", badgeNo: "TLD-001",
+    issuedOn: "2026-01-01", returnedOn: null, status: "active",
+    lastPeriodEnd: "2026-03-31", lastHp10Msv: "1.400", lastInvestigation: false,
+    workerYtdMsv: "1.400", workerFiveYearMsv: "1.400", worstYear: "2026", worstYearMsv: "1.400",
+    overAnnualLimit: false, overFiveYearLimit: false, readCount: 1,
+  };
+  const t6BadgeBook = (over: Record<string, unknown> = {}) => ({
+    rows: [t6Badge], gaps: [], reads: [],
+    limits: { annualMsv: 30, fiveYearAverageMsv: 20, fiveYearTotalMsv: 100 },
+    investigationLevelMsvPerMonth: 1, canManage: true, ...over,
+  });
+
+  /**
+   * ═══ ZERO IS A READING ═══
+   *
+   * The commonest TLD result in a well-run department is "nothing detectable", and the obvious way
+   * to write "has this field been filled in" — `Number(hp10) > 0` — rejects exactly that. A form
+   * that cannot record a zero forces the RSO to invent a number or skip the entry, and a skipped
+   * entry becomes a badge gap the register then reports as unmonitored exposure.
+   */
+  it("accepts a badge reading of ZERO — the commonest result there is", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [], canManage: true } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [BADGES]: { status: 200, body: t6BadgeBook() },
+      [PICKERS]: { status: 200, body: PICKER_BOOK },
+      [RECORD_READ]: { status: 201, body: { readId: "R9", investigation: false, investigationLevelMsv: 1 } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-badges"));
+    await userEvent.click(await screen.findByTestId("aerb-badge-read-open"));
+    await waitFor(() => { expect(screen.getByTestId("aerb-read-badge")).toBeInTheDocument(); });
+
+    await userEvent.selectOptions(screen.getByTestId("aerb-read-badge"), "B1");
+    fireEvent.change(screen.getByTestId("aerb-read-period-start"), { target: { value: "2026-04-01" } });
+    fireEvent.change(screen.getByTestId("aerb-read-period-end"), { target: { value: "2026-06-30" } });
+    await userEvent.type(screen.getByTestId("aerb-read-hp10"), "0");
+
+    expect(screen.getByTestId("aerb-read-submit")).toBeEnabled();
+    await userEvent.click(screen.getByTestId("aerb-read-submit"));
+    await waitFor(() => { expect(sentBodies(RECORD_READ)).toHaveLength(1); });
+    expect(sentBodies(RECORD_READ)[0]).toMatchObject({
+      badgeId: "B1", periodStart: "2026-04-01", periodEnd: "2026-06-30", hp10Msv: 0,
+      /** An untouched optional field is null on this form too — including `remarks`, which every
+       *  other form on the screen offered and this one used to hardcode away. */
+      hp007Msv: null, labRef: null, remarks: null,
+    });
+  });
+
+  it("reports a reading that raised the investigation flag, with the level it was measured against", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [], canManage: true } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [BADGES]: { status: 200, body: t6BadgeBook() },
+      [PICKERS]: { status: 200, body: PICKER_BOOK },
+      [RECORD_READ]: { status: 201, body: { readId: "R9", investigation: true, investigationLevelMsv: 3 } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-badges"));
+    await userEvent.click(await screen.findByTestId("aerb-badge-read-open"));
+    await waitFor(() => { expect(screen.getByTestId("aerb-read-badge")).toBeInTheDocument(); });
+    await userEvent.selectOptions(screen.getByTestId("aerb-read-badge"), "B1");
+    fireEvent.change(screen.getByTestId("aerb-read-period-start"), { target: { value: "2026-04-01" } });
+    fireEvent.change(screen.getByTestId("aerb-read-period-end"), { target: { value: "2026-06-30" } });
+    await userEvent.type(screen.getByTestId("aerb-read-hp10"), "4.2");
+    await userEvent.click(screen.getByTestId("aerb-read-submit"));
+
+    const outcome = await screen.findByTestId("aerb-outcome");
+    expect(outcome).toHaveTextContent("4.2");
+    expect(outcome).toHaveTextContent("3 mSv investigation level");
+  });
+
+  it("issues a badge, and sets the investigation level the statutory limits are NOT", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [], canManage: true } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [BADGES]: { status: 200, body: t6BadgeBook() },
+      [PICKERS]: { status: 200, body: PICKER_BOOK },
+      [ISSUE_BADGE]: { status: 201, body: { badgeId: "B9" } },
+      [SET_LEVEL]: { status: 201, body: { ok: true } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-badges"));
+    await userEvent.click(await screen.findByTestId("aerb-badge-issue-open"));
+    await waitFor(() => { expect(screen.getByTestId("aerb-badge-user")).toBeInTheDocument(); });
+    await userEvent.selectOptions(screen.getByTestId("aerb-badge-user"), "U2");
+    await userEvent.type(screen.getByTestId("aerb-badge-no"), "TLD-014");
+    await userEvent.click(screen.getByTestId("aerb-badge-issue-submit"));
+    await waitFor(() => { expect(sentBodies(ISSUE_BADGE)).toHaveLength(1); });
+    expect(sentBodies(ISSUE_BADGE)[0]).toMatchObject({ userId: "U2", badgeNo: "TLD-014" });
+    expect(await screen.findByTestId("aerb-outcome")).toHaveTextContent("S. Iyer");
+
+    await userEvent.click(screen.getByTestId("aerb-level-open"));
+    const level = await screen.findByTestId("aerb-level-value");
+    /** D10 — it opens on the number in force, which the badge book already carries. */
+    expect(level).toHaveValue(1);
+    fireEvent.change(level, { target: { value: "0.5" } });
+    await userEvent.click(screen.getByTestId("aerb-level-submit"));
+    await waitFor(() => { expect(sentBodies(SET_LEVEL)).toHaveLength(1); });
+    expect(sentBodies(SET_LEVEL)[0]).toMatchObject({ perMonthMsv: 0.5 });
+  });
+
+  /* ═════════════════════ THE PEOPLE ═════════════════════ */
+
+  it("appoints the RSO and ends an appointment", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [], canManage: true } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [PERSONS]: {
+        status: 200,
+        body: {
+          canManage: true,
+          rows: [{
+            id: "P1", userId: "U1", userName: "Manoj Bhat", personRole: "rso", approvalRef: "AERB/RSO/91",
+            qualification: "RSO Level II", validFrom: "2026-01-01", validTo: null, active: true,
+          }],
+        },
+      },
+      [PICKERS]: { status: 200, body: PICKER_BOOK },
+      [APPOINT]: { status: 201, body: { personId: "P9" } },
+      "POST /api/aerb/persons/P1/end": { status: 201, body: { ok: true } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-people"));
+    await userEvent.click(await screen.findByTestId("aerb-person-appoint-open"));
+    await waitFor(() => { expect(screen.getByTestId("aerb-person-user")).toBeInTheDocument(); });
+
+    await userEvent.selectOptions(screen.getByTestId("aerb-person-role"), "physicist");
+    await userEvent.selectOptions(screen.getByTestId("aerb-person-user"), "U2");
+    await userEvent.type(screen.getByTestId("aerb-person-qualification"), "M.Sc. Medical Physics, RSO Level III");
+    await userEvent.click(screen.getByTestId("aerb-person-submit"));
+    await waitFor(() => { expect(sentBodies(APPOINT)).toHaveLength(1); });
+    expect(sentBodies(APPOINT)[0]).toMatchObject({
+      userId: "U2", personRole: "physicist", qualification: "M.Sc. Medical Physics, RSO Level III",
+      /** An open-ended appointment runs until it is ended, not until a date. */
+      validTo: null,
+    });
+
+    await userEvent.click(screen.getByTestId("aerb-person-end-P1"));
+    await waitFor(() => { expect(requestedKeys()).toContain("POST /api/aerb/persons/P1/end"); });
+  });
+
+  /* ═════════════════════ THE ASYMMETRY LEG ═════════════════════ */
+
+  /**
+   * ═══ THE ONE REGISTER WITH NO WRITER, AND IT IS THE PHI ONE ═══
+   *
+   * D5 — dose rows are written by the SOURCE inside its own transaction (`recordDose`, called from
+   * `recordAcquired`), never typed into a screen. D7 makes the register PHI. So the dose tab gets
+   * no form, and in particular no patient field: pass 2 of the close review found the UHID going
+   * out raw beside a confidential patient's alias, and the fix withholds it. A write surface here
+   * would be the obvious way to hand it straight back.
+   */
+  it("gives the dose register NO writer at all — it is written by the source, and it is PHI", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [], canManage: true } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [DOSES]: { status: 200, body: { rows: [] } },
+      [PICKERS]: { status: 200, body: PICKER_BOOK },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-dose"));
+    await screen.findByTestId("aerb-dose-empty");
+
+    for (const id of [
+      "aerb-licence-form", "aerb-qa-form", "aerb-person-form",
+      "aerb-badge-issue-form", "aerb-badge-read-form", "aerb-level-form",
+    ]) {
+      expect(screen.queryByTestId(id), id).not.toBeInTheDocument();
+    }
+    /** The only input on this tab is the over-DRL filter. No patient, no UHID, no dose entry. */
+    expect(screen.getAllByRole("checkbox")).toHaveLength(1);
+    expect(screen.queryAllByRole("textbox")).toHaveLength(0);
   });
 });

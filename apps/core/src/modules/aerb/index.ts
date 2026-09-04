@@ -15,7 +15,10 @@ export {
   changeLicenceStatus, endAppointment, fileLicence,
 } from "./licences";
 export type { AerbLicenceRow, AerbPersonRow, AppointPersonInput, FileLicenceInput } from "./licences";
-export { AERB_UNLICENSABLE_MODALITIES, appointments, licenceRegister, unlicensedDevices } from "./read";
+export { AERB_UNLICENSABLE_MODALITIES, aerbPickers, appointments, licenceRegister, unlicensedDevices } from "./read";
+export type { AerbDeviceChoice, AerbUserChoice } from "./read";
+// PLAN 18c T6 — one decision about who holds the pen, readable as well as enforceable.
+export { AERB_MANAGE, mayManage, requireManage } from "./access";
 // PLAN 18c T3 — the patient dose register. `recordDose` is what a SOURCE calls (radiology today,
 // the cath lab and radiation oncology later) from inside its own transaction; nothing here reads a
 // source's tables, which is what keeps this module installable without a department.

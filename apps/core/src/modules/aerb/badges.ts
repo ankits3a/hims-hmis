@@ -1,11 +1,11 @@
 import { and, asc, desc, eq, or, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
-import { hasPermission } from "../../kernel/auth/permissions";
 import { istDayString } from "../../kernel/approvals/cumulative";
 import { appendEvent } from "../../kernel/events/append";
 import { aerbSettings, aerbTldBadges, aerbTldReads } from "../../kernel/db/schema/aerb";
 import { users } from "../../kernel/db/schema/auth";
 import { AerbError } from "./errors";
+import { requireManage } from "./access";
 import { doseLimitWarning } from "./events";
 import {
   ANNUAL_LIMIT_MSV, DEFAULT_INVESTIGATION_LEVEL_MSV_PER_MONTH, FIVE_YEAR_AVERAGE_LIMIT_MSV,
@@ -33,16 +33,14 @@ import type { Actor } from "@hmis/contracts";
  * retroactively turn last year's readings into incidents.
  */
 
-const MANAGE = "aerb.registers.manage";
 const SETTINGS_ID = "main";
 
+/**
+ * T6 — the DECISION is `access.ts`'s and is made in exactly one place; this file keeps only the
+ * sentence a machine gets when it tries to write the badge book.
+ */
 async function assertMayManage(exec: Db | Tx, actor: Actor): Promise<void> {
-  if (actor.type !== "user") {
-    throw new AerbError("not_appointed", "a badge is issued to a person by a person");
-  }
-  if (!(await hasPermission(exec as Db, actor.id, MANAGE, "hospital"))) {
-    throw new AerbError("not_appointed", `${actor.id} does not hold ${MANAGE}`, { permission: MANAGE });
-  }
+  await requireManage(exec, actor, "a badge is issued to a person by a person");
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;

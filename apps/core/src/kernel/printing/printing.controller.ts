@@ -9,6 +9,7 @@ import { claimPrintJobs, reportFailed, reportPrinted } from "./claim";
 import { enqueuePrintJob } from "./enqueue";
 import { withTx } from "../db/client";
 import { renderDocument } from "./render";
+import { recordPhiAccess } from "../phi/audit";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
 
@@ -130,6 +131,31 @@ export class PrintingController {
         title: rendered.title, html: rendered.html, page: rendered.page,
       });
     }
+
+    /*
+      ═══ FD-24 CLOSE — THE DISCLOSURE THIS HEADER DESCRIBES IS NOW ALSO RECORDED ═══
+
+      The header above says this route is "the one place in the system where an agent credential
+      reaches PHI", and until now that was the whole of the treatment: noticed, written down, and
+      not logged. An audit trail with a hole exactly where a machine credential reads patient data
+      is worse than one that never claimed to cover it.
+
+      ONE ROW PER PATIENT DISCLOSED, not one per job and not one per request. Two slips for the same
+      person in one claim is one disclosure; a claim carrying eleven patients is eleven, and a claim
+      that rendered nothing is none. That is `imaging.worklist`'s rule — the exact analogue, a
+      machine-facing export to a device credential — and its close review arrived at it because a
+      withheld study "left the process as nothing".
+
+      AFTER the loop, so a job that failed to render is not logged as a disclosure: nothing left the
+      building. `recordPhiAccess` swallows its own errors by design, so this cannot fail a claim the
+      relay is waiting on — printing is advisory (R7) and an audit write must not become the thing
+      that stops paper.
+    */
+    const disclosed = new Set(jobs.filter((j) => out.some((o) => o.id === j.id)).map((j) => j.patientId).filter((p): p is string => p !== null));
+    const reason = `print relay ${relayId} claimed ${String(out.length)} document(s) for ${input.destinations.join(", ")}`;
+    for (const patientId of disclosed) {
+      await recordPhiAccess(this.db, { actor, patientId, surface: "print.claim", reason });
+    }
     return { jobs: out };
   }
 
@@ -206,7 +232,28 @@ export class PrintingController {
       encounterId: original.encounterId,
       requestedBy: actor.type === "user" ? actor.id : null,
     }));
-    void reason; // recorded by the request log; the row carries who and when
+    /*
+      FD-24 CLOSE — a reprint is a disclosure with a NAME on it, and it is logged as its own surface.
+
+      A relay draining a queue is a machine printing work it was assigned; this is a clerk asking
+      for a second copy of ONE patient's document, possibly hours later and possibly for somebody
+      standing at the counter. "The relay printed 40 slips at 09:00" and "Sunita reprinted Farida
+      Khatoon's prescription at 16:20" are materially different disclosures — see `PhiSurface`.
+
+      The clerk's stated reason travels INTO the audit row rather than being discarded. It used to
+      be `void`ed with a comment saying the request log carried it; the request log does not carry a
+      patient id, so the one question this is asked — what did they see, and why did they say they
+      needed it — could not be answered from either place.
+    */
+    if (original.patientId !== null) {
+      await recordPhiAccess(this.db, {
+        actor,
+        patientId: original.patientId,
+        surface: "print.reprint",
+        encounterId: original.encounterId,
+        reason: `reprint of ${original.document} (job ${original.id})${reason === undefined ? "" : `: ${reason}`}`,
+      });
+    }
     return { id };
   }
 

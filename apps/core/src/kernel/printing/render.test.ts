@@ -3,7 +3,10 @@ import {
   activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters,
 } from "../../../test/helpers/opd";
 import { openVisit } from "../../modules/opd/encounters";
+import { issuePaidInvoice, mkCashier, openSessionFor, seedBillingBase } from "../../../test/helpers/billing";
 import { renderDocument, renderPaymentReceipt, renderPrescriptionSheet, renderTokenSlip } from "./render";
+import { eq } from "drizzle-orm";
+import { opdEncounters } from "../db/schema";
 import type { Db } from "../db/client";
 
 /**
@@ -87,6 +90,38 @@ describe("FD-24 T3: rendering the counter's documents", () => {
       const paid = await renderTokenSlip(db, { encounterId }, MON);
       expect(paid!.html).not.toContain("UNPAID");
       expect(paid!.html).not.toContain("Billing counter"); // and it is not in the "go next to" list either
+    });
+
+    /**
+     * ═══ FD-24 CLOSE — THE STAMP COMES FROM THE LEDGER, AND A STALE PARAM CANNOT OVERRULE IT ═══
+     *
+     * The test above pinned that the RENDERER honours the flag. It did — faithfully — and the flag
+     * was a lie: `joinQueueInTx` wrote `unpaid: true` as a hardcoded literal, at a call site that
+     * `queueFeeStatusHook` reaches EXACTLY WHEN THE MONEY IS DONE. So every bill-first, scheme,
+     * credit and free-revisit patient was handed a slip stamped UNPAID and sent to the billing
+     * counter they had just left, and a reprint copied the param and repeated it.
+     *
+     * That is the FD-7 lesson wearing a new costume: ON MONEY, ASSERT THE AMOUNT, NEVER THE
+     * INTERMEDIATE FIELD. The old test asserted the intermediate field perfectly.
+     *
+     * So this one hands the renderer a param that says UNPAID over a fee that IS PAID, and requires
+     * the paper to follow the money. It fails against the shipped code, where `params.unpaid === true`
+     * was the whole of the decision.
+     */
+    it("follows the LEDGER, not the param — a settled fee prints no UNPAID stamp even if the row says so", async () => {
+      const base = await seedBillingBase(db);
+      const cashier = await mkCashier(db, "render-cashier");
+      /* An invoice is issued from an OPEN drawer — `requireOpenSession` refuses otherwise, and that
+         refusal is the money control, not a fixture detail to route around. */
+      await openSessionFor(db, cashier, 200_000);
+      const patientId = (await db.select().from(opdEncounters).where(eq(opdEncounters.id, encounterId)))[0]!.patientId;
+      await issuePaidInvoice(db, cashier, { patientId, serviceId: base.consultNewServiceId, encounterId }, MON);
+
+      /* The param is the stale claim a row queued before payment would carry. The money says paid. */
+      const doc = await renderTokenSlip(db, { encounterId, unpaid: true }, MON);
+      expect(doc!.html).not.toContain("UNPAID");
+      expect(doc!.html).not.toContain("भुगतान शेष");
+      expect(doc!.html).not.toContain("Billing counter");
     });
 
     it("routes the patient onward in Devanagari as well as English", async () => {

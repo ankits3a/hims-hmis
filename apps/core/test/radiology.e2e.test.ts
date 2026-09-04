@@ -754,5 +754,50 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     /** And the radiographer who acquires holds none of it at all — not even the doses. */
     expect((await get("/aerb/doses", radiographer.token)).status).toBe(403);
     expect((await get("/aerb/licences", "")).status).toBe(401);
+
+    /**
+     * ── 8. PLAN 18c T6 — THE PEN, AND THE BOOK THAT SAYS WHO IS HOLDING IT ──
+     *
+     * `aerb.registers.read` buys the book and `aerb.registers.manage` buys the pen, and until T6
+     * the client had no way to learn which of the two it held short of posting and being refused.
+     * 18b's close review (MAJOR B4) settled that one register over: the console must be TOLD.
+     *
+     * The quality manager below is the exact person the split exists for — they can show an
+     * inspector every register and cannot write a word in any of them.
+     */
+    const bookReader = await staff(["aerb.registers.read"], "qmgr");
+    for (const path of ["/aerb/licences", "/aerb/qa", "/aerb/badges", "/aerb/persons"]) {
+      const res = await get(path, bookReader.token);
+      expect([path, res.status]).toEqual([path, 200]);
+      expect([path, (res.body as { canManage: boolean }).canManage]).toEqual([path, false]);
+    }
+    for (const path of ["/aerb/licences", "/aerb/qa", "/aerb/badges", "/aerb/persons"]) {
+      expect([path, ((await get(path, rso.token)).body as { canManage: boolean }).canManage])
+        .toEqual([path, true]);
+    }
+
+    /**
+     * The pickers are behind the PEN, not the book: an inspector reading the file needs no dropdown
+     * of machines, and the staff roster is not part of what the register discloses to a reader.
+     * They exist because the RSO holds neither `resources.read` nor `auth.users.manage` — a form
+     * built on those doors would render empty for the one person the screen is for.
+     */
+    expect((await get("/aerb/pickers", bookReader.token)).status).toBe(403);
+    const pickers = await get("/aerb/pickers", rso.token);
+    expect(pickers.status).toBe(200);
+    const picked = pickers.body as {
+      devices: { resourceId: string; code: string; licensable: boolean }[];
+      users: { userId: string; fullName: string }[];
+    };
+    /**
+     * `licensable` is the SERVER's answer, from the same list the gap check reads. The CT is
+     * licensable; the ultrasound emits no ionising radiation and never appears on an eLORA licence.
+     * A screen deriving this from the modality string would be the copy that drifted.
+     */
+    const ct = picked.devices.find((d) => d.resourceId === devices.ct);
+    const usg = picked.devices.find((d) => d.resourceId === devices.usg);
+    expect([ct?.licensable, usg?.licensable]).toEqual([true, false]);
+    /** The RSO can be named as the RSO on a licence, so the RSO is in the staff list. */
+    expect(picked.users.map((u) => u.userId)).toContain(rso.id);
   }, 60_000);
 });
