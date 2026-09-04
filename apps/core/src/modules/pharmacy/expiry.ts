@@ -77,9 +77,22 @@ export async function sweepExpiredPicks(
       await cancelDispense(db, PHARMACY_PICK_SWEEP_ACTOR, decls, id, PICK_EXPIRED_REASON, now);
       cancelled.push(id);
     } catch (e) {
-      // The counter got there first — billed, handed over or cancelled between the read and the
-      // write. That is the conditional UPDATE inside `cancelDispense` doing its job, not an error:
-      // a sweep never races a pharmacist and wins. Anything else is a real fault and propagates.
+      /**
+       * The counter got there first — billed, handed over or cancelled between the read and the
+       * write. That is the conditional UPDATE inside `cancelDispense` doing its job, not an error:
+       * a sweep never races a pharmacist and wins. Anything else is a real fault and propagates.
+       *
+       * ═══ AND UNTIL PASS 2 THAT SENTENCE WAS FALSE ═══
+       *
+       * `cancelDispense` ran its per-line loop BEFORE the conditional UPDATE, so a pharmacist
+       * cancelling the same abandoned dispense made `advanceOrderItem` lose ITS CAS first and
+       * raise `OrderError("stale_state")` — not a `PharmacyError`, so this filter rethrew it, the
+       * tick died, and every later expired pick in the same batch was skipped for a minute. The
+       * filter is right and was always right; the code it described was not. Fixed where it was
+       * wrong (`verify.ts`, the CAS now leads the transaction) rather than by widening this catch
+       * to name every error a race can throw — a list that grows with every module the cancel
+       * touches, which is the trap the "one definition" rule exists to refuse.
+       */
       if (!(e instanceof PharmacyError && e.code === "dispense_not_in_state")) throw e;
     }
   }

@@ -293,16 +293,35 @@ export async function cancelDispense(
   const lines = await linesOf(db, dispenseId);
   let released = 0;
   await withTx(db, async (tx) => {
-    for (const line of lines) {
-      if (line.status !== "open") continue;
-      if (line.orderItemId !== null) await advanceOrderItem(tx, actor, decls, line.orderItemId, "cancelled", { reason: trimmed, at: now });
-      if (line.reservationId !== null) { await releaseReservation(tx, actor, line.reservationId); released += 1; }
-    }
+    /**
+     * ═══ THE CAS COMES FIRST, AND THAT ORDERING IS THE GUARD (16c close review, pass 2) ═══
+     *
+     * This conditional UPDATE used to sit AFTER the per-line loop, and the sweep in `expiry.ts`
+     * documented itself as relying on it: "the counter got there first — that is the conditional
+     * UPDATE inside `cancelDispense` doing its job". It was not doing its job, because nothing
+     * reached it. A pharmacist cancelling the same abandoned dispense the sweep had just SELECTed
+     * made `advanceOrderItem` — the first statement in the loop — lose its own CAS and raise
+     * `OrderError("stale_state")`, and `releaseReservation` would have raised
+     * `MaterialsError("already_received")` a line later. Neither is a `PharmacyError`, so the
+     * sweep's catch rethrew, the tick aborted, and every remaining expired pick in that batch went
+     * unswept until the next minute.
+     *
+     * Taking the dispense row's lock FIRST makes the documented behaviour the real one: a second
+     * canceller blocks here, finds the status moved, and gets `dispense_not_in_state` — one error,
+     * from the module that owns the decision, before any child row has been touched. The loop then
+     * runs only for the winner. Atomicity is unchanged: this is a re-ordering INSIDE one
+     * transaction, so every effect still commits or rolls back together.
+     */
     const won = await tx.update(pharmacyDispenses)
       .set({ status: "cancelled", cancelledBy: actor.id, cancelledAt: now, cancelReason: trimmed })
       .where(and(eq(pharmacyDispenses.id, d.id), eq(pharmacyDispenses.status, d.status)))
       .returning({ id: pharmacyDispenses.id });
     if (won.length === 0) throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} moved while cancelling`);
+    for (const line of lines) {
+      if (line.status !== "open") continue;
+      if (line.orderItemId !== null) await advanceOrderItem(tx, actor, decls, line.orderItemId, "cancelled", { reason: trimmed, at: now });
+      if (line.reservationId !== null) { await releaseReservation(tx, actor, line.reservationId); released += 1; }
+    }
     if (d.workflowInstanceId !== null) await transition(tx, d.workflowInstanceId, "cancelled", actor);
     await appendEvent(tx, dispenseCancelled.make({
       actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,

@@ -462,4 +462,75 @@ describe("two-sided issue and receive (Plan 14 T7)", () => {
     expect((await balances(db, { resourceId: transit?.id ?? "" }))[0]?.qtyOnHand).toBe(20);
     expect((await balances(db, { resourceId: main }))[0]?.qtyOnHand).toBe(80);
   });
+
+  /**
+   * ═══ PASS 2 — THE OTHER `fefoPick` CALLER, AND THE CLOCK IT WAS DROPPING ═══
+   *
+   * The 16c close review stopped `fefoPick` OFFERING expired stock, which was a pharmacy-counter
+   * CRITICAL. But `fefoPick` has two production callers and only the pharmacy one was tested: this
+   * one changed underneath, silently, in the same commit. Two things needed pinning and neither
+   * was.
+   *
+   * FIRST, that a transfer no longer ships expired stock by FEFO — the same argument as the
+   * counter's, one warehouse further back: a batch that must not reach a patient must not be put
+   * on a van to the ward that will hand it over.
+   *
+   * SECOND, the escape hatch, because `ledger.ts` ASSERTS it in prose — "stock that IS expired is
+   * still transferable by NAMING its batch, which is how it reaches a quarantine or destruction
+   * store". An unexecuted claim in a comment is exactly the shape the close review kept finding, so
+   * it is executed here: expired stock still moves to QUARANTINE when a human names the batch and
+   * says why, and that is the ONLY way it moves.
+   *
+   * The dates are all relative to `occurredAt` rather than to the wall clock, which is the third
+   * thing this fixes: `issueStock` was calling `fefoPick` with no `asOf` at all, so a transfer
+   * recorded after the fact picked the batches in date the day it was TYPED, not the day it
+   * HAPPENED — and any test written the obvious way would have rotted into a date bomb.
+   */
+  it("FEFO will not ship EXPIRED stock, and naming the batch is the only way it reaches quarantine", async () => {
+    const itemId = await anItem("PCM650");
+    const main = await aStore("MAIN");
+    const quarantine = await aStore("QUAR");
+    // dated BEFORE both others, so an ordering-only FEFO puts it first
+    const dead = await aBatch(itemId, "B-DEAD", "2026-08-01");
+    /**
+     * THE BATCH THAT DISCRIMINATES THE CLOCK. `T0` is 27 Aug 2026 and this batch dies on the 28th:
+     * in date at the moment the issue HAPPENED, and long expired by the wall clock any later run of
+     * this suite sees. Written the obvious way — one dead batch, one good one — this test passed
+     * against the unfixed code, because a batch that is expired under both clocks cannot tell them
+     * apart. It only asserts something because of this row.
+     *
+     * It also cannot rot: it depends on `new Date()` being AFTER a fixed past date, and time only
+     * moves in that direction.
+     */
+    const edge = await aBatch(itemId, "B-EDGE", "2026-08-28");
+    const good = await aBatch(itemId, "B-GOOD", "2027-06-30");
+    await withTx(db, (tx) => postMovements(tx, HEAD, [
+      { resourceId: main, batchId: dead, qtyDelta: 40, reason: "grn", occurredAt: T0 },
+      { resourceId: main, batchId: edge, qtyDelta: 10, reason: "grn", occurredAt: T0 },
+      { resourceId: main, batchId: good, qtyDelta: 10, reason: "grn", occurredAt: T0 },
+    ]));
+
+    // FEFO as of `occurredAt`: B-DEAD is skipped, and the earliest batch still IN DATE THAT DAY is
+    // B-EDGE. Reading the wall clock instead skips B-EDGE too and reaches for B-GOOD.
+    const issued = await withTx(db, (tx) => issueStock(tx, HEAD, {
+      fromResourceId: main, toResourceId: quarantine, occurredAt: T0,
+      lines: [{ itemId, qtyBase: 10 }],
+    }));
+    expect(issued.lines.map((l) => l.batchId)).toEqual([edge]);
+
+    // and the forty expired tablets are not stock any transfer can reach by asking for a quantity:
+    // B-EDGE is spent, so only B-DEAD could cover this and FEFO will not offer it.
+    await expect(withTx(db, (tx) => issueStock(tx, HEAD, {
+      fromResourceId: main, toResourceId: quarantine, occurredAt: T0,
+      lines: [{ itemId, qtyBase: 20 }],
+    }))).rejects.toThrow(MaterialsError);
+
+    // NAMED, with a reason — the documented road to a quarantine store, and it works.
+    const swept = await withTx(db, (tx) => issueStock(tx, HEAD, {
+      fromResourceId: main, toResourceId: quarantine, occurredAt: T0,
+      lines: [{ itemId, qtyBase: 40, batchId: dead, overrideReason: "expired — moved for destruction" }],
+    }));
+    expect(swept.lines).toEqual([expect.objectContaining({ batchId: dead, qtyIssued: 40 })]);
+    expect((await balances(db, { resourceId: main, batchId: dead }))[0]?.qtyOnHand).toBe(0);
+  });
 });
