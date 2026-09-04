@@ -1,11 +1,11 @@
 import { and, eq, isNull, ne, or, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
-import { hasPermission } from "../../kernel/auth/permissions";
 import { appendEvent } from "../../kernel/events/append";
 import { aerbLicences, aerbPersons } from "../../kernel/db/schema/aerb";
 import { resources } from "../../kernel/db/schema/resources";
 import { AERB_LICENCE_TYPES, AERB_PERSON_ROLES } from "../../kernel/db/schema/aerb";
 import { AerbError } from "./errors";
+import { requireManage } from "./access";
 import { aerbLicenceFiled, aerbLicenceStatusChanged } from "./events";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
@@ -43,7 +43,6 @@ import type { AerbLicenceType, AerbPersonRole } from "../../kernel/db/schema/aer
  * only about the licence.
  */
 
-const MANAGE = "aerb.registers.manage";
 
 export type AerbLicenceRow = typeof aerbLicences.$inferSelect;
 export type AerbPersonRow = typeof aerbPersons.$inferSelect;
@@ -75,16 +74,14 @@ function assertIstDate(value: string, field: string): void {
   }
 }
 
+/**
+ * T6 — the DECISION is `access.ts`'s and is made in exactly one place; this file keeps only the
+ * sentence a machine gets when it tries to write the licence register.
+ */
 async function assertMayManage(exec: Db | Tx, actor: Actor): Promise<void> {
-  if (actor.type !== "user") {
-    throw new AerbError(
-      "not_appointed",
-      "only a signed-in user may change the AERB register — this is a statutory record",
-    );
-  }
-  if (!(await hasPermission(exec as Db, actor.id, MANAGE, "hospital"))) {
-    throw new AerbError("not_appointed", `${actor.id} does not hold ${MANAGE}`, { permission: MANAGE });
-  }
+  await requireManage(exec, actor, 
+    "only a signed-in user may change the AERB register — this is a statutory record",
+  );
 }
 
 export interface FileLicenceInput {

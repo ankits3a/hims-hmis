@@ -5,7 +5,8 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { AERB_LICENCE_TYPES, AERB_PERSON_ROLES, QA_RESULTS } from "../../kernel/db/schema/aerb";
 import { appointPerson, changeLicenceStatus, endAppointment, fileLicence } from "./licences";
-import { appointments, licenceRegister, unlicensedDevices } from "./read";
+import { aerbPickers, appointments, licenceRegister, unlicensedDevices } from "./read";
+import { mayManage } from "./access";
 import { qaRegister, recordQa } from "./qa";
 import { doseRegisterRows, patientCumulativeDose } from "./dose";
 import {
@@ -109,11 +110,41 @@ export class AerbController {
     @Inject(MODULE_REGISTRY) private readonly registry: ModuleRegistry,
   ) {}
 
+  /**
+   * ═══ PLAN 18c T6 — `canManage` TRAVELS WITH THE BOOK, AND THAT IS THE HOUSE PATTERN ═══
+   *
+   * 18b's close review (MAJOR B4) settled this one register over: the receptionist's console
+   * rendered an "Open images" button that 403'd, because the screen guessed at the reader's
+   * authority instead of being told. The fix was `canOpenImages` on the study view, and this is the
+   * same fix on the same principle — **the server decides who may write and the client renders what
+   * the server said.** A quality manager showing an inspector the file holds `aerb.registers.read`
+   * and not the pen, and they must see a register rather than five forms that refuse.
+   *
+   * It rides the four reads that HAVE a write behind them. The dose register and the calendar are
+   * read-only surfaces; a flag on them would be a claim about a form that does not exist.
+   */
   @Get("licences")
   @RequirePermission("aerb.registers.read", "hospital")
-  async licences(@Query("includeInactive") includeInactive?: string): Promise<unknown> {
+  async licences(
+    @CurrentActor() actor: Actor, @Query("includeInactive") includeInactive?: string,
+  ): Promise<unknown> {
     try {
-      return { rows: await licenceRegister(this.db, { includeInactive: includeInactive === "true" }) };
+      return {
+        rows: await licenceRegister(this.db, { includeInactive: includeInactive === "true" }),
+        canManage: await mayManage(this.db, actor),
+      };
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * PLAN 18c T6 — the device and staff lists the write surface needs. `read.ts`'s header argues why
+   * this register serves its own rather than borrowing the resource tree's door.
+   */
+  @Get("pickers")
+  @RequirePermission("aerb.registers.manage", "hospital")
+  async pickers(): Promise<unknown> {
+    try {
+      return await aerbPickers(this.db);
     } catch (e) { toHttp(e); }
   }
 
@@ -165,9 +196,14 @@ export class AerbController {
 
   @Get("qa")
   @RequirePermission("aerb.registers.read", "hospital")
-  async qa(@Query("deviceResourceId") deviceResourceId?: string): Promise<unknown> {
+  async qa(
+    @CurrentActor() actor: Actor, @Query("deviceResourceId") deviceResourceId?: string,
+  ): Promise<unknown> {
     try {
-      return { rows: await qaRegister(this.db, deviceResourceId === undefined ? {} : { deviceResourceId }) };
+      return {
+        rows: await qaRegister(this.db, deviceResourceId === undefined ? {} : { deviceResourceId }),
+        canManage: await mayManage(this.db, actor),
+      };
     } catch (e) { toHttp(e); }
   }
 
@@ -235,7 +271,7 @@ export class AerbController {
    */
   @Get("badges")
   @RequirePermission("aerb.registers.read", "hospital")
-  async badges(@Query("onDate") onDate?: string): Promise<unknown> {
+  async badges(@CurrentActor() actor: Actor, @Query("onDate") onDate?: string): Promise<unknown> {
     const asOf = onDate === undefined ? undefined : parsed(isoDateSchema, onDate);
     try {
       return {
@@ -244,6 +280,7 @@ export class AerbController {
         reads: await badgeReads(this.db),
         limits: STATUTORY_LIMITS,
         investigationLevelMsvPerMonth: await investigationLevelPerMonth(this.db),
+        canManage: await mayManage(this.db, actor),
       };
     } catch (e) { toHttp(e); }
   }
@@ -319,12 +356,15 @@ export class AerbController {
 
   @Get("persons")
   @RequirePermission("aerb.registers.read", "hospital")
-  async persons(@Query("onDate") onDate?: string): Promise<unknown> {
+  async persons(@CurrentActor() actor: Actor, @Query("onDate") onDate?: string): Promise<unknown> {
     /** CLOSE REVIEW — the one date parameter in this controller that was trusted. `?onDate=yesterday`
      *  reached Postgres as a `date` cast and came back a 500. */
     const asOf = onDate === undefined ? undefined : parsed(isoDateSchema, onDate);
     try {
-      return { rows: await appointments(this.db, asOf === undefined ? { includeEnded: true } : { onDate: asOf }) };
+      return {
+        rows: await appointments(this.db, asOf === undefined ? { includeEnded: true } : { onDate: asOf }),
+        canManage: await mayManage(this.db, actor),
+      };
     } catch (e) { toHttp(e); }
   }
 
