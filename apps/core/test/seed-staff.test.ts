@@ -133,7 +133,7 @@ function row(
 }
 
 describe("seed:staff — the census, stated before anything is compared (§2.49)", () => {
-  it("KNOWN_ROLE_KEYS is the thirty-seven keys some seed script in this tree can create", () => {
+  it("KNOWN_ROLE_KEYS is the thirty-eight keys some seed script in this tree can create", () => {
     expect(KNOWN_ROLE_KEYS).toEqual([
       "admin",
       // PLAN 15 / DD14, 2026-08-28 — the six OT roles arrive for FREE by the same derivation, and
@@ -194,6 +194,18 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       "pharmacy",
       "pharmacy_assistant", // PLAN 16c T1 — the dispensing aide
       "phlebotomist",
+      /**
+       * PLAN 18c T1, 2026-09-04 — the RSO, arriving here for FREE by the same derivation as the
+       * four above, and the consequence is the same one those notes describe: `seed:staff` REFUSES
+       * a roster naming a key outside this list, so until it carried this one, the roster hiring
+       * the hospital's Radiological Safety Officer — the person AERB requires by name before a
+       * licence is issued at all — would have been rejected as a typo and the WHOLE roster refused.
+       *
+       * **THIS FILE WAS IN NO 18c TASK'S FILES LIST** (finding F15, the same shape as 18a's F11 and
+       * the fifth census file to be found this way). It was found by CI on PR #56, not by the
+       * lane's own batch: `test/seed-staff.test.ts` was not in the suites T1 ran.
+       */
+      "radiation_safety_officer",
       "radiographer",
       "radiologist",
       "radiology_receptionist",
@@ -216,7 +228,7 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
     for (const r of ROLE_MODEL) expect(KNOWN_ROLE_KEYS).toContain(r.roleKey);
     for (const g of GRANTED_BY_OTHER_SEEDS) expect(KNOWN_ROLE_KEYS).toContain(g.roleKey);
     for (const o of OPD_ROLE_KEYS) expect(KNOWN_ROLE_KEYS).toContain(o.key);
-    expect(KNOWN_ROLE_KEYS).toHaveLength(37); // 16c T1 — 36 -> 37 with `pharmacy_assistant`; 18b T1 — 35 -> 36 with `modality_bridge`; PLAN 18a T2 — 31 -> 35 with radiology's four
+    expect(KNOWN_ROLE_KEYS).toHaveLength(38); // 18c T1 — 37 -> 38 with `radiation_safety_officer`; 16c T1 — 36 -> 37 with `pharmacy_assistant`; 18b T1 — 35 -> 36 with `modality_bridge`; PLAN 18a T2 — 31 -> 35 with radiology's four
   });
 
   it("the vocabulary is WIDER than what seed:roles creates, which is what makes two refusals distinct", () => {
