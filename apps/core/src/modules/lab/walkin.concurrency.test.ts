@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { seedLabDeskBase } from "../../../test/helpers/lab";
-import { opdEncounters } from "../../kernel/db/schema";
+import { opdEncounters, printJobs } from "../../kernel/db/schema";
 import { openLabWalkin } from "../opd";
 import type { LabDeskFixture } from "../../../test/helpers/lab";
 import type { Db } from "../../kernel/db/client";
@@ -100,11 +100,26 @@ describe("17d §9.2 — the lab walk-in race", () => {
      */
     const reason = (lost[0] as PromiseRejectedResult).reason as { code?: string; detail?: { visitNo?: string } };
     expect(reason.code).toBe("lab_walkin_already_open");
-    const winner = (won[0] as PromiseFulfilledResult<{ encounter: { visitNo: string } }>).value;
+    const winner = (won[0] as PromiseFulfilledResult<{ encounter: { id: string; visitNo: string } }>).value;
     expect(reason.detail?.visitNo).toBe(winner.encounter.visitNo);
 
     /** THE KILL: two `V` numbers for one attendance. Unlocked, this is 2. */
     expect(await labVisitCount()).toBe(1);
+
+    /**
+     * ═══ AND THE LOSER LEFT NO PAPER BEHIND (front-desk's review of #76) ═══
+     *
+     * FD-24 T5 put `enqueuePrintJob` INSIDE this transaction, so the refused walk-in must roll its
+     * slips back with it. That is the property the whole design leans on and nothing was asserting
+     * it: a patient must never walk away holding a token slip for a visit that does not exist.
+     *
+     * Asserted as an EXACT count per encounter rather than a total, because a total would still
+     * pass if the loser's jobs were written against the winner's encounter. This is the assertion
+     * that catches a future refactor lifting the enqueue out of the transaction.
+     */
+    const jobs = await db.select({ encounterId: printJobs.encounterId }).from(printJobs);
+    const forWinner = jobs.filter((j) => j.encounterId === winner.encounter.id).length;
+    expect([forWinner, jobs.length - forWinner]).toEqual([2, 0]);
   });
 
   /**
