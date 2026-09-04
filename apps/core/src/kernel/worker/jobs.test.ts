@@ -339,7 +339,10 @@ describe("registerAllJobs threads WORKER_INTERFACE_SWEEP_INTERVAL_MS to the tent
     // EITHER**, which is the same finding Plan 15 T4 recorded three lines above and Plan 14 T8
     // recorded before that: a task that registers a job edits `jobs.ts`, FOUR censuses and
     // `alerts.yml`, and no Files list has yet named all six. Recorded rather than fixed silently.
-    expect(specs).toHaveLength(15);
+    // PLAN 16c CLOSE / F11 — 16 with `sweepExpiredPharmacyPicks`, the pharmacy pick-reservation
+    // sweep at `every: 60_000`. Same finding as the four above it: this file is in no Files list,
+    // and a task that registers a job still edits `jobs.ts`, the censuses and `alerts.yml`.
+    expect(specs).toHaveLength(16);
     expect(specs).toContainEqual(
       expect.objectContaining({ name: "flagLateSurgeons", every: 60_000 }),
     );
@@ -348,8 +351,15 @@ describe("registerAllJobs threads WORKER_INTERFACE_SWEEP_INTERVAL_MS to the tent
     expect(specs).toContainEqual(
       expect.objectContaining({ name: "sweepInterfaceHeartbeats", every: INTERFACE_SWEEP_EVERY_MS }),
     );
-    expect(specs[specs.length - 1]).toEqual(
+    // The lab SLA sweep is no longer LAST either — 16c's pick-expiry sweep is registered after it —
+    // so it joins the interface sweep in being addressed BY NAME. That is the third time this
+    // paragraph's prediction has come true, and the last-position assertion is retired rather than
+    // re-pointed at the newest job: pinning "last" makes every future registration edit this line.
+    expect(specs).toContainEqual(
       expect.objectContaining({ name: "sweepLabSla", every: 60_000 }),
+    );
+    expect(specs).toContainEqual(
+      expect.objectContaining({ name: "sweepExpiredPharmacyPicks", every: 60_000 }),
     );
     expect(specs).toContainEqual(
       expect.objectContaining({ name: "sweepLabNonReturn", dailyIst: "07:00" }),

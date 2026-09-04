@@ -314,3 +314,56 @@ at 21:10 is an escalation path the hospital does not have.
 
 **Evidence (2026-09-03):** typecheck 0; lint **0 errors**. Core lab **27 suites, 249 tests green**.
 Web `src/screens/lab-*` + `src/lib` **14 files, 92 tests green**.
+
+### 8.5 T5 — The doctor sees the unverified, and it says so (executed 2026-09-04)
+
+Design board EdgeCases #18: *"Doctor wants the numbers by phone before the pathologist signs."*
+A constant and legitimate request in an Indian hospital; the honest answer is to show the numbers
+with the word on them rather than to pretend they do not exist.
+
+- **A SECOND reader on a SECOND route, never a flag on the first (D6).**
+  `listResultsForEncounter`'s verified-only contract is stated in three files' headers, and 22c-A's
+  C1 is what widening a shared reader costs — every existing caller silently acquires the new
+  behaviour, and the one that matters is the consult screen, which puts values in front of a
+  prescriber. `GET /lab/results/encounter/:encounterNo/provisional`, same permission: this is not a
+  MORE privileged fact, it is a less finished one, and a second grant would send clinicians back to
+  telephoning the bench.
+- **`verified: false` is a literal on every row**, carrying no information on purpose: a shape that
+  merely omitted `verifiedAt` would be one careless spread from looking like the signed kind.
+- **Superseded rows are excluded** — a re-keyed value replaces its predecessor; a doctor reading
+  every attempt would be reading the laboratory's working-out rather than its answer.
+- **Its own PHI surface**, `lab.results.provisional` (kernel `phi/audit.ts`, additive union member):
+  "the prescriber saw a provisional value at 21:40" and "saw a signed report" are materially
+  different disclosures, and it is the one an audit asks about after a clinical incident.
+- The consult panel renders them **below** the signed list, never interleaved, stamped on **every
+  row** rather than once on the heading — a heading scrolls off and a row does not. A failed
+  provisional query renders **nothing**, not an empty state (C1: a failed query is not a clinical
+  negative).
+
+**A MUTANT SURVIVED, and it was a finding, not a formality.** `!= 'verified'` in place of
+`= 'unverified'` passed every assertion, because nothing in the fixture — or in the product — ever
+writes an `autoverified` row (auto-verification shipped with zero rules, 17b DD8). The two filters
+are indistinguishable on today's data and would diverge the day the first rule is switched on. A
+test now writes that row directly and pins the distinction; the mutant dies.
+
+**Mutants, each applied and each red, then reverted:**
+
+| # | mutant | killed by |
+|---|---|---|
+| 1 | `!= 'verified'` instead of `= 'unverified'` | **survived first; killed by the new autoverified test** |
+| 2 | the superseded are not excluded | 1 failed |
+| 3 | the provisional read logs under `lab.results` | 1 failed |
+| 4 | web: the two lists merged | 1 failed |
+| 5 | web: the stamp on the heading only | 1 failed |
+| 6 | web: a failed query renders an empty block | 2 failed |
+
+**Found, NOT taken:** `listResultsForEncounter` filters `= 'verified'`, so an **autoverified** row
+would be invisible to the doctor entirely. Nothing is autoverified today. Fixing it means widening
+the shared reader, which is exactly what D6 forbids — it belongs to the phase that switches
+auto-verification on.
+
+**New coverage, not widened:** `opd-consult.test.tsx` mocks no lab route, so the laboratory panel
+had no test at all. `LabResultsPanel` is now exported and `lab-consult-panel.test.tsx` covers it.
+
+**Evidence (2026-09-04):** typecheck 0; lint **0 errors**. Core lab **27 suites, 254 tests green**.
+Web `src/screens/lab-*` + the full `opd-consult` suite + `src/lib`: **16 files, 119 tests green**.

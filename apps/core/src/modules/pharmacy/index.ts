@@ -57,3 +57,6 @@ export { handOverDispense } from "./handover";
 export type { HandoverInput } from "./handover";
 export { labelFor } from "./label";
 export type { LabelData, LabelLine } from "./label";
+
+// ── CLOSE REVIEW / F11 — the pick reservation expires (the worker's sixteenth job) ──
+export { PHARMACY_PICK_SWEEP_ACTOR, PICK_EXPIRED_REASON, sweepExpiredPicks } from "./expiry";
