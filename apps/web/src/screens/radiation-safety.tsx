@@ -2,10 +2,12 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
-  DOSE_UNITS, aerbErrorText, fetchAppointments, fetchDoseRegister, fetchLicenceGaps, fetchLicences,
-  fetchQaRecords,
+  DOSE_UNITS, aerbErrorText, fetchAppointments, fetchBadges, fetchDoseRegister, fetchLicenceGaps,
+  fetchLicences, fetchQaRecords,
 } from "../lib/aerb-api";
-import type { WireAppointment, WireDoseRow, WireLicence, WireLicenceGap, WireQaRecord } from "../lib/aerb-api";
+import type {
+  WireAppointment, WireBadge, WireBadgeGap, WireDoseRow, WireLicence, WireLicenceGap, WireQaRecord,
+} from "../lib/aerb-api";
 
 /**
  * PLAN 18c T1 / D11 — **THE RADIATION-SAFETY REGISTER: one screen, the tabs an inspector asks for.**
@@ -18,13 +20,13 @@ import type { WireAppointment, WireDoseRow, WireLicence, WireLicenceGap, WireQaR
  * which modalities AERB licences at all is a regulatory fact, and a client-side list of them would
  * be the copy that drifted the day somebody added a modality.
  *
- * The tabs Badges and Calendar arrive with T4 and T5. They are declared here as disabled
+ * The Calendar tab arrives with T5. They are declared here as disabled
  * rather than absent so that the screen's shape is the register's shape from the first commit, and
  * so a reader can see what is coming without reading the phase document.
  */
 const TABS = ["licences", "people", "qa", "dose", "badges", "calendar"] as const;
 type Tab = (typeof TABS)[number];
-const BUILT: readonly Tab[] = ["licences", "people", "qa", "dose"];
+const BUILT: readonly Tab[] = ["licences", "people", "qa", "dose", "badges"];
 
 /**
  * The measured numbers, each with the unit `aerb/units.ts` names for it. 18b's close review found a
@@ -73,6 +75,11 @@ export function RadiationSafety(): React.ReactElement {
     queryFn: () => fetchDoseRegister(overDrlOnly),
     enabled: tab === "dose",
   });
+  const badges = useQuery({
+    queryKey: ["aerb", "badges"],
+    queryFn: fetchBadges,
+    enabled: tab === "badges",
+  });
   const people = useQuery({
     queryKey: ["aerb", "persons"],
     queryFn: fetchAppointments,
@@ -83,6 +90,8 @@ export function RadiationSafety(): React.ReactElement {
   const gapRows: WireLicenceGap[] = gaps.data?.rows ?? [];
   const qaRows: WireQaRecord[] = qa.data?.rows ?? [];
   const doseRows: WireDoseRow[] = doses.data?.rows ?? [];
+  const badgeRows: WireBadge[] = badges.data?.rows ?? [];
+  const badgeGapRows: WireBadgeGap[] = badges.data?.gaps ?? [];
   const peopleRows: WireAppointment[] = people.data?.rows ?? [];
   /** A machine sitting in `qa_blocked` is the state the QA tab exists to make impossible to miss. */
   const blockedNow = qaRows.filter((r) => r.deviceStatus === "qa_blocked");
@@ -282,6 +291,86 @@ export function RadiationSafety(): React.ReactElement {
                             ? t("aerb.dose.noLevel")
                             : r.overDrl ? t("aerb.dose.over") : t("aerb.dose.under")}
                         </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+          </section>
+        )
+        : null}
+
+      {tab === "badges"
+        ? (
+          <section className="space-y-4">
+            {/*
+              * The badge nobody is reading, first. It is the register's negative space — a person
+              * whose occupational exposure is unknown — and a book that listed only the readings it
+              * HAS could never show one.
+              */}
+            {badgeGapRows.length > 0
+              ? (
+                <div role="alert" data-testid="aerb-badge-gaps" className="border border-red-600 p-3">
+                  <h2 className="font-semibold text-red-700">{t("aerb.badges.gapsTitle")}</h2>
+                  <ul className="list-disc pl-5 text-sm">
+                    {badgeGapRows.map((g) => (
+                      <li key={g.badgeId}>
+                        {g.userName} · {g.badgeNo} —{" "}
+                        {g.lastPeriodEnd === null
+                          ? t("aerb.badges.neverRead", { days: g.daysSince })
+                          : t("aerb.badges.staleRead", { since: g.lastPeriodEnd, days: g.daysSince })}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )
+              : null}
+
+            {badges.data !== undefined
+              ? (
+                <p className="text-sm text-slate-600" data-testid="aerb-badge-limits">
+                  {t("aerb.badges.limits", {
+                    annual: badges.data.limits.annualMsv,
+                    fiveYear: badges.data.limits.fiveYearTotalMsv,
+                    level: badges.data.investigationLevelMsvPerMonth,
+                  })}
+                </p>
+              )
+              : null}
+
+            {badges.isError ? <p role="alert" className="text-red-600">{aerbErrorText(badges.error)}</p> : null}
+            {badges.isPending ? <p>{t("common.loading")}</p> : null}
+            {!badges.isPending && badgeRows.length === 0
+              ? <p data-testid="aerb-badges-empty">{t("aerb.badges.empty")}</p>
+              : (
+                <table className="w-full text-sm" data-testid="aerb-badges">
+                  <thead>
+                    <tr className="text-left">
+                      <th>{t("aerb.badges.worker")}</th>
+                      <th>{t("aerb.badges.badge")}</th>
+                      <th>{t("aerb.badges.last")}</th>
+                      <th>{t("aerb.badges.ytd")}</th>
+                      <th>{t("aerb.badges.fiveYear")}</th>
+                      <th>{t("aerb.licences.status")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {badgeRows.map((b) => (
+                      <tr key={b.badgeId} data-testid={`aerb-badge-${b.badgeId}`}>
+                        <td>{b.userName}</td>
+                        <td>{b.badgeNo}</td>
+                        <td className={b.lastInvestigation === true ? "text-amber-700 font-semibold" : ""}>
+                          {b.lastHp10Msv === null
+                            ? t("aerb.badges.noRead")
+                            : `${b.lastHp10Msv} mSv · ${b.lastPeriodEnd ?? ""}${b.lastInvestigation === true ? ` · ${t("aerb.badges.investigate")}` : ""}`}
+                        </td>
+                        <td className={b.overAnnualLimit ? "text-red-700 font-semibold" : ""}>
+                          {b.ytdMsv} mSv{b.overAnnualLimit ? ` · ${t("aerb.badges.overLimit")}` : ""}
+                        </td>
+                        <td className={b.overFiveYearLimit ? "text-red-700 font-semibold" : ""}>
+                          {b.fiveYearMsv} mSv{b.overFiveYearLimit ? ` · ${t("aerb.badges.overLimit")}` : ""}
+                        </td>
+                        <td>{t(`aerb.badgeStatus.${b.status}`)}</td>
                       </tr>
                     ))}
                   </tbody>

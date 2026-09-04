@@ -23,6 +23,18 @@ export { doseRegisterRows, patientCumulativeDose, recordDose } from "./dose";
 export type { CumulativeDose, DoseRegisterRow, RecordDoseInput } from "./dose";
 export { DOSE_QUANTITIES, DOSE_QUANTITY_COLUMNS, DOSE_UNITS } from "./units";
 export type { DoseQuantity } from "./units";
+// PLAN 18c T4 — the TLD badge programme and the record-only investigation ladder.
+export {
+  STATUTORY_LIMITS, badgeGaps, badgeReads, badgeRegister, closeBadge, investigationLevelPerMonth,
+  issueBadge, recordBadgeRead, setInvestigationLevel,
+} from "./badges";
+export type {
+  BadgeGapRow, BadgeReadRow, BadgeRegisterRow, IssueBadgeInput, RecordReadInput, RecordReadOutcome,
+} from "./badges";
+export {
+  ANNUAL_LIMIT_MSV, DAYS_PER_MONTH, DEFAULT_INVESTIGATION_LEVEL_MSV_PER_MONTH,
+  FIVE_YEAR_AVERAGE_LIMIT_MSV, FIVE_YEAR_TOTAL_LIMIT_MSV, investigationLevelFor,
+} from "./limits";
 // PLAN 18c T2 — the QA register and the lockout.
 export { qaRegister, recordQa } from "./qa";
 export type { QaRecordRow, QaRegisterRow, RecordQaInput, RecordQaOutcome } from "./qa";

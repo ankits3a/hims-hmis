@@ -6,7 +6,7 @@ import { advanceOrderItem } from "../../kernel/orders/advance";
 import { placeOrder } from "../../kernel/orders/place";
 import { transition } from "../../kernel/workflow/instances";
 import { listMedicines, resolveMedicines } from "../formulary";
-import { balances, listItems, releaseReservation } from "../materials";
+import { availableQty, listItems, releaseReservation } from "../materials";
 import { getEncounter, getPrescription, runRxChecks } from "../opd";
 import { PHARMACY_SUBSTITUTION_ENABLED, REFUSED_FLAGS, SCHEDULED_FLAGS, istDateOf } from "./config";
 import { dispenseCancelled, dispenseLineDeclined, dispenseVerified, substitutionRecorded } from "./events";
@@ -50,11 +50,10 @@ export async function alternativesFor(db: Db, dispenseId: string, lineIdx: numbe
     if (item === undefined) continue;
     const sale = await getSaleItem(db, item.id);
     if (sale === undefined || !sale.active) continue;
-    let available = 0;
-    if (d.storeResourceId !== null) {
-      const rows = await balances(db, { resourceId: d.storeResourceId, itemId: item.id });
-      available = rows.reduce((n, b) => n + b.qtyOnHand - b.qtyReserved - b.qtyFrozen, 0);
-    }
+    // What the substitution dropdown PROMISES must be what the pick can deliver: a generic offered
+    // as "50 available" whose fifty are expired sends the pharmacist down a path that ends in
+    // `short_stock` after the substitution is already recorded. One definition, `availableQty`.
+    const available = d.storeResourceId === null ? 0 : await availableQty(db, d.storeResourceId, item.id);
     out.push({ medicineId: m.id, brandName: m.brandName, strengthLabel: m.strengthLabel, form: m.form, itemId: item.id, itemCode: item.code, available });
   }
   return out;

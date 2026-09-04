@@ -19,7 +19,8 @@
 groups:
   - name: hmis-scheduler
     rules:
-      # Leg 1a — the SIX `every(ms)` jobs (five until Plan 15 T4 added `flagLateSurgeons`). The
+      # Leg 1a — the SEVEN `every(ms)` jobs (five until Plan 15 T4 added `flagLateSurgeons`,
+      # then `sweepLabSla`, and now 16c's `sweepExpiredPharmacyPicks`). The
       # slowest shipped cadence is still 60s
       # (WORKER_TEMP_ROLES_INTERVAL_MS, and now WORKER_INTERFACE_SWEEP_INTERVAL_MS beside it at the
       # same 60s default), so the 300s threshold is unchanged: 5 minutes is a wide margin over one
@@ -28,7 +29,7 @@ groups:
       - alert: HmisSchedulerJobStaleInterval
         expr: |
           hmis_scheduler_heartbeat_staleness_seconds{
-            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump|sweepInterfaceHeartbeats|flagLateSurgeons|sweepLabSla"
+            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump|sweepInterfaceHeartbeats|flagLateSurgeons|sweepLabSla|sweepExpiredPharmacyPicks"
           } > 300
         for: 2m
         labels:
@@ -95,6 +96,12 @@ groups:
           # that stopped means the lab looks like it is meeting every turnaround time it has.
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepLabNonReturn"})
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepLabSla"})
+          # PLAN 16c CLOSE / F11 — the SIXTEENTH job, an INTERVAL one (60s), joining leg 1a. It is
+          # the purest case leg 2 exists for: a pick-expiry sweep that stops makes NO noise at all.
+          # Stock simply stays reserved to dispenses nobody will ever collect, `fefoPick` keeps
+          # subtracting it, and the counter reports short stock on a full shelf — the exact defect
+          # the job was written to end, silently restored.
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepExpiredPharmacyPicks"})
         for: 5m
         labels:
           severity: critical
