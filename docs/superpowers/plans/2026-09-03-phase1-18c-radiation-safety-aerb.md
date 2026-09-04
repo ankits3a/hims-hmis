@@ -216,3 +216,39 @@ the study did not carry stores NULL, not `under`"*. Restored; `diff -q` proved i
 |---|---|---|
 | T3 | `aerb` + radiology + pcpndt + seed-roles + caddyfile-parity + radiology.e2e + `kernel/modules` + `kernel/phi` | **36 suites / 442 tests, exit 0**; tsc 0, lint 0 errors |
 | T3 (web) | full `@hmis/web` suite | **81 files / 660 tests, exit 0** (10 more than T1's run) |
+
+### 8.2 Findings — T4
+
+- **F15 (T1, found by CI not by the lane) — `test/seed-staff.test.ts` pins the role-key vocabulary
+  and was in no task's Files list.** `seed:staff` REFUSES a roster naming a key outside
+  `KNOWN_ROLE_KEYS`, so until the fix the roster hiring the hospital's RSO — the person AERB
+  requires by name before a licence is issued at all — would have been rejected as a typo and the
+  WHOLE roster refused. The same shape as 18a's F11, and the fifth census file found this way.
+  **The lesson is the batch, not the file:** T1 ran the suites it had touched and the census suites
+  it knew about; from T4 on, this lane's batch is `test/` ENTIRE (51 suites, 395 tests) plus the
+  modules, which is 20 seconds longer and would have caught it.
+- **F16 (T4, D10) — the level is PRO-RATED onto the wearing period, and that is the whole ladder.**
+  A quarterly badge reading 1.4 mSv is an ordinary quarter against a 1 mSv/month programme; compared
+  against the un-pro-rated monthly figure it is an incident. A register that cried wolf every
+  quarter is a register an RSO stops opening, which is a worse failure than a late flag. The mutant
+  (`const level = perMonth`) kills six tests.
+- **F17 (T4) — Hp(10) and Hp(0.07) are different DEPTHS, and only one is compared.** The shallow
+  (skin) dose has its own, far higher limit; measuring it against the whole-body trigger would flag
+  a radiographer for a dose the Rules do not consider one. Recorded, rendered, compared against
+  nothing here — and a phase that starts comparing it must say so.
+- **F18 (T4, D10 sharpened at execution)** — `setInvestigationLevel` REFUSES a level whose annual
+  equivalent reaches the statutory single-year limit. A trigger at or above the ceiling it exists to
+  warn about never fires; that is a typo, not a policy. Not in the plan; taken here and recorded.
+- **F19 (T4, the gap's threshold)** — `badgeGaps` defaults to 120 days, and the test walks BOTH
+  sides: at 104 days a badge issued and never read is NOT a gap (a Q1 report typically arrives in
+  mid-May), at 134 days it is. A gap list that cried on day 105 would be one an RSO stopped opening.
+
+### 8.3 Assertion book as executed — T4
+**Mutant:** compare the period's reading against the MONTHLY level rather than the pro-rated one
+(D10's named one). **Result: 6 failed / 13 passed.** Restored; `diff -q` proved identical.
+
+### 8.4 Evidence — T4
+| task | batch | counts |
+|---|---|---|
+| T4 | `src/modules/aerb` + **`test/` ENTIRE** + `src/modules/radiology` | **77 suites / 755 tests, exit 0**; tsc 0, lint 0 errors |
+| T4 (web) | full `@hmis/web` suite | **81 files / 663 tests, exit 0** |

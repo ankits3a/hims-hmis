@@ -36,5 +36,26 @@ export const aerbLicenceStatusChanged = defineEvent("aerb.licence_status_changed
   reason: z.string().nullable(),
 }));
 
+/**
+ * PLAN 18c T4 / D9 — a TLD reading at or over the institution's investigation level.
+ *
+ * **It names the WORKER**, and that is the deliberate exception this file's header describes: a
+ * dose-limit warning is *about* a person, and an RSO reading a consumer that could not say whose
+ * badge it was would learn nothing at all. It carries the reading, the level it was compared
+ * against and the period — no patient, no procedure, no roster, no room.
+ *
+ * Nothing consumes it yet, by design: D9 is record-only, and the alerting ladder is 18a-iii's. It
+ * exists so that ladder has something to subscribe to without this register changing.
+ */
+export const doseLimitWarning = defineEvent("radiation.dose_limit_warning", MODULE, z.object({
+  badgeId: id,
+  userId: id,
+  badgeNo: z.string().min(1),
+  periodStart: z.string().min(1),
+  periodEnd: z.string().min(1),
+  hp10Msv: z.number().nonnegative(),
+  investigationLevelMsv: z.number().positive(),
+}));
+
 /** Every event this module declares, for the catalogue parity test. */
-export const AERB_EVENTS = [aerbLicenceFiled, aerbLicenceStatusChanged] as const;
+export const AERB_EVENTS = [aerbLicenceFiled, aerbLicenceStatusChanged, doseLimitWarning] as const;
