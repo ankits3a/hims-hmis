@@ -57,6 +57,13 @@ const failedBody = z.object({
 
 const printedBody = z.object({ jobId: z.string().min(1) });
 
+/** What one claimed job looks like on the wire. `page` is the geometry the relay prints at. */
+type PrintJobPayload = {
+  id: string; document: string; destination: string;
+  title: string; html: string;
+  page: { widthMm: number; heightMm: number | null };
+};
+
 @Controller("print")
 export class PrintingController {
   constructor(@Inject(DB) private readonly db: Db) {}
@@ -80,7 +87,7 @@ export class PrintingController {
   async claim(
     @CurrentActor() actor: Actor,
     @Body() body: unknown,
-  ): Promise<{ jobs: { id: string; document: string; destination: string; title: string; html: string }[] }> {
+  ): Promise<{ jobs: PrintJobPayload[] }> {
     const input = claimBody.parse(body);
     const relayId = this.relayId(actor);
     const jobs = await claimPrintJobs(this.db, {
@@ -101,7 +108,7 @@ export class PrintingController {
       cause is a `vitals_slip`, which has no artboard yet and deliberately renders null — better an
       honest advisory failure the screen reports (R7) than a slip nobody designed.
     */
-    const out: { id: string; document: string; destination: string; title: string; html: string }[] = [];
+    const out: PrintJobPayload[] = [];
     for (const job of jobs) {
       const rendered = await renderDocument(this.db, job.document, job.params);
       if (rendered === null) {
@@ -110,7 +117,7 @@ export class PrintingController {
       }
       out.push({
         id: job.id, document: job.document, destination: job.destination,
-        title: rendered.title, html: rendered.html,
+        title: rendered.title, html: rendered.html, page: rendered.page,
       });
     }
     return { jobs: out };

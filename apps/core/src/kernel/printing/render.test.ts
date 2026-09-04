@@ -41,12 +41,24 @@ describe("FD-24 T3: rendering the counter's documents", () => {
   });
 
   describe("the token slip — 72 mm thermal", () => {
-    it("is a 72 mm CONTINUOUS page, which is what a roll is and a sheet is not", async () => {
+    /**
+     * ═══ THE GEOMETRY TRAVELS AS DATA, AND THAT IS NOT BELT-AND-BRACES ═══
+     *
+     * MEASURED ON THE REAL TOOLCHAIN: Chromium SILENTLY IGNORES `@page { size: 72mm auto }` and
+     * emits US Letter — 215.9 × 279.4 mm — with the slip stranded in the corner. `preferCSSPageSize`
+     * does not rescue it; only an explicit height is honoured, and a continuous roll has none to
+     * declare. So the relay is TOLD the width and measures the height, and `page` is what tells it.
+     *
+     * The CSS `@page` rule stays as the declaration of intent, and is asserted here too — but a
+     * reader must not believe it is what makes the paper the right size. `tools/print-relay`'s
+     * self-test proves the other half against a real browser.
+     */
+    it("is a 72 mm CONTINUOUS page, declared in the CSS and carried as geometry", async () => {
       const doc = await renderTokenSlip(db, { encounterId }, MON);
-      // `auto` is the half that matters: the slip is as long as the job needs, which is why
-      // `PrinterChoice` ruled a die-cut 4x6 label off the billing desk.
       expect(doc!.html).toContain("@page { size: 72mm auto; margin: 0; }");
       expect(doc!.html).toContain("width: 72mm");
+      // THE HALF THAT ACTUALLY REACHES THE PRINTER
+      expect(doc!.page).toEqual({ widthMm: 72, heightMm: null }); // null = continuous, measure it
     });
 
     it("carries the token in the grammar the screen says out loud", async () => {
@@ -89,6 +101,9 @@ describe("FD-24 T3: rendering the counter's documents", () => {
       const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
       expect(doc!.html).toContain("@page { size: A4 portrait");
       expect(doc!.html).not.toContain("72mm");
+      // A SHEET has a known height and states it — a prescription that shrank to fit its content
+      // would stop being a letterhead.
+      expect(doc!.page).toEqual({ widthMm: 210, heightMm: 297 });
     });
 
     /**
@@ -121,6 +136,7 @@ describe("FD-24 T3: rendering the counter's documents", () => {
     it("prints the amount in rupees and says what it is NOT", async () => {
       const doc = await renderPaymentReceipt(db, { encounterId, amountPaise: 30_000, mode: "cash" }, MON);
       expect(doc!.html).toContain("@page { size: 72mm auto");
+      expect(doc!.page).toEqual({ widthMm: 72, heightMm: null }); // same roll as the token slip
       expect(doc!.html).toContain("₹300.00");
       // consultation is GST-exempt: a document that looks like a tax invoice and is not one is worse than a plain one
       expect(doc!.html).toContain("not a tax invoice");

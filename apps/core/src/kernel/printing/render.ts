@@ -46,6 +46,23 @@ export type RenderedDocument = {
   html: string;
   /** For the operator's log and the relay's own sanity check. */
   title: string;
+  /**
+   * ═══ THE PAGE GEOMETRY, AND WHY IT TRAVELS AS DATA RATHER THAN LIVING ONLY IN THE CSS ═══
+   *
+   * **MEASURED, NOT ASSUMED: Chromium SILENTLY IGNORES `@page { size: 72mm auto }`.** A first cut of
+   * this phase relied on the CSS alone and produced a US-Letter PDF — 215.9 × 279.4 mm — with the
+   * slip stranded in the corner of a sheet. `preferCSSPageSize: true` does not rescue it either;
+   * only an EXPLICIT height is honoured (`size: 72mm 200mm` renders exactly 72.0 × 200.1 mm).
+   *
+   * A thermal roll is continuous, so there is no explicit height to write: the slip is as long as
+   * the job needs. So the geometry travels to the relay, which has the browser, and the relay
+   * MEASURES the laid-out document before printing when `heightMm` is null.
+   *
+   * The `@page` rules in the CSS below STAY. They are the correct declaration of intent for any
+   * renderer that honours them, and they keep the template readable — but they are not what makes
+   * the paper the right size, and a future reader should not believe they are.
+   */
+  page: { widthMm: number; heightMm: number | null };
 };
 
 /** Escapes text for HTML. Everything interpolated below goes through it — patient names included. */
@@ -134,6 +151,8 @@ const HOSPITAL = {
 function thermalPage(title: string, body: string): RenderedDocument {
   return {
     title,
+    // 72 mm wide, and `null` height means CONTINUOUS: the relay measures the laid-out document.
+    page: { widthMm: 72, heightMm: null },
     html: `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${THERMAL_CSS}</style></head><body>${body}</body></html>`,
   };
 }
@@ -401,6 +420,9 @@ export async function renderPrescriptionSheet(
   `;
   return {
     title: `Prescription — ${s.patientName} (${s.visitNo})`,
+    // A4 is a SHEET and its height is known, so it is stated rather than measured — a prescription
+    // that shrank to fit its content would stop being a letterhead.
+    page: { widthMm: 210, heightMm: 297 },
     html: `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Prescription</title><style>${css}</style></head><body>${body}</body></html>`,
   };
 }
