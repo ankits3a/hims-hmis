@@ -121,10 +121,19 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
         // T5's Files list, like Plan 14 T8's, named only some of them. Finding F19.
         "sweepLabNonReturn",
         "sweepLabSla",
+        // PLAN 16c CLOSE / F11 — the SIXTEENTH. An INTERVAL job (`every(60_000)`), so it joins leg
+        // 1a's alternation and leg 2's `absent()` chain; the DAILY leg does not move. **The
+        // docstring above predicted this edit for a FOURTH time** — "a task that registers a job
+        // edits four places in one commit: `jobs.ts`, both censuses, `alerts.yml`, and that number"
+        // — and this time the close-review commit that added the job carried all four plus the
+        // scheduler census, because this file's prediction was read BEFORE the job was written
+        // rather than discovered by a red test after it. That is the whole return on writing a
+        // prediction down: the fifth task to register a job paid none of the tax the first four did.
+        "sweepExpiredPharmacyPicks",
       ].sort(),
     );
-    expect(registered).toHaveLength(15);
-    expect(new Set(registered).size).toBe(15); // no job registered twice
+    expect(registered).toHaveLength(16);
+    expect(new Set(registered).size).toBe(16); // no job registered twice
   });
 
   it("the two staleness legs together cover every registered job, exactly once each", () => {

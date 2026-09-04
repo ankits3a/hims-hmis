@@ -97,7 +97,7 @@ const T6_DEF = {
  * operator sets), so a literal somewhere did stop compiling — just not this file, which passes the
  * whole `AppConfig`. This list remains the only guard here.
  */
-const THE_FIFTEEN = [
+const THE_SIXTEEN = [
   "runDispatchCycle",
   "runDueTimers",
   "sweepExpiredTempRoles",
@@ -136,6 +136,20 @@ const THE_FIFTEEN = [
    */
   "sweepLabNonReturn",
   "sweepLabSla",
+  /**
+   * PLAN 16c CLOSE / F11 — the SIXTEENTH, an `every(60_000)` job registered LAST, which is where
+   * `jobs.ts` puts it. It releases a pharmacy pick whose 30-minute reservation ran out: `pick.ts`
+   * wrote `expires_at` from 16c T4 and no job ever read it, so abandoned picks held `qty_reserved`
+   * for ever and the counter reported short stock on a full shelf.
+   *
+   * **AND THE COUNT IN THE PARAGRAPH ABOVE IS WRONG: THERE ARE FIVE CENSUSES, NOT FOUR.** Every
+   * comment in this codebase that names the tax says "jobs.ts, both censuses, alerts.yml, and that
+   * number" — four places. Registering this job turned FIVE tests red: `jobs.test.ts` (count and a
+   * last-position pin), `scheduler.test.ts` (`THE_SIXTEEN` and its spy list), `alerts-parity.test.ts`
+   * (the sorted names AND a separate `toHaveLength`), `alerts.yml` itself, and THIS file. The
+   * prediction has been repeated by four plans and has been undercounting itself the whole time.
+   */
+  "sweepExpiredPharmacyPicks",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;
@@ -446,7 +460,7 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
     }
   });
 
-  it("(a) boots the worker context, and its Scheduler names EXACTLY the fifteen jobs", async () => {
+  it("(a) boots the worker context, and its Scheduler names EXACTLY the sixteen jobs", async () => {
     const ctx = await NestFactory.createApplicationContext(WorkerModule, { logger: false });
     try {
       const workerDb = ctx.get<Db>(DB);
@@ -463,9 +477,9 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
       // the same value `worker.ts` passes. `registerAllJobs` reads no environment of its own.
       registerAllJobs(scheduler, workerDb, registry, workerConsumers(workerDb), config);
 
-      // THE CENSUS. `toEqual` on the whole array is the point: it is exactly these thirteen, in
+      // THE CENSUS. `toEqual` on the whole array is the point: it is exactly these sixteen, in
       // registration order — not "at least", not "these among others".
-      expect(scheduler.jobs()).toEqual(THE_FIFTEEN);
+      expect(scheduler.jobs()).toEqual(THE_SIXTEEN);
       // The scheduler was never started, so nothing was scheduled and nothing needs stopping.
       expect(scheduler.leakedErrors()).toEqual([]);
     } finally {
