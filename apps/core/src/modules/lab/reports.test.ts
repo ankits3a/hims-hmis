@@ -209,9 +209,9 @@ describe("lab reports — publish, interlock, print, amend (17b T7)", () => {
     expect(priorRow.valueNumeric).toBe("2.5000");
 
     const later = new Date(AT.getTime() + 3600_000);
-    const corrected = await withTx(db, (tx) => amendResult(tx, fx.pathologist.actor, {
+    const corrected = await amendResult(db, fx.pathologist.actor, {
       resultId: priorRow.id, value: "9.9",
-    }, later));
+    }, later);
 
     const v2 = await amendReport(db, fx.pathologist.actor, {
       reportId: v1.reportId, reasonCode: "corrected_result",
@@ -708,6 +708,44 @@ describe("the report centre (17c T5)", () => {
     const tshRows = after.filter((r) => r.analyteCode === "TSH");
     expect(tshRows).toHaveLength(1); // THE KILL: 2 — the working-out shown as two live answers
     expect(tshRows[0]!.value).toBe("5.5000");
+  });
+
+  /**
+   * ═══ 17d CLOSE REVIEW PASS 2, F2 — A WITHDRAWN VALUE STAYED ON THE DOCTOR'S SCREEN ═══
+   *
+   * The reader excludes superseded rows so a clinician reads the laboratory's ANSWER rather than its
+   * working-out. It built that exclusion set from `rows` — which it had already filtered to
+   * `verification_status = 'unverified'`. So the moment the CORRECTED value is signed, the row it
+   * replaced stops being in the set that hides it, and the withdrawn number **comes back** as
+   * provisional, sitting beside the signed correction it was replaced by.
+   *
+   * That is the exact harm the provisional list is supposed to be careful about: a number no longer
+   * believed, in front of a prescriber, wearing the same label as the one that is.
+   *
+   * Written to FAIL against the merged code: it returns the stale 2.1 alongside the verified 5.5.
+   */
+  it("F2: a value superseded by one that has since been VERIFIED is gone from the provisional list", async () => {
+    const run = await runLabOrder(db, fx, ["TSH"], { at: AT, verify: false, values: { TSH: "2.1" } });
+    const first = await listProvisionalResultsForEncounter(db, fx.pathologist.actor, fx.encounterNo, AT);
+    const tsh = first.find((r) => r.analyteCode === "TSH")!;
+    expect(tsh.value).toBe("2.1000");
+
+    const analyte = (await db.select({ id: labAnalytes.id }).from(labAnalytes)
+      .where(eq(labAnalytes.code, "TSH")))[0]!;
+    const rekeyed = await enterResult(db, fx.bench.actor, {
+      orderItemId: tsh.orderItemId, analyteId: analyte.id, value: "5.5", entryMode: "manual",
+    }, AT);
+
+    /** The pathologist signs the CORRECTED value. The one it replaced is now withdrawn. */
+    await verifyResult(db, fx.pathologist.actor, fx.decls, { resultId: rekeyed.resultId }, AT);
+
+    const after = await listProvisionalResultsForEncounter(db, fx.pathologist.actor, fx.encounterNo, AT);
+    // THE KILL: the stale 2.1 returns as "provisional" once its replacement is signed.
+    expect(after.filter((r) => r.analyteCode === "TSH")).toEqual([]);
+
+    /** And the signed door has the corrected value, which is the only TSH a clinician should see. */
+    const signed = await listResultsForEncounter(db, fx.pathologist.actor, fx.encounterNo, AT);
+    expect(signed.filter((r) => r.analyteCode === "TSH").map((r) => r.value)).toEqual(["5.5000"]);
   });
 
   /** The same PHI rule as the signed read, under its OWN surface name — see `phi/audit.ts`. */
