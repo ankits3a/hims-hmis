@@ -46,10 +46,28 @@ async function assertMayManage(exec: Db | Tx, actor: Actor): Promise<void> {
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** PASS 2 — the shape check alone let `2026-02-31` reach the `date` column as a raw 22008 → 500. */
 function assertDate(value: string, field: string): void {
   if (!DATE_RE.test(value)) {
     throw new AerbError("invalid_validity", `${field} must be YYYY-MM-DD, got "${value}"`, { field });
   }
+  const [y, m, d] = value.split("-").map(Number) as [number, number, number];
+  const parsed = new Date(Date.UTC(y, m - 1, d));
+  if (parsed.getUTCFullYear() !== y || parsed.getUTCMonth() !== m - 1 || parsed.getUTCDate() !== d) {
+    throw new AerbError("invalid_validity", `${field} "${value}" is not a real date`, { field });
+  }
+}
+
+/**
+ * PASS 2 — `fileLicence` got both a pre-read AND a 23505 catch; these two got only the pre-read,
+ * and `errors.ts` says of these very codes that the index is what makes them true under
+ * concurrency. Under that concurrency the raw violation escaped as the 500 the codes exist to
+ * eliminate. One helper, both call sites.
+ */
+function asNamedConflict<T>(e: unknown, code: "badge_already_issued" | "read_already_recorded", message: string): T {
+  if ((e as { code?: unknown }).code === "23505") throw new AerbError(code, message);
+  throw e;
 }
 
 /** The policy row's value, or D10's default when the RSO has never set one. Creates nothing. */
@@ -123,10 +141,15 @@ export async function issueBadge(tx: Tx, actor: Actor, input: IssueBadgeInput): 
     );
   }
   const badgeId = newId();
-  await tx.insert(aerbTldBadges).values({
-    id: badgeId, userId: input.userId, badgeNo: input.badgeNo,
-    issuedOn: input.issuedOn, status: "active", remarks: input.remarks ?? null, createdBy: actor.id,
-  });
+  try {
+    await tx.insert(aerbTldBadges).values({
+      id: badgeId, userId: input.userId, badgeNo: input.badgeNo,
+      issuedOn: input.issuedOn, status: "active", remarks: input.remarks ?? null, createdBy: actor.id,
+    });
+  } catch (e) {
+    return asNamedConflict(e, "badge_already_issued",
+      `badge ${input.badgeNo} or this worker's badge was issued by somebody else while this was being recorded`);
+  }
   return { badgeId };
 }
 
@@ -242,7 +265,8 @@ export async function recordBadgeRead(
   const investigation = input.hp10Msv >= level;
 
   const readId = newId();
-  await tx.insert(aerbTldReads).values({
+  try {
+    await tx.insert(aerbTldReads).values({
     id: readId,
     badgeId: input.badgeId,
     periodStart: input.periodStart,
@@ -253,9 +277,13 @@ export async function recordBadgeRead(
     labRef: input.labRef ?? null,
     investigationFlag: investigation,
     investigationLevelMsv: String(level.toFixed(3)),
-    remarks: input.remarks ?? null,
-    recordedBy: actor.id,
-  });
+      remarks: input.remarks ?? null,
+      recordedBy: actor.id,
+    });
+  } catch (e) {
+    return asNamedConflict(e, "read_already_recorded",
+      `a reading for ${input.periodStart}..${input.periodEnd} was entered by somebody else while this was being recorded`);
+  }
 
   if (investigation) {
     /**

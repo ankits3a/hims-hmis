@@ -48,13 +48,14 @@ export const AERB_ERROR_CODES = [
    *   · **`read_already_recorded` (409)** — a reading for this badge and period exists. The schema
    *     comment promises "a re-entered report is a CORRECTION, not a second dose"; until there is a
    *     correction route this refusal is what says so, rather than a 500.
-   *   · **`stale_qa_pass` (422)** — a passing test performed BEFORE the failure it would clear.
-   *     This is the close review's CRITICAL: back-entering the historical QA book released a
-   *     machine that failed last week, on a certificate from last year.
+   *
+   * PASS 2 removed a third, `stale_qa_pass`. Pass 1 added it to REFUSE a passing test performed
+   * before the failure it would clear — and refusing meant the historical QA book could not be
+   * entered at all while a machine was blocked, which is the act the register exists for. That
+   * record now lands and simply releases nothing, so there is no refusal to name.
    */
   "badge_already_issued",
   "read_already_recorded",
-  "stale_qa_pass",
 ] as const;
 
 export type AerbErrorCode = (typeof AERB_ERROR_CODES)[number];
@@ -85,7 +86,6 @@ const STATUS: Record<AerbErrorCode, number> = {
 
   badge_already_issued: 409,
   read_already_recorded: 409,
-  stale_qa_pass: 422,
 };
 
 export function aerbHttpStatus(code: AerbErrorCode): number {

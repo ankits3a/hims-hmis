@@ -1,4 +1,4 @@
-import { and, eq, isNull, or, sql } from "drizzle-orm";
+import { and, eq, isNull, ne, or, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { appendEvent } from "../../kernel/events/append";
@@ -88,20 +88,6 @@ async function assertMayManage(exec: Db | Tx, actor: Actor): Promise<void> {
 }
 
 export interface FileLicenceInput {
-  /**
-   * CLOSE REVIEW — the renewal path, and without it this register had none.
-   *
-   * "One active licence per device" plus "a renewal retires the old row first" meant the 2027
-   * certificate, which arrives in November, could not be entered until the 2026 row was suspended
-   * — which stops the machine for the rest of December. The only alternative was to file at 00:00
-   * on 1 January, with every ionising study refused in the meantime. That is precisely the failure
-   * D4 argues against one register over: *a machine that stops itself at midnight strands the night
-   * trauma CT.* The licence register was doing it every year, on every machine.
-   *
-   * Naming the outgoing licence supersedes it and files the new one in ONE transaction, so the
-   * hospital can enter the certificate the day it arrives and the machine never goes dark.
-   */
-  supersedesLicenceId?: string | null;
   deviceResourceId: string;
   licenceType: AerbLicenceType;
   licenceNo: string;
@@ -143,9 +129,13 @@ export async function fileLicence(
    * OPD room's resource id filed an AERB licence against it and rendered in the inspector's file as
    * a licensed machine, while `unlicensedDevices` (which does filter `kind = 'device'`) disagreed
    * about what a machine is.
+   *
+   * PASS 2 — the row is taken `FOR UPDATE`. It is the one row that always exists for this device,
+   * so locking it serialises two concurrent files and makes the overlap check below race-free,
+   * which a pre-read alone could never be (and which no partial unique index can express).
    */
   const deviceRows = await tx.select({ kind: resources.kind })
-    .from(resources).where(eq(resources.id, input.deviceResourceId));
+    .from(resources).where(eq(resources.id, input.deviceResourceId)).for("update");
   const device = deviceRows[0];
   if (device === undefined || device.kind !== "device") {
     throw new AerbError(
@@ -155,31 +145,42 @@ export async function fileLicence(
     );
   }
 
-  const live = await tx.select({ id: aerbLicences.id, licenceNo: aerbLicences.licenceNo })
+  /**
+   * ═══ PASS 2, CRITICAL — A RENEWAL IS THE NEXT WINDOW, NOT A SURRENDER ═══
+   *
+   * Pass 1 built a renewal that surrendered the outgoing certificate the instant the incoming one
+   * was filed, so entering the 2027 licence in November left the CT with nothing in force for the
+   * rest of 2026 — every ionising study refused from the day the paperwork arrived, with no way
+   * back because `surrendered` is terminal. It stopped the machine it was written to keep running.
+   *
+   * What a hospital has is a SEQUENCE of certificates with non-overlapping validity. So the 2027
+   * licence is simply filed, both rows are `active`, and `activeLicenceFor` — which has always
+   * asked the DATE question — returns the 2026 one on 20 November and the 2027 one on 2 January.
+   * What is refused is an OVERLAP, because two certificates covering one day is the ambiguity the
+   * old index was really about.
+   */
+  const others = await tx.select({
+    id: aerbLicences.id, licenceNo: aerbLicences.licenceNo,
+    validFrom: aerbLicences.validFrom, validTo: aerbLicences.validTo,
+  })
     .from(aerbLicences)
-    .where(and(eq(aerbLicences.deviceResourceId, input.deviceResourceId), eq(aerbLicences.status, "active")));
-  const outgoing = live[0];
-
-  if (outgoing !== undefined) {
-    if (input.supersedesLicenceId !== outgoing.id) {
-      throw new AerbError(
-        "licence_already_active",
-        `device ${input.deviceResourceId} already carries active licence ${outgoing.licenceNo}. A renewal `
-        + `names it as \`supersedesLicenceId\` and both rows move in one transaction, so the machine `
-        + "never goes dark between the two certificates",
-        { deviceResourceId: input.deviceResourceId, activeLicenceId: outgoing.id },
-      );
-    }
-    /** The renewal: the outgoing certificate is surrendered as the new one is filed. */
-    await changeLicenceStatus(tx, actor, outgoing.id, "surrendered", {
-      reason: `superseded by ${input.licenceNo}`,
-      decommissionRef: input.licenceNo,
-    });
-  } else if (input.supersedesLicenceId != null) {
+    .where(and(
+      eq(aerbLicences.deviceResourceId, input.deviceResourceId),
+      ne(aerbLicences.status, "surrendered"),
+    ));
+  const overlap = others.find((o) => o.validFrom <= input.validTo && input.validFrom <= o.validTo);
+  if (overlap !== undefined) {
     throw new AerbError(
-      "unknown_licence",
-      `licence ${input.supersedesLicenceId} is not the active licence on device ${input.deviceResourceId}`,
-      { supersedesLicenceId: input.supersedesLicenceId },
+      "licence_already_active",
+      `device ${input.deviceResourceId} already carries licence ${overlap.licenceNo} covering `
+      + `${overlap.validFrom}..${overlap.validTo}, which overlaps ${input.validFrom}..${input.validTo}. `
+      + "Two certificates cannot cover the same day; a RENEWAL simply starts where the last one ends "
+      + "and may be filed the day it arrives",
+      {
+        deviceResourceId: input.deviceResourceId,
+        conflictingLicenceId: overlap.id,
+        conflictingWindow: `${overlap.validFrom}..${overlap.validTo}`,
+      },
     );
   }
 
@@ -259,16 +260,41 @@ export async function changeLicenceStatus(
   }
   if (licence.status === to) return;
 
-  /** Restoring to `active` must not create the second live row the unique index forbids. */
+  /**
+   * Restoring to `active` must not create an OVERLAP, and must not collide with another live
+   * certificate carrying the same number.
+   *
+   * PASS 2 — the old check was "does this device have any active licence", which is no longer the
+   * invariant, and it did not look at the number at all: since `licence_no`'s uniqueness became
+   * partial, restoring a suspended licence whose number had meanwhile been filed on another machine
+   * hit `aerb_licences_no_active_ux` as a raw 23505 and reached the RSO as a 500.
+   */
   if (to === "active") {
-    const live = await tx.select({ id: aerbLicences.id })
+    const clash = await tx.select({
+      id: aerbLicences.id, licenceNo: aerbLicences.licenceNo,
+      deviceResourceId: aerbLicences.deviceResourceId,
+      validFrom: aerbLicences.validFrom, validTo: aerbLicences.validTo,
+    })
       .from(aerbLicences)
-      .where(and(eq(aerbLicences.deviceResourceId, licence.deviceResourceId), eq(aerbLicences.status, "active")));
-    if (live[0]) {
+      .where(and(
+        eq(aerbLicences.status, "active"),
+        ne(aerbLicences.id, licenceId),
+        or(
+          eq(aerbLicences.deviceResourceId, licence.deviceResourceId),
+          eq(aerbLicences.licenceNo, licence.licenceNo),
+        ),
+      ));
+    const blocking = clash.find((c) =>
+      c.licenceNo === licence.licenceNo
+      || (c.validFrom <= licence.validTo && licence.validFrom <= c.validTo));
+    if (blocking !== undefined) {
       throw new AerbError(
         "licence_already_active",
-        `device ${licence.deviceResourceId} already carries an active licence`,
-        { deviceResourceId: licence.deviceResourceId, activeLicenceId: live[0].id },
+        blocking.licenceNo === licence.licenceNo
+          ? `licence number ${licence.licenceNo} is live on device ${blocking.deviceResourceId}`
+          : `device ${licence.deviceResourceId} already carries licence ${blocking.licenceNo} covering `
+            + `${blocking.validFrom}..${blocking.validTo}`,
+        { deviceResourceId: licence.deviceResourceId, conflictingLicenceId: blocking.id },
       );
     }
   }

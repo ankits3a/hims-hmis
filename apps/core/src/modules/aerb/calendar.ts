@@ -128,6 +128,7 @@ export async function complianceCalendar(
     deviceResourceId: qaRecords.deviceResourceId,
     qaType: qaRecords.qaType,
     nextDueOn: qaRecords.nextDueOn,
+    result: qaRecords.result,
     performedOn: qaRecords.performedOn,
     recordedAt: qaRecords.recordedAt,
     code: resources.code,
@@ -147,7 +148,32 @@ export async function complianceCalendar(
   }
   for (const r of latestQa.values()) {
     const dueOn = r.nextDueOn;
-    if (dueOn === null) continue;
+    if (dueOn === null) {
+      /**
+       * ═══ PASS 2 — DROPPING EVERY NULL DATE DELETED THE MACHINE FROM THE CALENDAR ═══
+       *
+       * The drop was written for a FAILED test, which legitimately has no next date until the
+       * machine is repaired — its failure is the QA tab's row, not the calendar's. But it did not
+       * look at `result`, and `nextDueOn` is optional on every result. A PASS entered without one —
+       * a typo on the one field nothing validates — took the machine off the compliance calendar
+       * ENTIRELY, and no other leg covers it. Pass 1's defect was "overdue for a test it had";
+       * this was the same failure with the sign flipped, and it is the more dangerous sign.
+       *
+       * A machine whose latest test PASSED and scheduled nothing has no QA due — which is itself
+       * the compliance gap, so it is a row with no date rather than no row at all.
+       */
+      if (r.result !== "pass") continue;
+      rows.push({
+        kind: "qa",
+        subject: `${r.code} — ${r.name}`,
+        detail: r.qaType,
+        dueOn: null,
+        state: "overdue",
+        daysOverdue: Math.floor((Date.parse(`${asOf}T00:00:00Z`) - Date.parse(`${r.performedOn}T00:00:00Z`)) / DAY_MS),
+        ref: r.id,
+      });
+      continue;
+    }
     rows.push({
       kind: "qa",
       subject: `${r.code} — ${r.name}`,

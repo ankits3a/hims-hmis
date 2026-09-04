@@ -157,12 +157,16 @@ export async function appointments(
  * question — which modalities AERB licences — and not radiology's clinical one. Ultrasound and MRI
  * are absent because they emit no ionising radiation and never appear on an eLORA licence.
  */
-export const AERB_LICENSABLE_MODALITIES: readonly string[] = ["xray", "ct", "mammography", "fluoroscopy", "dexa"];
-
 /**
- * The modalities AERB does NOT licence, because they emit no ionising radiation. This is the list
- * the gap check actually uses (see `unlicensedDevices`): everything else — including a device whose
- * modality attribute is missing, mis-cased or new — is something that must be accounted for.
+ * The modalities AERB does NOT licence, because they emit no ionising radiation. **This is the list
+ * the gap check uses**, and it is an exclusion rather than an inclusion on purpose: everything else
+ * — including a device whose modality attribute is missing, mis-cased or new — is something that
+ * must be accounted for, and the machine nobody finished configuring is the one most likely to be
+ * missing its paper. Compared case-insensitively; `resources.attributes.modality` has no CHECK.
+ *
+ * PASS 2 — `AERB_LICENSABLE_MODALITIES` used to live here and be exported while this list did the
+ * deciding, so a later consumer importing the public name would have got the old defect back. It is
+ * gone; there is one list and it is the one the code reads.
  */
 export const AERB_UNLICENSABLE_MODALITIES: readonly string[] = ["usg", "ultrasound", "mri"];
 
@@ -211,5 +215,10 @@ export async function unlicensedDevices(
       name: r.name,
       modality: typeof r.attributes?.modality === "string" ? r.attributes.modality : "",
     }))
-    .filter((r) => !AERB_UNLICENSABLE_MODALITIES.includes(r.modality));
+    /**
+     * PASS 2 — `.includes(modality)` is case-sensitive, and mis-casing is the very bug this filter
+     * was rewritten to catch: a device configured `"MRI"` or `"USG"` was listed as a machine needing
+     * an AERB licence, on a screen whose whole value is that every row on it is real.
+     */
+    .filter((r) => !AERB_UNLICENSABLE_MODALITIES.includes(r.modality.trim().toLowerCase()));
 }

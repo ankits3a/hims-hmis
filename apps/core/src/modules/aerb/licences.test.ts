@@ -111,58 +111,73 @@ describe("the AERB licence register (18c T1)", () => {
 
   /* ═══════════════════ ONE ACTIVE LICENCE PER DEVICE ═══════════════════ */
 
-  it("refuses a second active licence on one machine — a renewal retires the old row first", async () => {
+  /** PASS 2 — the same window twice is still refused; a LATER window is a renewal and is not. */
+  it("refuses a second licence covering the same days", async () => {
     await file(ct, "2026-01-01", "2026-12-31");
-    await expect(file(ct, "2027-01-01", "2027-12-31", "AERB/CT/2027/1"))
+    await expect(file(ct, "2026-06-01", "2027-05-31", "AERB/CT/DUP"))
       .rejects.toMatchObject({ code: "licence_already_active" });
   });
 
   /**
-   * CLOSE REVIEW — the renewal path, and without it the register had none.
+   * ═══ PASS 2, CRITICAL — A RENEWAL IS THE NEXT WINDOW, AND THE MACHINE MUST NOT GO DARK ═══
    *
-   * "Retire the old row first" meant the 2027 certificate, which arrives in November, could not be
-   * entered until the machine was already stopped. Naming the outgoing licence moves both rows in
-   * one transaction, so the certificate is entered the day it arrives and the CT never goes dark.
+   * Pass 1's renewal surrendered the outgoing certificate the instant the incoming one was filed,
+   * so entering the 2027 licence in November left the CT with NOTHING in force for the rest of
+   * 2026 — every ionising study refused from the day the paperwork arrived. Pass 1's own test said
+   * "and the machine never goes dark" and asserted that only BEFORE the renewal. This one asserts
+   * it after, which is the whole point.
    */
-  it("a renewal supersedes the outgoing licence in ONE transaction, and the machine never goes dark", async () => {
-    const { licenceId } = await file(ct, "2026-01-01", "2026-12-31");
-    expect(await activeLicenceFor(db, ct, "2026-11-20")).not.toBeNull();
-
-    /** November: the 2027 certificate arrives and is filed against the live one. */
+  it("filing next year's certificate in November leaves TODAY's licence in force", async () => {
+    await file(ct, "2026-01-01", "2026-12-31", "AERB/CT/2026/1");
     await withTx(db, (tx) => fileLicence(tx, rso, {
       deviceResourceId: ct, licenceType: "licence", licenceNo: "AERB/CT/2027/1",
-      validFrom: "2027-01-01", validTo: "2027-12-31", supersedesLicenceId: licenceId,
+      validFrom: "2027-01-01", validTo: "2027-12-31",
     }));
 
+    /** THE ASSERTION PASS 1 DID NOT MAKE. */
+    expect((await activeLicenceFor(db, ct, "2026-11-20"))?.licenceNo).toBe("AERB/CT/2026/1");
+    /** And the day the new one starts, it is the one in force. */
+    expect((await activeLicenceFor(db, ct, "2027-01-02"))?.licenceNo).toBe("AERB/CT/2027/1");
+    /** Neither certificate was surrendered: both are live rows in a sequence. */
     const rows = await db.select().from(aerbLicences).where(eq(aerbLicences.deviceResourceId, ct));
-    expect(rows).toHaveLength(2);
-    expect(rows.filter((r) => r.status === "active")).toHaveLength(1);
-    expect(rows.find((r) => r.status === "active")!.licenceNo).toBe("AERB/CT/2027/1");
-    /** The outgoing row is surrendered and says what superseded it. */
-    const gone = rows.find((r) => r.status === "surrendered")!;
-    expect(gone.decommissionRef).toBe("AERB/CT/2027/1");
-    expect(gone.decommissionedAt).not.toBeNull();
+    expect(rows.filter((r) => r.status === "active")).toHaveLength(2);
   });
 
-  /** eLORA renewals routinely keep the number; the global unique made that a 500. */
+  /** eLORA renewals routinely keep the number, and the global unique made that a 500. */
   it("a renewal may KEEP the licence number", async () => {
-    const { licenceId } = await file(ct, "2026-01-01", "2026-12-31", "AERB/CT/SAME");
+    await file(ct, "2026-01-01", "2026-12-31", "AERB/CT/SAME");
     await expect(withTx(db, (tx) => fileLicence(tx, rso, {
       deviceResourceId: ct, licenceType: "licence", licenceNo: "AERB/CT/SAME",
-      validFrom: "2027-01-01", validTo: "2027-12-31", supersedesLicenceId: licenceId,
+      validFrom: "2027-01-01", validTo: "2027-12-31",
+    }))).rejects.toMatchObject({ code: "licence_already_active" });
+    /**
+     * ...and the reason it is refused is the NUMBER, not the window: two live certificates cannot
+     * share a number. A renewal that keeps its number surrenders the old row first, which is now a
+     * choice the RSO makes rather than one the register forces on the machine.
+     */
+    const [old] = await db.select().from(aerbLicences).where(eq(aerbLicences.licenceNo, "AERB/CT/SAME"));
+    await withTx(db, (tx) => changeLicenceStatus(tx, rso, old!.id, "surrendered", { decommissionRef: "renewed" }));
+    await expect(withTx(db, (tx) => fileLicence(tx, rso, {
+      deviceResourceId: ct, licenceType: "licence", licenceNo: "AERB/CT/SAME",
+      validFrom: "2027-01-01", validTo: "2027-12-31",
     }))).resolves.toMatchObject({ licenceId: expect.any(String) });
-    const live = await db.select().from(aerbLicences)
-      .where(and(eq(aerbLicences.deviceResourceId, ct), eq(aerbLicences.status, "active")));
-    expect(live).toHaveLength(1);
-    expect(live[0]!.validTo).toBe("2027-12-31");
   });
 
-  it("naming a licence that is not the device's active one is refused", async () => {
+  /** Two certificates covering one day is the ambiguity the old index was really about. */
+  it("refuses an OVERLAPPING window, and names what it overlaps", async () => {
     await file(ct, "2026-01-01", "2026-12-31");
     await expect(withTx(db, (tx) => fileLicence(tx, rso, {
-      deviceResourceId: ct, licenceType: "licence", licenceNo: "AERB/CT/2027/1",
-      validFrom: "2027-01-01", validTo: "2027-12-31", supersedesLicenceId: "01NOTALICENCE00000000000",
-    }))).rejects.toMatchObject({ code: "licence_already_active" });
+      deviceResourceId: ct, licenceType: "licence", licenceNo: "AERB/CT/OVERLAP",
+      validFrom: "2026-12-31", validTo: "2027-12-31",
+    }))).rejects.toMatchObject({
+      code: "licence_already_active",
+      detail: { conflictingWindow: "2026-01-01..2026-12-31" },
+    });
+    /** One day later — abutting, not overlapping — is exactly what a renewal is. */
+    await expect(withTx(db, (tx) => fileLicence(tx, rso, {
+      deviceResourceId: ct, licenceType: "licence", licenceNo: "AERB/CT/ABUT",
+      validFrom: "2027-01-01", validTo: "2027-12-31",
+    }))).resolves.toBeDefined();
   });
 
   /** An AERB licence names a MACHINE; a bed's resource id used to file one and render as licensed. */
@@ -182,9 +197,27 @@ describe("the AERB licence register (18c T1)", () => {
   it("refuses a date that is well-formed but not a real day", async () => {
     await expect(file(ct, "2026-02-31", "2026-12-31"))
       .rejects.toMatchObject({ code: "invalid_validity" });
+    /** A real leap day is accepted; a fake one is not. */
+    await expect(file(ct, "2024-02-29", "2024-12-31", "AERB/LEAP")).resolves.toBeDefined();
   });
 
-  it("a renewal filed after the old row is surrendered leaves exactly one active licence", async () => {
+  /**
+   * PASS 2, MINOR — restoring a suspended licence whose NUMBER has meanwhile gone live on another
+   * machine used to hit the partial unique index as a raw 23505 and reach the RSO as a 500.
+   */
+  it("restoring a suspended licence is refused by NAME when its number is live elsewhere", async () => {
+    const { licenceId } = await file(ct, "2026-01-01", "2026-12-31", "AERB/SHARED");
+    await withTx(db, (tx) => changeLicenceStatus(tx, rso, licenceId, "suspended", { reason: "condition" }));
+    const other = await mkDevice("CT-2", "ct");
+    await withTx(db, (tx) => fileLicence(tx, rso, {
+      deviceResourceId: other, licenceType: "licence", licenceNo: "AERB/SHARED",
+      validFrom: "2026-01-01", validTo: "2026-12-31",
+    }));
+    await expect(withTx(db, (tx) => changeLicenceStatus(tx, rso, licenceId, "active")))
+      .rejects.toMatchObject({ code: "licence_already_active" });
+  });
+
+  it("a replacement filed after the old unit is surrendered leaves exactly one active licence", async () => {
     const { licenceId } = await file(ct, "2026-01-01", "2026-12-31");
     await withTx(db, (tx) => changeLicenceStatus(tx, rso, licenceId, "surrendered", {
       reason: "unit replaced", decommissionRef: "DECOM/2026/3",
@@ -338,6 +371,18 @@ describe("the AERB licence register (18c T1)", () => {
 
   it("and still never names an ultrasound or an MRI — AERB licences neither", async () => {
     await mkDevice("MRI-1", "mri");
+    await file(ct, "2026-01-01", "2026-12-31");
+    expect(await unlicensedDevices(db, "2026-06-15")).toHaveLength(0);
+  });
+
+  /**
+   * PASS 2 — the exclusion was case-SENSITIVE, and mis-casing is the very bug the inclusion filter
+   * was replaced to catch. A device configured `"MRI"` was listed as needing an AERB licence, on a
+   * screen whose whole value is that every row on it is real.
+   */
+  it("does not name a MIS-CASED ultrasound or MRI either", async () => {
+    await mkDevice("MRI-2", "MRI");
+    await mkDevice("USG-9", " USG ");
     await file(ct, "2026-01-01", "2026-12-31");
     expect(await unlicensedDevices(db, "2026-06-15")).toHaveLength(0);
   });

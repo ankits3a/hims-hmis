@@ -124,15 +124,29 @@ export const aerbLicences = pgTable(
   },
   (t) => [
     /**
-     * ONE ACTIVE LICENCE PER DEVICE — the `pcpndt_registered_machines_device_active_ux` shape, and
-     * for the identical reason. Without it a machine could carry two active rows and
-     * `activeLicenceFor` would return whichever Postgres happened to read first: §2.54's mechanism
-     * with a regulator on the other end of it. A RENEWAL is therefore a status change on the old
-     * row and a new row, never two live ones.
+     * ═══ CLOSE REVIEW PASS 2, CRITICAL — "ONE ACTIVE LICENCE PER DEVICE" WAS THE WRONG INVARIANT ═══
+     *
+     * It was `uniqueIndex(deviceResourceId) where status = 'active'`, and pass 1's remediation built
+     * a renewal on top of it that surrendered the outgoing certificate the moment the incoming one
+     * was filed. Pass 2 measured the consequence: filing the 2027 licence in November left
+     * `activeLicenceFor` returning **null for 20 November**, so the CT refused every ionising study
+     * from the day the certificate arrived until 1 January — and `surrendered` is terminal, so there
+     * was no way back. The fix stopped the machine it was written to keep running.
+     *
+     * The invariant a hospital actually has is **a SEQUENCE of certificates with non-overlapping
+     * validity**, and "which licence is in force" is a function of the DATE, not of a status.
+     * `activeLicenceFor` has always asked the date question; only this index disagreed. So a device
+     * may carry the 2026 and the 2027 licence at once, and neither is ambiguous on any given day.
+     *
+     * `status` goes back to meaning what it says — the lifecycle of ONE certificate (`active`, or
+     * `suspended` because a condition was breached, or `surrendered` because the unit was
+     * decommissioned) — and the uniqueness that remains is the one that is really true: **a device
+     * cannot hold two certificates that start on the same day.** Overlap itself is refused in
+     * `fileLicence`, under a `FOR UPDATE` lock on the device row so two concurrent files serialise.
      */
-    uniqueIndex("aerb_licences_device_active_ux")
-      .on(t.deviceResourceId)
-      .where(sql`${t.status} = 'active'`),
+    uniqueIndex("aerb_licences_device_from_ux")
+      .on(t.deviceResourceId, t.validFrom)
+      .where(sql`${t.status} <> 'surrendered'`),
     /** Two machines cannot hold the same live licence number. A surrendered row may reuse it. */
     uniqueIndex("aerb_licences_no_active_ux")
       .on(t.licenceNo)

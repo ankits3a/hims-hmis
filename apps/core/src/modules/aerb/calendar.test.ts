@@ -135,6 +135,26 @@ describe("the compliance calendar (18c T5)", () => {
     expect((await calendar(true)).filter((r) => r.kind === "qa")).toHaveLength(0);
   });
 
+  /**
+   * ═══ PASS 2 — DROPPING EVERY NULL DATE DELETED THE MACHINE FROM THE CALENDAR ═══
+   *
+   * `next_due_on` is optional on every result, and pass 1's fix dropped a null one whatever the
+   * result. A PASS entered without a next date — a typo on the one field nothing validates — took
+   * the machine off the compliance calendar ENTIRELY, and no other leg covers it. That is pass 1's
+   * defect with the sign flipped, and it is the more dangerous sign.
+   */
+  it("a PASS that scheduled nothing is a row with no date, not the absence of a row", async () => {
+    await withTx(db, (tx) => recordQa(tx, rso, RADIOLOGY_RESOURCE_KINDS, {
+      deviceResourceId: ct, qaType: "AERB annual QA", result: "pass",
+      performedBy: "S. Iyer", performedOn: daysFrom(-40),
+    }));
+    const rows = (await calendar(false)).filter((r) => r.kind === "qa");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.dueOn).toBeNull();
+    expect(rows[0]!.state).toBe("overdue");
+    expect(rows[0]!.daysOverdue).toBe(40);
+  });
+
   /** A retest the same day after a repair: the row entered LAST wins, not whichever the read found. */
   it("breaks a same-day tie on when the record was entered", async () => {
     await qa(daysFrom(-1), daysFrom(2), "AERB annual QA");

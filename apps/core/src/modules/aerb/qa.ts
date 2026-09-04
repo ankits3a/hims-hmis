@@ -46,6 +46,14 @@ export type QaRecordRow = typeof qaRecords.$inferSelect;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** PASS 2 — `2026-02-31` passed the shape check here too and died at the INSERT as a raw 22008. */
+function isRealDate(value: string): boolean {
+  if (!DATE_RE.test(value)) return false;
+  const [y, m, d] = value.split("-").map(Number) as [number, number, number];
+  const parsed = new Date(Date.UTC(y, m - 1, d));
+  return parsed.getUTCFullYear() === y && parsed.getUTCMonth() === m - 1 && parsed.getUTCDate() === d;
+}
+
 async function assertMayManage(exec: Db | Tx, actor: Actor): Promise<void> {
   if (actor.type !== "user") {
     throw new AerbError(
@@ -91,8 +99,8 @@ export async function recordQa(
   opts: { now?: Date } = {},
 ): Promise<RecordQaOutcome> {
   await assertMayManage(tx, actor);
-  if (!DATE_RE.test(input.performedOn)) {
-    throw new AerbError("invalid_validity", `performedOn must be YYYY-MM-DD, got "${input.performedOn}"`);
+  if (!isRealDate(input.performedOn)) {
+    throw new AerbError("invalid_validity", `performedOn must be a real date (YYYY-MM-DD), got "${input.performedOn}"`);
   }
   /**
    * CLOSE REVIEW — F52's rule, which this file was not following: nothing bounded `performedOn`
@@ -109,8 +117,8 @@ export async function recordQa(
     );
   }
   if (input.nextDueOn != null) {
-    if (!DATE_RE.test(input.nextDueOn)) {
-      throw new AerbError("invalid_validity", `nextDueOn must be YYYY-MM-DD, got "${input.nextDueOn}"`);
+    if (!isRealDate(input.nextDueOn)) {
+      throw new AerbError("invalid_validity", `nextDueOn must be a real date (YYYY-MM-DD), got "${input.nextDueOn}"`);
     }
     if (input.nextDueOn < input.performedOn) {
       throw new AerbError(
@@ -126,8 +134,19 @@ export async function recordQa(
   const deviceRows = await tx.select({ id: resources.id, kind: resources.kind, status: resources.status })
     .from(resources).where(eq(resources.id, input.deviceResourceId));
   const device = deviceRows[0];
-  if (!device) {
-    throw new AerbError("unknown_licence", `no resource ${input.deviceResourceId}`, { deviceResourceId: input.deviceResourceId });
+  /**
+   * PASS 2 — pass 1's finding named "neither `fileLicence` nor `recordQa`", and only the first was
+   * fixed. A `pass` against a bed's resource id was written and rendered by `qaRegister` in the
+   * inspector's file as a machine with a QA certificate. Only the `fail` path was incidentally
+   * protected, because `changeResourceStatus` rejects `qa_blocked` for a kind whose vocabulary
+   * lacks it — which is the shape of a guard that holds by accident.
+   */
+  if (!device || device.kind !== "device") {
+    throw new AerbError(
+      "unknown_licence",
+      `${input.deviceResourceId} is not a device resource — a QA record is about a machine`,
+      { deviceResourceId: input.deviceResourceId, kind: device?.kind ?? null },
+    );
   }
 
   const recordId = newId();
@@ -197,15 +216,21 @@ export async function recordQa(
      * the control. It now carries a date. A pass that is not newer than the open failure records
      * normally and releases nothing — the history is enterable, and it cannot clear a machine.
      */
+    /**
+     * ═══ PASS 2 — THIS RECORDS AND DOES NOT RELEASE; IT USED TO REFUSE ═══
+     *
+     * Pass 1 threw here, and pass 2 caught the contradiction: the paragraph above promised the
+     * history would still be enterable, and a throw meant that **while a machine was `qa_blocked`
+     * its historical QA book could not be entered at all** — which is the very act the CRITICAL's
+     * own narrative calls the ordinary use of this register.
+     *
+     * Recording without releasing keeps both properties. The row lands, the inspector's book is
+     * complete, and the machine stays stopped; the answer says `releasedRecordId: null`, so nothing
+     * tells the RSO a clearance happened. Fail-safe in the direction that matters.
+     */
     const blocking = openFail[0];
     if (blocking !== undefined && input.performedOn < blocking.performedOn) {
-      throw new AerbError(
-        "stale_qa_pass",
-        `this test was performed on ${input.performedOn}, before the failure of ${blocking.performedOn} `
-        + "that stopped the machine — a certificate older than the failure cannot clear it. The record "
-        + "is not written; file it with its own date once the machine has actually been re-tested",
-        { deviceResourceId: input.deviceResourceId, performedOn: input.performedOn, blockedOn: blocking.performedOn },
-      );
+      return { recordId, blocked: false, releasedRecordId: null };
     }
 
     const at = new Date();

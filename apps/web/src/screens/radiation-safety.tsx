@@ -127,10 +127,24 @@ export function RadiationSafety(): React.ReactElement {
    */
   useEffect(() => {
     if (!printing) return;
-    if (!calendarIncludeOk || calendar.isFetching || calendar.data === undefined) return;
+    /**
+     * ═══ PASS 2, WRONG — THIS COULD STICK `printing` TRUE FOR EVER ═══
+     *
+     * The first version returned early whenever the widened file was not yet here, with no path out
+     * on failure. The app's query client is `retry: false`, so one 403 or 500 on the calendar left
+     * `data` undefined, `isFetching` false, and the button **disabled and labelled "Preparing the
+     * file…" for the life of the mount** — a print that could never happen, where the defect it
+     * replaced at least always printed something. Unticking the box mid-flight stranded it the same
+     * way. Both proven by pass 2's probe.
+     *
+     * Every way out is now enumerated: the file arrives and we print; the fetch fails and we stop;
+     * the user changes their mind and we stop.
+     */
+    if (!calendarIncludeOk || calendar.isError) { setPrinting(false); return; }
+    if (calendar.isFetching || calendar.data === undefined) return;
     setPrinting(false);
     window.print();
-  }, [printing, calendarIncludeOk, calendar.isFetching, calendar.data]);
+  }, [printing, calendarIncludeOk, calendar.isError, calendar.isFetching, calendar.data]);
   const peopleRows: WireAppointment[] = people.data?.rows ?? [];
   /** A machine sitting in `qa_blocked` is the state the QA tab exists to make impossible to miss. */
   const blockedNow = qaRows.filter((r) => r.deviceStatus === "qa_blocked");
@@ -312,8 +326,20 @@ export function RadiationSafety(): React.ReactElement {
                   <tbody>
                     {doseRows.map((r) => (
                       <tr key={r.id} data-testid={`aerb-dose-${r.id}`}>
-                        <td>{r.occurredAt.slice(0, 10)}</td>
-                        <td>{r.patientName} · {r.uhid}</td>
+                        {/*
+                          * PASS 2 — this was `occurredAt.slice(0, 10)` over a UTC instant, so a CT
+                          * at 02:15 IST on 1 April printed as 31 March. The register's SELECTION
+                          * window is IST (the same commit made it so), which left the book
+                          * internally inconsistent about the one fact an inspector cross-checks.
+                          */}
+                        <td>{todayIst(new Date(r.occurredAt))}</td>
+                        {/*
+                          * PASS 2 — the alias was rendered beside the UHID, which is the
+                          * hospital-wide lookup key: any radiographer could paste it into patient
+                          * search and recover the legal name. The worklist this pattern came from
+                          * selects no UHID at all. A restricted row now says so instead.
+                          */}
+                        <td>{r.patientName}{r.restricted ? "" : ` · ${r.uhid}`}</td>
                         <td>{r.procedureCode} ({r.modality}){r.deviceCode === null ? "" : ` · ${r.deviceCode}`}</td>
                         <td>{doseText(r)}{r.doseManual ? ` · ${t("aerb.dose.manual")}` : ""}</td>
                         <td>

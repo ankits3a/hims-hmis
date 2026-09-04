@@ -90,7 +90,10 @@ export type WireDoseRow = {
   sourceRef: string;
   patientId: string;
   patientName: string;
+  /** Empty for a confidential patient read without clearance — see `restricted`. */
   uhid: string;
+  /** PASS 2 — the client must be able to tell an aliased row from a real one. */
+  restricted: boolean;
   deviceCode: string | null;
   modality: string;
   procedureCode: string;

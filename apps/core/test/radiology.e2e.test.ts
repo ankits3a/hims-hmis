@@ -701,14 +701,21 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     const book = await get("/aerb/badges", rso.token);
     expect(book.status).toBe(200);
     const badgeBody = book.body as {
-      rows: { badgeNo: string; workerYtdMsv: string; worstYear: string | null; lastInvestigation: boolean | null }[];
+      rows: { badgeNo: string; workerYtdMsv: string; worstYear: string | null; worstYearMsv: string; lastInvestigation: boolean | null }[];
       limits: { annualMsv: number };
     };
     const mine = badgeBody.rows.find((r) => r.badgeNo === "TLD-E2E-001");
     expect(mine!.lastInvestigation).toBe(true);
-    /** Close review — the cumulative is the WORKER's, across every badge they have ever worn. */
-    expect(Number(mine!.workerYtdMsv)).toBeCloseTo(4.2, 3);
+    /**
+     * Close review — the cumulative is the WORKER's, across every badge they have ever worn.
+     *
+     * PASS 2 — this used to read `workerYtdMsv`, which is THIS calendar year off the wall clock,
+     * against a fixture reading that ends 2026-07-31: green all through 2026 and red on 1 January
+     * 2027. Eight lines below, this file cites F28 for exactly that. `worstYear` and its total are
+     * facts about the reading rather than about the day the suite runs.
+     */
     expect(mine!.worstYear).toBe("2026");
+    expect(Number(mine!.worstYearMsv)).toBeCloseTo(4.2, 3);
     /** The screen never states a limit the server did not send. */
     expect(badgeBody.limits.annualMsv).toBe(30);
 

@@ -210,8 +210,16 @@ export function drlFor(
     const v = measured[l.quantity];
     return v !== null && v !== undefined;
   };
-  /** How far over its own level this examination is, as a ratio, for picking the strictest. */
-  const excess = (l: DoseReferenceLevel): number => (measured[l.quantity] ?? 0) / l.value;
+  /**
+   * How far over its own level this examination is, as a ratio, for picking the strictest.
+   *
+   * PASS 2 — `zod` already refuses a non-positive level at draft and again at read, so a zero
+   * cannot reach here through the API; the guard is here because a division that returns `Infinity`
+   * would silently win every comparison, and a body that reached the table around the API is the
+   * case `studyTypeByService` sixty lines up exists for.
+   */
+  const excess = (l: DoseReferenceLevel): number =>
+    (l.value > 0 ? (measured[l.quantity] ?? 0) / l.value : 0);
 
   const byCode = levels.filter((l) => l.study_type_code === studyTypeCode);
   const byModality = levels.filter((l) => l.study_type_code === undefined && l.modality === modality);

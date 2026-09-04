@@ -15,7 +15,7 @@ export {
   changeLicenceStatus, endAppointment, fileLicence,
 } from "./licences";
 export type { AerbLicenceRow, AerbPersonRow, AppointPersonInput, FileLicenceInput } from "./licences";
-export { AERB_LICENSABLE_MODALITIES, appointments, licenceRegister, unlicensedDevices } from "./read";
+export { AERB_UNLICENSABLE_MODALITIES, appointments, licenceRegister, unlicensedDevices } from "./read";
 // PLAN 18c T3 — the patient dose register. `recordDose` is what a SOURCE calls (radiology today,
 // the cath lab and radiation oncology later) from inside its own transaction; nothing here reads a
 // source's tables, which is what keeps this module installable without a department.

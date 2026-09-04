@@ -154,28 +154,61 @@ describe("the QA register and the qa_blocked lockout (18c T2)", () => {
    * The register exists so an inspector can be shown the QA history, so back-entering old
    * certificates is the ordinary act — and it released a machine that had failed last week.
    */
-  it("back-entering LAST YEAR's certificate does not release a machine that failed last week", async () => {
+  /**
+   * PASS 2 rewrote this. Pass 1 REFUSED the stale pass, which meant the historical QA book could
+   * not be entered at all while a machine was blocked — the act this register exists for. It now
+   * records and releases nothing, and BOTH halves are the assertion.
+   */
+  it("back-entering LAST YEAR's certificate records it, and does NOT release a machine that failed last week", async () => {
     await record({ result: "fail", performedOn: "2026-06-15" });
     expect(await deviceStatus()).toBe("qa_blocked");
 
-    await expect(record({ result: "pass", performedOn: "2025-06-10", nextDueOn: "2026-06-10" }))
-      .rejects.toMatchObject({ code: "stale_qa_pass", detail: { blockedOn: "2026-06-15" } });
+    const stale = await record({ result: "pass", performedOn: "2025-06-10", nextDueOn: "2026-06-10" });
 
-    /** The machine is still stopped AND the stale record was not written. */
+    /** The history is enterable... */
+    expect(await db.select().from(qaRecords)).toHaveLength(2);
+    /** ...and the answer says plainly that it cleared nothing... */
+    expect(stale.releasedRecordId).toBeNull();
+    /** ...and the machine is still stopped. */
     expect(await deviceStatus()).toBe("qa_blocked");
-    expect(await db.select().from(qaRecords)).toHaveLength(1);
+    const [fail] = await db.select().from(qaRecords).where(eq(qaRecords.blockApplied, true));
+    expect(fail!.releasedAt).toBeNull();
   });
 
-  it("a pass on the SAME day as the failure releases — a machine re-tested that afternoon", async () => {
+  /**
+   * The boundary of that rule. A machine failed in the morning, repaired and re-tested the same
+   * afternoon, is released — `<` and not `<=`, which is the mutant this row exists for.
+   */
+  it("a pass on the SAME day as the failure DOES release — a machine re-tested that afternoon", async () => {
     await record({ result: "fail", performedOn: "2026-06-15" });
     await expect(record({ result: "pass", performedOn: "2026-06-15" })).resolves.toMatchObject({ blocked: false });
     expect(await deviceStatus()).toBe("available");
   });
 
-  it("history entered on a machine that is NOT blocked records freely, whatever its date", async () => {
+  it("history entered on a machine that is NOT blocked records freely and releases nothing", async () => {
     await expect(record({ result: "pass", performedOn: "2019-04-01", nextDueOn: "2020-04-01" }))
       .resolves.toMatchObject({ blocked: false, releasedRecordId: null });
     expect(await deviceStatus()).toBe("available");
+  });
+
+  /** PASS 2 — the kind check landed in `fileLicence` only; a bed could carry a QA certificate. */
+  it("refuses a QA record against a resource that is not a device", async () => {
+    const bed = newId();
+    await db.insert(resources).values({
+      id: bed, kind: "bed", code: "B-1", name: "Bed 1", status: "available",
+      attributes: {}, createdBy: "t", updatedBy: "t",
+    });
+    await expect(withTx(db, (tx) => recordQa(tx, rso, RADIOLOGY_RESOURCE_KINDS, {
+      deviceResourceId: bed, qaType: "annual", result: "pass",
+      performedBy: "x", performedOn: "2026-06-15",
+    }))).rejects.toMatchObject({ code: "unknown_licence", detail: { kind: "bed" } });
+    expect(await db.select().from(qaRecords)).toHaveLength(0);
+  });
+
+  /** PASS 2 — `2026-02-31` passed the shape check here too and died at the INSERT as a 500. */
+  it("refuses a date that is well-formed but not a real day", async () => {
+    await expect(record({ performedOn: "2026-02-31" }))
+      .rejects.toMatchObject({ code: "invalid_validity" });
   });
 
   /** F52's rule: nothing bounded `performedOn` above, so a typo released on a test not yet done. */

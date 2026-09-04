@@ -443,3 +443,84 @@ period if the endpoints differ · the tab list has no `tabpanel` roles.
 passed alone at 2,665 ms and on the very next full run. That suite is the front-desk lane's and this
 lane touched nothing it reads — a wall-clock flake on a loaded box, the shape this repo has recorded
 three times. Re-run before searching your own diff.
+
+### 8.5.2 Close review — pass 2 (two FRESH reviewers, briefed at the FIXES, §2.140)
+**Verdicts over pass 1's 20 fixes: 11 CORRECT · 6 INCOMPLETE · 1 WRONG · 7 NEW.** One reviewer built
+a probe — the pre-fix screen with the new tests, `node_modules` symlinked back — so its headline
+findings are MEASURED rather than argued. **This pass paid for itself twice over, and the method's
+own number held: one fix in six was incomplete and one was wrong.**
+
+- **WRONG — pass 1's renewal STOPPED THE MACHINE IT WAS WRITTEN TO KEEP RUNNING.** The fix
+  surrendered the outgoing certificate the instant the incoming one was filed, so entering the 2027
+  licence in November left `activeLicenceFor` returning **null for 20 November** — every ionising
+  study on that CT refused from the day the paperwork arrived until 1 January, with no way back
+  because `surrendered` is terminal. **Worse than the defect it replaced**, which merely refused to
+  record the renewal. Pass 1's own test said *"and the machine never goes dark"* and asserted that
+  only BEFORE the renewal. I reproduced it in a throwaway suite before touching anything: `LICENCE
+  IN FORCE ON 20 NOV 2026 AFTER FILING THE RENEWAL: NONE`.
+  **The invariant was wrong, not the code.** "One active licence per device" is not what a hospital
+  has; it has a SEQUENCE of certificates with non-overlapping validity, and *which is in force* is a
+  function of the DATE — the question `activeLicenceFor` always asked and only the index disagreed
+  with. Migration `0065` replaces the index with "a device cannot hold two certificates that START
+  on the same day"; overlap is refused in `fileLicence` under a `FOR UPDATE` lock on the device row,
+  which is race-free in a way no partial index could be. `supersedesLicenceId` is gone: a renewal is
+  just the next window, filed the day it arrives.
+- **WRONG (web) — the print fix could disable the button for ever.** The effect returned early
+  whenever the widened file was not here, with no path out on failure; the client is `retry: false`,
+  so one 403 left it *disabled and reading "Preparing the file…" for the life of the mount* — a
+  print that could never happen, where the defect it replaced at least always printed something.
+  Unticking the box mid-flight stranded it the same way. Both proven by the reviewer's probe, both
+  now pinned.
+- **INCOMPLETE — CRITICAL 4 was half-closed.** `displayName` aliased the name and **the UHID went
+  out raw beside it** — the hospital-wide lookup key, which any radiographer can paste into patient
+  search to recover the legal name. The finding said "legal name AND UHID"; the fix read half of it,
+  and the new test asserted only that the name was absent. The UHID is now withheld with a
+  `restricted` flag, the `registration.ts` convention.
+- **INCOMPLETE — the dose register dated every row by the UTC day** while the same commit made its
+  SELECTION window IST: a CT at 02:15 IST on 1 April was fetched as April and printed as 31 March.
+  The register was internally inconsistent about the one fact an inspector cross-checks.
+- **INCOMPLETE — the merge chain was walked downward only.** `listMergedLoserIds` walks *down* from
+  a winner; asked about a loser it returns `[]`. The caller is the study screen, which passes the
+  study's own `patientId` — and a study placed BEFORE the merge carries the LOSER's id, because
+  merge never rewrites another module's rows. So the exact case the finding described was still
+  split. `resolvePatientId` first now, both here and on the PHI row.
+- **INCOMPLETE — `recordQa`'s docstring contradicted its code.** It promised a stale pass "records
+  normally and releases nothing"; pass 1 made it throw, which meant that **while a machine was
+  blocked its historical QA book could not be entered at all** — the act the CRITICAL's own
+  narrative calls the ordinary use of this register. It records and releases nothing now, which is
+  what the paragraph always said and is fail-safe in the direction that matters. `stale_qa_pass`
+  left the error union with it.
+- **INCOMPLETE — the calendar fix deleted a machine from the calendar.** Dropping every null
+  `next_due_on` was written for a FAILED test; it did not look at `result`, and the field is
+  optional on every result. A PASS entered without one — a typo on the one field nothing validates —
+  took the machine off the compliance calendar ENTIRELY. Pass 1's defect with the sign flipped, and
+  the more dangerous sign. A pass that scheduled nothing is now a row with no date.
+- **INCOMPLETE — the gap list's exclusion was case-SENSITIVE**, and mis-casing is the very bug the
+  filter was rewritten to catch: a device configured `"MRI"` was listed as needing an AERB licence.
+- **INCOMPLETE — the real-date check landed in one of four files**; `recordQa`'s kind check was
+  never added at all (pass 1's finding named both and only one was fixed); and two of the three new
+  409s had a pre-read and no `23505` catch, so under the concurrency `errors.ts` invokes by name
+  they still escaped as the 500 the codes were added to eliminate.
+- **NEW — the walk read the wall-clock year.** `workerYtdMsv` against a fixture reading ending
+  2026-07-31: green all through 2026 and **red on 1 January 2027**. Eight lines below it the file
+  cites F28 for exactly that. Now `worstYear`, which is a fact about the reading.
+- **NEW — four vacuous tests, measured not guessed.** The print test passed against the ORIGINAL
+  `setTimeout(print, 0)` (in jsdom the mocked fetch drains through microtasks before a macrotask);
+  two QA tests and one licence test passed both before and after. Three are kept as boundary or
+  complement guards with honest titles; the print one was replaced by two that fail against the
+  regression.
+- **NEW — two fixes shipped with no coverage at all**: the DAP/fluoroscopy nudge (the only fixture
+  in the tree sets both to null, so both new branches were dead), and four of the six tabs' error
+  guard. Both now covered.
+
+### 8.6.2 Evidence — after pass 2's remediation
+| batch | counts |
+|---|---|
+| `src/modules/aerb` + `test/` ENTIRE + `src/modules/radiology`, freshly created databases | **78 suites / 797 tests, exit 0** |
+| full `@hmis/web` | **81 files / 683 tests, exit 0** |
+| static | tsc 0, lint 0 errors |
+
+**What the two passes cost and bought:** pass 1 found four CRITICALs that 88 passing tests and five
+dead mutants did not. Pass 2 found that one of pass 1's fixes was worse than the defect, that a
+CRITICAL was half-closed, and that four of the tests written to prove the fixes proved nothing.
+**Neither pass found anything by running tests. Both found everything by reading.**

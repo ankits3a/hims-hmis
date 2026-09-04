@@ -115,7 +115,7 @@ describe("the radiation-safety register (18c T1)", () => {
     uhid: "HMS-00000001-5", deviceCode: "CT-1", modality: "ct", procedureCode: "CT-HEAD",
     doseCtdivol: "42.000", doseDlp: "1200.000", doseDap: null, fluoroSeconds: null,
     doseManual: false, drlQuantity: "dlp", drlValue: "1000.000", overDrl: true,
-    occurredAt: "2026-06-15T09:00:00.000Z", ...over,
+    restricted: false, occurredAt: "2026-06-15T09:00:00.000Z", ...over,
   });
 
   /**
@@ -274,6 +274,87 @@ describe("the radiation-safety register (18c T1)", () => {
     await waitFor(() => { expect(print).toHaveBeenCalled(); });
   });
 
+  /**
+   * ═══ PASS 2 — THESE TWO GUARD THE REGRESSION PASS 1's FIX INTRODUCED ═══
+   *
+   * Pass 1 replaced a `setTimeout(print, 0)` with an effect that returned early whenever the
+   * widened file was not here — with NO path out on failure. The client is `retry: false`, so one
+   * 403 left the button **disabled and reading "Preparing the file…" for the life of the mount**: a
+   * print that could never happen, where the defect it replaced at least always printed something.
+   * Pass 2 proved both stuck paths with a probe. The test the fix shipped with was VACUOUS — in
+   * jsdom the mocked fetch drains through microtasks before a `setTimeout(…, 0)` macrotask, so it
+   * passed against the ORIGINAL code too.
+   */
+  it("a failed widened fetch releases the print button instead of stranding it", async () => {
+    const print = vi.fn();
+    vi.stubGlobal("print", print);
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [CALENDAR]: { status: 403, body: { statusCode: 403, message: "forbidden", code: "permission_denied" } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-calendar"));
+    await userEvent.click(await screen.findByTestId("aerb-print"));
+    await waitFor(() => { expect(screen.getByTestId("aerb-print")).not.toBeDisabled(); });
+    expect(print).not.toHaveBeenCalled();
+  });
+
+  it("unticking the box while the file is loading releases the print button too", async () => {
+    const print = vi.fn();
+    vi.stubGlobal("print", print);
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [CALENDAR]: { status: 200, body: { rows: [calRow()] } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-calendar"));
+    await userEvent.click(await screen.findByTestId("aerb-print"));
+    await userEvent.click(screen.getByTestId("aerb-calendar-include-ok"));
+    await waitFor(() => { expect(screen.getByTestId("aerb-print")).not.toBeDisabled(); });
+  });
+
+  /**
+   * PASS 2 — the dose register dated every row by the UTC day while SELECTING them by the IST day,
+   * so a CT at 02:15 IST on 1 April was fetched as April and printed as 31 March. The register was
+   * internally inconsistent about the one fact an inspector cross-checks.
+   */
+  it("dates a dose row by the IST day, not the UTC one", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [DOSES]: { status: 200, body: { rows: [doseRow({ occurredAt: "2026-03-31T20:45:00.000Z" })] } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-dose"));
+    /** 20:45 UTC on 31 March is 02:15 IST on 1 April. */
+    expect(await screen.findByTestId("aerb-dose-R1")).toHaveTextContent("2026-04-01");
+  });
+
+  /**
+   * PASS 2 — the alias was rendered beside the UHID, which is the hospital-wide lookup key: any
+   * radiographer could paste it into patient search and recover the legal name, which is the whole
+   * of what the aliasing prevents. CRITICAL 4 was only half-closed.
+   */
+  it("does not print the UHID of a patient whose name it is withholding", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [DOSES]: { status: 200, body: { rows: [
+        doseRow({ id: "R1", patientName: "Patient A", uhid: "", restricted: true }),
+        doseRow({ id: "R2", patientName: "Ravi Kumar", uhid: "HMS-00000002-3", restricted: false }),
+      ] } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-dose"));
+    const hidden = await screen.findByTestId("aerb-dose-R1");
+    expect(hidden).toHaveTextContent("Patient A");
+    expect(hidden).not.toHaveTextContent("HMS-");
+    /** An ordinary patient still shows theirs — the RSO's register is not made useless. */
+    expect(screen.getByTestId("aerb-dose-R2")).toHaveTextContent("HMS-00000002-3");
+  });
+
   /* ═════════════════════ PLAN 18c T4 — THE BADGES TAB ═════════════════════ */
 
   const badge = (over: Record<string, unknown> = {}) => ({
@@ -358,6 +439,11 @@ describe("the radiation-safety register (18c T1)", () => {
   it.each([
     ["calendar", CALENDAR, "aerb-tab-calendar", "aerb-calendar-empty", /Nothing is due/],
     ["badges", BADGES, "aerb-tab-badges", "aerb-badges-empty", /No TLD badge/],
+    /** PASS 2 — the guard is on all six tabs; two were tested. These are the other four. */
+    ["licences", LICENCES, "aerb-tab-licences", "aerb-licences-empty", /No AERB licence/],
+    ["qa", QA, "aerb-tab-qa", "aerb-qa-empty", /No quality-assurance result/],
+    ["dose", DOSES, "aerb-tab-dose", "aerb-dose-empty", /No dose has been registered/],
+    ["people", PERSONS, "aerb-tab-people", "aerb-people-empty", /No RSO or medical physicist/],
   ])("a failed %s fetch shows the error and NOT the all-clear sentence", async (_name, route, tab, emptyId, sentence) => {
     mockRoutes({
       [LICENCES]: { status: 200, body: { rows: [] } },
