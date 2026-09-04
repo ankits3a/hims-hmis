@@ -2,7 +2,8 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
 import { withTx } from "../../kernel/db/client";
-import { events, opdDepartmentTokens, opdQueueEntries, opdQueueSessions, patients, workflowInstances } from "../../kernel/db/schema";
+import { enqueuePrintJob } from "../../kernel/printing/enqueue";
+import { events, opdDepartmentTokens, opdQueueEntries, opdQueueSessions, patients, printJobs, workflowInstances } from "../../kernel/db/schema";
 import {
   abandonVisit, getEncounter, moveEncounter, openVisit, patientTimeline, reEnterVisit, transferQueue, reclassifyVisit,
 } from "./encounters";
@@ -169,6 +170,62 @@ describe("opd encounters (the spine: open / abandon / re-enter / transfer / time
     // a department that issued NOTHING that day is untouched: it still starts at 1
     const freshDept = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: dept2Id, doctorId: drp.doctorId }, MON);
     expect(freshDept.tokenNo).toBe(1);
+  });
+
+  /**
+   * ═══ FD-24 T5 — A TOKEN AND ITS PAPER ARE ONE EVENT ═══
+   *
+   * Owner ruling R2: the A4 prescription prints at the front desk AFTER the token is generated. The
+   * token is generated exactly here, so the slips are queued exactly here — in the SAME transaction,
+   * which is why `enqueuePrintJob` takes a `Tx`. The alternative is a screen enqueuing after the
+   * call returns, and a browser tab closed in that window means a patient with a token and no paper.
+   */
+  it("FD-24: opening a visit queues the token slip and the prescription, against this encounter", async () => {
+    const opened = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+
+    const jobs = await db.select().from(printJobs).where(eq(printJobs.encounterId, opened.encounter.id));
+    expect(jobs.map((j) => j.document).sort()).toEqual(["opd_prescription", "opd_token_slip"]);
+    // R2 — the A4 goes to the FRONT DESK's laser, not the vitals desk
+    expect(jobs.find((j) => j.document === "opd_prescription")!.destination).toBe("front_desk_a4");
+    expect(jobs.find((j) => j.document === "opd_token_slip")!.destination).toBe("front_desk_thermal");
+    // every job points at the patient, which is what makes "what did we print about this person" answerable
+    expect(new Set(jobs.map((j) => j.patientId))).toEqual(new Set([patient.id]));
+    expect(jobs.every((j) => j.requestedBy === clerk.actor.id)).toBe(true);
+    expect(jobs.every((j) => j.status === "queued")).toBe(true);
+  });
+
+  /**
+   * THE KILL for an enqueue that opened its own transaction or fired after the commit: a visit that
+   * fails leaves NO paper queued. A slip for a visit that does not exist is a patient holding a
+   * number nobody called.
+   */
+  it("FD-24: a visit that fails queues no paper at all", async () => {
+    await expect(openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: "no-such-doctor" }, MON))
+      .rejects.toThrow();
+    expect(await db.select().from(printJobs)).toHaveLength(0);
+  });
+
+  /**
+   * THE DEDUPE KEY IS THE ENCOUNTER'S, and that is what makes the paper idempotent. Anything that
+   * re-queues the same visit's slip — a retried request, a re-entry that reuses the token, a
+   * duplicate event — inserts nothing rather than sending a second slip to the roll.
+   */
+  it("FD-24: re-queuing the same visit's slip inserts nothing", async () => {
+    const opened = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    const before = (await db.select().from(printJobs)).length;
+    expect(before).toBe(2);
+
+    const again = await withTx(db, (tx) => enqueuePrintJob(tx, {
+      document: "opd_token_slip",
+      params: { encounterId: opened.encounter.id, unpaid: true },
+      dedupeKey: `token:${opened.encounter.id}`, // the key `joinSessionInTx` mints
+    }));
+    expect(again).toBeNull(); // null is SUCCESS — the paper is already coming
+    expect((await db.select().from(printJobs)).length).toBe(before);
+
+    // …and a DIFFERENT visit gets its own paper, so the key is not simply swallowing everything
+    const other = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: drb.doctorId }, MON);
+    expect(await db.select().from(printJobs).where(eq(printJobs.encounterId, other.encounter.id))).toHaveLength(2);
   });
 
   it("visit type anchors on the newest completed consult in the SAME department, across the merge chain", async () => {
