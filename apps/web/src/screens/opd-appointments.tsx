@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
 import { FormProvider, useForm } from "react-hook-form";
@@ -444,9 +444,11 @@ export function OpdAppointments(): React.ReactElement {
     setLog((prev) => logged(prev, text, kind));
   }, []);
 
-  const departmentItems = departments.data?.items ?? [];
+  // `?? []` mints a NEW array on every render, and both of these are read by the agent's `ask`
+  // callback below — an unmemoised fallback would rebuild that callback on every keystroke.
+  const departmentItems = useMemo(() => departments.data?.items ?? [], [departments.data]);
   const doctorItems = doctors.data?.items ?? [];
-  const allDoctorItems = allDoctors.data?.items ?? [];
+  const allDoctorItems = useMemo(() => allDoctors.data?.items ?? [], [allDoctors.data]);
   const roomItems = rooms.data?.items ?? [];
 
   /**
