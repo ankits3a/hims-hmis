@@ -120,25 +120,70 @@ async function arrive(): Promise<void> {
  * directly would let a screen that had lost the search-first flow keep passing this suite.
  */
 async function openForm(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  /*
+    The form is on screen from the start (see the first test), so this is the SEARCH-THEN-REGISTER
+    road rather than a way to reveal it: the clerk looks, decides none of the hits is the person in
+    front of them, and presses "Register new" — which clears whatever a previous patient left behind.
+    Taking that road here rather than typing straight into the form keeps these tests honest about
+    the flow the owner ruled for.
+  */
   await user.type(screen.getByTestId("reg-search"), "Farida");
   await waitFor(() => { expect(screen.getByTestId("register-new")).toBeInTheDocument(); }, { timeout: 3000 });
   await user.click(screen.getByTestId("register-new"));
-  await waitFor(() => { expect(screen.getByTestId("reg-form")).toBeInTheDocument(); });
+  /*
+    THE QUERY IS NOT THROWN AWAY. A clerk who typed a name into the find box and found nobody has
+    already typed that name; making them type it again is the small tax that teaches a desk to stop
+    searching first. So "Register new" CARRIES the query into the name field, and this asserts it —
+    a later refactor that "cleared the form properly" would silently reintroduce the double-typing.
+  */
+  await waitFor(() => { expect(screen.getByTestId("reg-name")).toHaveValue("Farida"); });
 }
 
 afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
 
 describe("FD-25: the registration seat opens on the search box", () => {
   /**
-   * SEARCH BEFORE A SINGLE FORM FIELD — the owner's ruling, kept twice over on Desk One and kept
-   * here. The form is NOT on screen until the clerk has looked, because a duplicate stopped at the
-   * search box costs nothing and a duplicate stopped after the form is filled costs a merge.
+   * ═══ SEARCH-FIRST IS ENFORCED BY FOCUS, NOT BY HIDING THE FORM ═══
+   *
+   * The first build of this screen hid the form until "Register new" was pressed, reasoning that
+   * search-first meant form-later. The signed-off artboard does not: it draws the search box and
+   * the form together, with no conditional around the form. A screenshot of the built screen showed
+   * why that matters — a 1440×980 counter monitor with one search box and six hundred pixels of
+   * empty paper under it.
+   *
+   * So what this asserts is what actually enforces the ruling: THE FIND BOX HAS THE CURSOR when the
+   * screen opens. That is the mechanism; a hidden form was only a proxy for it, and an expensive one.
    */
-  it("shows the search box and no form until the clerk asks for one", async () => {
+  it("opens with the cursor already in the find box, and the form ready below it", async () => {
     mount([]);
     await arrive();
-    expect(screen.getByTestId("reg-search")).toBeInTheDocument();
-    expect(screen.queryByTestId("reg-form")).not.toBeInTheDocument();
+    expect(screen.getByTestId("reg-search")).toHaveFocus();
+    expect(screen.getByTestId("reg-form")).toBeInTheDocument();
+    /* The helper says WHY in the same breath, which is the other half of the ruling. */
+    expect(screen.getByText(/a duplicate stopped here costs nothing/i)).toBeInTheDocument();
+  });
+
+  /**
+   * THE RAIL ANSWERS "WHO IS THIS", AND IT ANSWERS DURING A REGISTRATION TOO.
+   *
+   * Found by looking: it read "Nobody at the counter yet" while the clerk was typing that person's
+   * name into the form beside it — literally true, since there is no UHID yet, and useless. The
+   * empty state now means what it says: nobody, not even a draft.
+   */
+  it("shows the person being registered before they have a UHID, marked as not yet registered", async () => {
+    mount([]);
+    await arrive();
+    expect(screen.getByTestId("rail-empty")).toBeInTheDocument();
+
+    const user = userEvent.setup({ delay: null });
+    await user.type(screen.getByTestId("reg-name"), "Aarav Khatoon");
+    await user.type(screen.getByTestId("reg-age"), "8");
+
+    await waitFor(() => { expect(screen.getByTestId("rail-drafting")).toBeInTheDocument(); });
+    expect(screen.getByTestId("rail-name")).toHaveTextContent("Aarav Khatoon");
+    expect(screen.queryByTestId("rail-empty")).not.toBeInTheDocument();
+    /* …and the rail carries the one thing that will stop the registration, where the eye rests. */
+    expect(screen.getByTestId("rail-drafting")).toHaveTextContent(/guardian required/i);
   });
 
   it("finds a patient and puts them in the rail — the rail is empty until then", async () => {
@@ -284,6 +329,32 @@ describe("FD-25: the two doors to a doctor, and the proposal that names its rule
     /* 6 waiting × 12 min — the wait comes from the queue summary, never from the screen's guess. */
     expect(screen.getByTestId("routing-wait")).toHaveTextContent("72m");
     expect(screen.getByTestId("routing-reason")).not.toBeEmptyDOMElement();
+  });
+
+  /**
+   * ═══ THE BADGE MUST NOT CONTRADICT THE RULE IT SITS BESIDE ═══
+   *
+   * FOUND BY LOOKING, not by this suite: a card headed "Rule 3 · the department queue", saying "No
+   * doctor is free in this department", wore a green badge reading "shortest wait" — a claim about
+   * a comparison that never happened, on the one card whose point is that there was nobody to
+   * compare. The badge logic was `continuity ? seenBefore : shortestWait`, correct for the two
+   * rules that pick a doctor and wrong for the third.
+   *
+   * A badge is a claim. One the card's own heading contradicts teaches a clerk to stop reading both.
+   */
+  it("says nobody is assigned — not 'shortest wait' — when no doctor is available at all", async () => {
+    mount([], { "GET /api/opd/queues/summary": { items: [{ ...SUMMARY, scheduledToday: false }] } });
+    await arrive();
+    const user = userEvent.setup({ delay: null });
+    await openForm(user);
+    await user.type(screen.getByTestId("reg-complaint"), "seene mein dard");
+
+    await waitFor(() => { expect(screen.getByTestId("routing-proposal")).toBeInTheDocument(); }, { timeout: 3000 });
+    expect(screen.getByTestId("routing-rule")).toHaveTextContent(/department queue/i);
+    expect(screen.getByTestId("routing-badge")).toHaveTextContent(/nobody assigned/i);
+    expect(screen.getByTestId("routing-badge")).not.toHaveTextContent(/shortest/i);
+    /* …and the button must not offer to open a visit there is no doctor for. */
+    expect(screen.getByTestId("reg-submit")).toHaveTextContent("Register only");
   });
 
   it("the doctor-by-name door proposes that doctor without a complaint being typed", async () => {

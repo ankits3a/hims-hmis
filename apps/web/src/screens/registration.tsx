@@ -155,8 +155,30 @@ function Proposal(
             : proposal.rule === "shortest_wait" ? t("registrationSeat.proposal.ruleShortest")
               : t("registrationSeat.proposal.ruleDepartment")}
         </span>
-        <span className={proposal.delayed ? "pill gd" : "pill on"} style={{ marginLeft: "auto" }}>
-          {continuity ? t("registrationSeat.proposal.badgeSeenBefore") : t("registrationSeat.proposal.badgeShortest")}
+        {/*
+          ═══ FOUND BY LOOKING — THE BADGE CONTRADICTED THE RULE BESIDE IT ═══
+
+          This read `continuity ? seenBefore : shortestWait`, which is right for the two rules that
+          pick a doctor and WRONG for the third. A screenshot showed a card headed "Rule 3 · the
+          department queue", saying "No doctor is free in this department", wearing a green badge
+          that said "shortest wait" — a claim about a comparison that was never made, on a card
+          whose whole point is that there was nobody to compare.
+
+          It is the keycap-that-lies rule in another costume: a badge is a claim, and a claim the
+          card's own heading contradicts teaches a clerk to stop reading either. Rule 3 gets a badge
+          that says what actually happened, and the tone drops to plain because there is nothing
+          good to report.
+        */}
+        <span
+          className={proposal.rule === "department_queue" ? "pill" : proposal.delayed ? "pill gd" : "pill on"}
+          data-testid="routing-badge"
+          style={{ marginLeft: "auto" }}
+        >
+          {proposal.rule === "department_queue"
+            ? t("registrationSeat.proposal.badgeUnassigned")
+            : continuity
+              ? t("registrationSeat.proposal.badgeSeenBefore")
+              : t("registrationSeat.proposal.badgeShortest")}
         </span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 11, marginTop: 8, flexWrap: "wrap" }}>
@@ -224,7 +246,6 @@ export function Registration(): React.ReactElement {
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [held, setHeld] = useState<Held | null>(null);
-  const [enrolling, setEnrolling] = useState(false);
   const [duplicates, setDuplicates] = useState<WirePatientHit[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -424,7 +445,6 @@ export function Registration(): React.ReactElement {
         facts: [sexLetter(form.sex), age === null ? null : `${String(age)}y`].filter((x) => x !== null).join(" · "),
         hindiName: null,
       });
-      setEnrolling(false);
       setDuplicates(null);
       note(t("registrationSeat.log.registered", { uhid: res.patient.uhid }), "ok");
     } catch (e) {
@@ -450,7 +470,6 @@ export function Registration(): React.ReactElement {
   /* ── keyboard ────────────────────────────────────────────────────────────────────────────── */
 
   const startEnrolment = useCallback((): void => {
-    setEnrolling(true);
     setHeld(null);
     setIssued(null);
     setDuplicates(null);
@@ -559,8 +578,23 @@ export function Registration(): React.ReactElement {
             <>
               {/* The artboard's pill. It is true: this seat takes no money and has no drawer. */}
               <span className="pill on">{t("registrationSeat.header.noDrawer")}</span>
+              {/*
+                ═══ FOUND BY LOOKING — THIS BUTTON SAID EXACTLY WHAT THE SHELL'S ALREADY SAYS ═══
+
+                The artboard's header carries "Search — the cursor starts here [Esc]", and it was
+                right to: on a standalone canvas that bar was the ONLY search affordance. Inside the
+                app shell it is not. `router.tsx` puts a global search button in the header reading
+                `t("shell.search")` — the identical sentence — bound to F8, about a centimetre away.
+
+                Two buttons, the same words, two different keys, side by side. That is FD-1's
+                two-doors defect in miniature, and no test could see it: both render, both work, and
+                each is correct about itself. Only a screenshot puts them next to each other.
+
+                So this one says what it actually does, which is a different thing from the global
+                search: it returns the cursor to THIS screen's find box.
+              */}
               <button className="sec" type="button" data-testid="focus-search" onClick={backToSearch} style={{ gap: 9 }}>
-                <span>{t("registrationSeat.header.searchHere")}</span>
+                <span>{t("registrationSeat.header.backToSearch")}</span>
                 <span className="kb">Esc</span>
               </button>
             </>
@@ -572,10 +606,39 @@ export function Registration(): React.ReactElement {
           <div style={{ width: 290, flexShrink: 0, display: "flex", flexDirection: "column", gap: 13 }}>
             <div className="box" style={{ padding: 14 }}>
               <span className="tag">{t("registrationSeat.rail.inHand")}</span>
-              {held === null ? (
+              {/*
+                ═══ FOUND BY LOOKING — THE RAIL WAS DEAD WEIGHT DURING THE COMMONEST OPERATION ═══
+
+                It said "Nobody at the counter yet" while the clerk was typing that very person's
+                name into the form beside it. Literally true — there is no UHID yet — and useless:
+                the rail is the column that answers WHO IS THIS, and during a registration the
+                answer is on screen and simply was not being shown.
+
+                So an unregistered person appears here as soon as they have a name, marked as not
+                yet registered. It is the same card, not a second one, because a clerk should not
+                have to learn two places to look for the same fact — and the moment the UHID exists
+                the card gains it without moving.
+              */}
+              {held === null && form.name.trim() === "" ? (
                 <p data-testid="rail-empty" style={{ margin: "9px 0 0", color: "var(--faint)", fontSize: 12.5 }}>
                   {t("registrationSeat.rail.nobodyYet")}
                 </p>
+              ) : held === null ? (
+                <div data-testid="rail-drafting">
+                  <div style={{ marginTop: 9, display: "flex", flexDirection: "column", gap: 3 }}>
+                    <span data-testid="rail-name" style={{ fontSize: 16, fontWeight: 600, lineHeight: "20px" }}>
+                      {form.name.trim()}
+                    </span>
+                    <span style={{ fontSize: 11.5, color: "var(--dim)" }}>
+                      {[form.sex === "" ? null : t(`registrationSeat.form.${form.sex}`), age === null ? null : `${String(age)}y`]
+                        .filter((x) => x !== null).join(" · ")}
+                    </span>
+                  </div>
+                  <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 5 }}>
+                    <span className="pill gd">{t("registrationSeat.rail.notYetRegistered")}</span>
+                    {needsGuardian ? <span className="pill gd">{t("registrationSeat.rail.guardianNeeded")}</span> : null}
+                  </div>
+                </div>
               ) : (
                 <>
                   <div style={{ marginTop: 9, display: "flex", flexDirection: "column", gap: 3 }}>
@@ -639,7 +702,6 @@ export function Registration(): React.ReactElement {
                           facts: [sexLetter(hit.administrativeGender), ageOf(hit.dob)].filter((x) => x !== "" && x !== null).join(" · "),
                           hindiName: null,
                         });
-                        setEnrolling(false);
                         note(t("registrationSeat.log.tookHit", { uhid: hit.uhid }));
                       }}
                       style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", width: "100%" }}
@@ -680,331 +742,354 @@ export function Registration(): React.ReactElement {
               ) : null}
             </div>
 
-            {/* ── THE FORM ── */}
-            {enrolling ? (
-              <div className="box" data-testid="reg-form" style={{ padding: "15px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-                  <span style={{ fontSize: 15, fontWeight: 600 }}>{t("registrationSeat.form.newPatient")}</span>
-                  <span style={{ fontSize: 11.5, color: "var(--faint)" }}>{t("registrationSeat.form.fourFields")}</span>
-                </div>
+            {/*
+              ═══ THE FORM IS ALWAYS ON SCREEN — THE ARTBOARD'S OWN LAYOUT, AND A SCREENSHOT SAID SO ═══
 
+              This screen first rendered the form only after "Register new" was pressed, reasoning
+              that search-first meant form-later. The artboard does not: it draws the search box and
+              the form together, with no conditional around the form, and the first screenshot of the
+              built screen showed why that matters — a 1440×980 counter monitor with one search box
+              at the top and roughly six hundred pixels of empty paper below it.
+
+              Search-first is preserved by the things that actually enforce it: the find box takes
+              focus on arrival, the helper says why in the same breath, and the hits land ABOVE the
+              form. What is gone is the extra press between a clerk and the four fields they were
+              always going to fill.
+            */}
+            <div className="box" data-testid="reg-form" style={{ padding: "15px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                <span style={{ fontSize: 15, fontWeight: 600 }}>{t("registrationSeat.form.newPatient")}</span>
+                <span style={{ fontSize: 11.5, color: "var(--faint)" }}>{t("registrationSeat.form.fourFields")}</span>
+              </div>
+
+              <div style={GRID2}>
+                <div style={{ gridColumn: "span 2" }}>
+                  {/*
+                    NO `autoFocus` HERE — THE FIND BOX OWNS ARRIVAL, AND TWO OF THEM IS A RACE.
+
+                    The Keymap pins the tab order as 1 Search, 2 Name, and the search box carries
+                    `autoFocus` for that reason. Once the form became unconditionally visible this
+                    field's own `autoFocus` started competing for the cursor on mount, and which one
+                    wins is decided by mount order rather than by anything the design says.
+
+                    It is not cosmetic: a clerk who arrives to a cursor already in the NAME box has
+                    been silently invited to skip the search that exists to stop duplicates — the
+                    exact ruling this screen is built around, undone by an attribute.
+                  */}
+                  <Field
+                    id="reg-name-input" testId="reg-name" label={t("registrationCounter.register.fullName")}
+                    value={form.name} onChange={(v) => { set({ name: v }); }}
+                  />
+                </div>
+                <Field
+                  id="reg-phone-input" testId="reg-phone" label={t("registrationCounter.register.mobile")} mono
+                  inputMode="numeric" value={form.phone} onChange={(v) => { set({ phone: v }); }}
+                />
+                <Field
+                  id="reg-age-input" testId="reg-age" label={t("registrationCounter.register.age")} mono
+                  inputMode="numeric" value={form.age} onChange={(v) => { set({ age: v }); }}
+                />
+                <div style={{ gridColumn: "span 2" }}>
+                  <Segmented
+                    id="reg-sex-label" testId="reg-sex" label={t("registrationCounter.register.sex")}
+                    value={form.sex}
+                    onChange={(v) => { set({ sex: v }); }}
+                    options={[
+                      ["female", t("registrationSeat.form.female")],
+                      ["male", t("registrationSeat.form.male")],
+                      ["other", t("registrationSeat.form.other")],
+                    ] as const}
+                  />
+                </div>
+              </div>
+
+              {/* ── THE TWO DOORS, INLINE. Neither is the fallback. ── */}
+              <div style={{ borderTop: "1px solid var(--line2)", paddingTop: 13 }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 9, marginBottom: 9 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{t("registrationSeat.doors.heading")}</span>
+                  <span style={{ fontSize: 11, color: "var(--faint)" }}>{t("registrationSeat.doors.hint")}</span>
+                </div>
                 <div style={GRID2}>
-                  <div style={{ gridColumn: "span 2" }}>
+                  <div>
                     <Field
-                      id="reg-name-input" testId="reg-name" label={t("registrationCounter.register.fullName")}
-                      value={form.name} onChange={(v) => { set({ name: v }); }} autoFocus
+                      id="reg-doctor-input" testId="reg-doctor" label={t("registrationSeat.doors.byName")}
+                      value={doctorQuery}
+                      placeholder={t("registrationSeat.doors.byNamePlaceholder")}
+                      onChange={(v) => { setDoctorQuery(v); setPickedDoctorId(null); }}
                     />
+                    {doctorMatches.length > 0 && pickedDoctorId === null ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
+                        {doctorMatches.map((d) => (
+                          <button
+                            key={d.id}
+                            className="sec"
+                            type="button"
+                            data-testid={`doctor-${d.id}`}
+                            onClick={() => { setPickedDoctorId(d.id); setDoctorQuery(d.displayName); }}
+                            style={{ justifyContent: "flex-start" }}
+                          >
+                            {d.displayName}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                   <Field
-                    id="reg-phone-input" testId="reg-phone" label={t("registrationCounter.register.mobile")} mono
-                    inputMode="numeric" value={form.phone} onChange={(v) => { set({ phone: v }); }}
+                    id="reg-complaint-input" testId="reg-complaint" label={t("registrationSeat.doors.complaint")}
+                    value={complaint}
+                    placeholder={t("registrationSeat.doors.complaintPlaceholder")}
+                    onChange={(v) => { setComplaint(v); }}
                   />
-                  <Field
-                    id="reg-age-input" testId="reg-age" label={t("registrationCounter.register.age")} mono
-                    inputMode="numeric" value={form.age} onChange={(v) => { set({ age: v }); }}
-                  />
-                  <div style={{ gridColumn: "span 2" }}>
+                </div>
+
+                {proposal === null ? null : <Proposal proposal={proposal} departmentName={departmentName} />}
+              </div>
+
+              {/* ── THE GUARDIAN. Appears on the age, never before, and the server agrees. ── */}
+              {needsGuardian ? (
+                <div
+                  data-testid="guardian-block"
+                  style={{
+                    border: "1px solid var(--gold-line)", background: "var(--gold-soft)",
+                    borderRadius: 8, padding: "13px 14px",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 11 }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#dd8f1c" strokeWidth="1.7" aria-hidden>
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
+                    </svg>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "var(--gold)" }}>
+                      {t("registrationSeat.guardian.required", { age: age ?? 0 })}
+                    </span>
+                    <span className="pill gd" style={{ marginLeft: "auto" }}>DPDP §9</span>
+                  </div>
+                  <div style={GRID2}>
+                    <Field
+                      id="guardian-name-input" testId="guardian-name" label={t("registrationCounter.register.guardian.name")}
+                      value={form.guardianName} onChange={(v) => { set({ guardianName: v }); }}
+                    />
                     <Segmented
-                      id="reg-sex-label" testId="reg-sex" label={t("registrationCounter.register.sex")}
-                      value={form.sex}
-                      onChange={(v) => { set({ sex: v }); }}
+                      id="guardian-rel-label" testId="guardian-relationship"
+                      label={t("registrationCounter.register.guardian.relationship")}
+                      value={form.guardianRelationship}
+                      onChange={(v) => { set({ guardianRelationship: v }); }}
                       options={[
-                        ["female", t("registrationSeat.form.female")],
-                        ["male", t("registrationSeat.form.male")],
-                        ["other", t("registrationSeat.form.other")],
+                        ["father", t("registrationCounter.register.guardian.father")],
+                        ["mother", t("registrationCounter.register.guardian.mother")],
+                        ["other", t("registrationCounter.register.guardian.other")],
+                      ] as const}
+                    />
+                    <Field
+                      id="guardian-phone-input" testId="guardian-phone" label={t("registrationCounter.register.mobile")}
+                      mono inputMode="numeric" value={form.guardianPhone} onChange={(v) => { set({ guardianPhone: v }); }}
+                    />
+                    <TogglePills
+                      testId="guardian-authority"
+                      label={t("registrationCounter.register.guardian.authority")}
+                      value={{
+                        messages: form.guardianAuthorityMessages,
+                        bills: form.guardianAuthorityBills,
+                        consents: form.guardianAuthorityConsents,
+                        records: form.guardianAuthorityRecords,
+                      }}
+                      onChange={(k, next) => {
+                        set(k === "messages" ? { guardianAuthorityMessages: next }
+                          : k === "bills" ? { guardianAuthorityBills: next }
+                            : k === "consents" ? { guardianAuthorityConsents: next }
+                              : { guardianAuthorityRecords: next });
+                      }}
+                      options={[
+                        ["messages", t("registrationCounter.register.guardian.authorityMessages")],
+                        ["bills", t("registrationCounter.register.guardian.authorityBills")],
+                        ["consents", t("registrationCounter.register.guardian.authorityConsents")],
+                        ["records", t("registrationCounter.register.guardian.authorityRecords")],
                       ] as const}
                     />
                   </div>
+                  <p style={{ margin: "9px 0 0", fontSize: 11, color: "var(--dim)", lineHeight: "15px" }}>
+                    {t("registrationCounter.register.guardian.authorityWhy")}
+                  </p>
                 </div>
+              ) : null}
 
-                {/* ── THE TWO DOORS, INLINE. Neither is the fallback. ── */}
-                <div style={{ borderTop: "1px solid var(--line2)", paddingTop: 13 }}>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 9, marginBottom: 9 }}>
-                    <span style={{ fontSize: 13, fontWeight: 600 }}>{t("registrationSeat.doors.heading")}</span>
-                    <span style={{ fontSize: 11, color: "var(--faint)" }}>{t("registrationSeat.doors.hint")}</span>
-                  </div>
-                  <div style={GRID2}>
-                    <div>
-                      <Field
-                        id="reg-doctor-input" testId="reg-doctor" label={t("registrationSeat.doors.byName")}
-                        value={doctorQuery}
-                        placeholder={t("registrationSeat.doors.byNamePlaceholder")}
-                        onChange={(v) => { setDoctorQuery(v); setPickedDoctorId(null); }}
-                      />
-                      {doctorMatches.length > 0 && pickedDoctorId === null ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
-                          {doctorMatches.map((d) => (
-                            <button
-                              key={d.id}
-                              className="sec"
-                              type="button"
-                              data-testid={`doctor-${d.id}`}
-                              onClick={() => { setPickedDoctorId(d.id); setDoctorQuery(d.displayName); }}
-                              style={{ justifyContent: "flex-start" }}
-                            >
-                              {d.displayName}
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
+              {/* ── THE OTHER THREE, FOLDED. A form that shows everything to every walk-in is a form nobody finishes. ── */}
+              <div style={{ borderTop: "1px solid var(--line2)", paddingTop: 13 }}>
+                <Fold
+                  title={t("registrationCounter.register.abha.title")}
+                  hint={t("registrationSeat.folds.abhaHint")}
+                  state={openFold === "abha" ? t("registrationSeat.folds.open") : t("registrationSeat.folds.notLinked")}
+                  stateTone={openFold === "abha" ? "on" : "plain"}
+                  open={openFold === "abha"}
+                  onToggle={() => { setOpenFold((p) => (p === "abha" ? null : "abha")); }}
+                  testId="fold-abha"
+                >
+                  <div style={{ ...GRID2, marginTop: 11 }}>
                     <Field
-                      id="reg-complaint-input" testId="reg-complaint" label={t("registrationSeat.doors.complaint")}
-                      value={complaint}
-                      placeholder={t("registrationSeat.doors.complaintPlaceholder")}
-                      onChange={(v) => { setComplaint(v); }}
+                      id="abha-address-input" testId="abha-address" label={t("registrationCounter.register.abha.address")}
+                      mono value={form.abhaAddress} onChange={(v) => { set({ abhaAddress: v }); }}
+                    />
+                    <Field
+                      id="abha-number-input" testId="abha-number" label={t("registrationCounter.register.abha.number")}
+                      mono value={form.abhaNumber} onChange={(v) => { set({ abhaNumber: v }); }}
                     />
                   </div>
-
-                  {proposal === null ? null : <Proposal proposal={proposal} departmentName={departmentName} />}
-                </div>
-
-                {/* ── THE GUARDIAN. Appears on the age, never before, and the server agrees. ── */}
-                {needsGuardian ? (
-                  <div
-                    data-testid="guardian-block"
-                    style={{
-                      border: "1px solid var(--gold-line)", background: "var(--gold-soft)",
-                      borderRadius: 8, padding: "13px 14px",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 11 }}>
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#dd8f1c" strokeWidth="1.7" aria-hidden>
-                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
-                      </svg>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: "var(--gold)" }}>
-                        {t("registrationSeat.guardian.required", { age: age ?? 0 })}
-                      </span>
-                      <span className="pill gd" style={{ marginLeft: "auto" }}>DPDP §9</span>
-                    </div>
-                    <div style={GRID2}>
-                      <Field
-                        id="guardian-name-input" testId="guardian-name" label={t("registrationCounter.register.guardian.name")}
-                        value={form.guardianName} onChange={(v) => { set({ guardianName: v }); }}
-                      />
-                      <Segmented
-                        id="guardian-rel-label" testId="guardian-relationship"
-                        label={t("registrationCounter.register.guardian.relationship")}
-                        value={form.guardianRelationship}
-                        onChange={(v) => { set({ guardianRelationship: v }); }}
-                        options={[
-                          ["father", t("registrationCounter.register.guardian.father")],
-                          ["mother", t("registrationCounter.register.guardian.mother")],
-                          ["other", t("registrationCounter.register.guardian.other")],
-                        ] as const}
-                      />
-                      <Field
-                        id="guardian-phone-input" testId="guardian-phone" label={t("registrationCounter.register.mobile")}
-                        mono inputMode="numeric" value={form.guardianPhone} onChange={(v) => { set({ guardianPhone: v }); }}
-                      />
-                      <TogglePills
-                        testId="guardian-authority"
-                        label={t("registrationCounter.register.guardian.authority")}
-                        value={{
-                          messages: form.guardianAuthorityMessages,
-                          bills: form.guardianAuthorityBills,
-                          consents: form.guardianAuthorityConsents,
-                          records: form.guardianAuthorityRecords,
-                        }}
-                        onChange={(k, next) => {
-                          set(k === "messages" ? { guardianAuthorityMessages: next }
-                            : k === "bills" ? { guardianAuthorityBills: next }
-                              : k === "consents" ? { guardianAuthorityConsents: next }
-                                : { guardianAuthorityRecords: next });
-                        }}
-                        options={[
-                          ["messages", t("registrationCounter.register.guardian.authorityMessages")],
-                          ["bills", t("registrationCounter.register.guardian.authorityBills")],
-                          ["consents", t("registrationCounter.register.guardian.authorityConsents")],
-                          ["records", t("registrationCounter.register.guardian.authorityRecords")],
-                        ] as const}
-                      />
-                    </div>
-                    <p style={{ margin: "9px 0 0", fontSize: 11, color: "var(--dim)", lineHeight: "15px" }}>
-                      {t("registrationCounter.register.guardian.authorityWhy")}
+                  <p style={{ margin: "9px 0 0", fontSize: 11, color: "var(--dim)", lineHeight: "15px" }}>
+                    {t("registrationSeat.folds.abhaBody")}
+                  </p>
+                  {/*
+                    THE CAPABILITY IS ASKED BEFORE THE BUTTONS ARE DRAWN, never discovered from a
+                    failed request. This hospital is not connected to ABDM, so what the fold can
+                    honestly do is RECORD what the patient reads off their card — and it says so
+                    rather than showing a live-looking "Verify" that only fails when pressed.
+                  */}
+                  {abha.data?.canVerify === false ? (
+                    <p data-testid="abha-why" style={{ margin: "6px 0 0", fontSize: 11, color: "var(--gold)" }}>
+                      {abha.data.reason}
                     </p>
-                  </div>
-                ) : null}
+                  ) : null}
+                </Fold>
 
-                {/* ── THE OTHER THREE, FOLDED. A form that shows everything to every walk-in is a form nobody finishes. ── */}
-                <div style={{ borderTop: "1px solid var(--line2)", paddingTop: 13 }}>
-                  <Fold
-                    title={t("registrationCounter.register.abha.title")}
-                    hint={t("registrationSeat.folds.abhaHint")}
-                    state={openFold === "abha" ? t("registrationSeat.folds.open") : t("registrationSeat.folds.notLinked")}
-                    stateTone={openFold === "abha" ? "on" : "plain"}
-                    open={openFold === "abha"}
-                    onToggle={() => { setOpenFold((p) => (p === "abha" ? null : "abha")); }}
-                    testId="fold-abha"
-                  >
-                    <div style={{ ...GRID2, marginTop: 11 }}>
+                <Fold
+                  title={t("registrationSeat.folds.photo")}
+                  hint={t("registrationSeat.folds.photoHint")}
+                  state={t("registrationSeat.folds.noneOnFile")}
+                  open={openFold === "photo"}
+                  onToggle={() => { setOpenFold((p) => (p === "photo" ? null : "photo")); }}
+                  testId="fold-photo"
+                >
+                  <p style={{ margin: "9px 0 0", fontSize: 11, color: "var(--dim)", lineHeight: "15px" }}>
+                    {t("registrationSeat.folds.photoBody")}
+                  </p>
+                </Fold>
+
+                <Fold
+                  title={t("registrationSeat.folds.confidential")}
+                  hint={t("registrationSeat.folds.confidentialHint")}
+                  state={form.isConfidential ? t("registrationSeat.folds.sealed") : t("registrationSeat.folds.ordinary")}
+                  stateTone={form.isConfidential ? "gd" : "plain"}
+                  open={openFold === "confidential"}
+                  onToggle={() => { setOpenFold((p) => (p === "confidential" ? null : "confidential")); }}
+                  testId="fold-confidential"
+                >
+                  <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, marginTop: 11 }}>
+                    <input
+                      type="checkbox"
+                      data-testid="reg-confidential"
+                      checked={form.isConfidential}
+                      onChange={(e) => { set({ isConfidential: e.target.checked }); }}
+                    />
+                    <span>{t("registrationCounter.register.flags.confidential")}</span>
+                  </label>
+                  {/*
+                    THE ALIAS APPEARS WITH THE DECISION IT BELONGS TO. The server throws
+                    `alias_required` for the flag without one — a refusal Desk One shipped into for
+                    months because it had no field to satisfy it with.
+                  */}
+                  {form.isConfidential ? (
+                    <div style={{ marginTop: 11 }}>
                       <Field
-                        id="abha-address-input" testId="abha-address" label={t("registrationCounter.register.abha.address")}
-                        mono value={form.abhaAddress} onChange={(v) => { set({ abhaAddress: v }); }}
+                        id="reg-alias-input" testId="reg-alias"
+                        label={t("registrationCounter.register.flags.alias")}
+                        placeholder={t("registrationCounter.register.flags.aliasPlaceholder")}
+                        value={form.alias} onChange={(v) => { set({ alias: v }); }}
                       />
-                      <Field
-                        id="abha-number-input" testId="abha-number" label={t("registrationCounter.register.abha.number")}
-                        mono value={form.abhaNumber} onChange={(v) => { set({ abhaNumber: v }); }}
-                      />
-                    </div>
-                    <p style={{ margin: "9px 0 0", fontSize: 11, color: "var(--dim)", lineHeight: "15px" }}>
-                      {t("registrationSeat.folds.abhaBody")}
-                    </p>
-                    {/*
-                      THE CAPABILITY IS ASKED BEFORE THE BUTTONS ARE DRAWN, never discovered from a
-                      failed request. This hospital is not connected to ABDM, so what the fold can
-                      honestly do is RECORD what the patient reads off their card — and it says so
-                      rather than showing a live-looking "Verify" that only fails when pressed.
-                    */}
-                    {abha.data?.canVerify === false ? (
-                      <p data-testid="abha-why" style={{ margin: "6px 0 0", fontSize: 11, color: "var(--gold)" }}>
-                        {abha.data.reason}
-                      </p>
-                    ) : null}
-                  </Fold>
-
-                  <Fold
-                    title={t("registrationSeat.folds.photo")}
-                    hint={t("registrationSeat.folds.photoHint")}
-                    state={t("registrationSeat.folds.noneOnFile")}
-                    open={openFold === "photo"}
-                    onToggle={() => { setOpenFold((p) => (p === "photo" ? null : "photo")); }}
-                    testId="fold-photo"
-                  >
-                    <p style={{ margin: "9px 0 0", fontSize: 11, color: "var(--dim)", lineHeight: "15px" }}>
-                      {t("registrationSeat.folds.photoBody")}
-                    </p>
-                  </Fold>
-
-                  <Fold
-                    title={t("registrationSeat.folds.confidential")}
-                    hint={t("registrationSeat.folds.confidentialHint")}
-                    state={form.isConfidential ? t("registrationSeat.folds.sealed") : t("registrationSeat.folds.ordinary")}
-                    stateTone={form.isConfidential ? "gd" : "plain"}
-                    open={openFold === "confidential"}
-                    onToggle={() => { setOpenFold((p) => (p === "confidential" ? null : "confidential")); }}
-                    testId="fold-confidential"
-                  >
-                    <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, marginTop: 11 }}>
-                      <input
-                        type="checkbox"
-                        data-testid="reg-confidential"
-                        checked={form.isConfidential}
-                        onChange={(e) => { set({ isConfidential: e.target.checked }); }}
-                      />
-                      <span>{t("registrationCounter.register.flags.confidential")}</span>
-                    </label>
-                    {/*
-                      THE ALIAS APPEARS WITH THE DECISION IT BELONGS TO. The server throws
-                      `alias_required` for the flag without one — a refusal Desk One shipped into for
-                      months because it had no field to satisfy it with.
-                    */}
-                    {form.isConfidential ? (
-                      <div style={{ marginTop: 11 }}>
-                        <Field
-                          id="reg-alias-input" testId="reg-alias"
-                          label={t("registrationCounter.register.flags.alias")}
-                          placeholder={t("registrationCounter.register.flags.aliasPlaceholder")}
-                          value={form.alias} onChange={(v) => { set({ alias: v }); }}
+                      <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, marginTop: 9 }}>
+                        <input
+                          type="checkbox"
+                          data-testid="reg-sensitive-context"
+                          checked={form.sensitiveContext}
+                          onChange={(e) => { set({ sensitiveContext: e.target.checked }); }}
                         />
-                        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, marginTop: 9 }}>
-                          <input
-                            type="checkbox"
-                            data-testid="reg-sensitive-context"
-                            checked={form.sensitiveContext}
-                            onChange={(e) => { set({ sensitiveContext: e.target.checked }); }}
-                          />
-                          <span>{t("registrationCounter.register.flags.sensitiveContext")}</span>
-                        </label>
-                      </div>
-                    ) : null}
-                    <p style={{ margin: "9px 0 0", fontSize: 11, color: "var(--dim)", lineHeight: "15px" }}>
-                      {t("registrationSeat.folds.confidentialBody")}
-                    </p>
-                  </Fold>
-                </div>
-
-                {/* ── THE DUPLICATE WARNING. A warning the clerk may override, never a refusal. ── */}
-                {duplicates === null ? null : (
-                  <div
-                    data-testid="duplicate-warning"
-                    style={{
-                      border: "1px solid var(--gold-line)", background: "var(--gold-soft)",
-                      borderRadius: 8, padding: "13px 14px",
-                    }}
-                  >
-                    <span style={{ fontSize: 13, fontWeight: 600, color: "var(--gold)" }}>
-                      {t("registrationSeat.duplicate.heading", { count: duplicates.length })}
-                    </span>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 9 }}>
-                      {duplicates.map((d) => (
-                        <div key={d.id} style={{ display: "flex", gap: 9, alignItems: "baseline", fontSize: 12 }}>
-                          <span style={{ fontWeight: 600 }}>{d.name}</span>
-                          <span className="mo" style={{ color: "var(--dim)" }}>{d.uhid}</span>
-                          <span className="mo" style={{ color: "var(--dim)" }}>{d.phone ?? "—"}</span>
-                        </div>
-                      ))}
+                        <span>{t("registrationCounter.register.flags.sensitiveContext")}</span>
+                      </label>
                     </div>
-                    <p style={{ margin: "9px 0 0", fontSize: 11, color: "var(--dim)", lineHeight: "15px" }}>
-                      {t("registrationSeat.duplicate.why")}
-                    </p>
-                    <button
-                      className="sec grn"
-                      type="button"
-                      data-testid="duplicate-override"
-                      style={{ marginTop: 9 }}
-                      onClick={() => { void commit(true); }}
-                    >
-                      {t("registrationSeat.duplicate.override")}
-                    </button>
-                  </div>
-                )}
-
-                {error === null ? null : (
-                  <p data-testid="reg-error" className="pill rd" style={{ height: "auto", padding: "8px 11px" }}>{error}</p>
-                )}
-
-                {/* ── THE FOOTER ── */}
-                <div style={{ display: "flex", alignItems: "center", gap: 11, borderTop: "1px solid var(--line2)", paddingTop: 13, flexWrap: "wrap" }}>
-                  {/*
-                    `.pri`, the design language's own primary, exactly as Desk One's submit is —
-                    NOT `SubmitButton`, which renders a shadcn `<Button>` and would put the one
-                    control the eye lands on in the look this screen exists to replace. What
-                    `SubmitButton` genuinely contributes is the in-flight REF guard (state alone
-                    loses a double-click inside one React tick) and a minted idempotency key;
-                    `commit` carries both itself, and `walkIn` is the caller that needs the key.
-                  */}
-                  <button
-                    className="pri"
-                    type="button"
-                    data-testid="reg-submit"
-                    disabled={!ready || busy}
-                    onClick={() => { void commit(); }}
-                  >
-                    {willOpenVisit
-                      ? t("registrationSeat.footer.registerAndOpen")
-                      : t("registrationSeat.footer.registerOnly")}
-                    <span className="kb" style={{ borderColor: "rgba(255,255,255,.3)", background: "transparent", color: "#cfe8dc" }}>
-                      Ctrl ⏎
-                    </span>
-                  </button>
-                  <button className="sec" type="button" data-testid="reg-cancel" onClick={() => { setEnrolling(false); backToSearch(); }}>
-                    {t("registrationSeat.footer.cancel")} <span className="kb">Esc</span>
-                  </button>
-                  {/*
-                    WHAT THE BUTTON WILL ACTUALLY DO, and it says only what is true. The artboard's
-                    "prints the card and the token" is half a sentence this hospital can keep: the
-                    token slip is a real `PrintDocument` kind that FD-24 queues on visit-open; there
-                    is NO patient-card document — four kinds are declared and a card is not among
-                    them. Promising paper that no printer will ever produce is the kind of copy that
-                    teaches a clerk to distrust the screen.
-                  */}
-                  <span style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--faint)" }}>
-                    {willOpenVisit ? t("registrationSeat.footer.issuesAndPrints") : t("registrationSeat.footer.issuesOnly")}
-                  </span>
-                </div>
+                  ) : null}
+                  <p style={{ margin: "9px 0 0", fontSize: 11, color: "var(--dim)", lineHeight: "15px" }}>
+                    {t("registrationSeat.folds.confidentialBody")}
+                  </p>
+                </Fold>
               </div>
-            ) : null}
+
+              {/* ── THE DUPLICATE WARNING. A warning the clerk may override, never a refusal. ── */}
+              {duplicates === null ? null : (
+                <div
+                  data-testid="duplicate-warning"
+                  style={{
+                    border: "1px solid var(--gold-line)", background: "var(--gold-soft)",
+                    borderRadius: 8, padding: "13px 14px",
+                  }}
+                >
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--gold)" }}>
+                    {t("registrationSeat.duplicate.heading", { count: duplicates.length })}
+                  </span>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 9 }}>
+                    {duplicates.map((d) => (
+                      <div key={d.id} style={{ display: "flex", gap: 9, alignItems: "baseline", fontSize: 12 }}>
+                        <span style={{ fontWeight: 600 }}>{d.name}</span>
+                        <span className="mo" style={{ color: "var(--dim)" }}>{d.uhid}</span>
+                        <span className="mo" style={{ color: "var(--dim)" }}>{d.phone ?? "—"}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p style={{ margin: "9px 0 0", fontSize: 11, color: "var(--dim)", lineHeight: "15px" }}>
+                    {t("registrationSeat.duplicate.why")}
+                  </p>
+                  <button
+                    className="sec grn"
+                    type="button"
+                    data-testid="duplicate-override"
+                    style={{ marginTop: 9 }}
+                    onClick={() => { void commit(true); }}
+                  >
+                    {t("registrationSeat.duplicate.override")}
+                  </button>
+                </div>
+              )}
+
+              {error === null ? null : (
+                <p data-testid="reg-error" className="pill rd" style={{ height: "auto", padding: "8px 11px" }}>{error}</p>
+              )}
+
+              {/* ── THE FOOTER ── */}
+              <div style={{ display: "flex", alignItems: "center", gap: 11, borderTop: "1px solid var(--line2)", paddingTop: 13, flexWrap: "wrap" }}>
+                {/*
+                  `.pri`, the design language's own primary, exactly as Desk One's submit is —
+                  NOT `SubmitButton`, which renders a shadcn `<Button>` and would put the one
+                  control the eye lands on in the look this screen exists to replace. What
+                  `SubmitButton` genuinely contributes is the in-flight REF guard (state alone
+                  loses a double-click inside one React tick) and a minted idempotency key;
+                  `commit` carries both itself, and `walkIn` is the caller that needs the key.
+                */}
+                <button
+                  className="pri"
+                  type="button"
+                  data-testid="reg-submit"
+                  disabled={!ready || busy}
+                  onClick={() => { void commit(); }}
+                >
+                  {willOpenVisit
+                    ? t("registrationSeat.footer.registerAndOpen")
+                    : t("registrationSeat.footer.registerOnly")}
+                  <span className="kb" style={{ borderColor: "rgba(255,255,255,.3)", background: "transparent", color: "#cfe8dc" }}>
+                    Ctrl ⏎
+                  </span>
+                </button>
+                <button className="sec" type="button" data-testid="reg-cancel" onClick={() => { setForm(EMPTY_FORM); setDuplicates(null); setError(null); backToSearch(); }}>
+                  {t("registrationSeat.footer.cancel")} <span className="kb">Esc</span>
+                </button>
+                {/*
+                  WHAT THE BUTTON WILL ACTUALLY DO, and it says only what is true. The artboard's
+                  "prints the card and the token" is half a sentence this hospital can keep: the
+                  token slip is a real `PrintDocument` kind that FD-24 queues on visit-open; there
+                  is NO patient-card document — four kinds are declared and a card is not among
+                  them. Promising paper that no printer will ever produce is the kind of copy that
+                  teaches a clerk to distrust the screen.
+                */}
+                <span style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--faint)" }}>
+                  {willOpenVisit ? t("registrationSeat.footer.issuesAndPrints") : t("registrationSeat.footer.issuesOnly")}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </div>

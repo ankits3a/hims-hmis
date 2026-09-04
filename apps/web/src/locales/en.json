@@ -3179,7 +3179,8 @@
     "header": {
       "title": "Registration",
       "noDrawer": "drawer not needed here",
-      "searchHere": "Search — the cursor starts here"
+      "searchHere": "Search — the cursor starts here",
+      "backToSearch": "Back to the search box"
     },
     "rail": {
       "inHand": "Patient in hand",
@@ -3189,7 +3190,9 @@
       "uhidIssued": "issued to this patient, and it never changes",
       "takePhoto": "Take a photo",
       "guardianOnFile": "guardian on file",
-      "noAbha": "no ABHA"
+      "noAbha": "no ABHA",
+      "notYetRegistered": "not registered yet",
+      "guardianNeeded": "guardian required"
     },
     "search": {
       "heading": "Who is in front of you?",
@@ -3229,7 +3232,8 @@
       "reasonDepartmentQueue": "Nobody in {{department}} is taking patients right now, so this joins the department queue and is assigned when somebody opens.",
       "reasonAnchorAway": "{{doctor}} has seen them before but is not on today's board, so this falls to the shortest line. Tell the patient that, rather than that nobody has seen them.",
       "reasonAnchorOnLeave": "{{doctor}} has seen them before and is on leave today. That is a different sentence from 'not scheduled', and it is the one to say to a patient asking for him by name.",
-      "delayed": "That line is over 20 minutes. {{doctor}} is about {{minutes}}m — offer it, but the choice is the patient's."
+      "delayed": "That line is over 20 minutes. {{doctor}} is about {{minutes}}m — offer it, but the choice is the patient's.",
+      "badgeUnassigned": "nobody assigned yet"
     },
     "guardian": {
       "required": "{{age}} years old — a guardian is required"
