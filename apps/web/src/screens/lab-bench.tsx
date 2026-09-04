@@ -9,7 +9,7 @@ import {
 import { useRealtime } from "../lib/realtime";
 import { Button } from "@/components/ui/button";
 import { capFor } from "../components/specimen-label";
-import { LabSeatFrame } from "./lab-seat";
+import { DowntimeNotice, LabSeatFrame, useDowntime } from "./lab-seat";
 import type { CriticalRung, WireBenchArrival, WireWorklistRow } from "../lib/lab-api";
 
 /**
@@ -72,6 +72,9 @@ export function LabBench(): React.ReactElement {
    * this by keystroke timing would be a control that a fast typist switches off by accident.
    */
   const [relabelling, setRelabelling] = useState(false);
+  /** 17d T6 — the kit serial written on the tube at the chair, mapped to it here at accession. */
+  const [kitSerial, setKitSerial] = useState("");
+  const downtime = useDowntime();
   const [relabelWitness, setRelabelWitness] = useState("");
   const [relabelReason, setRelabelReason] = useState("");
   const [rejectReason, setRejectReason] = useState<(typeof REJECT_REASONS)[number]>("haemolysed");
@@ -116,12 +119,14 @@ export function LabBench(): React.ReactElement {
         ...(recheckBy === "" ? {} : { identityRecheckBy: recheckBy }),
         identifiedBy: relabelling ? "typed" : "scan",
         ...(relabelling ? { relabel: { witnessedBy: relabelWitness.trim(), reason: relabelReason.trim() } } : {}),
+        ...(downtime && kitSerial.trim() !== "" ? { downtimeKitSerial: kitSerial.trim() } : {}),
       },
       newIdempotencyKey(),
     ),
     onSuccess: () => {
       setError(null); setRecheckBy("");
       setRelabelling(false); setRelabelWitness(""); setRelabelReason("");
+      setKitSerial("");
       refresh();
     },
     onError: (e: unknown) => setError(labErrorText(e)),
@@ -300,6 +305,26 @@ export function LabBench(): React.ReactElement {
                       printer. What it may not be is SILENT, so declaring it opens a witness and a
                       reason, and Receive waits for both.
                     */}
+                    {/*
+                      17d T6 — the tube arrived wearing a KIT serial rather than a printed barcode,
+                      and this is where the two are mapped to each other (E20). Not required: a tube
+                      drawn before the outage still carries its printed label, and demanding a kit
+                      serial for it would stop the bench working on the tubes that are fine.
+                    */}
+                    {downtime && (
+                      <DowntimeNotice>
+                        <label className="block text-sm">
+                          {t("lab.bench.kitSerial")}
+                          <input
+                            className="mt-1 block w-full rounded border border-input px-2 py-1 font-mono"
+                            placeholder={t("lab.bench.kitSerialHint")}
+                            aria-label={t("lab.bench.kitSerial")}
+                            value={kitSerial}
+                            onChange={(e) => setKitSerial(e.target.value)}
+                          />
+                        </label>
+                      </DowntimeNotice>
+                    )}
                     <label className="flex items-center gap-2 text-sm">
                       <input type="checkbox" checked={relabelling}
                         onChange={(e) => setRelabelling(e.target.checked)} />

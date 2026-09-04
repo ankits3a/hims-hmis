@@ -5,7 +5,7 @@ import { pharmacyDispenseLines, pharmacyDispenses } from "../../kernel/db/schema
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { withTx } from "../../kernel/db/client";
 import { listMedicines } from "../formulary";
-import { balances, itemsByIds, itemUomRows } from "../materials";
+import { availableQty, itemsByIds, itemUomRows } from "../materials";
 import { getPatient, getPatientSummaries, listAllergies } from "../patients";
 import { dispenseQueued } from "./events";
 import { PharmacyError } from "./errors";
@@ -195,8 +195,11 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string): Pro
       const sale = await getSaleItem(db, item.id);
       saleable = sale !== undefined && sale.active;
       if (d.storeResourceId !== null) {
-        const rows = await balances(db, { resourceId: d.storeResourceId, itemId: item.id });
-        available = rows.reduce((n, b) => n + b.qtyOnHand - b.qtyReserved - b.qtyFrozen, 0);
+        // The number on the screen is the number the PICK will honour — same exclusions, one
+        // definition (`availableQty`). Summing raw balances here counted recalled and EXPIRED
+        // batches the pick refuses, so the counter could promise fifty and then refuse twenty.
+        // A display read has no injected clock; "as of now" is exactly what a counter means.
+        available = await availableQty(db, d.storeResourceId, item.id);
       }
     }
     views.push({

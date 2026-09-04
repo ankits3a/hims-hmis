@@ -367,3 +367,45 @@ had no test at all. `LabResultsPanel` is now exported and `lab-consult-panel.tes
 
 **Evidence (2026-09-04):** typecheck 0; lint **0 errors**. Core lab **27 suites, 254 tests green**.
 Web `src/screens/lab-*` + the full `opd-consult` suite + `src/lib`: **16 files, 119 tests green**.
+
+### 8.6 T6 — Downtime is visible at the chair and the bench (executed 2026-09-04)
+
+Design board EdgeCases #20: *"Server or internet down for an hour."* `ModeBanner` already tells the
+whole building the hospital is on paper, so that was never the gap. The board's complaint is
+sharper: **the paper register and the later reconciliation are a habit rather than a screen.**
+
+- **A RAIL WITH NO CONSUMER, found and consumed.** `labelSource: "downtime_kit"` and
+  `downtimeKitSerial` have been accepted by `printLabels` AND `receive` since 17a T5 (E20 / 02 C3)
+  and were offered by **no screen at all** — 17c's pattern, a fourth time. The chair now writes the
+  kit serial and the bench maps it to the tube at accession.
+- **D7 — the lab READS the mode and never sets one.** A second switch would be a second truth: a
+  lab that declared its own downtime would disagree with the duty manager within the hour and the
+  reconciliation afterwards would have two registers to believe. `/ops/mode` mints no read
+  permission precisely so every screen may make this read.
+- `useDowntime` and `DowntimeNotice` are shared by both seats, so the chair and the bench say the
+  **same thing about the same kit** — a reconciliation that reads two different instructions is the
+  failure this is written to prevent.
+- **The chair's Record button waits for the serial; the bench's Receive does NOT.** A tube drawn
+  before the outage still wears its printed label, and demanding a kit serial for it would stop the
+  bench working on the tubes that are fine — the opposite of what a downtime screen is for.
+- The right-patient scan is untouched: downtime relaxes the LABEL's source, never the check that
+  the tube belongs to the person in the chair (DD10 / E1).
+
+**A SECOND MUTANT SURVIVED, and this one would have shipped.** `mode !== "normal"` in place of
+`mode === "downtime"` passed every test, because they exercised only the two ends. There are FIVE
+modes and **production has never left `commissioning`** (17b §9.9) — under that mutant the kit field
+and the paper-register notice would be permanent furniture on both seats from the day the lab went
+live, read as an instruction. `degraded` is the sharper half: the hospital is struggling, the
+printer is fine, and a kit serial demanded then is a phlebotomist inventing one. Three modes are
+pinned now and the mutant dies.
+
+**Mutants, each applied and each red, then reverted:**
+
+| # | mutant | killed by |
+|---|---|---|
+| 1 | any non-`normal` mode counts as downtime | **survived first; killed by the three-mode test** |
+| 2 | the downtime UI is always on | 2 failed |
+| 3 | the chair prints with no kit serial | 1 failed |
+
+**Evidence (2026-09-04):** typecheck 0; lint **0 errors**. Web-only change (no core file touched):
+**the FULL web suite, 83 files / 673 tests green.**
