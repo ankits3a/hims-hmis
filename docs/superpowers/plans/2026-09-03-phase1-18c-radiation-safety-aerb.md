@@ -94,7 +94,39 @@ O2's pregnant-radiographer roster gate and any duty reassignment (Plan 20 roster
 - **The precedent T1 copies, named:** `assertMachineRegistered` (`modules/pcpndt/form-f.ts:72`) — an active registration whose validity window contains the date, returning the row so the caller does not read it twice — and `pcpndt_registered_machines`' `uniqueIndex … where active = true`, which is the index that makes "one active licence per device" a database fact rather than a query convention.
 
 ### 8.1 PRs
-#52 the doc · T1 — PR number when opened; one PR per task, squash, auto-merge.
+**#52 the doc (MERGED) · T1 #56 (MERGED) · T2 #57 (MERGED) · T3 #59 · T4 #60 · T5 #61.** One PR per
+task, stacked (each based on the one below), squash, auto-merge; each retargeted to `main` as the
+one below it merged. Migrations `0060`–`0063` after the renumbering (F20).
+
+### 8.7 KNOWN LIMITS, stated rather than discovered later
+
+- **`badgeRegister` is N+1** — one readings query per badge, because the cumulative windows (calendar
+  year, rolling five years) are computed in TypeScript rather than in SQL. At the scale this
+  register runs (a monitored-worker roster is tens of people, not thousands) that is tens of small
+  indexed queries on a screen an RSO opens a few times a month, and the arithmetic is legible in a
+  way a windowed SQL aggregate would not be. `complianceCalendar` inherits it through `badgeGaps`.
+  **If a later phase puts this on a dashboard that polls, that is the phase that must move the
+  arithmetic into SQL** — it is not a bug today and it would be one there.
+- **`doseRegisterRows` caps at 200 rows** (overridable by the caller). A date range wider than the
+  cap silently returns the newest 200; the screen has no paging. Named because a register that
+  quietly truncates is worse than one that refuses, and the fix — a cursor — is a slice of its own.
+- **`recordDose` takes no permission of its own**, by design: the authority to record a dose IS the
+  authority to perform the examination, which the caller has already checked at its own door
+  (`radiology.acquire`). A second permission here would let a radiographer acquire a study the
+  register then refused to account for, which is the worst of both.
+
+### 8.8 WHAT IS OWED — named rather than implied
+
+- **The two close-review passes (§8.5), and they are the term that pays.** 18a measured 15 of 16
+  fixes incomplete; 18b's pass 2 found 4 INCOMPLETE + 1 WRONG of 25, and paid for itself on C7
+  alone. Neither found its CRITICALs by running tests: **3,516 → 3,516 passing tests and every named
+  mutant dead found none of 18b's two.** Reading did. This phase is code-complete and has NOT had
+  that pass, and nothing below the line should be read as if it had.
+- **The four owner rulings of §7** (the RSO and physicist by name, the TLD badge service, the
+  investigation level, the QA contract) — none blocks the code, all block the register having
+  anything true in it.
+- **No deploy.** Production is still at 46 migrations and has never left `commissioning`; 18a and
+  18b have not left the lane either.
 
 ### 8.2 Findings
 
