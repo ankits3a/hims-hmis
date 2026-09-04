@@ -1,7 +1,7 @@
 import { and, count, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
-import { opdDoctorSchedules, opdEncounters, opdQueueSessions, opdDepartmentTokens,
+import { opdDoctorSchedules, opdEncounters, opdQueueSessions,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { OpdError } from "./errors";
@@ -57,17 +57,45 @@ export async function getOrCreateSession(tx: Tx, doctorId: string, serviceDate: 
  * The first patient of a day inserts the row and takes 1; every later one hits the conflict.
  */
 export async function allocateToken(tx: Tx, departmentId: string, serviceDate: string): Promise<number> {
-  const rows = await tx
-    .insert(opdDepartmentTokens)
-    .values({ departmentId, serviceDate, nextToken: 2 })
-    .onConflictDoUpdate({
-      target: [opdDepartmentTokens.departmentId, opdDepartmentTokens.serviceDate],
-      set: { nextToken: sql`${opdDepartmentTokens.nextToken} + 1` },
-    })
-    .returning({ next: opdDepartmentTokens.nextToken });
-  // The insert branch stores 2 and means "1 was taken"; the conflict branch returns the incremented
-  // value. Both therefore describe the SAME thing, and the token is one less than what is stored.
-  return rows[0]!.next - 1;
+  /*
+    ═══ FD-23 CLOSE REVIEW — THE SEED, BECAUSE A NEW SERIES MEETS A DAY ALREADY IN PROGRESS ═══
+
+    The insert branch used to store a flat 2, meaning "1 was taken". That is right on any day this
+    table has always existed, and WRONG on exactly one day: the morning the department series is
+    deployed. Until that deploy the numbers came from `opd_queue_sessions.next_token`, a doctor-day
+    counter — so a department can already have handed out 1..5 that morning, on slips patients are
+    physically holding, printed with the same `MED-n` label this series mints. Starting at 1 hands
+    the next walk-in a number somebody is already standing in the hall with, and
+    `opd_queue_entries` carries no unique index on `(session_id, token_no)` to refuse it.
+
+    So the insert branch SEEDS from the day's own high-water mark instead of assuming one. The
+    aggregate runs over zero rows on an ordinary day — `max()` of nothing is NULL, `coalesce` makes
+    it 0, and the first patient still takes 1, which is why this is not a special case with a
+    branch but the same statement stated properly.
+
+    THE LOCK IS UNCHANGED and it is the whole point of the shape: `INSERT … ON CONFLICT DO UPDATE …
+    RETURNING` takes the row lock on conflict, so two counters registering the same department at
+    the same instant serialise on it. Two concurrent FIRST inserts are safe for the same reason —
+    one wins with the seeded value, the other conflicts and increments off the row that landed.
+  */
+  const res = await tx.execute(sql`
+    insert into opd_department_tokens (department_id, service_date, next_token)
+    select ${departmentId}, ${serviceDate}, coalesce(max(q.token_no), 0) + 2
+      from opd_queue_entries q
+      join opd_encounters e on e.id = q.encounter_id
+     where e.department_id = ${departmentId} and e.service_date = ${serviceDate}
+    on conflict (department_id, service_date)
+      do update set next_token = opd_department_tokens.next_token + 1
+    returning next_token
+  `);
+  // The insert branch stores "what the next patient gets, plus one" and the conflict branch returns
+  // the incremented value. Both therefore describe the SAME thing, and the token is one less than
+  // what is stored.
+  const next = Number(res.rows[0]!.next_token);
+  if (!Number.isSafeInteger(next) || next < 2) {
+    throw new Error(`opd_department_tokens returned unusable next_token: ${String(res.rows[0]!.next_token)}`);
+  }
+  return next - 1;
 }
 
 /**

@@ -128,7 +128,14 @@ describe("the dashboard's scheme counts", () => {
       });
     };
     await counter("live", "active", "2026-01-01T00:00:00Z", "2027-01-01T00:00:00Z");
-    await counter("expired-state", "expired", "2026-01-01T00:00:00Z", "2027-01-01T00:00:00Z");
+    /*
+      CLOSE REVIEW, FD-23 — THIS ROW USED TO SAY `"expired"`, WHICH IS NOT A VALUE THE DOMAIN HAS.
+      `entitlement_counters.state` is `'active' | 'void'`. A fixture in a state nothing writes made
+      this row pass against a predicate (`ne(state, "expired")`) that excluded nothing, so a VOIDED
+      package counted as in force on the dashboard. `"void"` is the real cancelled state and turns
+      this assertion into the guard it was always meant to be.
+    */
+    await counter("void-state", "void", "2026-01-01T00:00:00Z", "2027-01-01T00:00:00Z");
     await counter("out-of-window", "active", "2025-01-01T00:00:00Z", "2026-08-01T00:00:00Z");
 
     expect((await load())["desk.schemes.packages.n"]).toBe("1");

@@ -136,6 +136,41 @@ describe("opd encounters (the spine: open / abandon / re-enter / transfer / time
     expect(sunday.sessionId).not.toBe(first.sessionId);
   });
 
+  /**
+   * ═══ FD-23 CLOSE REVIEW — THE CUT-OVER DAY, WHERE THE SERIES MEETS THE ONE IT REPLACED ═══
+   *
+   * `opd_department_tokens` starts empty. On the morning the department series is deployed, a
+   * department has ALREADY handed out numbers that day from the doctor-day counter it replaces —
+   * and those slips are in patients' hands, printed with the same `MED-n` label this series mints.
+   * A counter that starts at 1 hands the next walk-in a number somebody is already holding, and
+   * `opd_queue_entries` has no unique index on `(session_id, token_no)` to refuse it, so the hall
+   * calls one number for two people.
+   *
+   * The state below IS the cut-over: queue entries exist for the department-day, and the counter row
+   * does not. Deleting the row is not a contrivance — it is exactly what the migration leaves behind
+   * for every department that had already started its day.
+   */
+  it("FD-23 close review: the department counter resumes above the tokens the day already issued", async () => {
+    const first = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    const second = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, new Date(MON.getTime() + 60_000));
+    const third = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: drb.doctorId }, new Date(MON.getTime() + 120_000));
+    expect([first.tokenNo, second.tokenNo, third.tokenNo]).toEqual([1, 2, 3]);
+
+    // THE CUT-OVER: the day's entries survive, the counter row does not.
+    await db.delete(opdDepartmentTokens).where(eq(opdDepartmentTokens.departmentId, deptId));
+
+    const afterDeploy = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, new Date(MON.getTime() + 180_000));
+    expect(afterDeploy.tokenNo).toBe(4); // THE KILL — a counter starting at 1 re-issues MED-1
+
+    // and it keeps climbing from there rather than re-seeding on every call
+    const next = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, new Date(MON.getTime() + 240_000));
+    expect(next.tokenNo).toBe(5);
+
+    // a department that issued NOTHING that day is untouched: it still starts at 1
+    const freshDept = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: dept2Id, doctorId: drp.doctorId }, MON);
+    expect(freshDept.tokenNo).toBe(1);
+  });
+
   it("visit type anchors on the newest completed consult in the SAME department, across the merge chain", async () => {
     await completeEncounter(dra, deptId, patient.id, T0, 7);
     const aug15 = new Date("2026-08-15T05:00:00.000Z");

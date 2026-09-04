@@ -1,4 +1,4 @@
-import { and, count, eq, gte, lte, ne, sql } from "drizzle-orm";
+import { and, count, eq, gte, lte, sql } from "drizzle-orm";
 import { couponRedemptions, entitlementCounters, membershipInstances } from "../../kernel/db/schema";
 import { istDayWindow } from "../../kernel/approvals/cumulative";
 import type { DeskCard, DeskProvider, DeskProviderCtx } from "../../kernel/desk/types";
@@ -75,7 +75,14 @@ async function schemesCard(ctx: DeskProviderCtx): Promise<DeskCard> {
       .select({ n: count() })
       .from(entitlementCounters)
       .where(and(
-        ne(entitlementCounters.state, "expired"),
+        /*
+          CLOSE REVIEW, FD-23 — `ne(state, "expired")` EXCLUDED NOTHING. `entitlement_counters.state`
+          is `'active' | 'void'` (schema/membership.ts:253); "expired" is not a value anything
+          writes, so the predicate matched both legal states and a VOIDED package was counted as in
+          force on a cash counter's dashboard. Stated positively, like its two siblings above, so the
+          domain and the query say the same thing.
+        */
+        eq(entitlementCounters.state, "active"),
         lte(entitlementCounters.validFrom, now),
         gte(entitlementCounters.validTo, now),
       )),

@@ -4,7 +4,7 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { mkCashier, openSessionFor, seedBillingBase } from "../../../test/helpers/billing";
 import type { BillingBaseFixture } from "../../../test/helpers/billing";
 import { withTx } from "../../kernel/db/client";
-import { opdEncounters, patients, registrationConfig } from "../../kernel/db/schema";
+import { opdEncounters, patients, phiAccessLog, registrationConfig } from "../../kernel/db/schema";
 import { registerPatient } from "../patients";
 import { issueInvoice, previewInvoice } from "./invoices";
 import { collectionWorklist } from "./worklist";
@@ -102,6 +102,30 @@ describe("the cashier's collection worklist (FD-8)", () => {
     const rows = await collectionWorklist(db, cashier.actor, SERVICE_DAY);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.isConfidential).toBe(true);
+  });
+
+  /**
+   * ═══ FD-23 CLOSE REVIEW — THE READ IS RECORDED, ONE ROW PER PATIENT ═══
+   *
+   * This list hands a cashier a NAME, a UHID and a confidential flag for everybody who owes money
+   * today. Narrow is not the same as unrecorded: the function took an `Actor` it never used and
+   * wrote nothing, so *"who looked at this patient's record"* returned nothing for the whole billing
+   * floor. One row per DISTINCT patient, like the imaging worklist — a twenty-row list that leaves
+   * a single audit row looks complete and answers nineteen questions wrong.
+   */
+  it("FD-23 close review: reading the worklist records PHI access, one row per patient", async () => {
+    const a = await visitFor("Asha Devi");
+    const b = await visitFor("Bhola Prasad");
+
+    const rows = await collectionWorklist(db, cashier.actor, SERVICE_DAY);
+    expect(rows).toHaveLength(2);
+
+    const logged = await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "billing.collection_worklist"));
+    // THE KILL — an unlogged read leaves this empty, and a one-row-per-LIST read leaves it at 1.
+    expect(logged).toHaveLength(2);
+    expect(new Set(logged.map((r) => r.patientId))).toEqual(new Set([a.patientId, b.patientId]));
+    expect(logged.every((r) => r.actorId === cashier.actor.id)).toBe(true);
+    expect(logged[0]!.reason).toContain(SERVICE_DAY);
   });
 
   it("an empty day is an empty list, not an error", async () => {

@@ -352,6 +352,26 @@ describe("Plan 07 read helpers: summaries + merged losers", () => {
       expect(edited.nationalIdMasked).toBe("1012");
     });
 
+    /**
+     * FD-23 CLOSE REVIEW — THE MATCH KEY HAD THE SAME OPEN DOOR THE LAST-4 RULE JUST CLOSED.
+     * `abhaNumber` is normalised on the register path because two spellings of one number are two
+     * patients to every lookup. `PATCHABLE` includes it, and the edit path had no hook — so a clerk
+     * correcting a digit could store an unpunctuated ABHA beside a registered hyphenated one and
+     * split the record in two. Same defect, same fix, one field over.
+     */
+    test("the ABHA match key is normalised on the EDIT path too, not only at registration", async () => {
+      const { patient } = await withTx(db, (tx) => registerPatient(tx, clerk, {
+        ...baseInput, abhaNumber: "12-3456-7890-1234",
+      }));
+      expect(patient.abhaNumber).toBe("12-3456-7890-1234");
+
+      const { patient: edited } = await withTx(db, (tx) => updatePatient(tx, clerk, patient.id, {
+        abhaNumber: "12 3456 7890 1235", // the same shape a clerk types off a phone screen
+      }));
+      // THE KILL — stored raw, this reads as a different patient to every ABHA lookup.
+      expect(edited.abhaNumber).toBe("12-3456-7890-1235");
+    });
+
     test("normaliseIdTail: hyphens and spaces are digits' punctuation, and nothing is not a tail", () => {
       expect(normaliseIdTail("2345 1234 7890")).toBe("7890");
       expect(normaliseIdTail("ABCD")).toBeNull();

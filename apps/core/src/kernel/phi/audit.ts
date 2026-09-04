@@ -95,7 +95,20 @@ export type PhiSurface =
    * nudge, under `aerb.doses.read` rather than any `imaging.*` permission, so a log that folded it
    * into `imaging.study` could not answer for it separately.
    */
-  | "aerb.dose_register";
+  | "aerb.dose_register"
+  /**
+   * FD-23 CLOSE REVIEW — **THE COLLECTION WORKLIST, AND IT IS AN APPEND AND NOTHING ELSE.**
+   *
+   * `GET /billing/worklist` answers "of today's visits, which still owe money?" and returns a
+   * patient NAME, a UHID and a confidential flag for every one of them — deliberately, because a
+   * confidential patient who owes money must still be billable. That makes it a PHI surface by the
+   * same reasoning `imaging.worklist` is one: a cashier opening the day's list is a materially
+   * different disclosure from opening one invoice, and it was the one read of this class in the
+   * tree that recorded nothing at all. Its own name rather than a reuse of any `opd.*` surface —
+   * this is the MONEY desk's read, under `billing.invoice.read`, and a log that folded it into a
+   * consult read could not answer for it separately.
+   */
+  | "billing.collection_worklist";
 
 /** How the reader was connected to this patient's care AT THE MOMENT OF THE READ. */
 export type CareContext = "treating" | "serving" | "none";

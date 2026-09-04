@@ -507,6 +507,15 @@ export async function updatePatient(
       full Aadhaar for having arrived by PATCH.
     */
     if (field === "nationalIdMasked" && typeof next === "string") next = normaliseIdTail(next);
+    /*
+      FD-23 CLOSE REVIEW — AND SO DOES THE ABHA NUMBER, FOR THE SAME REASON, ONE FIELD OVER.
+      `abhaNumber` is a MATCH KEY: two spellings of one number are two patients to every lookup,
+      which is why the register path runs it through `normaliseAbhaNumber`. `PATCHABLE` includes
+      the field, so leaving the hook off the edit path left the amend surface as the open door to
+      exactly the column the register-path fix was written to protect — a clerk correcting a digit
+      via PATCH could store `12 3456 7890 1234` beside a registered `12-3456-7890-1234`.
+    */
+    if (field === "abhaNumber" && typeof next === "string") next = normaliseAbhaNumber(next);
     const prev = (current as Record<string, unknown>)[field];
     const prevS = field === "deceasedAt" ? asAuditTimestamp(prev) : asAuditString(prev);
     const nextS = field === "deceasedAt" ? asAuditTimestamp(next) : asAuditString(next);

@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { opdEncounters, opdQueueEntries, opdQueueSessions, patients } from "../../kernel/db/schema";
 import { encounterFeeStatuses } from "./fee-status";
+import { recordPhiAccess } from "../../kernel/phi/audit";
 import type { Db } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 
@@ -53,7 +54,7 @@ export type CollectionRow = {
  */
 export async function collectionWorklist(
   db: Db,
-  _actor: Actor,
+  actor: Actor,
   serviceDate: string,
 ): Promise<CollectionRow[]> {
   const encounters = await db
@@ -95,6 +96,26 @@ export async function collectionWorklist(
     .innerJoin(opdQueueSessions, eq(opdQueueSessions.id, opdQueueEntries.sessionId))
     .where(inArray(opdQueueEntries.encounterId, owing.map((e) => e.id)));
   const tokenOf = new Map(entries.map((e) => [e.encounterId, e.tokenNo] as const));
+
+  /*
+    ═══ FD-23 CLOSE REVIEW — THIS READ IS LOGGED, BECAUSE IT IS THE ONE OF ITS CLASS THAT WAS NOT ═══
+
+    The rows below carry a NAME, a UHID and `isConfidential` for every patient who owes money today.
+    The header two screens up argues at length that the narrowness is what makes that safe to
+    answer — and it does — but narrow is not the same as unrecorded. `opd/continuity.ts`,
+    `radiology/read.ts`, `radiology/mwl.ts` and `aerb/dose.ts` all write one row per patient for
+    reads of exactly this shape; this one took an `Actor` it never used and left `phi_access_log`
+    empty, so *"who looked at this patient's record"* returned nothing for the whole billing floor.
+
+    ONE ROW PER DISTINCT PATIENT, like the imaging worklist and for its stated reason: a twenty-row
+    list that leaves one audit row looks complete and answers nineteen questions wrong.
+    `recordPhiAccess` never throws (its own header) and the table is pruned at
+    `PHI_ACCESS_RETAIN_DAYS`, so the volume is bounded.
+  */
+  const reason = `billing collection worklist ${serviceDate}, ${String(owing.length)} rows`;
+  for (const patientId of new Set(owing.map((e) => e.patientId))) {
+    await recordPhiAccess(db, { actor, patientId, surface: "billing.collection_worklist", reason });
+  }
 
   return owing.flatMap((e): CollectionRow[] => {
     const person = byId.get(e.patientId);
