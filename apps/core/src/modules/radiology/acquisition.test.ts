@@ -714,6 +714,66 @@ describe("acquisition: the patient is on the table (18a T7)", () => {
     expect(rows[0]!.overDrl).toBe(true);
   });
 
+  /**
+   * ═══ CLOSE REVIEW — THE BOOK NAMES BOTH QUANTITIES, AND ARRAY ORDER USED TO DECIDE ═══
+   *
+   * The commonest book a physicist publishes names CTDIvol AND DLP for one examination, and the
+   * acquisition schema accepts any subset of the dose fields. Picking the first entry that matched
+   * the CODE meant a CT recorded with DLP only was compared against the ctdivol entry, measured
+   * nothing, and stored `over_drl = null` — "no published level" for an examination 45% over the
+   * level that WAS published. Reverse the array and it stored `false`: a clean bill for a study
+   * over its CTDIvol level.
+   */
+  it("18c T3: with BOTH quantities published, the comparison uses the one the study measured", async () => {
+    await publishDrls([
+      { study_type_code: "CT-HEAD", quantity: "ctdivol", value: 60 },
+      { study_type_code: "CT-HEAD", quantity: "dlp", value: 1000 },
+    ]);
+    const study = await readyStudy("CT-HEAD", "ct");
+    await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
+    await start(study.studyId);
+    /** DLP only, 45% over its published level. */
+    await acquired(study.studyId, { imageSource: "pacs", doseDlp: 1450 });
+    const [row] = await db.select().from(doseRegister).where(eq(doseRegister.sourceRef, study.studyId));
+    expect(row!.drlQuantity).toBe("dlp");
+    expect(row!.overDrl).toBe(true);
+  });
+
+  /** And with both measured, the STRICTEST verdict wins — a book naming two levels means both. */
+  it("18c T3: over on ONE quantity and under on the other is OVER", async () => {
+    await publishDrls([
+      { study_type_code: "CT-HEAD", quantity: "dlp", value: 1000 },
+      { study_type_code: "CT-HEAD", quantity: "ctdivol", value: 60 },
+    ]);
+    const study = await readyStudy("CT-HEAD", "ct");
+    await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
+    await start(study.studyId);
+    /** 75 mGy against a 60 level (over), 900 mGy·cm against a 1000 level (under). */
+    await acquired(study.studyId, { imageSource: "pacs", doseCtdivol: 75, doseDlp: 900 });
+    const [row] = await db.select().from(doseRegister).where(eq(doseRegister.sourceRef, study.studyId));
+    expect(row!.drlQuantity).toBe("ctdivol");
+    expect(row!.overDrl).toBe(true);
+  });
+
+  /**
+   * A study type whose OWN levels exist but name no quantity this examination measured does not
+   * fall through to the modality's generic figure: the hospital set a level for this study type,
+   * and a generic number is not the one they meant. `null` — no comparison — is the honest answer.
+   */
+  it("18c T3: a study-type level on an unmeasured quantity does not fall back to the modality", async () => {
+    await publishDrls([
+      { modality: "ct", quantity: "dlp", value: 2000 },
+      { study_type_code: "CT-HEAD", quantity: "ctdivol", value: 60 },
+    ]);
+    const study = await readyStudy("CT-HEAD", "ct");
+    await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
+    await start(study.studyId);
+    await acquired(study.studyId, { imageSource: "pacs", doseDlp: 2500 });
+    const [row] = await db.select().from(doseRegister).where(eq(doseRegister.sourceRef, study.studyId));
+    expect(row!.overDrl).toBeNull();
+    expect(row!.drlQuantity).toBeNull();
+  });
+
   /** An ultrasound has no dose. A register full of zeroes for USG would bury the CTs. */
   it("18c T3: a NON-ionising study writes no register row at all", async () => {
     const study = await readyStudy("USG-ABDO", "usg");

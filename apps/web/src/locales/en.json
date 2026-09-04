@@ -3128,12 +3128,38 @@
       "overLimit": "over the statutory limit",
       "neverRead": "never read, worn {{days}} days",
       "staleRead": "last read for the period ending {{since}}, {{days}} days ago",
-      "limits": "Statutory limits: {{annual}} mSv in any single year, {{fiveYear}} mSv over five. Investigation level: {{level}} mSv per month, pro-rated to the wearing period."
+      "limits": "Statutory limits: {{annual}} mSv in any single year, {{fiveYear}} mSv over five. Investigation level: {{level}} mSv per month, pro-rated to the wearing period.",
+      "worstYear": "Worst year",
+      "flaggedTitle": "Readings at or over the investigation level",
+      "flaggedRead": "{{hp10}} mSv against a level of {{level}} mSv"
     },
     "badgeStatus": {
       "active": "Active",
       "returned": "Returned",
       "lost": "Lost"
+    },
+    "calendar": {
+      "title": "What is out of date",
+      "empty": "Nothing is due or overdue.",
+      "includeOk": "Show everything, including what is in date (the inspector's file)",
+      "what": "What",
+      "subject": "Subject",
+      "due": "Due",
+      "state": "State",
+      "kind": {
+        "licence": "AERB licence",
+        "qa": "Quality assurance",
+        "appointment": "Appointment",
+        "badge": "TLD badge"
+      },
+      "overdue": "{{days}} days overdue",
+      "dueIn": "due in {{days}} days",
+      "dueToday": "due today",
+      "ok": "in date",
+      "neverRead": "never read",
+      "print": "Print the inspector's file",
+      "printTitle": "Radiation safety — AERB file as at {{date}}",
+      "printing": "Preparing the file…"
     }
   }
 }

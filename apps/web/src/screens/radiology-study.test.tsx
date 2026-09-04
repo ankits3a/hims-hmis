@@ -271,6 +271,46 @@ it("18c T3: a reader refused the dose read sees no line and no error", async () 
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
 
+/**
+ * PASS 2 — the fix that added DAP and fluoroscopy to the nudge shipped with NO test: the only
+ * fixture in the tree sets both to null, so both new branches were dead to the suite. D5's whole
+ * point is that the cath lab (63) writes this register through the same `recordDose`, and its
+ * patients have no DLP at all — the case that used to print "6 examinations — —".
+ */
+it("18c T3: a patient with fluoroscopy and no CT gets their DAP and time, not a dash", async () => {
+  mockRoutes({
+    "GET /api/radiology/studies/S1": { status: 200, body: { study: { ...STUDY, ionising: true } } },
+    "GET /api/radiology/studies/S1/readiness": { status: 200, body: READINESS },
+    [CUMULATIVE]: { status: 200, body: {
+      patientId: "P1", months: 12, studyCount: 6, totalDlp: null, totalDap: "12.500",
+      totalFluoroSeconds: 480, overDrlCount: 0, lastOccurredAt: "2026-06-10T00:00:00.000Z",
+    } },
+  });
+  renderWithProviders(<RadiologyStudy />);
+  const nudge = await screen.findByTestId("dose-cumulative");
+  expect(nudge).toHaveTextContent("12.500 Gy·cm²");
+  expect(nudge).toHaveTextContent("480 s");
+  /** The dash the old code printed for the whole total; the sentence's own em-dash separator stays. */
+  expect(nudge.textContent).not.toMatch(/months\s+—\s+—/);
+});
+
+/** And every total together, each with its own unit — DAP is not measured in DLP's. */
+it("18c T3: renders each total with its own unit", async () => {
+  mockRoutes({
+    "GET /api/radiology/studies/S1": { status: 200, body: { study: { ...STUDY, ionising: true } } },
+    "GET /api/radiology/studies/S1/readiness": { status: 200, body: READINESS },
+    [CUMULATIVE]: { status: 200, body: {
+      patientId: "P1", months: 12, studyCount: 3, totalDlp: "7200.000", totalDap: "1.250",
+      totalFluoroSeconds: 60, overDrlCount: 1, lastOccurredAt: "2026-06-10T00:00:00.000Z",
+    } },
+  });
+  renderWithProviders(<RadiologyStudy />);
+  const nudge = await screen.findByTestId("dose-cumulative");
+  expect(nudge).toHaveTextContent("7200.000 mGy·cm");
+  expect(nudge).toHaveTextContent("1.250 Gy·cm²");
+  expect(nudge).toHaveTextContent("60 s");
+});
+
 /** A patient with no ionising history at all gets no line — zero is not worth a sentence. */
 it("18c T3: a first-ever ionising examination shows no line", async () => {
   mockRoutes({

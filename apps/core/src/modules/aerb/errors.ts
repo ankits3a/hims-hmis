@@ -35,6 +35,27 @@ export const AERB_ERROR_CODES = [
   // ── people (T1) ──
   "not_appointed",
   "unknown_person",
+  /**
+   * ═══ CLOSE REVIEW — THE UNION WAS CLOSED TOO EARLY, AND `errors.ts` SAYS WHAT THAT MEANS ═══
+   *
+   * This file's own header states that "a later task needing a code this union does not carry has
+   * found a PLAN DEFECT and reports it". Three did, and all three were reaching the caller as a
+   * raw Postgres constraint violation — a 500 with an index name in the body, which is the exact
+   * defect the header two paragraphs up says NOT ONE OF THESE IS.
+   *
+   *   · **`badge_already_issued` (409)** — a worker already holds an active badge, or the number is
+   *     already in use. Two badges on one person are two partial pictures of one exposure.
+   *   · **`read_already_recorded` (409)** — a reading for this badge and period exists. The schema
+   *     comment promises "a re-entered report is a CORRECTION, not a second dose"; until there is a
+   *     correction route this refusal is what says so, rather than a 500.
+   *
+   * PASS 2 removed a third, `stale_qa_pass`. Pass 1 added it to REFUSE a passing test performed
+   * before the failure it would clear — and refusing meant the historical QA book could not be
+   * entered at all while a machine was blocked, which is the act the register exists for. That
+   * record now lands and simply releases nothing, so there is no refusal to name.
+   */
+  "badge_already_issued",
+  "read_already_recorded",
 ] as const;
 
 export type AerbErrorCode = (typeof AERB_ERROR_CODES)[number];
@@ -62,6 +83,9 @@ const STATUS: Record<AerbErrorCode, number> = {
 
   unknown_licence: 404,
   unknown_person: 404,
+
+  badge_already_issued: 409,
+  read_already_recorded: 409,
 };
 
 export function aerbHttpStatus(code: AerbErrorCode): number {

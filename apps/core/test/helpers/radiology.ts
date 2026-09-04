@@ -14,7 +14,7 @@ import {
   RADIOLOGY_RESOURCE_KINDS, RADIOLOGY_WORKFLOW_DEFINITIONS, handleOrderPlaced, placeImagingOrder,
 } from "../../src/modules/radiology";
 import { ensureRole, mkUser } from "./opd";
-import { AERB_LICENSABLE_MODALITIES, aerbManifest, fileLicence } from "../../src/modules/aerb";
+import { AERB_UNLICENSABLE_MODALITIES, aerbManifest, fileLicence } from "../../src/modules/aerb";
 import { imagingStudies } from "../../src/kernel/db/schema";
 import { eq } from "drizzle-orm";
 import { checkIn } from "../../src/modules/radiology/checkin";
@@ -231,7 +231,7 @@ export async function setupRadiologyFixture(
   const dark = new Set(opts.unlicensedModalities ?? []);
   const licenceWindow = { from: "2020-01-01", to: "2099-12-31" };
   for (const [, , modality] of serviceSpecs) {
-    if (!AERB_LICENSABLE_MODALITIES.includes(modality)) continue;
+    if (AERB_UNLICENSABLE_MODALITIES.includes(modality)) continue;
     if (dark.has(modality)) continue;
     const deviceResourceId = devices[modality];
     if (deviceResourceId === undefined) continue;

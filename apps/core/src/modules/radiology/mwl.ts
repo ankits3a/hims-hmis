@@ -226,7 +226,15 @@ export async function mwlExport(
      * Not the device's modality either: a device list would have to be maintained in two places and
      * would refuse the wrong machine the day somebody adds one.
      */
-    const ionising = types.get(r.studyTypeCode)?.ionising === true;
+    /**
+     * CLOSE REVIEW — this read `?.ionising === true`, so a study whose type is absent from the
+     * active book was treated as NON-ionising and offered to an unlicensed console. The direction
+     * of the default is wrong for a statutory withholding: an unresolvable type is withheld.
+     * (`startAcquisition` refuses it either way — `requireStudyType` throws — so the only thing
+     * that ever changed was whether the row appeared on a worklist it could not be acquired from.)
+     */
+    const type = types.get(r.studyTypeCode);
+    const ionising = type === undefined || type.ionising;
     if (ionising && (await activeLicenceFor(db, r.deviceResourceId!, opts.date)) === null) {
       withheld += 1;
       continue;

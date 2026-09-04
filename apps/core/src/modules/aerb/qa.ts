@@ -2,6 +2,7 @@ import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { changeResourceStatus } from "../../kernel/resources/registry";
+import { istDayString } from "../../kernel/approvals/cumulative";
 import { QA_RESULTS, qaRecords } from "../../kernel/db/schema/aerb";
 import { resources } from "../../kernel/db/schema/resources";
 import { AerbError } from "./errors";
@@ -45,6 +46,14 @@ export type QaRecordRow = typeof qaRecords.$inferSelect;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** PASS 2 — `2026-02-31` passed the shape check here too and died at the INSERT as a raw 22008. */
+function isRealDate(value: string): boolean {
+  if (!DATE_RE.test(value)) return false;
+  const [y, m, d] = value.split("-").map(Number) as [number, number, number];
+  const parsed = new Date(Date.UTC(y, m - 1, d));
+  return parsed.getUTCFullYear() === y && parsed.getUTCMonth() === m - 1 && parsed.getUTCDate() === d;
+}
+
 async function assertMayManage(exec: Db | Tx, actor: Actor): Promise<void> {
   if (actor.type !== "user") {
     throw new AerbError(
@@ -87,14 +96,29 @@ export interface RecordQaOutcome {
  */
 export async function recordQa(
   tx: Tx, actor: Actor, kinds: readonly ResourceKindDecl[], input: RecordQaInput,
+  opts: { now?: Date } = {},
 ): Promise<RecordQaOutcome> {
   await assertMayManage(tx, actor);
-  if (!DATE_RE.test(input.performedOn)) {
-    throw new AerbError("invalid_validity", `performedOn must be YYYY-MM-DD, got "${input.performedOn}"`);
+  if (!isRealDate(input.performedOn)) {
+    throw new AerbError("invalid_validity", `performedOn must be a real date (YYYY-MM-DD), got "${input.performedOn}"`);
+  }
+  /**
+   * CLOSE REVIEW — F52's rule, which this file was not following: nothing bounded `performedOn`
+   * above, so a typo of `2027-06-15` was accepted and (before the guard below) released a blocked
+   * machine on a test that has not happened. The server's own IST day is the bound.
+   */
+  const today = istDayString(opts.now ?? new Date());
+  if (input.performedOn > today) {
+    throw new AerbError(
+      "invalid_validity",
+      `performedOn ${input.performedOn} is in the future (today is ${today}) — a quality-assurance `
+      + "result is a measurement that has been taken",
+      { performedOn: input.performedOn, today },
+    );
   }
   if (input.nextDueOn != null) {
-    if (!DATE_RE.test(input.nextDueOn)) {
-      throw new AerbError("invalid_validity", `nextDueOn must be YYYY-MM-DD, got "${input.nextDueOn}"`);
+    if (!isRealDate(input.nextDueOn)) {
+      throw new AerbError("invalid_validity", `nextDueOn must be a real date (YYYY-MM-DD), got "${input.nextDueOn}"`);
     }
     if (input.nextDueOn < input.performedOn) {
       throw new AerbError(
@@ -110,8 +134,19 @@ export async function recordQa(
   const deviceRows = await tx.select({ id: resources.id, kind: resources.kind, status: resources.status })
     .from(resources).where(eq(resources.id, input.deviceResourceId));
   const device = deviceRows[0];
-  if (!device) {
-    throw new AerbError("unknown_licence", `no resource ${input.deviceResourceId}`, { deviceResourceId: input.deviceResourceId });
+  /**
+   * PASS 2 — pass 1's finding named "neither `fileLicence` nor `recordQa`", and only the first was
+   * fixed. A `pass` against a bed's resource id was written and rendered by `qaRegister` in the
+   * inspector's file as a machine with a QA certificate. Only the `fail` path was incidentally
+   * protected, because `changeResourceStatus` rejects `qa_blocked` for a kind whose vocabulary
+   * lacks it — which is the shape of a guard that holds by accident.
+   */
+  if (!device || device.kind !== "device") {
+    throw new AerbError(
+      "unknown_licence",
+      `${input.deviceResourceId} is not a device resource — a QA record is about a machine`,
+      { deviceResourceId: input.deviceResourceId, kind: device?.kind ?? null },
+    );
   }
 
   const recordId = newId();
@@ -153,7 +188,7 @@ export async function recordQa(
    * into a machine returned to service with its tube still broken.
    */
   if (input.result === "pass" && device.status === "qa_blocked") {
-    const openFail = await tx.select({ id: qaRecords.id })
+    const openFail = await tx.select({ id: qaRecords.id, performedOn: qaRecords.performedOn })
       .from(qaRecords)
       .where(and(
         eq(qaRecords.deviceResourceId, input.deviceResourceId),
@@ -161,6 +196,43 @@ export async function recordQa(
         isNull(qaRecords.releasedAt),
       ))
       .orderBy(desc(qaRecords.performedOn));
+
+    /**
+     * ═══ CLOSE REVIEW, CRITICAL — A PASS MUST BE NEWER THAN THE FAILURE IT CLEARS ═══
+     *
+     * The release condition used to be `result === 'pass' && status === 'qa_blocked'` and NOTHING
+     * ELSE. `performedOn` was validated for shape and against `nextDueOn`, never against the
+     * failure it was about to close out — so the ordinary act this register exists to support,
+     * **back-entering the historical QA book for an inspector**, released a machine:
+     *
+     *   1. the annual QA fails on 2026-06-15; the CT is `qa_blocked` and off the diary. Correct.
+     *   2. the RSO types up last year's certificate — `result: 'pass', performedOn: '2025-06-10'`.
+     *   3. the device is `qa_blocked`, so it goes back to `available`, and the 2026 failure row is
+     *      stamped `releasedByRecordId = <the 2025 record>`. **A CT whose output repeatability was
+     *      out of tolerance last week is back on the diary, cleared by a certificate from last
+     *      year, and the register positively asserts that it was.**
+     *
+     * A QA pass is the ONLY exit from `qa_blocked` in the whole tree, so the release condition IS
+     * the control. It now carries a date. A pass that is not newer than the open failure records
+     * normally and releases nothing — the history is enterable, and it cannot clear a machine.
+     */
+    /**
+     * ═══ PASS 2 — THIS RECORDS AND DOES NOT RELEASE; IT USED TO REFUSE ═══
+     *
+     * Pass 1 threw here, and pass 2 caught the contradiction: the paragraph above promised the
+     * history would still be enterable, and a throw meant that **while a machine was `qa_blocked`
+     * its historical QA book could not be entered at all** — which is the very act the CRITICAL's
+     * own narrative calls the ordinary use of this register.
+     *
+     * Recording without releasing keeps both properties. The row lands, the inspector's book is
+     * complete, and the machine stays stopped; the answer says `releasedRecordId: null`, so nothing
+     * tells the RSO a clearance happened. Fail-safe in the direction that matters.
+     */
+    const blocking = openFail[0];
+    if (blocking !== undefined && input.performedOn < blocking.performedOn) {
+      return { recordId, blocked: false, releasedRecordId: null };
+    }
+
     const at = new Date();
     await changeResourceStatus(tx, actor, kinds, input.deviceResourceId, "available", {
       reason: `QA ${input.qaType} passed on ${input.performedOn}`, at,

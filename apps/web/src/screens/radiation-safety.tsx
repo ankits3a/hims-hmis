@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { todayIst } from "../lib/opd-api";
 import {
-  DOSE_UNITS, aerbErrorText, fetchAppointments, fetchBadges, fetchDoseRegister, fetchLicenceGaps,
-  fetchLicences, fetchQaRecords,
+  DOSE_UNITS, aerbErrorText, fetchAppointments, fetchBadges, fetchCalendar, fetchDoseRegister,
+  fetchLicenceGaps, fetchLicences, fetchQaRecords,
 } from "../lib/aerb-api";
 import type {
-  WireAppointment, WireBadge, WireBadgeGap, WireDoseRow, WireLicence, WireLicenceGap, WireQaRecord,
+  WireAppointment, WireBadge, WireBadgeGap, WireCalendarRow, WireDoseRow, WireLicence,
+  WireLicenceGap, WireQaRecord,
 } from "../lib/aerb-api";
 
 /**
@@ -20,13 +22,13 @@ import type {
  * which modalities AERB licences at all is a regulatory fact, and a client-side list of them would
  * be the copy that drifted the day somebody added a modality.
  *
- * The Calendar tab arrives with T5. They are declared here as disabled
- * rather than absent so that the screen's shape is the register's shape from the first commit, and
- * so a reader can see what is coming without reading the phase document.
+ * All five registers are built as of T5. The tab list is still declared as a constant rather than
+ * inlined, because `BUILT` is what a future phase narrows if it ever adds a sixth.
  */
 const TABS = ["licences", "people", "qa", "dose", "badges", "calendar"] as const;
 type Tab = (typeof TABS)[number];
-const BUILT: readonly Tab[] = ["licences", "people", "qa", "dose", "badges"];
+/** T5 — every register the inspector asks for is built. */
+const BUILT: readonly Tab[] = [...TABS];
 
 /**
  * The measured numbers, each with the unit `aerb/units.ts` names for it. 18b's close review found a
@@ -42,11 +44,21 @@ function doseText(r: WireDoseRow): string {
   return parts.join(" · ");
 }
 
-function istToday(): string {
-  const now = new Date();
-  /** The IST calendar day, which is the day the register's windows are compared against. */
-  return new Date(now.getTime() + (330 + now.getTimezoneOffset()) * 60_000).toISOString().slice(0, 10);
-}
+/**
+ * ═══ CLOSE REVIEW — THIS RETURNED THE **UTC** DAY ON AN IST BROWSER ═══
+ *
+ * It read `now.getTime() + (330 + getTimezoneOffset()) * 60_000` and then took `toISOString()`.
+ * `getTime()` is already absolute, so the correct shift is +330 and nothing else; adding
+ * `getTimezoneOffset()` (which is −330 in IST) cancelled it exactly, and `toISOString()` reads with
+ * UTC getters. At 02:00 IST on 1 April the function returned **31 March** — so the night
+ * radiographer's Licences tab asked for yesterday's gaps, and a CT whose licence lapsed at the end
+ * of 31 March was ABSENT from the unlicensed-machine alert while the console was already refusing
+ * it. F52's bug, in a new place, on the one screen that exists to show the gap.
+ *
+ * `todayIst` in `lib/opd-api.ts` has done this correctly all along; this is now one call to it
+ * rather than a third hand-rolled copy.
+ */
+const istToday = todayIst;
 
 export function RadiationSafety(): React.ReactElement {
   const { t } = useTranslation();
@@ -80,6 +92,13 @@ export function RadiationSafety(): React.ReactElement {
     queryFn: fetchBadges,
     enabled: tab === "badges",
   });
+  const [calendarIncludeOk, setCalendarIncludeOk] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const calendar = useQuery({
+    queryKey: ["aerb", "calendar", calendarIncludeOk],
+    queryFn: () => fetchCalendar(calendarIncludeOk),
+    enabled: tab === "calendar",
+  });
   const people = useQuery({
     queryKey: ["aerb", "persons"],
     queryFn: fetchAppointments,
@@ -92,6 +111,40 @@ export function RadiationSafety(): React.ReactElement {
   const doseRows: WireDoseRow[] = doses.data?.rows ?? [];
   const badgeRows: WireBadge[] = badges.data?.rows ?? [];
   const badgeGapRows: WireBadgeGap[] = badges.data?.gaps ?? [];
+  /**
+   * CLOSE REVIEW — `reads` was fetched over the wire and rendered NOWHERE, so the only investigation
+   * signal on screen was the LATEST reading's flag: one ordinary quarter after a flagged one and
+   * the flag, its stored level, its lab reference and every Hp(0.07) disappeared. The ladder was
+   * record-only AND invisible after three months.
+   */
+  const flaggedReads = (badges.data?.reads ?? []).filter((r) => r.investigationFlag);
+  const calendarRows: WireCalendarRow[] = calendar.data?.rows ?? [];
+
+  /**
+   * The print fires when the WHOLE file has arrived, not when the checkbox flipped. `isFetching`
+   * rather than `isPending`, because switching the key back and forth can leave a cached body while
+   * the widened one is still in flight.
+   */
+  useEffect(() => {
+    if (!printing) return;
+    /**
+     * ═══ PASS 2, WRONG — THIS COULD STICK `printing` TRUE FOR EVER ═══
+     *
+     * The first version returned early whenever the widened file was not yet here, with no path out
+     * on failure. The app's query client is `retry: false`, so one 403 or 500 on the calendar left
+     * `data` undefined, `isFetching` false, and the button **disabled and labelled "Preparing the
+     * file…" for the life of the mount** — a print that could never happen, where the defect it
+     * replaced at least always printed something. Unticking the box mid-flight stranded it the same
+     * way. Both proven by pass 2's probe.
+     *
+     * Every way out is now enumerated: the file arrives and we print; the fetch fails and we stop;
+     * the user changes their mind and we stop.
+     */
+    if (!calendarIncludeOk || calendar.isError) { setPrinting(false); return; }
+    if (calendar.isFetching || calendar.data === undefined) return;
+    setPrinting(false);
+    window.print();
+  }, [printing, calendarIncludeOk, calendar.isError, calendar.isFetching, calendar.data]);
   const peopleRows: WireAppointment[] = people.data?.rows ?? [];
   /** A machine sitting in `qa_blocked` is the state the QA tab exists to make impossible to miss. */
   const blockedNow = qaRows.filter((r) => r.deviceStatus === "qa_blocked");
@@ -152,7 +205,7 @@ export function RadiationSafety(): React.ReactElement {
 
             {licences.isError ? <p role="alert" className="text-red-600">{aerbErrorText(licences.error)}</p> : null}
             {licences.isPending ? <p>{t("common.loading")}</p> : null}
-            {!licences.isPending && licenceRows.length === 0
+            {!licences.isPending && !licences.isError && licenceRows.length === 0
               ? <p data-testid="aerb-licences-empty">{t("aerb.licences.empty")}</p>
               : (
                 <table className="w-full text-sm" data-testid="aerb-licences">
@@ -205,7 +258,7 @@ export function RadiationSafety(): React.ReactElement {
 
             {qa.isError ? <p role="alert" className="text-red-600">{aerbErrorText(qa.error)}</p> : null}
             {qa.isPending ? <p>{t("common.loading")}</p> : null}
-            {!qa.isPending && qaRows.length === 0
+            {!qa.isPending && !qa.isError && qaRows.length === 0
               ? <p data-testid="aerb-qa-empty">{t("aerb.qa.empty")}</p>
               : (
                 <table className="w-full text-sm" data-testid="aerb-qa">
@@ -256,7 +309,7 @@ export function RadiationSafety(): React.ReactElement {
 
             {doses.isError ? <p role="alert" className="text-red-600">{aerbErrorText(doses.error)}</p> : null}
             {doses.isPending ? <p>{t("common.loading")}</p> : null}
-            {!doses.isPending && doseRows.length === 0
+            {!doses.isPending && !doses.isError && doseRows.length === 0
               ? <p data-testid="aerb-dose-empty">{t("aerb.dose.empty")}</p>
               : (
                 <table className="w-full text-sm" data-testid="aerb-dose">
@@ -273,8 +326,20 @@ export function RadiationSafety(): React.ReactElement {
                   <tbody>
                     {doseRows.map((r) => (
                       <tr key={r.id} data-testid={`aerb-dose-${r.id}`}>
-                        <td>{r.occurredAt.slice(0, 10)}</td>
-                        <td>{r.patientName} · {r.uhid}</td>
+                        {/*
+                          * PASS 2 — this was `occurredAt.slice(0, 10)` over a UTC instant, so a CT
+                          * at 02:15 IST on 1 April printed as 31 March. The register's SELECTION
+                          * window is IST (the same commit made it so), which left the book
+                          * internally inconsistent about the one fact an inspector cross-checks.
+                          */}
+                        <td>{todayIst(new Date(r.occurredAt))}</td>
+                        {/*
+                          * PASS 2 — the alias was rendered beside the UHID, which is the
+                          * hospital-wide lookup key: any radiographer could paste it into patient
+                          * search and recover the legal name. The worklist this pattern came from
+                          * selects no UHID at all. A restricted row now says so instead.
+                          */}
+                        <td>{r.patientName}{r.restricted ? "" : ` · ${r.uhid}`}</td>
                         <td>{r.procedureCode} ({r.modality}){r.deviceCode === null ? "" : ` · ${r.deviceCode}`}</td>
                         <td>{doseText(r)}{r.doseManual ? ` · ${t("aerb.dose.manual")}` : ""}</td>
                         <td>
@@ -326,6 +391,26 @@ export function RadiationSafety(): React.ReactElement {
               )
               : null}
 
+            {flaggedReads.length > 0
+              ? (
+                <div role="alert" data-testid="aerb-badge-flagged" className="border border-amber-500 p-3">
+                  <h2 className="font-semibold text-amber-800">{t("aerb.badges.flaggedTitle")}</h2>
+                  <ul className="list-disc pl-5 text-sm">
+                    {flaggedReads.map((r) => (
+                      <li key={r.id}>
+                        {r.userName} · {r.badgeNo} · {r.periodStart}–{r.periodEnd} —{" "}
+                        {t("aerb.badges.flaggedRead", {
+                          hp10: r.hp10Msv,
+                          level: r.investigationLevelMsv ?? "—",
+                        })}
+                        {r.labRef === null ? "" : ` · ${r.labRef}`}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )
+              : null}
+
             {badges.data !== undefined
               ? (
                 <p className="text-sm text-slate-600" data-testid="aerb-badge-limits">
@@ -340,7 +425,7 @@ export function RadiationSafety(): React.ReactElement {
 
             {badges.isError ? <p role="alert" className="text-red-600">{aerbErrorText(badges.error)}</p> : null}
             {badges.isPending ? <p>{t("common.loading")}</p> : null}
-            {!badges.isPending && badgeRows.length === 0
+            {!badges.isPending && !badges.isError && badgeRows.length === 0
               ? <p data-testid="aerb-badges-empty">{t("aerb.badges.empty")}</p>
               : (
                 <table className="w-full text-sm" data-testid="aerb-badges">
@@ -350,6 +435,7 @@ export function RadiationSafety(): React.ReactElement {
                       <th>{t("aerb.badges.badge")}</th>
                       <th>{t("aerb.badges.last")}</th>
                       <th>{t("aerb.badges.ytd")}</th>
+                      <th>{t("aerb.badges.worstYear")}</th>
                       <th>{t("aerb.badges.fiveYear")}</th>
                       <th>{t("aerb.licences.status")}</th>
                     </tr>
@@ -364,13 +450,99 @@ export function RadiationSafety(): React.ReactElement {
                             ? t("aerb.badges.noRead")
                             : `${b.lastHp10Msv} mSv · ${b.lastPeriodEnd ?? ""}${b.lastInvestigation === true ? ` · ${t("aerb.badges.investigate")}` : ""}`}
                         </td>
+                        <td>{b.workerYtdMsv} mSv</td>
+                        {/*
+                          * The WORST year on record, not merely this one — a Q4 report entered in
+                          * February belongs to the year it measured, and that is the year that can
+                          * be over the ceiling.
+                          */}
                         <td className={b.overAnnualLimit ? "text-red-700 font-semibold" : ""}>
-                          {b.ytdMsv} mSv{b.overAnnualLimit ? ` · ${t("aerb.badges.overLimit")}` : ""}
+                          {b.worstYear === null
+                            ? "—"
+                            : `${b.worstYear}: ${b.worstYearMsv} mSv${b.overAnnualLimit ? ` · ${t("aerb.badges.overLimit")}` : ""}`}
                         </td>
                         <td className={b.overFiveYearLimit ? "text-red-700 font-semibold" : ""}>
-                          {b.fiveYearMsv} mSv{b.overFiveYearLimit ? ` · ${t("aerb.badges.overLimit")}` : ""}
+                          {b.workerFiveYearMsv} mSv{b.overFiveYearLimit ? ` · ${t("aerb.badges.overLimit")}` : ""}
                         </td>
                         <td>{t(`aerb.badgeStatus.${b.status}`)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+          </section>
+        )
+        : null}
+
+      {tab === "calendar"
+        ? (
+          <section className="space-y-4">
+            <div className="flex items-center justify-between gap-4 print:hidden">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  data-testid="aerb-calendar-include-ok"
+                  checked={calendarIncludeOk}
+                  onChange={(e) => { setCalendarIncludeOk(e.target.checked); }}
+                />
+                {t("aerb.calendar.includeOk")}
+              </label>
+              {/*
+                * D12 — the inspector's file is a PRINT of this list with everything shown, not a
+                * separate document rail. One register read two ways; a PDF service would be a
+                * second copy of the same rows.
+                */}
+              {/*
+                * CLOSE REVIEW — this used to `setCalendarIncludeOk(true)` and then
+                * `setTimeout(print, 0)`. Toggling the flag changes the query key, there is no cached
+                * entry for the new key, and a macrotask fires long before the round trip — so the
+                * browser's print preview captured "Loading…" and a table with headers and no body.
+                * The flag is set, and the PRINT waits for the widened file to actually be here.
+                */}
+              <button
+                type="button"
+                data-testid="aerb-print"
+                disabled={printing}
+                className="border px-3 py-1 text-sm disabled:opacity-50"
+                onClick={() => { setCalendarIncludeOk(true); setPrinting(true); }}
+              >
+                {printing ? t("aerb.calendar.printing") : t("aerb.calendar.print")}
+              </button>
+            </div>
+
+            <h2 className="hidden print:block font-semibold">
+              {t("aerb.calendar.printTitle", { date: onDate })}
+            </h2>
+
+            {calendar.isError ? <p role="alert" className="text-red-600">{aerbErrorText(calendar.error)}</p> : null}
+            {calendar.isPending ? <p>{t("common.loading")}</p> : null}
+            {!calendar.isPending && !calendar.isError && calendarRows.length === 0
+              ? <p data-testid="aerb-calendar-empty">{t("aerb.calendar.empty")}</p>
+              : (
+                <table className="w-full text-sm" data-testid="aerb-calendar">
+                  <thead>
+                    <tr className="text-left">
+                      <th>{t("aerb.calendar.what")}</th>
+                      <th>{t("aerb.calendar.subject")}</th>
+                      <th>{t("aerb.calendar.due")}</th>
+                      <th>{t("aerb.calendar.state")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {calendarRows.map((r) => (
+                      <tr key={`${r.kind}-${r.ref}`} data-testid={`aerb-calendar-${r.ref}`}>
+                        <td>{t(`aerb.calendar.kind.${r.kind}`)}</td>
+                        <td>{r.subject} · {r.detail}</td>
+                        <td>{r.dueOn ?? t("aerb.calendar.neverRead")}</td>
+                        <td className={r.state === "overdue" ? "text-red-700 font-semibold" : r.state === "due" ? "text-amber-700" : ""}>
+                          {r.state === "overdue"
+                            ? t("aerb.calendar.overdue", { days: r.daysOverdue })
+                            : r.state === "due"
+                              ? (r.daysOverdue === 0
+                                  ? t("aerb.calendar.dueToday")
+                                  : t("aerb.calendar.dueIn", { days: -r.daysOverdue }))
+                              : t("aerb.calendar.ok")}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -385,7 +557,7 @@ export function RadiationSafety(): React.ReactElement {
           <section className="space-y-2">
             {people.isError ? <p role="alert" className="text-red-600">{aerbErrorText(people.error)}</p> : null}
             {people.isPending ? <p>{t("common.loading")}</p> : null}
-            {!people.isPending && peopleRows.length === 0
+            {!people.isPending && !people.isError && peopleRows.length === 0
               ? <p data-testid="aerb-people-empty">{t("aerb.people.empty")}</p>
               : (
                 <table className="w-full text-sm" data-testid="aerb-people">
