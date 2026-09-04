@@ -418,8 +418,15 @@
     {
       "idx": 59,
       "version": "7",
+      "when": 1788370828795,
+      "tag": "0059_lab_analyte_applicability",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
       "when": 1788477756953,
-      "tag": "0059_aerb_licences",
+      "tag": "0060_aerb_licences",
       "breakpoints": true
     }
   ]

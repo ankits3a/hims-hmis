@@ -171,3 +171,71 @@ export function flagFor(value: number, range: ResolvedRange): "L" | "H" | "LL" |
   if (lo !== null && value < lo) return "L";
   return "N";
 }
+
+/* ═══════════════════ 17d T1 — APPLICABILITY: is this test ABOUT this patient? ═══════════════════ */
+
+/**
+ * The breach, or `null` when the analyte applies. Pure, so the rule can be read in one place and
+ * asserted without a database — and so the two ways it can fire are named rather than collapsed
+ * into a boolean.
+ */
+export type ApplicabilityBreach =
+  | { kind: "sex"; declared: string; patient: string }
+  | { kind: "age"; declaredMinDays: number | null; declaredMaxDays: number | null; patientDays: number };
+
+/**
+ * **A VALUE CAN BE PERFECTLY ORDINARY AND STILL BE IMPOSSIBLE** (design board EdgeCases #15).
+ *
+ * A beta-hCG of 4200 mIU/mL is inside every envelope `outsideAbsurdEnvelope` knows about. What is
+ * wrong with it is the man it is standing next to, and the ordinary explanation for that pairing is
+ * not a rare endocrine tumour — it is that two tubes were swapped at the chair five minutes ago.
+ * So this reads the PATIENT, which is the one thing the number-shaped guards never do.
+ *
+ * ═══ THE TWO REFUSALS THIS RULE DELIBERATELY DOES NOT MAKE ═══
+ *
+ * · **A patient of `other` or `unknown` administrative gender is never refused by the sex rule.**
+ *   The record does not support the refusal. `pickBySex` already treats those two as "no sex-specific
+ *   row applies" and footnotes the report; withholding the result instead would be a laboratory
+ *   declining to work from a registration default, and the counter's default is `unknown`.
+ * · **A patient with no recorded date of birth is never refused by the age rule** (E7's UNK row).
+ *   An unknown age is not an age outside the band, and an age band that fired on a null would refuse
+ *   every unidentified emergency admission in the hospital — which is the population least able to
+ *   wait for a second technologist to walk over.
+ *
+ * Both silences are the same principle: this rule exists to catch a SWAP, and neither an
+ * unrecorded sex nor an unrecorded birthday is evidence of one.
+ */
+export function applicabilityBreach(
+  analyte: Pick<AnalyteRow, "appliesToSex" | "appliesMinAgeDays" | "appliesMaxAgeDays">,
+  subject: RangeSubject,
+  collectedAt: Date,
+): ApplicabilityBreach | null {
+  const declaredSex = analyte.appliesToSex;
+  if (declaredSex !== null && (subject.sex === "male" || subject.sex === "female") && subject.sex !== declaredSex) {
+    return { kind: "sex", declared: declaredSex, patient: subject.sex };
+  }
+  const { appliesMinAgeDays: min, appliesMaxAgeDays: max } = analyte;
+  if ((min !== null || max !== null) && subject.dob !== null) {
+    const days = ageInDaysIst(subject.dob, collectedAt);
+    if ((min !== null && days < min) || (max !== null && days >= max)) {
+      return { kind: "age", declaredMinDays: min, declaredMaxDays: max, patientDays: days };
+    }
+  }
+  return null;
+}
+
+/** What the refusal says on a screen a technologist reads at speed. */
+export function applicabilityBreachText(analyteCode: string, breach: ApplicabilityBreach): string {
+  if (breach.kind === "sex") {
+    return `${analyteCode} is reported only for ${breach.declared} patients and this record reads ` +
+      `${breach.patient} — check the tube against the patient before the number goes in, and check ` +
+      "every tube drawn at the same chair in the same minute";
+  }
+  const band = breach.declaredMinDays === null
+    ? `under ${breach.declaredMaxDays} days`
+    : breach.declaredMaxDays === null
+      ? `from ${breach.declaredMinDays} days`
+      : `${breach.declaredMinDays}–${breach.declaredMaxDays} days`;
+  return `${analyteCode} is reported only for patients aged ${band} and this patient is ` +
+    `${breach.patientDays} days old — check the tube against the patient before the number goes in`;
+}
