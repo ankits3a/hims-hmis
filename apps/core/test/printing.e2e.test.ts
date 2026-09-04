@@ -13,7 +13,7 @@ import { createRole, grantPermissionToRole, syncPermissions } from "../src/kerne
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
 import { withTx } from "../src/kernel/db/client";
-import { printJobs } from "../src/kernel/db/schema";
+import { phiAccessLog, printJobs } from "../src/kernel/db/schema";
 import { enqueuePrintJob } from "../src/kernel/printing/enqueue";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import type { Db } from "../src/kernel/db/client";
@@ -96,9 +96,23 @@ describe("FD-24 T2: the print relay's routes", () => {
     expect(claimed.body.jobs[0].html).toContain("@page { size: 72mm auto"); // THE 72 mm PAGE, which did not exist in this codebase before FD-24
     expect(claimed.body.jobs[0].html).toContain(patientName);
     expect(claimed.body.jobs[0].html).toContain("MED-1"); // the department series, as the screen says it
-    expect(claimed.body.jobs[0].html).toContain("भुगतान शेष"); // Devanagari survives the round trip
+    /*
+      DEVANAGARI SURVIVES THE ROUND TRIP — asserted on a line that is ALWAYS on the slip.
+
+      It used to be asserted on the UNPAID stamp's `भुगतान शेष`, which stopped being unconditional
+      when FD-24's close made the stamp a projection of the ledger rather than a literal: this
+      fixture configures no billing, so the fee status is UNKNOWN and an unknown status is
+      deliberately not a stamp. The "go next to" list is on every token slip regardless of money,
+      so the encoding claim now rides on something that cannot be switched off by a fixture.
+    */
+    expect(claimed.body.jobs[0].html).toContain("प्राथमिक जाँच डेस्क");
     const row = (await db.select().from(printJobs).where(eq(printJobs.id, id)))[0]!;
-    expect(row.params).toEqual({ encounterId, unpaid: true });
+    /*
+      THE QUEUE ROW IS IDENTIFIERS AND NOTHING ELSE, and after FD-24's close that is literally true:
+      `unpaid` is gone from `params`. It was the one derived claim the row carried, and a derived
+      claim written at enqueue is stale by the time the relay prints it.
+    */
+    expect(row.params).toEqual({ encounterId });
     expect(JSON.stringify(row.params)).not.toMatch(/muskan|uhid/i);
 
     await request(app.getHttpServer())
@@ -109,6 +123,94 @@ describe("FD-24 T2: the print relay's routes", () => {
       .expect((r) => { expect(r.body.accepted).toBe(true); });
 
     expect((await db.select().from(printJobs).where(eq(printJobs.id, id)))[0]!.status).toBe("printed");
+  });
+
+  /**
+   * ═══ FD-24 CLOSE — THE AUDIT ROW FOR THE ONE PLACE AN AGENT CREDENTIAL READS PHI ═══
+   *
+   * `printing.controller.ts`'s own header calls this route "the one place in the system where an
+   * agent credential reaches PHI", and until this test it made no `recordPhiAccess` call. A gap the
+   * author saw, wrote down, and did not close is worse than one nobody noticed: the risk was
+   * assessed and then left, which is the shape an inspection asks about.
+   *
+   * Written FAIL-FIRST against the shipped code: with the `recordPhiAccess` calls removed this
+   * asserts `phi_access_log` has a `print.claim` row and finds none.
+   */
+  it("a claim that hands over a rendered document records the disclosure it just made", async () => {
+    const { patientName } = await realVisit();
+
+    const claimed = await request(app.getHttpServer())
+      .post("/print/claim")
+      .set("x-agent-key", agentKey)
+      .send({ destinations: ["front_desk_thermal"], limit: 5 })
+      .expect(201);
+    /* The premise: the response really does carry the patient's name, or there is nothing to log. */
+    expect(claimed.body.jobs[0].html).toContain(patientName);
+
+    const rows = (await db.select().from(phiAccessLog)).filter((r) => r.surface === "print.claim");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.actorType).toBe("agent");
+    expect(rows[0]!.reason).toContain("front_desk_thermal");
+  });
+
+  /**
+   * ONE ROW PER PATIENT DISCLOSED, not one per job — `imaging.worklist`'s rule, and the reason is
+   * the same: the log answers "whose record did this credential read", and two slips for one person
+   * in one claim is one disclosure. A per-job count would inflate every figure an enquiry produces.
+   */
+  it("two documents for one patient in one claim is ONE disclosure, not two", async () => {
+    const { encounterId } = await realVisit();
+    /* A second thermal document for the same patient, so the claim carries two jobs and one person. */
+    const existing = (await db.select().from(printJobs).where(eq(printJobs.encounterId, encounterId)))[0]!;
+    await withTx(db, (tx) => enqueuePrintJob(tx, {
+      document: "opd_token_slip",
+      params: { encounterId, unpaid: true },
+      dedupeKey: `token-extra:${encounterId}`,
+      patientId: existing.patientId,
+      encounterId,
+      requestedBy: null,
+    }));
+
+    const claimed = await request(app.getHttpServer())
+      .post("/print/claim")
+      .set("x-agent-key", agentKey)
+      .send({ destinations: ["front_desk_thermal"], limit: 5 })
+      .expect(201);
+    expect(claimed.body.jobs.length).toBeGreaterThan(1);
+
+    const rows = (await db.select().from(phiAccessLog)).filter((r) => r.surface === "print.claim");
+    expect(rows).toHaveLength(1);
+  });
+
+  /**
+   * A REPRINT IS A DIFFERENT DISCLOSURE AND WEARS A DIFFERENT NAME. A relay draining a queue is a
+   * machine printing work it was assigned; this is a NAMED PERSON asking for a second copy of one
+   * patient's document, possibly hours later. A log that merged them would answer "what did they
+   * actually see" wrong, which is the only question it exists for.
+   */
+  it("a clerk's reprint is logged under its own surface, with the reason they gave", async () => {
+    const { slipJobId } = await realVisit();
+    /* `mkUser` ASSIGNS a role; the grant is separate — the same shape the status test below uses. */
+    const registry = new ModuleRegistry();
+    for (const m of ALL_MANIFESTS) registry.install(m);
+    await syncPermissions(db, registry);
+    await createRole(db, "front_desk_reprint", "Front desk (reprint)");
+    await grantPermissionToRole(db, registry, "front_desk_reprint", "opd.visits.open");
+    const desk = await mkUser(db, `desk-${String(Date.now())}`, ["front_desk_reprint"]);
+
+    await request(app.getHttpServer())
+      .post("/print/reprint")
+      .set("authorization", `Bearer ${desk.token}`)
+      .send({ jobId: slipJobId, reason: "the paper jammed" })
+      .expect(201);
+
+    const rows = (await db.select().from(phiAccessLog)).filter((r) => r.surface === "print.reprint");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.actorType).toBe("user");
+    /* The clerk's stated reason reaches the row. It used to be `void`ed on the argument that the
+       request log carried it — the request log carries no patient id, so neither place could answer
+       the question this is asked: what did they see, and why did they say they needed it. */
+    expect(rows[0]!.reason).toContain("the paper jammed");
   });
 
   it("an empty queue is an empty list, not an error — the relay polls this all day", async () => {

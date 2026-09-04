@@ -39,6 +39,20 @@ export type ClaimedJob = {
   destination: string;
   params: Record<string, unknown>;
   attempts: number;
+  /**
+   * FD-24 CLOSE — carried so the CONTROLLER can record the PHI disclosure the claim makes.
+   *
+   * The row has always had it; this type simply did not expose it, and the consequence was that the
+   * one route in the system where an agent credential reaches patient data had no patient id to log
+   * against. It is on the CLAIM rather than dug out of `params` because `params` is
+   * document-specific — every kind spells its identifiers differently — while the queue row's
+   * `patient_id` is the column the outbox has always kept for exactly this kind of question.
+   *
+   * Nullable, and it stays nullable: a print job need not concern a patient. A future document kind
+   * that does not — a session summary, a day's totals — must not be forced to invent one, and the
+   * caller logs nothing for those rather than logging a disclosure that did not happen.
+   */
+  patientId: string | null;
 };
 
 /**
@@ -100,6 +114,7 @@ export async function claimPrintJobs(
       destination: r.destination,
       params: r.params,
       attempts: r.attempts,
+      patientId: r.patientId,
     }));
 }
 
