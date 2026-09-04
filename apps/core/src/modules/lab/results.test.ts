@@ -336,9 +336,18 @@ describe("lab results — entry (17b T6)", () => {
     expect([row.valueCoded, row.impossibleOverriddenBy, row.absurdOverriddenBy])
       .toEqual(["Positive", bench2.id, null]);
 
-    /** The near-miss is evented on the overridden path too, and says it was overridden. */
+    /**
+     * ═══ CLOSE REVIEW — `overridden` MEANS *ACCEPTED*, AND THIS ASSERTION USED TO ENCODE THE BUG ═══
+     *
+     * Three attempts were made above and the control REFUSED two of them (the enterer vouching for
+     * themselves; a named witness without `lab.results.enter`). This line read `[true, true, true]`,
+     * which is the field saying an override happened three times — so the count NABL reads to ask
+     * "how often was a suspected swap waved through" would have included every attempt the control
+     * successfully stopped. All three are still EVENTED, because a refused near-miss is still a
+     * near-miss; only the last one was overridden.
+     */
     const flagged = await eventsNamed("lab.tube_swap_suspected");
-    expect(flagged.map((e) => (e.payload as { overridden: boolean }).overridden)).toEqual([true, true, true]);
+    expect(flagged.map((e) => (e.payload as { overridden: boolean }).overridden)).toEqual([false, false, true]);
   });
 
   it("17d T1: an APPLICABLE analyte is never flagged — PSA is male-only and the patient is male", async () => {
