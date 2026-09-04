@@ -7,8 +7,9 @@ session. Read this whole file before writing code; read `CLAUDE.md` first. Nothi
 
 ## 0 · THE PROMPT — paste this
 
-> Read `docs/superpowers/2026-09-05-HANDOFF-front-desk-FD25-screens.md` in full, then `CLAUDE.md`.
-> Execute it.
+> Read `docs/superpowers/2026-09-05-HANDOFF-front-desk-FD25-screens.md` in full, then `CLAUDE.md`,
+> then the companion `docs/superpowers/2026-09-05-FD25-BUILD-SPECS.md` (per-screen specs, the
+> shared-file plan, and a critique that corrects several of the specs). Execute it.
 >
 > Build, to production quality, in this order:
 > 1. **`/registration`** — the registration clerk's screen (user 1)
@@ -187,6 +188,87 @@ cannot see.** A dock that renders and answers nothing is worse than none — the
 lane that lesson already (FD-23 close review: *"a keycap that lies is worse than none"*).
 
 ---
+
+## 5A · WHAT AN 8-AGENT WORKFLOW FOUND, 2026-09-04 — READ THIS BEFORE PLANNING
+
+Six agents read one artboard each against the live code, one derived the shared-file plan, one
+criticised the lot. Output: `2026-09-05-FD25-BUILD-SPECS.md`. **It found four defects nobody had
+reported, and it corrected several of its own specs.**
+
+### Defects it surfaced — none of these is FD-25 work, all of them are live
+
+1. **`patient_coverages` IS WRITE-ONLY.** Registration collects payer/TPA/employee-id and inserts it
+   (`registration.ts:326`); `grep -rn "patientCoverages" apps/core/src` returns the schema, the
+   insert and one test — **no endpoint reads it back.** The billing artboard's "East Central Railway
+   · employee 41129" line has data behind it that nothing in the product can retrieve. This is the
+   server-built-never-wired class this lane's memory already records three times.
+2. **`cashier` cannot use the billing counter's line editor.** `billing-counter.tsx` calls
+   `listServices()` → `GET /tariff/services`, and the `cashier` role holds no `tariff.read`. Live
+   today, not an FD-25 need.
+3. **`opd_payment_receipt` has ZERO enqueue call sites.** FD-24 declared the kind and its destination
+   (`enqueue.ts:28,56`) and nothing queues one — the only two call sites are the token slip and the
+   prescription (`encounters.ts:203,211`). The artboard's "prints the receipt and stamps the token
+   PAID" is not served. **That is my gap from the FD-24 session.**
+4. **Two agent docks.** `components/agent-dock.tsx` (props) and `screens/desk-one/dock.tsx`
+   (`useDesk()`). If `/registration` lifts Desk One's stage but mounts the other dock, they drift.
+   Decide on one before building five screens around them.
+
+### Three UI traps that would otherwise repeat FD-10/FD-11 verbatim
+
+- **`data-lang` on `.pp` is unset.** `desk-one.css:217,220` scopes `.pp[data-lang="hi"]` and neither
+  `.pp` mount stamps it. Registration, appointment and billing would each ship the identical
+  Devanagari defect this lane already paid for twice.
+- **Two stacked headers.** Each artboard draws its own top bar; mounting `.pp` inside the shell as
+  `opd-appointments.tsx:499` does yields two. That precedent draws a *title*, not a header bar, so it
+  does not answer the question. Resolve it once, for all five.
+- **The i18n test is blind to the defect that actually happens.** `lib/i18n.test.ts` is a 13-line SET
+  COMPARISON of en against hi, and `lib/i18n.ts` sets no `parseMissingKeyHandler` — so `t("x.y")`
+  missing from BOTH files renders the literal string on screen with zero test signal. **Every
+  look-defect this lane has paid for is that class.** The single highest-value item in the whole
+  shared-file commit is a new test that walks `t("ns.key")` calls in `apps/web/src` and asserts each
+  resolves in `en.json`. Precedent for parsing web sources from a core test:
+  `caddyfile-parity.test.ts:196-221`, `nav-parity.test.ts:60-83`.
+
+### Measured numbers, so nobody re-derives them
+
+Route census pins **48** today (`caddyfile-parity.test.ts:373`, run green); `/registration` and
+`/appointment` are the only additions — `/billing`, `/opd/vitals`, `/opd/consult` are already in it.
+Arithmetic says 50; **measure it, do not write the arithmetic.** Two assertions at :375-376 record
+FD-9's deletion as `not.toContain` and must be flipped. Locale files are 3165 lines / 68 top-level
+namespaces each. Web suite is **40.8 s** — not a constraint.
+
+### The sequencing that makes parallelism actually work
+
+**T0 → five parallel lanes → T6**, with T0 merged to main before any screen agent starts. T0 is one
+commit, one PR, one agent, containing every shared surface at once: the complete final `router.tsx`
+route table (including `staticData.fullViewport` and any sub-routes — decide them now, a later child
+route is a second shared-file collision), placeholder screen files so it typechecks, the measured
+census, the nav/manifest parity edits, every locale namespace reserved in BOTH files, and the new
+`t()`-resolves test. After T0 no screen agent opens those files.
+
+**Two things the critic says do NOT belong in T0:** the `fullViewport` blanket (unresolved, see the
+two-headers trap) and the cashier permission grants — `billing.controller.ts:503-507` documents in
+the codebase's own words that the cashier holds no `patients.read`, and widening who may read
+patient identity under DPDP is **law**, which `CLAUDE.md` reserves for the owner.
+
+### And the honest verdict on doing it all in one session
+
+**No — and the binding constraint is not what I assumed.** I said shared files; the critic checked
+and the real serialiser is **browser verification**. There is ONE preview (`preview.sh` on :8443)
+against ONE dev database, and five parallel agents cannot look at five screens through one port.
+`/billing`'s centrepiece renders nothing at all unless `MEMBER_BENEFITS_ENABLED` is set. The
+definition of done says "seen in a real browser", and this lane's entire history is defects that
+only looking found while suites stayed green.
+
+Ranked: **browser verification first**, then the core suite under lane contention, then
+`desk-one.css` as a single shared stylesheet, and shared files only fourth. The scribe (DPIA) and
+the admin re-skin (five screens behind `form-kit.tsx`, 43 role/label-pinned tests) are not
+parallelism problems at all and should come out of the estimate.
+
+**Recommended:** land T0 minus the two disputed items, raise those plus §3's four to the owner as one
+list, merge FD-24 first, then build `/registration` ALONE — doing the `stages.tsx` extraction inside
+that PR — and let `/appointment` consume it. That is this handoff's own order, and nothing in the
+repo argued against it.
 
 ## 6 · RULES THAT BIND — from `CLAUDE.md` and this lane's scars
 
