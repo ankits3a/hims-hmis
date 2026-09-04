@@ -59,6 +59,7 @@ import { RadiologyWorklist } from "./screens/radiology-worklist";
 import { RadiologyStudy } from "./screens/radiology-study";
 import { RadiologyReport } from "./screens/radiology-report";
 import { PcpndtFormF } from "./screens/pcpndt-form-f";
+import { RadiationSafety } from "./screens/radiation-safety";
 import { LabCollection } from "./screens/lab-collection";
 import { LabBench } from "./screens/lab-bench";
 import { LabVerify } from "./screens/lab-verify";
@@ -123,6 +124,9 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   // it exactly. `nav-parity.test.ts` compares the two lists rather than trusting this comment.
   { to: "/radiology/reception", label: "nav.radiologyReception", permission: "radiology.schedule", group: "opd" },
   { to: "/radiology/worklist", label: "nav.radiologyWorklist", permission: "radiology.worklist.read", group: "opd" },
+  // PLAN 18c T1 — the one entry `aerbManifest.menu` declares. It sits under the imaging group
+  // because that is where the RSO works, not because radiology owns the register (D1).
+  { to: "/radiology/radiation-safety", label: "nav.radiationSafety", permission: "aerb.registers.read", group: "opd" },
   // PLAN 07c T9 — the supervisor's named-staff view. Path and permission match `deskManifest.menu`
   // exactly, which `nav-parity.test.ts` enforces rather than trusts. It sits in `admin` rather than
   // `desk`: reading a colleague's figures is supervision, not counter work, and putting it beside
@@ -621,6 +625,17 @@ const pcpndtFormFRoute = createRoute({
   component: PcpndtFormF,
 });
 
+/**
+ * PLAN 18c T1 / D11 — ONE route for five registers. The AERB inspector asks for the licences, the
+ * QA records, the dose register, the badge readings and what is overdue, and they are five tabs of
+ * one screen rather than five paths, because they are one file.
+ */
+const radiationSafetyRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/radiology/radiation-safety",
+  component: RadiationSafety,
+});
+
 const labBenchRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/lab/bench",
@@ -805,7 +820,7 @@ export const router = createRouter({
       // unlisted on purpose (see the route's own comment). `caddyfile-parity.test.ts` pins the
       // count and joins this task's Files list, the S11 rule applied for the seventh time.
       radiologyReceptionRoute, radiologyWorklistRoute, radiologyStudyRoute, radiologyReportRoute,
-      pcpndtFormFRoute,
+      pcpndtFormFRoute, radiationSafetyRoute,
       // PLAN 16c T5 — 45 -> 47, the pharmacy: the dispense counter and the sale-items admin. TWO routes
       // and two NAV links. `caddyfile-parity.test.ts` pins the count and joins this task's Files list.
       pharmacyCounterRoute, pharmacyItemsRoute,

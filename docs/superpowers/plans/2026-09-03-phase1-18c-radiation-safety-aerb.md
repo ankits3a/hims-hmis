@@ -92,3 +92,56 @@ O2's pregnant-radiographer roster gate and any duty reassignment (Plan 20 roster
 - **S3 — ANSWERED.** `imaging_studies.ionising` is SNAPSHOTTED at creation (`schema/radiology.ts:189`, and the comment says why: a republished definition must not retroactively make an acquired study illegal). D3's gate reads the study row; no join, and no exposure to a definition edit.
 - **S4 — ANSWERED.** `radiology-definitions.controller.ts` derives its zod enum from `IMAGING_DEFINITION_KIND_VALUES` in two places (`:31`, `:85`), so `dose_reference_levels` needs the const extended and the DB CHECK widened, and the approval/publish path is inherited unchanged.
 - **The precedent T1 copies, named:** `assertMachineRegistered` (`modules/pcpndt/form-f.ts:72`) — an active registration whose validity window contains the date, returning the row so the caller does not read it twice — and `pcpndt_registered_machines`' `uniqueIndex … where active = true`, which is the index that makes "one active licence per device" a database fact rather than a query convention.
+
+### 8.1 PRs
+#52 the doc · T1 — PR number when opened; one PR per task, squash, auto-merge.
+
+### 8.2 Findings
+
+- **F1 (T1, the migration) — `drizzle-kit generate` swept up TWO OTHER LANES' MIGRATIONS.** The
+  generated `0059` carried `ALTER SEQUENCE uhid_seq` (already applied by 0057) and
+  `entitlement_counters.unit` (already applied by 0058), because both of those were hand-written by
+  the front-desk lane without regenerating the drizzle snapshot — so the generator's baseline was
+  `0056` and it re-derived their deltas as if they were mine. Both statements were removed by hand
+  and the reason is written into the migration's header; `0059_snapshot.json` is kept as generated,
+  because the schema files it was read from do carry those two changes. **For every lane: a
+  generated migration on this repo must be READ before it is committed, not trusted.**
+- **F2 (T1, D3 amended) — `imaging_studies.ionising` IS NOT WRITTEN UNTIL ACQUISITION, so the
+  worklist gate keyed on it never fired.** The schema's own comment says the flag is "snapshotted
+  from the study type at creation" and §3's S3 repeated it; 18a's F18 actually writes it inside
+  `recordAcquired`. Every row a worklist carries is `scheduled`, where the column still holds its
+  `false` default — so the first version of the MWL withholding **offered the unlicensed CT anyway**
+  and the test that caught it was the one that surrendered a licence and re-pulled. The export now
+  reads the active study-type book (once per pull, not per row), which is the source
+  `startAcquisition` reads for the same decision. `startAcquisition`'s own gate was never affected:
+  it already loads the study type. **The lesson is 18a's F18 in a new place — a column whose writer
+  runs later than its reader is a gate that is not there.**
+- **F3 (T1, ordering, recorded not changed)** — DD12a's money gate runs BEFORE both statutory gates,
+  so a routine self-pay ionising study on an unlicensed machine is refused `payment_required` and
+  the licence is never reached. 18a chose that order for PCPNDT and it is left alone: the machine is
+  blocked either way, and a counter told "unlicensed" before "unpaid" is told about a problem it
+  cannot fix. Named here so nobody "fixes" it.
+- **F4 (T1, the fixture) — `setupRadiologyFixture` now files AERB licences**, and that is a
+  disclosed edit to a helper in no task's Files list (18a's F23 pattern). It models a working
+  hospital: the X-ray and CT units carry a licence, the USG and MRI carry none because AERB licences
+  neither. `opts.unlicensedModalities` is the negative, so a suite proving the refusal has the
+  licence MISSING rather than revoked — the state a hospital that never filed is actually in.
+- **F5 (T1, the worker)** — `aerb` is installed in `app.module.ts` and NOT in `worker.module.ts`:
+  the `desk` shape, not the `pcpndt` one. Nothing in the worker asks `hasPermission` about an
+  `aerb.*` string (the licence gate is on an HTTP path; radiology's `order.placed` consumer touches
+  the PCPNDT register and not this one). `manifests.test.ts` (1i) pins the difference.
+- **F6 (T1, the README)** — the three `aerb.*` rows joined the EXISTING radiology grant table with a
+  sixth column rather than taking a table of their own, so `NON_TABLE_PAIRS` did not move. The
+  register is its own module; the README table is a grant grid, and splitting it would have made the
+  RSO's three grants harder to read, not easier.
+
+### 8.3 Assertion book as executed — T1
+**Mutant:** `activeLicenceFor` compares against `valid_from` only (the lapsed-licence mutant, D3's
+named one). **Result: 2 failed / 21 passed** — `2027-01-01 → licensed = false` and
+`assertDeviceLicensed refuses a lapsed licence by name`. Restored; `diff -q` proved identical.
+
+### 8.4 Evidence — DB `hmis_lane_radiology_test`, one runner at a time
+| task | batch | counts |
+|---|---|---|
+| T1 | `src/modules/aerb` + `src/modules/radiology` + `src/modules/pcpndt` + seed-roles + caddyfile-parity + nav-parity + radiology.e2e + `src/kernel/modules` | **34 suites / 407 tests, exit 0**; tsc 0, lint 0 errors (2 pre-existing warnings) |
+| T1 (web) | full `@hmis/web` suite | **81 files / 650 tests, exit 0** (7 of them new: `radiation-safety.test.tsx`) |

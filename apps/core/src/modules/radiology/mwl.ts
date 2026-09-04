@@ -8,6 +8,8 @@ import { patients } from "../../kernel/db/schema/patients";
 import { resources } from "../../kernel/db/schema/resources";
 import { displayName } from "../patients";
 import { activeRegistrationFor } from "../pcpndt";
+import { activeLicenceFor } from "../aerb";
+import { activeStudyTypes } from "./study-types";
 import { RadiologyError } from "./errors";
 import { DEVICE_MODALITY_ATTRIBUTE } from "./kinds";
 import { mintStudyInstanceUid } from "./uid";
@@ -187,6 +189,13 @@ export async function mwlExport(
     ))
     .orderBy(asc(imagingStudies.scheduledAt), asc(imagingStudies.accessionNo));
 
+  /**
+   * PLAN 18c T1 — the active study-type book, read ONCE for the whole export rather than per row.
+   * A worklist is a hot path a bridge pulls every few seconds; a definition read per study would
+   * make the export's cost linear in the day's list for a fact that cannot change inside one pull.
+   */
+  const types = new Map((await activeStudyTypes(db)).map((t) => [t.code, t]));
+
   const out: MwlRow[] = [];
   let withheld = 0;
   const malformed = new Set<string>();
@@ -197,6 +206,28 @@ export async function mwlExport(
     if (!AE_TITLE_RE.test(aeTitle)) { malformed.add(r.deviceResourceId!); continue; }
     // D2 — the same reader acquisition uses, before the row is offered.
     if (r.formFRequired && (await activeRegistrationFor(db, r.deviceResourceId!, opts.date)) === null) {
+      withheld += 1;
+      continue;
+    }
+    /**
+     * PLAN 18c T1 / D3 — and the same argument for the other statute. Offering an ionising study to
+     * an unlicensed console is the AERB refusal arriving after the images exist. Withheld, counted
+     * in the same number, and for the same reason it is a COUNT rather than a silence: an empty
+     * worklist that says nothing sends a radiographer to look for a network fault.
+     *
+     * ═══ THE FACT COMES FROM THE STUDY TYPE, NOT FROM `imaging_studies.ionising` (F2) ═══
+     *
+     * The obvious read is the study's own column, and it is WRONG HERE: 18a's F18 writes that
+     * column at `recordAcquired`, so on a SCHEDULED study — which is every row a worklist carries —
+     * it still holds its `false` default. A gate keyed on it therefore never fires, and the export
+     * offers the unlicensed CT anyway. It is the study TYPE that knows whether an examination emits,
+     * which is the source `startAcquisition` reads for the same decision.
+     *
+     * Not the device's modality either: a device list would have to be maintained in two places and
+     * would refuse the wrong machine the day somebody adds one.
+     */
+    const ionising = types.get(r.studyTypeCode)?.ionising === true;
+    if (ionising && (await activeLicenceFor(db, r.deviceResourceId!, opts.date)) === null) {
       withheld += 1;
       continue;
     }
