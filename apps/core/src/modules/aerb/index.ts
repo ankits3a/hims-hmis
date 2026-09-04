@@ -16,5 +16,8 @@ export {
 } from "./licences";
 export type { AerbLicenceRow, AerbPersonRow, AppointPersonInput, FileLicenceInput } from "./licences";
 export { AERB_LICENSABLE_MODALITIES, appointments, licenceRegister, unlicensedDevices } from "./read";
+// PLAN 18c T2 — the QA register and the lockout.
+export { qaRegister, recordQa } from "./qa";
+export type { QaRecordRow, QaRegisterRow, RecordQaInput, RecordQaOutcome } from "./qa";
 export type { AppointmentRow, LicenceRegisterRow } from "./read";
 export * from "./events";

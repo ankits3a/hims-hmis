@@ -1,0 +1,222 @@
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { newId } from "@hmis/contracts";
+import { hasPermission } from "../../kernel/auth/permissions";
+import { changeResourceStatus } from "../../kernel/resources/registry";
+import { QA_RESULTS, qaRecords } from "../../kernel/db/schema/aerb";
+import { resources } from "../../kernel/db/schema/resources";
+import { AerbError } from "./errors";
+import type { ResourceKindDecl } from "../../kernel/resources/kinds";
+import type { Db, Tx } from "../../kernel/db/client";
+import type { Actor } from "@hmis/contracts";
+import type { QaResult } from "../../kernel/db/schema/aerb";
+
+/**
+ * PLAN 18c T2 — **THE QUALITY-ASSURANCE REGISTER, AND THE LOCKOUT THAT ACTUALLY BLOCKS.**
+ *
+ * ═══ THE STATUS 18a DECLARED AND NOTHING COULD SET ═══
+ *
+ * `qa_blocked` has been in the `device` kind's vocabulary since 18a, honoured by the scheduler
+ * (`SCHEDULABLE_DEVICE_STATUSES`) and at acquisition — and **written by nothing in the tree.** 18a
+ * said so in as many words: *"the workflow that puts a device INTO it is 18c's."* This is it, and
+ * it is one function rather than a workflow because the act is one person's: the RSO records what
+ * the physicist measured, and a failed measurement stops the machine in the same transaction.
+ *
+ * ═══ WHY THE KIND DECLARATIONS ARE A PARAMETER ═══
+ *
+ * `changeResourceStatus` takes them, deliberately — `registry.ts`'s header says why that is *"a
+ * parameter and not a global"*. This module cannot import `RADIOLOGY_RESOURCE_KINDS`, because the
+ * dependency runs radiology → aerb (D1) and importing back would make a cycle out of a statute.
+ * So the CALLER passes them, and the controller resolves them from the installed `ModuleRegistry`
+ * through the kernel's own `collectResourceKinds` — one source of truth, no second copy of the
+ * `device` vocabulary anywhere.
+ *
+ * ═══ AN OVERDUE QA IS NOT A BLOCK (D4) ═══
+ *
+ * The tempting symmetry is "a failure blocks, so an expiry blocks too". It is wrong here. A licence
+ * expiry stops the machine because the LAW says the machine may not operate; an overdue QA means a
+ * test is late, and a system that stops a CT at midnight because a physicist's visit slipped by a
+ * day sends a trauma patient to another hospital. Overdue is a calendar row (T5) and a line on the
+ * inspector's print. The RSO blocks; the calendar tells them to.
+ */
+
+const MANAGE = "aerb.registers.manage";
+
+export type QaRecordRow = typeof qaRecords.$inferSelect;
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+async function assertMayManage(exec: Db | Tx, actor: Actor): Promise<void> {
+  if (actor.type !== "user") {
+    throw new AerbError(
+      "not_appointed",
+      "a QA result is recorded by a person — a system actor cannot stop or release a machine",
+    );
+  }
+  if (!(await hasPermission(exec as Db, actor.id, MANAGE, "hospital"))) {
+    throw new AerbError("not_appointed", `${actor.id} does not hold ${MANAGE}`, { permission: MANAGE });
+  }
+}
+
+export interface RecordQaInput {
+  deviceResourceId: string;
+  qaType: string;
+  result: QaResult;
+  performedBy: string;
+  performedOn: string;
+  agencyRef?: string | null;
+  values?: Record<string, unknown>;
+  nextDueOn?: string | null;
+  remarks?: string | null;
+}
+
+export interface RecordQaOutcome {
+  recordId: string;
+  /** TRUE when this record drove the machine into `qa_blocked`. */
+  blocked: boolean;
+  /** The failing record this pass released, if it released one. */
+  releasedRecordId: string | null;
+}
+
+/**
+ * Records a QA result and moves the machine if the result says to.
+ *
+ * **The write and the status change are ONE transaction.** A register that recorded a failure and
+ * left the machine bookable would be a register describing a hospital that is not this one — and
+ * the mutant that proves the point is exactly "record the fail, skip the status change": the row
+ * looks right, the inspector is satisfied, and the CT keeps taking bookings.
+ */
+export async function recordQa(
+  tx: Tx, actor: Actor, kinds: readonly ResourceKindDecl[], input: RecordQaInput,
+): Promise<RecordQaOutcome> {
+  await assertMayManage(tx, actor);
+  if (!DATE_RE.test(input.performedOn)) {
+    throw new AerbError("invalid_validity", `performedOn must be YYYY-MM-DD, got "${input.performedOn}"`);
+  }
+  if (input.nextDueOn != null) {
+    if (!DATE_RE.test(input.nextDueOn)) {
+      throw new AerbError("invalid_validity", `nextDueOn must be YYYY-MM-DD, got "${input.nextDueOn}"`);
+    }
+    if (input.nextDueOn < input.performedOn) {
+      throw new AerbError(
+        "invalid_validity",
+        `nextDueOn ${input.nextDueOn} is before the test was performed on ${input.performedOn}`,
+      );
+    }
+  }
+  if (!(QA_RESULTS as readonly string[]).includes(input.result)) {
+    throw new AerbError("invalid_validity", `"${input.result}" is not a QA result`);
+  }
+
+  const deviceRows = await tx.select({ id: resources.id, kind: resources.kind, status: resources.status })
+    .from(resources).where(eq(resources.id, input.deviceResourceId));
+  const device = deviceRows[0];
+  if (!device) {
+    throw new AerbError("unknown_licence", `no resource ${input.deviceResourceId}`, { deviceResourceId: input.deviceResourceId });
+  }
+
+  const recordId = newId();
+  const blocked = input.result === "fail";
+
+  await tx.insert(qaRecords).values({
+    id: recordId,
+    deviceResourceId: input.deviceResourceId,
+    qaType: input.qaType,
+    result: input.result,
+    performedBy: input.performedBy,
+    performedOn: input.performedOn,
+    agencyRef: input.agencyRef ?? null,
+    values: input.values ?? {},
+    nextDueOn: input.nextDueOn ?? null,
+    blockApplied: blocked,
+    remarks: input.remarks ?? null,
+    recordedBy: actor.id,
+  });
+
+  if (blocked) {
+    /**
+     * The kernel refuses this while the machine is OCCUPIED (`already_occupied`) — a scan is in
+     * progress on it. That refusal is deliberately NOT caught: the whole insert rolls back, and the
+     * RSO is told the machine is mid-examination rather than the register recording a block that
+     * never happened. Stopping a tube with a patient on the table is a decision a person makes at
+     * the console, not one a register makes behind their back.
+     */
+    await changeResourceStatus(tx, actor, kinds, input.deviceResourceId, "qa_blocked", {
+      reason: `QA ${input.qaType} failed on ${input.performedOn}`,
+    });
+    return { recordId, blocked: true, releasedRecordId: null };
+  }
+
+  /**
+   * A PASS releases a machine this register stopped — and only one this register stopped. A device
+   * sitting in `down` (a broken tube) or `maintenance` (an engineer's visit) is somebody else's
+   * status and a QA pass must not clear it: that is the mutant that turns a passing phantom test
+   * into a machine returned to service with its tube still broken.
+   */
+  if (input.result === "pass" && device.status === "qa_blocked") {
+    const openFail = await tx.select({ id: qaRecords.id })
+      .from(qaRecords)
+      .where(and(
+        eq(qaRecords.deviceResourceId, input.deviceResourceId),
+        eq(qaRecords.blockApplied, true),
+        isNull(qaRecords.releasedAt),
+      ))
+      .orderBy(desc(qaRecords.performedOn));
+    const at = new Date();
+    await changeResourceStatus(tx, actor, kinds, input.deviceResourceId, "available", {
+      reason: `QA ${input.qaType} passed on ${input.performedOn}`, at,
+    });
+    for (const f of openFail) {
+      await tx.update(qaRecords)
+        .set({ releasedByRecordId: recordId, releasedAt: at })
+        .where(eq(qaRecords.id, f.id));
+    }
+    return { recordId, blocked: false, releasedRecordId: openFail[0]?.id ?? null };
+  }
+
+  return { recordId, blocked: false, releasedRecordId: null };
+}
+
+export interface QaRegisterRow {
+  id: string;
+  deviceResourceId: string;
+  deviceCode: string;
+  deviceName: string;
+  deviceStatus: string;
+  qaType: string;
+  result: string;
+  performedBy: string;
+  performedOn: string;
+  agencyRef: string | null;
+  nextDueOn: string | null;
+  blockApplied: boolean;
+  releasedAt: string | null;
+  remarks: string | null;
+}
+
+/** The QA book, newest first, with the machine's CURRENT status beside each record. */
+export async function qaRegister(
+  db: Db, opts: { deviceResourceId?: string } = {},
+): Promise<QaRegisterRow[]> {
+  const rows = await db.select({
+    id: qaRecords.id,
+    deviceResourceId: qaRecords.deviceResourceId,
+    deviceCode: resources.code,
+    deviceName: resources.name,
+    deviceStatus: resources.status,
+    qaType: qaRecords.qaType,
+    result: qaRecords.result,
+    performedBy: qaRecords.performedBy,
+    performedOn: qaRecords.performedOn,
+    agencyRef: qaRecords.agencyRef,
+    nextDueOn: qaRecords.nextDueOn,
+    blockApplied: qaRecords.blockApplied,
+    releasedAt: qaRecords.releasedAt,
+    remarks: qaRecords.remarks,
+  })
+    .from(qaRecords)
+    .innerJoin(resources, eq(resources.id, qaRecords.deviceResourceId))
+    .where(opts.deviceResourceId === undefined ? sql`true` : eq(qaRecords.deviceResourceId, opts.deviceResourceId))
+    .orderBy(desc(qaRecords.performedOn), desc(qaRecords.recordedAt));
+
+  return rows.map((r) => ({ ...r, releasedAt: r.releasedAt?.toISOString() ?? null }));
+}

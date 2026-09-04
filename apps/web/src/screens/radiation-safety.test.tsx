@@ -39,6 +39,7 @@ const licence = (over: Record<string, unknown> = {}) => ({
 const LICENCES = "GET /api/aerb/licences";
 const GAPS = "GET /api/aerb/licences/gaps";
 const PERSONS = "GET /api/aerb/persons";
+const QA = "GET /api/aerb/qa";
 
 describe("the radiation-safety register (18c T1)", () => {
   beforeEach(() => { setToken("t"); });
@@ -121,15 +122,76 @@ describe("the radiation-safety register (18c T1)", () => {
     expect(row).toHaveTextContent("open-ended");
   });
 
-  /** The four registers T2–T5 build are declared and disabled, so the shape is visible from here. */
-  it("the four unbuilt tabs are present and disabled", async () => {
+  /** The three registers T3–T5 build are declared and disabled, so the shape is visible from here. */
+  it("the three unbuilt tabs are present and disabled", async () => {
     mockRoutes({
       [LICENCES]: { status: 200, body: { rows: [] } },
       [GAPS]: { status: 200, body: { rows: [] } },
     });
     renderWithProviders(<RadiationSafety />);
-    for (const k of ["qa", "dose", "badges", "calendar"]) {
+    for (const k of ["dose", "badges", "calendar"]) {
       expect(await screen.findByTestId(`aerb-tab-${k}`)).toBeDisabled();
     }
+  });
+
+  /* ═════════════════════ PLAN 18c T2 — THE QA TAB ═════════════════════ */
+
+  const qaRow = (over: Record<string, unknown> = {}) => ({
+    id: "Q1", deviceResourceId: "D1", deviceCode: "CT-1", deviceName: "CT machine",
+    deviceStatus: "available", qaType: "AERB annual QA", result: "pass",
+    performedBy: "S. Iyer", performedOn: "2026-06-15", agencyRef: "QA/2026/117",
+    nextDueOn: "2027-06-15", blockApplied: false, releasedAt: null, remarks: null, ...over,
+  });
+
+  /**
+   * THE ONE THAT MATTERS HERE. A machine the system has taken out of service is the state a QA
+   * register exists to make impossible to miss, so it is an alert above the book — the licence
+   * gap's shape, and the same argument.
+   */
+  it("names the machines currently stopped by a failed QA, above the book", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [QA]: { status: 200, body: { rows: [
+        qaRow({ id: "Q1", result: "fail", blockApplied: true, deviceStatus: "qa_blocked" }),
+        qaRow({ id: "Q2", deviceCode: "DR-1", deviceStatus: "available" }),
+      ] } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-qa"));
+    const blocked = await screen.findByTestId("aerb-qa-blocked");
+    expect(blocked).toHaveTextContent("CT-1");
+    expect(blocked).not.toHaveTextContent("DR-1");
+  });
+
+  it("shows no stopped-machine alert when every machine is running", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [QA]: { status: 200, body: { rows: [qaRow()] } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-qa"));
+    await waitFor(() => { expect(screen.getByTestId("aerb-qa")).toBeInTheDocument(); });
+    expect(screen.queryByTestId("aerb-qa-blocked")).not.toBeInTheDocument();
+  });
+
+  /**
+   * The record says what happened ON THE DAY; the machine's status says where it is now. A block
+   * that was later released must read as neither "stopped" nor "nothing happened".
+   */
+  it("distinguishes a machine stopped now from one stopped and released", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [] } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [QA]: { status: 200, body: { rows: [
+        qaRow({ id: "Q1", result: "fail", blockApplied: true, releasedAt: null, deviceStatus: "qa_blocked" }),
+        qaRow({ id: "Q2", result: "fail", blockApplied: true, releasedAt: "2026-06-20T00:00:00.000Z" }),
+      ] } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-tab-qa"));
+    expect(await screen.findByTestId("aerb-qa-Q1")).toHaveTextContent("machine stopped");
+    expect(screen.getByTestId("aerb-qa-Q2")).toHaveTextContent("stopped, then released");
   });
 });

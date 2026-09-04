@@ -1,14 +1,17 @@
 import { Body, Controller, Get, Inject, Param, Post, Query } from "@nestjs/common";
 import { z } from "zod";
-import { DB } from "../../kernel/tokens";
+import { DB, MODULE_REGISTRY } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
-import { AERB_LICENCE_TYPES, AERB_PERSON_ROLES } from "../../kernel/db/schema/aerb";
+import { AERB_LICENCE_TYPES, AERB_PERSON_ROLES, QA_RESULTS } from "../../kernel/db/schema/aerb";
 import { appointPerson, changeLicenceStatus, endAppointment, fileLicence } from "./licences";
 import { appointments, licenceRegister, unlicensedDevices } from "./read";
+import { qaRegister, recordQa } from "./qa";
+import { collectResourceKinds } from "../../kernel/resources/kinds";
 import { idSchema, isoDateSchema, parsed, toHttp } from "./aerb-http";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
+import type { ModuleRegistry } from "../../kernel/modules/loader";
 
 /**
  * PLAN 18c T1 — the RSO's desk over HTTP.
@@ -52,9 +55,30 @@ const appointBody = z.object({
   validTo: isoDateSchema.nullish(),
 });
 
+const qaBody = z.object({
+  deviceResourceId: idSchema,
+  qaType: z.string().min(1).max(80),
+  result: z.enum(QA_RESULTS),
+  performedBy: z.string().min(1).max(120),
+  performedOn: isoDateSchema,
+  agencyRef: z.string().max(64).nullish(),
+  values: z.record(z.string(), z.unknown()).optional(),
+  nextDueOn: isoDateSchema.nullish(),
+  remarks: z.string().max(500).nullish(),
+});
+
 @Controller("aerb")
 export class AerbController {
-  constructor(@Inject(DB) private readonly db: Db) {}
+  constructor(
+    @Inject(DB) private readonly db: Db,
+    /**
+     * PLAN 18c T2 — the installed manifests, so the `device` kind's vocabulary comes from the
+     * kernel's own collector rather than from a second copy in this module. `aerb` must not import
+     * `RADIOLOGY_RESOURCE_KINDS`: the dependency runs radiology → aerb (D1), and importing back
+     * would make a cycle out of a statute.
+     */
+    @Inject(MODULE_REGISTRY) private readonly registry: ModuleRegistry,
+  ) {}
 
   @Get("licences")
   @RequirePermission("aerb.registers.read", "hospital")
@@ -107,6 +131,35 @@ export class AerbController {
         decommissionRef: input.decommissionRef ?? null,
       }));
       return { ok: true };
+    } catch (e) { toHttp(e); }
+  }
+
+  @Get("qa")
+  @RequirePermission("aerb.registers.read", "hospital")
+  async qa(@Query("deviceResourceId") deviceResourceId?: string): Promise<unknown> {
+    try {
+      return { rows: await qaRegister(this.db, deviceResourceId === undefined ? {} : { deviceResourceId }) };
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * Records the result AND moves the machine, in one transaction. A `fail` on a machine that is
+   * mid-examination refuses (`already_occupied` from the registry, mapped to 409) and the record
+   * rolls back with it — stopping a tube with a patient on the table is a decision a person makes
+   * at the console, not one a register makes behind their back.
+   */
+  @Post("qa")
+  @RequirePermission("aerb.registers.manage", "hospital")
+  async recordQaResult(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(qaBody, body);
+    const kinds = collectResourceKinds(this.registry);
+    try {
+      return await withTx(this.db, (tx) => recordQa(tx, actor, kinds, {
+        ...input,
+        agencyRef: input.agencyRef ?? null,
+        nextDueOn: input.nextDueOn ?? null,
+        remarks: input.remarks ?? null,
+      }));
     } catch (e) { toHttp(e); }
   }
 

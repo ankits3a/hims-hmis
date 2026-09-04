@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, date, index, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, check, date, index, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import type { SQL } from "drizzle-orm";
 import { resources } from "./resources";
 import { users } from "./auth";
@@ -180,5 +180,81 @@ export const aerbPersons = pgTable(
     index("aerb_persons_role_idx").on(t.personRole, t.active),
     check("aerb_persons_role_ck", inList(t.personRole, AERB_PERSON_ROLES)),
     check("aerb_persons_validity_ck", sql`${t.validTo} is null or ${t.validTo} >= ${t.validFrom}`),
+  ],
+);
+
+/**
+ * ═══ 3. THE QUALITY-ASSURANCE REGISTER — and the one register in this file that BLOCKS ═══
+ *
+ * A licence condition for diagnostic X-ray equipment is periodic quality-assurance testing by an
+ * approved agency, and the inspector asks for the reports. This table is those reports, and D4 is
+ * what it does with them:
+ *
+ *   · a **FAIL** puts the machine into `qa_blocked` in the same transaction, through the resource
+ *     registry — 18a declared that status and honoured it in the scheduler and at acquisition, and
+ *     left nothing in the tree able to SET it. This is the writer it was waiting for.
+ *   · a **PASS** releases a blocked machine back to `available`.
+ *   · an **OVERDUE** `next_due_on` is a calendar row and a compliance breach on the inspector's
+ *     print — and **never an automatic block**, because a machine that blocks itself at midnight
+ *     strands the night trauma CT and no Indian corporate hospital runs it that way. The RSO
+ *     blocks; the calendar tells them to.
+ *
+ * `values` is jsonb rather than columns because the measured quantities differ per test type — kVp
+ * accuracy, HVL, output repeatability, AEC consistency, a mammography phantom score — and a table
+ * with a column per quantity would be a new migration every time the agency's protocol changed.
+ * What is NOT in jsonb is the thing the system acts on: `result`.
+ */
+export const QA_RESULTS = ["pass", "fail", "conditional"] as const;
+export type QaResult = (typeof QA_RESULTS)[number];
+
+export const qaRecords = pgTable(
+  "aerb_qa_records",
+  {
+    id: text("id").primaryKey(),
+    deviceResourceId: text("device_resource_id").notNull().references(() => resources.id),
+    /** The agency's own protocol name — "AERB annual QA", "post-repair verification", "daily KV". */
+    qaType: text("qa_type").notNull(),
+    result: text("result").notNull(),
+    /** Who performed it: the medical physicist or the agency's engineer, recorded as free text
+     *  because an external agency's engineer has no login here. `recordedBy` is the HMIS actor. */
+    performedBy: text("performed_by").notNull(),
+    performedOn: date("performed_on", { mode: "string" }).notNull(),
+    agencyRef: text("agency_ref"),
+    values: jsonb("values").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    /** What the licence condition says comes next. The calendar (T5) reads this column. */
+    nextDueOn: date("next_due_on", { mode: "string" }),
+    /**
+     * TRUE when THIS record drove the machine into `qa_blocked`. It is a record of what the system
+     * did, not a duplicate of the device's current status — the device may since have been released
+     * by a later pass, and an inspector asking "was it stopped?" must get the answer for the day of
+     * the failure rather than for today.
+     */
+    blockApplied: boolean("block_applied").notNull().default(false),
+    /** Set on the FAILING record when a later pass releases the machine (D4's loop, closed). */
+    releasedByRecordId: text("released_by_record_id"),
+    releasedAt: timestamp("released_at", { withTimezone: true }),
+    remarks: text("remarks"),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    /** The device's QA history, newest first — the inspector's actual question. */
+    index("aerb_qa_records_device_idx").on(t.deviceResourceId, t.performedOn),
+    /** The calendar's query: what is due, and when. */
+    index("aerb_qa_records_due_idx").on(t.nextDueOn),
+    check("aerb_qa_records_result_ck", inList(t.result, QA_RESULTS)),
+    /**
+     * A record cannot claim it released a machine without saying when, or the other way round —
+     * the `aerb_licences_decommission_ck` shape, and the same reason: half a fact is not a record.
+     */
+    check(
+      "aerb_qa_records_release_ck",
+      sql`(${t.releasedByRecordId} is null) = (${t.releasedAt} is null)`,
+    ),
+    /** Only a FAIL can have applied a block. A `pass` row claiming one is a lie about the machine. */
+    check(
+      "aerb_qa_records_block_ck",
+      sql`${t.blockApplied} = false or ${t.result} <> 'pass'`,
+    ),
   ],
 );

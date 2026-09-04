@@ -2799,6 +2799,22 @@
       "qualification": "Qualification",
       "approval": "AERB approval",
       "openEnded": "open-ended"
+    },
+    "qa": {
+      "blockedTitle": "Machines stopped by a failed QA",
+      "empty": "No quality-assurance result has been recorded yet.",
+      "type": "Test",
+      "result": "Result",
+      "performed": "Performed",
+      "nextDue": "Next due",
+      "effect": "Effect",
+      "blocked": "machine stopped",
+      "released": "stopped, then released"
+    },
+    "qaResult": {
+      "pass": "Pass",
+      "fail": "Fail",
+      "conditional": "Conditional"
     }
   }
 }

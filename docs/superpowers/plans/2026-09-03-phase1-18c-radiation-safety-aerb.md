@@ -145,3 +145,35 @@ named one). **Result: 2 failed / 21 passed** — `2027-01-01 → licensed = fals
 |---|---|---|
 | T1 | `src/modules/aerb` + `src/modules/radiology` + `src/modules/pcpndt` + seed-roles + caddyfile-parity + nav-parity + radiology.e2e + `src/kernel/modules` | **34 suites / 407 tests, exit 0**; tsc 0, lint 0 errors (2 pre-existing warnings) |
 | T1 (web) | full `@hmis/web` suite | **81 files / 650 tests, exit 0** (7 of them new: `radiation-safety.test.tsx`) |
+
+### 8.2 Findings — T2
+
+- **F7 (T2, the seam D1 nearly broke) — `aerb` CANNOT import `RADIOLOGY_RESOURCE_KINDS`, and the
+  kernel already had the answer.** The QA lockout drives a `device` through `changeResourceStatus`,
+  which needs the kind's vocabulary — owned by radiology's manifest. Importing it would have made a
+  cycle out of a statute (radiology → aerb for the licence gate, aerb → radiology for the kinds) and
+  §3's S2 blithely proposed exactly that. It is not needed: `changeResourceStatus` takes the
+  declarations as a PARAMETER, deliberately (`registry.ts`'s header says why that is *"a parameter
+  and not a global"*), so `recordQa` takes them too and the CONTROLLER resolves them from the
+  installed `ModuleRegistry` through the kernel's own `collectResourceKinds`. One source of truth,
+  no second copy of the `device` vocabulary, no cycle. **The test file may import them and does** —
+  that is the same direction the running system uses; `index.ts` is the wall, not the test.
+- **F8 (T2, D4 confirmed by the kernel rather than by this module)** — a FAIL on a machine that is
+  mid-examination REFUSES (`already_occupied`, from `registry.ts:406`) and the QA record rolls back
+  with it. The refusal is deliberately not caught: a register that recorded a failure while the
+  kernel refused the status change would say a machine was stopped when it was not. §3's S2 called
+  this "T2's assertion rather than T2's bug" and it held.
+- **F9 (T2) — a PASS releases ONLY a machine THIS register stopped.** A device in `down` (broken
+  tube) or `maintenance` (engineer's visit) carries somebody else's status, and a passing phantom
+  test does not mean the tube was replaced. Pinned both ways.
+
+### 8.3 Assertion book as executed — T2
+**Mutant:** record the failure, skip the status change (D4's named one — the row looks right, the
+inspector is satisfied, and the CT keeps taking bookings). **Result: 6 failed / 6 passed.**
+Restored; `diff -q` proved identical.
+
+### 8.4 Evidence — T2
+| task | batch | counts |
+|---|---|---|
+| T2 | `src/modules/aerb` + radiology + pcpndt + seed-roles + caddyfile-parity + radiology.e2e + `kernel/modules` + `kernel/resources` | **38 suites / 468 tests, exit 0**; tsc 0, lint 0 errors |
+| T2 (web) | `radiation-safety` + i18n parity | **11 tests, exit 0** (10 in the screen suite, 3 of them new) |
