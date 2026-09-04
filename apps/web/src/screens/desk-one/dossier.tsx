@@ -221,12 +221,38 @@ export function Dossier(): React.ReactElement {
         UHID exists — `PUT /patients/:id/photo` needs a patient, and the patient does not exist yet
         while the clerk is still typing their name.
       */}
-      <PhotoPanel
-        dataUrl={s.photo}
-        caption={p === null ? t("registrationCounter.photo.captionNew") : t("registrationCounter.photo.caption")}
-        onCapture={(dataUrl) => { d.setPhoto(dataUrl); }}
-        onClear={() => { d.setPhoto(null); }}
-      />
+      {/*
+        ═══ FD-24 / OWNER, 2026-09-04 — CAPTURE LIVES IN THE CORRECTION SHEET, NOT IN THE RAIL ═══
+
+        *"I am still seeing 'Camera' & 'Upload' button in the Desk One. These buttons have already
+        moved inside 'edit record — audited'."*
+
+        FD-21 moved the RETAKE of a photo already on file into the correction sheet and stopped
+        there, because `PhotoPanel` branches on whether a photo EXISTS:
+
+            dataUrl !== null ? (showExisting ? preview+Retake : null) : live ? video : Camera|Upload
+
+        The rail passes no `showExisting`, so the first branch renders nothing — that half worked.
+        The `dataUrl === null` branch was untouched, so any patient WITHOUT a photo still got Camera
+        and Upload in the rail. Half a move looks finished from the one screenshot that shows a
+        patient who has a photo.
+
+        WHY THIS IS NOT A BLANKET REMOVAL. "edit record — audited" only exists for a patient in hand:
+        during ENROLMENT there is no record to amend and no UHID yet, and the photo is held in the
+        session until `PUT /patients/:id/photo` has somebody to attach it to. So the capture row
+        stays for exactly that case and goes everywhere else.
+
+        `p === null` IS the enrolment case here, and not merely "no patient": the guard at the top of
+        this component already returns before this point unless there is a person OR `s.enrolling`.
+      */}
+      {p === null ? (
+        <PhotoPanel
+          dataUrl={s.photo}
+          caption={t("registrationCounter.photo.captionNew")}
+          onCapture={(dataUrl) => { d.setPhoto(dataUrl); }}
+          onClear={() => { d.setPhoto(null); }}
+        />
+      ) : null}
 
       {/*
         ═══ FD-14 — THE FLOW IS A STRIP, NOT A PARAGRAPH ═══

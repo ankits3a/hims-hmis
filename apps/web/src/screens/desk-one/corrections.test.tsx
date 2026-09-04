@@ -180,15 +180,29 @@ describe("FD-15: the photo is read back, and belongs to the patient in hand", ()
     expect(img).toHaveAttribute("src", "data:image/jpeg;base64,QUJD");
   });
 
-  it("a patient with no photo on file shows the capture buttons, not an error", async () => {
+  /**
+   * OWNER RULING 2026-09-04 — the capture controls left the rail: *"I am still seeing 'Camera' &
+   * 'Upload' button in the Desk One. These buttons have already moved inside 'edit record —
+   * audited'."* FD-21 had moved only the RETAKE of an existing photo; the no-photo branch stayed.
+   * For a patient IN HAND every photo control now lives in the correction sheet. The rail keeps the
+   * capture row for ENROLMENT alone, where there is no record to amend and no UHID to attach to.
+   *
+   * The point of this row is unchanged and is the one that matters: a patient with NO photo is not
+   * an error state. What moved is where the clerk fixes it.
+   */
+  it("a patient with no photo on file is not an error — and the capture is in the correction sheet", async () => {
     const calls = emptyCalls();
     mount(calls, { storedPhoto: false });
     await holdFirstHit();
 
     await waitFor(() => expect(calls.photoGets).toContain("p-1"));
-    expect(screen.getByTestId("photo-upload")).toBeInTheDocument();
     expect(screen.queryByTestId("avatar-photo")).not.toBeInTheDocument();
     expect(screen.queryByTestId("photo-error")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("photo-upload")).not.toBeInTheDocument(); // not in the rail
+
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByTestId("flow-dot-register"));
+    expect(await screen.findByTestId("photo-upload")).toBeInTheDocument(); // it is here
   });
 
   /**

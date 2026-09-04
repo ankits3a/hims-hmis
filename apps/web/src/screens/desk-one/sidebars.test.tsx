@@ -238,10 +238,23 @@ describe("FD-14: the photo", () => {
     expect(base64Of("QUJD")).toBe("QUJD"); // already bare
   });
 
+  /**
+   * OWNER RULING 2026-09-04 — the capture controls left the rail: *"I am still seeing 'Camera' &
+   * 'Upload' button in the Desk One. These buttons have already moved inside 'edit record —
+   * audited'."* FD-21 had moved only the RETAKE of an existing photo; the no-photo branch stayed.
+   * For a patient IN HAND every photo control now lives in the correction sheet. The rail keeps the
+   * capture row for ENROLMENT alone, where there is no record to amend and no UHID to attach to.
+   *
+   * So this is asserted where the control now IS. The property under test is unchanged: a machine
+   * with no webcam offers Upload and does not draw a dead Camera button.
+   */
   it("offers upload and hides the camera when the machine has none", async () => {
     mount();
     await holdPatient();
-    expect(screen.getByTestId("photo-upload")).toBeInTheDocument();
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByRole("button", { name: /edit record/i }));
+
+    expect(await screen.findByTestId("photo-upload")).toBeInTheDocument();
     // jsdom exposes no mediaDevices, which is also a real desktop with no webcam
     expect(screen.queryByTestId("photo-camera")).not.toBeInTheDocument();
   });
@@ -253,8 +266,10 @@ describe("FD-14: the photo", () => {
     await holdPatient();
 
     const user = userEvent.setup({ delay: null });
+    // the capture row is in the correction sheet now, not the rail — owner ruling 2026-09-04
+    await user.click(screen.getByRole("button", { name: /edit record/i }));
     const file = new File([new Uint8Array([1, 2, 3])], "face.jpg", { type: "image/jpeg" });
-    await user.upload(screen.getByTestId("photo-file"), file);
+    await user.upload(await screen.findByTestId("photo-file"), file);
 
     await waitFor(() => expect(screen.getByTestId("avatar-photo")).toBeInTheDocument());
     await waitFor(() => expect(photoPuts).toHaveLength(1));
@@ -379,7 +394,10 @@ describe("FD-19/FD-20: the avatar and the token a patient is holding", () => {
     await holdPatient();
 
     const user = userEvent.setup({ delay: null });
-    await user.upload(screen.getByTestId("photo-file"), new File([new Uint8Array([1])], "f.jpg", { type: "image/jpeg" }));
+    // the capture row is in the correction sheet now (owner ruling 2026-09-04); the SQUARE this row
+    // is about is in the rail either way, which is the whole point of the assertion below.
+    await user.click(screen.getByRole("button", { name: /edit record/i }));
+    await user.upload(await screen.findByTestId("photo-file"), new File([new Uint8Array([1])], "f.jpg", { type: "image/jpeg" }));
 
     const img = await screen.findByTestId("avatar-photo");
     expect(img).toHaveAttribute("src", "data:image/jpeg;base64,QUJD");
@@ -411,11 +429,32 @@ describe("FD-21: a photo on file says nothing in the rail; Retake lives with the
     expect(screen.queryByTestId("photo-upload")).not.toBeInTheDocument();
   });
 
-  it("with NO photo the rail still offers capture — that is what it is for", async () => {
+  /**
+   * OWNER RULING 2026-09-04 — the capture controls left the rail: *"I am still seeing 'Camera' &
+   * 'Upload' button in the Desk One. These buttons have already moved inside 'edit record —
+   * audited'."* FD-21 had moved only the RETAKE of an existing photo; the no-photo branch stayed.
+   * For a patient IN HAND every photo control now lives in the correction sheet. The rail keeps the
+   * capture row for ENROLMENT alone, where there is no record to amend and no UHID to attach to.
+   *
+   * THIS TEST ASSERTED THE OPPOSITE and was right to, until the ruling. It is inverted rather than
+   * deleted, because "the rail offers nothing" is the property that now has to hold — and the two
+   * rows below it are what stops the inversion from meaning "the capture was lost": it is in the
+   * correction sheet for a patient in hand, and still in the rail while enrolling.
+   */
+  it("with NO photo the rail offers nothing either — capture moved to the correction sheet", async () => {
     mount();
     await holdPatient();
-    expect(screen.getByTestId("photo-upload")).toBeInTheDocument();
+    expect(screen.queryByTestId("photo-upload")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("photo-camera")).not.toBeInTheDocument();
     expect(screen.queryByTestId("photo-clear")).not.toBeInTheDocument();
+  });
+
+  it("…and it IS in the correction sheet for a patient with no photo on file", async () => {
+    mount();
+    await holdPatient();
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByRole("button", { name: /edit record/i }));
+    expect(await screen.findByTestId("photo-upload")).toBeInTheDocument();
   });
 
   it("Retake is in the correction sheet, beside the other amendments", async () => {
