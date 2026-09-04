@@ -6,7 +6,7 @@ import { withTx } from "../../kernel/db/client";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { withIdempotency } from "../billing";
 import { receive, reject } from "./accession";
-import { acknowledgeCritical, openCriticalCalls } from "./criticals";
+import { acknowledgeCritical, openCriticalCalls, RUNGS } from "./criticals";
 import { enterResult } from "./results";
 import { benchArrivals, benchWorklist } from "./worklist";
 import { idSchema, LAB_IDEMPOTENT_ROUTES, parsed, toHttp } from "./lab-http";
@@ -61,6 +61,12 @@ const ackBody = z.object({
   attempt: z.object({
     contact: z.string().min(1).max(160),
     outcome: z.enum(["no_answer", "engaged", "message_left", "spoke"]),
+    /**
+     * 17d T3 — REQUIRED on the wire, optional in the type. Rows written before this phase carry no
+     * rung and a reader that assumed one would be inventing history; nothing NEW lands without one,
+     * because "who did you try" is the question the ladder exists to answer.
+     */
+    rung: z.enum(RUNGS),
   }).optional(),
   readback: z.string().max(500).optional(),
 });

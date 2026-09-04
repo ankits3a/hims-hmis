@@ -1980,7 +1980,14 @@
       "relabelToggle": "The label cannot be read — I typed the number",
       "relabelHint": "Re-labelling a tube is witnessed. Name the second person and say why the label could not be read.",
       "relabelWitness": "Witnessed by (second person’s login)",
-      "relabelReason": "Why the label could not be read"
+      "relabelReason": "Why the label could not be read",
+      "ladder": "The call ladder",
+      "rung": "Who you are calling",
+      "rung_ordering_clinician": "Ordering doctor",
+      "rung_duty_officer": "Duty medical officer / casualty",
+      "rung_patient_or_attendant": "Patient or attendant",
+      "tryNext": "Try next: {{rung}}",
+      "openFor": "Open {{minutes}} min · target {{target}} min"
     },
     "verify": {
       "title": "Verify & report",
