@@ -64,7 +64,8 @@ describe("patients desk provider (FD-1 T1)", () => {
     expect(statOf(cardsB, "patients.registration", "desk.patients.noMobile")).toBe("0");
     expect(statOf(cardsB, "patients.registration", "desk.patients.duplicatesPending")).toBe("0");   // the loser is A's, not B's
     // every stat is a door
-    expect(cardsA.flatMap((c) => c.stats!.map((s) => s.href))).toEqual(["/registration", "/registration", "/merge", "/merge", "/registration", "/registration"]);
+    // FD-9 — `/registration` is deleted; the four registration doors now open Desk One at `/counter`.
+    expect(cardsA.flatMap((c) => c.stats!.map((s) => s.href))).toEqual(["/counter", "/counter", "/merge", "/merge", "/counter", "/counter"]);
   });
 
   it("what came back, last thirty days: duplicates CONFIRMED (executed, loser mine), no-mobile, amended within a WEEK", async () => {

@@ -1,4 +1,5 @@
 import { instrumentSearchProvider } from "./search-providers";
+import { membershipSchemesDeskProvider } from "./desk-provider";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
 /**
@@ -30,6 +31,12 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
 export const membershipManifest: ModuleManifest = {
   key: "membership",
   title: "Memberships, packages and coupons",
+  /*
+    FD-11 — the three scheme counts the dashboard's "Schemes in play" band renders. Declared here
+    beside the permission that guards them, like every other desk provider: the kernel refuses a
+    card gated on a permission this manifest does not declare (`collectDeskProviders`).
+  */
+  desk: [membershipSchemesDeskProvider],
   menu: [
     // The path matches `apps/web/src/router.tsx`'s own route exactly, so a permission-gated menu
     // link and the screen it opens can never drift apart (the `opsManifest` convention).

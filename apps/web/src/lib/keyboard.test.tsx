@@ -40,7 +40,7 @@ describe("the global keyboard map", () => {
   it("reads a NON-VACUOUS map — F4 still reaches its screen", () => {
     mountMap();
     fireEvent.keyDown(window, { key: "F4" });
-    expect(navigate.mock.calls[0]?.[0]?.to).toBe("/registration");
+    expect(navigate.mock.calls[0]?.[0]?.to).toBe("/counter");
   });
 
   /**
@@ -93,7 +93,7 @@ describe("the global keyboard map", () => {
   it("F4 opens the new-patient form", () => {
     mountMap();
     fireEvent.keyDown(window, { key: "F4" });
-    expect(navigate).toHaveBeenCalledWith({ to: "/registration", search: { new: true } });
+    expect(navigate).toHaveBeenCalledWith({ to: "/counter", search: { new: true } });
   });
 
   it("F7 opens the appointment book", () => {
@@ -190,7 +190,7 @@ describe("the global keyboard map", () => {
     const field = screen.getByTestId("a-field");
     field.focus();
     fireEvent.keyDown(field, { key: "F4" });
-    expect(navigate).toHaveBeenCalledWith({ to: "/registration", search: { new: true } });
+    expect(navigate).toHaveBeenCalledWith({ to: "/counter", search: { new: true } });
   });
 
   it("a bare N is not a shortcut — it is a letter somebody is typing", () => {

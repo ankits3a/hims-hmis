@@ -118,6 +118,27 @@ export function BillingCounter(): React.ReactElement {
    */
   const [couponText, setCouponText] = useState("");
   const [attributionCode, setAttributionCode] = useState("");
+  /**
+   * FD-7 T9 — THE SLIP IS PRE-FILLED FROM WHAT THE DESK CAPTURED, and it has to be.
+   *
+   * The quote now falls back to `opd_encounters.attribution_code`, so without this the cashier would
+   * see a price that a stored slip had already discounted, in a screen whose own slip field was
+   * blank — and issuing from that blank field would send NO code and produce a different invoice.
+   * That is exactly the quote/invoice disagreement RC-2's review named, arriving from the opposite
+   * direction. Pre-filling makes the stored value visible, and makes any edit — including CLEARING
+   * it — an explicit act that travels.
+   *
+   * Seeded ONCE PER ENCOUNTER, exactly like the fee line above: a cashier who cleared the field
+   * cleared it on purpose, and a re-seed on every quote refetch would undo them mid-correction.
+   *
+   * HONESTLY LABELLED: the ENCOUNTER KEY is tested (switching patients re-seeds — a mutant that
+   * drops it turns that row red). The "do not re-seed the SAME encounter" half is NOT, because this
+   * suite cannot make the quote refetch: React Query hands back a stable `data` reference, so the
+   * effect never re-runs and deleting the guard changes nothing observable here. It stays because
+   * the defect it prevents is real — a refetch mid-correction silently restoring a slip the cashier
+   * had just removed — and it is recorded as untested rather than counted as covered.
+   */
+  const [slipSeededFor, setSlipSeededFor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [issued, setIssued] = useState<WireIssueInvoiceResult | null>(null);
@@ -198,6 +219,12 @@ export function BillingCounter(): React.ReactElement {
   // The fee line is SEEDED from the quote, once, and stays editable afterwards — a cashier who
   // removed it has removed it on purpose (a revisit carries no fee line at all, D8).
   const quote = feeQuote.data;
+  useEffect(() => {
+    if (quote === undefined) return;
+    if (slipSeededFor === quote.encounterId) return;
+    setSlipSeededFor(quote.encounterId);
+    setAttributionCode(quote.attributionCode ?? "");
+  }, [quote, slipSeededFor]);
   useEffect(() => {
     if (quote === undefined || quote.free) return;
     const feeServiceId = quote.feeServiceId;

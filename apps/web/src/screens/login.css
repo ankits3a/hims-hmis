@@ -1,0 +1,293 @@
+/*
+ * ═══ THE SIGN-IN SCREEN — THE FIRST THING ANYBODY IN THIS HOSPITAL SEES ═══
+ *
+ * Two panels, and the split IS the product argument rather than a layout choice. §3 of the Desk One
+ * design legend sets the rule the whole system obeys: *"anything the AI says or does sits on pine
+ * ink. No legend is needed to know what the machine touched."* So the machine's half of this screen
+ * is pine and the human's half is paper, and a person learns that grammar before they have typed a
+ * single character — by the time they reach the counter, a mint chip on a dark ground already means
+ * "a machine did this" without anybody explaining it.
+ *
+ * Everything is scoped under `.lg`. A sign-in screen renders OUTSIDE the application shell, so a
+ * stray global rule here would be invisible in review and would reach every other screen through
+ * the shared bundle.
+ *
+ * The palette comes from `styles/paper-pine.css`, shared with `.d1`.
+ */
+
+.lg {
+  min-height: 100vh;
+  display: flex;
+  background: var(--paper);
+  color: var(--ink);
+  font: 14px/20px "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.lg *{ box-sizing: border-box; }
+.lg button { font: inherit; color: inherit; cursor: pointer; background: none; border: none; padding: 0; text-align: left; }
+.lg button:disabled { cursor: not-allowed; }
+.lg input { font: inherit; color: inherit; }
+.lg input:focus { outline: none; }
+.lg button:focus-visible, .lg input:focus-visible, .lg a:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.lg .mo { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+.lg .dev { font-family: "IBM Plex Sans Devanagari", "Nirmala UI", Mangal, sans-serif; line-height: 1.6; }
+.lg .tag {
+  font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9.5px; font-weight: 600;
+  letter-spacing: .14em; text-transform: uppercase;
+}
+
+/* ══════════ the machine's half ══════════ */
+
+.lg .pine {
+  position: relative;
+  width: 47%;
+  min-width: 460px;
+  flex-shrink: 0;
+  background: var(--agent);
+  color: var(--agent-fg);
+  padding: 48px 52px 40px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/*
+ * One soft light, off-centre, in the mint the agent speaks in. It is the only decoration on this
+ * screen: a lobby terminal is looked at across a room and a flat black rectangle reads as a dead
+ * monitor. `pointer-events: none` because it covers the whole panel.
+ */
+.lg .pine::before {
+  content: "";
+  position: absolute;
+  top: -22%;
+  left: 8%;
+  width: 78%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(53, 196, 143, .13) 0%, rgba(53, 196, 143, .04) 42%, transparent 68%);
+  pointer-events: none;
+}
+.lg .pine > * { position: relative; }
+
+.lg .mark {
+  width: 13px; height: 13px; border-radius: 3px;
+  background: var(--mint); transform: rotate(45deg); flex-shrink: 0;
+}
+
+/*
+ * ═══ THE VERSE — DEVANAGARI IN EVERY LANGUAGE, WHICH IS WHY IT CANNOT BORROW `.lede`'S RULES ═══
+ *
+ * The panel used to carry a Latin headline, and `.lede` was typed for one: 34px on a 41px line
+ * (1.21) with `letter-spacing: -.02em`, both of which are optical corrections that only make sense
+ * for Latin capitals. The shloka replaces it and is DEVANAGARI — and, unlike every other Devanagari
+ * string on this screen, it is Devanagari even when the interface is in English. So it cannot live
+ * under `.lg[data-lang="hi"]` like the rest of the script fixes do; the face, the leading and the
+ * tracking have to be unconditional or the English screen renders the verse in a Latin face with
+ * Latin metrics and the whole line breaks apart.
+ *
+ * Three rules, and each is the opposite of what `.lede` did:
+ *
+ *   · `line-height: 1.62` and not 1.21. Devanagari hangs matras ABOVE the shirorekha and below the
+ *     baseline; at Latin leading the ि and ो of one line touch the descenders of the line above it.
+ *   · `letter-spacing: 0` and not -.02em. Negative tracking pulls conjuncts into each other, and
+ *     `क्षी` and `ज्ञ` stop being single glyphs.
+ *   · `font-weight: 400` and not 600. Devanagari counters are small; at display size a heavy weight
+ *     fills them in. The verse is quiet type anyway — it is not a headline, it is a line to read.
+ */
+.lg .verse { max-width: 470px; }
+
+/*
+ * THE CITATION IS DEVANAGARI ON THE ENGLISH SCREEN TOO, SO IT CANNOT WEAR `.tag`.
+ *
+ * `गीता 18.46` and `कहावत` are Devanagari whatever language the interface is in, and `.tag` is the
+ * house's Latin section-label treatment: IBM Plex Mono (no Devanagari coverage at all), uppercase
+ * (a no-op in a script with no case) and `letter-spacing: .14em` (which pulls matras off their
+ * consonants). `.lg[data-lang="hi"] .tag` already undoes those three — but only in Hindi, and this
+ * string is Devanagari in BOTH. It was drafted as `class="cite tag"` and the English screenshot
+ * showed `गीता` rendered tiny in a fallback face with its tracking blown apart. Its own rules, then,
+ * unconditional, for the same reason `.shloka` has its own.
+ */
+.lg .cite {
+  font-family: "IBM Plex Sans Devanagari", "Nirmala UI", Mangal, "IBM Plex Sans", sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--mint);
+  margin-bottom: 16px;
+}
+
+.lg .shloka {
+  font-family: "IBM Plex Sans Devanagari", "Nirmala UI", Mangal, sans-serif;
+  font-size: 29px;
+  line-height: 1.62;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: #fff;
+  margin: 0;
+  /* Even line lengths instead of one orphaned word — this is the largest type on the screen. */
+  text-wrap: balance;
+}
+
+/*
+ * ═══ THE TRANSLATION AND THE MEANING — DEVANAGARI IN EVERY LANGUAGE, LIKE THE SHLOKA ═══
+ *
+ * The owner's ruling: *"No english, just hindi devnagri."* So these two lines stopped being a
+ * Hinglish transliteration and an English gloss, and became what `.shloka` and `.cite` already were
+ * — Devanagari regardless of which language the interface is in. That makes their type rules
+ * UNCONDITIONAL. They cannot live under `.lg[data-lang="hi"]`, because on the English screen that
+ * selector does not match and the whole panel would render in a face with no Devanagari coverage,
+ * falling back per character to whatever the terminal happens to have.
+ *
+ * The leading is Devanagari leading (1.62 and 1.6), not the 1.5 a Latin paragraph would take: the
+ * matras above the shirorekha and below the baseline need the room. The measures step DOWN from the
+ * shloka's so the three lines read as one descending block — and `ch` is deliberately not used, as
+ * it is measured in the root's Latin font and would size a Devanagari column by Latin metrics.
+ */
+.lg .mean, .lg .gloss {
+  font-family: "IBM Plex Sans Devanagari", "Nirmala UI", Mangal, "IBM Plex Sans", sans-serif;
+  letter-spacing: 0;
+  /* Devanagari sentences end in a danda; without this the meaning stranded "है।" on a line alone. */
+  text-wrap: pretty;
+}
+.lg .mean { font-size: 16px; line-height: 1.62; color: var(--agent-fg); max-width: 400px; margin: 22px 0 0; }
+.lg .gloss { font-size: 13.5px; line-height: 1.6; color: var(--agent-dim); max-width: 430px; margin: 11px 0 0; }
+
+/* The live pulse — the same signal the desk dock wears, so the two read as one system. */
+.lg .pulse { position: relative; width: 9px; height: 9px; flex-shrink: 0; }
+.lg .pulse i { position: absolute; inset: 0; border-radius: 99px; background: var(--mint); }
+.lg .pulse b { position: absolute; inset: -4px; border-radius: 99px; border: 1px solid var(--mint); opacity: .3; }
+
+/* ══════════ the human's half ══════════ */
+
+.lg .paper {
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 44px;
+  min-width: 0;
+}
+.lg .sheet { width: 100%; max-width: 380px; }
+
+.lg .field { margin-top: 18px; }
+.lg .field > label { display: block; margin-bottom: 6px; color: var(--dim); }
+.lg .in {
+  height: 46px; width: 100%; border-radius: 7px; border: 1px solid var(--line);
+  background: var(--card); padding: 0 13px; font-size: 15px;
+}
+.lg .in:focus { border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+.lg .in::placeholder { color: var(--faint); }
+.lg .in.bad { border-color: var(--red-line); }
+.lg .in.bad:focus { box-shadow: 0 0 0 3px var(--red-soft); }
+
+/* The password row: the reveal sits INSIDE the field, so the field keeps one focus ring. */
+.lg .pw { position: relative; }
+.lg .pw .in { padding-right: 64px; }
+.lg .pw button {
+  position: absolute; right: 5px; top: 5px; height: 36px; padding: 0 11px; border-radius: 5px;
+  font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  color: var(--dim); border: 1px solid var(--line2);
+}
+.lg .pw button:hover { background: var(--wash); color: var(--ink); }
+
+.lg .go {
+  margin-top: 22px; width: 100%; height: 48px; border-radius: 7px;
+  background: var(--green); color: #f2faf6; border: 1px solid var(--green);
+  font-size: 14.5px; font-weight: 600;
+  display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+}
+.lg .go:disabled { opacity: .45; }
+.lg .go:hover:not(:disabled) { background: #0c5c43; }
+
+.lg .note {
+  display: flex; gap: 9px; align-items: flex-start; padding: 10px 12px; border-radius: 6px;
+  font-size: 12px; line-height: 17px;
+}
+.lg .note.bad { background: var(--red-soft); border: 1px solid var(--red-line); color: var(--red); }
+.lg .note.warn { background: var(--gold-soft); border: 1px solid var(--gold-line); color: var(--gold); }
+
+.lg .msg { font-size: 12px; color: var(--red); margin-top: 6px; }
+
+.lg .lang {
+  display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 5px;
+  border: 1px solid var(--line); background: var(--card); font-size: 11.5px; font-weight: 600; color: var(--dim);
+}
+.lg .lang:hover { border-color: var(--faint); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .lg .pulse b { animation: lgPulse 2.6s ease-out infinite; }
+  @keyframes lgPulse {
+    0% { transform: scale(.85); opacity: .45; }
+    70% { transform: scale(1.5); opacity: 0; }
+    100% { opacity: 0; }
+  }
+  .lg .rise { animation: lgRise .42s cubic-bezier(.2, .7, .3, 1) both; }
+  @keyframes lgRise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+}
+
+/*
+ * ═══ THE NARROW CASE IS A REAL DEVICE, NOT A COURTESY ═══
+ *
+ * A ward tablet and a laptop turned sideways both land here. The pine panel becomes a BAND rather
+ * than disappearing: the grammar this screen exists to teach — the machine speaks on dark — has to
+ * survive the smaller layout, or a phone user meets the mint chip at the counter with no idea what
+ * it means. The verse survives and the English gloss is what goes: the sign-in box is what the
+ * person came for, and a band deep enough for four lines of type pushes it below the fold.
+ */
+@media (max-width: 900px) {
+  .lg { flex-direction: column; }
+  .lg .pine { width: 100%; min-width: 0; padding: 26px 28px 24px; }
+  .lg .verse { max-width: none; }
+  .lg .cite { margin-bottom: 10px; }
+  .lg .shloka { font-size: 21px; }
+  /*
+    The meaning STAYS on a narrow screen. It was hidden when it was an English gloss repeating the
+    line above it; it is the owner's second Devanagari line now and dropping it would be dropping
+    content, not trimming a duplicate.
+  */
+  .lg .mean { font-size: 14.5px; margin-top: 14px; }
+  .lg .gloss { font-size: 12.5px; margin-top: 8px; }
+  .lg .paper { padding: 32px 28px 44px; align-items: flex-start; }
+}
+
+/*
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * DEVANAGARI — AND THIS BLOCK IS A DEFECT THE HINDI SCREENSHOT FOUND, NOT A REFINEMENT
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * `.tag` is the house's section-label treatment: IBM Plex Mono, uppercase, `letter-spacing: .14em`.
+ * All three are Latin assumptions and all three are WRONG for Devanagari, which this screen renders
+ * more of than any other in the application:
+ *
+ *   · `text-transform: uppercase` is a no-op in Devanagari — there is no case — so it silently buys
+ *     nothing while the two rules beside it do damage.
+ *   · `letter-spacing` pulls apart conjuncts and matras. "उपयोगकर्ता नाम" tracked at .14em reads as
+ *     loose fragments rather than a word, which is exactly what the label is there to prevent.
+ *   · IBM Plex Mono has no Devanagari coverage at all, so every mono label silently fell back to
+ *     whatever the system had — a different face on every machine in the hospital.
+ *
+ * Seen on the Hindi screenshot, not reasoned about in advance: the field labels, the section tags
+ * and the reveal button were all visibly wrong the moment the language was switched. So the tag
+ * treatment keeps its SIZE and COLOUR — it is still the quiet label — and drops the three rules
+ * that only make sense in Latin. The lede and body take Plex Sans Devanagari, which has the face.
+ *
+ * `.mo` deliberately does NOT change: it is worn by usernames, times and money, which are Latin and
+ * digits, and a clerk compares those digit by digit.
+ */
+.lg[data-lang="hi"] {
+  font-family: "IBM Plex Sans Devanagari", "Nirmala UI", Mangal, "IBM Plex Sans", sans-serif;
+}
+.lg[data-lang="hi"] .tag {
+  font-family: "IBM Plex Sans Devanagari", "Nirmala UI", Mangal, sans-serif;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+/* `.mean` and `.gloss` need NO override here: they are Devanagari in both languages already. */
+.lg[data-lang="hi"] .pw button {
+  font-family: "IBM Plex Sans Devanagari", "Nirmala UI", Mangal, sans-serif;
+  letter-spacing: 0; font-size: 12px;
+}

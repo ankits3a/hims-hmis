@@ -388,6 +388,12 @@ export type WireWalkInBody = {
   patient: WireWalkInPatient;
   departmentId: string;
   doctorId: string;
+  /**
+   * FD-7 T9 / R4 — the channel-partner slip, captured where the patient hands it over. Stored on the
+   * encounter (migration 0059) so the cashier does not have to re-type it off paper that has by then
+   * been put away; billing owns the check that the code binds to this patient.
+   */
+  attributionCode?: string;
   intendedPayer?: string;
   referralSource?: string;
   referrerName?: string;
@@ -462,6 +468,22 @@ export function getContinuity(
   patientId: string, departmentId: string,
 ): Promise<{ anchor: WireContinuityAnchor | null }> {
   return api("GET", `/opd/continuity?patientId=${encodeURIComponent(patientId)}&departmentId=${encodeURIComponent(departmentId)}`);
+}
+
+/**
+ * FD-8 — THE COMPLAINT, IN THE PATIENT'S OWN WORDS. The clerk types what they were told — Hindi,
+ * English or Hinglish — and the server ranks the hospital's OWN departments from it.
+ *
+ * The model call is SERVER-SIDE and this is why the browser has no key: the gateway credential must
+ * never reach a bundle every user of the hospital can read. `source` says whether the answer came
+ * from the model or the deterministic keyword table, because advice whose origin is hidden gets
+ * trusted too much.
+ */
+export type WireTriageSuggestion = { departmentId: string; reason: string };
+export type WireTriage = { suggestions: WireTriageSuggestion[]; source: "model" | "keywords" };
+
+export function triage(text: string): Promise<WireTriage> {
+  return api("POST", "/opd/triage", { text });
 }
 
 /** The future lane. `date` is an IST calendar date; the server refuses a slot it has already passed. */
@@ -656,4 +678,102 @@ export type WireVitalsAmendBody = WireVitalsPostBody & { reason: string };
 export type WireVitalsAmendResult = { vitals: WireVitals; flags: WireDangerFlag[]; superseded: string };
 export function amendVitals(vitalsId: string, body: WireVitalsAmendBody): Promise<WireVitalsAmendResult> {
   return api("POST", `/opd/vitals/${encodeURIComponent(vitalsId)}/amend`, body);
+}
+
+/* ── FD-9 — the queue read Desk One's board and its lock pill both work from ─────────────────── */
+
+/**
+ * `GET /opd/queues/summary` had NO client in this file: the shipped counter declared its own
+ * `api<{ items: WireDoctorSummary[] }>(…)` inside the screen, which is how the URL and the
+ * `serviceDate` default ended up living in a component. It belongs here beside every other OPD
+ * read — the type has been in this file since RC-3 and only the fetcher was missing.
+ *
+ * `serviceDate` is REQUIRED of the caller rather than defaulted here. The server defaults it to
+ * IST today, and a client-side default would be a second opinion about what "today" is, computed
+ * in the browser's zone — the class of bug 18b shipped (an MWL date in UTC beside an IST time).
+ */
+export function listQueueSummary(serviceDate: string, departmentId?: string): Promise<{ items: WireDoctorSummary[] }> {
+  const params = new URLSearchParams({ serviceDate });
+  if (departmentId !== undefined && departmentId !== "") params.set("departmentId", departmentId);
+  return api("GET", `/opd/queues/summary?${params.toString()}`);
+}
+
+/**
+ * FD-15 — UNDO A SEATING, SERVER-SIDE.
+ *
+ * `unassign` in the desk cleared the CLIENT's idea of the visit and nothing else, so the encounter
+ * and its queue entry lived on: a token still on the board for a doctor the patient was no longer
+ * seeing. `abandonVisit` moves the encounter to `abandoned`, cancels the live queue entry and
+ * appends `visit.abandoned` with the reason — the change becomes a thing that happened rather than
+ * a row nobody cleaned up.
+ */
+export function abandonVisit(encounterId: string, reason: string): Promise<{ encounter: WireEncounter }> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/abandon`, { reason });
+}
+
+/* ══ FD-16 — the appointment screen's two reads, both already on the server ═════════════════════ */
+
+/**
+ * ONE ROW OF THE PATIENT'S OPD HISTORY. `GET /opd/patients/:id/timeline` has existed since 07a,
+ * gated on `opd.visits.read` — which `front_office` holds, deliberately: the route's own comment
+ * calls this "the shape a clerk needs to answer 'when was this patient last here'". No web client
+ * had ever called it.
+ *
+ * `diagnosis` and `icd10Code` ARE on the wire and this desk does not render them. The counter
+ * screen faces a queue, and a diagnosis line readable over the patient's shoulder is a leak the
+ * permission check cannot see. 07d already drew this line for prescriptions and vitals by putting
+ * them behind `opd.consult`; declaring the fields and not drawing them keeps that spirit without
+ * pretending the server does not send them.
+ */
+/* The type is declared above with the other wire shapes; only the CALLER was missing. */
+export function patientTimeline(patientId: string): Promise<{ items: WireTimelineItem[] }> {
+  return api("GET", `/opd/patients/${encodeURIComponent(patientId)}/timeline`);
+}
+
+/**
+ * THE DAY'S BOOK for one doctor: who is expected, and in what state. The rows carry the server's
+ * own patient summaries, so a confidential patient arrives as `restricted` with an alias and this
+ * screen renders what it was given rather than deciding for itself.
+ */
+export function listDayAppointments(doctorId: string, serviceDate: string): Promise<{ items: WireAppointment[] }> {
+  return api(
+    "GET",
+    `/opd/appointments?doctorId=${encodeURIComponent(doctorId)}&serviceDate=${encodeURIComponent(serviceDate)}`,
+  );
+}
+
+/**
+ * FD-18 — correct a misread visit type. The owner's billing override, built as a correction to the
+ * PREMISE rather than a discount on the price, so a revisit reaches `feeServiceFor`'s free branch on
+ * its own and nothing is booked as charity that was really a classification mistake.
+ */
+export function reclassifyVisit(
+  encounterId: string, visitType: "new" | "revisit" | "renewal", reason: string,
+): Promise<{ encounter: WireEncounter }> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/reclassify`, { visitType, reason });
+}
+
+/**
+ * FD-19 — MOVE A BOOKING. `POST /opd/appointments/:id/reschedule` has existed since D7 and the only
+ * caller was the standalone `/opd/appointments` screen — the front desk, where the patient actually
+ * says "can we make it Thursday", had no way to do it.
+ *
+ * `doctorId` is optional and travels when the new slot belongs to somebody else, which is what makes
+ * the owner's second route — find the doctor, move the patient off them — the same call as the first.
+ */
+export function rescheduleAppointment(
+  appointmentId: string, slotStart: string, doctorId?: string,
+): Promise<{ from: WireAppointment; to: WireAppointment }> {
+  return api("POST", `/opd/appointments/${encodeURIComponent(appointmentId)}/reschedule`, {
+    slotStart, ...(doctorId === undefined ? {} : { doctorId }),
+  });
+}
+
+/**
+ * FD-22 — CANCEL A BOOKING. The route has existed since D7 with the same single caller the
+ * reschedule had. The server demands a reason and refuses a blank one, which is why the desk asks
+ * for one in the confirmation rather than sending "cancelled" and calling it an audit trail.
+ */
+export function cancelAppointment(appointmentId: string, reason: string): Promise<{ appointment: WireAppointment }> {
+  return api("POST", `/opd/appointments/${encodeURIComponent(appointmentId)}/cancel`, { reason });
 }

@@ -9,11 +9,11 @@
     "loading": "Loading…",
     "theme": "Theme",
     "themeDark": "Dark",
-    "themeLight": "Light"
+    "themeLight": "Light",
+    "search": "Search — the cursor starts here"
   },
   "nav": {
     "formularyAdmin": "Formulary",
-    "registration": "Registration",
     "merge": "Merge review",
     "approvals": "Approvals",
     "opdAdmin": "OPD admin",
@@ -40,7 +40,7 @@
     "otList": "Theatre list",
     "otBook": "Book day-care case",
     "otRecovery": "Recovery",
-    "counterDesk": "Registration counter",
+    "counterDesk": "Desk One",
     "group": {
       "desk": "Desk",
       "patients": "Patients",
@@ -60,7 +60,6 @@
     "labReports": "Report centre",
     "pharmacyCounter": "Dispense counter",
     "pharmacyItems": "Pharmacy sale items",
-    "appointmentSeat": "Appointment",
     "radiationSafety": "Radiation safety"
   },
   "palette": {
@@ -96,7 +95,17 @@
     "username": "Username",
     "password": "Password",
     "submit": "Sign in",
-    "failed": "Sign-in failed — check the username and password"
+    "failed": "Sign-in failed — check the username and password",
+    "product": "Hospital Operating System",
+    "welcome": "Sign in to your seat",
+    "issued": "Accounts are issued by the hospital administrator.",
+    "reveal": "SHOW",
+    "hide": "HIDE",
+    "signingIn": "Signing you in…",
+    "capsLock": "Caps Lock is on.",
+    "shared": "This is a shared counter. Sign out when you step away — the desk clears with you.",
+    "helpTitle": "Cannot get in?",
+    "help": "Ask the administrator to reset it. Never sign in on somebody else's name — every act at a counter is recorded against the person who did it."
   },
   "search": {
     "placeholder": "Phone number, UHID, or name…",
@@ -210,7 +219,9 @@
       "document_correction": "Corrected against a document",
       "patient_request": "Patient says the record is wrong",
       "merge_reconciliation": "Settled while resolving a duplicate"
-    }
+    },
+    "askPlaceholder": "ask — \"what is their ABHA?\"",
+    "agentIdle": "I read this patient's record only — UHID, date of birth, contact, ABHA. I cannot look anything else up."
   },
   "merge": {
     "title": "Merge review",
@@ -392,7 +403,9 @@
       "no_show": "No-show",
       "needs_rebooking": "Needs rebooking",
       "rescheduled": "Rescheduled"
-    }
+    },
+    "askPlaceholder": "ask — \"which doctor am I looking at?\"",
+    "agentIdle": "I read the filters on this screen, the doctor master and the day's bookings — and I say which one an answer came from."
   },
   "opdDesk": {
     "title": "OPD desk",
@@ -882,6 +895,14 @@
     },
     "summary": {
       "title": "Day summary"
+    },
+    "recount": {
+      "open": "Wrong amount? Withdraw this count and count again",
+      "explain": "This does not erase anything. The count above is written to the record with your reason, and a supervisor still confirms the corrected close — you just do not have to wait for one to fix a typo.",
+      "reason": "Why is this count being withdrawn?",
+      "reasonRequired": "Say why the count is being withdrawn — the record is worthless without it.",
+      "submit": "Withdraw and reopen the drawer",
+      "cancel": "Keep this count"
     }
   },
   "billingOffice": {
@@ -1683,6 +1704,55 @@
       "missed": "Missed so far",
       "needsRebooking": "Need rebooking",
       "rebookRow": "patients to rebook — doctor on leave"
+    },
+    "today": "Your desk today",
+    "cta": {
+      "register": "Register a patient",
+      "book": "Open the book",
+      "take": "Take payment"
+    },
+    "drawer": {
+      "title": "Count your cash drawer before the first patient",
+      "body": "Type what is in the drawer now. The close of your shift is measured against it — float plus what you collect is what the drawer should hold, and a variance nobody can compute is a variance nobody is answerable for.",
+      "float": "Opening float (₹)",
+      "open": "Open the drawer",
+      "opening": "Opening…",
+      "isOpen": "drawer open",
+      "locked": "drawer first",
+      "atClose": "drawer counted at close",
+      "awaitingTitle": "Your drawer is counted and waiting on a supervisor",
+      "awaitingBody": "The cash you counted did not match what the till expected, so the close was filed for approval instead of finishing. You cannot approve your own variance and you cannot open a new drawer while this one is live — a supervisor grants it, then you confirm the close.",
+      "seeCount": "See the count",
+      "seeApproval": "Find the approval"
+    },
+    "schemes": {
+      "title": "Schemes in play",
+      "note": "what a patient can walk in holding — attach it before the bill, never after",
+      "membership": {
+        "name": "Membership",
+        "note": "look a card up, or enrol — never enrol just to apply a benefit",
+        "unit": "cards in force"
+      },
+      "coupons": {
+        "name": "Coupons",
+        "note": "camp and referral slips; the code travels with the quote",
+        "unit": "presented today"
+      },
+      "packages": {
+        "name": "Packages",
+        "note": "a paid bundle draws down; the bill shows what is left",
+        "unit": "in force"
+      },
+      "panels": {
+        "name": "Corporate & TPA",
+        "note": "self · tpa · pmjay · corporate — a panel payer collects nothing here",
+        "unit": "on a panel today"
+      },
+      "partners": {
+        "name": "Channel partners",
+        "note": "who sent this patient — one slip per visit, commission accrues",
+        "unit": "attributed today"
+      }
     }
   },
   "report": {
@@ -2283,14 +2353,16 @@
         "name": "same name",
         "onFile": "on file"
       },
-      "searchFailed": "Search is unavailable — do not register a new record until it works"
+      "searchFailed": "Search is unavailable — do not register a new record until it works",
+      "noDistrict": "no area on file",
+      "onFileSince": "on file since {{since}}"
     },
     "register": {
       "title": "New patient",
       "name": "Name",
       "phone": "Mobile",
       "ageYears": "Age (years)",
-      "sex": "Sex",
+      "sex": "sex",
       "sexUnknown": "Not stated",
       "sexMale": "Male",
       "sexFemale": "Female",
@@ -2304,7 +2376,119 @@
       "existingTitle": "Open a visit",
       "openVisit": "Open visit",
       "todaysVisit": "This patient already has a visit today.",
-      "resumeVisit": "Resume today's visit"
+      "resumeVisit": "Resume today's visit",
+      "heading": "The person, and as much of their record as you have",
+      "subheading": "registration ends here — the department is the next stage, not a field on this form",
+      "fullName": "full name",
+      "mobile": "mobile",
+      "age": "age",
+      "dob": "date of birth",
+      "address": "address",
+      "addressHint": "street, area, district — the field 11 files a night are missing",
+      "optional": "optional",
+      "guardian": {
+        "title": "Guardian",
+        "required": "required — this patient is a minor",
+        "why": "A patient under 18 must have a guardian on the record before a UHID can be allocated (DPDP §9). Ask who brought them.",
+        "blocked": "This patient is under 18, so the guardian's name and relationship are needed before you can register them. The server refuses a minor without one, and it is better you hear it here than after pressing register.",
+        "name": "guardian's name",
+        "relationship": "relationship",
+        "idNumber": "ID number",
+        "father": "Father",
+        "mother": "Mother",
+        "spouse": "Spouse",
+        "sibling": "Sibling",
+        "legal": "Legal guardian",
+        "other": "Other"
+      },
+      "abha": {
+        "title": "ABHA",
+        "hint": "Ayushman Bharat Health Account",
+        "number": "ABHA number",
+        "address": "ABHA address",
+        "link": "Link this ABHA",
+        "create": "Generate a new ABHA",
+        "verify": "Verify by OTP",
+        "notConfigured": "This hospital is not connected to ABDM yet, so a new ABHA cannot be created here and a number cannot be verified against the registry. An ABHA the patient already has can still be recorded — it is kept as the patient's own statement until ABDM confirms it."
+      },
+      "more": {
+        "title": "More about the person",
+        "title_": "title",
+        "fatherHusband": "father / husband name",
+        "marital": "marital status",
+        "bloodGroup": "blood group",
+        "altPhone": "alternate mobile",
+        "religion": "religion",
+        "occupation": "occupation",
+        "income": "monthly income (₹)",
+        "single": "Single",
+        "married": "Married",
+        "widowed": "Widowed",
+        "divorced": "Divorced",
+        "separated": "Separated"
+      },
+      "where": {
+        "title": "Where they live",
+        "area": "area / landmark",
+        "district": "city / district",
+        "state": "state",
+        "pincode": "PIN code"
+      },
+      "id": {
+        "title": "Identity document",
+        "hint": "only the last four digits are kept",
+        "nationality": "nationality",
+        "type": "document",
+        "number": "number on the document",
+        "aadhaar": "Aadhaar",
+        "voter": "Voter ID",
+        "passport": "Passport",
+        "dl": "Driving licence",
+        "other": "Other",
+        "lastFour": "Type what is printed on the card. Only the last four digits are stored — enough to match the card the patient is holding, and never the whole number."
+      },
+      "cover": {
+        "title": "How this is paid for",
+        "kind": "scheme",
+        "payer": "insurer / scheme",
+        "tpaName": "TPA",
+        "plan": "plan / class",
+        "policy": "policy number",
+        "card": "card number",
+        "beneficiary": "beneficiary / family ID",
+        "employee": "employee ID",
+        "cardSeen": "the card was produced at the counter",
+        "add": "add a scheme, policy or card",
+        "remove": "remove",
+        "pmjay": "Ayushman Bharat PM-JAY",
+        "insurance": "Insurance policy",
+        "tpa": "TPA",
+        "corporate": "Employer / corporate",
+        "other": "Other scheme"
+      },
+      "ref": {
+        "title": "Who sent them",
+        "source": "referred by",
+        "name": "name",
+        "speciality": "speciality",
+        "self": "Came on their own",
+        "doctor": "A doctor",
+        "hospital": "Another hospital",
+        "camp": "A health camp",
+        "employer": "Their employer",
+        "online": "Online",
+        "partner": "Channel partner",
+        "other": "Other"
+      },
+      "flags": {
+        "title": "Privacy, consent and the old file",
+        "confidential": "Confidential record (staff, VIP)",
+        "confidentialWhy": "Hides the name from public surfaces. Only readers holding the confidential permission can see it.",
+        "promotional": "The patient agreed to receive health-camp and offer messages",
+        "promotionalWhy": "DPDP consent. Leave unticked unless the patient actually said yes — silence is not consent.",
+        "legacyUhid": "old paper UHID",
+        "language": "messages in"
+      }
     },
     "quote": {
       "title": "Bill",
@@ -2409,6 +2593,87 @@
       "yourDayHint": "the signed document: what you registered, what you took, by tender. Provisional until the day is closed.",
       "reportFailed": "Your day could not be read — nothing is printed until it can be.",
       "everyone": "everyone's bookings —"
+    },
+    "photo": {
+      "caption": "photo",
+      "captionNew": "photo — taken now, saved with the UHID",
+      "camera": "Camera",
+      "upload": "Upload",
+      "snap": "Take it",
+      "cancel": "cancel",
+      "retake": "Retake",
+      "noCamera": "No camera available on this machine — upload a file instead.",
+      "failed": "That image could not be read."
+    },
+    "account": {
+      "title": "on their account",
+      "outstanding": "outstanding",
+      "clear": "Nothing carried forward.",
+      "carried": "Carried forward from {{count}} earlier bill(s) — it travels onto this one."
+    },
+    "schemes": {
+      "title": "Schemes",
+      "hint": "attach before you take the money",
+      "review": "Review visit — nothing to collect",
+      "reviewUntil": "The free window runs to {{date}}.",
+      "active": "in force",
+      "notUsable": "not usable",
+      "unverified": "not verified",
+      "couponReady": "presented — applies if it wins the contest",
+      "none": "Nothing recognised. A card or coupon attaches here, or at registration.",
+      "noStack": "Only the best single benefit applies — they do not stack. The bill names the one that won and the one that lost, so you can say why.",
+      "status": {
+        "active": "in force",
+        "expired": "expired",
+        "suspended": "suspended",
+        "cancelled": "cancelled"
+      }
+    },
+    "history": {
+      "title": "their history",
+      "reading": "reading their file…",
+      "first": "First visit — nothing on file before today.",
+      "unknownDept": "department not recorded",
+      "state": {
+        "completed": "seen",
+        "abandoned": "left",
+        "registered": "booked in",
+        "waiting": "waited",
+        "in_consultation": "with doctor",
+        "awaiting_results": "awaiting results"
+      }
+    },
+    "visitType": {
+      "revisit": "Revisit — no consultation fee",
+      "revisitWhy": "Within the {{days}}-day follow-up the doctor set; the window runs to {{until}}.",
+      "renewal": "Renewal — the consultation is chargeable",
+      "renewalWhy": "The {{days}}-day follow-up window ended on {{ended}}, so this counts as a fresh consultation."
+    },
+    "book": {
+      "alreadyBooked": "{{name}} already has {{count}} booking that day",
+      "alreadyBookedHint": "book a second only if it is genuinely a second appointment",
+      "checkIn": "check in",
+      "move": "move",
+      "theirs": "{{name}}'s upcoming appointments",
+      "theirsHint": "pick one to move it",
+      "moving": "Moving {{who}} — was {{was}}",
+      "movingHint": "choose the new slot above, or leave it where it is",
+      "cancel": "cancel",
+      "cancelTitle": "Cancel {{who}}'s appointment?",
+      "cancelWhy": "The slot goes back on the board straight away and somebody else can take it. Say why — it is recorded against the booking.",
+      "cancelReasonHint": "why? e.g. patient rang to cancel, travelling",
+      "cancelReasonRequired": "Say why the appointment is being cancelled.",
+      "cancelConfirm": "cancel the appointment",
+      "cancelAbort": "keep it"
+    },
+    "reclassify": {
+      "open": "Wrong visit type? (now: {{current}})",
+      "title": "Correct what kind of visit this is",
+      "explain": "This does not discount the bill — it corrects the record, and the fee is recalculated from it. A revisit inside the doctor's follow-up window carries no consultation fee. Your name and reason are recorded.",
+      "reasonHint": "why is this the wrong type? e.g. seen here on 28 Aug, consult was never closed",
+      "reasonRequired": "Say why — a correction with no reason cannot be reviewed later.",
+      "submit": "Correct it — audited",
+      "cancel": "leave it"
     }
   },
   "vitalsBay": {
@@ -2762,7 +3027,13 @@
     "doneBooked": "Booked for {{at}}.",
     "next": "Next patient",
     "forbidden": "This account may not book or route appointments.",
-    "anchorOnLeave": "{{doctor}} has seen this patient before but is on leave today."
+    "anchorOnLeave": "{{doctor}} has seen this patient before but is on leave today.",
+    "partnerSlip": "Partner slip code (if they brought one)",
+    "complaintTitle": "What brings {{name}} in?",
+    "complaintHint": "In their own words — seene mein dard · bukhar · ghutne mein dard",
+    "themDefault": "them",
+    "bySuggestion": "suggested from the complaint",
+    "byKeyword": "matched on keywords"
   },
   "aerb": {
     "title": "Radiation safety (AERB)",

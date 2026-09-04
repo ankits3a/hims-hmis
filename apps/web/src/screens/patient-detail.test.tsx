@@ -418,4 +418,46 @@ describe("22c-A T7 — the amendment surface", () => {
     await waitFor(() => expect(patches()).toHaveLength(1));
     expect(patches()[0]).not.toHaveProperty("reasonClass");
   });
+
+  /**
+   * FD-23 — the redesign's two structural claims, asserted rather than eyeballed: this screen wears
+   * the counter's design scope, and the agent is on it. Without these a later refactor could drop
+   * either and every behavioural test above would stay green.
+   */
+  it("wears the counter's paper-pine scope and carries the desk agent", async () => {
+    stubFetch({
+      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: ALLERGIES },
+      "GET /api/patients/p-1/guardians": GUARDIANS,
+      "GET /api/patients/p-1/qr": QR,
+    });
+    renderWithProviders(<PatientDetail />);
+    await screen.findByText("Asha Devi");
+
+    expect(document.querySelector(".pp")).not.toBeNull();
+    expect(screen.getByTestId("agent-dock")).toBeInTheDocument();
+    expect(screen.getByTestId("agent-ticker")).toHaveTextContent(/this patient's record only/);
+  });
+
+  /* The agent answers from the row already fetched — no lookup, and it names where it came from. */
+  it("the agent answers about THIS record and says so", async () => {
+    stubFetch({
+      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: ALLERGIES },
+      "GET /api/patients/p-1/guardians": GUARDIANS,
+      "GET /api/patients/p-1/qr": QR,
+    });
+    renderWithProviders(<PatientDetail />);
+    await screen.findByText("Asha Devi");
+
+    const user = userEvent.setup();
+    await user.type(screen.getByTestId("agent-ask"), "what is their uhid?{Enter}");
+    await user.click(screen.getByTestId("agent-log-toggle"));
+
+    /* Scoped to the dock: the UHID is also in the header, and the claim here is about the ANSWER. */
+    const dock = within(screen.getByTestId("agent-dock"));
+    expect(dock.getByText(/HMS0000001234/)).toBeInTheDocument();
+    // it names its source rather than sounding omniscient
+    expect(dock.getByText(/from the patient row/)).toBeInTheDocument();
+  });
 });

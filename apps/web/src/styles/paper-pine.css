@@ -1,0 +1,53 @@
+/*
+ * ═══ PAPER & PINE — THE PALETTE, DEFINED ONCE ═══
+ *
+ * The owner's Desk One artifact sets these six values and its own legend explains each one:
+ * paper is a green-biased ground, calmer than white under lobby light; pine ink is text AND the
+ * only ground the machine ever speaks on; hospital green is for actions, applied benefits and
+ * settled money; marigold is for attention — UNPAID stamps, heavy queues, missing data, visible
+ * from a metre; mint is the agent's voice and never appears on paper; brick red is reserved for
+ * refusals and blocked actions and nothing else.
+ *
+ * ═══ WHY THIS FILE EXISTS RATHER THAN A SECOND COPY ═══
+ *
+ * FD-9 shipped these values inside `screens/desk-one/desk-one.css`'s `.d1` block. FD-10 needed the
+ * same palette for the sign-in screen, and the obvious move — paste the six hex values into a
+ * second stylesheet — is how a design system starts disagreeing with itself: somebody adjusts the
+ * marigold on one screen, both still look fine in isolation, and the hospital ends up with two
+ * shades of "needs attention". One definition, two selectors, and a screen opts in by wearing its
+ * class. `styles.css`'s `[data-seat=…]` blocks are a THIRD expression of the same palette, mapping
+ * it onto shadcn's token names for the screens still built on those components; they are left
+ * alone because rewriting them is a change to screens this phase does not touch.
+ */
+/*
+ * FD-11 — `.dash` joins the list rather than copying the six values, which is the extension this
+ * file was written to have: the dashboard is Desk One's language on the screen everybody lands on
+ * first, and a second copy of the marigold is how a hospital ends up with two shades of "needs
+ * attention".
+ */
+.d1,
+.lg,
+.dash,
+.shell {
+  --paper: #f4f7f4;
+  --card: #ffffff;
+  --ink: #132420;
+  --line: #dfe7e1;
+  --line2: #ecf1ed;
+  --dim: #5c6f66;
+  --faint: #8ea69a;
+  --wash: #eef3ef;
+  --green: #0e6b4e;
+  --green-soft: rgba(14, 107, 78, .08);
+  --green-line: rgba(14, 107, 78, .35);
+  --gold: #dd8f1c;
+  --gold-soft: rgba(221, 143, 28, .10);
+  --gold-line: rgba(221, 143, 28, .45);
+  --red: #b23a30;
+  --red-soft: rgba(178, 58, 48, .08);
+  --red-line: rgba(178, 58, 48, .4);
+  --agent: #132420;
+  --agent-fg: #d9efe4;
+  --agent-dim: #7fa392;
+  --mint: #35c48f;
+}

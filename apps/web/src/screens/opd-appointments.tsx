@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
 import { FormProvider, useForm } from "react-hook-form";
@@ -7,17 +7,14 @@ import { api } from "../lib/api";
 import { listDepartments, listDoctors, listRooms, opdErrorMessage, todayIst } from "../lib/opd-api";
 import type { WireAppointment, WireDepartment, WireDoctor, WireOpenVisitResult, WireRoom, WireSlot } from "../lib/opd-api";
 import { useRealtime } from "../lib/realtime";
+import { AgentDock, logged } from "../components/agent-dock";
+import type { AgentLine } from "../components/agent-dock";
 import { PatientPicker } from "../components/patient-picker";
 import type { PatientPickerHit } from "../components/patient-picker";
 import { TokenSlip } from "../components/token-slip";
 import type { TokenSlipProps } from "../components/token-slip";
 import type { QrCardData } from "../components/qr-card";
-import { SelectField, TextField } from "../components/form-kit";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
 /**
@@ -44,6 +41,7 @@ function patientLabel(p: { name: string | null; alias: string | null; restricted
   return p.restricted ? (p.alias ?? "—") : (p.name ?? "—");
 }
 
+/** FD-22's rule, applied here too: a refusal appears where the action was, never at the top. */
 function ErrorLine({ message }: { message: string | null }): React.ReactElement | null {
   if (message === null) return null;
   return <p role="alert" className="text-sm text-red-600">{message}</p>;
@@ -77,8 +75,11 @@ function SlotGrid({ slots, onPick }: { slots: WireSlot[]; onPick: (slot: WireSlo
 // ——— reschedule: `booked` AND `needs_rebooking` both ride the same route (D7 / appointments.ts) ———
 
 function RescheduleDialog({
-  appointment, queryClient,
-}: { appointment: WireAppointment; queryClient: QueryClient }): React.ReactElement {
+  appointment, queryClient, onNote,
+}: {
+  appointment: WireAppointment; queryClient: QueryClient;
+  onNote: (text: string, kind?: AgentLine["kind"]) => void;
+}): React.ReactElement {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState(todayIst());
@@ -94,6 +95,7 @@ function RescheduleDialog({
     setError(null);
     try {
       await api("POST", `/opd/appointments/${appointment.id}/reschedule`, { slotStart: slot.start, doctorId: appointment.doctorId });
+      onNote(`moved ${patientLabel(appointment.patient)} to ${fmtIst(slot.start)}`, "ok");
       setOpen(false);
       await queryClient.invalidateQueries({ queryKey: ["opd", "appointments"] });
     } catch (e) {
@@ -104,9 +106,9 @@ function RescheduleDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline">{t("opdAppt.reschedule")}</Button>
+        <button className="sec">{t("opdAppt.reschedule")}</button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="pp">
         <DialogHeader><DialogTitle>{t("opdAppt.reschedule")}</DialogTitle></DialogHeader>
         <label className="block text-sm font-medium" htmlFor={`reschedule-date-${appointment.id}`}>{t("opdAppt.newDate")}</label>
         <input
@@ -126,8 +128,11 @@ function RescheduleDialog({
 // ——— cancel: the reason is mandatory client-side (mirror) AND server-side (the rule itself) ———
 
 function CancelDialog({
-  appointment, queryClient,
-}: { appointment: WireAppointment; queryClient: QueryClient }): React.ReactElement {
+  appointment, queryClient, onNote,
+}: {
+  appointment: WireAppointment; queryClient: QueryClient;
+  onNote: (text: string, kind?: AgentLine["kind"]) => void;
+}): React.ReactElement {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
@@ -137,6 +142,7 @@ function CancelDialog({
     setError(null);
     try {
       await api("POST", `/opd/appointments/${appointment.id}/cancel`, { reason });
+      onNote(`cancelled ${patientLabel(appointment.patient)} — ${reason}`, "warn");
       setOpen(false);
       setReason("");
       await queryClient.invalidateQueries({ queryKey: ["opd", "appointments"] });
@@ -148,9 +154,9 @@ function CancelDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline">{t("opdAppt.cancel")}</Button>
+        <button className="sec">{t("opdAppt.cancel")}</button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="pp">
         <DialogHeader><DialogTitle>{t("opdAppt.cancel")}</DialogTitle></DialogHeader>
         <label className="block text-sm font-medium" htmlFor={`cancel-reason-${appointment.id}`}>{t("opd.labels.reason")}</label>
         <input
@@ -160,7 +166,7 @@ function CancelDialog({
           className="w-full rounded border px-2 py-1"
         />
         <ErrorLine message={error} />
-        <Button onClick={() => void submit()} disabled={reason.trim() === ""}>{t("opdAppt.confirmCancel")}</Button>
+        <button className="pri" onClick={() => void submit()} disabled={reason.trim() === ""}>{t("opdAppt.confirmCancel")}</button>
       </DialogContent>
     </Dialog>
   );
@@ -168,8 +174,9 @@ function CancelDialog({
 
 function StatusBadge({ status }: { status: WireAppointment["status"] }): React.ReactElement {
   const { t } = useTranslation();
-  const variant = status === "cancelled" || status === "no_show" ? "destructive" : status === "checked_in" ? "default" : "outline";
-  return <Badge variant={variant}>{t(`opdAppt.status.${status}`)}</Badge>;
+  /* FD-23 — the counter's three states: gone (brick), arrived (pine), expected (plain). */
+  const cls = status === "cancelled" || status === "no_show" ? "pill rd" : status === "checked_in" ? "pill on" : "pill";
+  return <span className={cls} style={{ height: 20 }}>{t(`opdAppt.status.${status}`)}</span>;
 }
 
 // ——— check-in: same IST day only, from `booked` (D7) — K42's ONLY guard ———
@@ -210,9 +217,9 @@ function CheckInCell({
 
   return (
     <div>
-      <Button size="sm" data-testid={`checkin-${appointment.id}`} disabled={disabled} onClick={() => void checkIn()}>
+      <button className="sec grn" data-testid={`checkin-${appointment.id}`} disabled={disabled} onClick={() => void checkIn()}>
         {t("opdAppt.checkIn")}
-      </Button>
+      </button>
       <ErrorLine message={error} />
     </div>
   );
@@ -221,10 +228,12 @@ function CheckInCell({
 // ——— the Day tab: slot grid + patient picker (left), this day's bookings (right) ———
 
 function DayTab({
-  departmentId, doctorId, date, departments, doctors, rooms, queryClient,
+  departmentId, doctorId, date, departments, doctors, rooms, queryClient, onNote,
 }: {
   departmentId: string; doctorId: string; date: string;
   departments: WireDepartment[]; doctors: WireDoctor[]; rooms: WireRoom[]; queryClient: QueryClient;
+  /** Every SERVER ANSWER this tab gets lands in the agent's log — never an intention, only a result. */
+  onNote: (text: string, kind?: AgentLine["kind"]) => void;
 }): React.ReactElement {
   const { t } = useTranslation();
   const [patient, setPatient] = useState<PatientPickerHit | null>(null);
@@ -259,10 +268,16 @@ function DayTab({
     setBookError(null);
     try {
       await api("POST", "/opd/appointments", { patientId: patient.id, doctorId, slotStart: slot.start });
+      /*
+        LOGGED AFTER THE SERVER ANSWERED, never before: a log that narrates intentions lies the
+        moment one is refused. The refusal below is logged for the same reason — it is a fact.
+      */
+      onNote(`booked ${patient.name} at ${fmtIst(slot.start)}`, "ok");
       await queryClient.invalidateQueries({ queryKey: ["opd", "appointments", doctorId, date] });
       await queryClient.invalidateQueries({ queryKey: ["opd", "slots", doctorId, date] });
     } catch (e) {
       setBookError(opdErrorMessage(e));
+      onNote(`booking REFUSED — ${opdErrorMessage(e)}`, "err");
     }
   };
 
@@ -270,7 +285,7 @@ function DayTab({
     return (
       <div className="space-y-4">
         <TokenSlip {...slip} />
-        <Button variant="outline" className="no-print" onClick={() => setSlip(null)}>{t("opdAppt.backToList")}</Button>
+        <button className="sec no-print" onClick={() => setSlip(null)}>{t("opdAppt.backToList")}</button>
       </div>
     );
   }
@@ -278,8 +293,8 @@ function DayTab({
   return (
     <div className="grid gap-6 md:grid-cols-2">
       <div className="space-y-2">
-        <h2 className="text-sm font-semibold">{t("opdAppt.slots")}</h2>
-        {doctorId === "" && <p className="text-sm text-neutral-500">{t("opdAppt.pickDoctorHint")}</p>}
+        <h2 style={{ fontSize: 13, fontWeight: 700 }}>{t("opdAppt.slots")}</h2>
+        {doctorId === "" && <p style={{ fontSize: 12, color: "var(--dim)" }}>{t("opdAppt.pickDoctorHint")}</p>}
         {doctorId !== "" && slots.data === undefined && <p>{t("app.loading")}</p>}
         {doctorId !== "" && slots.data !== undefined && <SlotGrid slots={slots.data.slots} onPick={(slot) => void book(slot)} />}
         <ErrorLine message={bookError} />
@@ -290,35 +305,35 @@ function DayTab({
         )}
       </div>
       <div className="space-y-2">
-        <h2 className="text-sm font-semibold">{t("opdAppt.bookings")}</h2>
+        <h2 style={{ fontSize: 13, fontWeight: 700 }}>{t("opdAppt.bookings")}</h2>
         {doctorId !== "" && appointments.data !== undefined && appointments.data.items.length === 0 && (
-          <p className="text-sm text-neutral-500">{t("opdAppt.none")}</p>
+          <p style={{ fontSize: 12, color: "var(--dim)" }}>{t("opdAppt.none")}</p>
         )}
         {doctorId !== "" && appointments.data !== undefined && appointments.data.items.length > 0 && (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("opd.labels.patient")}</TableHead>
-                <TableHead>{t("opdAppt.time")}</TableHead>
-                <TableHead>{t("opd.labels.status")}</TableHead>
-                <TableHead>{t("opd.labels.actions")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          <div role="table" className="box" style={{ overflow: "hidden" }}>
+            <div role="rowgroup">
+              <div role="row" style={{ display: "flex", gap: 10, padding: "9px 13px", borderBottom: "1px solid var(--line2)" }}>
+                <span role="columnheader" className="tag" style={{ flexGrow: 1 }}>{t("opd.labels.patient")}</span>
+                <span role="columnheader" className="tag" style={{ flexGrow: 1 }}>{t("opdAppt.time")}</span>
+                <span role="columnheader" className="tag" style={{ flexGrow: 1 }}>{t("opd.labels.status")}</span>
+                <span role="columnheader" className="tag" style={{ flexGrow: 1 }}>{t("opd.labels.actions")}</span>
+              </div>
+            </div>
+            <div role="rowgroup">
               {appointments.data.items.map((apt) => (
-                <TableRow key={apt.id}>
-                  <TableCell>
+                <div role="row" className="drow" key={apt.id}>
+                  <span role="cell" style={{ flexGrow: 1, fontSize: 12 }}>
                     <span className="block">{patientLabel(apt.patient)}</span>
                     <span className="block font-mono text-xs text-neutral-600">{apt.patient?.uhid ?? "—"}</span>
-                  </TableCell>
-                  <TableCell>{fmtIst(apt.slotStart)}</TableCell>
-                  <TableCell><StatusBadge status={apt.status} /></TableCell>
-                  <TableCell>
+                  </span>
+                  <span role="cell" style={{ flexGrow: 1, fontSize: 12 }}>{fmtIst(apt.slotStart)}</span>
+                  <span role="cell" style={{ flexGrow: 1, fontSize: 12 }}><StatusBadge status={apt.status} /></span>
+                  <span role="cell" style={{ flexGrow: 1, fontSize: 12 }}>
                     <div className="flex flex-wrap gap-2">
                       {(apt.status === "booked" || apt.status === "needs_rebooking") && (
-                        <RescheduleDialog appointment={apt} queryClient={queryClient} />
+                        <RescheduleDialog appointment={apt} queryClient={queryClient} onNote={onNote} />
                       )}
-                      {apt.status === "booked" && <CancelDialog appointment={apt} queryClient={queryClient} />}
+                      {apt.status === "booked" && <CancelDialog appointment={apt} queryClient={queryClient} onNote={onNote} />}
                       {apt.status === "booked" && (
                         <CheckInCell
                           appointment={apt}
@@ -331,11 +346,11 @@ function DayTab({
                         />
                       )}
                     </div>
-                  </TableCell>
-                </TableRow>
+                  </span>
+                </div>
               ))}
-            </TableBody>
-          </Table>
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -344,7 +359,12 @@ function DayTab({
 
 // ——— the needs-rebooking worklist: the leave cascade's landing page, across every doctor ———
 
-function NeedsRebookingTab({ allDoctors, queryClient }: { allDoctors: WireDoctor[]; queryClient: QueryClient }): React.ReactElement {
+function NeedsRebookingTab(
+  { allDoctors, queryClient, onNote }: {
+    allDoctors: WireDoctor[]; queryClient: QueryClient;
+    onNote: (text: string, kind?: AgentLine["kind"]) => void;
+  },
+): React.ReactElement {
   const { t } = useTranslation();
   const items = useQuery({
     queryKey: ["opd", "appointments", "needsRebooking"],
@@ -355,34 +375,34 @@ function NeedsRebookingTab({ allDoctors, queryClient }: { allDoctors: WireDoctor
 
   return (
     <div className="space-y-2">
-      <h2 className="text-sm font-semibold">{t("opdAppt.needsRebooking")}</h2>
+      <h2 style={{ fontSize: 13, fontWeight: 700 }}>{t("opdAppt.needsRebooking")}</h2>
       {items.data !== undefined && items.data.items.length === 0 && (
-        <p className="text-sm text-neutral-500">{t("opdAppt.none")}</p>
+        <p style={{ fontSize: 12, color: "var(--dim)" }}>{t("opdAppt.none")}</p>
       )}
       {items.data !== undefined && items.data.items.length > 0 && (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("opd.labels.patient")}</TableHead>
-              <TableHead>{t("opd.labels.doctor")}</TableHead>
-              <TableHead>{t("opdAppt.time")}</TableHead>
-              <TableHead>{t("opd.labels.actions")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+        <div role="table" className="box" style={{ overflow: "hidden" }}>
+          <div role="rowgroup">
+              <div role="row" style={{ display: "flex", gap: 10, padding: "9px 13px", borderBottom: "1px solid var(--line2)" }}>
+                <span role="columnheader" className="tag" style={{ flexGrow: 1 }}>{t("opd.labels.patient")}</span>
+              <span role="columnheader" className="tag" style={{ flexGrow: 1 }}>{t("opd.labels.doctor")}</span>
+              <span role="columnheader" className="tag" style={{ flexGrow: 1 }}>{t("opdAppt.time")}</span>
+              <span role="columnheader" className="tag" style={{ flexGrow: 1 }}>{t("opd.labels.actions")}</span>
+              </div>
+            </div>
+          <div>
             {items.data.items.map((apt) => (
-              <TableRow key={apt.id}>
-                <TableCell>
+              <div role="row" className="drow" key={apt.id}>
+                <span role="cell" style={{ flexGrow: 1, fontSize: 12 }}>
                   <span className="block">{patientLabel(apt.patient)}</span>
                   <span className="block font-mono text-xs text-neutral-600">{apt.patient?.uhid ?? "—"}</span>
-                </TableCell>
-                <TableCell>{doctorName(apt.doctorId)}</TableCell>
-                <TableCell>{fmtIst(apt.slotStart)}</TableCell>
-                <TableCell><RescheduleDialog appointment={apt} queryClient={queryClient} /></TableCell>
-              </TableRow>
+                </span>
+                <span role="cell" style={{ flexGrow: 1, fontSize: 12 }}>{doctorName(apt.doctorId)}</span>
+                <span role="cell" style={{ flexGrow: 1, fontSize: 12 }}>{fmtIst(apt.slotStart)}</span>
+                <span role="cell" style={{ flexGrow: 1, fontSize: 12 }}><RescheduleDialog appointment={apt} queryClient={queryClient} onNote={onNote} /></span>
+              </div>
             ))}
-          </TableBody>
-        </Table>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -417,46 +437,174 @@ export function OpdAppointments(): React.ReactElement {
   const allDoctors = useQuery({ queryKey: ["opd", "doctors", "all"], queryFn: listDoctors, refetchInterval: POLL_MS });
   const rooms = useQuery({ queryKey: ["opd", "rooms"], queryFn: listRooms, refetchInterval: POLL_MS });
 
-  const departmentItems = departments.data?.items ?? [];
+  const [tab, setTab] = useState<"day" | "needsRebooking">("day");
+  const [log, setLog] = useState<AgentLine[]>([]);
+  const [answer, setAnswer] = useState<string | null>(null);
+  const note = useCallback((text: string, kind: AgentLine["kind"] = "did") => {
+    setLog((prev) => logged(prev, text, kind));
+  }, []);
+
+  // `?? []` mints a NEW array on every render, and both of these are read by the agent's `ask`
+  // callback below — an unmemoised fallback would rebuild that callback on every keystroke.
+  const departmentItems = useMemo(() => departments.data?.items ?? [], [departments.data]);
   const doctorItems = doctors.data?.items ?? [];
-  const allDoctorItems = allDoctors.data?.items ?? [];
+  const allDoctorItems = useMemo(() => allDoctors.data?.items ?? [], [allDoctors.data]);
   const roomItems = rooms.data?.items ?? [];
 
+  /**
+   * WHAT THE AGENT CAN HONESTLY ANSWER, and it says which of those it used. Everything here is
+   * already on the screen — the filters, the master lists — so the answer is instant and true.
+   * There is no model call and no guess: an unrecognised question says so rather than inventing.
+   */
+  const ask = useCallback((question: string): void => {
+    const q = question.trim().toLowerCase();
+    if (q === "") return;
+    const doctorName = allDoctorItems.find((doc) => doc.id === doctorId)?.displayName ?? null;
+    if (q.includes("doctor") && doctorName !== null) {
+      setAnswer(`You are looking at ${doctorName}'s book for ${date}. — from the filters on this screen.`);
+    } else if (q.includes("department")) {
+      setAnswer(
+        departmentId === ""
+          ? "No department is picked, so the doctor list is empty. Pick one above. — from the filters on this screen."
+          : `${departmentItems.find((dep) => dep.id === departmentId)?.name ?? "That department"} has ${String(doctorItems.length)} doctor(s) on file. — from the doctor master.`,
+      );
+    } else if (q.includes("today") || q.includes("date")) {
+      setAnswer(`This book is showing ${date}; today is ${todayIst()}. Check-in is only offered on today's bookings. — from the filters and the K42 rule.`);
+    } else {
+      setAnswer("I answer from what is on this screen — the department and doctor you have picked, the date, and the doctor master. I cannot look anything else up.");
+    }
+  }, [allDoctorItems, doctorId, date, departmentId, departmentItems, doctorItems.length]);
+
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-23 — THE APPOINTMENT BOOK, IN THE COUNTER'S LANGUAGE
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Owner ruling 2026-09-04: *"redesign /opd/appointments and /patients/ screens aligned to /counter
+   * UI and UX. Remember to add AI agent/Co-pilot into it as well."*
+   *
+   * This screen was the last of the shadcn/neutral front-desk surfaces — the look the owner has now
+   * ruled against twice ("all five defects were the SCREEN, not the server"). A clerk moving between
+   * `/counter` and here was looking at two products.
+   *
+   * IT WEARS `.pp`, NOT `.d1`. Desk One is `position: fixed; inset: 0` and deliberately covers the
+   * application chrome; this screen lives INSIDE the shell and keeps its topbar. `.pp` carries the
+   * same primitives from the same file, so the marigold cannot come to mean two different things.
+   *
+   * EVERY TESTID AND EVERY HANDLER IS UNCHANGED. Twenty-one tests across this screen and the patient
+   * record pin what these screens DO, and a redesign that quietly changed behaviour would be the
+   * worst outcome — so they were kept green throughout rather than rewritten alongside.
+   */
   return (
-    <div className="space-y-4 p-6">
-      <h1 className="text-xl font-semibold">{t("opdAppt.title")}</h1>
-      <FormProvider {...filters}>
-        <div className="flex flex-wrap items-end gap-3">
-          <SelectField
-            name="departmentId"
-            label={t("opd.labels.department")}
-            className="max-w-xs"
-            options={[{ value: "", label: t("opdAppt.pickDepartment") }, ...departmentItems.map((d) => ({ value: d.id, label: d.name }))]}
-          />
-          <SelectField
-            name="doctorId"
-            label={t("opd.labels.doctor")}
-            className="max-w-xs"
-            options={[{ value: "", label: t("opdAppt.pickDoctor") }, ...doctorItems.map((d) => ({ value: d.id, label: d.displayName }))]}
-          />
-          <TextField name="date" label={t("opd.labels.date")} type="date" className="max-w-[10rem]" />
+    <div className="pp" style={{ display: "flex", flexDirection: "column", minHeight: "calc(100vh - 96px)" }}>
+      <div style={{ flexGrow: 1, padding: "20px 24px" }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 11 }}>
+          <span style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-.01em" }}>{t("opdAppt.title")}</span>
+          <span style={{ fontSize: 12, color: "var(--dim)" }}>
+            a booking is a promise about a time — the board only shows times that exist
+          </span>
         </div>
-      </FormProvider>
-      <Tabs defaultValue="day">
-        <TabsList>
-          <TabsTrigger value="day">{t("opdAppt.tabs.day")}</TabsTrigger>
-          <TabsTrigger value="needsRebooking">{t("opdAppt.tabs.needsRebooking")}</TabsTrigger>
-        </TabsList>
-        <TabsContent value="day">
-          <DayTab
-            departmentId={departmentId} doctorId={doctorId} date={date}
-            departments={departmentItems} doctors={doctorItems} rooms={roomItems} queryClient={queryClient}
-          />
-        </TabsContent>
-        <TabsContent value="needsRebooking">
-          <NeedsRebookingTab allDoctors={allDoctorItems} queryClient={queryClient} />
-        </TabsContent>
-      </Tabs>
+
+        <FormProvider {...filters}>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 11, marginTop: 15 }}>
+            <div style={{ width: 220 }}>
+              {/*
+                A REAL <label htmlFor>, not a styled div. The counter's `.tag` is a visual class and
+                carries no association; three tests find these fields by their label and so does a
+                screen reader, so the redesign keeps the semantics and only changes the paint.
+              */}
+              <label className="tag" htmlFor="filter-department" style={{ display: "block", marginBottom: 5 }}>
+                {t("opd.labels.department")}
+              </label>
+              <select
+                id="filter-department"
+                className="in"
+                data-testid="filter-department"
+                value={departmentId}
+                onChange={(e) => { setValue("departmentId", e.target.value); }}
+              >
+                <option value="">{t("opdAppt.pickDepartment")}</option>
+                {departmentItems.map((dep) => <option key={dep.id} value={dep.id}>{dep.code} · {dep.name}</option>)}
+              </select>
+            </div>
+            <div style={{ width: 240 }}>
+              <label className="tag" htmlFor="filter-doctor" style={{ display: "block", marginBottom: 5 }}>
+                {t("opd.labels.doctor")}
+              </label>
+              <select
+                id="filter-doctor"
+                className="in"
+                data-testid="filter-doctor"
+                value={doctorId}
+                onChange={(e) => { setValue("doctorId", e.target.value); }}
+              >
+                <option value="">{t("opdAppt.pickDoctor")}</option>
+                {doctorItems.map((doc) => <option key={doc.id} value={doc.id}>{doc.displayName}</option>)}
+              </select>
+            </div>
+            <div style={{ width: 170 }}>
+              <label className="tag" htmlFor="filter-date" style={{ display: "block", marginBottom: 5 }}>
+                {t("opd.labels.date")}
+              </label>
+              <input
+                id="filter-date"
+                className="in mo"
+                type="date"
+                data-testid="filter-date"
+                value={date}
+                onChange={(e) => { setValue("date", e.target.value); }}
+              />
+            </div>
+          </div>
+        </FormProvider>
+
+        {/* Pill tabs, the counter's own idiom — not a shadcn TabsList with a grey underline. */}
+        {/*
+          PAINT CHANGED, SEMANTICS DID NOT. A pill is a look; `role="tab"` is what a screen reader
+          and a keyboard user navigate by, and dropping it while restyling would have been a real
+          regression that only the tests noticed.
+        */}
+        <div role="tablist" style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 18 }}>
+          {([["day", t("opdAppt.tabs.day")], ["needsRebooking", t("opdAppt.tabs.needsRebooking")]] as const).map(([key, label]) => (
+            <button
+              key={key}
+              role="tab"
+              aria-selected={tab === key}
+              data-testid={`tab-${key}`}
+              className={tab === key ? "pill on" : "pill"}
+              style={{ height: 27 }}
+              onClick={() => { setTab(key); }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ marginTop: 16 }}>
+          {tab === "day" ? (
+            <DayTab
+              departmentId={departmentId} doctorId={doctorId} date={date}
+              departments={departmentItems} doctors={doctorItems} rooms={roomItems} queryClient={queryClient}
+              onNote={note}
+            />
+          ) : (
+            <NeedsRebookingTab allDoctors={allDoctorItems} queryClient={queryClient} onNote={note} />
+          )}
+        </div>
+      </div>
+
+      {/*
+        THE AGENT, along the bottom exactly as it is on the counter. No model behind it — it answers
+        from what is already on this screen and names the source, which is the only honest answer a
+        clerk with a queue can be given in under a second.
+      */}
+      <AgentDock
+        answer={answer}
+        log={log}
+        onAsk={ask}
+        placeholder={t("opdAppt.askPlaceholder")}
+        idle={t("opdAppt.agentIdle")}
+      />
     </div>
   );
 }

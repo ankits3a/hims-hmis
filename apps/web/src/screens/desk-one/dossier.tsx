@@ -1,0 +1,442 @@
+import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
+import { patientTimeline } from "../../lib/opd-api";
+import { dayMonthIst } from "../../lib/format";
+import { ageOf, initialsOf, rs, sexLetter, STEPS, stepIndex, tokenLabel, tokenStateOf } from "./model";
+import { useDesk } from "./session";
+import { PhotoPanel } from "./photo";
+
+/**
+ * ═══ THE DOSSIER — §3: "the left column IS the patient session" ═══
+ *
+ * *"Identity, flow steps, benefit chips, token, and a live bill that reprices from the first
+ * second. It empties only on Esc; that is why nothing is ever lost between pages."*
+ *
+ * The whole diagnosis FD-2 wrote down is answered by this column existing: the shipped counter lost
+ * the patient's context three times per patient because the identity lived on the screen that found
+ * it. Here it lives beside every stage, so the appointment stage never asks who this is and the
+ * bill stage never asks again either.
+ *
+ * ═══ THE BILL IS A COLUMN AND NOT A STAGE, AND THAT IS THE POINT OF PUTTING IT HERE ═══
+ *
+ * §3: *"pricing is not a stage, it is a column. Billing the stage only chooses the tender; the
+ * arithmetic happened as chips attached."* Every figure below is `billOf(quote)` — the server's own
+ * priced draft — so the number the clerk quotes across the counter and the number the invoice
+ * carries are read from the same source and cannot drift. Before a visit exists there is nothing to
+ * quote, and it says that rather than showing a guess.
+ */
+/**
+ * The patient's own OPD history, newest first. Deliberately shallow — five rows is the "have they
+ * been here, and when" question a counter asks; a scrolling clinical record is a different screen
+ * with a different permission.
+ */
+function History({ patientId }: { patientId: string }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const history = useQuery({
+    queryKey: ["d1", "timeline", patientId],
+    queryFn: () => patientTimeline(patientId),
+    staleTime: 60_000,
+    retry: false,
+  });
+  const items = (history.data?.items ?? []).slice(0, 5);
+
+  return (
+    <>
+      <div className="tag" style={{ marginTop: 20 }}>{t("registrationCounter.history.title")}</div>
+      {history.isPending ? (
+        <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 7 }}>{t("registrationCounter.history.reading")}</div>
+      ) : items.length === 0 ? (
+        /* A first visit is a FACT worth stating — it changes how the clerk talks to the person. */
+        <div data-testid="history-none" style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 7, lineHeight: "16px" }}>
+          {t("registrationCounter.history.first")}
+        </div>
+      ) : (
+        <div data-testid="history-list" style={{ marginTop: 7 }}>
+          {items.map((h) => (
+            <div
+              key={h.encounterId}
+              data-testid="history-row"
+              style={{ display: "flex", gap: 8, alignItems: "baseline", padding: "6px 0", borderBottom: "1px solid var(--line2)" }}
+            >
+              <span className="mo" style={{ fontSize: 10.5, color: "var(--dim)", width: 62, flexShrink: 0 }}>
+                {dayMonthIst(h.serviceDate)}
+              </span>
+              <span style={{ fontSize: 11.5, minWidth: 0, flexGrow: 1, lineHeight: "15px" }}>
+                {h.departmentName ?? t("registrationCounter.history.unknownDept")}
+                {h.doctorName === null ? "" : <span style={{ color: "var(--dim)" }}> · {h.doctorName.replace(/^Dr\.\s*/, "")}</span>}
+              </span>
+              <span
+                className="tag"
+                style={{ flexShrink: 0, color: h.status === "completed" ? "var(--green)" : h.status === "abandoned" ? "var(--gold)" : "var(--faint)" }}
+              >
+                {t(`registrationCounter.history.state.${h.status}`, { defaultValue: h.status })}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+export function Dossier(): React.ReactElement {
+  const d = useDesk();
+  const { s } = d;
+  const { t } = useTranslation();
+
+  /* ── nobody in hand: the day's figures and the keys ── */
+  if (s.person === null && !s.enrolling) {
+    return (
+      <div style={{ padding: "20px 18px" }}>
+        <div className="tag">nobody in hand</div>
+        <div style={{ marginTop: 8, fontSize: 12.5, color: "var(--dim)", lineHeight: "18px" }}>
+          Search or register — the person you pick lives in this column until <span className="kb">Esc</span>.
+        </div>
+
+        <div className="tag" style={{ marginTop: 26 }}>your day</div>
+        {d.dayStats.map((stat) => (
+          <div
+            key={stat.label}
+            style={{
+              display: "flex", justifyContent: "space-between", alignItems: "baseline",
+              padding: "9px 0", borderBottom: "1px solid var(--line2)",
+            }}
+          >
+            <span style={{ fontSize: 12, color: "var(--dim)" }}>{stat.label}</span>
+            <span className="mo" style={{ fontSize: 15, fontWeight: 600 }}>{stat.value}</span>
+          </div>
+        ))}
+
+        <div className="tag" style={{ marginTop: 26 }}>keys</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 9, fontSize: 11.5, color: "var(--dim)" }}>
+          <span><span className="kb">F8</span> command</span>
+          <span><span className="kb">F4</span> new patient</span>
+          <span><span className="kb">Q</span> all queues</span>
+          <span><span className="kb">1 2 3</span> tender at billing</span>
+          <span><span className="kb">F2</span> ask the desk agent</span>
+          <span><span className="kb">Esc</span> clear desk</span>
+        </div>
+      </div>
+    );
+  }
+
+  const p = s.person;
+  const step = stepIndex(s.stage);
+  const token = tokenStateOf(d.lane, s.visit, d.moneyTaken);
+  const memberships = (d.recognition?.memberships ?? []).filter((m) => m.usable);
+  const coupons = d.recognition?.coupons ?? [];
+  const freeReason = d.quote?.freeReason ?? null;
+  /** FD-20 — the department's code prefixes the token the patient is holding. */
+  const deptCode = d.departments.find((x) => x.id === s.visit?.departmentId)?.code ?? null;
+
+  return (
+    <div style={{ padding: "18px 18px 26px" }}>
+      {/* ── identity ── */}
+      {p === null ? (
+        <>
+          {/*
+            FD-21 — THE ENROLMENT BRANCH GETS THE SAME SQUARE, because otherwise a face captured
+            before the UHID exists had nowhere to appear: the panel below is capture-only now, and
+            the identity block it would have shown in belongs to a patient who does not exist yet.
+            A clerk who has just taken a photo must be able to see that it took.
+          */}
+          <div style={{ display: "flex", gap: 11, alignItems: "center" }}>
+            <div
+              data-testid="patient-avatar"
+              style={{
+                width: 44, height: 44, borderRadius: 6, background: "var(--wash)", border: "1px dashed var(--line)",
+                display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, color: "var(--faint)",
+                overflow: "hidden", flexShrink: 0, fontSize: 12,
+              }}
+            >
+              {s.photo === null
+                ? (s.form.name.trim() === "" ? "—" : initialsOf(s.form.name))
+                : <img data-testid="avatar-photo" src={s.photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div className="tag">registering…</div>
+              <div style={{ fontSize: 14, fontWeight: 600, marginTop: 3 }}>{s.form.name === "" ? "New walk-in" : s.form.name}</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 6 }}>no UHID yet — it is allocated when you register</div>
+        </>
+      ) : (
+        <>
+          <div style={{ display: "flex", gap: 11, alignItems: "center" }}>
+            {/*
+              ═══ FD-19 — THE FACE LIVES IN THE 44px SQUARE, NOT IN A PANEL OF ITS OWN ═══
+
+              Owner, 2026-09-04: *"there's no need to show the current size of the picture of the
+              patient in the left panel. Instead show the thumbnail size of the picture in square
+              shape that we have near Name … In case of unavailibity of the picture intials should
+              be show."*
+
+              Right, and the full-width preview was costing the column its most valuable space —
+              the rail holds the history, the account and the live bill, and a 250px portrait pushed
+              all three below the fold. The square was already there carrying initials; it becomes
+              the photo when there is one and keeps the initials when there is not, so the slot
+              never changes size and nothing below it moves as the picture loads.
+            */}
+            <div
+              data-testid="patient-avatar"
+              style={{
+                width: 44, height: 44, borderRadius: 6, background: "var(--wash)", border: "1px solid var(--line)",
+                display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, color: "var(--dim)",
+                overflow: "hidden", flexShrink: 0,
+              }}
+            >
+              {s.photo === null ? initialsOf(p.name) : (
+                <img
+                  data-testid="avatar-photo"
+                  src={s.photo}
+                  alt=""
+                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                />
+              )}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 600, lineHeight: "19px" }}>{p.name}</div>
+              <div className="mo" style={{ fontSize: 11, color: "var(--dim)" }}>
+                {ageOf(p.dob) === "" ? "" : `${ageOf(p.dob)} `}{sexLetter(p.gender)} · {p.uhid}
+              </div>
+            </div>
+          </div>
+          <div className="mo" style={{ fontSize: 11, color: "var(--dim)", marginTop: 9 }}>
+            {p.phone ?? "no mobile"}
+            {p.hasAddress ? null : <span style={{ color: "var(--gold)" }}> · no address</span>}
+            {p.justRegistered ? <span style={{ color: "var(--green)" }}> · first visit</span> : null}
+          </div>
+          <button className="pill" style={{ marginTop: 9 }} onClick={() => d.patch({ overlay: "edit" })}>
+            edit record — audited
+          </button>
+        </>
+      )}
+
+      {/*
+        ═══ FD-14 — THE FACE, BESIDE EVERY STAGE ═══
+
+        The counter's only defence against the wrong-patient error nothing else here can see: two
+        Asha Devis, one village, one shared family mobile, and no field that says which of them is
+        standing at the window. During enrolment it is held in the session and uploaded the moment a
+        UHID exists — `PUT /patients/:id/photo` needs a patient, and the patient does not exist yet
+        while the clerk is still typing their name.
+      */}
+      {/*
+        ═══ FD-24 / OWNER, 2026-09-04 — CAPTURE LIVES IN THE CORRECTION SHEET, NOT IN THE RAIL ═══
+
+        *"I am still seeing 'Camera' & 'Upload' button in the Desk One. These buttons have already
+        moved inside 'edit record — audited'."*
+
+        FD-21 moved the RETAKE of a photo already on file into the correction sheet and stopped
+        there, because `PhotoPanel` branches on whether a photo EXISTS:
+
+            dataUrl !== null ? (showExisting ? preview+Retake : null) : live ? video : Camera|Upload
+
+        The rail passes no `showExisting`, so the first branch renders nothing — that half worked.
+        The `dataUrl === null` branch was untouched, so any patient WITHOUT a photo still got Camera
+        and Upload in the rail. Half a move looks finished from the one screenshot that shows a
+        patient who has a photo.
+
+        WHY THIS IS NOT A BLANKET REMOVAL. "edit record — audited" only exists for a patient in hand:
+        during ENROLMENT there is no record to amend and no UHID yet, and the photo is held in the
+        session until `PUT /patients/:id/photo` has somebody to attach it to. So the capture row
+        stays for exactly that case and goes everywhere else.
+
+        `p === null` IS the enrolment case here, and not merely "no patient": the guard at the top of
+        this component already returns before this point unless there is a person OR `s.enrolling`.
+      */}
+      {p === null ? (
+        <PhotoPanel
+          dataUrl={s.photo}
+          caption={t("registrationCounter.photo.captionNew")}
+          onCapture={(dataUrl) => { d.setPhoto(dataUrl); }}
+          onClear={() => { d.setPhoto(null); }}
+        />
+      ) : null}
+
+      {/*
+        ═══ FD-14 — THE FLOW IS A STRIP, NOT A PARAGRAPH ═══
+
+        Owner, 2026-09-04: *"instead of showing texts 'Flow · F1 Register Appointment Bill' in the
+        left sidebar, show important info that would enhance the usability for the user."*
+
+        The owner is right about the text and the navigation is still worth keeping, so the words go
+        and the affordance stays. What was there listed three stage names down the column — the same
+        three the main pane is already showing, in a column whose whole justification is holding what
+        the main pane CANNOT. It also led with `flow · F1`, which is lane jargon a clerk never needs
+        to read: F1/F2/F3 name the hospital's counter flow, not anything this person does next.
+
+        Three dots and the current stage's name say where you are and where you can jump, in one
+        line instead of nine, and the space they gave back goes to the face and the money below.
+      */}
+      <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 18 }} data-testid="flow-strip">
+        {STEPS.map((entry, i) => (
+          <button
+            key={entry.stage}
+            data-testid={`flow-dot-${entry.stage}`}
+            title={entry.label}
+            aria-label={entry.label}
+            aria-current={i === step ? "step" : undefined}
+            /*
+              FD-15 — for a patient who ALREADY HAS A UHID, "register" is not a stage to go back to:
+              the enrolment form would start a second person. What the clerk means by clicking it is
+              "the details I typed", so it opens the correction sheet instead. That is the whole of
+              the owner's "mistyped age noticed at billing" case, reachable from the same dot on
+              every stage.
+            */
+            onClick={() => {
+              if (entry.stage === "register" && p !== null) { d.patch({ overlay: "edit" }); return; }
+              d.goto(entry.stage);
+            }}
+            style={{
+              height: 5, flexGrow: 1, borderRadius: 99, padding: 0, border: 0, cursor: "pointer",
+              background: i < step ? "var(--green)" : i === step ? "var(--ink)" : "var(--line)",
+            }}
+          />
+        ))}
+        <span className="tag" style={{ flexShrink: 0 }}>{STEPS[step]?.label ?? ""}</span>
+      </div>
+
+      {/*
+        ═══════════════════════════════════════════════════════════════════════════════════════════
+        FD-16 — THEIR HISTORY, which the artboard puts in this rail and the desk never showed
+        ═══════════════════════════════════════════════════════════════════════════════════════════
+
+        `GET /opd/patients/:id/timeline` has existed since 07a under `opd.visits.read` — the
+        permission `front_office` holds — and the route's own comment says why that is the right gate:
+        it returns "dates, departments, a diagnosis line and a count — the shape a clerk needs to
+        answer 'when was this patient last here'". No web client had ever called it. Fourth
+        server-side rail this lane has found built and unwired.
+
+        ═══ THE DIAGNOSIS LINE IS ON THE WIRE AND IS NOT DRAWN ═══
+
+        `diagnosis` and `icd10Code` come back with every row. This rail faces a counter queue, and a
+        diagnosis readable over the patient's shoulder is a disclosure no permission check can see —
+        07d drew exactly this line when it put prescriptions and vitals behind `opd.consult` instead
+        of `opd.visits.read`. So the rail says WHEN, WHERE and HOW IT ENDED, which is what a booking
+        decision actually needs, and the clinical detail stays on the clinical screens.
+      */}
+      {p === null ? null : <History patientId={p.id} />}
+
+      {/* ── benefits & links, as the SERVER recognises them ── */}
+      <div className="tag" style={{ marginTop: 20 }}>benefits & links</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+        {freeReason !== null ? (
+          <span className="pill on">✓ review free till {freeReason.windowEndsOn}</span>
+        ) : null}
+        {memberships.map((m) => (
+          <span key={m.instanceId} className="pill on" title={m.benefits.map((b) => b.title).join(", ")}>
+            ✓ {m.planTitle}
+          </span>
+        ))}
+        {s.coupons.map((code) => {
+          const known = coupons.find((c) => c.code === code);
+          const bad = known !== undefined && known.unusableReason !== null;
+          return (
+            <span key={code} className={bad ? "pill gd" : "pill on"} title={bad ? known.unusableReason ?? "" : "presented"}>
+              {bad ? "! " : "✓ "}{code}
+            </span>
+          );
+        })}
+        {s.attributionCode === "" ? null : <span className="pill on">✓ slip {s.attributionCode}</span>}
+        {s.future === null ? null : (
+          <span className="pill on">
+            ✓ future {new Date(s.future.slotStart).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+          </span>
+        )}
+        {freeReason === null && memberships.length === 0 && s.coupons.length === 0 && s.attributionCode === "" && s.future === null ? (
+          <span style={{ fontSize: 11.5, color: "var(--faint)" }}>none recognised — a card or coupon attaches at registration or billing</span>
+        ) : null}
+      </div>
+
+      {/* ── the token, in whichever of its three states this lane puts it ── */}
+      {token.kind === "none" ? null : (
+        <>
+          <div className="tag" style={{ marginTop: 20 }}>token</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+            {token.kind === "held" ? (
+              <>
+                <span className="mo" style={{ fontSize: 22, fontWeight: 700 }}>
+                  {token.position === null ? "held" : `#${String(token.position)}`}
+                </span>
+                <span style={{ fontSize: 11, color: "var(--faint)", lineHeight: "14px" }}>
+                  {token.position === null ? "no position until the bill settles" : "position taken · slip prints on payment"}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="mo" data-testid="token-label" style={{ fontSize: 22, fontWeight: 700 }}>{tokenLabel(deptCode, token.tokenNo)}</span>
+                <span className={token.paid ? "stamp pd" : "stamp un"}>{token.paid ? "PAID" : "UNPAID"}</span>
+              </>
+            )}
+          </div>
+          {s.visit?.joinError === null || s.visit === undefined ? null : (
+            <div style={{ fontSize: 11, color: "var(--red)", marginTop: 6 }}>{s.visit?.joinError}</div>
+          )}
+        </>
+      )}
+
+      {/*
+        ═══ FD-14 / the artboard's "On their account" ═══
+
+        What this person already owes, BEFORE the clerk quotes today's figure. It is the number that
+        changes what the counter says out loud, and it lived on a different screen entirely — a
+        clerk had to leave the patient to find it. Zero is rendered as a fact and not hidden: "nothing
+        carried forward" is information a clerk can act on, and a panel that vanished when it was
+        clear would make its own absence ambiguous.
+      */}
+      {p === null ? null : (
+        <>
+          <div className="tag" style={{ marginTop: 20 }}>{t("registrationCounter.account.title")}</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 8 }}>
+            <span className="mo" data-testid="account-outstanding" style={{
+              fontSize: 17, fontWeight: 700, color: d.duesPaise > 0 ? "var(--gold)" : "var(--dim)",
+            }}>
+              {rs(d.duesPaise)}
+            </span>
+            <span style={{ fontSize: 11, color: "var(--faint)" }}>{t("registrationCounter.account.outstanding")}</span>
+          </div>
+          <div style={{ fontSize: 10.5, color: "var(--faint)", lineHeight: "14px", marginTop: 4 }}>
+            {d.duesPaise > 0
+              ? t("registrationCounter.account.carried", { count: d.duesCount })
+              : t("registrationCounter.account.clear")}
+          </div>
+        </>
+      )}
+
+      {/* ── the live bill ── */}
+      <div className="tag" style={{ marginTop: 20 }}>bill · live</div>
+      <div style={{ marginTop: 8, borderTop: "1px solid var(--line2)" }}>
+        {d.bill.lines.map((line, i) => (
+          <div
+            key={`${line.label}-${String(i)}`}
+            style={{
+              display: "flex", justifyContent: "space-between", gap: 8, padding: "7px 0",
+              borderBottom: "1px solid var(--line2)", fontSize: 11.5, lineHeight: "15px",
+            }}
+          >
+            <span style={{ color: line.credit ? "var(--green)" : "var(--ink)" }}>{line.label}</span>
+            <span className="mo" style={{ fontWeight: 600, flexShrink: 0, color: line.credit ? "var(--green)" : "var(--ink)" }}>
+              {line.paise < 0 ? "−" : ""}{rs(Math.abs(line.paise))}
+            </span>
+          </div>
+        ))}
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "9px 0" }}>
+          <span style={{ fontSize: 12.5, fontWeight: 700 }}>{d.moneyTaken ? "collected" : "to collect"}</span>
+          <span className="mo" style={{ fontSize: 17, fontWeight: 700, color: d.moneyTaken ? "var(--green)" : undefined }}>
+            {rs(d.bill.totalPaise)}
+          </span>
+        </div>
+        <div style={{ fontSize: 10.5, color: "var(--faint)", lineHeight: "14px" }}>
+          {s.visit === null
+            ? "priced against the visit — assign a department and this fills in"
+            : "the pricing engine decided every line; this desk does no arithmetic"}
+        </div>
+      </div>
+
+      <button className="sec" style={{ width: "100%", marginTop: 20, justifyContent: "center" }} onClick={d.clearDesk}>
+        clear desk <span className="kb">Esc</span>
+      </button>
+    </div>
+  );
+}

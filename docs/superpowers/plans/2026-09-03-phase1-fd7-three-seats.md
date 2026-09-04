@@ -414,3 +414,104 @@ identity, and the priced lines already name the winning benefit.
 `delta` back to `-1`, the count lane treated as money, the zero guard removed, the count lane capped)
 and 5 on the cashier (codes off the preview, codes off the invoice, blanks sent as empty, the two
 units merged into one sentence, the panel always shown).
+
+## 12. T9 — the partner slip gets a home · **migration 0059**
+
+**R4's other half, and three corrections to how this doc described the problem.** T3 and T6 both
+deferred the capture saying "no route binds a slip code to a patient". That was wrong:
+`attribution_ids.patient_id` is populated by `issueAttribution` at ISSUE time and RC-2's review
+MAJOR 5 already compares it. The real gap is narrower and more interesting — **`attributionCode` was
+a per-request parameter with no durable home**. `charge-rules.ts` said in its own comment that "the
+clerk attaches the slip during registration, long before billing is opened", and there was no column
+anywhere to attach it TO. The slip died between the desk and the cashier unless it was re-typed off
+paper that had by then been put away.
+
+**Where it is captured, and why not on `/registration`.** The owner ruled "at registration, editable
+at billing". Their OTHER ruling — registration ends at the UHID — moved the earliest moment a visit
+exists to the walk-in. A slip is one per VISIT (V6), so the capture sits on `/appointment`, one screen
+later, which is still the desk and still while the patient is holding the paper. **If the owner wants
+the field on the registration form itself, it needs a home on the PATIENT, and that is a different
+decision about what a slip belongs to.**
+
+**Stored unvalidated, on purpose.** Billing owns the check that a code binds to this patient
+(RC-2 MAJOR 5); duplicating it at the desk would put one money rule in two places and stall a counter
+on a typo. The desk records what the paper says; the money decides what it is worth.
+
+**The pre-fill is not a nicety, it is the correctness half.** With the quote falling back to the
+stored code, a billing screen with a blank slip field would show a price a stored slip had already
+discounted and then issue an invoice carrying no code — the RC-2 quote/invoice disagreement arriving
+from the opposite direction. `FeeQuote` therefore RETURNS `attributionCode` on **both branches**
+(a free review visit still carries the partner's slip — the accrual hangs off the slip, not off
+whether this visit was charged for), and the cashier's field seeds from it once per encounter. Any
+edit, **including clearing it**, is then an explicit act that travels.
+
+**Mutants at T9: 12, and two of them mattered.** The first draft's six left `no_fallback` and
+`opts_ignored` ALIVE — every assertion read the reported field and none read the MONEY, so a stored
+slip that showed up in a response and changed no price would have passed. Fixing that needed a real
+partner fixture (counterparty + agreement + issued slip, and `new PartnersModule()` to arm the
+benefit-source provider, without which a referral silently prices as no discount). `free_branch`
+survived a later round for the same reason and got its own row. **One guard is recorded as UNTESTED**:
+the "do not re-seed the SAME encounter" half of the pre-fill, because the suite cannot make the quote
+refetch. The encounter KEY is tested; the refetch guard is documented in the code rather than counted.
+
+## 13. CLOSE REVIEW — pass 1 (author's own; NOT the two fresh passes §8 asks for)
+
+**Stated plainly: this is a self-review.** §8 calls for two passes by fresh readers, and this project's
+own record says a pass by the author is the weaker instrument. It was pointed where the CRITICALs have
+actually been found in this codebase — **the assembly and the seams between tasks**, not the components.
+
+### CRITICAL — the value lane did not discount at all (T6)
+
+**A balance is not a cap, and the difference cost the patient the whole benefit.**
+
+T6 implemented R3's value draw-down by narrowing the benefit term's `capPaise` to the counter's
+remaining balance. `benefitCandidate` **REJECTS an over-cap ask rather than clamping it** — a
+deliberate, documented rule (B4/K3), because a cap is a *control* and clamping would turn every
+misconfigured coupon into a quiet payout at its cap.
+
+So a package with ₹40 left against a ₹100 benefit produced **no discount at all**: the patient paid in
+full and their balance sat unused. Proved before it was claimed — expected 46 000p, received 50 000p.
+
+**Why a green suite shipped it: every T6 test asserted the narrowed CAP and none asserted the MONEY.**
+That is the identical weakness T9's mutants had caught two tasks earlier (`no_fallback` and
+`opts_ignored` survived for exactly the same reason) — and it was not generalised. It should have been.
+
+**The fix** clamps the benefit's **value**, not its cap: a term whose ask exceeds the balance becomes a
+`flat_paise` term worth exactly the balance, which the engine applies instead of refusing, and still
+clamps to the line's own gross. It runs where the bill's gross is known, because "does the ask exceed
+the balance" is unanswerable for a percentage before the bill has been priced once. The plan's own cap
+still binds. **5 mutants, all dead**, including `cap_as_value` (the original defect) and `not_wired`
+(proving the clamp is reached from the invoice path). The test that asserted the defect is rewritten.
+
+**Not fixed, because it is neither new nor this lane's:** a multi-line bill can have one benefit win on
+several lines and together ask for more than the counter holds; `consumeEntitlements` then refuses the
+invoice. **The count lane has behaved exactly this way since Plan 09** — it is a property of a per-line
+benefit sharing one counter, and it fails safe (a loud refusal, never an over-draw).
+
+### MINOR — a button advertising a key that does nothing (T7)
+
+`search.newPatient` read **"New patient (F2)"**. T7 unbound `F2` (reserved for the agent) and moved the
+chord to `F4`, and this label survived — advertising a keystroke that does nothing, which is the exact
+mistake T7's own reasoning argues against. Fixed in both locales and in the test that asserted it.
+`registration-screen.tsx`'s three "F2 press" comments were stale for the same reason and now read F4.
+
+### Seams checked and found sound
+
+- **T7 → T3**: `F4` navigates to `/registration?new=true` and the renamed screen still consumes it.
+- **T6 → `/billing`**: `balances` absent (older server, or an errored preview) is guarded by `?? []`.
+- **T8 → `desk-provider`**: the "session not opened" alert now correctly stops nagging about a doctor
+  on leave — a beneficial consequence of `scheduledToday` becoming leave-aware.
+- **T9 → T6**: the slip pre-fill and the coupon field share one preview key, so quote and invoice
+  cannot disagree.
+
+### Flagged, NOT fixed — pre-existing and outside this phase
+
+`opdDesk.shortcuts` advertises *"Alt+N call next · Alt+K skip · Alt+S start / issue · Alt+Enter
+complete"* and `opd-desk.tsx` binds **no keyboard handler at all**. Four advertised chords, none bound.
+That predates FD-7 and belongs to whoever owns that screen; it is recorded here so it is not lost.
+
+### What a fresh pass should still be pointed at
+
+The assembly of `/appointment` → walk-in → `/billing` end to end against a real database, and the
+multi-line entitlement refusal above — both are places where a component-level green suite has already
+been shown, twice in this phase, not to mean the screen works.

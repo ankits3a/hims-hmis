@@ -4,6 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>HMIS</title>
+    <!--
+      Desk One's type system (screens/desk-one/desk-one.css §2): IBM Plex Sans for everything human,
+      IBM Plex Mono for what a clerk compares digit by digit, IBM Plex Sans Devanagari for the
+      sentence the clerk says out loud.
+
+      FD-23 CLOSE REVIEW — THESE ARE SERVED BY THIS HOSPITAL, and the @font-face blocks now live in
+      `src/styles/plex.css` (imported by `main.tsx`) rather than behind a render-blocking
+      `<link>` to fonts.googleapis.com. A hospital LAN that cannot resolve Google would otherwise
+      have stalled first paint on the login page and the counter until the request timed out, and
+      every page load leaked this hospital's IP and referrer to a third party from a system holding
+      patient data. `display: swap` still applies and the CSS fallback stacks are still real.
+    -->
   </head>
   <body>
     <div id="root"></div>

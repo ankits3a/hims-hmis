@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  bigserial, boolean, date, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex,
+  bigserial, boolean, date, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, primaryKey,
 } from "drizzle-orm/pg-core";
 import { patients } from "./patients";
 import { resources } from "./resources";
@@ -179,6 +179,40 @@ export const opdAppointments = pgTable(
 );
 
 /** One row per doctor per IST day: the token counter, the call counter, in/out status, the room. */
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-20 — THE TOKEN SERIES IS THE DEPARTMENT'S, NOT THE DOCTOR'S
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner, 2026-09-04: *"the token number should be not according to the doctor but Department. For
+ * Example it should be 'MED - 4', 'PED - 290'."*
+ *
+ * This is what `opd_departments.code` was always for — its own comment has said "e.g. 'MED', 'PED'
+ * — printed on token slips" since it was written, and nothing printed them.
+ *
+ * ═══ WHY A TABLE AND NOT `opd_queue_sessions.next_token` ═══
+ *
+ * A session is a DOCTOR-DAY, so its counter restarts per doctor: three doctors sitting in Medicine
+ * all issued a token 1, and the hall heard "number 4" called three times for three different
+ * people. The counter has to live where the series does — one per department per day — and the
+ * allocation is the same UPDATE … RETURNING pattern `allocateToken` already used, moved one level
+ * out. `next_token` stays on the session: existing rows keep meaning what they meant, and nothing
+ * reads it after this change.
+ *
+ * DAY-SCOPED, so Monday starts at 1 again. `service_date` is the IST calendar day the rest of this
+ * schema already keys visits by, not a timestamp.
+ */
+export const opdDepartmentTokens = pgTable(
+  "opd_department_tokens",
+  {
+    departmentId: text("department_id").notNull().references(() => opdDepartments.id),
+    serviceDate: date("service_date", { mode: "string" }).notNull(),
+    /** Allocated by INSERT … ON CONFLICT DO UPDATE SET next_token = next_token + 1 RETURNING. */
+    nextToken: integer("next_token").notNull().default(1),
+  },
+  (t) => [primaryKey({ columns: [t.departmentId, t.serviceDate] })],
+);
+
 export const opdQueueSessions = pgTable(
   "opd_queue_sessions",
   {
@@ -247,6 +281,21 @@ export const opdEncounters = pgTable(
     intendedPayer: text("intended_payer").notNull().default("self"), // 'self' | 'tpa' | 'pmjay' | 'corporate' (§6)
     referralSource: text("referral_source"), // 'self' | 'internal_doctor' | 'external_rmp' | 'camp' | 'other' — attribution capture (§6); Plan 09 uses it
     referrerName: text("referrer_name"),
+    /**
+     * ═══ FD-7 T9 / OWNER RULING R4 — THE CHANNEL-PARTNER SLIP, GIVEN A HOME ═══
+     *
+     * `attributionCode` was a per-request parameter and nothing else — handed to `feeQuote` and to
+     * `issueInvoice` on every call and stored nowhere in between. `charge-rules.ts` says in its own
+     * comment that "the clerk attaches the slip during registration, long before billing is opened",
+     * and there was no column for it to be attached TO, so the cashier had to re-type it or lose it.
+     *
+     * ON THE ENCOUNTER rather than the patient, because a slip is ONE PER VISIT (V6). It is the CODE
+     * as presented, not a foreign key: `attribution_ids` is the partner's own issue book, the code
+     * may be typed before anyone has looked it up, and billing is the surface that validates the
+     * code binds to this patient (RC-2 review MAJOR 5). Storing an unvalidated string here and
+     * validating it where the money is decided keeps the desk fast and the guard in one place.
+     */
+    attributionCode: text("attribution_code"),
     // Consultation record (T7) — nullable until the doctor writes it.
     chiefComplaint: text("chief_complaint"),
     diagnosis: text("diagnosis"),

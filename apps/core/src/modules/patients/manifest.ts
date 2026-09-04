@@ -5,7 +5,20 @@ import { patientsDeskProvider } from "./desk-provider";
 export const patientsManifest: ModuleManifest = {
   key: "patients",
   title: "Patient Master & Registration",
-  menu: [{ label: "Registration", path: "/registration", permission: "patients.register" }],
+  /**
+   * FD-9 — `/registration` IS DELETED AND THIS MENU IS EMPTY, WHICH IS THE HONEST STATE.
+   *
+   * The owner's 03-Sep ruling merged the three front-desk routes into one screen, Desk One, at
+   * `/counter`. That path is declared by `opdManifest.menu` on `opd.visits.open` — the permission a
+   * desk needs to OPEN a visit — and a menu is a map of paths to permissions, so this module cannot
+   * declare the same path against `patients.register` without putting two different answers in the
+   * table `nav-parity.test.ts` compares. The registration screen it used to advertise no longer
+   * exists, so advertising anything here would be advertising a dead route.
+   *
+   * `patients.register` is unaffected: it is still declared below, still granted, and still what
+   * `POST /patients` guards on. What is gone is a nav row, not an ability.
+   */
+  menu: [],
   permissions: [
     "patients.register",
     "patients.read",

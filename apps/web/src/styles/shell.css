@@ -1,0 +1,104 @@
+/*
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * THE SHELL CHROME — THE LAST SCREEN IN THE APPLICATION STILL WEARING THE FIRST DESIGN
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner, 2026-09-04: *"The current topbar with menu is taken from the oldest design. It's looking
+ * pathetic."* They are right, and the reason is archaeological rather than aesthetic: every screen
+ * this lane has rebuilt — the sign-in, Desk One, the dashboard — moved to paper and pine, and the
+ * bar above them stayed on the shadcn defaults it was scaffolded with. A counter clerk was looking
+ * at two products stacked on top of each other.
+ *
+ * So this is the artboard's chrome (`Main.dc.html`), with the one thing the artboard does not have
+ * to carry: NAVIGATION. The artboard is a dashboard mock where the doors are the only way onward.
+ * The real application has twenty-odd screens behind permissions, and a person who holds the lab
+ * bench and the OT list needs a way to reach them that is not "know the URL". The nav therefore
+ * stays — but it becomes the quiet second line the artboard's type system would have given it,
+ * under an identity row that is the artboard's, not shadcn's.
+ *
+ * Tokens come from `paper-pine.css`, which `.shell` now opts into alongside `.d1`, `.lg` and
+ * `.dash`. No hex value is repeated here.
+ */
+
+.shell {
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  font: 13.5px/19px "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.shell *{ box-sizing: border-box; }
+.shell button { font: inherit; color: inherit; cursor: pointer; background: none; border: none; padding: 0; }
+.shell a { text-decoration: none; color: inherit; }
+.shell button:focus-visible, .shell a:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.shell .mo { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+
+/* ══════════ row one — who, and the tools that are not places ══════════ */
+
+.shell .top { display: flex; align-items: center; gap: 13px; padding: 9px 22px; }
+
+/* The mark. A diamond in mint is Desk One's, and this is the same product. */
+.shell .mark { width: 11px; height: 11px; border-radius: 2px; background: var(--green); transform: rotate(45deg); flex-shrink: 0; }
+.shell .brand { font-weight: 700; letter-spacing: .02em; font-size: 14px; }
+.shell .sep { color: var(--line); }
+.shell .who { font-weight: 600; }
+
+.shell .pill {
+  display: inline-flex; align-items: center; gap: 6px; height: 23px; padding: 0 9px; border-radius: 4px;
+  font-size: 10.5px; font-weight: 600; border: 1px solid var(--green-line); background: var(--green-soft);
+  color: var(--green); white-space: nowrap;
+}
+
+.shell .right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.shell .clock { font-size: 11.5px; color: var(--dim); white-space: nowrap; }
+
+/*
+ * The search button the artboard keeps openly in the header (owner ruling 31-Aug: "KEEP the Ctrl+K
+ * command button"). It opens the command palette, and it advertises F8 — not Ctrl+K, which Chrome
+ * answers first with its own address bar and which FD-9 measured as unbindable.
+ */
+.shell .find {
+  display: inline-flex; align-items: center; gap: 9px; height: 30px; padding: 0 11px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--card); font-size: 12px; color: var(--dim);
+}
+.shell .find:hover { border-color: var(--faint); }
+.shell .kb {
+  display: inline-flex; align-items: center; justify-content: center; height: 16px; min-width: 20px;
+  padding: 0 5px; border-radius: 3px; border: 1px solid var(--line); background: var(--wash);
+  font-family: "IBM Plex Mono", monospace; font-size: 9px; font-weight: 600; color: var(--dim); flex-shrink: 0;
+}
+
+/* The utilities. Quiet by construction — they are used once a shift, not once a patient. */
+.shell .util {
+  display: inline-flex; align-items: center; height: 28px; padding: 0 9px; border-radius: 5px;
+  font-size: 11.5px; font-weight: 500; color: var(--dim); border: 1px solid transparent;
+}
+.shell .util:hover { border-color: var(--line); color: var(--ink); }
+
+/* ══════════ row two — the places ══════════ */
+
+.shell .nav {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px;
+  padding: 0 22px 9px;
+}
+.shell .grp { display: flex; align-items: baseline; gap: 9px; }
+.shell .grp .tag {
+  font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9px; font-weight: 600;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--faint); flex-shrink: 0;
+}
+.shell .nav a { font-size: 12.5px; color: var(--dim); padding: 2px 0; border-bottom: 1px solid transparent; }
+.shell .nav a:hover { color: var(--green); border-bottom-color: var(--green-line); }
+/*
+ * WHERE YOU ARE, said once. The old bar said it nowhere, so a clerk on `/lab/verify` and a clerk on
+ * `/lab/bench` saw the same header — which is how somebody reports the wrong screen as broken.
+ */
+.shell .nav a.here { color: var(--green); font-weight: 600; border-bottom-color: var(--green); }
+
+.shell .none { font-size: 12px; color: var(--faint); }
+
+@media (max-width: 900px) {
+  .shell .top { padding: 8px 14px; gap: 10px; flex-wrap: wrap; }
+  .shell .nav { padding: 0 14px 8px; gap: 4px 12px; }
+  .shell .clock { display: none; }
+}

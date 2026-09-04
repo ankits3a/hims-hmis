@@ -59,6 +59,54 @@ const configSchema = z.object({
   // require a value or a new .env entry anywhere (server or CI).
   WORKER_NOTIFY_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
   NOTIFY_PROVIDER: notifyProviderSchema.default("console"),
+  /*
+   * FD-8 — the triage advisor's gateway. ALL OPTIONAL and unset by default: with no key the desk
+   * routes on its own keyword table and never makes a network call, which is the shipped behaviour
+   * and the one every existing test sees. `TRIAGE_API_KEY` is a SECRET and belongs in `.env`
+   * (gitignored) or the deploy environment — never in source, never in the browser bundle. The call
+   * is made server-side for exactly that reason.
+   *
+   * ═══ FD-11 — THE GATEWAY IS GROQ NOW, AND THE DEFAULT MODEL WAS A LANDMINE ═══
+   *
+   * The owner moved the router off Omniroute. Nothing in the code named it — the client has always
+   * been env-driven and OpenAI-shaped — EXCEPT this default, which was `auto/best-fast`: an
+   * Omniroute routing alias that exists on no other provider. Setting only the URL and the key
+   * would have left every call 404-ing, and the failure is SILENT by design: `suggestDepartments`
+   * falls back to the keyword table on any error, so the desk would have looked like it worked
+   * while the model was never once consulted. A default that is wrong everywhere except one vendor
+   * is worse than no default.
+   *
+   * `openai/gpt-oss-120b` is MEASURED, not chosen from the docs — and the docs would have been
+   * wrong: Groq's published production list leads with `llama-3.3-70b-versatile`, which this
+   * account does not offer at all (`GET /models` returns 14 models and no llama chat model).
+   *
+   * Scored on the real triage prompt over twelve Hinglish complaints against the hospital's own
+   * twelve departments, each case marked with the department a clerk would call correct:
+   *
+   *     groq   openai/gpt-oss-120b    12/12 top-1   median 620 ms   ← default
+   *     groq   openai/gpt-oss-20b     11/12 top-1   median 469 ms   ("gala kharab hai" -> Orthopaedics)
+   *     nvidia openai/gpt-oss-20b     11/12 top-1   median 6210 ms, p90 300 s
+   *     nvidia nemotron-70b-instruct   HTTP 404 — listed by /models, not served on the key
+   *
+   * The 20b was the first default and it is wrong about a sore throat, sending it to Orthopaedics
+   * instead of ENT. 150 ms is a cheap price for that, and with `triage-cache.ts` in front it is
+   * paid once per distinct complaint rather than once per patient.
+   *
+   * NVIDIA (build.nvidia.com) is FREE and cannot serve this path: same model, same answers, but a
+   * 6.2 s median and a 300 s p90 against a 6 s budget means it would time out into the keyword
+   * table more often than not. Its only honest use here is off the counter's critical path.
+   */
+  TRIAGE_BASE_URL: z.string().url().optional(),
+  TRIAGE_API_KEY: z.string().min(1).optional(),
+  TRIAGE_MODEL: z.string().min(1).default("openai/gpt-oss-120b"),
+  /*
+   * Omniroute measured 22-34 s and often over 40, which is what put this timeout here: a counter
+   * cannot wait, so the budget is short and a timeout is an ORDINARY outcome — the keyword table
+   * answers. Groq measured 478 ms median / 488 ms max on the same prompt, so 6 s is now ~12x the
+   * worst observed call rather than a guillotine. It stays at 6 s deliberately: the number exists
+   * for the bad network day, not for the good one.
+   */
+  TRIAGE_TIMEOUT_MS: z.coerce.number().int().positive().default(6000),
   NOTIFY_STUCK_AFTER_MS: z.coerce.number().int().positive().default(300000),
   // Plan 11a D6/D7 (retention). All three defaulted, same B1 scar as the block above: no .env
   // entry is required anywhere, on the server or in CI.
@@ -123,6 +171,26 @@ const configSchema = z.object({
   SPEECH_ACCOUNT_ID: z.string().default(""),
   SPEECH_API_TOKEN: z.string().default(""),
   /**
+   * ═══ FD-12 — THE ABDM (ABHA) GATEWAY SEAM ═══
+   *
+   * All three default to EMPTY and the ABHA creation/verification path is INERT unless all three
+   * are set — the same B1 discipline as the block above, and for the same reason: this schema is
+   * parsed through the whole environment by every caller of `loadConfig()`, so a key that demanded
+   * a value would break every deployment and every CI job at once. **CI must never contact ABDM.**
+   *
+   * WHAT IS AND IS NOT GATED BY THESE. Recording an ABHA number the patient reads off their phone
+   * needs no gateway and works today at `self_declared` — that is ordinary data capture and it is
+   * the common case at an Indian counter. What needs ABDM is CREATING an ABHA and VERIFYING one by
+   * OTP, because only the gateway can do either. The screen asks `GET /patients/abha/capability`
+   * and says plainly which of the two it is offering, rather than showing a button that fails.
+   *
+   * These are unset everywhere today: obtaining them is an ABDM registration the hospital must
+   * make (owner/procurement), not something this lane can decide.
+   */
+  ABDM_BASE_URL: z.string().default(""),
+  ABDM_CLIENT_ID: z.string().default(""),
+  ABDM_CLIENT_SECRET: z.string().default(""),
+  /**
    * PLAN 09 / DD14 — THE FIVE STRUCTURAL-OFF FLAGS. Every one DEFAULTED, every one a two-string
    * enum, and neither of those is a style choice.
    *
@@ -175,6 +243,8 @@ export type AppConfig = {
   workerDailyTickMs: number;
   workerNotifyIntervalMs: number;
   notifyProvider: NotifyProvider;
+  /** FD-8 — the triage advisor. `baseUrl`/`apiKey` null ⇒ the desk uses its own keyword table only. */
+  triage: { baseUrl: string | null; apiKey: string | null; model: string; timeoutMs: number };
   notifyStuckAfterMs: number;
   // Plan 11a D6/D7. `retentionEnabled` is FALSE unless an operator says otherwise, in as many
   // letters; `worker/jobs.ts` threads all three into `retentionSweep` through the registration,
@@ -191,6 +261,13 @@ export type AppConfig = {
   speechProvider: "" | "workers-ai";
   speechAccountId: string;
   speechApiToken: string;
+  /**
+   * FD-12 — the ABDM (ABHA) gateway. Shaped like `triage` above because it is the same kind of
+   * thing: an external provider whose absence is a NORMAL state, not a misconfiguration. All three
+   * null ⇒ the counter can still RECORD an ABHA the patient reads out, and cannot create or verify
+   * one. `modules/patients/abdm.ts` is the only reader.
+   */
+  abdm: { baseUrl: string | null; clientId: string | null; clientSecret: string | null };
   /**
    * Plan 09 / DD14. All five FALSE unless an operator says otherwise, in as many letters. Where
    * each one takes effect is its own task's business — `priceDraft` for benefits (T4), the accrual
@@ -222,6 +299,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     workerDailyTickMs: parsed.WORKER_DAILY_TICK_MS,
     workerNotifyIntervalMs: parsed.WORKER_NOTIFY_INTERVAL_MS,
     notifyProvider: parsed.NOTIFY_PROVIDER,
+    triage: {
+      baseUrl: parsed.TRIAGE_BASE_URL ?? null,
+      apiKey: parsed.TRIAGE_API_KEY ?? null,
+      model: parsed.TRIAGE_MODEL,
+      timeoutMs: parsed.TRIAGE_TIMEOUT_MS,
+    },
     notifyStuckAfterMs: parsed.NOTIFY_STUCK_AFTER_MS,
     retentionEnabled: parsed.RETENTION_ENABLED,
     retentionEventsMonths: parsed.RETENTION_EVENTS_MONTHS,
@@ -230,6 +313,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     workerLabSweepIntervalMs: parsed.WORKER_LAB_SWEEP_INTERVAL_MS,
     searchRateLimit: parsed.SEARCH_RATE_LIMIT,
     searchRateWindowSec: parsed.SEARCH_RATE_WINDOW_SEC,
+    abdm: {
+      baseUrl: parsed.ABDM_BASE_URL === "" ? null : parsed.ABDM_BASE_URL,
+      clientId: parsed.ABDM_CLIENT_ID === "" ? null : parsed.ABDM_CLIENT_ID,
+      clientSecret: parsed.ABDM_CLIENT_SECRET === "" ? null : parsed.ABDM_CLIENT_SECRET,
+    },
     speechProvider: parsed.SPEECH_PROVIDER,
     speechAccountId: parsed.SPEECH_ACCOUNT_ID,
     speechApiToken: parsed.SPEECH_API_TOKEN,

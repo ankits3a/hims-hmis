@@ -81,6 +81,36 @@ export const cashierSessionClosed = defineEvent(
   z.object({ sessionId: id, cashierUserId: id, variancePaise: paise }),
 );
 
+/**
+ * ═══ FD-11 — A MISTYPED COUNT IS RETRACTED IN THE OPEN, NEVER ERASED ═══
+ *
+ * The owner mistyped a closing count on the preview and found there was no way back: a count that
+ * does not match the till files a variance approval and parks the session in `closing`, the cashier
+ * cannot approve their own variance, and they cannot open a second drawer while that one is live.
+ * Correct as a control, and a trap in a hospital with one supervisor.
+ *
+ * `recountSession` is the way back, and this event is the price of it. The retracted figures and a
+ * mandatory reason are written to the log BEFORE the session reopens, so a correction is a thing
+ * that happened rather than a thing that un-happened. The count a cashier first wrote down is the
+ * one piece of evidence a re-count could otherwise destroy, and it is exactly the piece an audit
+ * wants: "counted 0, retracted, then counted 4,020" is a different story from "counted 4,020".
+ */
+export const cashierSessionRecounted = defineEvent(
+  "cashier_session.recounted",
+  MODULE,
+  z.object({
+    sessionId: id,
+    cashierUserId: id,
+    /** What the cashier had entered and is now withdrawing. */
+    retractedCountedPaise: nonNegPaise,
+    retractedExpectedPaise: nonNegPaise,
+    retractedVariancePaise: paise,
+    /** The approval filed against the retracted count, now inert. Null if the count matched. */
+    retractedApprovalId: z.string().nullable(),
+    reason: z.string().min(1),
+  }),
+);
+
 export const varianceFlagged = defineEvent(
   "variance.flagged",
   MODULE,
@@ -139,7 +169,7 @@ export const dayClosed = defineEvent(
 export const BILLING_EVENTS = [
   invoiceIssued, invoiceCreditExtended, receiptRecorded, paymentReceived, advanceReceived,
   allocationReversed, creditNoteIssued, refundVoucherIssued, paymentRefunded,
-  cashierSessionOpened, cashierSessionClosed, varianceFlagged,
+  cashierSessionOpened, cashierSessionClosed, cashierSessionRecounted, varianceFlagged,
   cashThresholdWarned, cashThresholdBlocked, tenderReconciled, tenderMismatched,
   degradedModeChanged, documentEnteredInError, chargeOrphanFlagged, dayClosed,
 ] as const;

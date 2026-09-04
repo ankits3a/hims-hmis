@@ -1,6 +1,6 @@
 import {
-  BadRequestException, Body, Controller, ConflictException, ForbiddenException, Get, HttpCode, Inject,
-  NotFoundException, Param, Patch, PayloadTooLargeException, Post, Put, Query,
+  BadRequestException, Body, Controller, ConflictException, ForbiddenException, Get, HttpCode,
+  HttpException, Inject, NotFoundException, Param, Patch, PayloadTooLargeException, Post, Put, Query,
 } from "@nestjs/common";
 import { z } from "zod";
 import type { Actor } from "@hmis/contracts";
@@ -12,6 +12,9 @@ import { WorkflowError } from "../../kernel/workflow/instances";
 import { withTx } from "../../kernel/db/client";
 import { PatientError } from "./uhid";
 import { getPatient, registerPatient, updatePatient } from "./registration";
+import { nearMatches } from "./duplicates";
+import { abhaCapability } from "./abdm";
+import type { AbhaCapability } from "./abdm";
 import { AMENDMENT_REASONS, IDENTITY_ASSURANCE, touchesIdentity, upgradeAssurance } from "./identity";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { searchPatients } from "./search";
@@ -47,6 +50,17 @@ const CONFLICT_CODES = new Set([
 function toHttp(e: unknown): never {
   if (e instanceof SodViolationError) throw new ForbiddenException(e.message);
   if (e instanceof PatientError) {
+    /**
+     * FD-8 — THE ONE CODE WHOSE WHOLE POINT IS ITS PAYLOAD.
+     *
+     * `duplicate_suspected` without its candidates is a dead end: the clerk is told "somebody
+     * matches" and given nothing to compare against the person in front of them. Every other
+     * `PatientError` is a message; this one is a question, so it travels as `{code, detail}` in the
+     * body — the shape `OpdError` has used since 07b, so a client reads both refusals the same way.
+     */
+    if (e.code === "duplicate_suspected") {
+      throw new HttpException({ statusCode: 409, message: e.message, code: e.code, detail: e.detail }, 409);
+    }
     if (NOT_FOUND_CODES.has(e.code)) throw new NotFoundException(e.message);
     if (FORBIDDEN_CODES.has(e.code)) throw new ForbiddenException(e.message);
     if (e.code === "photo_too_large") throw new PayloadTooLargeException(e.message);
@@ -81,7 +95,31 @@ const guardianBody = z.object({
   consentNote: z.string().optional(),
 });
 
+/**
+ * FD-12 — one entitlement the patient holds: PM-JAY, a retail policy, a TPA, an employer scheme.
+ * Only `kind` is required, because a clerk handed an Ayushman card and no paperwork must still be
+ * able to record that the card exists.
+ */
+const coverageBody = z.object({
+  kind: z.enum(["pmjay", "insurance", "tpa", "corporate", "cghs", "esic", "other"]),
+  payerName: z.string().max(200).optional(),
+  tpaName: z.string().max(200).optional(),
+  policyNumber: z.string().max(100).optional(),
+  cardNumber: z.string().max(100).optional(),
+  beneficiaryId: z.string().max(100).optional(),
+  employeeId: z.string().max(100).optional(),
+  planClass: z.string().max(100).optional(),
+  sumInsuredPaise: z.number().int().min(0).optional(),
+  validFrom: z.coerce.date().optional(),
+  validTo: z.coerce.date().optional(),
+  claimId: z.string().max(100).optional(),
+  verificationStatus: z.enum(["self_declared", "card_seen", "verified"]).optional(),
+  note: z.string().max(500).optional(),
+});
+
 const registerBody = z.object({
+  /** FD-8 / DD8 — the clerk saw the near-matches and is registering anyway. A warning, never a gate. */
+  acknowledgedDuplicates: z.boolean().optional(),
   name: z.string().min(1).max(200),
   phone: phoneField.optional(),
   altPhone: phoneField.optional(),
@@ -102,12 +140,40 @@ const registerBody = z.object({
   abhaVerificationStatus: z.enum(["none", "self_declared", "verified"]).optional(),
   legacyUhid: z.string().max(50).optional(),
   guardian: guardianBody.optional(),
+  /* ═══ FD-12 — the demographics a real Indian registration counter takes ═══ */
+  title: z.string().max(20).optional(),
+  fatherHusbandName: z.string().max(200).optional(),
+  maritalStatus: z.enum(["single", "married", "widowed", "divorced", "separated"]).optional(),
+  nationality: z.string().max(100).optional(),
+  nationalIdType: z.enum(["aadhaar", "pan", "voter_id", "passport", "driving_licence", "other"]).optional(),
+  /**
+   * WIDE ON THE WIRE, NARROW IN THE COLUMN — and that is deliberate rather than sloppy.
+   * `guardianBody` caps this at 4 and therefore 400s a clerk who types the whole card. That is the
+   * wrong answer for the patient's own document: the counter's habit is to type what is printed,
+   * and `normaliseIdTail` keeps the last four of whatever arrives. Rejecting the full number would
+   * teach clerks to hand-truncate, which is a worse way to reach the same column.
+   */
+  nationalIdMasked: z.string().max(30).optional(),
+  religion: z.string().max(100).optional(),
+  occupation: z.string().max(100).optional(),
+  monthlyIncomePaise: z.number().int().min(0).optional(),
+  referredBySource: z.enum(["self", "doctor", "hospital", "camp", "employer", "online", "partner", "other"]).optional(),
+  referredByName: z.string().max(200).optional(),
+  referredByPhone: phoneField.optional(),
+  referredBySpeciality: z.string().max(100).optional(),
+  coverages: z.array(coverageBody).max(10).optional(),
   // D9 (DPDP): opt-IN means the patient acted — default false, never pre-checked (T6).
   promotionalOptIn: z.boolean().default(false),
 });
 
 const patchBody = registerBody
-  .omit({ ageYears: true, guardian: true })
+  // FD-8 — `acknowledgedDuplicates` is a REGISTRATION-time judgement and must not leak into PATCH
+  // through `.partial()`: an update names an existing patient, so there is no duplicate to acknowledge.
+  // FD-12 — `coverages` leaves PATCH for the same reason `guardian` did: it is a LIST, and
+  // `.partial()` would give it replace-the-whole-set semantics on a route whose every other field
+  // means "change just this one". Editing an entitlement is add/amend/end, not overwrite, and it
+  // gets its own surface rather than a silently destructive corner of this one.
+  .omit({ ageYears: true, guardian: true, acknowledgedDuplicates: true, coverages: true })
   .partial()
   .extend({
     phone: phoneField.nullable().optional(),
@@ -222,6 +288,20 @@ export class PatientsController {
 
   // ——— literal-segment routes FIRST (Nest matches in declaration order) ———
 
+  /**
+   * FD-12 — WHAT THIS DESK CAN HONESTLY OFFER FOR ABHA, asked before the buttons are drawn.
+   *
+   * Declared above `@Get(":id")` because Nest matches in declaration order and `abha/capability`
+   * would otherwise be read as a patient id — the same trap the comment above this block exists
+   * for. Under `patients.register` and not `patients.read`: it answers a question only the person
+   * about to REGISTER somebody has, and it describes the hospital's own configuration.
+   */
+  @RequirePermission("patients.register", "hospital")
+  @Get("abha/capability")
+  abhaCapabilityRoute(): AbhaCapability {
+    return abhaCapability();
+  }
+
   @RequirePermission("patients.read", "hospital")
   @Get("search")
   async search(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ items: unknown[] }> {
@@ -296,12 +376,41 @@ export class PatientsController {
     }
   }
 
+  /**
+   * ═══ FD-8 — REGISTRATION ENDS AT THE UHID, SO THIS ROUTE IS NOW A COUNTER ACT ═══
+   *
+   * Desk One registers and seats as two stages: `enrol()` allocates the UHID and advances, and the
+   * appointment stage opens the visit afterwards. That makes THIS the route the front desk creates
+   * patients through — and it had no duplicate check at all, while `POST /opd/walk-in` (which used
+   * to be the counter's only way to create one) has had one since 07b.
+   *
+   * Without this, moving to the authorised flow would have silently DELETED the near-match warning
+   * FD-7 T1 had just made readable — a regression hiding inside a UX correction.
+   *
+   * DD8's rule is carried over exactly: a WARNING a human may override, never a gate. A real second
+   * Asha Devi on a shared family phone must still be registrable, and a system that refuses her
+   * teaches the desk to invent phone numbers, which is worse than the duplicate.
+   */
   @RequirePermission("patients.register", "hospital")
   @Post()
   async register(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     const b = parsed(registerBody, body);
     try {
-      return await withTx(this.db, (tx) => registerPatient(tx, actor, b));
+      if (b.acknowledgedDuplicates !== true) {
+        const candidates = await nearMatches(this.db, actor, b);
+        if (candidates.length > 0) {
+          throw new PatientError(
+            "duplicate_suspected",
+            `${String(candidates.length)} existing patient(s) closely match this registration`,
+            { candidates },
+          );
+        }
+      }
+      // `acknowledgedDuplicates` is the clerk's recorded judgement and is NOT a patient column, so
+      // it is dropped here rather than handed to `registerPatient`, whose input has no field for it.
+      const input = { ...b };
+      delete input.acknowledgedDuplicates;
+      return await withTx(this.db, (tx) => registerPatient(tx, actor, input));
     } catch (e) {
       toHttp(e);
     }

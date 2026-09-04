@@ -36,12 +36,23 @@ export type PatientErrorCode =
   | "assurance_not_increasing"
   | "evidence_required"
   | "confidential_write_denied"
-  | "deceased_write_denied";
+  | "deceased_write_denied"
+  /**
+   * FD-8 — registration now ENDS AT THE UHID, so `POST /patients` is a counter act and must carry
+   * the near-match warning the walk-in has always had. A WARNING a human may override, never a gate.
+   */
+  | "duplicate_suspected";
 
 export class PatientError extends Error {
   constructor(
     readonly code: PatientErrorCode,
     message?: string,
+    /**
+     * FD-8 — structured payload for the codes whose whole point is what they carry:
+     * `duplicate_suspected` is useless without its candidates. `OpdError` has had this since 07b;
+     * this is the same shape so a client reads both refusals the same way.
+     */
+    readonly detail?: unknown,
   ) {
     super(message ?? code);
     this.name = "PatientError";

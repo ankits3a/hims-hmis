@@ -1,17 +1,22 @@
-import { Body, Controller, Get, Headers, Inject, Param, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Headers, HttpCode, Inject, Param, Post, Query } from "@nestjs/common";
 import { asc, inArray } from "drizzle-orm";
 import { z } from "zod";
 import type { Actor } from "@hmis/contracts";
-import { DB } from "../../kernel/tokens";
+import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { opdQueueEntries } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { bookAppointment, cancelAppointment, checkInAppointment, listAppointments, rescheduleAppointment } from "./appointments";
-import { abandonVisit, counterState, getVisit, joinQueue, listVisits, openVisit, patientTimeline, reEnterVisit } from "./encounters";
+import { abandonVisit, counterState, getVisit, joinQueue, listVisits, openVisit, patientTimeline, reEnterVisit, reclassifyVisit,
+} from "./encounters";
 import { patientRxHistory, patientVitalsHistory } from "./history";
+import { listDepartments } from "./masters";
 import type { RxHistoryItem, VitalsHistoryItem } from "./history";
+import type { AppConfig } from "../../kernel/config";
 import { walkIn } from "./walk-in";
 import { continuityDoctorFor } from "./continuity";
+import { suggestDepartments } from "./triage";
+import type { TriageResult } from "./triage";
 import type { ContinuityAnchor } from "./continuity";
 import type { WalkInDeferredResult, WalkInInput, WalkInResult } from "./walk-in";
 import { OpdError } from "./errors";
@@ -38,6 +43,8 @@ const slotsQuery = z.object({ doctorId: z.string().min(1), date: z.string().max(
  * FD-7 T2 — both ids are REQUIRED. A continuity read without a department would be "list the places
  * this patient has been", which is the diagnosis-shaped read this route exists not to be.
  */
+const triageBody = z.object({ text: z.string().min(1).max(400) });
+
 const continuityQuery = z.object({
   patientId: z.string().min(1),
   departmentId: z.string().min(1),
@@ -67,6 +74,9 @@ const visitOpenBody = z.object({
   intendedPayer: z.enum(["self", "tpa", "pmjay", "corporate"]).optional(),
   referralSource: z.enum(["self", "internal_doctor", "external_rmp", "camp", "other"]).optional(),
   referrerName: z.string().max(200).optional(),
+  /** FD-7 T9 / R4 — the partner slip, captured where the patient hands it over. `.max(64)` matches
+   *  `issueInvoiceBody.attributionCode` exactly, so a code the desk accepts cannot be one billing refuses. */
+  attributionCode: z.string().min(1).max(64).optional(),
 });
 /**
  * PLAN 07b T6 — the walk-in body. It is `visitOpenBody` with the patient made a UNION rather than a
@@ -83,10 +93,16 @@ const walkInBody = z.object({
   intendedPayer: z.enum(["self", "tpa", "pmjay", "corporate"]).optional(),
   referralSource: z.enum(["self", "internal_doctor", "external_rmp", "camp", "other"]).optional(),
   referrerName: z.string().max(200).optional(),
+  /** FD-7 T9 / R4 — see `visitOpenBody`. The walk-in is where the front desk actually opens a visit. */
+  attributionCode: z.string().min(1).max(64).optional(),
   acknowledgedDuplicates: z.boolean().optional(),
   // RC-1 T3 / D4 — bill-first defers the QUEUE JOIN, never the doctor: the visit opens with its
   // assignment, the token arrives with POST /opd/visits/:id/join-queue after the money.
   join: z.enum(["queue", "defer"]).optional(),
+});
+const reclassifyBody = z.object({
+  visitType: z.enum(["new", "revisit", "renewal"]),
+  reason: z.string().min(1).max(400),
 });
 const visitsQuery = z.object({
   status: z.enum(["registered", "waiting", "in_consultation", "awaiting_results", "completed", "abandoned"]).optional(),
@@ -179,7 +195,10 @@ type VisitDetail = NonNullable<Awaited<ReturnType<typeof getVisit>>> & { patient
 
 @Controller("opd")
 export class OpdVisitsController {
-  constructor(@Inject(DB) private readonly db: Db) {}
+  constructor(
+    @Inject(DB) private readonly db: Db,
+    @Inject(CONFIG) private readonly config: AppConfig,
+  ) {}
 
   // ——— slots and appointments ———
 
@@ -199,6 +218,29 @@ export class OpdVisitsController {
    * because routing an arriving patient is a visit act; `opd.appointments.manage` is what the seat's
    * NAV row needs, and a clerk who may open a visit but not book one still has to route the walk-in.
    */
+  /**
+   * FD-8 — THE COMPLAINT, IN THE PATIENT'S OWN WORDS. Desk One's appointment stage asks "what brings
+   * them in?" and ranks the hospital's departments from the answer; this is the server side of that.
+   *
+   * On `opd.visits.open` — the front desk's own key — because routing an arriving patient is a visit
+   * act, and a clerk who may open a visit must be able to work out where to send them.
+   *
+   * The MODEL CALL IS SERVER-SIDE and that is not incidental: the gateway key must never reach a
+   * browser bundle, where every user of the hospital could read it.
+   */
+  @RequirePermission("opd.visits.open", "hospital")
+  @Post("triage")
+  @HttpCode(200) // a suggestion is an answer, not a created thing
+  async triage(@Body() body: unknown): Promise<TriageResult> {
+    const b = parsed(triageBody, body);
+    const departments = await listDepartments(this.db, { activeOnly: true });
+    return suggestDepartments(
+      b.text,
+      departments.map((d) => ({ id: d.id, name: d.name })),
+      this.config.triage,
+    );
+  }
+
   @RequirePermission("opd.visits.open", "hospital")
   @Get("continuity")
   async continuity(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ anchor: ContinuityAnchor | null }> {
@@ -372,6 +414,28 @@ export class OpdVisitsController {
     const b = parsed(reasonBody, body);
     try {
       return await abandonVisit(this.db, actor, id, b.reason);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * FD-18 — the owner's billing override, built as a CORRECTION rather than a discount.
+   *
+   * ON `opd.visits.open`, which is the counter's own permission — the seat that opens a visit is
+   * the seat that corrects what kind of visit it was, and the owner ruled the cashier acts alone
+   * (2026-09-04). A dedicated permission would be tidier and would also mean editing `seed-roles`,
+   * a file CLAUDE.md marks as shared and count-pinned; that is a coordination cost this correction
+   * does not justify while the audit event carries the whole control.
+   */
+  @RequirePermission("opd.visits.open", "hospital")
+  @Post("visits/:id/reclassify")
+  async reclassify(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown,
+  ): Promise<{ encounter: EncounterRow }> {
+    const b = parsed(reclassifyBody, body);
+    try {
+      return await reclassifyVisit(this.db, actor, id, { visitType: b.visitType, reason: b.reason });
     } catch (e) {
       toHttp(e);
     }

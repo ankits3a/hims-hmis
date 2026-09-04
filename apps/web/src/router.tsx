@@ -1,27 +1,28 @@
 import {
-  Link, Outlet, createRootRoute, createRoute, createRouter, redirect, useNavigate,
+  Link, Outlet, createRootRoute, createRoute, createRouter, redirect, useNavigate, useRouterState,
 } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getToken } from "./lib/api";
 import { useAuth } from "./lib/auth";
 import { KeyboardProvider, ShortcutLegend } from "./lib/keyboard";
-import { PaletteProvider } from "./components/command-palette";
+import { PaletteProvider, usePalette } from "./components/command-palette";
 import { switchLanguage } from "./lib/i18n";
 import { applyTheme, setTheme, storedTheme } from "./lib/theme";
+import { istClock, istDateLabel } from "./screens/desk-one/model";
 import i18next from "./lib/i18n";
 import { AlertsBell } from "./components/alerts-bell";
 import { ModeBanner } from "./components/mode-banner";
 import { LoginScreen } from "./screens/login";
+import "./styles/paper-pine.css";
+import "./styles/shell.css";
 import { PatientInHandProvider } from "./lib/patient-in-hand";
 import { PatientStrip } from "./components/patient-strip";
 import { Desk } from "./screens/desk";
 import { MyDay } from "./screens/my-day";
 import { StaffReports } from "./screens/staff-reports";
-import { RegistrationCounter } from "./screens/registration-counter";
+import { DeskOne } from "./screens/desk-one/desk-one";
 import { CounterFigures } from "./screens/counter-figures";
-import { RegistrationScreen } from "./screens/registration-screen";
-import { AppointmentSeat } from "./screens/appointment-seat";
 import { PatientDetail } from "./screens/patient-detail";
 import { MergeReview } from "./screens/merge-review";
 import { ApprovalsInbox } from "./screens/approvals-inbox";
@@ -98,13 +99,9 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   // links reading "Counter" and "Registration counter (new)" for one job is how the owner ended up
   // on the wrong one — a nav is a list of places, and a place should appear in it once.
   { to: "/counter", label: "nav.counterDesk", permission: "opd.visits.open", group: "desk" },
-  { to: "/registration", label: "nav.registration", permission: "patients.register", group: "patients" },
   { to: "/merge", label: "nav.merge", permission: "patients.merge", group: "patients" },
   { to: "/approvals", label: "nav.approvals", permission: "approvals.requests.read", group: "admin" },
   { to: "/opd/admin", label: "nav.opdAdmin", permission: "opd.masters.manage", group: "opd" },
-  // FD-7 T2 — the appointment seat, beside the counter in the `desk` group: it is front-desk work,
-  // not the supervisor's book. Path and permission match `opdManifest.menu` exactly (nav-parity).
-  { to: "/appointment", label: "nav.appointmentSeat", permission: "opd.appointments.manage", group: "desk" },
   { to: "/opd/appointments", label: "nav.opdAppointments", permission: "opd.appointments.read", group: "opd" },
   { to: "/opd/desk", label: "nav.opdDesk", permission: "opd.visits.open", group: "opd" },
   // FD-5 / owner ruling 2026-09-02 — ONE vitals row, and it is Bay One's. The old `/opd/vitals`
@@ -210,94 +207,189 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   { to: "/pharmacy/items", label: "nav.pharmacyItems", permission: "pharmacy.sale_items.manage", group: "stores" },
 ];
 
-function Shell(): React.ReactElement {
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * `fullViewport` — A ROUTE SAYS IT OWNS THE SCREEN, AND THE SHELL BELIEVES IT
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * FOUND BY LOOKING, NOT BY TESTING, 2026-09-03. Desk One's `.d1` is `position: fixed; inset: 0;
+ * z-index: 40` with an opaque background, and the application shell was still being RENDERED
+ * underneath it — header, sixteen nav links, the bell, language, theme and log out, all in normal
+ * flow at the top of the document and all covered by an opaque layer. `elementFromPoint()` at the
+ * "Counter" link's own centre returned the desk's cash-float pill.
+ *
+ * Covered is not gone. The measured consequences:
+ *
+ *   · A clerk who Tabs off the desk walks into eight links they cannot see, with the focus ring
+ *     drawn UNDER the opaque layer, so focus simply vanishes. There is no visible way back.
+ *   · A screen reader announces a `banner` and a `navigation` landmark on a screen whose entire
+ *     design is that it has no navigation — the desk IS the application while it is mounted.
+ *   · Those hidden links still advertised `Counter`, `Appointments` and `OPD desk`: the three-screen
+ *     front desk FD-9 deleted. The nav was offering doors that no longer exist.
+ *
+ * The fix is declarative rather than a pathname list in `Shell`, because a list drifts the moment
+ * somebody adds a second full-viewport screen and does not think to update it. The ROUTE says it
+ * owns the viewport and the shell reads that off the active matches — the two cannot disagree.
+ *
+ * Note this suppresses the chrome, it does not hide it: the header, `ModeBanner`, `PatientStrip`
+ * and `ShortcutLegend` are not in the DOM at all on such a route. Nothing a person could previously
+ * SEE is lost, because all four were already behind an opaque layer.
+ */
+declare module "@tanstack/react-router" {
+  interface StaticDataRouteOption {
+    /** The screen renders its own full-viewport chrome; the shell must render none of its own. */
+    fullViewport?: boolean;
+  }
+}
+
+/**
+ * The chrome, as its own component — because it calls `usePalette()` and `Shell` is the component
+ * that RENDERS `PaletteProvider`. A hook cannot read a context its own caller provides.
+ */
+function ShellChrome(): React.ReactElement {
   const { t } = useTranslation();
-  const { logout, can } = useAuth();
+  const { username, can, logout } = useAuth();
   const navigate = useNavigate();
+  const palette = usePalette();
+  const pathname = useRouterState({ select: (st) => st.location.pathname });
   /*
-   * PLAN 07c T7 — the dark theme, finally driven. It is applied on mount as well as on click,
-   * because the class lives on `<html>` and a full page load starts without it: without this effect
-   * a person who chose dark would get one white flash of the whole application on every reload.
+   * PLAN 07c T7 — the dark theme, applied on mount as well as on click, because the class lives on
+   * `<html>` and a full page load starts without it: without this a person who chose dark would get
+   * one white flash of the whole application on every reload.
    */
   const [theme, setThemeState] = useState(storedTheme);
   useEffect(() => { applyTheme(theme); }, [theme]);
+  /* The clock ticks in IST — a hospital clock in the browser's zone is a clock nobody can act on. */
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 20_000);
+    return () => clearInterval(id);
+  }, []);
+
+  /*
+  ═══ FD-11 — THE CHROME, REBUILT. Owner: "the current topbar with menu is taken from the
+  oldest design. It's looking pathetic." ═══
+
+  It was the last surface in the application still on the scaffolded shadcn defaults, while
+  every screen underneath it had moved to paper and pine — so a clerk was looking at two
+  products stacked on each other. This is the artboard's identity row, plus the one thing an
+  artboard does not have to carry: navigation to twenty-odd permissioned screens.
+
+  Row one is WHO and the tools that are not places. Row two is the places.
+
+  */
   return (
-    <PatientInHandProvider>
-      <PaletteProvider>
-      <KeyboardProvider>
+    <header className="shell no-print">
+      <div className="top">
+        {/*
+          PLAN 07c T4 — THE TITLE IS THE WAY HOME. `/` carries no permission and belongs to no
+          module, so it cannot live in `NAV` (every row there is a `path`+`permission` pair that
+          `nav-parity.test.ts` compares against a module manifest). The universal affordance for
+          "take me to the front page" is the product name in the corner, and it is now that.
+        */}
+        <Link to="/" className="brand" style={{ display: "flex", alignItems: "center", gap: 9 }}>
+          <span className="mark" />
+          {t("app.title")}
+        </Link>
+        {username === null ? null : (
+          <>
+            <span className="sep">|</span>
+            <span className="who">{username}</span>
+          </>
+        )}
+        <div className="right">
+          <span className="mo clock">{istDateLabel()} · {istClock()} IST</span>
+          {/*
+            The search button the owner ruled stays in the header. It advertises F8 and not
+            Ctrl+K: Chrome answers Ctrl+K with its own address bar first, which FD-9 measured.
+          */}
+          <button type="button" className="find" onClick={() => { palette.open(); }}>
+            <span>{t("app.search")}</span>
+            <span className="kb">F8</span>
+          </button>
+          <AlertsBell />
+          <button type="button" className="util" onClick={() => switchLanguage(i18next.language === "hi" ? "en" : "hi")}>
+            {t("app.language")}
+          </button>
+          <button
+            type="button"
+            className="util"
+            aria-label={t("app.theme")}
+            onClick={() => {
+              const next = theme === "dark" ? "light" : "dark";
+              setTheme(next);
+              setThemeState(next);
+            }}
+          >
+            {theme === "dark" ? t("app.themeLight") : t("app.themeDark")}
+          </button>
+          <button type="button" className="util" onClick={() => { void logout().then(() => navigate({ to: "/login" })); }}>
+            {t("app.logout")}
+          </button>
+        </div>
+      </div>
+
+      {/*
+        PLAN 11g / DD1 — `<Link>`, NOT `<a href>`. A raw anchor is a full browser page load; the
+        `/api/*` split is what fixed the dead links, and `<Link>` is the UX half. Delete every
+        one of these and the parity test that guards D1 still passes; restore the old edge
+        matcher and it fails. The two are deliberately independent.
+      */}
+      <nav className="nav">
+        {NAV_GROUPS.map((group) => {
+          const entries = NAV.filter((e) => e.group === group && can(e.permission));
+          if (entries.length === 0) return null;
+          return (
+            <span key={group} className="grp">
+              <span className="tag">{t(`nav.group.${group}`)}</span>
+              {entries.map((entry) => (
+                <Link
+                  key={entry.to}
+                  to={entry.to}
+                  className={pathname === entry.to ? "here" : undefined}
+                >
+                  {t(entry.label)}
+                </Link>
+              ))}
+            </span>
+          );
+        })}
+        {NAV.every((entry) => !can(entry.permission)) ? (
+          /*
+           * PLAN 11h T6 — AN EMPTY NAV IS A SENTENCE, NOT A BLANK BAR. A person whose role holds
+           * none of these was shown sixteen links and refused by every one. Showing nothing at
+           * all would be correct and unusable — they would report "the app is broken" rather
+           * than "my account has no access", and those go to different people.
+           */
+          <span className="none">{t("nav.noneAvailable")}</span>
+        ) : null}
+      </nav>
+    </header>
+  );
+}
+
+/*
+ * `Shell` is now the LAYOUT and nothing else: the providers, the chrome, the outlet, the legend.
+ * Everything that needs a hook — the palette, the clock, the theme toggle, who is signed in — moved
+ * into `ShellChrome`, which is the component that can actually read the contexts this one provides.
+ */
+function Shell(): React.ReactElement {
+  /*
+    Read off the ACTIVE MATCHES rather than the pathname, so a child route of a full-viewport screen
+    inherits the answer without anybody remembering to add it. `/counter/figures` is deliberately
+    NOT one — it is an ordinary screen and wants the ordinary chrome.
+  */
+  const fullViewport = useRouterState({
+    select: (s) => s.matches.some((m) => m.staticData.fullViewport === true),
+  });
+
+  /*
+    The chrome is built inside the ternary and not above it, so a route that owns the viewport never
+    even walks `NAV` to decide which links a person may see.
+  */
+  const body = fullViewport ? <Outlet /> : (
       <div className="flex min-h-screen flex-col">
-        <header className="no-print flex items-center gap-6 border-b px-4 py-2">
-          {/*
-            PLAN 07c T4 — THE TITLE IS THE WAY HOME. `/` carries no permission and belongs to no
-            module, so it cannot live in `NAV` (every row there is a `path`+`permission` pair that
-            `nav-parity.test.ts` compares against a module manifest). The universal affordance for
-            "take me to the front page" is the product name in the corner, and it is now that.
-          */}
-          <Link to="/" className="font-semibold hover:underline">{t("app.title")}</Link>
-          {/*
-            PLAN 11g / DD1 — `<Link>`, NOT `<a href>`, AND THIS IS THE UX HALF RATHER THAN THE FIX.
-            A raw anchor is a full browser page load. Before the `/api/*` split that meant every
-            one of these sixteen links went to the edge and came back as the API's JSON — 14 of
-            them dead, with no in-app escape hatch from Registration and Merge. The SPLIT is what
-            fixed that, and a raw anchor would be CORRECT again today: it would simply reload the
-            whole bundle on every click, all day, on a desk machine. `<Link>` is client-side
-            navigation. Delete every one of these and the parity test that guards D1 still passes;
-            restore the old edge matcher and it fails. The two are deliberately independent.
-          */}
-          <nav className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
-            {NAV_GROUPS.map((group) => {
-              const entries = NAV.filter((e) => e.group === group && can(e.permission));
-              if (entries.length === 0) return null;
-              return (
-                <span key={group} className="flex items-baseline gap-2">
-                  <span className="text-[10px] uppercase tracking-wider text-neutral-400">
-                    {t(`nav.group.${group}`)}
-                  </span>
-                  {entries.map((entry) => (
-                    <Link key={entry.to} to={entry.to} className="hover:underline">{t(entry.label)}</Link>
-                  ))}
-                </span>
-              );
-            })}
-            {NAV.every((entry) => !can(entry.permission)) ? (
-              /*
-               * PLAN 11h T6 — AN EMPTY NAV IS A SENTENCE, NOT A BLANK BAR.
-               *
-               * A person whose role holds none of these permissions is the "dark screens" case the
-               * smoke test found, seen from the other side: before this commit they were shown
-               * sixteen links and every one of them refused. Showing nothing at all would be
-               * correct and unusable — they would report "the app is broken" rather than "my
-               * account has no access", and those two go to different people.
-               */
-              <span className="text-neutral-500">{t("nav.noneAvailable")}</span>
-            ) : null}
-          </nav>
-          <div className="ml-auto flex items-center gap-3 text-sm">
-            <AlertsBell />
-            <button type="button" onClick={() => switchLanguage(i18next.language === "hi" ? "en" : "hi")}>
-              {t("app.language")}
-            </button>
-            <button
-              type="button"
-              aria-label={t("app.theme")}
-              onClick={() => {
-                const next = theme === "dark" ? "light" : "dark";
-                setTheme(next);
-                setThemeState(next);
-              }}
-            >
-              {theme === "dark" ? t("app.themeLight") : t("app.themeDark")}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                void logout().then(() => navigate({ to: "/login" }));
-              }}
-            >
-              {t("app.logout")}
-            </button>
-          </div>
-        </header>
+      <ShellChrome />
         <ModeBanner />
         {/*
           PLAN 07b T1 — the patient in hand, directly under the chrome and above every screen, so a
@@ -309,6 +401,19 @@ function Shell(): React.ReactElement {
         </div>
         <ShortcutLegend />
       </div>
+  );
+
+  /*
+    The providers wrap BOTH branches and are never conditional. Desk One is still a child of
+    `authedRoute` for exactly this reason: it keeps the token guard, the query client, the patient
+    in hand, the command palette and the global keyboard chords. What it stops inheriting is the
+    visual chrome.
+  */
+  return (
+    <PatientInHandProvider>
+      <PaletteProvider>
+      <KeyboardProvider>
+      {body}
       </KeyboardProvider>
     </PaletteProvider>
     </PatientInHandProvider>
@@ -389,37 +494,60 @@ const staffReportsRoute = createRoute({
 });
 
 /**
- * ═══ FD-2 / THE OWNER'S RULING, 2026-09-02 — THE SEAT *IS* `/counter` NOW ═══
+ * ═══ FD-9 / THE OWNER'S RULING, 2026-09-03 — DESK ONE *IS* `/counter`, AND IT IS THE ONLY DOOR ═══
  *
- * D1 mounted Desk One at `/counter/seat` BESIDE the shipped `counter-desk.tsx` on purpose: a proven
- * money path and an unproven layout should never be in one diff, and a reviewer had to be able to
- * tell which half a defect came from. RC-4 §6 left "which of the two survives" as an owner ruling,
- * and it stayed open through RC-4 and FD-1 — so the deploy that reached production carried BOTH,
- * and the nav read *Counter · Registration counter (new)*, two links to the same work, and the
- * owner used the wrong one and reported the right one as broken.
+ * *"LOOK CLAUDE, remove the old design.. let's start from fresh because things are not landing what
+ * I am looking for. Let's only focus on one user right now. This user has access to registration,
+ * appointment and billing."*
  *
- * The owner has now ruled: *"you can remove your old design and keep the new design. no need to
- * keep the old design just for the sake of keeping it."* So `counter-desk.tsx` and its suite are
- * DELETED and the seat takes the path — not a redirect. A redirect would leave a second name for
- * one screen in the router, in the manifest, in every bookmark a clerk made this week and in the
- * caddyfile census, which is the same two-doors problem one layer down.
+ * So the three front-desk routes are ONE route. What was here before:
  *
- * WHAT SURVIVES THE DELETION, deliberately:
- *   · `components/counter-slip.tsx` — the old screen's best idea (token and receipt on ONE piece of
- *     paper, because two `.print-doc` nodes overprint), now mounted by the seat instead.
- *   · `opdManifest.menu`'s `{ path: "/counter", permission: "opd.visits.open" }` — unchanged, which
- *     is why `nav-parity.test.ts` still passes: the path and the permission are what it compares,
- *     and the seat has always required the same grant as the screen it replaces.
+ *   `/counter`      the registration seat, which had grown an appointment panel inside its
+ *                   registration form — the thing the owner rejected by name ("the appointment is a
+ *                   STAGE, not a field"), and which still carried a doctor dropdown at FD-8's close.
+ *   `/registration` a second, older registration desk on its own route.
+ *   `/appointment`  FD-7 T2's appointment seat, a third route for the middle of the same job.
+ *
+ * One person holding `patients.register` + `opd.appointments.manage` + `billing.invoice.issue` had
+ * to walk between all three to serve one walk-in, losing the patient in hand at every hop — FD-2's
+ * diagnosis measured three route changes per patient. `DeskOne` is one screen with five stages and
+ * a dossier column that holds the person across all of them.
+ *
+ * ═══ WHY THE OTHER TWO ARE DELETED RATHER THAN REDIRECTED ═══
+ *
+ * A redirect leaves a second name for one screen — in the router, in the module manifest, in every
+ * bookmark, and in the caddyfile census. That is exactly the two-doors problem that put the owner
+ * on the wrong counter in FD-1 and had them report the right screen as broken. The precedent is
+ * this file's own, one phase old: `counter-desk.tsx` and `opd-vitals.tsx` were deleted, not aliased.
+ *
+ * ═══ IT MOUNTS INSIDE THE SHELL AND COVERS IT, AND THAT IS DELIBERATE ═══
+ *
+ * The design has its own header, its own command key and its own dock; the application's nav bar
+ * above it would be a second, competing set of doors. `.d1` is `position: fixed; inset: 0`, so the
+ * desk owns the viewport while it is mounted — and it stays a CHILD of `authedRoute`, so it keeps
+ * the token guard, the query client and the providers every other screen has, and `<Link>`
+ * navigation out of it (the palette's "my figures") still works. Signing out lives in the dock.
  */
 const counterDeskRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/counter",
-  // FD-1 T4 — the door to "your figures" is a client-side navigation handed in from here; the seat
-  // itself mounts without a router in its suite.
-  component: function RegistrationCounterRoute() {
-    const navigate = useNavigate();
-    return <RegistrationCounter onFigures={() => { void navigate({ to: "/counter/figures" }); }} />;
-  },
+  /*
+    `?new=true` is the one search parameter this screen takes, and it exists for exactly one caller:
+    the global F4 chord (`lib/keyboard.tsx`), which means "a new patient is in front of me" from
+    anywhere in the app. It lands the desk on its enrolment stage instead of its search stage. It is
+    one-shot — the desk consumes it with a replace-navigate — so a second press retriggers it, which
+    is the discipline `/registration` used before it was deleted.
+  */
+  validateSearch: (search: Record<string, unknown>): { new?: boolean } => ({
+    new: search.new === true || search.new === "true" ? true : undefined,
+  }),
+  /*
+    `.d1` is `position: fixed; inset: 0` with an opaque ground, so the desk owns the viewport while
+    it is mounted. Without this the shell rendered its header and sixteen nav links UNDERNEATH it —
+    invisible, unclickable, and still in the tab order. See `StaticDataRouteOption` above.
+  */
+  staticData: { fullViewport: true },
+  component: DeskOne,
 });
 
 /**
@@ -460,32 +588,6 @@ const counterFiguresRoute = createRoute({
       />
     );
   },
-});
-
-const registrationRoute = createRoute({
-  getParentRoute: () => authedRoute,
-  path: "/registration",
-  // Ctrl+N / Alt+N (§15 keyboard-first, `lib/keyboard.tsx`) jump straight to the new-patient form
-  // from anywhere in the app, including from this same route — the flag is one-shot:
-  // RegistrationDesk clears it via a replace-navigate once consumed, so a second press retriggers
-  // it. (FD-3: this was F2 until the owner dedicated that key to the agent surface.)
-  validateSearch: (search: Record<string, unknown>): { new?: boolean } => ({
-    new: search.new === true ? true : undefined,
-  }),
-  component: RegistrationScreen,
-});
-
-/**
- * FD-7 T2 — THE APPOINTMENT SEAT, ON ITS OWN ROUTE.
- *
- * The owner's 03-Sep ruling: the appointment does not flow below the registration form. Registration
- * ends at the UHID and hands over HERE, and only to a caller who holds `opd.appointments.manage` —
- * which is why this is a route and not a section of another screen.
- */
-const appointmentSeatRoute = createRoute({
-  getParentRoute: () => authedRoute,
-  path: "/appointment",
-  component: AppointmentSeat,
 });
 
 const patientRoute = createRoute({
@@ -791,7 +893,7 @@ export const router = createRouter({
     loginRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, counterDeskRoute, registrationRoute, appointmentSeatRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,

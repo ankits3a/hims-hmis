@@ -1,8 +1,9 @@
+import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import {
   activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters,
 } from "../../../test/helpers/opd";
-import { patients } from "../../kernel/db/schema";
+import { opdEncounters, patients } from "../../kernel/db/schema";
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
 import { walkIn } from "./walk-in";
@@ -163,6 +164,41 @@ describe("walk-in (07b T6)", () => {
     const res = await walk({ acknowledgedDuplicates: true });
     expect(res.registered).toBe(true);
     expect(await patientCount()).toBe(2);
+  });
+
+  /**
+   * ═══ FD-7 T9 / OWNER RULING R4 — THE SLIP IS CAPTURED WHERE IT IS HANDED OVER ═══
+   *
+   * The owner ruled the channel-partner slip is captured at the desk and stays editable at billing.
+   * It had nowhere to live: `attributionCode` was passed to `feeQuote` and to `issueInvoice` on each
+   * call and stored nowhere between them, so the cashier had to re-type it off paper that by then
+   * had often been put away. Migration 0059 gave it a home on the encounter and the walk-in — the
+   * act that actually opens a visit at this desk — is where it is written.
+   */
+  it("FD-7 T9: the walk-in stores the partner slip on the encounter", async () => {
+    const res = await walk({ attributionCode: "PTR-9911" });
+    const [encounter] = await db.select().from(opdEncounters).where(eq(opdEncounters.id, res.encounter.id));
+    expect(encounter!.attributionCode).toBe("PTR-9911");
+  });
+
+  it("FD-7 T9: no slip stores NULL, and a blank one is not a slip", async () => {
+    const none = await walk();
+    const [a] = await db.select().from(opdEncounters).where(eq(opdEncounters.id, none.encounter.id));
+    expect(a!.attributionCode).toBeNull();
+
+    // "" reaching the fee quote would be a lookup for a partner that cannot exist. The second call
+    // registers the same person again, so it acknowledges the duplicate the first one created —
+    // DD8's warning firing here is the check working, not the test.
+    const blank = await walk({ attributionCode: "   ", acknowledgedDuplicates: true }, "key-blank");
+    const [b] = await db.select().from(opdEncounters).where(eq(opdEncounters.id, blank.encounter.id));
+    expect(b!.attributionCode).toBeNull();
+  });
+
+  /** Stored UNVALIDATED on purpose: billing owns the check that a code binds to this patient. */
+  it("FD-7 T9: an unknown code is stored, not refused — the desk does not stall on a typo", async () => {
+    const res = await walk({ attributionCode: "PTR-NOT-ISSUED" }, "key-unknown");
+    const [encounter] = await db.select().from(opdEncounters).where(eq(opdEncounters.id, res.encounter.id));
+    expect(encounter!.attributionCode).toBe("PTR-NOT-ISSUED");
   });
 
   it("an existing patient is attached, not registered, and no duplicate check runs", async () => {

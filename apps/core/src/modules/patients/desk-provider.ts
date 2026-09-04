@@ -99,8 +99,15 @@ async function registrationCard(ctx: DeskProviderCtx): Promise<DeskCard> {
     band: "today",
     titleKey: "desk.patients.registration",
     stats: [
-      { key: "desk.patients.registered", value: String(registered), href: "/registration" },
-      { key: "desk.patients.noMobile", value: String(noMobile), href: "/registration" },
+      /*
+        FD-9 — these four doors said `/registration` until the owner's 03-Sep ruling deleted that
+        route. "Every figure is a door" (07c T4 A2) only holds if the door opens: a stat linking to
+        a route the SPA no longer declares is worse than a stat with no `href` at all, because it
+        looks openable. Desk One at `/counter` is where a patient is registered now, and it is where
+        the follow-up work behind these numbers — a missing mobile, a record to amend — is done.
+      */
+      { key: "desk.patients.registered", value: String(registered), href: "/counter" },
+      { key: "desk.patients.noMobile", value: String(noMobile), href: "/counter" },
       { key: "desk.patients.duplicatesPending", value: String(pending), href: "/merge" },
     ],
   };
@@ -119,8 +126,8 @@ async function cameBackCard(ctx: DeskProviderCtx): Promise<DeskCard> {
     titleKey: "desk.patients.cameBack",
     stats: [
       { key: "desk.patients.duplicatesConfirmed", value: String(duplicates), href: "/merge" },
-      { key: "desk.patients.noMobileMonth", value: String(noMobile), href: "/registration" },
-      { key: "desk.patients.amendedWeek", value: String(amended), href: "/registration" },
+      { key: "desk.patients.noMobileMonth", value: String(noMobile), href: "/counter" },
+      { key: "desk.patients.amendedWeek", value: String(amended), href: "/counter" },
     ],
   };
 }

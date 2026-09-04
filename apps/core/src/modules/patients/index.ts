@@ -6,13 +6,16 @@
 export { patientsManifest } from "./manifest";
 export { PatientsModule } from "./patients.module";
 export { getPatient, registerPatient, resolvePatientId, updatePatient } from "./registration";
-export type { GuardianInput, PatientPatch, PatientRow, RegisterPatientInput } from "./registration";
+export type { CoverageInput, GuardianInput, PatientPatch, PatientRow, RegisterPatientInput } from "./registration";
 export { getPatientSummaries, listMergedLoserIds } from "./registration"; // Plan 07 read helpers
 export type { PatientSummary } from "./registration";
 export { listAllergies } from "./allergies";
 export type { AllergyRow } from "./allergies";
 export { searchPatients, visiblePatientIds } from "./search";
 export type { MatchLane, PatientSearchResult } from "./search";
+/** FD-8 — the near-match probe, shared by `POST /patients` and the walk-in. */
+export { nearMatches } from "./duplicates";
+export type { DuplicateCandidate } from "./duplicates";
 export { NO_AUTHORITY, effectiveGuardianAuthority, guardiansWithAuthority, sweepGuardianMajority } from "./guardians";
 export type { GuardianAuthority, GuardianRow } from "./guardians";
 /**

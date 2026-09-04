@@ -85,13 +85,15 @@ import { MembershipError, membershipHttpStatus } from "../membership";
 import { BillingError, billingHttpStatus } from "./errors";
 import { withIdempotency } from "./idempotency";
 import { getInvoice, invoiceSettlement, issueInvoice, listInvoices, previewInvoiceWithBalances } from "./invoices";
+import { collectionWorklist } from "./worklist";
+import type { CollectionRow } from "./worklist";
 import type { BenefitBalance } from "./invoices";
 import {
   allocateReceipt, listDues, markEnteredInError, patientBalance, recordReceipt, reverseAllocation,
 } from "./receipts";
 import { issueRefundVoucher, payRefundVoucher, requestRefund } from "./refunds";
 import { listMismatches, setDegraded, uploadSettlement } from "./recon";
-import { beginClose, confirmClose, listSessions, openSession } from "./sessions";
+import { beginClose, confirmClose, listSessions, openSession, recountSession } from "./sessions";
 import { istDay } from "./time";
 import type { FeeQuote } from "./charge-rules";
 import type { BillingConfig } from "./config";
@@ -281,6 +283,15 @@ const issueInvoiceBody = z.object({
   couponCodes: z.array(z.string().min(1).max(64)).max(10).optional(),
   attributionCode: z.string().min(1).max(64).optional(),
 });
+/**
+ * `serviceDate` is REQUIRED rather than defaulted server-side. "Today" is an IST calendar day and
+ * `istDate` lives behind `opd`'s module boundary (imports cross only through `index.ts`, lint-
+ * enforced); duplicating the rule here is how two definitions of "today" drift apart at midnight,
+ * which this lane has already been bitten by twice. The caller knows the date — `todayIst()` on the
+ * web — so it says which day it means.
+ */
+const worklistQuery = z.object({ serviceDate: z.string().min(10).max(10) });
+
 const previewInvoiceBody = z.object({
   encounterId: z.string().min(1).optional(),
   lines: z.array(invoiceLineSchema).min(1),
@@ -374,6 +385,11 @@ const beginCloseBody = z.object({
 const sessionsQuery = z.object({
   cashierUserId: z.string().min(1).optional(),
   status: z.enum(["open", "closing", "closed"]).optional(),
+});
+
+/* FD-11 — a re-count says WHY, in the cashier's own words; the log is worthless without it. */
+const recountBody = z.object({
+  reason: z.string().min(1).max(400),
 });
 
 const reconUploadBody = z.object({ csv: z.string(), source: z.enum(["upi", "card"]) });
@@ -480,6 +496,21 @@ export class BillingController {
     } catch (e) {
       toHttp(e);
     }
+  }
+
+  /**
+   * FD-8 — THE CASHIER'S DOOR. Every other route this role may call needs an id it cannot obtain
+   * (it holds no `patients.read`), so user 3 could not start their own day without a deep link from
+   * somebody else's screen. `billing.invoice.read` is the right key: knowing who owes money is the
+   * same authority as reading the invoice that says so.
+   */
+  @RequirePermission("billing.invoice.read", "hospital")
+  @Get("worklist")
+  async worklist(
+    @CurrentActor() actor: Actor, @Query() query: unknown,
+  ): Promise<{ items: CollectionRow[] }> {
+    const q = parsed(worklistQuery, query);
+    return { items: await collectionWorklist(this.db, actor, q.serviceDate) };
   }
 
   @RequirePermission("billing.invoice.read", "hospital")
@@ -825,6 +856,27 @@ export class BillingController {
   async sessionCurrent(@CurrentActor() actor: Actor): Promise<{ session: CashierSessionRow | null }> {
     const own = await listSessions(this.db, { cashierUserId: actor.id });
     return { session: own.find((s) => s.status === "open" || s.status === "closing") ?? null };
+  }
+
+  /**
+   * FD-11 — WITHDRAW A MISTYPED CLOSING COUNT AND COUNT AGAIN.
+   *
+   * On the cashier's OWN drawer permission, because it is their own drawer and `recountSession`
+   * refuses anybody else's. It is not a way around the variance control: the retracted figure is
+   * written to the event log first, and `beginClose` then files an approval on the next close even
+   * if the arithmetic agrees. What it removes is the dead end, not the second pair of eyes.
+   */
+  @RequirePermission("billing.session.own", "hospital")
+  @Post("sessions/:id/recount")
+  async sessionRecount(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown,
+  ): Promise<CashierSessionRow> {
+    const b = parsed(recountBody, body);
+    try {
+      return await recountSession(this.db, actor, id, { reason: b.reason });
+    } catch (e) {
+      throw toHttp(e);
+    }
   }
 
   @RequirePermission("billing.session.own", "hospital")

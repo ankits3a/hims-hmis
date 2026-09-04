@@ -1,6 +1,7 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { getToken, setToken } from "../lib/api";
+import i18next from "../lib/i18n";
 import { renderWithProviders, stubFetch } from "../test-utils";
 import { LoginScreen } from "./login";
 
@@ -13,10 +14,17 @@ const navigate = vi.fn();
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => navigate }));
 
 describe("LoginScreen", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setToken(null);
     localStorage.clear();
     navigate.mockClear();
+    /*
+      i18next is a MODULE SINGLETON, so the Hindi test below leaks its language into every test that
+      runs after it — which is how three unrelated assertions started failing on a screen whose
+      behaviour had not changed. Clearing localStorage is not enough: that is only where the choice
+      is persisted, not where it currently lives.
+    */
+    await i18next.changeLanguage("en");
   });
 
   it("renders a validation alert for both fields when submitted empty — zod resolver wired in", async () => {
@@ -110,6 +118,110 @@ describe("LoginScreen", () => {
     expect(screen.queryByText("Sign-in failed — check the username and password")).not.toBeInTheDocument();
   });
 
+  // ────────────────────────── FD-10 — the rebuilt screen's own affordances ──────────────────────────
+
+  /**
+   * The reveal exists because of what happens without it at a counter: a mistyped password, a second
+   * mistyped password, a lockout, and a clerk who now asks a colleague to type it in for them —
+   * which is the credential-sharing the help text on this same screen tells them not to do.
+   *
+   * `tabIndex={-1}` is asserted because it is the half that is easy to lose: Tab from the password
+   * field belongs on Sign in, not on a button that shows the password to whoever is at the counter.
+   */
+  it("the reveal shows and re-hides the password, and is not in the tab path", async () => {
+    stubFetch({});
+    renderWithProviders(<LoginScreen />);
+    const user = userEvent.setup();
+    const password = screen.getByLabelText("Password");
+
+    expect(password).toHaveAttribute("type", "password");
+    const reveal = screen.getByRole("button", { name: "SHOW" });
+    expect(reveal).toHaveAttribute("tabindex", "-1");
+
+    await user.click(reveal);
+    expect(screen.getByLabelText("Password")).toHaveAttribute("type", "text");
+
+    await user.click(screen.getByRole("button", { name: "HIDE" }));
+    expect(screen.getByLabelText("Password")).toHaveAttribute("type", "password");
+  });
+
+  /**
+   * Caps Lock is the most common sign-in failure there is and the only one a browser can warn about
+   * before the request leaves. It is read off the KEYSTROKE (`getModifierState`) rather than guessed
+   * from the value, and it is suppressed while the password is revealed — the person can see it.
+   */
+  it("warns about Caps Lock from the keystroke, and stops warning once the password is visible", async () => {
+    stubFetch({});
+    renderWithProviders(<LoginScreen />);
+    const user = userEvent.setup();
+    const password = screen.getByLabelText("Password");
+
+    expect(screen.queryByText("Caps Lock is on.")).not.toBeInTheDocument();
+
+    /*
+      The modifier has to be set on the NATIVE event. React's `getModifierState` delegates to
+      `nativeEvent.getModifierState` when it exists, and `fireEvent`'s init dictionary has no
+      `getModifierState` key — passing one is silently dropped, which is why the obvious version of
+      this test asserted nothing and failed.
+    */
+    const down = new KeyboardEvent("keydown", { key: "A", bubbles: true });
+    Object.defineProperty(down, "getModifierState", { value: () => true });
+    fireEvent(password, down);
+    expect(await screen.findByText("Caps Lock is on.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "SHOW" }));
+    expect(screen.queryByText("Caps Lock is on.")).not.toBeInTheDocument();
+  });
+
+  /**
+   * ═══ THE LANGUAGE REACHES THE STYLESHEET, AND THAT IS THE DEFECT THIS GUARDS ═══
+   *
+   * `.tag` — the house's section-label treatment — is IBM Plex Mono, uppercase, and tracked at
+   * .14em. All three are Latin assumptions: Devanagari has no case, letter-spacing pulls its
+   * conjuncts and matras apart, and Plex Mono has no Devanagari coverage at all, so every label
+   * fell back to a different face on every machine. It was VISIBLE the moment the Hindi screenshot
+   * was taken and invisible in every English one.
+   *
+   * `login.css` fixes it under `.lg[data-lang="hi"]`, so the attribute IS the fix: without it the
+   * override cannot match and the labels silently go back to being wrong. Asserted here rather than
+   * left to a reviewer noticing a stray attribute.
+   */
+  it("stamps the script on the root so the Devanagari type rules can apply, and translates the form", async () => {
+    stubFetch({});
+    renderWithProviders(<LoginScreen />);
+    const user = userEvent.setup();
+
+    expect(screen.getByTestId("login-screen")).toHaveAttribute("data-lang", "en");
+
+    await user.click(screen.getByRole("button", { name: "हिन्दी" }));
+
+    await waitFor(() => expect(screen.getByTestId("login-screen")).toHaveAttribute("data-lang", "hi"));
+    expect(screen.getByRole("button", { name: "साइन इन" })).toBeInTheDocument();
+    expect(screen.getByLabelText("पासवर्ड")).toBeInTheDocument();
+  });
+
+  /**
+   * The pine panel carries the verse. The first draft hid it with `aria-hidden` — the reflex for a
+   * marketing column — which denies a blind clerk what every sighted one gets; that was true when
+   * the panel held four claims about the software and it is truer now that it holds scripture. It
+   * is a complementary landmark instead: announced, and skippable by anybody navigating landmarks.
+   *
+   * The assertion used to read `toHaveTextContent("At the counter")`, which was the pitch the owner
+   * threw out. It is re-pointed at the verse rather than deleted, because what it is really pinning
+   * is that the panel's CONTENT is inside the landmark and not stranded outside it.
+   */
+  it("the agent panel is a landmark a screen reader can reach and skip, not hidden content", () => {
+    stubFetch({});
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    renderWithProviders(<LoginScreen />);
+    const aside = screen.getByRole("complementary");
+    expect(aside).toBeInTheDocument();
+    expect(aside).not.toHaveAttribute("aria-hidden");
+    expect(aside).toHaveTextContent("स्वकर्मणा तमभ्यर्च्य सिद्धिं विन्दति मानवः");
+    // Not a live region: the line is fixed for the life of the page, so there is nothing to announce.
+    expect(aside).not.toHaveAttribute("aria-live");
+  });
+
   it("no longer refuses a short password client-side — the server decides what may be USED to sign in", async () => {
     // The floor here used to be `min(8)`, a copy of a rule the server deliberately does not apply
     // at login (11e D3): a floor at sign-in locks out precisely the accounts the reset flow exists
@@ -127,5 +239,108 @@ describe("LoginScreen", () => {
 
     await waitFor(() => expect(sent).toHaveLength(1));
     expect(sent[0]).toContain('"password":"old7pwd"');
+  });
+
+  /**
+   * ═════════════════════════════════════════════════════════════════════════════════════════════
+   * THE ROTATING LINE — AND THE ONE THING ABOUT IT THAT IS EASY TO BREAK AND HARD TO SEE
+   * ═════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * `Math.random` is stubbed rather than a prop being threaded through, so the screen keeps the same
+   * signature it has in production and the test still pins the verse. Index 0 is 18.46.
+   */
+  it("prints the pinned verse with its citation, and tags the script for a screen reader", () => {
+    stubFetch({});
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    renderWithProviders(<LoginScreen />);
+
+    const shloka = screen.getByText("स्वकर्मणा तमभ्यर्च्य सिद्धिं विन्दति मानवः");
+    expect(shloka).toHaveAttribute("lang", "sa");
+    expect(screen.getByText("गीता 18.46")).toBeInTheDocument();
+    /*
+      The owner's ruling — "No english, just hindi devnagri". Both lines under the verse are
+      Devanagari Hindi, tagged `hi` and not `sa`: they are a different language in the same script,
+      and a screen reader that knows the difference should be told.
+    */
+    expect(screen.getByText("अपने कर्म से उसकी पूजा करके मनुष्य सिद्धि पा लेता है।"))
+      .toHaveAttribute("lang", "hi");
+    expect(screen.getByText("जो काम तुम्हारे हिस्से आया है, उसे मन लगाकर करना ही सबसे बड़ी पूजा है।"))
+      .toHaveAttribute("lang", "hi");
+  });
+
+  /**
+   * THE DEFECT THIS GUARDS: the pick belongs in `useState`'s lazy initialiser and NOT in the render
+   * body. This component re-renders on the 20-second clock tick, on every keystroke, on Caps Lock,
+   * on the reveal and on the language toggle — a pick in the render body rerolls the verse under a
+   * clerk mid-read, roughly three times a minute, and every other test here still passes.
+   *
+   * `mockReturnValueOnce(0)` then `0.99` is what makes it fail: a second call lands on a DIFFERENT
+   * line, so a rerolled screen shows the proverb instead of 18.46.
+   */
+  it("holds the same line across a re-render — it never changes under the person reading it", async () => {
+    stubFetch({});
+    vi.spyOn(Math, "random").mockReturnValueOnce(0).mockReturnValue(0.99);
+    renderWithProviders(<LoginScreen />);
+    const user = userEvent.setup();
+    expect(screen.getByText("गीता 18.46")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "SHOW" }));
+    await user.click(screen.getByRole("button", { name: "HIDE" }));
+
+    expect(screen.getByText("गीता 18.46")).toBeInTheDocument();
+    expect(screen.queryByText("सेवा ही परम धर्म है")).not.toBeInTheDocument();
+  });
+
+  it("keeps the same verse across a language switch, and swaps the meaning to Devanagari", async () => {
+    stubFetch({});
+    vi.spyOn(Math, "random").mockReturnValueOnce(0).mockReturnValue(0.99);
+    renderWithProviders(<LoginScreen />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "हिन्दी" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "English" })).toBeInTheDocument());
+    /*
+      The panel does NOT change with the language toggle, and that is the point: it is Devanagari in
+      both. What this pins is that the same verse survives the switch — the pick is not rerolled —
+      and that no Latin transliteration or English gloss reappears on either screen.
+    */
+    expect(screen.getByText("स्वकर्मणा तमभ्यर्च्य सिद्धिं विन्दति मानवः")).toBeInTheDocument();
+    expect(screen.getByText("गीता 18.46")).toBeInTheDocument();
+    expect(screen.getByText("अपने कर्म से उसकी पूजा करके मनुष्य सिद्धि पा लेता है।")).toBeInTheDocument();
+    expect(screen.queryByText(/Apne kaam|Worship Him|perfected/)).not.toBeInTheDocument();
+  });
+
+  /**
+   * `सेवा ही परम धर्म है` is the line the owner asked for by name and it is NOT in the Gita — it is
+   * a proverb. The table gives it `cite: null`; this pins that the SCREEN honours that by printing
+   * the saying label where a verse would print its chapter and verse. A regression here does not
+   * look broken, it looks fine and is false.
+   */
+  it("labels the proverb as a saying and never gives it a chapter and verse", () => {
+    stubFetch({});
+    vi.spyOn(Math, "random").mockReturnValue(0.99);
+    renderWithProviders(<LoginScreen />);
+
+    expect(screen.getByText("सेवा ही परम धर्म है")).toBeInTheDocument();
+    expect(screen.getByText("कहावत · श्लोक नहीं")).toBeInTheDocument();
+    expect(screen.queryByText(/^गीता \d/)).not.toBeInTheDocument();
+  });
+
+  /**
+   * FD-10 stamped `data-lang` on the login root, which is what the STYLESHEET needs, and stopped
+   * there. `<html lang>` stayed `"en"` on a fully Hindi screen, so a screen reader pronounced
+   * Devanagari with an English voice — the same defect as the type rules, one layer up, and
+   * invisible in every screenshot because it has no pixels.
+   */
+  it("stamps the document language too, not just the class hook the stylesheet reads", async () => {
+    stubFetch({});
+    document.documentElement.lang = "en";
+    renderWithProviders(<LoginScreen />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "हिन्दी" }));
+
+    await waitFor(() => expect(document.documentElement.lang).toBe("hi"));
   });
 });

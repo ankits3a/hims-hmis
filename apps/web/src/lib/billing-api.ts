@@ -96,6 +96,13 @@ export type WireFeeQuote = {
    */
   freeReason: { kind: "review_window"; doctorName: string | null; seenOn: string; windowEndsOn: string } | null;
   /**
+   * FD-7 T9 / R4 — the slip the desk captured, on BOTH branches, so the cashier's field pre-fills
+   * from it. Without this the quote would price with a stored code the screen could not see and the
+   * cashier's blank field would then issue the invoice without it — the RC-2 disagreement, arriving
+   * from the other direction.
+   */
+  attributionCode: string | null;
+  /**
    * RC-2 T5 / D7 — corporate v0. `"self" | "tpa" | "pmjay" | "corporate"` as the server spells it.
    * On a non-self payer the seat shows "bill to panel — nothing to collect" AND no benefit chips,
    * because RC-2 T3 stops member, coupon and referral benefits at the self-pay share. This field is
@@ -310,4 +317,36 @@ export function billingPatientLabel(
 ): string {
   if (!p) return "—";
   return p.restricted ? (p.alias ?? "—") : (p.name ?? p.alias ?? "—");
+}
+
+/* ── FD-9 — the drawer, as a precondition the counter wears ──────────────────────────────────── */
+
+/**
+ * `GET /billing/sessions/current` — the caller's OWN open drawer, or null. Self-scoped by the route
+ * rather than by an argument: there is no `userId` in the path, so one cashier cannot read another's
+ * float (`billing.session.own`).
+ *
+ * Desk One's header pill renders this as a live PRECONDITION, not decoration: `POST /receipts`
+ * refuses cash with no open session (`requireOpenSession`), so the tender keys at the bill stage
+ * are disabled while this is null and the pill says why. A screen that offers CASH and then shows
+ * a refusal has already wasted the patient's turn at the counter.
+ */
+export type WireCashSession = {
+  id: string;
+  cashierUserId: string;
+  status: "open" | "closing" | "closed";
+  openedAt: string;
+  openingFloatPaise: number;
+  countedCashPaise: number | null;
+  expectedCashPaise: number | null;
+  variancePaise: number | null;
+  closedAt: string | null;
+};
+
+export function fetchCurrentSession(): Promise<{ session: WireCashSession | null }> {
+  return api("GET", "/billing/sessions/current");
+}
+
+export function openCashSession(floatPaise: number): Promise<WireCashSession> {
+  return api("POST", "/billing/sessions", { floatPaise });
 }

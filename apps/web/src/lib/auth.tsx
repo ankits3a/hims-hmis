@@ -19,12 +19,25 @@ export type EffectivePermissions = {
 
 const NO_PERMISSIONS: EffectivePermissions = { hospital: [], scoped: { department: {}, floor: {} } };
 
+/**
+ * FD-9 — THE NAME ON THE COUNTER, and it is the LOGIN NAME because that is the only one the client
+ * is given. `GET /auth/me` returns `{ actor, permissions }` and `actor.id` is a ULID; no route on
+ * the API hands a caller their own full name. Desk One's header reads
+ * *"Registration · Counter 01 · <person>"*, and a counter whose header says `01M1HK…` is a counter
+ * nobody believes. So the username typed at login is kept here, in the browser, alongside the
+ * token it was exchanged for — and it is cleared with the token, because a stale name over a fresh
+ * session would put the last person's name above this person's work.
+ */
+const USERNAME_KEY = "hmis.username";
+
 type AuthState = {
   actor: Actor | null;
   permissions: EffectivePermissions;
   /** Hospital-scope check for a menu entry or a palette command. Presentation only. */
   can: (permission: string) => boolean;
   ready: boolean;
+  /** The name typed at login, for a screen that must show WHO is at the counter. Null before login. */
+  username: string | null;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 };
@@ -36,6 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   const [actor, setActor] = useState<Actor | null>(null);
   const [permissions, setPermissions] = useState<EffectivePermissions>(NO_PERMISSIONS);
   const [ready, setReady] = useState(false);
+  const [username, setUsername] = useState<string | null>(() => localStorage.getItem(USERNAME_KEY));
 
   useEffect(() => {
     let cancelled = false;
@@ -75,9 +89,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     };
   }, []);
 
-  const login = useCallback(async (username: string, password: string) => {
-    const res = await api<{ token: string }>("POST", "/auth/login", { username, password });
+  const login = useCallback(async (name: string, password: string) => {
+    const res = await api<{ token: string }>("POST", "/auth/login", { username: name, password });
     setToken(res.token);
+    localStorage.setItem(USERNAME_KEY, name);
+    setUsername(name);
     const me = await api<{ actor: Actor; permissions?: EffectivePermissions }>("GET", "/auth/me");
     setActor(me.actor);
     setPermissions(me.permissions ?? NO_PERMISSIONS);
@@ -95,6 +111,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       await api("POST", "/auth/logout");
     } finally {
       setToken(null);
+      localStorage.removeItem(USERNAME_KEY);
+      setUsername(null);
       setActor(null);
       setPermissions(NO_PERMISSIONS);
       queryClient.clear();
@@ -104,7 +122,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   const can = useCallback((permission: string) => permissions.hospital.includes(permission), [permissions]);
 
   return (
-    <AuthContext.Provider value={{ actor, permissions, can, ready, login, logout }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ actor, permissions, can, ready, username, login, logout }}>{children}</AuthContext.Provider>
   );
 }
 

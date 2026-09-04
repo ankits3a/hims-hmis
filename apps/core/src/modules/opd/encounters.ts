@@ -14,7 +14,8 @@ import type { EncounterFeeStatus } from "../billing";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { loadOpdConfig } from "./config";
 import { OpdError } from "./errors";
-import { patientCheckedIn, visitAbandoned, visitOpened, visitTransferred } from "./events";
+import { patientCheckedIn, visitAbandoned, visitOpened, visitTransferred, visitReclassified,
+} from "./events";
 import { allocateToken, getOrCreateSession, roomForDoctorDay } from "./sessions";
 import { istDate } from "./time";
 import { classifyVisit } from "./visit-type";
@@ -38,6 +39,13 @@ export type OpenVisitInput = {
   intendedPayer?: "self" | "tpa" | "pmjay" | "corporate";
   referralSource?: "self" | "internal_doctor" | "external_rmp" | "camp" | "other";
   referrerName?: string;
+  /**
+   * FD-7 T9 / R4 — the channel-partner slip's code, as the patient presented it. Stored UNVALIDATED
+   * and deliberately: billing is where a code is checked against the partner's issue book and
+   * against this patient (RC-2 review MAJOR 5), and duplicating that check here would put the same
+   * money rule in two places. What this buys is that the cashier does not have to re-type it.
+   */
+  attributionCode?: string;
   appointment?: { id: string; slotStart: Date }; // set only by appointments.checkIn (T4)
   /**
    * RC-1 T3 / D4 — `bill_first` is a DEFERRED QUEUE JOIN, not a reordered transaction. The visit
@@ -112,6 +120,9 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput 
     id: encounterId, visitNo, patientId: input.patientId, workflowInstanceId: instanceId, departmentId: dept.id, doctorId: doctor.id,
     appointmentId: input.appointment?.id ?? null, serviceDate, visitType,
     intendedPayer: input.intendedPayer ?? "self", referralSource: input.referralSource ?? null, referrerName: input.referrerName ?? null,
+    // Trimmed, and an empty string is stored as NULL: "" is not a slip, and a blank code reaching
+    // the fee quote would be a lookup for a partner that cannot exist.
+    attributionCode: (input.attributionCode ?? "").trim() === "" ? null : input.attributionCode!.trim(),
     openedBy: actor.id, openedAt: now, updatedBy: actor.id, updatedAt: now,
   }).returning();
 
@@ -128,7 +139,7 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput 
     return { encounter: encounter!, queueEntry: null, tokenNo: null, sessionId: null, roomId, visitType, doctorScheduledToday: roomId !== null };
   }
 
-  const joined = await joinSessionInTx(tx, { id: encounterId, doctorId: doctor.id, serviceDate }, input.appointment ?? null);
+  const joined = await joinSessionInTx(tx, { id: encounterId, doctorId: doctor.id, serviceDate, departmentId: doctor.departmentId }, input.appointment ?? null);
   await appendEvent(tx, visitOpened.make({ ...env, payload: {
     ...openedPayload, sessionId: joined.sessionId, roomId: joined.roomId, tokenNo: joined.tokenNo,
   } }));
@@ -142,15 +153,27 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput 
   };
 }
 
-/** The ONE place a visit joins its doctor-day: session get-or-create, token allocation, queue-entry insert. Both callers — the immediate open above and `joinQueue` below — run it inside their own transaction. */
+/**
+ * The ONE place a visit joins its doctor-day: session get-or-create, token allocation, queue-entry
+ * insert. Both callers — the immediate open above and `joinQueue` below — run it inside their own
+ * transaction.
+ *
+ * FD-20 — `departmentId` travels because the TOKEN SERIES is the department's while the SESSION is
+ * still the doctor's. The queue entry belongs to a doctor-day; the number on the slip belongs to the
+ * department-day. Those are two different facts and this function is where they meet.
+ */
 async function joinSessionInTx(
   tx: Tx,
-  encounter: { id: string; doctorId: string; serviceDate: string },
+  encounter: { id: string; doctorId: string; serviceDate: string; departmentId: string | null },
   appointment: { id: string; slotStart: Date } | null,
 ): Promise<{ queueEntry: QueueEntryRow; tokenNo: number; sessionId: string; roomId: string | null }> {
   const roomId = await roomForDoctorDay(tx, encounter.doctorId, encounter.serviceDate);
   const session = await getOrCreateSession(tx, encounter.doctorId, encounter.serviceDate, roomId);
-  const tokenNo = await allocateToken(tx, session.id);
+  if (encounter.departmentId === null) {
+    // Every OPD encounter has one; a null here would silently mint a series of its own.
+    throw new OpdError("invalid_transfer", "a visit cannot join a queue without a department");
+  }
+  const tokenNo = await allocateToken(tx, encounter.departmentId, encounter.serviceDate);
   const [queueEntry] = await tx.insert(opdQueueEntries).values({
     id: newId(), sessionId: session.id, encounterId: encounter.id, tokenNo,
     kind: appointment ? "appointment" : "walk_in", appointmentAt: appointment?.slotStart ?? null, status: "waiting_vitals",
@@ -212,7 +235,7 @@ export async function joinQueueInTx(tx: Tx, actor: Actor, encounterId: string, n
     return { encounter, queueEntry: existing, tokenNo: existing.tokenNo, sessionId: session.id, roomId: session.roomId, alreadyJoined: true };
   }
 
-  const joined = await joinSessionInTx(tx, { id: encounter.id, doctorId: encounter.doctorId, serviceDate: encounter.serviceDate }, null);
+  const joined = await joinSessionInTx(tx, { id: encounter.id, doctorId: encounter.doctorId, serviceDate: encounter.serviceDate, departmentId: encounter.departmentId }, null);
   await appendEvent(tx, patientCheckedIn.make({
     actor, patientId: encounter.patientId, encounterId, correlationId: encounter.workflowInstanceId,
     payload: {
@@ -517,6 +540,83 @@ async function newestEntryWhere(
 }
 
 /** §11.1 walk-away. One transaction: the mirror move, the queue entry cancelled, one visit.abandoned. */
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-18 — CORRECT A MISREAD VISIT TYPE. The owner's chosen override: the premise, not the price.
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * `classifyVisit` is right about the data it has and can be wrong about the world: it needs the
+ * previous consultation to be `completed` with a `consultCompletedAt`, so a doctor who never closed
+ * one leaves no anchor, the visit reads `new`, and a patient plainly on a revisit is charged. The
+ * fee is then correct arithmetic on a wrong premise, which is why this corrects the premise.
+ *
+ * ═══ WHAT THIS DOES AND DOES NOT REACH ═══
+ *
+ * `feeServiceFor` reads `encounter.visitType` live, so a corrected encounter re-quotes on its own —
+ * a revisit reaches the free branch with no discount, no category and nothing to explain away in
+ * the discount reporting.
+ *
+ * IT DOES NOT REWRITE AN ISSUED INVOICE, and it must not: an invoice is immutable and its lines are
+ * money that has been quoted or taken. Correcting the type afterwards changes what the NEXT quote
+ * says and leaves the issued bill exactly as it was — which is why the desk refuses to offer this
+ * once a bill exists, rather than letting a clerk believe they have fixed one. Unwinding money is a
+ * credit note, and it has its own permission and its own audit.
+ *
+ * NO APPROVAL GATE, BY OWNER RULING (2026-09-04): *"cashier alone, fully audited"*. With one
+ * supervisor in the building, gating this would strand the patient at the counter — the exact dead
+ * end FD-11's drawer re-count had to undo. The event below is the control: who, from what, to what,
+ * and a mandatory why.
+ */
+export async function reclassifyVisit(
+  db: Db,
+  actor: Actor,
+  encounterId: string,
+  input: { visitType: VisitType; reason: string },
+  now: Date = new Date(),
+): Promise<{ encounter: EncounterRow }> {
+  const reason = input.reason.trim();
+  if (reason === "") throw new OpdError("reason_required", "a corrected visit type records why");
+  const current = await getEncounter(db, encounterId);
+  if (!current) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
+  if (current.status === "abandoned") {
+    throw new OpdError("encounter_state_conflict", "an abandoned visit is not re-classified");
+  }
+  if (current.visitType === input.visitType) {
+    // Not an error and not a write: the clerk asked for the state it is already in.
+    return { encounter: current };
+  }
+
+  return withTx(db, async (tx) => {
+    const updated = await tx
+      .update(opdEncounters)
+      .set({ visitType: input.visitType, updatedBy: actor.id, updatedAt: now })
+      .where(and(eq(opdEncounters.id, encounterId), eq(opdEncounters.visitType, current.visitType)))
+      .returning();
+    if (updated.length === 0) {
+      // Somebody else re-classified it between the read and the write.
+      throw new OpdError("encounter_state_conflict", "the visit type moved while you were correcting it");
+    }
+    const encounter = updated[0]!;
+    await appendEvent(tx, visitReclassified.make({
+      actor,
+      patientId: encounter.patientId,
+      encounterId,
+      correlationId: encounter.workflowInstanceId,
+      payload: {
+        encounterId,
+        patientId: encounter.patientId,
+        departmentId: encounter.departmentId,
+        doctorId: encounter.doctorId,
+        serviceDate: encounter.serviceDate,
+        from: current.visitType as VisitType,
+        to: input.visitType,
+        reason,
+      },
+    }));
+    return { encounter };
+  });
+}
+
 export async function abandonVisit(db: Db, actor: Actor, encounterId: string, reason: string, now: Date = new Date()): Promise<{ encounter: EncounterRow }> {
   if (reason.trim() === "") throw new OpdError("reason_required", "an abandoned visit records why");
   const current = await getEncounter(db, encounterId);
@@ -620,7 +720,14 @@ export async function transferQueue(
         .returning({ id: opdQueueEntries.id });
       if (claimed.length === 0) continue; // moved concurrently — skip, never overwrite
       const encounter = (await tx.select().from(opdEncounters).where(eq(opdEncounters.id, entry.encounterId)))[0]!;
-      const tokenNo = await allocateToken(tx, toSession.id);
+      /*
+        FD-20 — THE TOKEN SURVIVES THE TRANSFER, and that is the department series paying for
+        itself. A transfer is same-department by the guard above, so the number on the patient's
+        slip is still valid: moving them from one doctor to another inside Medicine used to mint a
+        SECOND number and leave them holding a stale one. Now they keep "MED-4" and simply wait in
+        front of a different door.
+      */
+      const tokenNo = entry.tokenNo;
       await tx.insert(opdQueueEntries).values({
         id: newId(), sessionId: toSession.id, encounterId: entry.encounterId, tokenNo, kind: entry.kind,
         appointmentAt: entry.appointmentAt, status: entry.status === "called" ? "waiting" : entry.status,

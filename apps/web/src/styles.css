@@ -240,12 +240,18 @@
  * inventing one here would ship an unsigned-off palette under a signed-off name.
  */
 /* VD-2 T1 / D9 — Bay One opts into the same tokens; one block, two seats, no second palette. */
+/*
+  FD-9 — this list SHRANK. It carried `[data-seat="appointment-seat"]` and
+  `[data-seat="registration-screen"]` for the two screens FD-7 put on the same desk; both are
+  deleted, and Desk One brings its OWN stylesheet (`screens/desk-one/desk-one.css`) rather than
+  opting into these shadcn token overrides — the palette is identical, but it is expressed once as
+  literal values under `.d1` instead of as a re-mapping of a neutral theme. A selector with no
+  element left to match is dead code that reads like a promise.
+
+  `[data-seat="registration-counter"]` STAYS: `counter-figures.tsx` still carries that attribute on
+  its root (it was the seat's alias layer and it is still reached from the desk's palette).
+*/
 [data-seat="registration-counter"],
-/* FD-7 T2 — the appointment seat is the registration counter's neighbour on the same desk and wears
-   the same paper-and-pine tokens. Opting in is the one attribute on its root, exactly as D9 intended. */
-[data-seat="appointment-seat"],
-/* FD-7 T3 — /registration, the third seat on the same desk. */
-[data-seat="registration-screen"],
 [data-seat="vitals-bay"] {
   --background: #f4f7f4;          /* paper */
   --card: #ffffff;
@@ -310,7 +316,9 @@
 
   /* Seat-local: the second, lighter weight of `--dim` that the registry has no slot for. */
   --seat-faint: #8ea69a;
+}
 
+/**
  * PLAN 16c D11 — THE DISPENSE COUNTER IS A SEAT (Desk One), and it opts in the way the registration
  * counter does: a `data-seat` on its root, token VALUES copied rather than shared through `:root`
  * (RC-3's own mutant — a shared root would restyle every screen that never asked). Same paper, ink,

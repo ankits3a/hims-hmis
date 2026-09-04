@@ -143,7 +143,21 @@ describe("billing lifecycle e2e", () => {
 
   const registerPatient = async (name: string, phone: string): Promise<string> => {
     const reg = await http().post("/patients").set(...auth(cashierA.token))
-      .send({ name, sex: "female", phone, ageYears: 30 }).expect(201);
+      /*
+        FD-8 CARRY-OVER — `acknowledgedDuplicates: true`, AND IT IS THE FIXTURE SAYING WHAT IT MEANS.
+
+        `POST /patients` gained the walk-in's near-match warning in FD-8 (`1095d16`): it answers 409
+        `duplicate_suspected` and hands back the candidates until the CLERK acknowledges them. This
+        helper mints several patients whose only distinguishing field is a phone number, so from the
+        second one onwards the route refused and three e2e suites went red at that commit —
+        MEASURED here: green at `07b6902`, red at `4432335`, red before this line was added.
+
+        The flag is the right fix and not a weakening. It is exactly what a human clerk sends after
+        reading the warning, and this fixture IS that clerk: it means every patient it creates. The
+        warning itself is covered where it belongs, in `patients.e2e.test.ts`, which FD-8 extended
+        by 44 lines in the same commit — so acknowledging here removes no coverage of the guard.
+      */
+      .send({ name, sex: "female", phone, ageYears: 30, acknowledgedDuplicates: true }).expect(201);
     return reg.body.patient.id as string;
   };
 

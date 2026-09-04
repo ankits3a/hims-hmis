@@ -108,6 +108,59 @@ export const patients = pgTable(
     abhaVerificationStatus: text("abha_verification_status").notNull().default("none"), // 'none'|'self_declared'|'verified'
     abhaLinkToken: text("abha_link_token"), // D-30 reserved M1/M2 field — populated by the real ABDM flow, later plan
     legacyUhid: text("legacy_uhid"), // D-43 old-UHID cross-reference (paper-era continuity)
+    /**
+     * ═══ FD-12 — THE DEMOGRAPHICS AN INDIAN REGISTRATION COUNTER ACTUALLY ASKS FOR ═══
+     *
+     * Owner ruling 2026-09-04, against a competitor's registration screen: the four-field form was
+     * too thin for a real counter. These are the fields every Indian hospital's front office takes
+     * and this master could not hold. All nullable — the fast walk-in path still registers on name
+     * and sex alone, which is the whole point of Desk One and is not being traded away.
+     *
+     * CLASS II, DELIBERATELY. None of these mint a `patient_identity_versions` row. Class I is the
+     * set that answers *"who was this person"* on a re-rendered document — name, dob,
+     * administrative gender, ABHA number — and it is kept deliberately small so the resolver stays
+     * one indexed lookup. `father_husband_name` is the close call and it stays Class II: it is how
+     * a clerk DISAMBIGUATES two Asha Devis at the counter, not what a prescription reprints.
+     */
+    title: text("title"), // 'Mr'|'Mrs'|'Ms'|'Dr'|'Master'|'Baby'|'Smt'|'Shri' — free text, printed on the card
+    /**
+     * Father's or husband's name. Near-universal on Indian hospital records and the single most
+     * useful disambiguator this master lacked: in a district where fifty women share a name and a
+     * village, it is the field that separates them.
+     */
+    fatherHusbandName: text("father_husband_name"),
+    maritalStatus: text("marital_status"), // 'single'|'married'|'widowed'|'divorced'|'separated'
+    nationality: text("nationality"), // free text; the form defaults it to 'Indian' rather than a column DEFAULT
+    /**
+     * THE NATIONAL ID FOLLOWS THIS SCHEMA'S OWN PRECEDENT AND STORES ONLY THE LAST FOUR DIGITS.
+     *
+     * `patient_guardians.id_number_masked` already ruled this for guardians — *"last-4 only — never
+     * the full document number"* — and the patient's own document is not a weaker case than their
+     * guardian's. It is also the only defensible answer for Aadhaar: the Aadhaar Act restricts who
+     * may store the number, a hospital's claim to it is weak, and a masked tail still does the job
+     * the counter needs (matching a card the patient is holding). `national_id_type` says which
+     * document was seen so the tail is interpretable.
+     */
+    nationalIdType: text("national_id_type"), // 'aadhaar'|'pan'|'voter_id'|'passport'|'driving_licence'|'other'
+    nationalIdMasked: text("national_id_masked"), // last-4 only — never the full document number
+    religion: text("religion"),
+    occupation: text("occupation"),
+    /** PAISE, like every other money column in this schema. Government-scheme means-testing asks it. */
+    monthlyIncomePaise: integer("monthly_income_paise"),
+    /**
+     * ═══ WHO SENT THIS PATIENT ═══
+     *
+     * Registration-time capture, on the patient, and deliberately NOT the `partners` module's
+     * attribution ledger. Those answer two different questions: `partners` tracks a commercial
+     * relationship that pays somebody, and this records what the patient said at the desk when
+     * asked how they came to us. Most referrals — a neighbour, a camp, a government doctor — will
+     * never be a channel partner, and forcing them through the partner ledger would either invent
+     * partners that do not exist or throw the answer away.
+     */
+    referredBySource: text("referred_by_source"), // 'self'|'doctor'|'hospital'|'camp'|'employer'|'online'|'partner'|'other'
+    referredByName: text("referred_by_name"),
+    referredByPhone: text("referred_by_phone"),
+    referredBySpeciality: text("referred_by_speciality"),
     qrVersion: integer("qr_version").notNull().default(1), // D-23: reissue increments; old cards fail the scan
     // D10 (D-33): the deceased flag. NULL means alive-as-far-as-this-system-knows. The
     // notifications gateway reads it at SEND time as a hard stop that beats urgency and beats
@@ -270,6 +323,88 @@ export const patientGuardians = pgTable(
     endedAt: timestamp("ended_at", { withTimezone: true }),
   },
   (t) => [index("patient_guardians_patient_idx").on(t.patientId)],
+);
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-12 — HOW THIS PATIENT'S CARE GETS PAID FOR: PM-JAY, INSURANCE, TPA, CGHS/ESIC, EMPLOYER
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner ruling 2026-09-04: the registration screen takes payer details, against a recommendation
+ * that it should not. The ruling stands and this is how it is built so that it does not become a
+ * second billing module.
+ *
+ * ═══ A TABLE, NOT COLUMNS ON `patients` ═══
+ *
+ * A patient has SEVERAL of these at once and it is the normal case, not the edge: an Ayushman card
+ * AND a private mediclaim, or an employer scheme AND a top-up. Flattening them onto the patient
+ * would model "the one policy" — and the first family that arrives with a PM-JAY card and a
+ * Star Health policy would lose one of them silently, which is exactly the kind of quiet data loss
+ * that surfaces at a claim rejection months later.
+ *
+ * ═══ WHAT THIS IS NOT ═══
+ *
+ * This is the patient's ENTITLEMENT — the card in their wallet — and nothing else. It is not a
+ * tariff, not a claim, not a corporate rate agreement. `billing` continues to own corporate/TPA
+ * pricing and claim processing, and it looks this up rather than being duplicated by it. The two
+ * answer different questions: "what is this person entitled to" and "what do we charge and to
+ * whom". Keeping the seam here is what stops the owner's ruling from producing two modules that
+ * each half-own payer identity.
+ *
+ * ═══ WHY POLICY AND CARD NUMBERS ARE STORED IN FULL, unlike the national ID above ═══
+ *
+ * A policy number is not a government identity document. The hospital cannot file a claim without
+ * it, the patient hands it over precisely so the claim can be filed, and masking it would make the
+ * record useless for the one purpose it is collected for. The Aadhaar-class reasoning that masks
+ * `national_id_masked` does not transfer, and pretending it does would cost the counter a real
+ * capability for no privacy gain.
+ */
+export const patientCoverages = pgTable(
+  "patient_coverages",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    /**
+     * 'pmjay'      — Ayushman Bharat PM-JAY; `beneficiaryId` carries the PM-JAY / family id
+     * 'insurance'  — a retail policy held directly with an insurer
+     * 'tpa'        — administered by a third-party administrator (`tpaName` is then the payer of record)
+     * 'corporate'  — the patient's employer pays; `employeeId` identifies them to the employer
+     * 'cghs'|'esic'— government employee / insured-persons schemes
+     * 'other'      — a state scheme or a trust; `payerName` says which
+     */
+    kind: text("kind").notNull(),
+    payerName: text("payer_name"), // insurer, scheme or employer — who ultimately pays
+    tpaName: text("tpa_name"),
+    policyNumber: text("policy_number"),
+    cardNumber: text("card_number"),
+    /** PM-JAY beneficiary / family id, or a scheme's own member id. */
+    beneficiaryId: text("beneficiary_id"),
+    employeeId: text("employee_id"),
+    planClass: text("plan_class"), // room-rent band / plan tier — drives entitlement at admission
+    /** Sum insured, in PAISE like every other money column here. */
+    sumInsuredPaise: integer("sum_insured_paise"),
+    validFrom: date("valid_from", { mode: "date" }),
+    validTo: date("valid_to", { mode: "date" }),
+    /** The pre-authorisation / claim reference, when the desk already has one. */
+    claimId: text("claim_id"),
+    /**
+     * 'self_declared' — the clerk typed what the patient said or read off a card
+     * 'card_seen'     — the physical card was produced at the counter
+     * 'verified'      — confirmed against the payer or the scheme portal
+     *
+     * Ranked exactly like `patients.identity_assurance`, and for the same reason: a coverage the
+     * hospital is about to extend credit against should never be indistinguishable from one
+     * somebody mentioned in passing.
+     */
+    verificationStatus: text("verification_status").notNull().default("self_declared"),
+    status: text("status").notNull().default("active"), // 'active' | 'inactive'
+    note: text("note"),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: text("updated_by"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }),
+  },
+  (t) => [index("patient_coverages_patient_idx").on(t.patientId)],
 );
 
 /**

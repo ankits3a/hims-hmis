@@ -354,14 +354,27 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // registration form (03-Sep): registration ends at the UHID and hands over here, by permission.
     // The number was WATCHED FAILING — the run that added the route reported `Received length: 49`
     // against the pinned 48 — and raised to what was measured, never predicted.
+    // FD-9 / THE OWNER'S RULING, 2026-09-03 — 49 -> 47. TWO ROUTES DELETED AND NONE ADDED, which is
+    // the first time this number has gone DOWN for a reason other than a screen being superseded by
+    // its own replacement. `/registration` and `/appointment` are gone because the three front-desk
+    // routes were one person's one job: *"remove the old design.. Let's only focus on one user right
+    // now. This user has access to registration, appointment and billing."* Desk One serves
+    // `/counter` with all three as STAGES of one session. Deleted rather than redirected — a second
+    // name for one screen is what put the owner on the wrong counter in FD-1.
     // MEASURED against the tree rather than predicted, which is what pinning a count is for.
     // PLAN 18c T1 — 49 -> 50 with `/radiology/radiation-safety`, the AERB register. ONE route for
     // five registers (D11): the inspector asks for the licences, the QA records, the dose register,
     // the badge readings and what is overdue, and they are five tabs of one screen because they are
     // one file. MEASURED against the tree, raised to what the run reported, never predicted.
-    expect(routes).toHaveLength(50);
+    // FD-23 REBASE, 2026-09-04 — the two histories meet here: 18c's 50 minus FD-9's two deletions
+    // is 48, and the number below is what the merged tree MEASURED, not what this arithmetic
+    // predicted. `/radiology/radiation-safety` arrives from main; `/appointment` and
+    // `/registration` leave with FD-9.
+    expect(routes).toHaveLength(48);
     expect(routes).toContain("/radiology/radiation-safety");
-    expect(routes).toContain("/appointment");
+    expect(routes).not.toContain("/appointment");
+    expect(routes).not.toContain("/registration");
+    expect(routes).toContain("/counter");
     expect(routes).toContain("/lab/reports");
     expect(routes).toContain("/counter/figures");
     expect(routes).not.toContain("/counter/seat");

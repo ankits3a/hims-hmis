@@ -2,9 +2,9 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
 import { withTx } from "../../kernel/db/client";
-import { events, opdQueueEntries, opdQueueSessions, patients, workflowInstances } from "../../kernel/db/schema";
+import { events, opdDepartmentTokens, opdQueueEntries, opdQueueSessions, patients, workflowInstances } from "../../kernel/db/schema";
 import {
-  abandonVisit, getEncounter, moveEncounter, openVisit, patientTimeline, reEnterVisit, transferQueue,
+  abandonVisit, getEncounter, moveEncounter, openVisit, patientTimeline, reEnterVisit, transferQueue, reclassifyVisit,
 } from "./encounters";
 import type { EncounterRow } from "./encounters";
 import type { Db } from "../../kernel/db/client";
@@ -104,20 +104,71 @@ describe("opd encounters (the spine: open / abandon / re-enter / transfer / time
     });
   });
 
-  it("tokens climb inside one doctor-day; another doctor and an unscheduled day start their own session", async () => {
+  /**
+   * ═══ FD-20 — THE SERIES IS THE DEPARTMENT'S, AND THIS TEST IS WHERE THAT IS PINNED ═══
+   *
+   * Owner ruling 2026-09-04: *"the token number should be not according to the doctor but
+   * Department."* This test previously asserted the opposite — a second doctor started at 1 — which
+   * is precisely the behaviour that made a hall hear "number four" called three times for three
+   * different people. The SESSION is still the doctor's; only the NUMBER moved.
+   */
+  it("tokens climb across the whole DEPARTMENT-day; another doctor continues the same series", async () => {
     const first = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    expect(first.tokenNo).toBe(1);
     const second = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, new Date(MON.getTime() + 5 * 60_000));
     expect(second.tokenNo).toBe(2);
     expect(second.sessionId).toBe(first.sessionId);
 
+    // ANOTHER DOCTOR IN THE SAME DEPARTMENT TAKES THE NEXT NUMBER, not a fresh 1 — the whole ruling
+    const other = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: drb.doctorId }, MON);
+    expect(other.tokenNo).toBe(3);
+    expect(other.sessionId).not.toBe(first.sessionId); // …while the doctor-day session is still his own
+
+    // a DIFFERENT department counts separately: 'MED-3' and 'PED-1' can exist at the same moment
+    const otherDept = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: dept2Id, doctorId: drp.doctorId }, MON);
+    expect(otherDept.tokenNo).toBe(1);
+
+    // and a different DAY starts the series again
     const sunday = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, SUN);
     expect(sunday.roomId).toBeNull();
     expect(sunday.doctorScheduledToday).toBe(false);
     expect(sunday.tokenNo).toBe(1);
     expect(sunday.sessionId).not.toBe(first.sessionId);
+  });
 
-    const other = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: drb.doctorId }, MON);
-    expect(other.tokenNo).toBe(1);
+  /**
+   * ═══ FD-23 CLOSE REVIEW — THE CUT-OVER DAY, WHERE THE SERIES MEETS THE ONE IT REPLACED ═══
+   *
+   * `opd_department_tokens` starts empty. On the morning the department series is deployed, a
+   * department has ALREADY handed out numbers that day from the doctor-day counter it replaces —
+   * and those slips are in patients' hands, printed with the same `MED-n` label this series mints.
+   * A counter that starts at 1 hands the next walk-in a number somebody is already holding, and
+   * `opd_queue_entries` has no unique index on `(session_id, token_no)` to refuse it, so the hall
+   * calls one number for two people.
+   *
+   * The state below IS the cut-over: queue entries exist for the department-day, and the counter row
+   * does not. Deleting the row is not a contrivance — it is exactly what the migration leaves behind
+   * for every department that had already started its day.
+   */
+  it("FD-23 close review: the department counter resumes above the tokens the day already issued", async () => {
+    const first = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    const second = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, new Date(MON.getTime() + 60_000));
+    const third = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: drb.doctorId }, new Date(MON.getTime() + 120_000));
+    expect([first.tokenNo, second.tokenNo, third.tokenNo]).toEqual([1, 2, 3]);
+
+    // THE CUT-OVER: the day's entries survive, the counter row does not.
+    await db.delete(opdDepartmentTokens).where(eq(opdDepartmentTokens.departmentId, deptId));
+
+    const afterDeploy = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, new Date(MON.getTime() + 180_000));
+    expect(afterDeploy.tokenNo).toBe(4); // THE KILL — a counter starting at 1 re-issues MED-1
+
+    // and it keeps climbing from there rather than re-seeding on every call
+    const next = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, new Date(MON.getTime() + 240_000));
+    expect(next.tokenNo).toBe(5);
+
+    // a department that issued NOTHING that day is untouched: it still starts at 1
+    const freshDept = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: dept2Id, doctorId: drp.doctorId }, MON);
+    expect(freshDept.tokenNo).toBe(1);
   });
 
   it("visit type anchors on the newest completed consult in the SAME department, across the merge chain", async () => {
@@ -138,19 +189,33 @@ describe("opd encounters (the spine: open / abandon / re-enter / transfer / time
     expect((await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: dept2Id, doctorId: drp.doctorId }, aug15)).visitType).toBe("revisit");
   });
 
-  it("six concurrent opens on one doctor-day allocate tokens 1..6 from a single session", async () => {
+  /**
+   * FD-20 — the concurrency property that matters is UNCHANGED and now guards a WIDER series: six
+   * counters opening at once across a department must still produce six distinct numbers. The
+   * upsert takes the row lock on conflict exactly as the per-session UPDATE did.
+   */
+  it("six concurrent opens across TWO doctors of one department allocate 1..6 with no collision", async () => {
     const six: { id: string; uhid: string }[] = [];
     for (let i = 0; i < 6; i++) six.push(await mkPatient(db, clerk.actor, { phone: `98765100${i}0` }));
     const results = await Promise.all(
-      six.map((p) => openVisit(db, clerk.actor, { patientId: p.id, departmentId: deptId, doctorId: dra.doctorId }, MON)),
+      six.map((p, i) => openVisit(
+        db, clerk.actor,
+        { patientId: p.id, departmentId: deptId, doctorId: i % 2 === 0 ? dra.doctorId : drb.doctorId },
+        MON,
+      )),
     );
+    // ONE series across BOTH doctors — the numbers do not repeat and nothing is skipped
     expect(results.map((r) => r.tokenNo).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6]);
+
+    const counter = await db.select().from(opdDepartmentTokens)
+      .where(and(eq(opdDepartmentTokens.departmentId, deptId), eq(opdDepartmentTokens.serviceDate, "2026-08-17")));
+    expect(counter).toHaveLength(1);
+    expect(counter[0]!.nextToken).toBe(7);
+
+    // …while the doctor-day sessions stayed two, because a session is still a doctor's
     const sessions = await db.select().from(opdQueueSessions)
-      .where(and(eq(opdQueueSessions.doctorId, dra.doctorId), eq(opdQueueSessions.serviceDate, "2026-08-17")));
-    expect(sessions).toHaveLength(1);
-    expect(sessions[0]!.nextToken).toBe(7);
-    const entries = await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.sessionId, sessions[0]!.id));
-    expect(entries).toHaveLength(6);
+      .where(eq(opdQueueSessions.serviceDate, "2026-08-17"));
+    expect(sessions).toHaveLength(2);
   });
 
   it("abandon cancels the queue entry, completes the instance and events once; a blank reason and a repeat refuse", async () => {
@@ -304,5 +369,88 @@ describe("opd encounters (the spine: open / abandon / re-enter / transfer / time
     expect(items[1]!.serviceDate).toBe("2026-08-10");
     const viaLoser = await patientTimeline(db, clerk.actor, loser.id);
     expect(viaLoser.map((i) => i.encounterId)).toEqual(items.map((i) => i.encounterId));
+  });
+
+  /**
+   * ═════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-18 — THE BILLING OVERRIDE, BUILT AS A CORRECTION TO THE PREMISE
+   * ═════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Owner, 2026-09-04: *"there should be a manual override button or something in case of AI agent
+   * failure or system failure in case billing the patient in revisit."* — then, choosing between
+   * three designs: *"re-classify the visit, not the price"*, and *"cashier alone, fully audited"*.
+   *
+   * The failure is real and reachable: `classifyVisit` needs the previous consult to be COMPLETED
+   * with a timestamp, so a doctor who never closed one leaves no anchor and a patient plainly on a
+   * revisit opens as `new` and is charged. The first test below MANUFACTURES exactly that.
+   */
+  describe("FD-18: correcting a misread visit type", () => {
+    it("the failure mode is real: an unclosed consult makes a genuine revisit open as new", async () => {
+      // seen four days ago, but the consult was never completed — so there is no anchor
+      const opened = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, T0);
+      await withTx(db, (tx) => moveEncounter(tx, vd.actor, opened.encounter, "waiting", {}, T0));
+
+      const today = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+      expect(today.visitType).toBe("new"); // …and `feeServiceFor` will therefore charge them
+    });
+
+    it("corrects the type, and the correction is what makes the fee free — not a discount", async () => {
+      const today = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+      expect(today.encounter.visitType).toBe("new");
+
+      const { encounter } = await reclassifyVisit(
+        db, clerk.actor, today.encounter.id,
+        { visitType: "revisit", reason: "seen here on 8 Aug; the consult was never closed" }, MON,
+      );
+      expect(encounter.visitType).toBe("revisit");
+      /*
+        THE FEE CONSEQUENCE IS ASSERTED IN BILLING, NOT HERE, and the module boundary is why: a
+        module may only import another's `index.ts`, and `feeServiceFor` is billing's internal.
+        Reaching into it — or widening billing's public interface to make a test convenient — would
+        be a worse trade than stating the seam plainly. What OPD owns and proves is that the TYPE is
+        corrected; that `revisit` maps to the free branch is `charge-rules.ts`'s own invariant and
+        its own tests', and this correction reaches it through the ordinary quote path.
+      */
+    });
+
+    /* The audit IS the control, because the owner ruled the cashier acts alone. */
+    it("records who corrected it, from what, to what and why", async () => {
+      const today = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+      await reclassifyVisit(db, clerk.actor, today.encounter.id, { visitType: "revisit", reason: "consult never closed" }, MON);
+
+      const logged = await db.select().from(events).where(eq(events.name, "visit.reclassified"));
+      expect(logged).toHaveLength(1);
+      const payload = logged[0]!.payload as Record<string, unknown>;
+      expect(payload["from"]).toBe("new");
+      expect(payload["to"]).toBe("revisit");
+      expect(payload["reason"]).toBe("consult never closed");
+      expect(logged[0]!.actorId).toBe(clerk.actor.id);
+    });
+
+    it("a correction with no reason is refused — an unreviewable correction is not a control", async () => {
+      const today = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+      await expect(reclassifyVisit(db, clerk.actor, today.encounter.id, { visitType: "revisit", reason: "   " }, MON))
+        .rejects.toMatchObject({ code: "reason_required" });
+      expect(await db.select().from(events).where(eq(events.name, "visit.reclassified"))).toHaveLength(0);
+    });
+
+    it("re-asserting the type it already has writes nothing at all", async () => {
+      const today = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+      const { encounter } = await reclassifyVisit(db, clerk.actor, today.encounter.id, { visitType: "new", reason: "no change" }, MON);
+      expect(encounter.visitType).toBe("new");
+      expect(await db.select().from(events).where(eq(events.name, "visit.reclassified"))).toHaveLength(0);
+    });
+
+    it("an abandoned visit is not re-classified", async () => {
+      const today = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+      await abandonVisit(db, clerk.actor, today.encounter.id, "left the queue", MON);
+      await expect(reclassifyVisit(db, clerk.actor, today.encounter.id, { visitType: "revisit", reason: "x" }, MON))
+        .rejects.toMatchObject({ code: "encounter_state_conflict" });
+    });
+
+    it("an unknown encounter is refused", async () => {
+      await expect(reclassifyVisit(db, clerk.actor, "no-such-encounter", { visitType: "revisit", reason: "x" }, MON))
+        .rejects.toMatchObject({ code: "unknown_encounter" });
+    });
   });
 });
