@@ -293,8 +293,8 @@ function DayTab({
   return (
     <div className="grid gap-6 md:grid-cols-2">
       <div className="space-y-2">
-        <h2 className="text-sm font-semibold">{t("opdAppt.slots")}</h2>
-        {doctorId === "" && <p className="text-sm text-neutral-500">{t("opdAppt.pickDoctorHint")}</p>}
+        <h2 style={{ fontSize: 13, fontWeight: 700 }}>{t("opdAppt.slots")}</h2>
+        {doctorId === "" && <p style={{ fontSize: 12, color: "var(--dim)" }}>{t("opdAppt.pickDoctorHint")}</p>}
         {doctorId !== "" && slots.data === undefined && <p>{t("app.loading")}</p>}
         {doctorId !== "" && slots.data !== undefined && <SlotGrid slots={slots.data.slots} onPick={(slot) => void book(slot)} />}
         <ErrorLine message={bookError} />
@@ -305,9 +305,9 @@ function DayTab({
         )}
       </div>
       <div className="space-y-2">
-        <h2 className="text-sm font-semibold">{t("opdAppt.bookings")}</h2>
+        <h2 style={{ fontSize: 13, fontWeight: 700 }}>{t("opdAppt.bookings")}</h2>
         {doctorId !== "" && appointments.data !== undefined && appointments.data.items.length === 0 && (
-          <p className="text-sm text-neutral-500">{t("opdAppt.none")}</p>
+          <p style={{ fontSize: 12, color: "var(--dim)" }}>{t("opdAppt.none")}</p>
         )}
         {doctorId !== "" && appointments.data !== undefined && appointments.data.items.length > 0 && (
           <div role="table" className="box" style={{ overflow: "hidden" }}>
@@ -375,9 +375,9 @@ function NeedsRebookingTab(
 
   return (
     <div className="space-y-2">
-      <h2 className="text-sm font-semibold">{t("opdAppt.needsRebooking")}</h2>
+      <h2 style={{ fontSize: 13, fontWeight: 700 }}>{t("opdAppt.needsRebooking")}</h2>
       {items.data !== undefined && items.data.items.length === 0 && (
-        <p className="text-sm text-neutral-500">{t("opdAppt.none")}</p>
+        <p style={{ fontSize: 12, color: "var(--dim)" }}>{t("opdAppt.none")}</p>
       )}
       {items.data !== undefined && items.data.items.length > 0 && (
         <div role="table" className="box" style={{ overflow: "hidden" }}>

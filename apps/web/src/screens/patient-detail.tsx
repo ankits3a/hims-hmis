@@ -95,7 +95,7 @@ function Header({ patient, resolvedFrom }: { patient: PatientRow; resolvedFrom: 
             {patient.isConfidential && (
               <>
                 <Badge variant="destructive">{t("patient.confidentialBadge")}</Badge>
-                {patient.alias !== null && <span className="text-sm text-neutral-500">({patient.alias})</span>}
+                {patient.alias !== null && <span style={{ fontSize: 12, color: "var(--dim)" }}>({patient.alias})</span>}
               </>
             )}
           </div>
@@ -293,7 +293,7 @@ function DemographicsSection({ patient }: { patient: PatientRow }): React.ReactE
       {/* PLAN 22c-A T7 — the assurance stamp, surfaced so the desk can see how much the hospital
           vouches for this identity before it amends it. An unevidenced Class I amendment drops it
           to `staff_verified` (DD5), and a clerk who cannot see the stamp cannot notice that. */}
-      <p className="text-sm text-neutral-600" data-testid="identity-assurance">
+      <p style={{ fontSize: 12, color: "var(--dim)" }} data-testid="identity-assurance">
         {t("patient.identityAssurance")}: <span className="font-medium">{t(`assurance.${patient.identityAssurance}`, patient.identityAssurance)}</span>
       </p>
       <FormProvider {...form}>
@@ -378,7 +378,7 @@ function DemographicsSection({ patient }: { patient: PatientRow }): React.ReactE
               />
             </div>
             {patient.abhaLinkToken !== null && (
-              <p className="text-sm text-neutral-500">{t("patient.abha")}: {patient.abhaLinkToken}</p>
+              <p style={{ fontSize: 12, color: "var(--dim)" }}>{t("patient.abha")}: {patient.abhaLinkToken}</p>
             )}
           </fieldset>
           {serverError !== null && <p role="alert" className="text-sm text-red-600">{serverError}</p>}
@@ -522,7 +522,7 @@ function AllergiesSection({ patientId }: { patientId: string }): React.ReactElem
                 <span role="cell" className={strike} style={{ flexGrow: 1, fontSize: 12 }}>{a.severity !== null ? t(`patient.${a.severity}`) : "—"}</span>
                 <span role="cell" style={{ flexGrow: 1, fontSize: 12 }}>
                   {corrected ? (
-                    <span className="text-xs text-neutral-500">{t("patient.reason")}: {a.correctionReason}</span>
+                    <span style={{ fontSize: 11, color: "var(--faint)" }}>{t("patient.reason")}: {a.correctionReason}</span>
                   ) : (
                     <EnteredInErrorDialog patientId={patientId} allergyId={a.id} />
                   )}
@@ -636,9 +636,9 @@ function GuardianCard({ patientId, item }: { patientId: string; item: GuardianIt
       <div className="flex items-center justify-between">
         <div>
           <p className="font-medium">
-            {g.name} <span className="text-sm text-neutral-500">({g.relationship})</span>
+            {g.name} <span style={{ fontSize: 12, color: "var(--dim)" }}>({g.relationship})</span>
           </p>
-          <p className="text-sm text-neutral-500">{g.phone ?? "—"}</p>
+          <p style={{ fontSize: 12, color: "var(--dim)" }}>{g.phone ?? "—"}</p>
         </div>
         {g.status === "majority_ended" && <Badge variant="outline">{t("patient.majorityEnded")}</Badge>}
       </div>
@@ -735,7 +735,7 @@ function CardSection({ patient }: { patient: PatientRow }): React.ReactElement {
   return (
     <section className="space-y-2">
       <QrCard data={data} />
-      <p className="font-mono text-xs text-neutral-400">{data.payload}</p>
+      <p className="mo" style={{ fontSize: 11, color: "var(--faint)" }}>{data.payload}</p>
       <button className="sec no-print" onClick={() => setConfirmOpen(true)}>
         {t("card.reissue")}
       </button>
