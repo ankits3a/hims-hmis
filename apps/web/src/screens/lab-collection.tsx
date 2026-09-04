@@ -5,7 +5,7 @@ import { newIdempotencyKey } from "../lib/api";
 import { awaitingLabels, collectionQueue, drawSpecimen, istToday, labErrorText, printLabels } from "../lib/lab-api";
 import { Button } from "@/components/ui/button";
 import { capFor, drawRank, SpecimenLabel } from "../components/specimen-label";
-import { LabSeatFrame } from "./lab-seat";
+import { DowntimeNotice, LabSeatFrame, useDowntime } from "./lab-seat";
 import type { WireAwaitingRow, WireCollectionRow } from "../lib/lab-api";
 
 /**
@@ -68,6 +68,13 @@ export function LabCollection(): React.ReactElement {
 
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [scannedUhid, setScannedUhid] = useState("");
+  /**
+   * 17d T6 — the pre-printed kit's serial, written on the tube because the printer cannot print it.
+   * Held per SEAT rather than per row: the kit is a physical book on the chair's desk, and the next
+   * tube takes the next serial off it.
+   */
+  const [kitSerial, setKitSerial] = useState("");
+  const downtime = useDowntime();
   /** Per order group: were this group's labels printed off a scanned wristband here? */
   const [scannedGroups, setScannedGroups] = useState<Record<string, boolean>>({});
   const [tubeScan, setTubeScan] = useState<Record<string, string>>({});
@@ -89,7 +96,10 @@ export function LabCollection(): React.ReactElement {
   const selected = queue.find((e) => e.key === selectedKey) ?? null;
 
   const label = useMutation({
-    mutationFn: (orderGroupId: string) => printLabels(orderGroupId, scannedUhid, newIdempotencyKey()),
+    mutationFn: (orderGroupId: string) => printLabels(
+      orderGroupId, scannedUhid, newIdempotencyKey(),
+      downtime && kitSerial.trim() !== "" ? { downtimeKitSerial: kitSerial.trim() } : undefined,
+    ),
     onSuccess: (_r, orderGroupId) => {
       setError(null);
       setScannedGroups((g) => ({ ...g, [orderGroupId]: true }));
@@ -188,6 +198,25 @@ export function LabCollection(): React.ReactElement {
                 display={selected.row.patientDisplay} uhid={selected.row.uhid} encounterNo={selected.row.encounterNo}
                 tokenNo={selected.row.tokenNo} fasting={selected.row.requiresFasting} codes={selected.row.orderableCodes}
               />
+              {/*
+                17d T6 — THE PRINTER CANNOT PRINT, SO THE KIT DOES. The right-patient scan above is
+                unchanged and still required: downtime relaxes the LABEL's source, never the check
+                that the tube belongs to the person in the chair (DD10 / E1).
+              */}
+              {downtime && (
+                <DowntimeNotice>
+                  <label className="block text-sm">
+                    {t("lab.collection.kitSerial")}
+                    <input
+                      className="mt-1 block rounded border border-input px-2 py-1 font-mono"
+                      placeholder={t("lab.collection.kitSerialHint")}
+                      aria-label={t("lab.collection.kitSerial")}
+                      value={kitSerial}
+                      onChange={(e) => setKitSerial(e.target.value)}
+                    />
+                  </label>
+                </DowntimeNotice>
+              )}
               <form className="flex flex-wrap items-end gap-2"
                 onSubmit={(e) => { e.preventDefault(); if (scannedUhid !== "") label.mutate(selected.row.orderGroupId); }}>
                 <label className="text-sm">
@@ -199,8 +228,9 @@ export function LabCollection(): React.ReactElement {
                     onChange={(e) => setScannedUhid(e.target.value)}
                   />
                 </label>
-                <Button type="submit" disabled={scannedUhid === "" || label.isPending}>
-                  {t("lab.collection.printLabels")}
+                <Button type="submit"
+                  disabled={scannedUhid === "" || label.isPending || (downtime && kitSerial.trim() === "")}>
+                  {t(downtime ? "lab.collection.recordKitLabel" : "lab.collection.printLabels")}
                 </Button>
               </form>
               <p className="text-xs text-muted-foreground">{t("lab.collection.noBandNote")}</p>
