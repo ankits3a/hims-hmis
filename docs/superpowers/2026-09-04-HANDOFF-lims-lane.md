@@ -20,7 +20,9 @@ lanes on this box and is worth working with — it has been accurate and fast al
 > yourself**; it serialises the merge train and hands out the baton.
 >
 > Your job, in this order:
-> 1. Confirm **PR #71** landed (pass 2 + the D9 fix). If it did not, find out why before anything else.
+> 1. Confirm **PR #71** landed (pass 2 + the D9 fix). Then **PR #76** (the walk-in race) — it is
+>    deliberately NOT auto-merging: `opd/encounters.ts` is front-desk's territory and its review is
+>    the gate, not CI. Read its answer before landing anything.
 > 2. **17-E is authored and needs the owner's approval before execution** —
 >    `docs/superpowers/plans/2026-09-04-phase1-17e-lims-analyser-interface.md`. If he has approved it,
 >    execute T1 onward, one task per PR, fail-first, each mutant named in the task. If he has not,
@@ -37,11 +39,16 @@ lanes on this box and is worth working with — it has been accurate and fast al
 
 ## 1. Where the lane is right now
 
-- **Branch `lane/lims-17d-pass2`**, tip `a415984` + the 17-E doc commit, pushed. **PR #71** open,
-  base `main`: 17d close-review pass 2 (2 MAJOR) **plus** the D9 flake fix. `static` and `web` green,
-  `core` still running when this was written; the orchestrator ran `gh pr update-branch` and armed a
-  watcher to squash-merge on green.
-- Working tree clean. Nothing of ours is unpushed.
+**TWO PRs open, both pushed, nothing unpushed.**
+
+- **PR #71** — branch `lane/lims-17d-pass2`: 17d close-review pass 2 (2 MAJOR) **plus** the D9 flake
+  fix **plus** the 17-E phase doc and this handoff. The orchestrator runs `update-branch` on it and
+  has a watcher armed to squash-merge on green. Nothing needed from us.
+- **PR #76** — branch `lane/lims-walkin-race`, cut from current `main`: the 17d §9.2 walk-in race,
+  **and it is NOT waiting on CI.** `opd/encounters.ts` is the front-desk lane's territory and it
+  offered a review; the orchestrator has been asked not to auto-merge on green. **Front-desk's read
+  is the gate.** If it has answered, act on it; if it has not, leave the PR sitting rather than
+  landing it.
 - **Verified state:** `pnpm typecheck` 0 errors · `pnpm lint` **0 errors** (2 pre-existing warnings
   in `core/kernel/worker/scheduler.test.ts`, not ours) · **web suite 90 files / 698 tests, exit 0**.
 
@@ -119,12 +126,29 @@ Four ground-truth findings that changed the plan and would otherwise be re-deriv
 
 ## 5. Still open
 
-- **The walk-in race (17d §9.2), MINOR, needs a migration slot.** `openLabWalkinInTx` is a
-  read-then-write: two walk-ins committing in the same instant both open. Fix is a partial unique
-  index on `(patient_id, department_id, service_date) WHERE status NOT IN ('completed','abandoned')`
-  plus catching the violation in `opd/encounters.ts`. **Asked the orchestrator for a slot and flagged
-  the collision risk** — `opd/encounters.ts` is front-desk's neighbourhood and they were live with 13
-  dirty files. Check the answer before starting.
+- **The walk-in race (17d §9.2) — DONE, PR #76, awaiting front-desk's review.** Worth knowing why
+  it carries no migration, because §9.2 recorded one and the record was wrong. A partial unique index
+  on `(patient_id, department_id, service_date)` fails twice over: `department_id` is DATA, so no
+  immutable index predicate can name the LAB department and an index without one would constrain
+  **every** department — which `encounters.ts` explicitly refuses ("a general same-day guard would
+  change every department's behaviour"); and a unique index on `patient_id` **cannot see the merge
+  chain**, which the guard deliberately can. The fix is one `pg_advisory_xact_lock` on the canonical
+  patient — the house pattern in five places, including `lab/desk.ts:285` — and `kernel/ops/mode.ts`
+  had already written down why it is not `FOR UPDATE`: a row lock only serialises callers that can
+  *find* a row, and here neither racer can. **The answer was in the tree.**
+- **THE DRIZZLE SNAPSHOT BASELINE IS FOUR MIGRATIONS STALE, and 17-E inherits it.** Independently
+  verified in the tree, not taken on trust: newest snapshot is `meta/0065_snapshot.json`, journal head
+  is `0069_print_jobs`, 70 `.sql` files. drizzle-kit 0.30.6 diffs against the lexicographically last
+  snapshot, so **the next `db:generate` re-emits everything 0066–0069 added** — `print_jobs` and its
+  5 indexes, `opd_department_tokens`, `patient_coverages`, 13 `patients` columns,
+  `opd_encounters.attribution_code` — as bare `CREATE`/`ADD` without the `IF NOT EXISTS` the
+  hand-written originals had, so they fail on any database that already has them. **17-E needs four
+  migrations**, so whoever executes it hits this first unless another lane clears it. The repair:
+  rebase on main, generate, DELETE the re-emitted 0066–0069 statements keeping only your own, and
+  **KEEP and COMMIT `meta/NNNN_snapshot.json`** — that file is the whole point, it re-baselines the
+  generator. `0060_aerb_licences.sql` lines 14–21 already document the procedure; copy its header.
+  (Found by the orchestrator's audit of main; migration 0070 was offered to this lane and **handed
+  back**, since the race fix needed no migration.)
 - **GAP #9 — the referral lab (17-M), unauthored and BLOCKED on an owner ruling** (see D0/§7 of the
   17-E doc). `sent_out` is still a declared order state with no writer.
 - **GAP #10 — camp / corporate bulk.** No roster import, no pre-printed barcode sheets, no batch
@@ -147,6 +171,13 @@ Four ground-truth findings that changed the plan and would otherwise be re-deriv
 5. **Worker job census is FIVE places, not the four the in-repo comments claim.** Count is sixteen.
 6. **New, from tonight: don't inherit a diagnosis.** Two sessions passed along "D9 is load-sensitive"
    and it was wrong in a way the very first line of the failure output contradicted.
+7. **Also new: don't inherit a FIX either.** 17d §9.2 recorded the walk-in race's remedy as a partial
+   unique index. Building what was recorded would have changed every department's same-day behaviour
+   and still missed the merge chain. A recorded remedy is a hypothesis from the moment it was
+   written; re-measure it against the tree before you build it.
+8. **`git diff origin/main...HEAD` (three dots) misreports contention.** It lists files that came in
+   with a squash-merged PR for ever. Use a two-dot tree comparison before concluding a peer holds a
+   file — the orchestrator nearly blocked this lane on that artifact tonight.
 
 ## 7. Useful commands
 
