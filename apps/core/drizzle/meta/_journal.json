@@ -512,6 +512,13 @@
       "when": 1788612905587,
       "tag": "0072_lab_run_sheets",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1788630088295,
+      "tag": "0073_lab_plate_maps",
+      "breakpoints": true
     }
   ]
 }
