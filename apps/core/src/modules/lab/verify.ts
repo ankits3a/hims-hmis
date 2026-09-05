@@ -14,7 +14,7 @@ import { TariffError } from "../tariff";
 import { activeReflexRules, analytesFor } from "./catalogue";
 import { LabError } from "./errors";
 import { matchReflex } from "./reflex";
-import { resultContext } from "./results";
+import { deferNearMiss, flushNearMiss, resultContext } from "./results";
 import { labReflexAdded, labResultVerified, labSodViolationBlocked } from "./events";
 import { LAB_ITEM_DEF_KEY } from "./workflow-def";
 import type { Actor } from "@hmis/contracts";
@@ -124,7 +124,13 @@ export async function verifyResult(
   input: VerifyResultInput,
   now: Date = new Date(),
 ): Promise<VerifyResultOutcome> {
-  return await withTx(db, (tx) => verifyResultInTx(db, tx, actor, decls, input, now));
+  try {
+    return await withTx(db, (tx) => verifyResultInTx(db, tx, actor, decls, input, now));
+  } catch (e) {
+    /** The SoD refusal's audit row, appended after this transaction has unwound (see `results.ts`). */
+    await flushNearMiss(db, e);
+    throw e;
+  }
 }
 
 async function verifyResultInTx(
@@ -179,13 +185,14 @@ async function verifyResultInTx(
   const sameHands = result.enteredById === actor.id;
   if (sameHands && !nightMode) {
     /**
-     * THE FLAG GOES ON `db`, OUTSIDE THE TRANSACTION THAT IS ABOUT TO ROLL BACK.
+     * THE FLAG OUTLIVES THE TRANSACTION THAT IS ABOUT TO ROLL BACK — an event appended on `tx` here
+     * would be undone by the very throw it exists to record, and the refusal would leave no trace.
      *
-     * This is `printLabels`' shape and F20's lesson: an event appended on `tx` here would be undone
-     * by the very throw it exists to record, and the refusal would leave no trace anywhere. A
-     * separate transaction is the only way a REFUSAL can be counted.
+     * It is now DEFERRED rather than written on a second connection acquired while this one is
+     * still held: that nesting could exhaust a default pool of ten with no timeout to break it.
+     * The event rides the error and `verifyResult` appends it once this transaction has unwound.
      */
-    await withTx(db, (audit) => appendEvent(audit, labSodViolationBlocked.make({
+    const blocked = labSodViolationBlocked.make({
       actor,
       patientId: ctx.patientId,
       encounterId: ctx.encounterId,
@@ -194,13 +201,13 @@ async function verifyResultInTx(
         resultId: input.resultId, orderItemId: ctx.orderItemId,
         actorId: actor.id, enteredById: result.enteredById,
       },
-    })));
-    throw new LabError(
+    });
+    throw deferNearMiss(new LabError(
       "sod_violation",
       `result ${input.resultId} was keyed by this same user — a result is signed by a second pair ` +
         "of hands, and holding both permissions is not the same as being two people",
       { enteredById: result.enteredById },
-    );
+    ), blocked);
   }
   const pathologistReviewPending = sameHands;
 

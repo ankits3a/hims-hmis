@@ -278,13 +278,57 @@ function isoDay(d: Date): string {
  * So the shape is now theirs exactly: a `Db`-first entry point wrapping a `Tx`-first body that
  * holds BOTH handles, and writes its near-miss on `db` before it throws on `tx`.
  */
+/**
+ * ═══ THE NEAR-MISS SURVIVES THE ROLLBACK **WITHOUT** HOLDING TWO CONNECTIONS ═══
+ *
+ * 17d D3 requires the suspected-swap flag to outlive the refusal it records: an event appended on
+ * the caller's `tx` is undone by the very throw it exists to document. The first implementation got
+ * that right and paid for it with a nested `withTx(db, …)` called while the outer transaction still
+ * held its connection — so ten concurrent breaches could take every connection in a default pool of
+ * ten, each waiting for an eleventh that cannot come. `pool.connect()` has no
+ * `connectionTimeoutMillis`, so the wait is unbounded, and Postgres cannot see it: an
+ * application-side queue never reaches `deadlock_timeout`.
+ *
+ * THE OBVIOUS REPAIR IS THE DANGEROUS ONE. Collapsing the append onto `tx` removes the second
+ * connection, destroys the audit row, and LEAVES EVERY TEST GREEN — the refusal still refuses, and
+ * nobody wrote down "and the near-miss must survive it".
+ *
+ * So the write is DEFERRED instead of moved. The event rides the thrown error on a symbol, and the
+ * `Db`-first wrapper appends it AFTER the outer transaction has fully unwound — one connection at a
+ * time, and the record still outlives the rollback. On the path that PROCEEDS there is nothing to
+ * outlive, so that one appends on `tx` and takes no second connection at all.
+ *
+ * A symbol rather than `LabError.detail` because `detail` is serialised to the HTTP response, and
+ * an audit payload naming sibling specimens is not the client's business.
+ */
+const NEAR_MISS = Symbol("hmis.lab.nearMiss");
+type PendingEvent = Parameters<typeof appendEvent>[1];
+
+export function deferNearMiss<E extends Error>(err: E, event: PendingEvent): E {
+  Object.defineProperty(err, NEAR_MISS, { value: event, enumerable: false });
+  return err;
+}
+
+/** Appends a deferred near-miss, if the error carries one. Never masks the original failure. */
+export async function flushNearMiss(db: Db, e: unknown): Promise<void> {
+  const event = (e as Record<symbol, PendingEvent | undefined>)[NEAR_MISS];
+  if (event === undefined) return;
+  await withTx(db, (auditTx) => appendEvent(auditTx, event));
+}
+
+
 export async function enterResult(
   db: Db,
   actor: Actor,
   input: EnterResultInput,
   now: Date = new Date(),
 ): Promise<EnterResultOutcome> {
-  return await withTx(db, (tx) => enterResultInTx(db, tx, actor, input, now));
+  try {
+    return await withTx(db, (tx) => enterResultInTx(db, tx, actor, input, now));
+  } catch (e) {
+    await flushNearMiss(db, e);
+    throw e;
+  }
 }
 
 async function enterResultInTx(
@@ -357,7 +401,7 @@ async function enterResultInTx(
             : null;
 
     const siblings = await siblingTubesDrawnInTheSameMinute(tx, ctx);
-    await withTx(db, (flagTx) => appendEvent(flagTx, labTubeSwapSuspected.make({
+    const nearMiss = labTubeSwapSuspected.make({
       actor,
       patientId: ctx.patientId,
       encounterId: ctx.encounterId,
@@ -367,33 +411,36 @@ async function enterResultInTx(
         specimenId: ctx.specimenId, siblingSpecimenIds: siblings.map((sp) => sp.id),
         breach: breach.kind, raisedBy: actor.id, overridden: refusal === null,
       },
-    })));
+    });
 
-    if (refusal === "no_override") {
-      throw new LabError(
-        "analyte_not_applicable",
-        applicabilityBreachText(analyte.code, breach),
-        {
-          analyteCode: analyte.code, breach: breach.kind,
-          /** What the bench screen puts in front of the technologist: the tubes to go and look at. */
-          suspectSpecimenNos: siblings.map((sp) => sp.specimenNo),
-        },
-      );
-    }
-    if (refusal === "same_actor") {
-      throw new LabError(
-        "impossible_override_same_actor",
-        "a value impossible for this patient is vouched for by a SECOND holder of " +
-          "lab.results.enter — the person who keyed it cannot be the person who confirms the tube " +
-          "is theirs, which is the whole of the control",
-      );
-    }
-    if (refusal === "not_permitted") {
-      throw new LabError(
-        "permission_denied",
-        `the named override ${override!.by} does not hold ${LAB_RESULTS_ENTER}`,
-      );
-    }
+    const failure =
+      refusal === "no_override"
+        ? new LabError(
+            "analyte_not_applicable",
+            applicabilityBreachText(analyte.code, breach),
+            {
+              analyteCode: analyte.code, breach: breach.kind,
+              /** What the bench screen puts in front of the technologist: the tubes to look at. */
+              suspectSpecimenNos: siblings.map((sp) => sp.specimenNo),
+            },
+          )
+        : refusal === "same_actor"
+          ? new LabError(
+              "impossible_override_same_actor",
+              "a value impossible for this patient is vouched for by a SECOND holder of " +
+                "lab.results.enter — the person who keyed it cannot be the person who confirms the " +
+                "tube is theirs, which is the whole of the control",
+            )
+          : refusal === "not_permitted"
+            ? new LabError(
+                "permission_denied",
+                `the named override ${override!.by} does not hold ${LAB_RESULTS_ENTER}`,
+              )
+            : null;
+
+    /** The accepted path commits with the entry; the refused one rides the error and outlives it. */
+    if (failure !== null) throw deferNearMiss(failure, nearMiss);
+    await appendEvent(tx, nearMiss);
     impossibleOverriddenBy = override!.by;
   }
 
@@ -1111,7 +1158,12 @@ export async function amendResult(
   input: AmendResultInput,
   now: Date = new Date(),
 ): Promise<EnteredResult> {
-  return await withTx(db, (tx) => amendResultInTx(db, tx, actor, input, now));
+  try {
+    return await withTx(db, (tx) => amendResultInTx(db, tx, actor, input, now));
+  } catch (e) {
+    await flushNearMiss(db, e);
+    throw e;
+  }
 }
 
 async function amendResultInTx(
@@ -1225,10 +1277,10 @@ async function amendResultInTx(
         ne(labSpecimens.id, prior.specimenId),
       ))
       .orderBy(labSpecimens.specimenNo);
-    await withTx(db, (flagTx) => appendEvent(flagTx, labTubeSwapSuspected.make({
+    const nearMiss = labTubeSwapSuspected.make({
       actor,
       patientId: canonical,
-      encounterId: base.encounterNo,
+      encounterId: amendEncounterId,
       correlationId: base.orderId,
       payload: {
         orderItemId: prior.orderItemId, orderGroupId: base.orderGroupId, analyteId: analyte.id,
@@ -1236,31 +1288,31 @@ async function amendResultInTx(
         siblingSpecimenIds: siblings.map((sp) => sp.id),
         breach: breach.kind, raisedBy: actor.id, overridden: refusal === null,
       },
-    })));
+    });
 
-    if (refusal === "no_override") {
-      throw new LabError(
-        "analyte_not_applicable",
-        applicabilityBreachText(analyte.code, breach),
-        {
-          analyteCode: analyte.code, breach: breach.kind,
-          suspectSpecimenNos: siblings.map((sp) => sp.specimenNo),
-        },
-      );
-    }
-    if (refusal === "same_actor") {
-      throw new LabError(
-        "impossible_override_same_actor",
-        "a value impossible for this patient is vouched for by a SECOND holder of " +
+    const failure =
+      refusal === "no_override"
+        ? new LabError(
+            "analyte_not_applicable",
+            applicabilityBreachText(analyte.code, breach),
+            {
+              analyteCode: analyte.code, breach: breach.kind,
+              suspectSpecimenNos: siblings.map((sp) => sp.specimenNo),
+            },
+          )
+        : refusal === "same_actor"
+          ? new LabError(
+              "impossible_override_same_actor",
+              "a value impossible for this patient is vouched for by a SECOND holder of " +
           "lab.results.enter — correcting it rather than keying it changes nothing about that",
-      );
-    }
-    if (refusal === "not_permitted") {
-      throw new LabError(
-        "permission_denied",
-        `the named override ${override!.by} does not hold ${LAB_RESULTS_ENTER}`,
-      );
-    }
+            )
+          : refusal === "not_permitted"
+            ? new LabError("permission_denied", `the named override ${override!.by} does not hold ${LAB_RESULTS_ENTER}`)
+            : null;
+
+    /** Same shape as the entry path: accepted commits with the amendment, refused outlives it. */
+    if (failure !== null) throw deferNearMiss(failure, nearMiss);
+    await appendEvent(tx, nearMiss);
     impossibleOverriddenBy = override!.by;
   }
 
