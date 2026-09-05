@@ -974,6 +974,12 @@ export function RadiationSafety(): React.ReactElement {
    * This is a guard against a slip, not against a decision. It does not ask "are you sure" and it
    * does not editorialise; it puts the irreversible act one deliberate step away from the
    * reversible ones.
+   *
+   * **The armed panel is width-constrained (`max-w-72`, `w-28` on the input) and that is not
+   * cosmetic tidying.** Unconstrained it sets the actions column's width, the whole table stretches
+   * and the `Status` and `Actions` headers collide — seen in a real browser, not in the suite,
+   * because a testid-based assertion cannot tell a legible table from an illegible one. The safety
+   * guard broke the layout of the table it sits in.
    */
   const [surrenderArmed, setSurrenderArmed] = useState<string | null>(null);
   const [decommissionRef, setDecommissionRef] = useState("");
@@ -1201,12 +1207,12 @@ export function RadiationSafety(): React.ReactElement {
                                   ? null
                                   : surrenderArmed === l.id
                                     ? (
-                                      <span className="flex items-center gap-1 flex-wrap border border-red-600 p-1">
+                                      <span className="inline-flex items-center gap-1 flex-wrap border border-red-600 p-1 max-w-72">
                                         <span className="text-xs text-red-700 font-semibold">
                                           {t("aerb.write.surrenderArmed")}
                                         </span>
                                         <input
-                                          className="border px-1 py-0.5 text-xs"
+                                          className="border px-1 py-0.5 text-xs w-28"
                                           data-testid={`aerb-licence-decommission-ref-${l.id}`}
                                           placeholder={t("aerb.write.decommissionRef")}
                                           value={decommissionRef}
