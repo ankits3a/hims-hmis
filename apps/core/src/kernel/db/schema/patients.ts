@@ -282,7 +282,7 @@ export const patientAllergies = pgTable(
     substance: text("substance").notNull(),
     reaction: text("reaction"),
     severity: text("severity"), // 'mild' | 'moderate' | 'severe' | null
-    source: text("source").notNull(), // 'registration' | 'vitals' | 'consult'
+    source: text("source").notNull(), // 'registration' | 'vitals' | 'consult' | 'radiology' (18a-iii T2)
     status: text("status").notNull().default("active"), // 'active' | 'entered_in_error'
     recordedBy: text("recorded_by").notNull(),
     recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),

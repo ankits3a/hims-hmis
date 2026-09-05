@@ -63,6 +63,25 @@ describe("the report drafter seam, offline (18b T4)", () => {
     dose: { ctdivol: "6.400", dlp: "320.500", dap: null, fluoroSeconds: null },
   };
 
+/**
+   * ═══ 18a-iii — A CONTRAST STUDY WITH NO VOLUME NO LONGER CLAIMS A ROUTE ═══
+   *
+   * This leg used to draft *"with intravenous {agent}."* on any contrast study whose volume column
+   * was null, and 18a-iii makes that reachable in the ordinary way: `summariseContrast` gives an
+   * ORAL-only study an agent and a NULL volume, deliberately, because the study's volume is the
+   * intravascular volume and a litre of dilute barium is not a dose. The old sentence would have put
+   * *"Barium sulphate, intravenously"* into a signed report on a barium swallow.
+   */
+  it("a contrast study with NO volume names the agent and claims no route", async () => {
+    const oral = await offlineTemplateDrafter.draft(
+      { ...FACTS, contrastAgent: "Barium sulphate", contrastVolumeMl: null }, NOW,
+    );
+    expect(oral.body.technique).toBe(
+      "CT: CT abdomen with Barium sulphate. Dose: CTDIvol 6.400 mGy, DLP 320.500 mGy·cm.",
+    );
+    expect(oral.body.technique).not.toMatch(/intraven/);
+  });
+
   it("the offline drafter fills TECHNIQUE from the recorded facts and nothing clinical, deterministically", async () => {
     const a = await offlineTemplateDrafter.draft(FACTS, NOW);
     const b = await offlineTemplateDrafter.draft(FACTS, NOW);

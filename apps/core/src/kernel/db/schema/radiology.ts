@@ -3,7 +3,7 @@ import { boolean, check, date, index, integer, jsonb, numeric, pgTable, text, ti
 import type { SQL } from "drizzle-orm";
 import { invoiceLines } from "./billing";
 import { orderItems, orders } from "./orders";
-import { patients } from "./patients";
+import { patientAllergies, patients } from "./patients";
 import { resources } from "./resources";
 import { services } from "./tariff";
 
@@ -654,6 +654,98 @@ export const imagingContrastAdministrations = pgTable(
     check(
       "imaging_contrast_administrations_vial_expiry_ck",
       sql`${t.vialExpiry} is null or ${t.vialExpiry} >= (${t.givenAt} at time zone 'Asia/Kolkata')::date`,
+    ),
+  ],
+);
+
+/**
+ * ═══ PLAN 18a-iii T2 — `imaging_contrast_reactions`: THE ROW THAT MUST REACH THE NEXT SCAN ═══
+ *
+ * 18a's `prior_contrast_reaction` gate READS the patients module's allergy list, and 18a's own
+ * out-of-scope note left this phase the other half: *"the reaction that WRITES that allergy is the
+ * follow-on's."* This is that write, and D2 makes it the one thing about this table that is not
+ * record-only.
+ *
+ * ═══ `allergy_id` IS `NOT NULL`, AND THAT IS THE WHOLE DESIGN IN ONE COLUMN ═══
+ *
+ * The defect this chain exists to prevent is *a reaction recorded in radiology and invisible to the
+ * next CT's gate*. An event a consumer might one day handle does not prevent it; a service branch
+ * that writes the allergy "as well" does not prevent it, because a later refactor can drop the
+ * branch and every test about the reaction still passes. **A `NOT NULL` foreign key to
+ * `patient_allergies` makes a reaction row that wrote no allergy a state the database cannot hold.**
+ * The two writes are one transaction because they are one fact.
+ *
+ * The reaction hangs off the ADMINISTRATION, not off the study: `imaging_contrast_administrations`
+ * already knows the agent, the volume and the route, so the substance written onto the allergy list
+ * is the agent that actually went in rather than a second free-text field a hurried hand retypes.
+ * `study_id` and `patient_id` are derived from that row and never taken from the caller.
+ *
+ * ═══ SEVERITY DECIDES WHAT THE RECORD REQUIRES, NEVER WHO MAY WRITE IT (D3) ═══
+ *
+ * A severe reaction demands the managing clinician and the treatment given —
+ * `imaging_contrast_reactions_severe_ck` — because a cardiac arrest with no named clinician and no
+ * treatment is not a record of anything. It does NOT demand a senior recorder: a radiographer at
+ * 02:00 records what happened, and a system that made them wait for a doctor to type it would be a
+ * system that loses the record.
+ *
+ * ═══ RECORD-ONLY, AND `ot`'s INCIDENT TABLE IS NOT REACHED INTO (D1) ═══
+ *
+ * `incident.reported` exists and is OWNED by `ot` — its own docstring calls it *"the OT-local
+ * incident record, until the quality module (28a) subscribes to it"*. There is no hospital-wide
+ * incident or ADR register and 28a is unbuilt. Radiology records the reaction on its own table and
+ * emits `imaging.contrast_reaction` for a consumer that does not exist yet. Writing into `ot`'s
+ * table would make the hospital's incident register a thing `ot` owns by accident of shipping first.
+ */
+export const CONTRAST_REACTION_SEVERITIES = ["mild", "moderate", "severe"] as const;
+export type ContrastReactionSeverity = (typeof CONTRAST_REACTION_SEVERITIES)[number];
+
+/** Acute versus delayed, the ACR split. A delayed rash at 24 hours is a reaction and is recordable. */
+export const CONTRAST_REACTION_ONSETS = ["immediate", "delayed"] as const;
+export type ContrastReactionOnset = (typeof CONTRAST_REACTION_ONSETS)[number];
+
+/** Where the patient ended up. NULL while they are still in front of you, which is the usual case. */
+export const CONTRAST_REACTION_OUTCOMES = [
+  "recovered", "recovering", "admitted", "referred", "died",
+] as const;
+export type ContrastReactionOutcome = (typeof CONTRAST_REACTION_OUTCOMES)[number];
+
+export const imagingContrastReactions = pgTable(
+  "imaging_contrast_reactions",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    administrationId: text("administration_id").notNull()
+      .references(() => imagingContrastAdministrations.id),
+    studyId: text("study_id").notNull().references(() => imagingStudies.id),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    /** D2 — the allergy this reaction wrote. NOT NULL: see the header. */
+    allergyId: text("allergy_id").notNull().references(() => patientAllergies.id),
+    severity: text("severity").notNull(),
+    onset: text("onset").notNull(),
+    /** What happened, in the recorder's words. Clinical narrative: it stays here and never in an event. */
+    manifestation: text("manifestation").notNull(),
+    treatmentGiven: text("treatment_given"),
+    managingClinicianId: text("managing_clinician_id"),
+    outcome: text("outcome"),
+    observedBy: text("observed_by").notNull(),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull(),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    /** The question the next scan asks: has this patient reacted before, and to what. */
+    index("imaging_contrast_reactions_patient_idx").on(t.patientId, t.observedAt),
+    index("imaging_contrast_reactions_study_idx").on(t.studyId),
+    index("imaging_contrast_reactions_administration_idx").on(t.administrationId),
+    check("imaging_contrast_reactions_severity_ck", inList(t.severity, CONTRAST_REACTION_SEVERITIES)),
+    check("imaging_contrast_reactions_onset_ck", inList(t.onset, CONTRAST_REACTION_ONSETS)),
+    check(
+      "imaging_contrast_reactions_outcome_ck",
+      sql`${t.outcome} is null or ${inList(t.outcome, CONTRAST_REACTION_OUTCOMES)}`,
+    ),
+    /** D3 — a severe reaction with no named clinician and no treatment records nothing. */
+    check(
+      "imaging_contrast_reactions_severe_ck",
+      sql`${t.severity} <> 'severe' or (${t.treatmentGiven} is not null and ${t.managingClinicianId} is not null)`,
     ),
   ],
 );

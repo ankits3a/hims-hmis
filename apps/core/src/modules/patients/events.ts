@@ -93,7 +93,8 @@ export const allergyRecorded = defineEvent(
     allergyId: z.string().min(1),
     substance: z.string().min(1),
     severity: z.enum(["mild", "moderate", "severe"]).nullable(),
-    source: z.enum(["registration", "vitals", "consult"]),
+    /** 18a-iii T2 — `radiology` is a contrast reaction writing the allergy it caused (D2). */
+    source: z.enum(["registration", "vitals", "consult", "radiology"]),
   }),
 );
 

@@ -16,7 +16,13 @@ export type { PatientSummary } from "./registration";
  */
 export { listPatientCoverages } from "./coverages";
 export type { CoverageRow } from "./coverages";
-export { listAllergies } from "./allergies";
+/**
+ * `addAllergy` is exported for 18a-iii T2: a contrast reaction writes the patient's allergy in the
+ * same transaction as the reaction record (D2), and it does so through this seam rather than by
+ * reaching for `patient_allergies` directly — the write must carry `allergy.recorded` and the
+ * patient-is-canonical check, and a second INSERT site would carry neither.
+ */
+export { addAllergy, listAllergies } from "./allergies";
 export type { AllergyRow } from "./allergies";
 export { searchPatients, visiblePatientIds } from "./search";
 export type { MatchLane, PatientSearchResult } from "./search";

@@ -120,6 +120,22 @@ export const imagingContrastAdministered = defineEvent("imaging.contrast_adminis
   volumeMl: z.string().min(1),
 }));
 
+/**
+ * 18a-iii T2 / D1 — a patient reacted to a contrast agent. **Nothing consumes this**, and that is
+ * the posture 18c's D9 took for the same reason: the hospital-wide incident and ADR registers are
+ * the quality pack's (28a) and it is unbuilt. `incident.reported` exists and is `ot`-LOCAL by its
+ * own docstring; radiology emitting into it would make the hospital's incident register a thing
+ * `ot` owns by accident of shipping first.
+ *
+ * `allergyId` travels because the allergy write is the point (D2) and a consumer must be able to
+ * follow it. The MANIFESTATION does not travel: it is the clinical narrative, and this module's
+ * rule is that ids and codes go into payloads and findings do not.
+ */
+export const imagingContrastReaction = defineEvent("imaging.contrast_reaction", MODULE, z.object({
+  studyId: id, administrationId: id, reactionId: id, allergyId: id,
+  severity: z.enum(["mild", "moderate", "severe"]), onset: z.enum(["immediate", "delayed"]),
+}));
+
 /** Every event this module declares, for the catalogue parity test. */
 export const RADIOLOGY_EVENTS = [
   imagingStudyScheduled,
@@ -131,4 +147,5 @@ export const RADIOLOGY_EVENTS = [
   imagingBillDecisionRaised,
   imagingImageViewed,
   imagingContrastAdministered,
+  imagingContrastReaction,
 ] as const;
