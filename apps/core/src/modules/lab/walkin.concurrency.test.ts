@@ -113,13 +113,26 @@ describe("17d §9.2 — the lab walk-in race", () => {
      * slips back with it. That is the property the whole design leans on and nothing was asserting
      * it: a patient must never walk away holding a token slip for a visit that does not exist.
      *
-     * Asserted as an EXACT count per encounter rather than a total, because a total would still
-     * pass if the loser's jobs were written against the winner's encounter. This is the assertion
-     * that catches a future refactor lifting the enqueue out of the transaction.
+     * Asserted PER ENCOUNTER rather than as a total, because a total would still pass if the
+     * loser's jobs had been written against the winner's encounter.
+     *
+     * ═══ AND DELIBERATELY NOT AS AN ABSOLUTE COUNT ═══
+     *
+     * This asserted `[2, 0]` — two documents for the winner — and that `2` was a lims test pinning
+     * a FRONT-DESK policy decision: how many documents a visit queues is theirs, and they are
+     * actively changing it for the lab road (a lab walk-in should not be handed a slip telling it
+     * to pay at a counter it just left). The next change to that number would have reddened a
+     * concurrency test in another lane's module, for a reason having nothing to do with
+     * concurrency.
+     *
+     * What this test is actually about is the ROLLBACK, and the rollback does not care how many
+     * documents there are. So: the loser left NOTHING behind, and the winner left SOMETHING — which
+     * keeps the assertion non-vacuous without borrowing a constant that is not ours to hold.
      */
     const jobs = await db.select({ encounterId: printJobs.encounterId }).from(printJobs);
     const forWinner = jobs.filter((j) => j.encounterId === winner.encounter.id).length;
-    expect([forWinner, jobs.length - forWinner]).toEqual([2, 0]);
+    expect(jobs.length - forWinner).toBe(0);   // THE KILL: a refused visit that left paper behind
+    expect(forWinner).toBeGreaterThan(0);      // and the enqueue really does run on this path
   });
 
   /**
