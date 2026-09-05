@@ -33,6 +33,39 @@ default pool of 10, **five concurrent invoice issuances saturate the API pool.**
 a SAVEPOINT on the same connection, documented deliberately in `bill.ts`. It costs zero extra
 connections. A scan that conflates the two yields ~13 false positives per real finding.
 
+### HOW TO FIND THESE — the discriminating grep is the DOUBLE HANDLE, not `withTx(db`
+
+The obvious instrument is useless, and measurably so. On `main` at `15e3087`:
+
+```
+git grep -c "withTx(db" -- apps/core/src/modules/lab      →  128 hits   (alarming, meaningless)
+git grep -n "InTx(db, tx" -- apps/core/src/modules        →    4 hits   (exactly the indirect sites)
+```
+
+**128 against 4.** Nearly every hit of the first is a test or a legitimate TOP-LEVEL transaction —
+which is precisely what `withTx(db` is supposed to look like. A reader who reaches for it gets a
+frightening number and no way to sort it, **and that is how "three is a floor" survived two
+independent scans.**
+
+The tell is an inner call receiving **both** handles — the outer `db` *and* the `tx`:
+
+```
+lab/results.ts:327     enterResultInTx(db, tx, …)
+lab/results.ts:1162    amendResultInTx(db, tx, …)
+lab/verify.ts:128      verifyResultInTx(db, tx, …)
+lab/specimens.ts:133   printLabelsInTx(db, tx, …)
+```
+
+**Note which site is in that list.** `printLabelsInTx` is the one an earlier draft of the evidence
+pack published as a clean negative control — *"carries exactly the same signature and does NOT
+nest."* It carries the same signature **and it nests.** The one-line grep above would have caught
+that error immediately; the scan that produced it could not, because it asked whether the function
+*itself* called `withTx`, and this one hands its `db` to a callee two frames down.
+
+**The double-handle grep is necessary, not sufficient** — it finds a handle passed as an argument,
+not one reached from module scope or captured in a closure. It is the cheapest instrument that
+discriminates, not a proof of completeness.
+
 ---
 
 ## 2. THE ORDER IS CHEAP-FIRST, NOT ALARMING-FIRST — and that is the main proposal
