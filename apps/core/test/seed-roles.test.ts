@@ -367,9 +367,21 @@ const OT_PAIRS: readonly string[] = [
  */
 const DOCTOR_TARIFF_PAIRS: readonly string[] = ["doctor/tariff.read"];
 
-/** The README prose line that authorises FD-25's cashier grants. Quoted, not paraphrased. */
+/**
+ * The README prose line that authorises FD-25's cashier grants. Quoted, not paraphrased.
+ *
+ * ═══ CLOSE PASS 2 — THIS PIN PASSED WHILE THE SENTENCE IT QUOTES WAS FALSE ═══
+ *
+ * It read "the four strings", and pass 1 removed two of them. The assertion is `toContain`, so a
+ * substring of a paragraph that now describes the wrong grant still matched, and the README went on
+ * telling a go-live trainer that a cashier can reprint a jammed receipt from `/billing` — a seat
+ * with no print rail at all. Prose is the ONLY record of these pairs, because `NON_TABLE_PAIRS` are
+ * deliberately excluded from the cell-for-cell V3 parity: nothing else was checking it.
+ *
+ * The count is in the quoted sentence on purpose. A future grant that moves it fails here.
+ */
 const CASHIER_SEAT_README_PROSE =
-  "Owner ruling of 2026-09-04 gives the `cashier` the four strings its own screen already calls";
+  "Owner ruling of 2026-09-04 gives the `cashier` the two strings its own screen actually calls";
 
 /**
  * ═══ FD-25 / OWNER RULING 2026-09-04 — THE SIXTEENTH NON-TABLE SET ═══
@@ -390,9 +402,18 @@ const CASHIER_SEAT_README_PROSE =
  * window and reads the name off the bill. A counter that takes money without being able to say
  * whose bill it is showing is not more private, only less accountable.
  *
- * `cashier/opd.visits.open` is FD-24's print pair — `GET /print/jobs` and `POST /print/reprint`
- * share that guard, whose own docstring says "anyone who may create the slip may see whether it
- * printed". Granting it was the alternative to re-cutting the guard, which `CLAUDE.md` forbids.
+ * ═══ CLOSE PASS 1 REMOVED TWO STRINGS THIS DOCSTRING USED TO ARGUE FOR ═══
+ *
+ * `cashier/opd.visits.read` and `cashier/opd.visits.open` were granted here beyond the owner's
+ * ruling, on reasoning that was wrong twice. The screen imports nothing from `opd-api` and its fee
+ * quote rides `billing.invoice.read`; and the cashier's seat has NO print rail — the only caller of
+ * `listPrintJobs`/`reprintJob` in the tree is Desk One, which is `front_office`. Meanwhile
+ * `opd.visits.open` guards `POST /opd/visits/:id/reclassify`, which changes the consult fee band, so
+ * at a money seat it would have let one actor lower a fee and then collect it.
+ *
+ * Recorded rather than deleted: this array is the only enumerated record of these pairs — they are
+ * `NON_TABLE_PAIRS` and therefore excluded from the cell-for-cell README parity — so what was
+ * granted and withdrawn has to be legible from here.
  */
 const CASHIER_SEAT_PAIRS: readonly string[] = [
   "cashier/patients.read",
@@ -972,10 +993,9 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // as `CROC500` in three stores is curating half a fact.
       // PLAN 16c T1: 8 -> 19, the counter (four pharmacy.*, three orders.*, four billing.*).
       pharmacy: 19,
-      // FD-25 / owner ruling 2026-09-04 — 11 -> 15: `tariff.read`, `patients.read`,
-      // `opd.visits.read`, `opd.visits.open`. Two close a live 403 on the deployed counter, one is
-      // the DPDP ruling on reading patient identity, one is FD-24's print pair. See
-      // `CASHIER_SEAT_PAIRS` for why none of the four is a billing-table cell.
+      // FD-25 / owner ruling 2026-09-04 — 11 -> 13: `tariff.read` (a live 403 on the deployed
+      // counter) and `patients.read` (the DPDP ruling on reading patient identity). Close pass 1
+      // removed the two `opd.visits.*` strings this comment used to list; see `CASHIER_SEAT_PAIRS`.
       cashier: 13,
       // PLAN 07b O-1, OWNER RULING 2026-08-29 — 11 -> 18. Seven strings that let this role WORK A
       // COUNTER while a cashier's drawer is locked pending its variance approval. Under R-4's
@@ -1069,9 +1089,10 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     // VD-1 T4 — 274 -> 276: `opd.vitals.history.read` to `vitals_desk` and to `doctor`.
     // 18c T1 — 297 -> 302: the RSO's three, plus `aerb.doses.read` to `radiologist` and to
     // `radiographer` (D2 — the cumulative-dose nudge is clinical; the licence file is not).
-    // FD-25 / owner ruling 2026-09-04: the cashier's four. `modelPermissions` and `heldPermissions`
-    // do NOT move with it — all four strings already existed and were already held by somebody, so
-    // this ruling adds GRANTS and not vocabulary. A ruling that moved the permission census too
+    // FD-25 / owner ruling 2026-09-04: the cashier's TWO (`tariff.read`, `patients.read`). Close
+    // pass 1 removed two more that had been granted beyond the ruling. `modelPermissions` and
+    // `heldPermissions` do NOT move with it — both strings already existed and were already held by
+    // somebody, so this ruling adds GRANTS and not vocabulary. A ruling that moved the census too
     // would be declaring a new power, which this one deliberately is not.
     //
     // MEASURED AT THE MERGE, NOT CARRIED ACROSS IT. This branch measured 306 against a main at 302;
@@ -1544,7 +1565,9 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     // 106 -> 119 with Plan 18a T2's thirteen: the four new roles' kernel `orders.*` and the
     // receptionist's counter set, plus this phase's own strings held by `doctor` and
     // `billing_manager`, which are not columns in the radiology table. See `RADIOLOGY_PAIRS`.
-    // 132 -> 136 with FD-25's four: the cashier's seat (owner ruling 2026-09-04), CASHIER_SEAT_PAIRS.
+    // 132 -> 134 with FD-25's two: the cashier's seat (owner ruling 2026-09-04), CASHIER_SEAT_PAIRS.
+    // It was 136 briefly — two further pairs were granted beyond the ruling and close pass 1 removed
+    // them. Measured at 134, never derived from either number.
     expect(NON_TABLE_PAIRS).toHaveLength(134); // FD-25 close pass 1: -2, the two `cashier/opd.visits.*` pairs granted beyond the owner's ruling and removed; 17c owner ruling: +1 (lab_reception/approvals.requests.create); 16c T1: +10, PHARMACY_PAIRS
     expect(nonTable.filter((p) => p.includes("/materials."))).toEqual([]);
     // AMENDED BY PLAN 17 T2 — the guard was written as "no pair whose ROLE is an OT role", and that
@@ -1677,7 +1700,7 @@ describe("seed:roles — executed against a database (V5)", () => {
     // 37 entries where FD-25 measured 36 and every position after the insertion shifted. That is
     // precisely why the merge took main's array wholesale and re-ran the suite rather than editing
     // the eighth entry of a list that had changed length underneath it.
-    expect(first.roles.map((r) => r.granted.length)).toEqual([12, 16, 6, 20, 8, 1, 19, 13, 20, 10, 10, 1, 2, 3, 3, 5, 1, 11, 6, 15, 9, 4, 4, 3, 6, 17, 8, 4, 17, 15, 10, 13, 4, 3, 1, 1, 5]); // 17c owner ruling: lab_reception 16 -> 17; 18b T1: radiographer 9, modality_bridge 1; 16c T1: pharmacy 8 -> 19, pharmacy_assistant 5; 18c T1: radiologist 14 -> 15, radiographer 9 -> 10, and radiation_safety_officer's 3 inserted after pcpndt_incharge; 17-E T1: INDEX 25, pathologist 16 -> 17; FD-25: INDEX 7, cashier 11 -> 13 (close pass 1 removed two over-granted opd.visits.* strings) (lab.instruments.manage) — located by the diff's surrounding context, since the other 16 in this array is lab_reception's and a bare-integer census gives no name to check; FD-25: INDEX 7, cashier 11 -> 13 (close pass 1 removed two over-granted opd.visits.* strings), confirmed by reading ROLE_MODEL's key order rather than counting along the row
+    expect(first.roles.map((r) => r.granted.length)).toEqual([12, 16, 6, 20, 8, 1, 19, 13, 20, 10, 10, 1, 2, 3, 3, 5, 1, 11, 6, 15, 9, 4, 4, 3, 6, 17, 8, 4, 17, 15, 10, 13, 4, 3, 1, 1, 5]); // 17c owner ruling: lab_reception 16 -> 17; 18b T1: radiographer 9, modality_bridge 1; 16c T1: pharmacy 8 -> 19, pharmacy_assistant 5; 18c T1: radiologist 14 -> 15, radiographer 9 -> 10, and radiation_safety_officer's 3 inserted after pcpndt_incharge; 17-E T1: INDEX 25, pathologist 16 -> 17 (lab.instruments.manage) — located by the diff's surrounding context, since the other 16 in this array is lab_reception's and a bare-integer census gives no name to check; FD-25: INDEX 7, cashier 11 -> 13, confirmed by reading ROLE_MODEL's key order rather than counting along the row
     expect(first.roles.every((r) => r.already.length === 0)).toBe(true);
     expect(first.declared).toBe(159); // RC-1 T2's flow lock, VD-1 T4's history read, RC-2 T4's enrol, 18b T1's mwl read, 16c T1's four pharmacy.* strings, 18c T1's three aerb.* strings, 17-E T1's lab.instruments.manage, 17-E T2's lab.instruments.read
     // MEASURED from role_permissions, not derived from the model. On this database only seed:roles

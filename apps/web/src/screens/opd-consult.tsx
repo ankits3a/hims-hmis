@@ -809,10 +809,27 @@ export function OpdConsult(): React.ReactElement {
         e-Rx was never issued, and the three lines and the reason went with it. No error was shown,
         because nothing failed.
 
-        A modal is modal for the keyboard too. The dialog owns Escape (it stops propagation itself);
-        everything else this screen binds stands down while one is open.
+        A modal is modal for the keyboard too: everything this screen binds stands down while one is
+        open, and the dialog handles its own Escape.
+
+        ═══ CLOSE PASS 2, CRITICAL — AND THE STAND-DOWN MUST DISARM ═══
+
+        The first version of this guard was a bare `return`, placed above `escArmed = false` — the
+        line every non-Escape key reaches. That made the two-stage Escape's memory unclearable while
+        a dialog was open, so arming it BEFORE one survived across it:
+
+          Esc (arms) → CLICK Issue → the server refuses → type the override reason (every keystroke
+          returned here) → Esc closes the dialog → Esc ONCE → the patient is released.
+
+        Every step after the arming press is a click or a guarded keystroke, so nothing disarmed.
+        Pass 1's own scenario was genuinely fixed and this is the same failure one press earlier —
+        a fix aimed at an instance closing the instance.
+
+        Disarming here is also the honest semantics: a doctor who has been typing into a dialog has
+        given this screen no instruction about the patient, and an Escape the dialog consumed is not
+        this screen's first press.
       */
-      if (document.querySelector('[role="dialog"]') !== null) return;
+      if (document.querySelector('[role="dialog"]') !== null) { escArmed = false; return; }
 
       if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();

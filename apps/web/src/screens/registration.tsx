@@ -263,9 +263,30 @@ export function Registration(): React.ReactElement {
     setLog((prev) => logged(prev, text, kind));
   }, []);
 
+  /**
+   * ═══ CLOSE PASS 2 — THE INVARIANT, RATHER THAN A THIRD EXIT CONTROL ═══
+   *
+   * Pass 1 fixed the Cancel BUTTON; pass 2 fixed the Esc KEY; pass 2 then pointed out that both are
+   * instance-shaped, because two roads reach the same CRITICAL with no exit control at all:
+   *
+   *   · a register-only commit sets `held` and does NOT clear the form or navigate, so a clerk can
+   *     simply type over it for the next patient;
+   *   · taking a search hit sets `held`, and the enrolment form below is always visible.
+   *
+   * Either way `commit()` posts `{existingId: held.id}` and the person whose details are on screen is
+   * never registered, while somebody else gets their token.
+   *
+   * The invariant is one line and it is here: TYPING INTO THE NEW-PATIENT FORM MEANS THE PATIENT IN
+   * HAND IS NOT THE PATIENT ON SCREEN. This function already clears `duplicates` on every edit for
+   * exactly that reason — a duplicate check is about the typed person, and so is the commit.
+   *
+   * Cheap to be wrong about in the safe direction: dropping `held` costs a clerk one search to pick
+   * the person again. Keeping it costs the wrong patient a token and the right one a registration.
+   */
   const set = useCallback((next: Partial<Form>): void => {
     setForm((f) => ({ ...f, ...next }));
     setDuplicates(null);
+    setHeld(null);
   }, []);
 
   /* ── search ──────────────────────────────────────────────────────────────────────────────── */
@@ -511,6 +532,22 @@ export function Registration(): React.ReactElement {
         startEnrolment();
       } else if (e.key === "Escape") {
         e.preventDefault();
+        /*
+          ═══ CLOSE PASS 2 — THE FIX LANDED ON THE CLICK HANDLER AND NOT ON THE KEY ═══
+
+          Pass 1 made the Cancel BUTTON clear `held` and `issued`. This key did not move, and the
+          button draws an `Esc` keycap — so the screen's own rule ("a keycap that lies is worse than
+          none") was broken by the fix rather than before it, and the CRITICAL stayed reachable on
+          the keyboard this seat is built around:
+
+            register Asha with no doctor (sets `held`, does not navigate) → she leaves → Sunita
+            arrives → the clerk presses Esc, the key printed on the button → the cursor moves and
+            `held` is still Asha → they overwrite the form and commit → Asha gets the token.
+
+          Narrower than the click road, because Esc does not blank the form and a clerk may notice
+          the old values. "May notice" is not a guard.
+        */
+        setForm(EMPTY_FORM); setDuplicates(null); setError(null); setHeld(null); setIssued(null);
         backToSearch();
       } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
         /* Ctrl+Enter commits. A CHORD deliberately: Keymap law 4 is "nothing destructive on a bare key". */

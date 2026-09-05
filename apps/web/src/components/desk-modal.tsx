@@ -83,16 +83,21 @@ export function DeskModal({
       if (e.key !== "Escape") return;
       e.preventDefault();
       /*
-        ═══ CLOSE PASS 1 — THE DIALOG'S ESCAPE IS THE DIALOG'S ALONE ═══
+        ═══ CLOSE PASS 2 CORRECTED THIS COMMENT — THE LINE BELOW IS DEFENCE IN DEPTH, NOT THE GUARD ═══
 
-        `stopImmediatePropagation`, not merely `preventDefault`. The consult screen registers its own
-        window Escape handler for a two-stage "once back to the queue, twice release the patient",
-        and both listeners are bubble-phase on `window`, so one press was reaching both: the dialog
-        closed AND stage two was armed, invisibly. The doctor's next Escape — an entirely ordinary
-        second press when a modal seems not to have gone — released the patient and reset the
-        prescription form they were in the middle of fixing.
+        Pass 1 added `stopImmediatePropagation` here and claimed it was what stopped the consult
+        screen's Escape handler seeing this key. Pass 2 measured that and it is FALSE: same-target
+        bubble listeners fire in REGISTRATION order, and `OpdConsult` registers at mount while this
+        effect registers only when `open` flips true — so the consult handler always runs first and
+        this call arrives too late to stop it.
 
-        A modal owns the Escape key while it is open. That is what being modal means.
+        What actually protects that screen is its own `role="dialog"` guard. Saying otherwise here
+        was the dangerous half: a later task reading this comment could conclude the guard is
+        redundant belt-and-braces, remove the invasive-looking one, and reintroduce a patient-release
+        bug while this file still claimed it could not happen.
+
+        The line stays, because it IS correct for any listener registered after this one and costs
+        nothing — but it is not load-bearing, and a reader should not believe it is.
       */
       e.stopImmediatePropagation();
       closeRef.current();

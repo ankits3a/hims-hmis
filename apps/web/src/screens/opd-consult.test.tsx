@@ -956,6 +956,122 @@ describe("OpdConsult", () => {
   });
 
   /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * CLOSE PASS 2, CRITICAL — THE MODAL GUARD MADE THE DISARM UNREACHABLE
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Pass 1 fixed a real defect: Ctrl+Enter fired straight through the override dialog and completed
+   * the visit. The fix was an early return at the top of the handler whenever a `role="dialog"` is
+   * mounted — and that return sits ABOVE `escArmed = false`, the line every non-Escape key reaches.
+   *
+   * So the two-stage Escape's memory, a closure variable, stopped being cleared by typing. Arm it
+   * before a dialog opens and it is still armed after the dialog closes:
+   *
+   *   1. Esc once — "let me look at the queue".            escArmed = true   (correct)
+   *   2. Issue the prescription; the server refuses; the override dialog opens.
+   *   3. Type the override reason.                          every keystroke returns at the guard
+   *   4. Confirm. The dialog closes.
+   *   5. Esc ONCE, meaning "back to the queue".             THE PATIENT IS RELEASED
+   *
+   * Pass 1's own scenario — two presses with nothing between — was genuinely fixed. This is the same
+   * failure moved one press EARLIER, and the existing tests could not see it because none of them
+   * puts a keystroke inside a dialog and an Escape outside one.
+   *
+   * A fix aimed at an instance closes the instance. This is what pass 2 is for.
+   */
+  /**
+   * ═══ CLOSE PASS 2 — THE MODAL GUARD ITSELF HAD NOTHING WATCHING IT ═══
+   *
+   * Pass 1 fixed a CRITICAL: Ctrl+Enter fired through the override dialog, completing the visit and
+   * discarding the prescription with no error. The 16a test used to travel that road, and rewriting
+   * its mechanism (correctly — the road is now closed) left the guard itself unasserted. A revert
+   * pair run at `efc10dd` in an isolated worktree measured it: delete the guard and all 25 consult
+   * tests still pass.
+   *
+   * This is that test. The chord must do NOTHING while the dialog is up.
+   */
+  it("CLOSE PASS 2: Ctrl+Enter does not complete the visit while the override dialog is open", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/formulary/medicines": { status: 200, body: FORMULARY },
+      "POST /api/opd/visits/enc-1/prescriptions": {
+        status: 409,
+        body: { statusCode: 409, code: "allergy_conflict", message: "allergy", detail: { matches: [{ lineIndex: 0, substance: "Penicillin" }] } },
+      },
+      "POST /api/opd/visits/enc-1/consult/complete": { status: 201, body: { encounter: ENCOUNTER } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(await screen.findByLabelText("Drug"), "Tab Penicillin V");
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+    await screen.findByRole("dialog");
+
+    /* The doctor reaches for the chord their own keycap row advertises, mid-override. */
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    await act(async () => { await Promise.resolve(); });
+
+    /*
+      NOTHING WAS POSTED and the dialog is still up. Before the guard this completed the visit, ran
+      `resetPanel()` — clearing `matches`, `interactionHits` and the whole prescription form — and
+      showed no error, because nothing had failed.
+    */
+    expect(callsTo("POST", "/api/opd/visits/enc-1/consult/complete")).toHaveLength(0);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByTestId("patient-panel")).toBeInTheDocument();
+  });
+
+  it("CLOSE PASS 2: typing inside a dialog disarms the two-stage Escape — one press afterwards does not release the patient", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/formulary/medicines": { status: 200, body: FORMULARY },
+      "POST /api/opd/visits/enc-1/prescriptions": {
+        status: 409,
+        body: { statusCode: 409, code: "allergy_conflict", message: "allergy", detail: { matches: [{ lineIndex: 0, substance: "Penicillin" }] } },
+      },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    /*
+      (1) The prescription is written FIRST. Order matters and it is the whole reason this defect is
+      reachable: typing disarms, so the arming press has to be the last KEYSTROKE before the dialog.
+      Everything after it is a CLICK, and a click never reaches a keydown handler.
+    */
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(await screen.findByLabelText("Drug"), "Tab Penicillin V");
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+
+    /* (2) The doctor glances at the queue before issuing. Stage one, exactly as designed. */
+    await user.keyboard("{Escape}");
+    expect(screen.getByTestId("patient-panel")).toBeInTheDocument();
+
+    /* (3) Issues with the mouse; the server refuses; the override dialog opens. */
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+    const dialog = await screen.findByRole("dialog");
+
+    /* (4) The doctor types a reason. Every one of these keystrokes must disarm. */
+    await user.type(within(dialog).getByLabelText(/Penicillin/), "documented tolerance");
+
+    /* (5) Escape dismisses the dialog — and is consumed by it. */
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    /*
+      (6) THE ASSERTION. One Escape, meaning "back to the queue". The patient must still be in hand:
+      a doctor who has typed into a dialog has given this screen no instruction to drop anybody.
+    */
+    await user.keyboard("{Escape}");
+    expect(screen.getByTestId("patient-panel")).toBeInTheDocument();
+
+    /* And the stage machine is not broken — from a clean start, two presses still release. */
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByTestId("patient-panel")).toBeNull());
+  });
+
+  /**
    * ═══ NOT OVER-BROAD (§3.44) — THE GUARD THAT KEEPS A BOUND KEY OUT OF A FIELD ═══
    *
    * Binding bare Enter is the risky half of the signed-off keymap, and this is the test that makes
