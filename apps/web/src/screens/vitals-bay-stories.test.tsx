@@ -135,6 +135,24 @@ function serve(): Server {
 beforeEach(() => { vi.stubGlobal("WebSocket", FakeWebSocket); resetRealtimeClientForTests(); setToken("t"); sessionStorage.clear(); localStorage.clear(); });
 afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
 
+/**
+ * ═══ FD-25 — AN EXPLICIT BUDGET, BECAUSE THE DEFAULT ONE WAS ALWAYS GOING TO TIP ═══
+ *
+ * This test renders a whole vitals bay and drives SEVEN stories across THREE patients in one go —
+ * deliberately, because the claim it makes is that they work in sequence on one mounted screen, and
+ * seven separate tests would not make that claim.
+ *
+ * It costs about 3.3 s alone against vitest's 5 s default, which is 67% of budget with nothing else
+ * running. The web suite runs its files in PARALLEL, so the real figure is 3.3 s plus whatever the
+ * rest of the suite is doing to the box — and when FD-25 added two screen suites it went to 5.06 s
+ * and failed. Nothing about this test got slower; the headroom was spent by its neighbours.
+ *
+ * MEASURED BEFORE CHANGING ANYTHING: alone it passes at 3.34 s, so this is contention and not a
+ * regression in the bay. The remedy is a budget that matches what the test IS rather than a global
+ * timeout raise, which would hide the next one of these from everybody. 15 s is four times the
+ * measured cost — room for a loaded box, and still short enough that a genuine hang fails the run
+ * rather than stalling it.
+ */
 it("the seven stories run in order on one bay, three patients, without narration", async () => {
   const S = serve();
   const user = userEvent.setup();
@@ -279,4 +297,4 @@ it("the seven stories run in order on one bay, three patients, without narration
   expect(posted("/escalation/escalate")).toHaveLength(1);
   expect(posted("/escalation/cancel")).toHaveLength(1);
   await act(async () => { /* settle */ });
-});
+}, 15_000);

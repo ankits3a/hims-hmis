@@ -15,6 +15,9 @@ import { api } from "../lib/api";
 import { usePatientInHand } from "../lib/patient-in-hand";
 import { useAuth } from "../lib/auth";
 import { useRealtime } from "../lib/realtime";
+import { PaperScreen } from "../components/paper-screen";
+import { AgentDock, logged } from "../components/agent-dock";
+import type { AgentLine } from "../components/agent-dock";
 
 /**
  * VD-2 T1 — BAY ONE: identity and the bench. The signed-off design is
@@ -121,7 +124,7 @@ export function ValvePill({ benchCount, summaries }: { benchCount: number; summa
   const { t } = useTranslation();
   const callable = summaries.reduce((n, s) => n + s.waitingVitalsCount, 0);
   return (
-    <span data-testid="valve-pill" className="rounded-full border border-border px-3 py-1 text-sm">
+    <span data-testid="valve-pill" className="pill gd" title={t("vitalsBay.valve.why")}>
       {t("vitalsBay.valve.bench", { count: benchCount })} · {t("vitalsBay.valve.callable", { count: callable })}
     </span>
   );
@@ -133,9 +136,17 @@ export function BenchRail({ rows, inHandEncounterId, onTake }: {
   const { t } = useTranslation();
   const sorted = useMemo(() => [...rows].sort((a, b) => a.seq - b.seq), [rows]);
   return (
-    <aside aria-label={t("vitalsBay.bench.title")} data-testid="bench" className="flex flex-col gap-1 text-sm">
-      <h2 className="text-sm font-semibold">{t("vitalsBay.bench.title")}</h2>
-      {sorted.length === 0 && <p className="text-muted-foreground" data-testid="bench-empty">{t("vitalsBay.bench.empty")}</p>}
+    <aside
+      aria-label={t("vitalsBay.bench.title")}
+      data-testid="bench"
+      style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12.5 }}
+    >
+      <span className="tag">{t("vitalsBay.bench.title")}</span>
+      {sorted.length === 0 && (
+        <p data-testid="bench-empty" style={{ margin: "7px 0 0", color: "var(--faint)", fontSize: 11.5 }}>
+          {t("vitalsBay.bench.empty")}
+        </p>
+      )}
       {sorted.map((row) => {
         const state = row.escalation === "escalated" ? "escalated"
           : row.escalation === "recheck_demanded" ? "recheck"
@@ -147,10 +158,30 @@ export function BenchRail({ rows, inHandEncounterId, onTake }: {
             key={row.entryId} type="button" data-testid={`bench-row-${row.tokenNo}`} data-state={state}
             aria-pressed={row.encounterId === inHandEncounterId}
             onClick={() => onTake(row)}
-            className={`flex items-center justify-between gap-2 rounded border border-border px-2 py-1 text-left ${row.encounterId === inHandEncounterId ? "bg-accent" : "bg-card"}`}
+            /*
+              THE ROW'S STATE IS CARRIED IN A BORDER AND A WORD, never in colour alone: `due` and
+              `escalated` are the two a nurse must not miss across a room, and a bench read at a
+              glance from two metres is the whole reason this rail exists ("timers die in drawers").
+            */
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+              padding: "8px 10px", borderRadius: 6, textAlign: "left", width: "100%",
+              border: `1px solid ${state === "escalated" ? "var(--red)" : state === "due" ? "var(--gold)" : "var(--line)"}`,
+              background: row.encounterId === inHandEncounterId ? "var(--wash)" : "var(--card)",
+            }}
           >
-            <span><span className="font-mono">#{row.tokenNo}</span> {patientLabel(row, t)} · {row.doctorName}</span>
-            <span className={state === "due" || state === "escalated" ? "font-semibold" : "text-muted-foreground"}>
+            <span style={{ minWidth: 0 }}>
+              <span className="mo" style={{ fontWeight: 600 }}>#{row.tokenNo}</span> {patientLabel(row, t)}
+              <span style={{ color: "var(--faint)" }}> · {row.doctorName}</span>
+            </span>
+            <span
+              className="mo"
+              style={{
+                flexShrink: 0, fontSize: 10.5,
+                fontWeight: state === "due" || state === "escalated" ? 700 : 400,
+                color: state === "escalated" ? "var(--red)" : state === "due" ? "var(--gold)" : "var(--dim)",
+              }}
+            >
               {state === "resting" && row.recallAt !== null ? t("vitalsBay.bench.recallAt", { time: istClock(row.recallAt) }) : t(`vitalsBay.bench.state.${state}`)}
             </span>
           </button>
@@ -167,22 +198,47 @@ export function SessionColumn({ row, preStage, failed, pending, children }: {
 }): React.ReactElement {
   const { t } = useTranslation();
   if (row === null) {
-    return <section data-testid="session-empty" className="text-sm text-muted-foreground">{t("vitalsBay.session.empty")}</section>;
+    return (
+      <section data-testid="session-empty" style={{ fontSize: 12.5, color: "var(--dim)" }}>
+        <span className="tag">{t("vitalsBay.session.title")}</span>
+        <p style={{ margin: "9px 0 0", color: "var(--faint)" }}>{t("vitalsBay.session.empty")}</p>
+        {/*
+          THE DIGNITY LINE, from the signed-off artboard and kept verbatim in intent: the bay screen
+          faces the NURSE. A patient display shows a token and a direction and never a weight — the
+          artboard's own tile carries "🔇 never said aloud" on weight for the same reason. It sits in
+          the empty state because that is when somebody new to the bay reads the screen.
+        */}
+        <p style={{ margin: "13px 0 0", fontSize: 11, color: "var(--faint)", lineHeight: "15px" }}>
+          {t("vitalsBay.session.dignity")}
+        </p>
+      </section>
+    );
   }
   return (
-    <section data-testid="session" data-encounter={row.encounterId} className="flex flex-col gap-2 text-sm">
-      <h2 className="text-base font-semibold">
-        <span className="font-mono">#{row.tokenNo}</span> {patientLabel(row, t)}
-      </h2>
-      <p className="text-muted-foreground">{row.doctorName}{row.patient !== null && !row.patient.restricted ? ` · ${row.patient.uhid}` : ""}</p>
-      {pending && <p>{t("app.loading")}</p>}
-      {failed && <p data-testid="prestage-failed" className="text-muted-foreground">{t("vitalsBay.session.noHistory")}</p>}
+    <section data-testid="session" data-encounter={row.encounterId} style={{ display: "flex", flexDirection: "column", gap: 9, fontSize: 12.5 }}>
+      <span className="tag">{t("vitalsBay.session.title")}</span>
+      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <span className="mo" style={{ fontSize: 21, fontWeight: 700, lineHeight: "24px" }}>#{row.tokenNo}</span>
+        <span style={{ fontSize: 15, fontWeight: 600 }}>{patientLabel(row, t)}</span>
+        <span style={{ color: "var(--dim)", fontSize: 11.5 }}>
+          {row.doctorName}{row.patient !== null && !row.patient.restricted ? ` · ${row.patient.uhid}` : ""}
+        </span>
+      </div>
+      {pending && <p style={{ margin: 0, color: "var(--faint)" }}>{t("app.loading")}</p>}
+      {failed && <p data-testid="prestage-failed" style={{ margin: 0, color: "var(--dim)" }}>{t("vitalsBay.session.noHistory")}</p>}
       {preStage !== null && (
-        <div data-testid="prestage" className="flex flex-col gap-1">
-          <p><span className="text-muted-foreground">{t("vitalsBay.session.band")}</span> {t(`vitalsBay.band.${preStage.band}`)}{preStage.ageYears !== null ? ` · ${t("vitalsBay.session.age", { years: preStage.ageYears })}` : ""}</p>
-          <p><span className="text-muted-foreground">{t("vitalsBay.session.required")}</span> {preStage.required.map((k) => t(`vitalsBay.vital.${k}`)).join(", ")}</p>
+        <div data-testid="prestage" style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          {/*
+            THE BAND IS A PILL AND NOT A SENTENCE, because it decides what the screen will REFUSE to
+            save without — "CHILD 1–5 · small cuff · MUAC due" is an instruction about the next sixty
+            seconds, and the required list under it is the same fact spelled out.
+          */}
+          <span className="pill on" data-testid="band-pill">
+            {t(`vitalsBay.band.${preStage.band}`)}{preStage.ageYears !== null ? ` · ${t("vitalsBay.session.age", { years: preStage.ageYears })}` : ""}
+          </span>
+          <p style={{ margin: 0 }}><span style={{ color: "var(--dim)" }}>{t("vitalsBay.session.required")}</span> {preStage.required.map((k) => t(`vitalsBay.vital.${k}`)).join(", ")}</p>
           {preStage.notRoutine.length > 0 && (
-            <p><span className="text-muted-foreground">{t("vitalsBay.session.notRoutine")}</span> {preStage.notRoutine.map((k) => t(`vitalsBay.vital.${k}`)).join(", ")}</p>
+            <p style={{ margin: 0 }}><span style={{ color: "var(--dim)" }}>{t("vitalsBay.session.notRoutine")}</span> {preStage.notRoutine.map((k) => t(`vitalsBay.vital.${k}`)).join(", ")}</p>
           )}
           {preStage.last === null ? (
             <p data-testid="prestage-none">{t("vitalsBay.session.firstVisit")}</p>
@@ -211,7 +267,7 @@ export function LaneToggle({ lane, onChange }: { lane: Lane; onChange: (next: La
   return (
     <button
       type="button" role="switch" aria-checked={lane === "serial"} data-testid="lane-toggle" data-lane={lane}
-      className="rounded-full border border-border px-3 py-1 text-sm"
+      className={lane === "serial" ? "pill on" : "pill"}
       onClick={() => onChange(lane === "serial" ? "typing" : "serial")}
     >
       {t(lane === "serial" ? "vitalsBay.lane.serial" : "vitalsBay.lane.typing")}
@@ -219,23 +275,47 @@ export function LaneToggle({ lane, onChange }: { lane: Lane; onChange: (next: La
   );
 }
 
-export function IdentifyBox({ onSubmit, error, busy }: { onSubmit: (raw: string) => void; error: string | null; busy: boolean }): React.ReactElement {
+export function IdentifyBox({ onSubmit, error, busy, compact = false }: {
+  onSubmit: (raw: string) => void; error: string | null; busy: boolean;
+  /**
+   * SOMEBODY IS ALREADY ON THE STOOL. The door stays open — a nurse must be able to correct a
+   * mis-scan, or answer "wrong patient" without hunting for a control — but it stops SHOUTING.
+   *
+   * At full size beside a filled session column the screen said, in its largest type, "Who is in
+   * front of you?" three inches from a card naming exactly who was in front of you. That is the
+   * screen arguing with itself, and it is the class of defect this lane keeps finding by looking
+   * rather than by testing: every assertion about this box passed in both states.
+   */
+  compact?: boolean;
+}): React.ReactElement {
   const { t } = useTranslation();
   const [raw, setRaw] = useState("");
   return (
     <form
-      className="flex flex-col gap-1"
+      style={{ display: "flex", flexDirection: compact ? "row" : "column", alignItems: compact ? "center" : "stretch", gap: compact ? 10 : 7, flexWrap: "wrap" }}
       onSubmit={(e) => { e.preventDefault(); onSubmit(raw); }}
     >
-      <label className="text-sm font-medium" htmlFor="identify">{t("vitalsBay.identify.label")}</label>
+      <label style={compact ? { fontSize: 11, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" } : { fontSize: 19, fontWeight: 700, letterSpacing: "-.01em" }} htmlFor="identify">
+        {t(compact ? "vitalsBay.identify.next" : "vitalsBay.identify.label")}
+      </label>
+      {/*
+        ONE LANE, THREE DOORS — the owner's ruling. A scanned token, a typed token number and a UHID
+        all start the SAME session, so they share one box rather than three: a nurse holding a
+        feverish child should not have to decide which control to use before they can start.
+      */}
       <input
-        id="identify" data-testid="identify" autoFocus autoComplete="off" disabled={busy}
-        className="rounded border border-input bg-card px-2 py-1 font-mono"
+        id="identify" data-testid="identify" autoFocus={!compact} autoComplete="off" disabled={busy}
+        className="in mo"
+        style={compact ? { flexGrow: 1, minWidth: 200, height: 32, fontSize: 13 } : { height: 46, fontSize: 15 }}
         placeholder={t("vitalsBay.identify.placeholder")} value={raw}
         onChange={(e) => setRaw(e.target.value)}
       />
-      <p className="text-xs text-muted-foreground">{t("vitalsBay.identify.hint")}</p>
-      {error !== null && <p role="alert" data-testid="identify-error">{error}</p>}
+      {!compact && <p style={{ margin: 0, fontSize: 11.5, color: "var(--faint)" }}>{t("vitalsBay.identify.hint")}</p>}
+      {error !== null && (
+        <p role="alert" data-testid="identify-error" className="pill rd" style={{ height: "auto", padding: "8px 11px" }}>
+          {error}
+        </p>
+      )}
     </form>
   );
 }
@@ -260,6 +340,11 @@ export function VitalsBay(): React.ReactElement {
   const [trail, setTrail] = useState<Amended | null>(null);
   const { actor } = useAuth();
   const [keys, setKeys] = useState({ typed: 0, device: 0 });
+  const [log, setLog] = useState<AgentLine[]>([]);
+  const [answer, setAnswer] = useState<string | null>(null);
+  const note = useCallback((text: string, kind: AgentLine["kind"] = "did"): void => {
+    setLog((prev) => logged(prev, text, kind));
+  }, []);
   const qc = useQueryClient();
   const [saving, setSaving] = useState(false);
   const inHandRef = useRef(inHand);
@@ -386,8 +471,9 @@ export function VitalsBay(): React.ReactElement {
     setTrail(a);
     void qc.invalidateQueries({ queryKey: ["vitals-bay", "bench"] });
     void qc.invalidateQueries({ queryKey: ["vitals-bay", "chart"] });
+    note(t("vitalsBay.log.amended", { token: row.tokenNo }), "warn");
     clearDesk();
-  }, [qc, clearDesk, t]);
+  }, [qc, clearDesk, t, note]);
 
   const onSaved = useCallback((result: WireVitalsSaveResult, row: WireBenchRow) => {
     const who = row.patient === null ? t("vitalsBay.bench.unknownPatient")
@@ -397,10 +483,11 @@ export function VitalsBay(): React.ReactElement {
     releaseFirstTake(row.encounterId);
     void qc.invalidateQueries({ queryKey: ["vitals-bay", "bench"] });
     void qc.invalidateQueries({ queryKey: ["vitals-bay", "summary"] });
+    note(t("vitalsBay.log.saved", { token: row.tokenNo, doctor: row.doctorName }), "ok");
     // CLOSE pass 1 — a save that lands after the desk moved on clears NOTHING of the next patient
     // (pass 2 / F8: read through a ref, the click-time closure could never disagree with its row).
     if (inHandRef.current?.encounterId === row.encounterId) clearDesk();
-  }, [qc, clearDesk, t]);
+  }, [qc, clearDesk, t, note]);
 
   const identify = useCallback(async (raw: string) => {
     const door = classifyDoor(raw);
@@ -437,36 +524,121 @@ export function VitalsBay(): React.ReactElement {
     return () => window.removeEventListener("keydown", onKey);
   }, [clearDesk, saving]);
 
+  /*
+    ═══ THE BAY'S CO-PILOT — the screen has never had one, and it is the one the artboard argues for ═══
+
+    "every unlock, override and auto-bump lands here, timestamped". The log is the valuable half: a
+    danger escalation, a rest offer and an amendment are all things that happened to a PATIENT while
+    a nurse was looking at a different tile, and a bay with no record of them is a bay where the
+    question "why is he class 0?" has to be answered from memory.
+
+    No model behind it, like every other dock in this application: it answers from the bench, the
+    band and the pre-stage that are already on screen, and each answer names where it came from.
+  */
+  const ask = useCallback((question: string): void => {
+    const q = question.trim().toLowerCase();
+    if (q === "") return;
+    if (q.includes("bump") || q.includes("class") || q.includes("danger") || q.includes("escal")) {
+      const view = protocol.view;
+      setAnswer(view === null || view.state === "none"
+        ? t("vitalsBay.agent.noEscalation")
+        : t("vitalsBay.agent.escalation", { state: view.state }));
+    } else if (q.includes("muac") || q.includes("band") || q.includes("required") || q.includes("owe")) {
+      setAnswer(preStage === null
+        ? t("vitalsBay.agent.noPatient")
+        : t("vitalsBay.agent.required", {
+          band: t(`vitalsBay.band.${preStage.band}`),
+          vitals: preStage.required.map((k) => t(`vitalsBay.vital.${k}`)).join(", "),
+        }));
+    } else if (q.includes("bench") || q.includes("wait") || q.includes("next")) {
+      setAnswer(t("vitalsBay.agent.bench", { count: rows.length }));
+    } else {
+      setAnswer(t("vitalsBay.agent.scope"));
+    }
+  }, [protocol.view, preStage, rows.length, t]);
+
+  /*
+    ONE VIEWPORT, AND THE DOCK IS INSIDE IT. `height` rather than `minHeight` because a bay monitor
+    is a known size and this screen has a foot: the agent dock. Left to grow, the page ran 159px
+    past the fold on a 1440×980 screen and the dock went under it — the "footer agent bar" ruling
+    undone by nothing more than content. Each COLUMN scrolls internally; the frame does not.
+  */
   return (
-    <div data-seat="vitals-bay" data-testid="vitals-bay" className="min-h-screen bg-background text-foreground">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-6 py-4">
-        <h1 className="text-lg font-semibold tracking-tight">{t("vitalsBay.title")}</h1>
-        <div className="flex items-center gap-3">
+    <PaperScreen testId="vitals-bay" style={{ height: "var(--pp-h)", overflow: "hidden" }}>
+      <div style={{ flexGrow: 1, minHeight: 0, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        {/*
+          ═══ THE HEADER CARRIES THE THREE FIGURES A BAY IS JUDGED ON ═══
+
+          The keys pill was exiled to a footer, where nobody looked. It is the ZERO-TYPING PROOF —
+          the number that says whether the serial lane is earning its ₹54,850 — and the valve pill is
+          the doctors' wait time. Both belong where the eye lands, beside the controls that change
+          them, not under the fold.
+        */}
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 11, padding: "11px 22px", background: "var(--card)", borderBottom: "1px solid var(--line)" }}>
+          <span aria-hidden style={{ width: 10, height: 10, borderRadius: "50%", background: "var(--green)", flexShrink: 0 }} />
+          <span className="mo" style={{ fontSize: 12.5, letterSpacing: ".08em", fontWeight: 600 }}>{t("vitalsBay.title")}</span>
           <select
-            aria-label={t("vitalsBay.doctor")} data-testid="doctor" className="rounded border border-input bg-card px-2 py-1 text-sm"
+            aria-label={t("vitalsBay.doctor")} data-testid="doctor" className="in"
+            style={{ height: 30, width: "auto", fontSize: 12 }}
             value={doctorId ?? ""} onChange={(e) => setDoctorId(e.target.value === "" ? undefined : e.target.value)}
           >
             <option value="">{t("vitalsBay.allDoctors")}</option>
             {doctors.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
           </select>
-          <ValvePill benchCount={rows.length} summaries={summaries} />
-          <LaneToggle lane={lane} onChange={(next) => { writeLane(next); setLane(next); }} />
-          <button type="button" data-testid="clear-desk" onClick={clearDesk} className="rounded border border-border px-2 py-1 text-sm">
-            {t("vitalsBay.clearDesk")} <kbd className="text-xs text-muted-foreground">Esc</kbd>
-          </button>
+          <span className="mo" data-testid="keys-pill" title={t("vitalsBay.keys.why")} style={{ fontSize: 11, color: "var(--dim)" }}>
+            {t("vitalsBay.capture.keys", { typed: keys.typed, device: keys.device })}
+          </span>
+          <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+            <ValvePill benchCount={rows.length} summaries={summaries} />
+            <LaneToggle lane={lane} onChange={(next) => { writeLane(next); setLane(next); }} />
+            <button type="button" data-testid="clear-desk" onClick={clearDesk} className="sec" style={{ height: 30, gap: 7 }}>
+              {t("vitalsBay.clearDesk")} <span className="kb">Esc</span>
+            </button>
+          </span>
         </div>
-      </header>
-      {benchFailed && <p role="alert" data-testid="bench-failed" className="border-b border-border px-6 py-2 text-sm">{t("vitalsBay.bench.failed")}</p>}
-      <div className="flex flex-col gap-6 p-6 lg:flex-row">
-        <div className="w-full shrink-0 rounded-lg border border-border bg-card p-4 lg:w-80">
-          <BenchRail rows={rows} inHandEncounterId={rowInHand?.encounterId ?? null} onTake={take} />
-        </div>
-        <main className="flex flex-1 flex-col gap-4">
-          <IdentifyBox key={deskGen} onSubmit={(raw) => { void identify(raw); }} error={error} busy={busy} />
-          {banner !== null && <SavedBannerView banner={banner} onDismiss={() => { setBanner(null); setTrail(null); }} />}
-          {banner !== null && trail !== null && <AmendTrail amended={trail} by={actor?.id ?? ""} />}
-          <div className="rounded-lg border border-border bg-card p-4">
-            <SessionColumn row={rowInHand} preStage={preStage} failed={preFailed} pending={pending}>
+        {benchFailed && (
+          <p role="alert" data-testid="bench-failed" className="pill rd" style={{ height: "auto", margin: "11px 22px 0", padding: "9px 12px" }}>
+            {t("vitalsBay.bench.failed")}
+          </p>
+        )}
+
+        {/*
+          ═══ SESSION | STAGE | BENCH — the artboard's triptych, and the order is the argument ═══
+
+          The bench was on the LEFT and the patient in the middle, which reads as "the queue is the
+          subject". It is not: the person on the stool is. Session left (who), stage centre (what you
+          are doing), bench right (who is next) — and the bench stays visible because "timers die in
+          drawers": a resting patient recalled at 09:57 is invisible the moment the rail is a tab.
+        */}
+        {/*
+          NO WRAP, AND THAT IS THE FIX A SCREENSHOT FORCED. With `flexWrap: wrap` and a GROWING
+          middle column, the stage expanded to fill the row and pushed the bench onto the next line —
+          so the rail whose whole justification is "timers die in drawers" ended up below the fold,
+          which is a drawer with extra steps.
+
+          The middle takes `minWidth: 0` so it SHRINKS instead of pushing, and the row scrolls
+          horizontally below Desk One's 1220px floor rather than reflowing: a bay monitor is a known
+          size, and three columns that become one stacked column are a different screen.
+        */}
+        <div style={{ flexGrow: 1, minHeight: 0, display: "flex", gap: 16, padding: "18px 22px", alignItems: "stretch", flexWrap: "nowrap", minWidth: 0, overflowX: "auto" }}>
+          <aside className="box" style={{ width: 294, flexShrink: 0, padding: 14, overflowY: "auto" }}>
+            <SessionColumn row={rowInHand} preStage={preStage} failed={preFailed} pending={pending} />
+          </aside>
+
+          <main style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 14, overflowY: "auto" }}>
+            <div className="box" style={{ padding: "15px 16px" }}>
+              <IdentifyBox key={deskGen} onSubmit={(raw) => { void identify(raw); }} error={error} busy={busy} compact={rowInHand !== null} />
+            </div>
+            {banner !== null && <SavedBannerView banner={banner} onDismiss={() => { setBanner(null); setTrail(null); }} />}
+            {banner !== null && trail !== null && <AmendTrail amended={trail} by={actor?.id ?? ""} />}
+            <div className="box" style={{ padding: "15px 16px" }}>
+              {/*
+                THE STAGE HOSTS THE WORK, NOT THE IDENTITY. An earlier pass wrapped this in a second
+                `SessionColumn`, which drew the token and the name again a few centimetres from the
+                left rail that already had them — the artboard splits who / what-you-are-doing /
+                who-is-next precisely so one fact lives in one column.
+              */}
+              <div data-testid="stage">
               {rowInHand !== null && rowInHand.vitalsDone && (
                 <AmendPanel key={`${deskGen}:${rowInHand.encounterId}`} row={rowInHand} onAmended={(a) => onAmended(a, rowInHand)} />
               )}
@@ -478,8 +650,8 @@ export function VitalsBay(): React.ReactElement {
                   onCommitted={onCommitted} initialTakes={initialTakes}
                   protocol={
                     <>
-                      {preStage?.sealed === true && <p data-testid="sealed-line" className="text-xs text-muted-foreground">{t("vitalsBay.session.sealed")}</p>}
-                      {held !== null && <p data-testid="held-first-take" className="text-xs text-muted-foreground">{t("vitalsBay.rest.heldFirst", { value: `${held[0]}/${held[1]}` })}</p>}
+                      {preStage?.sealed === true && <p data-testid="sealed-line" style={{ margin: 0, fontSize: 11, color: "var(--dim)" }}>{t("vitalsBay.session.sealed")}</p>}
+                      {held !== null && <p data-testid="held-first-take" style={{ margin: 0, fontSize: 11, color: "var(--dim)" }}>{t("vitalsBay.rest.heldFirst", { value: `${held[0]}/${held[1]}` })}</p>}
                       <ProtocolPanel
                         p={protocol} doctorName={rowInHand.doctorName}
                         rerun={rerun === null ? null : { onRerun: () => { const r = rerun; setRerun(null); void protocol.demand(r.reading, r.key).catch(() => undefined); } }}
@@ -491,13 +663,34 @@ export function VitalsBay(): React.ReactElement {
                   }
                 />
               )}
-            </SessionColumn>
-          </div>
-        </main>
+              </div>
+            </div>
+            {/*
+              THE LANE HINT STAYS, and it moved OUT of the footer with the keys pill. It says which
+              of the two ways to work this bay is currently in — `[Space] fires the next device` or
+              `[1–8] jump to a field` — which is a fact about the next keystroke, not a status line.
+            */}
+            <p data-testid="bay-footer" style={{ margin: 0, fontSize: 11, color: "var(--faint)" }}>
+              {t(lane === "serial" ? "vitalsBay.lane.serialHint" : "vitalsBay.lane.typingHint")}
+            </p>
+          </main>
+
+          <aside className="box" style={{ width: 238, flexShrink: 0, padding: 14, overflowY: "auto" }}>
+            <BenchRail rows={rows} inHandEncounterId={rowInHand?.encounterId ?? null} onTake={take} />
+            <p style={{ margin: "11px 0 0", paddingTop: 9, borderTop: "1px solid var(--line2)", fontSize: 10.5, color: "var(--faint)", lineHeight: "14px" }}>
+              {t("vitalsBay.bench.valveNote")}
+            </p>
+          </aside>
+        </div>
       </div>
-      <footer className="border-t border-border px-6 py-2 text-xs text-muted-foreground" data-testid="bay-footer">
-        {t("vitalsBay.capture.keys", { typed: keys.typed, device: keys.device })} · {t(lane === "serial" ? "vitalsBay.lane.serialHint" : "vitalsBay.lane.typingHint")}
-      </footer>
-    </div>
+
+      <AgentDock
+        answer={answer}
+        log={log}
+        onAsk={ask}
+        placeholder={t("vitalsBay.agent.placeholder")}
+        idle={t("vitalsBay.agent.idle")}
+      />
+    </PaperScreen>
   );
 }

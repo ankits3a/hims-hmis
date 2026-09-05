@@ -18,6 +18,7 @@ import {
 import type { DeptQueue } from "./model";
 import { dayMonthIst, monthYearIst } from "../../lib/format";
 import { SubmitButton } from "../../components/submit-button";
+import { Field, Fold, Picker, TogglePills, GRID3, GRID4 } from "../../components/desk-fields";
 import { EMPTY_COVERAGE, formNeedsGuardian, useDesk } from "./session";
 import type { CoverageDraft, Person } from "./session";
 
@@ -249,99 +250,14 @@ function StageFind(): React.ReactElement {
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
-function Field(
-  { label, value, onChange, mono, placeholder, type, testId, width }: {
-    label: string; value: string; onChange: (v: string) => void;
-    mono?: boolean; placeholder?: string; type?: string; testId: string; width?: number;
-  },
-): React.ReactElement {
-  return (
-    <div style={width === undefined ? undefined : { width }}>
-      <div className="tag" style={{ marginBottom: 5 }}>{label}</div>
-      <input
-        className={mono === true ? "in mo" : "in"}
-        data-testid={testId}
-        type={type ?? "text"}
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => { onChange(e.target.value); }}
-      />
-    </div>
-  );
-}
-
-function Picker(
-  { label, value, onChange, options, testId }: {
-    label: string; value: string; onChange: (v: string) => void;
-    options: readonly (readonly [string, string])[]; testId: string;
-  },
-): React.ReactElement {
-  return (
-    <div>
-      <div className="tag" style={{ marginBottom: 5 }}>{label}</div>
-      <select
-        className="in"
-        data-testid={testId}
-        value={value}
-        onChange={(e) => { onChange(e.target.value); }}
-        style={{ height: 40 }}
-      >
-        <option value="">—</option>
-        {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-      </select>
-    </div>
-  );
-}
-
-/**
- * A FOLD, AND WHY EVERY EXTRA FIELD IS BEHIND ONE.
- *
- * The two demands on this screen are real and opposite: a queue of walk-ins needs a name and a sex,
- * and a planned admission needs the whole record. Answering only the second is how a registration
- * screen becomes the thing clerks route around. So the fast path is four fields and untouched, and
- * everything the owner asked for opens on request — closed by default, and never in the tab order
- * until it is open.
- */
-function Fold(
-  { title, hint, open, onToggle, testId, children, accent }: {
-    title: string; hint?: string; open: boolean; onToggle: () => void;
-    testId: string; children: React.ReactNode; accent?: boolean;
-  },
-): React.ReactElement {
-  return (
-    <div
-      className="box"
-      style={{
-        marginTop: 9, overflow: "hidden",
-        borderColor: accent === true ? "var(--gold-line)" : undefined,
-        background: accent === true ? "var(--gold-soft)" : undefined,
-      }}
-    >
-      <button
-        type="button"
-        data-testid={testId}
-        onClick={onToggle}
-        aria-expanded={open}
-        style={{
-          display: "flex", alignItems: "center", gap: 9, width: "100%",
-          padding: "9px 13px", background: "none", border: 0, textAlign: "left", cursor: "pointer",
-        }}
-      >
-        <span className="mo" style={{ fontSize: 11, color: "var(--dim)", width: 10 }}>{open ? "\u2212" : "+"}</span>
-        <span style={{ fontSize: 12.5, fontWeight: 700 }}>{title}</span>
-        {hint === undefined ? null : (
-          <span style={{ fontSize: 11, color: "var(--dim)" }}>{hint}</span>
-        )}
-      </button>
-      {open ? (
-        <div style={{ padding: "3px 13px 13px", borderTop: "1px solid var(--line2)" }}>{children}</div>
-      ) : null}
-    </div>
-  );
-}
-
-const GRID3 = { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 11, marginTop: 11 } as const;
-const GRID4 = { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 11, marginTop: 11 } as const;
+/*
+  FD-25 T0 — `Field`, `Picker`, `Fold`, `GRID3` and `GRID4` MOVED to `components/desk-fields.tsx`.
+  They were written here when Desk One was the only screen with a form; the registration,
+  appointment and billing seats draw the same three controls, and `desk-one.css`'s "one definition"
+  rule applies to the components as much as to the classes that paint them. Nothing about them
+  changed in the move — the additions (`Segmented`, `TogglePills`, the optional `id` for a real
+  <label htmlFor>) are new controls the artboards need, not edits to these three.
+*/
 
 function StageRegister(): React.ReactElement {
   const d = useDesk();
@@ -367,7 +283,14 @@ function StageRegister(): React.ReactElement {
    */
   const needsGuardian = formNeedsGuardian(f);
   const guardianReady = f.guardianName.trim() !== "" && f.guardianRelationship !== "";
-  const ready = f.name.trim() !== "" && f.sex !== "" && (!needsGuardian || guardianReady);
+  /*
+    FD-25 — AND THE SAME DISCIPLINE FOR THE ALIAS. `registration.ts` refuses `alias_required` for a
+    confidential registration with no alias, so the screen will not let a clerk submit into a
+    refusal it can already see — which is the rule this line was written for when the guardian block
+    arrived, applied to the second server rule that has the same shape.
+  */
+  const aliasReady = !f.isConfidential || f.alias.trim() !== "";
+  const ready = f.name.trim() !== "" && f.sex !== "" && (!needsGuardian || guardianReady) && aliasReady;
   useEffect(() => {
     if (needsGuardian) setOpen((p) => (p["guardian"] === true ? p : { ...p, guardian: true }));
   }, [needsGuardian]);
@@ -513,6 +436,42 @@ function StageRegister(): React.ReactElement {
           />
           <Field label={t("registrationCounter.register.mobile")} testId="guardian-phone" mono value={f.guardianPhone} onChange={(v) => set({ guardianPhone: v })} />
           <Field label={t("registrationCounter.register.guardian.idNumber")} testId="guardian-id" mono value={f.guardianIdNumber} onChange={(v) => set({ guardianIdNumber: v })} />
+        </div>
+        {/*
+          ═══ FD-25 — WHAT THE GUARDIAN MAY DO, ASKED RATHER THAN DEFAULTED ═══
+
+          The server has stored these four since the guardians table existed and NOTHING HAS EVER
+          SENT ONE, so every guardian on file holds the column defaults — and the defaults answer a
+          DPDP §9 question nobody was asked: `consents` defaults TRUE. Consent to treat a child is
+          not the same authority as paying their bill, and a form that collapses them has decided
+          the harder one by omission. Four switches, and all four travel on every registration.
+        */}
+        <div style={{ marginTop: 11 }}>
+          <TogglePills
+            label={t("registrationCounter.register.guardian.authority")}
+            testId="guardian-authority"
+            value={{
+              messages: f.guardianAuthorityMessages,
+              bills: f.guardianAuthorityBills,
+              consents: f.guardianAuthorityConsents,
+              records: f.guardianAuthorityRecords,
+            }}
+            onChange={(k, next) => {
+              set(k === "messages" ? { guardianAuthorityMessages: next }
+                : k === "bills" ? { guardianAuthorityBills: next }
+                : k === "consents" ? { guardianAuthorityConsents: next }
+                : { guardianAuthorityRecords: next });
+            }}
+            options={[
+              ["messages", t("registrationCounter.register.guardian.authorityMessages")],
+              ["bills", t("registrationCounter.register.guardian.authorityBills")],
+              ["consents", t("registrationCounter.register.guardian.authorityConsents")],
+              ["records", t("registrationCounter.register.guardian.authorityRecords")],
+            ] as const}
+          />
+          <p style={{ fontSize: 11, color: "var(--dim)", lineHeight: "15px", margin: "8px 0 0" }}>
+            {t("registrationCounter.register.guardian.authorityWhy")}
+          </p>
         </div>
       </Fold>
 
@@ -768,6 +727,43 @@ function StageRegister(): React.ReactElement {
               </span>
             </span>
           </label>
+          {/*
+            ═══ FD-25 — THE ALIAS, WITHOUT WHICH THIS TICK WAS A GUARANTEED REFUSAL ═══
+
+            `registration.ts` throws `alias_required` when the flag arrives without one. This screen
+            sent the flag and never an alias, and `WireRegisterBody` did not declare the field, so
+            every clerk who ever ticked this box got a 400 with nothing on screen to satisfy it.
+
+            It appears only when the box is ticked, because an alias on an ordinary record is a
+            public name nobody asked for. The copy says what the alias DOES — it replaces the name
+            on the strip, the board and the queue display, for everyone — because a clerk choosing
+            "Patient 44" over "Mr Sharma" is choosing what a waiting room will see.
+          */}
+          {f.isConfidential ? (
+            <div style={{ paddingLeft: 24 }}>
+              <Field
+                label={t("registrationCounter.register.flags.alias")}
+                testId="reg-alias"
+                value={f.alias}
+                onChange={(v) => set({ alias: v })}
+                placeholder={t("registrationCounter.register.flags.aliasPlaceholder")}
+              />
+              <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, marginTop: 9 }}>
+                <input
+                  type="checkbox"
+                  data-testid="reg-sensitive-context"
+                  checked={f.sensitiveContext}
+                  onChange={(e) => set({ sensitiveContext: e.target.checked })}
+                />
+                <span>
+                  {t("registrationCounter.register.flags.sensitiveContext")}
+                  <span style={{ display: "block", fontSize: 11, color: "var(--dim)" }}>
+                    {t("registrationCounter.register.flags.sensitiveContextWhy")}
+                  </span>
+                </span>
+              </label>
+            </div>
+          ) : null}
           {/*
             DPDP D9 — OPT-IN MEANS THE PATIENT ACTED. Never pre-checked, and the label says what is
             being consented to rather than "promotional messages?" with a box beside it.

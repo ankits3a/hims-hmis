@@ -182,11 +182,24 @@ describe("VD-2 T1 — the ASSEMBLED bay, two patients, three doors (method §5A.
     expect(screen.getByTestId("session").textContent).not.toContain("UH-26-00125");   // CLOSE pass 1: alias, never name or UHID
   });
 
-  it("subscribes to one queue topic per doctor on the bench, and the root carries the alias-layer attribute", async () => {
+  it("subscribes to one queue topic per doctor on the bench, and the root wears the paper-and-pine scope", async () => {
     stubBay([ROW_A, ROW_B, ROW_C]);
     renderWithProviders(<VitalsBay />);
     await waitFor(() => expect(screen.getByTestId("bench-row-125")).toBeInTheDocument());
-    expect(screen.getByTestId("vitals-bay").getAttribute("data-seat")).toBe("vitals-bay");
+    /*
+      FD-25 — THIS ASSERTED `data-seat="vitals-bay"`, WHICH IS NOW GONE AND SHOULD BE.
+
+      That attribute was the seat's ALIAS LAYER: `styles.css` used it to re-map shadcn's token names
+      onto the paper-and-pine values for a screen built on shadcn components. Bay One no longer has
+      any — `grep -c "@/components/ui"` across all four `vitals-bay*.tsx` files returns 0 — so the
+      block styled nothing and the attribute opted into nothing. Both are deleted, which is exactly
+      what FD-9 did to `appointment-seat` and `registration-screen` when those screens moved.
+
+      The claim the test was making is still worth making, so it is made about the thing that is now
+      load-bearing: the root carries `.pp`, which is where the palette actually comes from.
+    */
+    expect(screen.getByTestId("vitals-bay").className).toContain("pp");
+    expect(screen.getByTestId("vitals-bay").getAttribute("data-seat")).toBeNull();
     // the doctor filter is built from the bench itself — no masters route
     const doctor = screen.getByTestId("doctor") as HTMLSelectElement;
     expect([...doctor.options].map((o) => o.textContent)).toEqual(["All doctors on the bench", "Dr Nishant Rao", "Dr Sneha Toppo"]);
@@ -219,12 +232,39 @@ describe("VD-2 T1 — the road that does NOT pass clearDesk (RC-4 R26/R27's less
 });
 
 describe("the alias layer and the route pin move with the screen", () => {
-  it("styles.css scopes Bay One into the same block as the seat, not :root", () => {
-    const css = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
-    // FD-7 T2 — the appointment seat joined the same block between them, so the pin allows any
-    // seats declared in between while still asserting the two ends share ONE block and that neither
-    // has escaped to `:root`. The mutant it kills is unchanged: a seat given its own token copy.
-    expect(css).toMatch(/\[data-seat="registration-counter"\],(?:[^{]*?)\[data-seat="vitals-bay"\]\s*\{/);
+  /**
+   * ═══ FD-25 — INVERTED, THE WAY THE ROUTE PIN BELOW WAS INVERTED, AND FOR THE SAME REASON ═══
+   *
+   * This asserted that Bay One shared `styles.css`'s `[data-seat=…]` block with the registration
+   * counter. That block re-maps SHADCN's token names onto the paper-and-pine values, for screens
+   * built on shadcn components. Bay One no longer has one — `grep -c "@/components/ui"` across all
+   * four `vitals-bay*.tsx` files returns 0 — so the block styled nothing under that root and the
+   * attribute opted into nothing. Both are deleted, exactly as FD-9 deleted `appointment-seat` and
+   * `registration-screen` when those screens moved to `.pp`.
+   *
+   * THE MUTANT IT KILLS IS UNCHANGED and that is the whole point of inverting rather than deleting:
+   * a seat given its OWN COPY of the palette. The old form caught that by requiring Bay One to be
+   * inside the shared block; this one catches it by requiring that the tokens are defined in
+   * exactly one file, whatever any seat does. It is the stronger claim — it would also have caught
+   * a copy made under a name this test had never heard of.
+   */
+  it("Bay One has no palette of its own — the tokens are defined once, in paper-pine.css", () => {
+    /*
+      COMMENTS STRIPPED FIRST, and this caught itself: `styles.css` now carries a comment EXPLAINING
+      why `[data-seat="vitals-bay"]` was removed, and the first version of this assertion matched
+      that explanation and failed. A guard that fires on the documentation of its own subject is the
+      same false positive `i18n-keys.test.ts` hit on `rx-print.tsx`, and the same fix applies: read
+      the selectors, not the prose.
+    */
+    const css = readFileSync(resolve(__dirname, "../styles.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(css).not.toMatch(/\[data-seat="vitals-bay"\]/);
+
+    /* The one definition, and the only one. `.pp` is in its selector list; the bay wears `.pp`. */
+    /* Stripped for the same reason, and it caught itself the same way: that file's header explains
+       that it holds the ONLY `--paper:` definition, and the explanation counted as a second one. */
+    const palette = readFileSync(resolve(__dirname, "../styles/paper-pine.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(palette).toMatch(/\.pp,/);
+    expect((palette.match(/--paper:/g) ?? []).length).toBe(1);
   });
   /**
    * ═══ FD-5 / OWNER RULING 2026-09-02 — THE BAY *IS* `/opd/vitals` NOW ═══

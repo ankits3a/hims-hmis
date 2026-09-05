@@ -213,6 +213,93 @@ describe("FD-24 T2: the print relay's routes", () => {
     expect(rows[0]!.reason).toContain("the paper jammed");
   });
 
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-25 — THE §14 GATE THE REPRINT ROUTE DID NOT HAVE
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * `opd.visits.open` is held at HOSPITAL scope by every front-desk role, and reprint took a bare
+   * `jobId`. So any holder could reprint any job in the outbox, INCLUDING a document about a
+   * patient whose record they cannot open — a legal name, a UHID and an age, onto paper, for a
+   * clerk with no `patients.confidential.read`. `kernel/printing` contained zero references to
+   * confidentiality of any kind.
+   *
+   * Written FAIL-FIRST: against the shipped route both of these pass the reprint and return an id.
+   */
+  it("refuses to reprint a CONFIDENTIAL patient's document for a clerk who may not read them", async () => {
+    await seedOpdBase(db);
+    await activateOpdVisitDefinition(db);
+    const { deptId, roomId } = await seedOpdMasters(db);
+    const clerk = await mkUser(db, `sealclerk-${String(Date.now())}`, ["front_office"]);
+    const doctor = await mkDoctor(db, { username: `drseal-${String(Date.now())}`, departmentId: deptId, roomId, displayName: "Dr Anand Rao" });
+    const sealed = await mkPatient(db, clerk.actor, {
+      name: "Sealed Patient", sex: "female", ageYears: 33, isConfidential: true, alias: "Patient 44",
+    });
+    const visit = await openVisit(db, clerk.actor, { patientId: sealed.id, departmentId: deptId, doctorId: doctor.doctorId }, new Date("2026-08-17T04:00:00.000Z"));
+    const job = (await db.select().from(printJobs).where(eq(printJobs.encounterId, visit.encounter.id)))[0]!;
+
+    const registry = new ModuleRegistry();
+    for (const m of ALL_MANIFESTS) registry.install(m);
+    await syncPermissions(db, registry);
+    await createRole(db, "desk_no_confidential", "Front desk without confidential read");
+    await grantPermissionToRole(db, registry, "desk_no_confidential", "opd.visits.open");
+    const desk = await mkUser(db, `nosee-${String(Date.now())}`, ["desk_no_confidential"]);
+
+    const before = (await db.select().from(printJobs)).length;
+    const res = await request(app.getHttpServer())
+      .post("/print/reprint")
+      .set("authorization", `Bearer ${desk.token}`)
+      .send({ jobId: job.id, reason: "the paper jammed" })
+      .expect(201);
+
+    /*
+      NULL, NOT A 403, AND THAT IS DELIBERATE (07a DD2). A route that answered differently for
+      "sealed" and "no such job" would let a caller enumerate which of their colleagues' patients
+      are confidential by reprinting ids and reading the shape of the refusal.
+    */
+    expect(res.body.id).toBeNull();
+    expect((await db.select().from(printJobs)).length).toBe(before);
+  });
+
+  /**
+   * AND WHEN A READER *MAY* SEE THEM, THE ROW SAYS `sealed`. `recordPhiAccess` defaults it to false,
+   * so every reprint of a confidential patient's document was being logged as an ordinary read —
+   * the flag exists so an enquiry can ask "who read SEALED records", and it was answering no for
+   * the one route that had no gate either. The two failures compounded rather than covering.
+   */
+  it("logs a permitted reprint of a sealed record with sealed = true", async () => {
+    await seedOpdBase(db);
+    await activateOpdVisitDefinition(db);
+    const { deptId, roomId } = await seedOpdMasters(db);
+    const clerk = await mkUser(db, `sealclerk2-${String(Date.now())}`, ["front_office"]);
+    const doctor = await mkDoctor(db, { username: `drseal2-${String(Date.now())}`, departmentId: deptId, roomId, displayName: "Dr Anand Rao" });
+    const sealed = await mkPatient(db, clerk.actor, {
+      name: "Sealed Patient", sex: "female", ageYears: 33, isConfidential: true, alias: "Patient 44",
+    });
+    const visit = await openVisit(db, clerk.actor, { patientId: sealed.id, departmentId: deptId, doctorId: doctor.doctorId }, new Date("2026-08-17T04:00:00.000Z"));
+    const job = (await db.select().from(printJobs).where(eq(printJobs.encounterId, visit.encounter.id)))[0]!;
+
+    const registry = new ModuleRegistry();
+    for (const m of ALL_MANIFESTS) registry.install(m);
+    await syncPermissions(db, registry);
+    await createRole(db, "desk_may_see", "Front desk with confidential read");
+    for (const p of ["opd.visits.open", "patients.confidential.read"]) {
+      await grantPermissionToRole(db, registry, "desk_may_see", p);
+    }
+    const mrd = await mkUser(db, `maysee-${String(Date.now())}`, ["desk_may_see"]);
+
+    await request(app.getHttpServer())
+      .post("/print/reprint")
+      .set("authorization", `Bearer ${mrd.token}`)
+      .send({ jobId: job.id, reason: "records request" })
+      .expect(201)
+      .expect((r) => { expect(r.body.id).not.toBeNull(); });
+
+    const rows = (await db.select().from(phiAccessLog)).filter((r) => r.surface === "print.reprint");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.sealed).toBe(true);
+  });
+
   it("an empty queue is an empty list, not an error — the relay polls this all day", async () => {
     await request(app.getHttpServer())
       .post("/print/claim")

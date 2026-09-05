@@ -66,6 +66,21 @@ export const notificationsPruned = defineEvent(
 );
 
 /**
+ * FD-25 — THE PRINT OUTBOX'S PRUNE, and it is `notificationsPruned`'s twin because the table is
+ * `notifications` with a different sink. One event per run with a count, never one per row.
+ */
+export const printJobsPruned = defineEvent(
+  "retention.print_jobs_pruned",
+  RETENTION,
+  z.object({
+    deleted: z.number().int(),
+    batches: z.number().int(),
+    retainDays: z.number().int(),
+    cutoff: z.string().min(1),
+  }),
+);
+
+/**
  * D6's companion sweep. A partition drop ORPHANS these three tables — measured in the 11a spike,
  * where 3 `event_idempotency` and 3 `event_deliveries` rows survived a drop by design (there are
  * no FKs) — so the same run prunes them behind the same gate and the same window. One event per

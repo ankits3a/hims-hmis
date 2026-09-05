@@ -284,7 +284,7 @@ describe("FormularyAdmin", () => {
     renderWithProviders(<FormularyAdmin />);
 
     const pairs = await screen.findByTestId("formulary-pairs");
-    expect(within(pairs).getByTestId("pair-s-asa-s-warf")).toHaveTextContent("on 12 issued prescription(s)");
+    expect(within(pairs).getByTestId("pair-s-asa-s-warf")).toHaveTextContent("on 12 issued prescriptions");
     // Twelve click-throughs on a severe pair is the §1.4 signal: the grading needs a curator's eye.
     expect(within(pairs).getByTestId("pair-review-s-asa-s-warf")).toBeInTheDocument();
     // A moderate pair is a notice and is never overridden, so it is never flagged for review.

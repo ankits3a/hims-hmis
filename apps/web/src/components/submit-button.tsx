@@ -26,9 +26,26 @@ export function SubmitButton({
   onClick,
   disabled,
   children,
+  plain,
+  style,
   ...rest
 }: Omit<React.ComponentProps<typeof Button>, "onClick"> & {
   onClick: (idempotencyKey: string) => Promise<void>;
+  /**
+   * ═══ FD-25 — THE LATCH WITHOUT THE SHADCN PAINT ═══
+   *
+   * This component's value is the ref latch, and the latch has nothing to do with what the button
+   * looks like. But it renders `@/components/ui/button`, so an FD-25 screen faced a choice between
+   * keeping the guard and wearing the design system — and either answer is wrong. A screen that
+   * hand-rolls its own button to get the right colour re-buys the double-click defect this file
+   * exists to prevent; one that keeps SubmitButton has a shadcn control sitting in a paper-and-pine
+   * column, which is the seam the owner has now called out three times.
+   *
+   * `plain` is the third answer: the same latch, rendering a bare `<button>` that takes whatever
+   * class the design system gives it (`pri`, `sec`, `sec grn`). Existing callers pass nothing and
+   * are untouched, so the billing screens keep exactly the button they have.
+   */
+  plain?: boolean;
 }): React.ReactElement {
   const inFlight = useRef(false);
   const [busy, setBusy] = useState(false);
@@ -68,8 +85,25 @@ export function SubmitButton({
     })();
   };
 
+  if (plain === true) {
+    /* `type` defaults to "button": a latched write inside a form must not also submit the form. */
+    const { className, type, ...bare } = rest as { className?: string; type?: "button" | "submit" | "reset" };
+    return (
+      <button
+        {...bare}
+        type={type ?? "button"}
+        className={className}
+        style={style}
+        disabled={disabled === true || busy}
+        onClick={handle}
+      >
+        {children}
+      </button>
+    );
+  }
+
   return (
-    <Button {...rest} disabled={disabled === true || busy} onClick={handle}>
+    <Button {...rest} style={style} disabled={disabled === true || busy} onClick={handle}>
       {children}
     </Button>
   );
