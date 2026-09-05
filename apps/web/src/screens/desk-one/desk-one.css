@@ -241,10 +241,28 @@
  * `.mo` deliberately does NOT change, here as on the sign-in screen: it is worn by UHIDs, money,
  * tokens and times, which are Latin and digits, and a clerk compares those character by character.
  */
-.d1[data-lang="hi"], .pp[data-lang="hi"] {
+/*
+ * ═══ FD-25 — AND THE `<html lang>` SELECTOR, WHICH IS WHY THIS FIX NOW REACHES DIALOGS ═══
+ *
+ * An asymmetry scan over FD-25's own work found the FOURTH copy of this defect. Every screen mounts
+ * `.pp` through `components/paper-screen.tsx`, which stamps `data-lang` — that is the whole reason
+ * that component exists. But nine `<DialogContent className="pp">` mounts in `opd-appointments.tsx`
+ * and `patient-detail.tsx` carry the class WITHOUT the attribute, because a dialog portals to
+ * `document.body` and so needs its own `.pp` scope to reach the primitives at all.
+ *
+ * So a Hindi clerk got the Devanagari fix on every screen and lost it the moment a dialog opened —
+ * the labels inside reverting to a mono face with no Devanagari coverage, uppercased, at .14em.
+ *
+ * Adding the attribute to nine call sites would fix nine call sites. `html[lang="hi"]` fixes the
+ * class: `lib/i18n.ts:29` already stamps the document element on every language change, so any `.pp`
+ * subtree anywhere in the document — portalled, nested, or not yet written — is now covered by one
+ * definition. The `[data-lang]` selectors stay beside it: `.d1` and `.lg` set their own, and a
+ * component that stamps its own attribute must keep winning over the document's.
+ */
+.d1[data-lang="hi"], .pp[data-lang="hi"], html[lang="hi"] .pp {
   font-family: "IBM Plex Sans Devanagari", "Nirmala UI", Mangal, "IBM Plex Sans", sans-serif;
 }
-.d1[data-lang="hi"] .tag, .pp[data-lang="hi"] .tag {
+.d1[data-lang="hi"] .tag, .pp[data-lang="hi"] .tag, html[lang="hi"] .pp .tag {
   font-family: "IBM Plex Sans Devanagari", "Nirmala UI", Mangal, sans-serif;
   text-transform: none;
   letter-spacing: 0;
