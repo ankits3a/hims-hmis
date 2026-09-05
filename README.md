@@ -1106,6 +1106,7 @@ hand-over; what stays refused is any result before signature and every list's re
 |---|---|---|---|---|
 | `lab.catalogue.read` | ✓ | ✓ | ✓ | ✓ |
 | `lab.catalogue.manage` | ✓ | | | |
+| `lab.instruments.manage` | ✓ | | | |
 | `lab.worklist.read` | ✓ | ✓ | ✓ | ✓ |
 | `lab.desk.operate` | | | | ✓ |
 | `lab.collection.operate` | | | ✓ | |

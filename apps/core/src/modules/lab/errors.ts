@@ -98,6 +98,8 @@ export const LAB_ERROR_CODES = [
   "unknown_report",
   "report_not_amendable",
   "release_approval_invalid",
+  // ── 17-E T1 — the instruments on the bench ──
+  "unknown_instrument",
 ] as const;
 
 export type LabErrorCode = (typeof LAB_ERROR_CODES)[number];
@@ -176,6 +178,9 @@ const STATUS: Record<LabErrorCode, number> = {
   unknown_report: 404,
   report_not_amendable: 409,
   release_approval_invalid: 422,
+
+  /** 404 — the named machine is not registered. A bridge posting for one is a configuration fact. */
+  unknown_instrument: 404,
 };
 
 export function labHttpStatus(code: LabErrorCode): number {
