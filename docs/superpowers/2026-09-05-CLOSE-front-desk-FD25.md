@@ -1,7 +1,8 @@
 # FD-25 close — six screens, and the fourteen live defects building them found
 
 **Lane** `front-desk` · branch `lane/front-desk-fd25` · 2026-09-05
-**Status** CODE-COMPLETE, NOT DEPLOYED. No close review run yet.
+**Status** CODE-COMPLETE, NOT DEPLOYED. **Close review passes 1 and 2 are DONE — see §10.**
+Draft PR #92 open, CI green, deliberately NOT marked ready (§10.4).
 
 ---
 
@@ -145,6 +146,80 @@ A screen that hand-rolls its own button to get the right colour re-buys the doub
 6. **No close review has been run on this lane.** Every prior plan in this series found CRITICALs
    after verify and CI were both green, and this lane's own memory records that of one pass's five
    fixes, three were themselves defective. Two passes, briefed at the fixes, are owed.
+
+---
+
+## 10 · Close review — passes 1 and 2
+
+### 10.1 · Pass 1 — five reviewers, and four CRITICALs in this lane's own code
+
+| Defect | Consequence |
+|---|---|
+| `/patients/:id/coverages` had no §14 gate — found by **three** reviewers independently | A cashier could read a sealed patient's PM-JAY id, employer and sum insured while `GET /patients/:id` returned 404 for them, logged `sealed: false` |
+| `/registration` Cancel cleared the form, not the patient | Register Asha → Cancel → type Sunita → commit posts `{existingId: Asha}`. Asha gets the token; Sunita is never registered |
+| `DeskModal`'s focus effect depended on `onClose` | Every keystroke in a multi-hit override yanked the caret to the first field; the override was uncompletable |
+| `Ctrl+Enter` fired through the open modal | Completed the visit, discarded the prescription, showed no error |
+| **A permission grant wider than the ruling that authorised it** | I granted four strings; the owner ruled on two. `opd.visits.open` bought nothing and opened `reclassify`, which changes the consult fee band — one actor could lower a fee and then collect it |
+
+### 10.2 · Pass 2 — briefed at the FIXES, which is the whole point
+
+Pass 2 ran **revert pairs in an isolated worktree**: revert each fix individually, run the suite, and
+if it stays green nothing is holding that fix in place. **Five of the six were unguarded.** Only the
+two with database tests were actually held. That is the shape — the fixes a reviewer could assert on
+with a DB got tests; the four CRITICALs that live in a browser shipped on inspection alone.
+
+It then found that **pass 1's own fix caused a CRITICAL**. The `role="dialog"` guard was a bare
+`return` placed ABOVE the line that disarms the two-stage Escape, so an early return skipped an
+invariant it never mentioned. *"Fixed the reported scenario"* and *"fixed the bug"* came apart, and
+the same failure reappeared one keypress earlier.
+
+And the §14 seal had **a hole one level up from where pass 1 patched it**: `GET /billing/worklist`
+returned `patientName: person.name` — the legal name — beside `isConfidential: true`.
+
+### 10.3 · The worklist hole is NOT in production — measured, not inferred
+
+| ref | `billing/worklist.ts` |
+|---|---|
+| `origin/main` | EXISTS — `patientName: person.name` |
+| `c11833d` (deployed base) | **ABSENT** (the billing module is present; this reader is a later addition) |
+| this branch | fixed — renders the alias via the patients module's own `displayName` |
+
+Stated explicitly because this lane has already nearly escalated a fabricated patient-safety
+emergency by inferring a production exposure from individually-true facts. **Measure what is IN the
+deployed base, not just how far behind it is.**
+
+### 10.4 · Why #92 is open as a DRAFT and not marked ready
+
+Two reasons. The pass-1 backlog in §7A is untaken and some of it is CRITICAL-class. And the readiness
+call on a thirty-commit body belongs to the owner — asked, not yet answered — which matters more
+after pass 2 established that this lane's judgement of its own fixes was wrong five times out of six.
+A party that has just measured that about itself is the wrong one to then certify itself.
+
+### 10.5 · What each pass cost, for whoever budgets the next one
+
+Pass 1: five reviewers, ~1.1M subagent tokens, ~14 min wall clock each in parallel.
+Pass 2: two reviewers plus one independent lane on a single question, ~430k.
+Both found defects a green suite could not see. Every count in this document was measured after them.
+
+---
+
+## 7A · The pass-1 backlog, untaken
+
+Ranked. None of these is fixed; all are reproducible from the reports.
+
+1. **`appointment.test.tsx` asserts no request body in any of its 16 tests.** All four write paths
+   mutate green — including booking every patient into the day's first slot regardless of the chip
+   pressed, and checking in the wrong patient.
+2. **The tender lane seeds an amount the cashier cannot see** and then posts it: ₹500 recorded
+   against a drawer that took ₹300.
+3. **`/billing` derives UNPAID from `intendedPayer`**, which is not a payment fact, and renders a
+   failed preview as "nothing to collect".
+4. **The relay's `jobs/` spool is write-only** — nothing ever reads a spooled job back, so the
+   offline guarantee its README states is unimplemented.
+5. **A `JSON.parse` outside the try in `relay.mjs`** can poison the relay permanently on a torn file.
+6. `/billing` draws keycaps `1 2 3` and binds nothing.
+7. The plural guard in `i18n-keys.test.ts` is keyed on `{{count}}`; the offenders use `(s)`.
+8. `TabStrip`'s arrow keys change selection without moving focus.
 
 ---
 
