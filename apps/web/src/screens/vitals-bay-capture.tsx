@@ -674,6 +674,14 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
                   {tile.unlockReason !== null && <span data-testid={`unlocked-${k}`} style={{ fontSize: 10, color: "var(--dim)" }}>{t("vitalsBay.unlock.was", { value: preStage?.last?.[k === "bp" ? "sbp" : k] ?? "" })}</span>}
                   <input
                     ref={(el) => { refs.current[k] = el; }}
+                    /*
+                      CLOSE PASS 1 — THE ONLY UNLABELLED CONTROL IN THE WHOLE WAVE. The visible
+                      label is a `<span>` with no `htmlFor`, so a nurse on a screen reader tabbed
+                      the capture grid and heard "edit, blank" eight times — on the screen whose
+                      entire purpose is entering eight numbers, with no way to tell SpO2 from temp.
+                      The unit travels with it: "Pulse, per minute" is what the tile actually asks.
+                    */
+                    aria-label={`${label(k)} ${unit(k)}`.trim()}
                     data-testid={`input-${k}`} inputMode="decimal" autoComplete="off"
                     className="in mo" style={{ padding: "4px 7px", fontSize: 13 }}
                     placeholder={k === "bp" ? "158/96" : ""}

@@ -52,6 +52,25 @@ export function DeskModal({
   const panelRef = useRef<HTMLDivElement | null>(null);
   const returnTo = useRef<HTMLElement | null>(null);
 
+  /**
+   * ═══ CLOSE PASS 1, CRITICAL — `onClose` MUST NOT BE IN THE FOCUS EFFECT'S DEPS ═══
+   *
+   * It was, and every call site passes an inline arrow, so the effect re-ran on EVERY parent render.
+   * On the consult screen the override reasons are state in the parent, so each keystroke inside the
+   * dialog re-rendered it, ran the cleanup (focus back to the opener) and then the setup (focus to
+   * the dialog's FIRST field).
+   *
+   * With two hits — one interaction and one duplicate, which is an ordinary refusal — a doctor
+   * typing into the second reason box had every character after the first land in the FIRST box.
+   * `confirmOverride` then refuses for a missing reason. The multi-hit override was uncompletable
+   * except one click per character, on the screen where the refusal is the entire point.
+   *
+   * The handler is held in a ref so the Escape listener always calls the CURRENT one while the
+   * effect itself depends only on `open` — which is the only thing that should move focus.
+   */
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+
   useEffect(() => {
     if (!open) return;
     returnTo.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -61,14 +80,29 @@ export function DeskModal({
     (first ?? panel)?.focus();
 
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") { e.preventDefault(); onClose(); }
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      /*
+        ═══ CLOSE PASS 1 — THE DIALOG'S ESCAPE IS THE DIALOG'S ALONE ═══
+
+        `stopImmediatePropagation`, not merely `preventDefault`. The consult screen registers its own
+        window Escape handler for a two-stage "once back to the queue, twice release the patient",
+        and both listeners are bubble-phase on `window`, so one press was reaching both: the dialog
+        closed AND stage two was armed, invisibly. The doctor's next Escape — an entirely ordinary
+        second press when a modal seems not to have gone — released the patient and reset the
+        prescription form they were in the middle of fixing.
+
+        A modal owns the Escape key while it is open. That is what being modal means.
+      */
+      e.stopImmediatePropagation();
+      closeRef.current();
     };
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);
       returnTo.current?.focus();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
   return (

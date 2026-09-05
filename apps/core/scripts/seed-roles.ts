@@ -408,20 +408,33 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * off the bill they are handing over. A counter that can take a person's money and not say
        * whose bill it is showing is not safer, it is only less accountable.
        *
-       * `opd.visits.read` — the counter is entered as `/billing?encounterId=…`, and resolving that
-       * encounter to a person is an `opd.visits.*` read. `cashier` held no `opd.*` string at all.
+       * ═══ CLOSE PASS 1 — TWO STRINGS REMOVED, BECAUSE I GRANTED MORE THAN WAS RULED ═══
        *
-       * `opd.visits.open` — FD-24's print pair. `GET /print/jobs` and `POST /print/reprint` are
-       * both guarded on it, with the docstring's reason: "anyone who may create the slip may see
-       * whether it printed." A cashier who prints a receipt must be able to see whether it printed
-       * and reprint it when the paper jams. The alternative was re-cutting the guard, which
-       * `CLAUDE.md` forbids: never weaken a permission check to make a screen work — grant the
-       * permission or change the screen.
-       */
+       * This block originally carried FOUR strings. The owner ruled on TWO — `patients.read` and
+       * `tariff.read`. `opd.visits.read` and `opd.visits.open` were added here on my own reasoning,
+       * and two independent reviewers found the reasoning wrong on both counts:
+       *
+       * `opd.visits.read` was justified as "resolving `?encounterId=` to a person is an
+       * `opd.visits.*` read". It is not: `billing-counter.tsx` imports NOTHING from `opd-api`, and
+       * the fee quote it calls — `GET /billing/visits/:id/fee-quote` — is guarded on
+       * `billing.invoice.read`, which this role already held. The string bought nothing and opened
+       * `GET /opd/patients/:id/timeline` (the patient's whole OPD history),
+       * `GET /opd/visits/:id/vitals` and `GET /opd/visits/:id/prescriptions` — drug names.
+       *
+       * `opd.visits.open` was justified as FD-24's print pair. Also wrong, and worse: the ONLY
+       * caller of `listPrintJobs`/`reprintJob` in the tree is `screens/desk-one/stages.tsx`, which
+       * is `/counter` and is `front_office`. No cashier screen has a print rail. Meanwhile the
+       * string guards ten routes on `opd-visits.controller.ts` including `POST /opd/walk-in`,
+       * `/visits/:id/abandon`, `/visits/:id/re-enter` and — the one that matters most at a money
+       * seat — `POST /opd/visits/:id/reclassify`, which changes the consult fee band. Granting it
+       * would have let one actor lower a fee and then collect it, and FD-18's reasoning that
+       * reclassify is safe BECAUSE the seat that opens a visit is the one that corrects it stops
+       * being true the moment the money seat holds the string.
+       *
+       * The rule this breaks is not a subtle one: a ruling authorises what it authorises. If the
+       * print rail ever reaches this seat, the grant is a fresh question with a fresh answer.*/
       "tariff.read",
       "patients.read",
-      "opd.visits.read",
-      "opd.visits.open",
     ],
   },
   {

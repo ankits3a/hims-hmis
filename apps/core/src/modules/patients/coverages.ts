@@ -1,7 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import { patientCoverages } from "../../kernel/db/schema";
 import { recordPhiAccess } from "../../kernel/phi/audit";
-import { resolvePatientId } from "./registration";
+import { getPatient } from "./registration";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -61,12 +61,38 @@ export async function listPatientCoverages(
   opts: { reason?: string } = {},
 ): Promise<CoverageRow[]> {
   /*
-    THROUGH THE MERGE CHAIN, like every other patient read in this module. A coverage recorded
-    against a record that was later merged away is still this person's entitlement — and a cashier
-    who was told "the panel is on file" and shown nothing would go and re-collect it from a patient
-    who has already given it once.
+    ═══ CLOSE PASS 1, CRITICAL — THROUGH `getPatient`, NOT `resolvePatientId` ═══
+
+    This read `resolvePatientId`, which is documented as "id mapping only — no demographics, no
+    gate", and then selected straight from the table. It was the ONLY `patients.read` route in this
+    controller that did not resolve through `getPatient`: `:id`, `:id/photo`, `:id/allergies`,
+    `:id/guardians` and `:id/qr` all do, and all 404 on null.
+
+    `getPatient` returns null for a §14 confidential patient to any actor without
+    `patients.confidential.read` — a permission ZERO roles hold. So the seal was open here, and the
+    road was short: `GET /billing/worklist` returns the id and `isConfidential: true` for every
+    patient who owes money (deliberately — a sealed patient must still be billable), and a cashier
+    holds `patients.read` as of the 2026-09-04 ruling. Read the worklist, take the id, call this
+    route, receive the PM-JAY beneficiary id and the employer of a patient whose NAME the same
+    actor cannot see.
+
+    The header above argued at length that this data is "a statement about household income" and
+    "a profile", and then did not gate it. That is the prose promising what the code did not keep.
+
+    `getPatient` does BOTH jobs — it follows the merge chain and it enforces the seal — so the
+    canonical id comes from the row it returns rather than from a second lookup that could disagree
+    with it (`recordPhiAccess` documents `patientId` as "the CANONICAL patient id").
   */
-  const resolved = (await resolvePatientId(db, patientId)) ?? patientId;
+  const found = await getPatient(db, actor, patientId);
+  /*
+    AN EMPTY LIST, NOT A THROW, AND NO AUDIT ROW. A refusal is not a disclosure: writing a
+    `patient.coverage` row for a read that returned nothing would put a sealed patient's id in the
+    access log every time somebody probed it, turning the audit trail into the enumeration oracle
+    the seal exists to prevent. The caller cannot tell "sealed" from "no coverages on file", which
+    is the same shape `getPatient` itself uses — null is indistinguishable from not-found.
+  */
+  if (found === null) return [];
+  const resolved = found.patient.id;
 
   const rows = await db
     .select()
@@ -79,6 +105,12 @@ export async function listPatientCoverages(
       actor,
       patientId: resolved,
       surface: "patient.coverage",
+      /*
+        CLOSE PASS 1 — `sealed` DEFAULTS TO FALSE, so a confidential patient's coverages were being
+        logged as an ordinary read. The whole point of the flag is that an enquiry can ask "who read
+        SEALED records"; without it this surface answered no, for every one of them.
+      */
+      sealed: found.patient.isConfidential,
       reason: opts.reason ?? `read ${String(rows.length)} coverage record(s)`,
     });
   }

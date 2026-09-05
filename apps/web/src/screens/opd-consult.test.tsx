@@ -694,8 +694,23 @@ describe("OpdConsult", () => {
      * reach a blocked button: it is the reviewer's actual scenario, and it is why a stale dialog
      * was dangerous rather than merely untidy. `complete()` calls `resetPanel()`, which is the
      * function that used to clear the allergy state and none of 16a's.
+     *
+     * ═══ CLOSE PASS 1 — THE MECHANISM CHANGED AND THE CLAIM DID NOT ═══
+     *
+     * This drove the completion with Ctrl+Enter THROUGH the open dialog, which was possible because
+     * the screen's window handler ran straight past the modal. Pass 1 found that to be a CRITICAL in
+     * its own right — a doctor typing an override reason and pressing the chord their own keycap row
+     * advertises completed the visit, discarded the prescription and showed no error — so the screen
+     * now stands down while a `role="dialog"` is mounted.
+     *
+     * The route to the same state is therefore the dialog's own Escape, then the Complete button.
+     * What is asserted below is unchanged and is the whole point: `resetPanel` must leave NO trace of
+     * patient A's checks behind for patient B. Rewriting the mechanism rather than weakening the
+     * assertion, because the assertion was never about the keyboard.
      */
-    await user.keyboard("{Control>}{Enter}{/Control}");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await user.click(screen.getByRole("button", { name: "Complete consultation" }));
 
     /**
      * THE DIALOG IS GONE — not merely emptied of allergy matches. Before the fix `resetPanel` nulled

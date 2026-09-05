@@ -471,6 +471,81 @@ describe("Plan 07 read helpers: summaries + merged losers", () => {
       expect(logged[0]!.patientId).toBe(withCover.id);
     });
 
+    /**
+     * ═══════════════════════════════════════════════════════════════════════════════════════════
+     * CLOSE PASS 1, CRITICAL — A §14 SEAL THAT EVERY SIBLING ROUTE HONOURS AND THIS ONE DID NOT
+     * ═══════════════════════════════════════════════════════════════════════════════════════════
+     *
+     * `getPatient` returns null for a confidential patient to any actor without
+     * `patients.confidential.read` — a permission ZERO roles hold. Every other `patients.read`
+     * route in the controller resolves through it and 404s on null: `:id`, `:id/photo`,
+     * `:id/allergies`, `:id/guardians`, `:id/qr`. `:id/coverages` resolved the merge chain with
+     * `resolvePatientId`, which is documented as "id mapping only — no demographics, no gate", and
+     * then selected straight from the table.
+     *
+     * THE ROAD IS SHORT AND IT IS OPEN TODAY. `GET /billing/worklist` returns the id and
+     * `isConfidential: true` for every patient who owes money — deliberately, because a sealed
+     * patient must still be billable. A cashier holds `patients.read` as of the 2026-09-04 ruling.
+     * So: read the worklist, take the id, call `:id/coverages`, and receive the PM-JAY beneficiary
+     * id, the employer and the sum insured for a patient whose name the same actor cannot see.
+     *
+     * The file's own header calls that data "a statement about household income" and "a profile".
+     * It argued the disclosure was serious and then did not gate it — the prose promised what the
+     * code did not keep.
+     */
+    test("CLOSE PASS 1 CRITICAL: a sealed patient's coverages are refused, and the refusal is silent", async () => {
+      const { patient: sealed } = await withTx(db, (tx) => registerPatient(tx, clerk, {
+        ...baseInput,
+        name: "Ravi Shankar Menon", phone: "9100000931",
+        isConfidential: true, alias: "Patient A",
+        coverages: [{ kind: "pmjay", beneficiaryId: "PMJAY-77120" }],
+      }));
+
+      /* The clerk holds `patients.read` and NOT `patients.confidential.read` — the ordinary case. */
+      expect(await getPatient(db, clerk, sealed.id)).toBeNull();
+
+      await expect(listPatientCoverages(db, clerk, sealed.id)).resolves.toEqual([]);
+
+      /*
+        AND NOTHING IS LOGGED, which is the half a "return []" fix gets wrong. A refusal is not a
+        disclosure, and writing a `patient.coverage` row here would put a sealed patient's id in the
+        access log for a read that returned nothing — turning the audit trail into the enumeration
+        oracle the seal exists to prevent.
+      */
+      expect((await db.select().from(phiAccessLog)).filter((r) => r.surface === "patient.coverage")).toHaveLength(0);
+    });
+
+    /**
+     * THE OTHER HALF OF THE SAME GATE: an actor who MAY see the patient still gets the data, and the
+     * row that records it is now marked `sealed` so an enquiry asking "who read sealed records" is
+     * answered truthfully. `recordPhiAccess` defaults `sealed` to false, so every surface that does
+     * not pass it explicitly logs a confidential read as an ordinary one.
+     */
+    test("CLOSE PASS 1: a permitted reader gets the coverages, and the row is marked sealed", async () => {
+      const { patient: sealed } = await withTx(db, (tx) => registerPatient(tx, clerk, {
+        ...baseInput,
+        name: "Meena Iyer", phone: "9100000932",
+        isConfidential: true, alias: "Patient B",
+        coverages: [{ kind: "pmjay", beneficiaryId: "PMJAY-88220" }],
+      }));
+
+      /* A reader who MAY see sealed records — the same fixture the summaries test builds. */
+      const registry = new ModuleRegistry(); registry.install(patientsManifest);
+      await syncPermissions(db, registry);
+      await createRole(db, "coverage_vip_reader", "Coverage VIP reader");
+      await grantPermissionToRole(db, registry, "coverage_vip_reader", "patients.confidential.read");
+      const { id: readerId } = await createUser(db, { username: "covreader", fullName: "cov reader", password: "p1234567" });
+      await assignRole(db, { userId: readerId, roleKey: "coverage_vip_reader", scopeType: "hospital" });
+
+      const rows = await listPatientCoverages(db, { type: "user", id: readerId }, sealed.id);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.beneficiaryId).toBe("PMJAY-88220");
+
+      const logged = (await db.select().from(phiAccessLog)).filter((r) => r.surface === "patient.coverage");
+      expect(logged).toHaveLength(1);
+      expect(logged[0]!.sealed).toBe(true);
+    });
+
     /*
       A coverage row whose patient failed to insert is an orphan pointing at nothing. The clerk
       performed ONE act; it succeeds or fails as one.

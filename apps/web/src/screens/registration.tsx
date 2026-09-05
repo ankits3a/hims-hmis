@@ -1074,7 +1074,28 @@ export function Registration(): React.ReactElement {
                     Ctrl ⏎
                   </span>
                 </button>
-                <button className="sec" type="button" data-testid="reg-cancel" onClick={() => { setForm(EMPTY_FORM); setDuplicates(null); setError(null); backToSearch(); }}>
+                {/*
+                  ═══ CLOSE PASS 1, CRITICAL — CANCEL MUST DROP THE PATIENT, NOT JUST THE FORM ═══
+
+                  This cleared `form`, `duplicates` and `error` and left `held` set. `commit()`
+                  chooses `held === null ? {register: body} : {existingId: held.id}`, and a
+                  register-only commit SETS `held` and does not navigate — so the screen sits there
+                  with the previous patient in hand and an empty form.
+
+                  The road: register Asha Devi with no doctor, she leaves; Sunita steps up; the clerk
+                  presses the button that says "clear this form", types Sunita's name, sex, age and
+                  complaint, and presses "Register and open the visit". The walk-in posts
+                  `{existingId: <Asha's id>}`. ASHA GETS THE TOKEN, ASHA'S NAME PRINTS ON THE SLIP,
+                  AND SUNITA IS NEVER REGISTERED — with everything the clerk just typed discarded
+                  silently, because a body built from the form is not sent when `held` is set.
+
+                  `startEnrolment` (F4) always cleared `held`; this button did not, and it is the one
+                  a clerk reaches for between patients because it is the one on the form.
+                */}
+                <button
+                  className="sec" type="button" data-testid="reg-cancel"
+                  onClick={() => { setForm(EMPTY_FORM); setDuplicates(null); setError(null); setHeld(null); setIssued(null); backToSearch(); }}
+                >
                   {t("registrationSeat.footer.cancel")} <span className="kb">Esc</span>
                 </button>
                 {/*

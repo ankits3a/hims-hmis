@@ -798,6 +798,22 @@ export function OpdConsult(): React.ReactElement {
     const onKey = (e: KeyboardEvent): void => {
       const a = actions.current;
 
+      /*
+        ═══ CLOSE PASS 1, CRITICAL — NO SCREEN CHORD FIRES WHILE A MODAL IS OPEN ═══
+
+        This handler is on `window`, so it ran straight through the override dialog. A doctor who
+        typed an override reason and pressed Ctrl+Enter — the chord this screen DRAWS ON ITS OWN
+        KEYCAP ROW and the app-wide legend calls "confirm" — did not press the dialog's Confirm
+        button. They completed the consultation: `POST /consult/complete`, then `resetPanel()`
+        cleared `matches`, `interactionHits` and the whole prescription form. The visit closed, the
+        e-Rx was never issued, and the three lines and the reason went with it. No error was shown,
+        because nothing failed.
+
+        A modal is modal for the keyboard too. The dialog owns Escape (it stops propagation itself);
+        everything else this screen binds stands down while one is open.
+      */
+      if (document.querySelector('[role="dialog"]') !== null) return;
+
       if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         escArmed = false;

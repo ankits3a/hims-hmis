@@ -174,8 +174,22 @@ export function ConsultScribe({ onInsert }: { onInsert: (text: string) => void }
         machine said sits on pine ink, anything on paper is a fact the hospital recorded. Until a
         doctor presses Insert, this text is the machine's.
       */}
+      {/*
+        CLOSE PASS 1 — `.agdo` WAS THE WRONG PRIMITIVE AND IT CLIPPED THIS BOX TO 24px.
+        `.agdo` is the mint ACTION chip (`height: 24px`, dark text on `--mint`); the speaks-on-dark
+        law is about `--agent`, the pine ink. The inline style overrode display and padding but not
+        the height, so a transcribed sentence plus its two buttons overflowed onto the field below —
+        and it was painted in the colour this system reserves for the agent's own actions. jsdom
+        computes no CSS, so the suite was green straight through it.
+      */}
       {phase.kind === "ready" && (
-        <div className="agdo" data-testid="scribe-transcript" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+        <div
+          data-testid="scribe-transcript"
+          style={{
+            padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8, borderRadius: 6,
+            background: "var(--agent)", color: "var(--agent-fg)",
+          }}
+        >
           <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.55 }}>{phase.text}</p>
           <div style={{ display: "flex", gap: 7 }}>
             <button
