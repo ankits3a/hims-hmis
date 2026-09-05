@@ -1,5 +1,14 @@
 # FD-25 → next session: what is built, what is owed, and where the traps are
 
+> **SUPERSEDED 2026-09-05, later the same day, by
+> `2026-09-05-CLOSE-front-desk-FD25-backlog.md`.** Its three steps were executed: main is merged
+> (the census re-measured at `modelPairs` **307**, cashier index 7 at **13**), seven of the eight
+> §3 backlog findings are fixed, and **§5's readiness question is ANSWERED — the owner ruled #92
+> may be marked ready once the backlog is fixed.** §3's list and §5's open decisions are stale;
+> read the close doc's §5 and §6 instead. What is still accurate here: §4's census method, §6's
+> environment notes and the traps at the end of §6.
+
+
 **Written** 2026-09-05, at the end of the session that built it.
 **Branch** `lane/front-desk-fd25` @ `9716776` · 33 ahead of `origin/main`, 7 behind · 83 files, +11,020/−1,392
 **PR** #92, **DRAFT** — deliberately, see §5 · **all four CI checks green on both twins**
