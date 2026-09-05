@@ -52,11 +52,30 @@ const releaseBody = z.object({
 const amendReportBody = z.object({
   reasonCode: z.enum(["corrected_result", "corrected_demographics", "added_analyte", "clerical"]),
 });
-const amendResultBody = z.object({
+export const amendResultBody = z.object({
   resultId: idSchema,
   value: z.string().min(1).max(500),
   unit: z.string().max(32).nullish(),
   remarks: z.string().max(500).nullish(),
+  /**
+   * ═══ 17d T1 / F1 — WITHOUT THIS LINE THE AMENDMENT GUARD HAD NO DOOR ═══
+   *
+   * `amendResult` has accepted `impossibleOverride` since #71 and reads it at `results.ts:1210`.
+   * This schema did not carry it, and a non-strict `z.object` STRIPS what it does not declare — so
+   * the field was silently discarded on every request and the refusal always computed
+   * `no_override`. A signed result made impossible by a later demographic correction could not be
+   * re-keyed from any route at all, and the refusal rendered a "check the other tube" list the user
+   * had no way to act on.
+   *
+   * DECIDED, not escalated: this case is a RE-KEY with a second pair of hands, not a withdrawal.
+   * The measurement was not necessarily wrong — the record's sex or age was — and 17d T1 D2 already
+   * settled the shape for entry. An amendment is not an exemption from that control, and it is not
+   * a harsher one either.
+   *
+   * The shape mirrors `lab-bench.controller.ts` exactly: an object naming WHO vouched, never a
+   * boolean, so the second pair of hands is a person on the row rather than a checkbox.
+   */
+  impossibleOverride: z.object({ by: idSchema }).optional(),
 });
 
 @Controller("lab")

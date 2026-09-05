@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, inArray, notInArray } from "drizzle-orm";
-import { withTx } from "../../kernel/db/client";
+
 import {
   labItems, labOrderables, labSpecimenItems, labSpecimens, orderItems, orders, patients,
   workflowInstances, opdEncounters, opdQueueEntries,
@@ -11,6 +11,7 @@ import { transition } from "../../kernel/workflow/instances";
 import { displayNameFor } from "../patients";
 import { OrderError } from "../../kernel/orders/errors";
 import { LabError } from "./errors";
+import { deferNearMiss } from "./results";
 import { labSpecimenCollected, labTubeMismatchFlagged } from "./events";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -43,21 +44,37 @@ import type { LabCollectionSite, LabPriority } from "./desk";
  * existed. The census caught the first placement (finding F22) — a derived expectation working
  * exactly as designed, and the second time this phase has been corrected by one.
  *
- * ═══ THE FLAG IS WRITTEN ON ITS OWN TRANSACTION, WHICH IS WHY THIS TAKES A `Db` ═══
+ * ═══ THE FLAG MUST OUTLIVE THE ROLLBACK, WHICH IS THE WHOLE DIFFICULTY ═══
  *
  * The refusal rolls its caller's transaction back, and the first implementation appended the flag
  * on that same transaction — so the rollback took the audit record with it and a near-miss left no
  * trace at all (finding F20). NABL asks for the count of these, and a control nobody can count is
  * a control nobody can audit.
+ *
+ * The second implementation fixed that with a `Db` of its own and introduced the connection
+ * nesting the block below describes. The third keeps both properties: see it.
+ */
+/**
+ * ═══ NO `Db` PARAMETER, DELIBERATELY — THAT IS THE FIX, NOT AN ECONOMY ═══
+ *
+ * This took a `db` and wrote the mismatch flag on `withTx(db, …)` so it would outlive the throw
+ * (F20's lesson, and correct in intent). Its only caller is `printLabelsInTx`, which holds an open
+ * transaction — so the second connection was acquired while the first was still held, two frames
+ * below the `withTx` that opened it. **A scan for a function carrying both a `Db` and a `Tx` does
+ * not see this one**: `printLabelsInTx` has that signature and does not itself nest; the nesting is
+ * inside the helper it calls. It was found by following callers rather than by pattern.
+ *
+ * The flag now rides the thrown error and `printLabels` appends it after the transaction unwinds —
+ * so the record still outlives the refusal, and one connection is held at a time. Dropping the
+ * parameter is the point: with no handle in scope this function cannot re-acquire the shape.
  */
 export async function assertRightPatient(
-  db: Db,
   actor: Actor,
   input: { orderGroupId: string; patientId: string; expectedUhid: string; scannedUhid: string },
   now: Date,
 ): Promise<void> {
   if (input.scannedUhid === input.expectedUhid) return;
-  await withTx(db, (flagTx) => appendEvent(flagTx, labTubeMismatchFlagged.make({
+  const flagged = labTubeMismatchFlagged.make({
     actor,
     patientId: input.patientId,
     correlationId: input.orderGroupId,
@@ -65,12 +82,12 @@ export async function assertRightPatient(
       orderGroupId: input.orderGroupId, expectedUhid: input.expectedUhid,
       scannedUhid: input.scannedUhid, at: now.toISOString(),
     },
-  })));
-  throw new LabError(
+  });
+  throw deferNearMiss(new LabError(
     "tube_mismatch",
     `the scan says ${input.scannedUhid} and this order group belongs to ${input.expectedUhid} — ` +
       "no label was printed",
-  );
+  ), flagged);
 }
 
 export type CollectionQueueRow = {
