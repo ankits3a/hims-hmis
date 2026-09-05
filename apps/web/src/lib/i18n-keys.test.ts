@@ -54,6 +54,15 @@ const SRC = join(__dirname, "..");
 const T_CALL = /\bt\(\s*["']([a-zA-Z][\w.]*\.[\w.]+)["']/g;
 
 /**
+ * The same call, but capturing WHAT FOLLOWS THE KEY — a comma means values were passed, a closing
+ * paren means they were not. That one character is the whole of the second test below.
+ */
+const T_CALL_ARGS = /\bt\(\s*["']([a-zA-Z][\w.]*\.[\w.]+)["']\s*([,)])/g;
+
+/** i18next's own interpolation syntax: `{{who}}`, `{{count}}`, `{{ value }}`. */
+const PLACEHOLDER = /\{\{\s*[\w.]+\s*\}\}/;
+
+/**
  * COMMENTS ARE STRIPPED FIRST, AND THE REASON IS A REAL FALSE POSITIVE THIS FOUND.
  *
  * `components/rx-print.tsx` explains, in prose, that the prescription has no signature line — owner
@@ -194,5 +203,45 @@ describe("every t(\"ns.key\") written in the web source resolves in en.json", ()
       everything needed to fix it.
     */
     expect(missing, `these t() keys are in no locale file, so they render as literal text on screen:\n${missing.join("\n")}\n`).toHaveLength(0);
+  });
+
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * A KEY THAT RESOLVES IS NOT YET A SENTENCE — THE INTERPOLATION HALF
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * The test above proves the key EXISTS. It cannot see the other way the same line fails: the key
+   * resolves, the string is fine, and the call passes no values — so i18next has nothing to
+   * substitute and prints the placeholder. `vitalsBay.rest.go` is "Rest {{minutes}} min" and was
+   * called as `t("vitalsBay.rest.go")`, so the button on the vitals bay read, in production, to a
+   * nurse, at the moment a patient's blood pressure was elevated:
+   *
+   *     Rest {{minutes}} min
+   *
+   * Both locale files were complete and correct. Both parity tests were green. Five suites and
+   * forty-five tests covered that screen, and it took a SCREENSHOT to see it — which is the third
+   * time this lane has paid for the same lesson.
+   *
+   * ═══ WHY THE RULE IS EXACTLY THIS NARROW ═══
+   *
+   * Only calls with NO second argument at all are checked. `t("k", { minutes })` might still pass
+   * the wrong variable name, and this test says nothing about that — proving it would need the
+   * program evaluated. But `t("k")` against a string containing `{{…}}` is decidable from the text
+   * alone and is ALWAYS a defect: there is no argument by which that renders correctly.
+   */
+  it("passes values to every key whose string interpolates", () => {
+    const unfilled: string[] = [];
+    for (const file of files) {
+      const text = readFileSync(file, "utf8");
+      for (const match of stripComments(text).matchAll(T_CALL_ARGS)) {
+        const key = match[1];
+        if (key === undefined || match[2] !== ")") continue;
+        const value = lookup(key);
+        if (typeof value !== "string" || !PLACEHOLDER.test(value)) continue;
+        const line = text.slice(0, match.index).split("\n").length;
+        unfilled.push(`${relative(SRC, file)}:${String(line)}  t("${key}") → "${value}"`);
+      }
+    }
+    expect(unfilled, `these t() calls pass no values to a string that interpolates, so the braces reach the screen:\n${unfilled.join("\n")}\n`).toHaveLength(0);
   });
 });

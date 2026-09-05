@@ -2713,11 +2713,13 @@
         "stale_version": "That card was reissued — ask for the new one",
         "unknown_patient": "That card belongs to no patient on file"
       },
-      "saving": "A save is still on its way — wait for the ✓ before taking the next person"
+      "saving": "A save is still on its way — wait for the ✓ before taking the next person",
+      "next": "Next patient"
     },
     "valve": {
       "bench": "bench {{count}}",
-      "callable": "callable {{count}}"
+      "callable": "callable {{count}}",
+      "why": "this bench is the doctors' wait time"
     },
     "bench": {
       "title": "The bench",
@@ -2734,7 +2736,8 @@
         "done": "✓ with doctor",
         "escalated": "class 0 — escalated",
         "recheck": "other arm, now"
-      }
+      },
+      "valveNote": "The valve: every minute a patient waits here is a minute a doctor waits downstream."
     },
     "session": {
       "empty": "Nobody in hand — scan, or type a token number or UHID",
@@ -2748,7 +2751,9 @@
       "noHistory": "No history to show for this visit",
       "sealed": "Confidential record — the band is known, the history is sealed at this desk",
       "expectedFlags_one": "{{count}} expected flag from history",
-      "expectedFlags_other": "{{count}} expected flags from history"
+      "expectedFlags_other": "{{count}} expected flags from history",
+      "title": "On the stool",
+      "dignity": "This screen faces you. The patient display shows a token and a direction — never a weight, never a number."
     },
     "band": {
       "infant": "Infant",
@@ -2809,7 +2814,16 @@
       "rrNudge": "RR {{value}} in under fifteen seconds? Charted — but count it:",
       "rrCount": "count 15 s",
       "rrCounting": "counting… {{seconds}} s — watch the chest",
-      "rrCounted": "fifteen seconds done — type the count"
+      "rrCounted": "fifteen seconds done — type the count",
+      "source": {
+        "auto": "AUTO",
+        "typed": "TYPED",
+        "counted": "COUNTED",
+        "rodeCuff": "RODE THE CUFF"
+      },
+      "reenter": "Re-enter {{tile}}",
+      "delta": "{{month}} {{from}} → {{delta}}",
+      "weightQuiet": "🔇 never said aloud — it's on the slip"
     },
     "gate": {
       "slippedDigit": "{{value}} kg on an adult — a slipped digit becomes a chart fact in one keystroke",
@@ -2883,7 +2897,25 @@
       "stale": "This chart was amended elsewhere while you were typing — re-open it from the bench to correct the current one"
     },
     "doctor": "Doctor",
-    "allDoctors": "All doctors on the bench"
+    "allDoctors": "All doctors on the bench",
+    "keys": {
+      "why": "the zero-typing proof — device reads are the number the serial lane is bought for"
+    },
+    "log": {
+      "saved": "Token {{token}} saved and sent to {{doctor}}",
+      "amended": "Token {{token}} — saved chart amended, old value kept in the trail"
+    },
+    "agent": {
+      "placeholder": "ask about the band, the bench or a bump…",
+      "idle": "I read this bay only — the patient on the stool, what their band requires, the escalation the server has recorded, and the bench. I have no model behind me and I cannot look anything else up.",
+      "scope": "I answer from what is on this bay: the band and what it requires, the escalation state, and the bench. Anything else I would be guessing at.",
+      "noPatient": "Nobody is on the stool, so there is no band and nothing is required yet. — from this bay.",
+      "required": "{{band}} — required before this chart can be saved: {{vitals}}. The band decides that, not habit. — from the server's pre-stage.",
+      "noEscalation": "Nothing is escalated for this patient. — from the server's escalation state, not from the numbers on screen.",
+      "escalation": "The server has this patient at '{{state}}'. — from the escalation state; the countdown and the class come from there, never from this screen.",
+      "bench_one": "{{count}} patient on the bench. — from the bench poll.",
+      "bench_other": "{{count}} patients on the bench. — from the bench poll."
+    }
   },
   "pharmacyItems": {
     "title": "Pharmacy sale items",

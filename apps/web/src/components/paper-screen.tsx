@@ -1,5 +1,6 @@
-import type React from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type React from "react";
 import "../styles/paper-pine.css";
 import "../screens/desk-one/desk-one.css";
 
@@ -54,8 +55,69 @@ export function PaperScreen({
   style?: React.CSSProperties;
 }): React.ReactElement {
   const { i18n } = useTranslation();
+
+  /**
+   * ═══ THE SHELL'S HEIGHT IS MEASURED, NOT ASSUMED ═══
+   *
+   * This read `calc(100vh - 96px)`, and 96 was a guess. The shell is 119px on `/opd/vitals`, so
+   * every `.pp` screen was 23px taller than the space it had: the page grew a scrollbar, and
+   * whatever sits at the FOOT of the screen — which on three of these seats is the agent dock —
+   * went under the fold. A dock a nurse has to scroll to is a dock nobody uses, and it is the
+   * "footer agent bar" ruling quietly undone by an arithmetic constant.
+   *
+   * A second guess would be the same defect with a different number, so this measures its own
+   * distance from the top of the viewport. `useLayoutEffect` runs before paint, so the screen is
+   * never shown at the wrong height, and the listener re-measures when the shell reflows (a patient
+   * strip appearing, a nav wrapping, a window resize).
+   *
+   * The fallback stays 96px for the first frame in an environment with no layout — jsdom returns 0
+   * for every rect, and a suite must not see a screen with a nonsense height.
+   */
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [offset, setOffset] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const measure = (): void => {
+      const el = rootRef.current;
+      if (el === null) return;
+      /*
+        THE OFFSET CHAIN, NOT A BOUNDING RECT. `getBoundingClientRect().top` is relative to the
+        VIEWPORT, so it moves when the page scrolls, and the correction (`+ window.scrollY`) is only
+        right while the window is the scroller. Chasing it produced a screen whose height changed as
+        the nurse scrolled. `offsetTop` up the `offsetParent` chain is a layout position: it does not
+        know what scrolled and cannot be wrong about it.
+      */
+      let top = 0;
+      for (let n: HTMLElement | null = el; n !== null; n = n.offsetParent as HTMLElement | null) top += n.offsetTop;
+
+      /*
+        AND WHAT THE SHELL PUTS BELOW US. `router.tsx` renders `<ShortcutLegend />` after the outlet,
+        so a screen sized to `100vh - top` is exactly the legend's height too tall and the page grows
+        a scrollbar — which is how the dock ended up 42px under the fold with the top offset already
+        correct. This term is independent of our own height (`scrollHeight` moves with it, one for
+        one), so the two settle in a single pass instead of chasing each other.
+      */
+      const below = Math.max(0, document.documentElement.scrollHeight - (top + el.offsetHeight));
+      setOffset(top + below <= 0 ? null : Math.round(top + below));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    /*
+      AND AGAIN WHENEVER THE SHELL MOVES. One measurement at mount is not enough and the browser
+      proved it: the first read returned 77px against a real 119px, because the nav and the patient
+      strip above this screen had not finished laying out when `useLayoutEffect` ran. The screen was
+      then 42px too tall for the rest of its life, which is the same defect as the hardcoded 96 with
+      an extra step.
+      This converges rather than oscillating: the root's TOP does not depend on the root's own
+      height, so a second pass reads the same number and React bails out on the identical state.
+    */
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    ro?.observe(document.body);
+    return () => { window.removeEventListener("resize", measure); ro?.disconnect(); };
+  }, []);
+
   return (
     <div
+      ref={rootRef}
       className="pp"
       /*
         The STYLESHEET's key, not the document's. `lib/i18n.ts` already stamps `<html lang>` for the
@@ -68,11 +130,16 @@ export function PaperScreen({
         display: "flex",
         flexDirection: "column",
         /*
-          The shell's header plus its border. A `.pp` screen fills what is left of the viewport
-          rather than the whole of it — that is the entire difference from `.d1`, expressed in one
-          declaration, and it is why this screen keeps the nav above it.
+          A `.pp` screen fills what is LEFT of the viewport rather than the whole of it — that is the
+          entire difference from `.d1`, and it is why this screen keeps the nav above it.
         */
-        minHeight: "calc(100vh - 96px)",
+        minHeight: "var(--pp-h)",
+        /*
+          Published as a variable so a screen that wants to BE one viewport rather than at least one
+          — the bay, which has a dock at its foot — can say `height: "var(--pp-h)"` without
+          re-deriving the shell's height and getting a different answer.
+        */
+        ["--pp-h" as string]: `calc(100vh - ${String(offset ?? 96)}px)`,
         background: "var(--paper)",
         color: "var(--ink)",
         ...style,
