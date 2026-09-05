@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormProvider, useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -19,10 +19,12 @@ import { useRealtime } from "../lib/realtime";
 import { RxPrint } from "../components/rx-print";
 import { flagTone, provisionalResultsForEncounter, resultsForEncounter } from "../lib/lab-api";
 import { CheckboxField, FormKit, SelectField, TextField } from "../components/form-kit";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PaperScreen, ScreenTitle } from "../components/paper-screen";
+import { AgentDock, logged } from "../components/agent-dock";
+import type { AgentLine } from "../components/agent-dock";
+import { DeskModal } from "../components/desk-modal";
+import { ConsultScribe } from "../components/consult-scribe";
+import { TabStrip } from "../components/desk-fields";
 
 /**
  * The consultation screen (D5 / Task 15) — the doctor's flagship: the live queue with call / skip /
@@ -87,7 +89,7 @@ function orNull(s: string): string | null {
 
 function ErrorLine({ message }: { message: string | null }): React.ReactElement | null {
   if (message === null) return null;
-  return <p role="alert" className="text-sm text-red-600">{message}</p>;
+  return <p role="alert" style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: "var(--red)" }}>{message}</p>;
 }
 
 /**
@@ -172,7 +174,7 @@ export function OpdConsult(): React.ReactElement {
   const today = todayIst();
 
   const [active, setActive] = useState<Active | null>(null);
-  const [tab, setTab] = useState("note");
+  const [tab, setTab] = useState<"note" | "rx" | "history">("note");
   const [note, setNote] = useState<NoteState>(EMPTY_NOTE);
   const [noteSaved, setNoteSaved] = useState(false);
   const [noteError, setNoteError] = useState<string | null>(null);
@@ -690,28 +692,168 @@ export function OpdConsult(): React.ReactElement {
     }
   };
 
+  /*
+    ═══════════════════════════════════════════════════════════════════════════════════════════════
+    THE CO-PILOT, AND WHY IT HAS NO MODEL BEHIND IT
+    ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+    Every answer below is computed from state this screen already holds and already renders. That is
+    not a limitation being worked around; it is the only version of this feature that is safe to put
+    in front of a prescriber today. A language model that invented a plausible allergy, or rounded a
+    blood pressure, would be believed — the dock sits inside a clinical screen, in the hospital's own
+    colours, beside numbers a nurse actually measured.
+
+    So the rule is: the dock reads, it never infers. Each answer names its source ("Bay One charted",
+    "on file", "you have written"), and the honest refusal is a first-class reply rather than an
+    apology — a doctor who asks something this screen cannot see is told so in one sentence, and can
+    stop wondering whether the silence meant "no".
+  */
+  const [agentAnswer, setAgentAnswer] = useState<string | null>(null);
+  const [agentLog, setAgentLog] = useState<AgentLine[]>([]);
+
+  const agentState = useRef({ view, activeAllergies, latestVitals, advisedTests, restricted });
+  agentState.current = { view, activeAllergies, latestVitals, advisedTests, restricted };
+
+  const ask = useCallback((question: string): void => {
+    const q = question.toLowerCase();
+    const st = agentState.current;
+    const lines = rxForm.getValues("lines").filter((l) => l.drug.trim() !== "");
+
+    const answer = ((): string => {
+      if (/queue|waiting|next|token|katar|line/.test(q)) {
+        const v = st.view;
+        if (v === null) return t("opdConsult.agent.noQueue");
+        return t("opdConsult.agent.queueDepth", {
+          waiting: v.ordered.length,
+          done: v.counts.done,
+          next: v.ordered[0]?.tokenNo ?? "—",
+        });
+      }
+      if (/allerg/.test(q)) {
+        /* A confidential record answers the band and not the history — the same rule the bay follows. */
+        if (st.restricted) return t("opdConsult.agent.cannot");
+        return st.activeAllergies.length === 0
+          ? t("opdConsult.agent.noAllergies")
+          : t("opdConsult.agent.allergies", { list: st.activeAllergies.map((a) => a.substance).join(", ") });
+      }
+      if (/vital|bp|pressure|pulse|spo2|oxygen|temp/.test(q)) {
+        const v = st.latestVitals;
+        if (v === null) return t("opdConsult.agent.noVitals");
+        const flags = v.dangerFlags.length === 0
+          ? t("opdConsult.agent.noDangerFlags")
+          : t("opdConsult.agent.dangerFlags", { list: v.dangerFlags.map((f) => `${f.vital} ${String(f.value)}`).join(", ") });
+        return t("opdConsult.agent.vitals", {
+          bp: `${v.sbp ?? "—"}/${v.dbp ?? "—"}`, pulse: v.pulse ?? "—", spo2: v.spo2 ?? "—", flags,
+        });
+      }
+      if (/rx|prescri|medicine|drug|dawa|line/.test(q)) {
+        return lines.length === 0 ? t("opdConsult.agent.noRx") : t("opdConsult.agent.rxLines", { n: lines.length });
+      }
+      if (/test|lab|invest|jaanch|advis/.test(q)) {
+        return st.advisedTests.length === 0
+          ? t("opdConsult.agent.noAdvised")
+          : t("opdConsult.agent.advised", { n: st.advisedTests.length });
+      }
+      return t("opdConsult.agent.cannot");
+    })();
+
+    setAgentAnswer(answer);
+    setAgentLog((l) => logged(l, question));
+  }, [rxForm, t]);
+
   // ——— this screen's OWN shortcuts; lib/keyboard.tsx owns the global ones and is NOT touched ———
 
-  const actions = useRef({ callNext, skipCurrent, startConsult, submitRx, complete, hasActive: active !== null });
-  actions.current = { callNext, skipCurrent, startConsult, submitRx, complete, hasActive: active !== null };
+  /**
+   * ═══ THE SIGNED-OFF KEYMAP REPLACES THE ALT CHORDS, AND THAT IS THE INTENDED COST ═══
+   *
+   * This screen shipped with Alt+N / Alt+K / Alt+S / Alt+Enter. The keyboard artboard
+   * (docs/design/2026-09-03-front-desk-three-seats/Keymap.dc.html) is signed off and contains none
+   * of them — FD-5's ruling parked the Alt chords — so a second key system was alive beside the
+   * artboard's. Four tests pinned the old chords and are rewritten in this same commit rather than
+   * left to describe a keyboard the hospital no longer uses.
+   *
+   * WHAT THE MAP GIVES THIS SEAT, and every one of these is drawn as a keycap on the screen above:
+   *
+   *   Ctrl+Enter  COMMIT — complete the consultation. A chord because it is the irreversible one.
+   *   Enter       "do the obvious next thing": call the next token when the chair is empty, start
+   *               the consultation when somebody has been called. Never from inside a field, where
+   *               Enter belongs to the field.
+   *   Esc         once back to the queue, twice release the patient. "Nothing bleeds into the next
+   *               person" — the Keymap's own words, and this screen had no Esc at all.
+   *
+   * F4 and F7 are NOT bound here and no keycap claims them: `lib/keyboard.tsx` owns them globally
+   * (/counter and /opd/appointments) and they fire on this screen. A keycap for either would be a
+   * key that navigates a doctor away mid-consultation, which is the artboard's "a keycap that lies"
+   * exactly. F2 is the dock's and the dock binds it itself.
+   */
+  const actions = useRef({ callNext, skipCurrent, startConsult, submitRx, complete, hasActive: active !== null, hasCalled: current !== null });
+  actions.current = { callNext, skipCurrent, startConsult, submitRx, complete, hasActive: active !== null, hasCalled: current !== null };
   useEffect(() => {
+    /* Esc is two-stage, so it needs one bit of memory between presses. */
+    let escArmed = false;
+    const inField = (target: EventTarget | null): boolean =>
+      target instanceof HTMLElement
+      && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable);
+
     const onKey = (e: KeyboardEvent): void => {
-      if (!e.altKey) return;
       const a = actions.current;
-      if (e.key === "n" || e.key === "N") {
+
+      /*
+        ═══ CLOSE PASS 1, CRITICAL — NO SCREEN CHORD FIRES WHILE A MODAL IS OPEN ═══
+
+        This handler is on `window`, so it ran straight through the override dialog. A doctor who
+        typed an override reason and pressed Ctrl+Enter — the chord this screen DRAWS ON ITS OWN
+        KEYCAP ROW and the app-wide legend calls "confirm" — did not press the dialog's Confirm
+        button. They completed the consultation: `POST /consult/complete`, then `resetPanel()`
+        cleared `matches`, `interactionHits` and the whole prescription form. The visit closed, the
+        e-Rx was never issued, and the three lines and the reason went with it. No error was shown,
+        because nothing failed.
+
+        A modal is modal for the keyboard too: everything this screen binds stands down while one is
+        open, and the dialog handles its own Escape.
+
+        ═══ CLOSE PASS 2, CRITICAL — AND THE STAND-DOWN MUST DISARM ═══
+
+        The first version of this guard was a bare `return`, placed above `escArmed = false` — the
+        line every non-Escape key reaches. That made the two-stage Escape's memory unclearable while
+        a dialog was open, so arming it BEFORE one survived across it:
+
+          Esc (arms) → CLICK Issue → the server refuses → type the override reason (every keystroke
+          returned here) → Esc closes the dialog → Esc ONCE → the patient is released.
+
+        Every step after the arming press is a click or a guarded keystroke, so nothing disarmed.
+        Pass 1's own scenario was genuinely fixed and this is the same failure one press earlier —
+        a fix aimed at an instance closing the instance.
+
+        Disarming here is also the honest semantics: a doctor who has been typing into a dialog has
+        given this screen no instruction about the patient, and an Escape the dialog consumed is not
+        this screen's first press.
+      */
+      if (document.querySelector('[role="dialog"]') !== null) { escArmed = false; return; }
+
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        void a.callNext();
-      } else if (e.key === "k" || e.key === "K") {
-        e.preventDefault();
-        void a.skipCurrent();
-      } else if (e.key === "s" || e.key === "S") {
-        // Inside a FormKit form Alt+S is already that form's own submit — never fire it twice.
-        if (e.target instanceof HTMLElement && e.target.closest("form") !== null) return;
-        e.preventDefault();
-        void (a.hasActive ? a.submitRx() : a.startConsult());
-      } else if (e.key === "Enter") {
-        e.preventDefault();
+        escArmed = false;
         void a.complete();
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        /*
+          TWICE RELEASES. The first press is a retreat — leave the field, look at the queue. The
+          second is a decision, and it is the one that must never happen by accident, which is why
+          it takes two presses rather than a confirm dialog a doctor learns to dismiss.
+        */
+        if (escArmed && a.hasActive) { escArmed = false; setActive(null); setTab("note"); return; }
+        escArmed = true;
+        if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+        return;
+      }
+      escArmed = false;
+      if (e.key === "Enter" && !inField(e.target)) {
+        e.preventDefault();
+        /* "The obvious next thing" depends on where the chair is, not on which key was pressed. */
+        void (a.hasActive ? Promise.resolve() : a.hasCalled ? a.startConsult() : a.callNext());
       }
     };
     window.addEventListener("keydown", onKey);
@@ -723,12 +865,12 @@ export function OpdConsult(): React.ReactElement {
   // erratum E3 — the explanatory state: not a crash, not a retry, not a generic error page.
   if (notADoctor) {
     return (
-      <div className="space-y-4 p-6">
-        <h1 className="text-xl font-semibold">{t("opdConsult.title")}</h1>
-        <p data-testid="not-a-doctor" role="status" className="text-sm text-amber-700">
+      <PaperScreen testId="consult-not-doctor" style={{ padding: "20px 24px", gap: 12 }}>
+        <ScreenTitle title={t("opdConsult.title")} route="/opd/consult" />
+        <p data-testid="not-a-doctor" role="status" className="box" style={{ margin: 0, padding: "12px 14px", fontSize: 13, borderColor: "var(--gold-line)", background: "var(--gold-soft)" }}>
           {t("opdConsult.notADoctor")}
         </p>
-      </div>
+      </PaperScreen>
     );
   }
 
@@ -737,36 +879,69 @@ export function OpdConsult(): React.ReactElement {
       key={e.id}
       data-testid={`queue-row-${e.id}`}
       aria-current={isCurrent ? "true" : undefined}
-      className={`flex flex-wrap items-center gap-2 rounded border p-2 text-sm ${isCurrent ? "border-blue-500 bg-blue-50" : ""}`}
+      className="drow"
+      /*
+        THE ROW IN THE CHAIR IS MARKED BY THE HOSPITAL GREEN AND A LEFT BAR, not by a blue tint.
+        Blue belongs to no part of this palette, and the one row a doctor must be able to find
+        while looking at a patient should differ from its neighbours by SHAPE as well as colour.
+      */
+      style={{
+        display: "flex", flexWrap: "wrap", alignItems: "center", gap: 7, padding: "8px 10px", fontSize: 12.5,
+        ...(isCurrent
+          ? { background: "var(--green-soft)", boxShadow: "inset 3px 0 0 var(--green)" }
+          : {}),
+      }}
     >
-      <span data-testid={`queue-position-${e.id}`} className="text-xs text-neutral-500">
+      <span data-testid={`queue-position-${e.id}`} className="mo" style={{ fontSize: 10, color: "var(--faint)" }}>
         {e.position === null ? "—" : t("opdConsult.position", { n: e.position })}
       </span>
-      <span data-testid={`queue-token-${e.id}`} className="text-lg font-semibold tabular-nums">{e.tokenNo}</span>
-      <span>{patientLabel(e.patient)}</span>
-      {e.queueClass !== null && <Badge variant="secondary">{t(`opd.queueClass.${e.queueClass}`)}</Badge>}
+      <span data-testid={`queue-token-${e.id}`} className="mo" style={{ fontSize: 16, fontWeight: 700 }}>{e.tokenNo}</span>
+      <span style={{ flexGrow: 1, minWidth: 0 }}>{patientLabel(e.patient)}</span>
+      {e.queueClass !== null && <span className="tag">{t(`opd.queueClass.${e.queueClass}`)}</span>}
       {(e.danger || e.encounter.dangerFlagged) && (
-        <span data-testid={`queue-danger-${e.id}`} aria-label={t("opdConsult.danger")} className="text-red-600">⚠</span>
+        <span data-testid={`queue-danger-${e.id}`} aria-label={t("opdConsult.danger")} style={{ color: "var(--red)", fontWeight: 700 }}>⚠</span>
       )}
-      {e.reEntry && <Badge variant="outline" data-testid={`queue-reentry-${e.id}`}>{t("opdConsult.reEntry")}</Badge>}
+      {e.reEntry && <span className="pill" data-testid={`queue-reentry-${e.id}`}>{t("opdConsult.reEntry")}</span>}
     </li>
   );
 
   return (
-    <div className="space-y-4 p-6">
-      <h1 className="text-xl font-semibold">{t("opdConsult.title")}</h1>
+    <PaperScreen testId="opd-consult" style={{ padding: "16px 20px 0", gap: 13 }}>
+      <ScreenTitle
+        title={t("opdConsult.title")} route="/opd/consult" subtitle={me.data?.displayName ?? undefined}
+        actions={
+          /*
+            THE KEYCAP LEGEND IS THE ARTBOARD'S OWN RULE MADE VISIBLE: "every keycap ON the screen
+            shows what is actually bound." Three caps, three bindings, all in the effect below —
+            F4 and F7 are deliberately absent because `lib/keyboard.tsx` owns them globally and a
+            keycap for them here would navigate a doctor away mid-consultation.
+          */
+          <span style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 10.5, color: "var(--faint)" }}>
+            <span><span className="kb">Ctrl</span><span className="kb">⏎</span> {t("opdConsult.keys.complete")}</span>
+            <span><span className="kb">F2</span> {t("opdConsult.keys.agent")}</span>
+            <span><span className="kb">Esc</span> {t("opdConsult.keys.back")}</span>
+          </span>
+        }
+      />
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      {/*
+        THE RAIL IS 296px AND DOES NOT GROW. A doctor reads the queue with their peripheral vision
+        while looking at a patient; a column that reflows with the window is a column they have to
+        re-find. Below 1100px the two stack, because a `.pp` screen inherits no narrow story from
+        `.d1` and a lobby terminal at 1024 would otherwise get a 300px-wide note field.
+      */}
+      <div style={{ flexGrow: 1, minHeight: 0, display: "flex", gap: 16, alignItems: "stretch", flexWrap: "wrap" }}>
         {/* (a) the live queue and the session controls */}
-        <aside className="space-y-3">
-          <div className="space-y-1">
-            <label className="block text-sm font-medium" htmlFor="session-status">{t("opdConsult.sessionStatus")}</label>
+        <aside className="box" style={{ width: 296, flexGrow: 1, maxWidth: "100%", flexBasis: 296, padding: 13, display: "flex", flexDirection: "column", gap: 10, overflowY: "auto" }}>
+          <div>
+            <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="session-status">{t("opdConsult.sessionStatus")}</label>
             <select
               id="session-status"
               value={view?.session.status ?? "not_started"}
               disabled={view === null}
               onChange={(e) => void setSessionStatus(e.target.value as SessionStatusInput)}
-              className="w-full rounded border px-2 py-1"
+              className="in"
+              style={{ width: "100%", height: 34, fontSize: 12.5 }}
             >
               <option value="not_started" disabled>{t("opd.sessionStatus.not_started")}</option>
               <option value="in">{t("opd.sessionStatus.in")}</option>
@@ -775,10 +950,10 @@ export function OpdConsult(): React.ReactElement {
             </select>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" onClick={() => void callNext()}>{t("opdConsult.callNext")}</Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => void skipCurrent()}>{t("opdConsult.skip")}</Button>
-            <Button type="button" size="sm" onClick={() => void startConsult()}>{t("opdConsult.start")}</Button>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            <button type="button" className="pri" style={{ padding: "3px 11px", fontSize: 12 }} onClick={() => void callNext()}>{t("opdConsult.callNext")}</button>
+            <button type="button" className="sec" style={{ padding: "3px 11px", fontSize: 12 }} onClick={() => void skipCurrent()}>{t("opdConsult.skip")}</button>
+            <button type="button" className="sec grn" style={{ padding: "3px 11px", fontSize: 12 }} onClick={() => void startConsult()}>{t("opdConsult.start")}</button>
           </div>
           <ErrorLine message={queueError} />
 
@@ -788,10 +963,10 @@ export function OpdConsult(): React.ReactElement {
             whether to take a tea break had to count rows. It is live on the same realtime topic the
             list already subscribes to.
           */}
-          <div className="flex items-baseline gap-3 pt-2">
-            <h2 className="text-sm font-semibold">{t("opdConsult.queue")}</h2>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 9, paddingTop: 4 }}>
+            <h2 className="tag" style={{ margin: 0 }}>{t("opdConsult.queue")}</h2>
             {view === null ? null : (
-              <span data-testid="queue-depth" className="text-xs text-muted-foreground">
+              <span data-testid="queue-depth" className="mo" style={{ fontSize: 10.5, color: "var(--faint)" }}>
                 {t("opdConsult.waitingCount", { waiting: ordered.length })}
               </span>
             )}
@@ -799,67 +974,69 @@ export function OpdConsult(): React.ReactElement {
               PLAN 07d T6 — THE DOCTOR'S OWN DAY, ONE CLICK AWAY. 07c built the brief and put it on
               `/my-day`; a doctor who has to navigate to it from the front door will not, mid-clinic.
             */}
-            <Link to="/my-day" className="ml-auto text-xs underline">{t("opdConsult.myDay")}</Link>
+            <Link to="/my-day" style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--green)" }}>{t("opdConsult.myDay")}</Link>
           </div>
           {view === null && queue.data !== undefined && (
-            <p className="text-sm text-neutral-500">{t("opdConsult.noSession")}</p>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--dim)" }}>{t("opdConsult.noSession")}</p>
           )}
           {view !== null && current === null && ordered.length === 0 && (
-            <p className="text-sm text-neutral-500">{t("opdConsult.emptyQueue")}</p>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--dim)" }}>{t("opdConsult.emptyQueue")}</p>
           )}
-          <ul data-testid="consult-queue" className="space-y-2">
+          <ul data-testid="consult-queue" style={{ listStyle: "none", margin: 0, padding: 0 }}>
             {current !== null && queueRow(current, true)}
             {ordered.map((e) => queueRow(e, false))}
           </ul>
         </aside>
 
         {/* (b) the patient panel */}
-        <main className="space-y-4 lg:col-span-2">
-          {active === null && <p className="text-sm text-neutral-500">{t("opdConsult.pickPatientHint")}</p>}
+        <main style={{ flexGrow: 999, flexBasis: 520, minWidth: 0, display: "flex", flexDirection: "column", gap: 13, overflowY: "auto", paddingBottom: 14 }}>
+          {active === null && (
+            <div className="box" style={{ padding: "26px 22px", textAlign: "center" }}>
+              <p style={{ margin: "0 0 5px", fontSize: 16, fontWeight: 700 }}>{t("opdConsult.noPatientTitle")}</p>
+              <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{t("opdConsult.noPatientBody")}</p>
+              <p data-testid="pick-patient-hint" style={{ margin: "9px 0 0", fontSize: 11.5, color: "var(--faint)" }}>{t("opdConsult.pickPatientHint")}</p>
+            </div>
+          )}
 
           {active !== null && (
-            <div data-testid="patient-panel" className="space-y-4">
-              <header className="space-y-1 rounded border p-3">
+            <div data-testid="patient-panel" style={{ display: "flex", flexDirection: "column", gap: 13 }}>
+              <header className="box" style={{ padding: "13px 15px", display: "flex", flexDirection: "column", gap: 5 }}>
                 {restricted ? (
                   <>
-                    <p data-testid="restricted-banner" className="text-sm text-amber-700">{t("opdConsult.restricted")}</p>
-                    <p data-testid="panel-uhid" className="font-mono text-xs text-neutral-600">{active.summary?.uhid ?? "—"}</p>
+                    <p data-testid="restricted-banner" style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: "var(--gold)" }}>{t("opdConsult.restricted")}</p>
+                    <p data-testid="panel-uhid" className="mo" style={{ margin: 0, fontSize: 11, color: "var(--dim)" }}>{active.summary?.uhid ?? "—"}</p>
                   </>
                 ) : (
                   <>
-                    <h2 data-testid="panel-patient-name" className="text-lg font-semibold">
+                    <h2 data-testid="panel-patient-name" style={{ margin: 0, fontSize: 19, fontWeight: 700, letterSpacing: "-.01em" }}>
                       {patient.data?.patient.name ?? patient.data?.patient.alias ?? patientLabel(active.summary)}
                     </h2>
-                    <p data-testid="panel-uhid" className="font-mono text-xs text-neutral-600">
+                    <p data-testid="panel-uhid" className="mo" style={{ margin: 0, fontSize: 11, color: "var(--faint)" }}>
                       {patient.data?.patient.uhid ?? active.summary?.uhid ?? "—"}
                     </p>
-                    <p data-testid="panel-patient-age" className="text-sm text-neutral-600">
+                    <p data-testid="panel-patient-age" style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>
                       {t("opdConsult.age", { age: ageYears ?? "—" })} · {patient.data?.patient.administrativeGender ?? "—"}
                     </p>
                   </>
                 )}
                 {encounter !== null && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="outline" data-testid="panel-visit-type">{t(`opd.visitType.${encounter.visitType}`)}</Badge>
+                  <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 7, marginTop: 2 }}>
+                    <span className="pill" data-testid="panel-visit-type">{t(`opd.visitType.${encounter.visitType}`)}</span>
                     {encounter.dangerFlagged && (
-                      <span data-testid="panel-danger" className="text-sm text-red-700">{t("opdConsult.danger")}</span>
+                      <span className="pill rd" data-testid="panel-danger">{t("opdConsult.danger")}</span>
                     )}
                   </div>
                 )}
 
                 {!restricted && (
-                  <div className="pt-2">
-                    <h3 className="text-sm font-semibold">{t("opdConsult.allergies")}</h3>
-                    <div data-testid="allergy-chips" className="flex flex-wrap gap-1">
+                  <div style={{ paddingTop: 7 }}>
+                    <h3 className="tag" style={{ margin: "0 0 5px" }}>{t("opdConsult.allergies")}</h3>
+                    <div data-testid="allergy-chips" style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                       {activeAllergies.length === 0 && (
-                        <span className="text-sm text-neutral-500">{t("opdConsult.noAllergies")}</span>
+                        <span style={{ fontSize: 12, color: "var(--dim)" }}>{t("opdConsult.noAllergies")}</span>
                       )}
                       {activeAllergies.map((a) => (
-                        <span
-                          key={a.id}
-                          data-testid={`allergy-chip-${a.id}`}
-                          className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800"
-                        >
+                        <span key={a.id} data-testid={`allergy-chip-${a.id}`} className="pill rd" style={{ fontWeight: 600 }}>
                           {a.substance}
                         </span>
                       ))}
@@ -867,12 +1044,13 @@ export function OpdConsult(): React.ReactElement {
                   </div>
                 )}
 
-                <div className="pt-2">
-                  <h3 className="text-sm font-semibold">{t("opdConsult.vitals")}</h3>
-                  {latestVitals === null && <p className="text-sm text-neutral-500">{t("opdConsult.noVitals")}</p>}
+                <div style={{ paddingTop: 7 }}>
+                  <h3 className="tag" style={{ margin: "0 0 5px" }}>{t("opdConsult.vitals")}</h3>
+                  {latestVitals === null && <p style={{ margin: 0, fontSize: 12, color: "var(--dim)" }}>{t("opdConsult.noVitals")}</p>}
                   {latestVitals !== null && (
                     <>
-                      <p data-testid="panel-vitals" className="text-sm">
+                      {/* Bay One's own numbers, in Bay One's mono, so the two screens read as one record. */}
+                      <p data-testid="panel-vitals" className="mo" style={{ margin: 0, fontSize: 13 }}>
                         BP {latestVitals.sbp ?? "—"}/{latestVitals.dbp ?? "—"} · P {latestVitals.pulse ?? "—"} · SpO₂ {latestVitals.spo2 ?? "—"}%
                       </p>
                       {latestVitals.dangerFlags.map((f) => (
@@ -880,7 +1058,8 @@ export function OpdConsult(): React.ReactElement {
                           key={f.vital}
                           role="alert"
                           data-testid={`vitals-danger-${f.vital}`}
-                          className="rounded bg-red-50 px-2 py-1 text-sm text-red-700"
+                          className="mo"
+                          style={{ margin: "5px 0 0", padding: "4px 8px", borderRadius: 6, fontSize: 12, fontWeight: 700, color: "var(--red)", background: "var(--red-soft)" }}
                         >
                           {f.vital} {f.value} ({f.bound} {f.limit})
                         </p>
@@ -890,55 +1069,75 @@ export function OpdConsult(): React.ReactElement {
                 </div>
               </header>
 
-              <Tabs value={tab} onValueChange={setTab}>
-                <TabsList>
-                  <TabsTrigger value="note">{t("opdConsult.tabs.note")}</TabsTrigger>
-                  <TabsTrigger value="rx">{t("opdConsult.tabs.rx")}</TabsTrigger>
-                  <TabsTrigger value="history">{t("opdConsult.tabs.history")}</TabsTrigger>
-                </TabsList>
+              <div className="box" style={{ padding: "13px 15px", display: "flex", flexDirection: "column", gap: 12 }}>
+                <TabStrip
+                  label={t("opdConsult.tabs.note")}
+                  value={tab}
+                  onChange={setTab}
+                  options={[["note", t("opdConsult.tabs.note")], ["rx", t("opdConsult.tabs.rx")], ["history", t("opdConsult.tabs.history")]] as const}
+                />
 
                 {/* the note autosaves on blur — focusout bubbles, so one handler covers every field */}
-                <TabsContent value="note">
-                  <div className="space-y-2" onBlur={() => void saveNote()}>
-                    <label className="block text-sm font-medium" htmlFor="note-chief">{t("opdConsult.chiefComplaint")}</label>
-                    <textarea
-                      id="note-chief"
-                      value={note.chiefComplaint}
-                      onChange={(e) => setNote((n) => ({ ...n, chiefComplaint: e.target.value }))}
-                      className="w-full rounded border px-2 py-1"
-                    />
-                    <label className="block text-sm font-medium" htmlFor="note-diagnosis">{t("opdConsult.diagnosis")}</label>
-                    <textarea
-                      id="note-diagnosis"
-                      value={note.diagnosis}
-                      onChange={(e) => setNote((n) => ({ ...n, diagnosis: e.target.value }))}
-                      className="w-full rounded border px-2 py-1"
-                    />
-                    <label className="block text-sm font-medium" htmlFor="note-icd10">{t("opdConsult.icd10Code")}</label>
-                    <input
-                      id="note-icd10"
-                      value={note.icd10Code}
-                      onChange={(e) => setNote((n) => ({ ...n, icd10Code: e.target.value }))}
-                      className="w-full rounded border px-2 py-1"
-                    />
-                    <label className="block text-sm font-medium" htmlFor="note-advice">{t("opdConsult.advice")}</label>
-                    <textarea
-                      id="note-advice"
-                      value={note.advice}
-                      onChange={(e) => setNote((n) => ({ ...n, advice: e.target.value }))}
-                      className="w-full rounded border px-2 py-1"
-                    />
-                    {noteSaved && <p data-testid="note-saved" className="text-sm text-emerald-700">{t("opdConsult.noteSaved")}</p>}
+                {tab === "note" && (
+                <div role="tabpanel" id="tabpanel-note" aria-labelledby="tab-note">
+                  <div style={{ display: "flex", flexDirection: "column", gap: 9 }} onBlur={() => void saveNote()}>
+                    {/*
+                      THE SCRIBE SITS ABOVE THE COMPLAINT because that is the field it fills, and
+                      because a doctor who has just finished listening to a patient reaches for it
+                      first. It inserts a SUGGESTION into the field below and never writes past it.
+                    */}
+                    <ConsultScribe onInsert={(text) => {
+                      setNote((n) => ({ ...n, chiefComplaint: n.chiefComplaint.trim() === "" ? text : `${n.chiefComplaint.trim()} ${text}` }));
+                    }} />
+                    <div>
+                      <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="note-chief">{t("opdConsult.chiefComplaint")}</label>
+                      <textarea
+                        id="note-chief" rows={2}
+                        value={note.chiefComplaint}
+                        onChange={(e) => setNote((n) => ({ ...n, chiefComplaint: e.target.value }))}
+                        className="in" style={{ width: "100%", height: "auto", padding: "7px 9px", fontSize: 13 }}
+                      />
+                    </div>
+                    <div>
+                      <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="note-diagnosis">{t("opdConsult.diagnosis")}</label>
+                      <textarea
+                        id="note-diagnosis" rows={2}
+                        value={note.diagnosis}
+                        onChange={(e) => setNote((n) => ({ ...n, diagnosis: e.target.value }))}
+                        className="in" style={{ width: "100%", height: "auto", padding: "7px 9px", fontSize: 13 }}
+                      />
+                    </div>
+                    <div>
+                      <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="note-icd10">{t("opdConsult.icd10Code")}</label>
+                      <input
+                        id="note-icd10"
+                        value={note.icd10Code}
+                        onChange={(e) => setNote((n) => ({ ...n, icd10Code: e.target.value }))}
+                        className="in mo" style={{ width: "100%", height: 34, fontSize: 13 }}
+                      />
+                    </div>
+                    <div>
+                      <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="note-advice">{t("opdConsult.advice")}</label>
+                      <textarea
+                        id="note-advice" rows={2}
+                        value={note.advice}
+                        onChange={(e) => setNote((n) => ({ ...n, advice: e.target.value }))}
+                        className="in" style={{ width: "100%", height: "auto", padding: "7px 9px", fontSize: 13 }}
+                      />
+                    </div>
+                    {noteSaved && <p data-testid="note-saved" style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "var(--green)" }}>{t("opdConsult.noteSaved")}</p>}
                     <ErrorLine message={noteError} />
                   </div>
-                </TabsContent>
+                </div>
+                )}
 
-                <TabsContent value="rx">
+                {tab === "rx" && (
+                <div role="tabpanel" id="tabpanel-rx" aria-labelledby="tab-rx">
                   <FormProvider {...rxForm}>
                     <FormKit onSubmit={submitRx}>
                       {lines.fields.map((f, i) => (
-                        <div key={f.id} data-testid={`rx-row-${String(i)}`} className="grid gap-2 md:grid-cols-3">
-                          <div className="space-y-1">
+                        <div key={f.id} data-testid={`rx-row-${String(i)}`} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 9, padding: "11px 0", borderTop: i === 0 ? "none" : "1px solid var(--line)" }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                             {/*
                               C1 (independent review) — TYPING OVER A PICKED NAME DROPS THE ID.
                               The schema comment claimed this ("cleared the moment the doctor
@@ -970,7 +1169,7 @@ export function OpdConsult(): React.ReactElement {
                                 rxForm.setValue(`lines.${i}.medicineId`, picked?.id ?? null);
                                 if (picked !== undefined) rxForm.setValue(`lines.${i}.drug`, picked.brandName);
                               }}
-                              className="w-full rounded border px-2 py-1 text-sm"
+                              className="in" style={{ width: "100%", height: 32, fontSize: 12 }}
                             >
                               <option value="">{t("opdConsult.pickFromFormulary")}</option>
                               {medicines.map((m) => (
@@ -985,7 +1184,7 @@ export function OpdConsult(): React.ReactElement {
                               become wallpaper, which is worse than silence.
                             */}
                             {noticeEnabled && unresolvedLines.includes(i) && (
-                              <p data-testid={`rx-uncovered-${String(i)}`} className="text-xs text-amber-700">
+                              <p data-testid={`rx-uncovered-${String(i)}`} style={{ margin: 0, fontSize: 11, color: "var(--gold)" }}>
                                 {t("opdConsult.notInFormulary")}
                               </p>
                             )}
@@ -1005,17 +1204,17 @@ export function OpdConsult(): React.ReactElement {
                           <TextField name={`lines.${String(i)}.instructions`} label={t("opdConsult.instructions")} />
                           <CheckboxField name={`lines.${String(i)}.noSubstitution`} label={t("opdConsult.noSubstitution")} />
                           {lines.fields.length > 1 && (
-                            <Button type="button" size="sm" variant="outline" onClick={() => lines.remove(i)}>
+                            <button type="button" className="sec" style={{ padding: "3px 11px", fontSize: 12, alignSelf: "end" }} onClick={() => lines.remove(i)}>
                               {t("opdConsult.removeLine")}
-                            </Button>
+                            </button>
                           )}
                         </div>
                       ))}
-                      <div className="flex gap-2">
-                        <Button type="button" size="sm" variant="outline" onClick={() => lines.append(EMPTY_LINE)}>
+                      <div style={{ display: "flex", gap: 8, marginTop: 11 }}>
+                        <button type="button" className="sec" style={{ padding: "4px 12px", fontSize: 12.5 }} onClick={() => lines.append(EMPTY_LINE)}>
                           {t("opdConsult.addLine")}
-                        </Button>
-                        <Button type="submit">{t("opdConsult.issue")}</Button>
+                        </button>
+                        <button type="submit" className="pri">{t("opdConsult.issue")}</button>
                       </div>
                     </FormKit>
                   </FormProvider>
@@ -1025,38 +1224,40 @@ export function OpdConsult(): React.ReactElement {
                     a gate, and they carry the in-system-only honesty line (design law 10).
                   */}
                   {notices.length > 0 && !noticesDismissed && (
-                    <div data-testid="rx-notices" className="mt-2 space-y-1 rounded border border-amber-300 bg-amber-50 p-2 text-sm">
+                    <div data-testid="rx-notices" className="box" style={{ marginTop: 11, display: "flex", flexDirection: "column", gap: 5, padding: "10px 12px", fontSize: 12.5, borderColor: "var(--gold-line)", background: "var(--gold-soft)" }}>
                       {notices.map((hit, i) => (
-                        <p key={`${String(hit.lineIndex)}-${String(i)}`} data-testid={`rx-notice-${String(i)}`}>
+                        <p key={`${String(hit.lineIndex)}-${String(i)}`} data-testid={`rx-notice-${String(i)}`} style={{ margin: 0 }}>
                           {isInteractionHit(hit)
                             ? t("opdConsult.noticeInteraction", { n: hit.lineIndex + 1, note: hit.note })
                             : t("opdConsult.noticeDuplicate", { n: hit.lineIndex + 1, moiety: hit.moiety })}
                           {" "}
-                          <span className="text-neutral-600">{againstLabel(hit)}</span>
+                          <span style={{ color: "var(--dim)" }}>{againstLabel(hit)}</span>
                         </p>
                       ))}
-                      <p className="text-xs text-neutral-600">{t("opdConsult.inSystemOnly")}</p>
-                      <Button type="button" size="sm" variant="outline" onClick={() => setNoticesDismissed(true)}>
+                      <p style={{ margin: 0, fontSize: 11, color: "var(--dim)" }}>{t("opdConsult.inSystemOnly")}</p>
+                      <button type="button" className="sec" style={{ alignSelf: "flex-start", padding: "2px 10px", fontSize: 11.5 }} onClick={() => setNoticesDismissed(true)}>
                         {t("opdConsult.dismiss")}
-                      </Button>
+                      </button>
                     </div>
                   )}
                   <ErrorLine message={rxError} />
-                </TabsContent>
+                </div>
+                )}
 
-                <TabsContent value="history">
+                {tab === "history" && (
+                <div role="tabpanel" id="tabpanel-history" aria-labelledby="tab-history">
                   {/*
                     PLAN 07d T1 — THREE VIEWS OF THE SAME PATIENT, and the two new ones are the point
                     of the task. Visits is what existed; prescriptions and vitals are what a doctor
                     has been unable to see since this application shipped.
                   */}
-                  <div className="mb-2 flex gap-1" role="group" aria-label={t("opdConsult.historyView")}>
+                  <div style={{ marginBottom: 10, display: "flex", gap: 6 }} role="group" aria-label={t("opdConsult.historyView")}>
                     {(["visits", "rx", "vitals"] as const).map((v) => (
                       <button
                         key={v}
                         type="button"
                         aria-pressed={v === historyView}
-                        className={`rounded border px-2 py-0.5 text-xs ${v === historyView ? "bg-accent font-medium" : ""}`}
+                        className={v === historyView ? "pill on" : "pill"}
                         onClick={() => { setHistoryView(v); }}
                       >
                         {t(`opdConsult.history.${v}`)}
@@ -1065,10 +1266,10 @@ export function OpdConsult(): React.ReactElement {
                   </div>
 
                   {historyView === "visits" && (
-                    <ul data-testid="timeline" className="space-y-1 text-sm">
-                      {timelineItems.length === 0 && <li className="text-neutral-500">{t("opdConsult.noHistory")}</li>}
+                    <ul data-testid="timeline" style={{ listStyle: "none", margin: 0, padding: 0, fontSize: 12.5 }}>
+                      {timelineItems.length === 0 && <li style={{ color: "var(--dim)" }}>{t("opdConsult.noHistory")}</li>}
                       {timelineItems.map((item) => (
-                        <li key={item.encounterId} data-testid={`timeline-row-${item.encounterId}`}>
+                        <li key={item.encounterId} data-testid={`timeline-row-${item.encounterId}`} className="drow" style={{ padding: "6px 0" }}>
                           {item.serviceDate} · {item.departmentName ?? "—"} · {item.doctorName ?? "—"} · {item.diagnosis ?? "—"}
                         </li>
                       ))}
@@ -1076,14 +1277,14 @@ export function OpdConsult(): React.ReactElement {
                   )}
 
                   {historyView === "rx" && (
-                    <div data-testid="rx-history" className="space-y-2 text-sm">
-                      {rxHistory.isPending && <p className="text-neutral-500">{t("app.loading")}</p>}
+                    <div data-testid="rx-history" style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 12.5 }}>
+                      {rxHistory.isPending && <p style={{ margin: 0, color: "var(--dim)" }}>{t("app.loading")}</p>}
                       {!rxHistory.isPending && (rxHistory.data?.items ?? []).length === 0 && (
-                        <p className="text-neutral-500">{t("opdConsult.noRxHistory")}</p>
+                        <p style={{ margin: 0, color: "var(--dim)" }}>{t("opdConsult.noRxHistory")}</p>
                       )}
                       {(rxHistory.data?.items ?? []).map((rx) => (
-                        <div key={rx.prescriptionId} className="rounded border p-2">
-                          <div className="flex flex-wrap items-baseline gap-2 text-xs text-muted-foreground">
+                        <div key={rx.prescriptionId} className="box" style={{ padding: "9px 11px" }}>
+                          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 7, fontSize: 10.5, color: "var(--faint)" }}>
                             <span>{rx.serviceDate}</span>
                             <span>{rx.doctorName ?? "—"}</span>
                             {/*
@@ -1093,12 +1294,10 @@ export function OpdConsult(): React.ReactElement {
                               the past.
                             */}
                             {rx.status !== "active" && (
-                              <span className="rounded border border-state-waiting px-1 text-state-waiting">
-                                {t(`opdConsult.rxStatus.${rx.status}`)}
-                              </span>
+                              <span className="pill gd">{t(`opdConsult.rxStatus.${rx.status}`)}</span>
                             )}
                           </div>
-                          <ul className="mt-1 space-y-0.5">
+                          <ul style={{ listStyle: "none", margin: "6px 0 0", padding: 0 }}>
                             {(Array.isArray(rx.lines) ? rx.lines : []).map((line, i) => (
                               <li key={`${rx.prescriptionId}-${String(i)}`}>
                                 {line.drug}{line.dose === null ? "" : ` · ${line.dose}`}
@@ -1113,10 +1312,10 @@ export function OpdConsult(): React.ReactElement {
                   )}
 
                   {historyView === "vitals" && (
-                    <div data-testid="vitals-history" className="space-y-1 text-sm">
-                      {vitalsHistory.isPending && <p className="text-neutral-500">{t("app.loading")}</p>}
+                    <div data-testid="vitals-history" style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 12.5 }}>
+                      {vitalsHistory.isPending && <p style={{ margin: 0, color: "var(--dim)" }}>{t("app.loading")}</p>}
                       {!vitalsHistory.isPending && (vitalsHistory.data?.items ?? []).length === 0 && (
-                        <p className="text-neutral-500">{t("opdConsult.noVitalsHistory")}</p>
+                        <p style={{ margin: 0, color: "var(--dim)" }}>{t("opdConsult.noVitalsHistory")}</p>
                       )}
                       {/*
                         OLDEST FIRST, because this is read as a TREND and a trend read backwards is a
@@ -1124,8 +1323,8 @@ export function OpdConsult(): React.ReactElement {
                         re-sort it.
                       */}
                       {(vitalsHistory.data?.items ?? []).map((v) => (
-                        <div key={v.vitalsId} className="flex flex-wrap gap-x-3 tabular-nums">
-                          <span className="text-muted-foreground">{v.serviceDate}</span>
+                        <div key={v.vitalsId} className="mo" style={{ display: "flex", flexWrap: "wrap", columnGap: 12 }}>
+                          <span style={{ color: "var(--faint)" }}>{v.serviceDate}</span>
                           {/*
                             SHORT labels, in this screen's own namespace. `opdVitals.field.*` are the
                             FORM labels ("SBP (mmHg)") and are correct there and wrong in a dense
@@ -1136,14 +1335,15 @@ export function OpdConsult(): React.ReactElement {
                           <span>{t("opdConsult.vitalsPulse")} {v.pulse ?? "—"}</span>
                           <span>{t("opdConsult.vitalsSpo2")} {v.spo2 ?? "—"}</span>
                           {Array.isArray(v.dangerFlags) && v.dangerFlags.length > 0 && (
-                            <span className="text-state-danger">{t("opdConsult.flagged")}</span>
+                            <span style={{ color: "var(--red)", fontWeight: 700 }}>{t("opdConsult.flagged")}</span>
                           )}
                         </div>
                       ))}
                     </div>
                   )}
-                </TabsContent>
-              </Tabs>
+                </div>
+                )}
+              </div>
 
               {/*
                 PLAN 07d T5 / DD4 — **ADVISED INVESTIGATIONS: A CATALOGUE AND A PRICE, NOT AN ORDER.**
@@ -1160,12 +1360,16 @@ export function OpdConsult(): React.ReactElement {
                 one that admits there is none.
               */}
               {active !== null && (
-                <div data-testid="advised-tests" className="space-y-2 rounded border p-3">
-                  <h2 className="text-sm font-medium">{t("opdConsult.advisedTests")}</h2>
-                  <p className="text-xs text-muted-foreground">{t("opdConsult.advisedTestsNote")}</p>
+                <div data-testid="advised-tests" className="box" style={{ display: "flex", flexDirection: "column", gap: 8, padding: "13px 15px" }}>
+                  <h2 className="tag" style={{ margin: 0 }}>{t("opdConsult.advisedTests")}</h2>
+                  {/*
+                    THE SENTENCE THAT KEEPS THIS PANEL HONEST. It creates no order, and a doctor who
+                    assumed otherwise would leave a test nobody performs. DD4's ruling, on screen.
+                  */}
+                  <p style={{ margin: 0, fontSize: 11, color: "var(--dim)" }}>{t("opdConsult.advisedTestsNote")}</p>
 
                   <input
-                    className="w-full rounded border px-2 py-1 text-sm"
+                    className="in" style={{ width: "100%", height: 34, fontSize: 12.5 }}
                     placeholder={t("opdConsult.advisedTestsSearch")}
                     aria-label={t("opdConsult.advisedTestsSearch")}
                     value={testQuery}
@@ -1178,12 +1382,12 @@ export function OpdConsult(): React.ReactElement {
                     server-side, so this list cannot show one even by accident.
                   */}
                   {serviceMatches.length > 0 && (
-                    <ul className="space-y-1 text-sm">
+                    <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4, fontSize: 12.5 }}>
                       {serviceMatches.map((sv) => (
                         <li key={sv.serviceId}>
                           <button
                             type="button"
-                            className="w-full rounded border px-2 py-1 text-left hover:bg-accent"
+                            className="sec" style={{ width: "100%", justifyContent: "flex-start", textAlign: "left", padding: "4px 9px", fontSize: 12.5 }}
                             onClick={() => {
                               void saveAdvised([...advisedTests, {
                                 serviceId: sv.serviceId, code: sv.code, name: sv.name, pricePaise: sv.pricePaise,
@@ -1200,20 +1404,20 @@ export function OpdConsult(): React.ReactElement {
 
                   {/* §1.3's promise: several panels are empty on day one, and each says why. */}
                   {testQuery.trim().length >= 2 && serviceMatches.length === 0 && (
-                    <p className="text-xs text-muted-foreground">{t("opdConsult.advisedTestsNoMatch")}</p>
+                    <p style={{ margin: 0, fontSize: 11, color: "var(--dim)" }}>{t("opdConsult.advisedTestsNoMatch")}</p>
                   )}
 
                   {advisedTests.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">{t("opdConsult.advisedTestsEmpty")}</p>
+                    <p style={{ margin: 0, fontSize: 11, color: "var(--dim)" }}>{t("opdConsult.advisedTestsEmpty")}</p>
                   ) : (
-                    <ul data-testid="advised-chosen" className="space-y-1 text-sm">
+                    <ul data-testid="advised-chosen" style={{ listStyle: "none", margin: 0, padding: 0, fontSize: 12.5 }}>
                       {advisedTests.map((a) => (
-                        <li key={a.serviceId} className="flex items-baseline gap-2">
+                        <li key={a.serviceId} className="drow" style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "6px 0" }}>
                           <span>{a.name}</span>
-                          <span className="tabular-nums text-muted-foreground">{fmtPaise(a.pricePaise)}</span>
+                          <span className="mo" style={{ color: "var(--dim)" }}>{fmtPaise(a.pricePaise)}</span>
                           <button
                             type="button"
-                            className="ml-auto text-xs underline"
+                            className="sec" style={{ marginLeft: "auto", padding: "1px 8px", fontSize: 11 }}
                             aria-label={t("opdConsult.advisedTestsRemove", { name: a.name })}
                             onClick={() => { void saveAdvised(advisedTests.filter((x) => x.serviceId !== a.serviceId)); }}
                           >
@@ -1244,42 +1448,56 @@ export function OpdConsult(): React.ReactElement {
               )}
 
               {/* (c) completion */}
-              <div className="space-y-2 rounded border p-3">
-                <label className="block text-sm font-medium" htmlFor="follow-up">{t("opdConsult.followUp")}</label>
+              <div className="box" style={{ display: "flex", flexDirection: "column", gap: 9, padding: "13px 15px" }}>
+                <label className="tag" style={{ display: "block" }} htmlFor="follow-up">{t("opdConsult.followUp")}</label>
                 <select
                   id="follow-up"
                   value={followUp}
                   onChange={(e) => setFollowUp(e.target.value)}
-                  className="w-full rounded border px-2 py-1"
+                  className="in" style={{ width: "100%", height: 34, fontSize: 12.5 }}
                 >
                   <option value="">{t("opdConsult.followUpDefault", { days: config.data?.followUpDefaultDays ?? "—" })}</option>
                   {(config.data?.followUpExtensionDays ?? []).map((d) => (
                     <option key={d} value={String(d)}>{t("opdConsult.extension", { days: d })}</option>
                   ))}
                 </select>
-                <label className="flex items-center gap-2 text-sm">
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
                   <input type="checkbox" checked={testsOrdered} onChange={(e) => setTestsOrdered(e.target.checked)} />
                   {t("opdConsult.testsOrdered")}
                 </label>
-                <label className="flex items-center gap-2 text-sm">
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
                   <input type="checkbox" checked={admissionAdvised} onChange={(e) => setAdmissionAdvised(e.target.checked)} />
                   {t("opdConsult.admissionAdvised")}
                 </label>
-                <label className="block text-sm font-medium" htmlFor="referral-to">{t("opdConsult.referralTo")}</label>
-                <input
-                  id="referral-to"
-                  value={referralTo}
-                  onChange={(e) => setReferralTo(e.target.value)}
-                  className="w-full rounded border px-2 py-1"
-                />
-                <label className="block text-sm font-medium" htmlFor="referral-note">{t("opdConsult.referralNote")}</label>
-                <input
-                  id="referral-note"
-                  value={referralNote}
-                  onChange={(e) => setReferralNote(e.target.value)}
-                  className="w-full rounded border px-2 py-1"
-                />
-                <Button type="button" onClick={() => void complete()}>{t("opdConsult.complete")}</Button>
+                <div>
+                  <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="referral-to">{t("opdConsult.referralTo")}</label>
+                  <input
+                    id="referral-to"
+                    value={referralTo}
+                    onChange={(e) => setReferralTo(e.target.value)}
+                    className="in" style={{ width: "100%", height: 34, fontSize: 13 }}
+                  />
+                </div>
+                <div>
+                  <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="referral-note">{t("opdConsult.referralNote")}</label>
+                  <input
+                    id="referral-note"
+                    value={referralNote}
+                    onChange={(e) => setReferralNote(e.target.value)}
+                    className="in" style={{ width: "100%", height: 34, fontSize: 13 }}
+                  />
+                </div>
+                {/* Ctrl+Enter does this too — the Keymap's "commit, a chord because it is the irreversible one". */}
+                <button type="button" className="pri" style={{ alignSelf: "flex-start" }} onClick={() => void complete()}>
+                  {t("opdConsult.complete")}
+                  {/*
+                    `aria-hidden` ON THE KEYCAPS, and it is not cosmetic. Without it this button's
+                    accessible name becomes "Complete consultation Ctrl ⏎" — which is what a screen
+                    reader announces, and what `getByRole("button", { name: "Complete consultation" })`
+                    stops finding. A keycap is a picture of a key, not part of the button's name.
+                  */}
+                  <span aria-hidden="true"><span className="kb" style={{ marginLeft: 6 }}>Ctrl</span><span className="kb">⏎</span></span>
+                </button>
                 <ErrorLine message={completeError} />
               </div>
             </div>
@@ -1287,36 +1505,32 @@ export function OpdConsult(): React.ReactElement {
         </main>
       </div>
 
-      <footer className="no-print border-t pt-2 text-xs text-neutral-500">{t("opdConsult.shortcuts")}</footer>
-
       {/* the allergy hard-warning: a reason per matched line, then the re-post carries them (K48) */}
-      <Dialog
+      <DeskModal
         open={matches !== null || interactionHits.length > 0 || duplicateHits.length > 0}
-        onOpenChange={(open) => {
-          if (!open) {
-            setMatches(null);
-            setReasons([]);
-            setInteractionHits([]);
-            setInteractionReasons([]);
-            setDuplicateHits([]);
-            setDuplicateReasons([]);
-            setOverrideError(null);
-          }
+        title={t("opdConsult.overrideTitle")} titleId="override-title" testId="override-dialog"
+        onClose={() => {
+          setMatches(null);
+          setReasons([]);
+          setInteractionHits([]);
+          setInteractionReasons([]);
+          setDuplicateHits([]);
+          setDuplicateReasons([]);
+          setOverrideError(null);
         }}
       >
-        <DialogContent>
-          <DialogHeader><DialogTitle>{t("opdConsult.overrideTitle")}</DialogTitle></DialogHeader>
-          <p className="text-sm">{t("opdConsult.overrideHint")}</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+          <p style={{ margin: 0, fontSize: 12.5 }}>{t("opdConsult.overrideHint")}</p>
           {(matches ?? []).map((m, i) => (
-            <div key={`${String(m.lineIndex)}-${m.substance}`} className="space-y-1">
-              <label className="block text-sm font-medium" htmlFor={`override-reason-${String(i)}`}>
+            <div key={`${String(m.lineIndex)}-${m.substance}`}>
+              <label style={{ display: "block", marginBottom: 5, fontSize: 12.5, fontWeight: 600 }} htmlFor={`override-reason-${String(i)}`}>
                 {t("opdConsult.overrideMatch", { n: m.lineIndex + 1, substance: m.substance })}
               </label>
               <input
                 id={`override-reason-${String(i)}`}
                 value={reasons[i] ?? ""}
                 onChange={(e) => setReasons((rs) => rs.map((r, j) => (j === i ? e.target.value : r)))}
-                className="w-full rounded border px-2 py-1"
+                className="in" style={{ width: "100%", height: 34, fontSize: 13 }}
               />
             </div>
           ))}
@@ -1326,51 +1540,63 @@ export function OpdConsult(): React.ReactElement {
             recording why. A separate dialog per kind would teach three different habits.
           */}
           {interactionHits.map((h, i) => (
-            <div key={`ix-${String(h.lineIndex)}-${String(i)}`} className="space-y-1">
-              <label className="block text-sm font-medium" htmlFor={`interaction-reason-${String(i)}`}>
+            <div key={`ix-${String(h.lineIndex)}-${String(i)}`}>
+              <label style={{ display: "block", marginBottom: 5, fontSize: 12.5, fontWeight: 600 }} htmlFor={`interaction-reason-${String(i)}`}>
                 {t("opdConsult.interactionHit", { n: h.lineIndex + 1, note: h.note })}{" "}
-                <span className="font-normal text-neutral-600">{againstLabel(h)}</span>
+                <span style={{ fontWeight: 400, color: "var(--dim)" }}>{againstLabel(h)}</span>
               </label>
               <input
                 id={`interaction-reason-${String(i)}`}
                 data-testid={`interaction-reason-${String(i)}`}
                 value={interactionReasons[i] ?? ""}
                 onChange={(e) => setInteractionReasons((rs) => rs.map((r, j) => (j === i ? e.target.value : r)))}
-                className="w-full rounded border px-2 py-1"
+                className="in" style={{ width: "100%", height: 34, fontSize: 13 }}
               />
             </div>
           ))}
           {duplicateHits.map((h, i) => (
-            <div key={`dup-${String(h.lineIndex)}-${String(i)}`} className="space-y-1">
-              <label className="block text-sm font-medium" htmlFor={`duplicate-reason-${String(i)}`}>
+            <div key={`dup-${String(h.lineIndex)}-${String(i)}`}>
+              <label style={{ display: "block", marginBottom: 5, fontSize: 12.5, fontWeight: 600 }} htmlFor={`duplicate-reason-${String(i)}`}>
                 {t("opdConsult.duplicateHit", { n: h.lineIndex + 1, moiety: h.moiety })}{" "}
-                <span className="font-normal text-neutral-600">{againstLabel(h)}</span>
+                <span style={{ fontWeight: 400, color: "var(--dim)" }}>{againstLabel(h)}</span>
               </label>
               <input
                 id={`duplicate-reason-${String(i)}`}
                 data-testid={`duplicate-reason-${String(i)}`}
                 value={duplicateReasons[i] ?? ""}
                 onChange={(e) => setDuplicateReasons((rs) => rs.map((r, j) => (j === i ? e.target.value : r)))}
-                className="w-full rounded border px-2 py-1"
+                className="in" style={{ width: "100%", height: 34, fontSize: 13 }}
               />
             </div>
           ))}
           {(interactionHits.length > 0 || duplicateHits.length > 0) && (
-            <p className="text-xs text-neutral-600">{t("opdConsult.inSystemOnly")}</p>
+            <p style={{ margin: 0, fontSize: 11, color: "var(--dim)" }}>{t("opdConsult.inSystemOnly")}</p>
           )}
           <ErrorLine message={overrideError} />
-          <Button type="button" onClick={() => void confirmOverride()}>{t("opdConsult.overrideConfirm")}</Button>
-        </DialogContent>
-      </Dialog>
+          <button type="button" className="pri" style={{ alignSelf: "flex-start" }} onClick={() => void confirmOverride()}>{t("opdConsult.overrideConfirm")}</button>
+        </div>
+      </DeskModal>
 
       {/* THE ONLY `.print-doc` RENDER SITE ON THIS SCREEN — one nullable state, one mount. */}
-      <Dialog open={rxPrint !== null} onOpenChange={(open) => { if (!open) setRxPrint(null); }}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>{t("opdConsult.tabs.rx")}</DialogTitle></DialogHeader>
-          {rxPrint !== null && <RxPrint data={rxPrint} />}
-        </DialogContent>
-      </Dialog>
-    </div>
+      <DeskModal
+        open={rxPrint !== null} title={t("opdConsult.tabs.rx")} titleId="rx-print-title" testId="rx-print-dialog"
+        width={780} onClose={() => { setRxPrint(null); }}
+      >
+        {rxPrint !== null && <RxPrint data={rxPrint} />}
+      </DeskModal>
+
+      {/*
+        THE CO-PILOT. It reads THIS consultation and says so — the queue behind the patient, the
+        allergies and vitals on file, the lines written but not yet issued, the tests advised. It
+        answers from the screen's own state and never from a model, which is why every answer names
+        where it came from and why "I cannot answer that from this screen" is a first-class reply
+        rather than a failure.
+      */}
+      <AgentDock
+        answer={agentAnswer} log={agentLog} onAsk={ask}
+        placeholder={t("opdConsult.askPlaceholder")} idle={t("opdConsult.agentIdle")}
+      />
+    </PaperScreen>
   );
 }
 
@@ -1406,9 +1632,9 @@ export function LabResultsPanel({ visitNo }: { visitNo: string | null }): React.
   if (visitNo === null) return null;
   const rows = results.data ?? [];
   return (
-    <div data-testid="lab-results" className="space-y-2 rounded border p-3">
-      <h2 className="text-sm font-medium">{t("lab.consult.title")}</h2>
-      <p className="text-xs text-muted-foreground">{t("lab.consult.unpaidNote")}</p>
+    <div data-testid="lab-results" className="box" style={{ display: "flex", flexDirection: "column", gap: 8, padding: "13px 15px" }}>
+      <h2 className="tag" style={{ margin: 0 }}>{t("lab.consult.title")}</h2>
+      <p style={{ margin: 0, fontSize: 11, color: "var(--dim)" }}>{t("lab.consult.unpaidNote")}</p>
       {/*
         ═══ CLOSE REVIEW (web) C1 — A FAILED QUERY IS NOT A CLINICAL NEGATIVE ═══
 
@@ -1418,22 +1644,22 @@ export function LabResultsPanel({ visitNo }: { visitNo: string | null }): React.
         A doctor who reads it stops looking.
       */}
       {results.isError ? (
-        <p role="alert" className="text-xs font-semibold">{t("lab.consult.unavailable")}</p>
+        <p role="alert" style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "var(--red)" }}>{t("lab.consult.unavailable")}</p>
       ) : results.isPending ? (
-        <p className="text-xs text-muted-foreground">{t("lab.consult.loading")}</p>
+        <p style={{ margin: 0, fontSize: 11.5, color: "var(--dim)" }}>{t("lab.consult.loading")}</p>
       ) : rows.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{t("lab.consult.empty")}</p>
+        <p style={{ margin: 0, fontSize: 11.5, color: "var(--dim)" }}>{t("lab.consult.empty")}</p>
       ) : (
-        <ul className="space-y-1 text-sm">
+        <ul style={{ listStyle: "none", margin: 0, padding: 0, fontSize: 12.5 }}>
           {rows.map((r) => (
-            <li key={`${r.orderItemId}:${r.analyteCode}`} className="flex items-baseline gap-2">
-              <span className="text-muted-foreground">{r.orderableCode}</span>
+            <li key={`${r.orderItemId}:${r.analyteCode}`} className="drow" style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "5px 0" }}>
+              <span className="mo" style={{ color: "var(--faint)" }}>{r.orderableCode}</span>
               <span>{r.analyteName}</span>
-              <span className={flagTone(r.flag) === "critical" ? "font-bold" : ""}>
+              <span className="mo" style={flagTone(r.flag) === "critical" ? { fontWeight: 700, color: "var(--red)" } : undefined}>
                 {r.value} {r.unit ?? ""}
               </span>
-              {r.flag !== null && r.flag !== "N" && <span className="font-semibold">{r.flag}</span>}
-              <span className="text-xs text-muted-foreground">
+              {r.flag !== null && r.flag !== "N" && <span style={{ fontWeight: 700, color: flagTone(r.flag) === "critical" ? "var(--red)" : "var(--gold)" }}>{r.flag}</span>}
+              <span className="mo" style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--faint)" }}>
                 {r.refLow !== null && r.refHigh !== null ? `${r.refLow} – ${r.refHigh}` : (r.refText ?? "")}
               </span>
             </li>
@@ -1453,25 +1679,27 @@ export function LabResultsPanel({ visitNo }: { visitNo: string | null }): React.
         unsigned list exactly as it does to the signed one.
       */}
       {!provisional.isError && (provisional.data ?? []).length > 0 && (
-        <div data-testid="lab-results-provisional" className="space-y-1 border-t pt-2">
-          <p className="text-xs font-semibold">{t("lab.consult.provisionalTitle")}</p>
-          <p className="text-xs text-muted-foreground">{t("lab.consult.provisionalNote")}</p>
-          <ul className="space-y-1 text-sm">
+        <div data-testid="lab-results-provisional" style={{ display: "flex", flexDirection: "column", gap: 4, borderTop: "1px solid var(--line)", paddingTop: 9, marginTop: 3 }}>
+          <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "var(--gold)" }}>{t("lab.consult.provisionalTitle")}</p>
+          <p style={{ margin: 0, fontSize: 11, color: "var(--dim)" }}>{t("lab.consult.provisionalNote")}</p>
+          <ul style={{ listStyle: "none", margin: 0, padding: 0, fontSize: 12.5 }}>
             {(provisional.data ?? []).map((r) => (
-              <li key={`prov:${r.orderItemId}:${r.analyteCode}`} className="flex flex-wrap items-baseline gap-2">
-                <span className="rounded border px-1 text-[10px] font-bold uppercase tracking-wide">
-                  {t("lab.consult.provisionalStamp")}
-                </span>
-                <span className="text-muted-foreground">{r.orderableCode}</span>
+              <li key={`prov:${r.orderItemId}:${r.analyteCode}`} className="drow" style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 7, padding: "5px 0" }}>
+                {/*
+                  THE STAMP IS OUTLINED AND NEVER FILLED — the design system's own rule, and here it
+                  earns it twice: an unsigned number must be unmistakable on a phone screen at 21:40.
+                */}
+                <span className="stamp" style={{ fontSize: 9.5 }}>{t("lab.consult.provisionalStamp")}</span>
+                <span className="mo" style={{ color: "var(--faint)" }}>{r.orderableCode}</span>
                 <span>{r.analyteName}</span>
-                <span className={flagTone(r.flag) === "critical" ? "font-bold" : ""}>
+                <span className="mo" style={flagTone(r.flag) === "critical" ? { fontWeight: 700, color: "var(--red)" } : undefined}>
                   {r.value} {r.unit ?? ""}
                 </span>
-                {r.flag !== null && r.flag !== "N" && <span className="font-semibold">{r.flag}</span>}
-                <span className="text-xs text-muted-foreground">
+                {r.flag !== null && r.flag !== "N" && <span style={{ fontWeight: 700, color: flagTone(r.flag) === "critical" ? "var(--red)" : "var(--gold)" }}>{r.flag}</span>}
+                <span className="mo" style={{ fontSize: 10.5, color: "var(--faint)" }}>
                   {r.refLow !== null && r.refHigh !== null ? `${r.refLow} – ${r.refHigh}` : (r.refText ?? "")}
                 </span>
-                <span className="text-xs text-muted-foreground">{fmtIst(r.enteredAt)}</span>
+                <span className="mo" style={{ fontSize: 10.5, color: "var(--faint)" }}>{fmtIst(r.enteredAt)}</span>
               </li>
             ))}
           </ul>

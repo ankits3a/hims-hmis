@@ -11,9 +11,18 @@ import {
 } from "../lib/opd-api";
 import type { WireDepartment, WireDoctor, WireLeave, WireRoom, WireSchedule } from "../lib/opd-api";
 import { FormKit, SelectField, TextField } from "../components/form-kit";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { PaperScreen, ScreenTitle } from "../components/paper-screen";
+import { AgentDock, logged } from "../components/agent-dock";
+import type { AgentLine } from "../components/agent-dock";
+/*
+  ALIASED ON IMPORT so the four tabs' JSX does not churn: the elements are the same five, the paint
+  is the design system's, and a diff of this file shows what actually changed rather than 120 lines
+  of renamed tags.
+*/
+import {
+  DeskTBody as TableBody, DeskTD as TableCell, DeskTH as TableHead, DeskTHead as TableHeader,
+  DeskTR as TableRow, DeskTable as Table, TabStrip,
+} from "../components/desk-fields";
 
 /**
  * OPD masters (D7): departments, rooms, doctors, weekly schedules and leaves — the data every other
@@ -27,15 +36,15 @@ const HHMM = /^\d{2}:\d{2}$/;
 
 function ErrorLine({ message }: { message: string | null }): React.ReactElement | null {
   if (message === null) return null;
-  return <p role="alert" className="text-sm text-red-600">{message}</p>;
+  return <p role="alert" style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: "var(--red)" }}>{message}</p>;
 }
 
 function ActiveToggle({ active, onToggle }: { active: boolean; onToggle: () => void }): React.ReactElement {
   const { t } = useTranslation();
   return (
-    <Button size="sm" variant="outline" onClick={onToggle}>
+    <button type="button" className="sec" style={{ padding: "0 9px", height: 25, fontSize: 11 }} onClick={onToggle}>
       {active ? t("opd.actions.deactivate") : t("opd.actions.activate")}
-    </Button>
+    </button>
   );
 }
 
@@ -73,7 +82,7 @@ function DepartmentsTab({ items, queryClient }: { items: WireDepartment[]; query
   };
 
   return (
-    <div className="grid gap-6 md:grid-cols-2">
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 22, alignItems: "start" }}>
       <Table>
         <TableHeader>
           <TableRow>
@@ -85,7 +94,7 @@ function DepartmentsTab({ items, queryClient }: { items: WireDepartment[]; query
         <TableBody>
           {items.map((d) => (
             <TableRow key={d.id}>
-              <TableCell className="font-mono text-xs">{d.code}</TableCell>
+              <TableCell className="mo">{d.code}</TableCell>
               <TableCell>{d.name}</TableCell>
               <TableCell><ActiveToggle active={d.active} onToggle={() => void toggle(d)} /></TableCell>
             </TableRow>
@@ -94,11 +103,11 @@ function DepartmentsTab({ items, queryClient }: { items: WireDepartment[]; query
       </Table>
       <FormProvider {...form}>
         <FormKit onSubmit={submit}>
-          <h2 className="text-sm font-semibold">{t("opdAdmin.newDepartment")}</h2>
+          <h2 className="tag" style={{ margin: 0 }}>{t("opdAdmin.newDepartment")}</h2>
           <TextField name="code" label={t("opd.labels.code")} />
           <TextField name="name" label={t("opd.labels.name")} />
           <ErrorLine message={error} />
-          <Button type="submit">{t("opdAdmin.addDepartment")}</Button>
+          <button type="submit" className="pri">{t("opdAdmin.addDepartment")}</button>
         </FormKit>
       </FormProvider>
     </div>
@@ -141,7 +150,7 @@ function RoomsTab({ items, queryClient }: { items: WireRoom[]; queryClient: Quer
   };
 
   return (
-    <div className="grid gap-6 md:grid-cols-2">
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 22, alignItems: "start" }}>
       <Table>
         <TableHeader>
           <TableRow>
@@ -154,7 +163,7 @@ function RoomsTab({ items, queryClient }: { items: WireRoom[]; queryClient: Quer
         <TableBody>
           {items.map((r) => (
             <TableRow key={r.id}>
-              <TableCell className="font-mono text-xs">{r.code}</TableCell>
+              <TableCell className="mo">{r.code}</TableCell>
               <TableCell>{r.name}</TableCell>
               <TableCell>{r.floor ?? "—"}</TableCell>
               <TableCell><ActiveToggle active={r.active} onToggle={() => void toggle(r)} /></TableCell>
@@ -164,12 +173,12 @@ function RoomsTab({ items, queryClient }: { items: WireRoom[]; queryClient: Quer
       </Table>
       <FormProvider {...form}>
         <FormKit onSubmit={submit}>
-          <h2 className="text-sm font-semibold">{t("opdAdmin.newRoom")}</h2>
+          <h2 className="tag" style={{ margin: 0 }}>{t("opdAdmin.newRoom")}</h2>
           <TextField name="code" label={t("opd.labels.code")} />
           <TextField name="name" label={t("opd.labels.name")} />
           <TextField name="floor" label={t("opd.labels.floor")} />
           <ErrorLine message={error} />
-          <Button type="submit">{t("opdAdmin.addRoom")}</Button>
+          <button type="submit" className="pri">{t("opdAdmin.addRoom")}</button>
         </FormKit>
       </FormProvider>
     </div>
@@ -229,7 +238,7 @@ function DoctorsTab({
   };
 
   return (
-    <div className="grid gap-6 md:grid-cols-2">
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 22, alignItems: "start" }}>
       <Table>
         <TableHeader>
           <TableRow>
@@ -244,7 +253,7 @@ function DoctorsTab({
             <TableRow key={d.id}>
               <TableCell>{d.displayName}</TableCell>
               <TableCell>{departmentName(d.departmentId)}</TableCell>
-              <TableCell className="font-mono text-xs">{d.registrationNo ?? "—"}</TableCell>
+              <TableCell className="mo">{d.registrationNo ?? "—"}</TableCell>
               <TableCell><ActiveToggle active={d.active} onToggle={() => void toggle(d)} /></TableCell>
             </TableRow>
           ))}
@@ -252,7 +261,7 @@ function DoctorsTab({
       </Table>
       <FormProvider {...form}>
         <FormKit onSubmit={submit}>
-          <h2 className="text-sm font-semibold">{t("opdAdmin.newDoctor")}</h2>
+          <h2 className="tag" style={{ margin: 0 }}>{t("opdAdmin.newDoctor")}</h2>
           <TextField name="username" label={t("opdAdmin.username")} />
           <TextField name="displayName" label={t("opdAdmin.displayName")} />
           <TextField name="registrationNo" label={t("opdAdmin.registrationNo")} />
@@ -263,7 +272,7 @@ function DoctorsTab({
           />
           <TextField name="specialty" label={t("opdAdmin.specialty")} />
           <ErrorLine message={error} />
-          <Button type="submit">{t("opdAdmin.addDoctor")}</Button>
+          <button type="submit" className="pri">{t("opdAdmin.addDoctor")}</button>
         </FormKit>
       </FormProvider>
     </div>
@@ -332,13 +341,13 @@ function SchedulesEditor({
   ];
 
   return (
-    <section className="space-y-3">
-      <h2 className="text-sm font-semibold">{t("opdAdmin.schedules")}</h2>
-      <p className="text-sm text-neutral-500">{t("opdAdmin.replaceHint")}</p>
+    <section className="box" style={{ display: "flex", flexDirection: "column", gap: 10, padding: "15px 17px" }}>
+      <h2 className="tag" style={{ margin: 0 }}>{t("opdAdmin.schedules")}</h2>
+      <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{t("opdAdmin.replaceHint")}</p>
       <FormProvider {...form}>
         <FormKit onSubmit={submit}>
           {fields.map((f, i) => (
-            <div key={f.id} className="flex flex-wrap items-end gap-2 border-b pb-2">
+            <div key={f.id} style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 8, borderBottom: "1px solid var(--line)", paddingBottom: 9 }}>
               <SelectField
                 name={`items.${i}.weekday`}
                 label={t("opdAdmin.weekday")}
@@ -350,25 +359,25 @@ function SchedulesEditor({
               <TextField name={`items.${i}.slotMinutes`} label={t("opdAdmin.slotMinutes")} type="number" />
               <TextField name={`items.${i}.validFrom`} label={t("opdAdmin.validFrom")} type="date" />
               <TextField name={`items.${i}.validTo`} label={t("opdAdmin.validTo")} type="date" />
-              <Button type="button" size="sm" variant="outline" onClick={() => remove(i)}>
+              <button type="button" className="sec" style={{ padding: "0 9px", height: 25, fontSize: 11 }} onClick={() => remove(i)}>
                 {t("opdAdmin.removeRow")}
-              </Button>
+              </button>
             </div>
           ))}
-          {fields.length === 0 && <p className="text-sm text-neutral-500">{t("opdAdmin.noSchedules")}</p>}
-          <div className="flex gap-2">
-            <Button
+          {fields.length === 0 && <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{t("opdAdmin.noSchedules")}</p>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
               type="button"
-              variant="outline"
+              className="sec"
               onClick={() =>
                 append({ weekday: "0", startTime: "", endTime: "", roomId: "", slotMinutes: "", validFrom: todayIst(), validTo: "" })
               }
             >
               {t("opdAdmin.addRow")}
-            </Button>
-            <Button type="submit">{t("opdAdmin.saveSchedules")}</Button>
+            </button>
+            <button type="submit" className="pri">{t("opdAdmin.saveSchedules")}</button>
           </div>
-          {saved && <p className="text-sm text-green-700">{t("opdAdmin.schedulesSaved")}</p>}
+          {saved && <p style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: "var(--green)" }}>{t("opdAdmin.schedulesSaved")}</p>}
           <ErrorLine message={error} />
         </FormKit>
       </FormProvider>
@@ -422,9 +431,9 @@ function LeavesPanel({
   };
 
   return (
-    <section className="space-y-3">
-      <h2 className="text-sm font-semibold">{t("opdAdmin.leaves")}</h2>
-      {items.length === 0 && <p className="text-sm text-neutral-500">{t("opdAdmin.noLeaves")}</p>}
+    <section className="box" style={{ display: "flex", flexDirection: "column", gap: 10, padding: "15px 17px" }}>
+      <h2 className="tag" style={{ margin: 0 }}>{t("opdAdmin.leaves")}</h2>
+      {items.length === 0 && <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{t("opdAdmin.noLeaves")}</p>}
       {items.length > 0 && (
         <Table>
           <TableHeader>
@@ -445,9 +454,9 @@ function LeavesPanel({
                 <TableCell>{t(`opdAdmin.leaveStatus.${l.status}`)}</TableCell>
                 <TableCell>
                   {l.status === "scheduled" && (
-                    <Button size="sm" variant="outline" onClick={() => void cancel(l.id)}>
+                    <button type="button" className="sec" style={{ padding: "0 9px", height: 25, fontSize: 11 }} onClick={() => void cancel(l.id)}>
                       {t("opdAdmin.cancelLeave")}
-                    </Button>
+                    </button>
                   )}
                 </TableCell>
               </TableRow>
@@ -460,9 +469,9 @@ function LeavesPanel({
           <TextField name="fromDate" label={t("opdAdmin.fromDate")} type="date" />
           <TextField name="toDate" label={t("opdAdmin.toDate")} type="date" />
           <TextField name="reason" label={t("opd.labels.reason")} />
-          {affected !== null && <p className="text-sm text-amber-700">{t("opdAdmin.leaveScheduled", { n: affected })}</p>}
+          {affected !== null && <p style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: "var(--gold)" }}>{t("opdAdmin.leaveScheduled", { n: affected })}</p>}
           <ErrorLine message={error} />
-          <Button type="submit">{t("opdAdmin.addLeave")}</Button>
+          <button type="submit" className="pri">{t("opdAdmin.addLeave")}</button>
         </FormKit>
       </FormProvider>
     </section>
@@ -484,22 +493,29 @@ function SchedulesAndLeavesTab({
   });
   const leaves = useQuery({
     queryKey: ["opd", "leaves", doctorId],
-    queryFn: () => listLeaves(doctorId),
+    queryFn: () => listLeaves({ doctorId }),
     enabled: doctorId !== "",
     refetchInterval: POLL_MS,
   });
 
   return (
-    <div className="space-y-6">
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <FormProvider {...picker}>
+        {/*
+          The width lives here rather than in a utility class on a SHARED component: `form-kit.tsx`
+          is imported by eight screens and is deliberately not restyled by FD-25 (its fields already
+          inherit `.pp input`'s paint from desk-one.css, which is why they look right without being
+          touched). Layout the screen owns stays in the screen.
+        */}
+        <div style={{ maxWidth: 340 }}>
         <SelectField
           name="doctorId"
           label={t("opd.labels.doctor")}
-          className="max-w-sm"
           options={[{ value: "", label: t("opdAdmin.pickDoctor") }, ...doctors.map((d) => ({ value: d.id, label: d.displayName }))]}
         />
+        </div>
       </FormProvider>
-      {doctorId === "" && <p className="text-sm text-neutral-500">{t("opdAdmin.pickDoctorHint")}</p>}
+      {doctorId === "" && <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{t("opdAdmin.pickDoctorHint")}</p>}
       {/* Keyed on the doctor so switching doctors re-seeds both editors from the newly loaded rows
           rather than leaving the previous doctor's form state behind. The two keys must differ:
           same-keyed siblings are duplicates to React. */}
@@ -524,6 +540,9 @@ function SchedulesAndLeavesTab({
 export function OpdAdmin(): React.ReactElement {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const [tab, setTab] = useState<"departments" | "rooms" | "doctors" | "schedules">("departments");
+  const [agentAnswer, setAgentAnswer] = useState<string | null>(null);
+  const [agentLog, setAgentLog] = useState<AgentLine[]>([]);
 
   const departments = useQuery({ queryKey: ["opd", "departments"], queryFn: listDepartments, refetchInterval: POLL_MS });
   const rooms = useQuery({ queryKey: ["opd", "rooms"], queryFn: listRooms, refetchInterval: POLL_MS });
@@ -533,30 +552,55 @@ export function OpdAdmin(): React.ReactElement {
   const roomItems = rooms.data?.items ?? [];
   const doctorItems = doctors.data?.items ?? [];
 
+  /*
+    THE MASTERS' CO-PILOT counts what is here and names what has been switched off. The second half
+    is the useful one: a deactivated department is invisible at the counter and still on every past
+    visit, so "why can nobody book Dermatology" has an answer this screen holds and never volunteers.
+  */
+  const ask = (question: string): void => {
+    const q = question.toLowerCase();
+    const off = [...departmentItems, ...roomItems].filter((x) => !x.active).map((x) => x.name)
+      .concat(doctorItems.filter((d) => !d.active).map((d) => d.displayName));
+    const answer = /inactive|deactivat|off|disabled|missing|hidden/.test(q)
+      ? (off.length === 0 ? t("opdAdmin.agent.allActive") : t("opdAdmin.agent.inactive", { list: off.join(", ") }))
+      : /how many|count|department|room|doctor|list/.test(q)
+        ? t("opdAdmin.agent.counts", { departments: departmentItems.length, rooms: roomItems.length, doctors: doctorItems.length })
+        : t("opdAdmin.agent.cannot");
+    setAgentAnswer(answer);
+    setAgentLog((l) => logged(l, question));
+  };
+
   return (
-    <div className="space-y-4 p-6">
-      <h1 className="text-xl font-semibold">{t("opdAdmin.title")}</h1>
-      {departments.data === undefined && <p>{t("app.loading")}</p>}
-      <Tabs defaultValue="departments">
-        <TabsList>
-          <TabsTrigger value="departments">{t("opdAdmin.tabs.departments")}</TabsTrigger>
-          <TabsTrigger value="rooms">{t("opdAdmin.tabs.rooms")}</TabsTrigger>
-          <TabsTrigger value="doctors">{t("opdAdmin.tabs.doctors")}</TabsTrigger>
-          <TabsTrigger value="schedules">{t("opdAdmin.tabs.schedules")}</TabsTrigger>
-        </TabsList>
-        <TabsContent value="departments">
-          <DepartmentsTab items={departmentItems} queryClient={queryClient} />
-        </TabsContent>
-        <TabsContent value="rooms">
-          <RoomsTab items={roomItems} queryClient={queryClient} />
-        </TabsContent>
-        <TabsContent value="doctors">
-          <DoctorsTab items={doctorItems} departments={departmentItems} queryClient={queryClient} />
-        </TabsContent>
-        <TabsContent value="schedules">
-          <SchedulesAndLeavesTab doctors={doctorItems} rooms={roomItems} queryClient={queryClient} />
-        </TabsContent>
-      </Tabs>
-    </div>
+    <PaperScreen testId="opd-admin" style={{ padding: "18px 22px", gap: 14 }}>
+      <ScreenTitle title={t("opdAdmin.title")} route="/opd/admin" />
+      {departments.data === undefined && <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{t("app.loading")}</p>}
+      <TabStrip
+        label={t("opdAdmin.title")}
+        value={tab}
+        onChange={setTab}
+        options={[
+          ["departments", t("opdAdmin.tabs.departments")],
+          ["rooms", t("opdAdmin.tabs.rooms")],
+          ["doctors", t("opdAdmin.tabs.doctors")],
+          ["schedules", t("opdAdmin.tabs.schedules")],
+        ] as const}
+      />
+      {/*
+        ONE PANEL MOUNTED AT A TIME, which is what the shadcn `Tabs` did and is worth keeping
+        deliberately rather than by accident: each tab holds its own react-hook-form, and mounting
+        all four would keep three sets of half-typed form state alive behind the one being read.
+      */}
+      <div role="tabpanel" id={`tabpanel-${tab}`} aria-labelledby={`tab-${tab}`}>
+        {tab === "departments" && <DepartmentsTab items={departmentItems} queryClient={queryClient} />}
+        {tab === "rooms" && <RoomsTab items={roomItems} queryClient={queryClient} />}
+        {tab === "doctors" && <DoctorsTab items={doctorItems} departments={departmentItems} queryClient={queryClient} />}
+        {tab === "schedules" && <SchedulesAndLeavesTab doctors={doctorItems} rooms={roomItems} queryClient={queryClient} />}
+      </div>
+
+      <AgentDock
+        answer={agentAnswer} log={agentLog} onAsk={ask}
+        placeholder={t("opdAdmin.askPlaceholder")} idle={t("opdAdmin.agentIdle")}
+      />
+    </PaperScreen>
   );
 }

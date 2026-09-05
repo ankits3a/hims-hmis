@@ -135,9 +135,35 @@ describe("FD-12: the registration counter's full record", () => {
     await user.click(screen.getByTestId("reg-submit"));
 
     await waitFor(() => expect(posted).toHaveLength(1));
-    const body = posted[0]!.body as { ageYears: number; guardian: { name: string; relationship: string } };
+    const body = posted[0]!.body as {
+      ageYears: number;
+      guardian: {
+        name: string; relationship: string;
+        authorityMessages: boolean; authorityBills: boolean;
+        authorityConsents: boolean; authorityDsr: boolean;
+      };
+    };
     expect(body.ageYears).toBe(5);
-    expect(body.guardian).toEqual({ name: "Ram Prasad", relationship: "father" });
+    expect(body.guardian).toMatchObject({ name: "Ram Prasad", relationship: "father" });
+    /*
+      FD-25 — AND THE FOUR AUTHORITIES, WHICH THIS ASSERTION USED TO PROVE WERE MISSING.
+
+      It was `toEqual({ name, relationship })` — an exact match, so it passed only while the guardian
+      travelled with NOTHING ELSE. That is precisely the state the defect describes: the server has
+      accepted and stored `authorityMessages`/`Bills`/`Consents`/`Dsr` since the guardians table
+      existed, no client had ever sent one, and every guardian row on the deployed system therefore
+      holds column defaults for a DPDP §9 question nobody was asked.
+
+      So the exactness is kept rather than loosened — `toMatchObject` for identity, plus this, which
+      pins the values. The defaults asserted here are the SIGNED-OFF ARTBOARD's (messages and bills
+      on, consents and records off) and they deliberately disagree with the column defaults, which
+      have `consents` TRUE. If someone later drops the four from the body to make something else
+      pass, this fails and says why.
+    */
+    expect(body.guardian.authorityMessages).toBe(true);
+    expect(body.guardian.authorityBills).toBe(true);
+    expect(body.guardian.authorityConsents).toBe(false);
+    expect(body.guardian.authorityDsr).toBe(false);
   });
 
   it("an unknown age is not a minor — the guardian is never demanded from an adult who cannot recall a year", async () => {
@@ -337,5 +363,69 @@ describe("FD-12: the registration counter's full record", () => {
     expect(posted[0]!.body).toEqual({
       name: "Walk In", sex: "male", phone: "9100000001", ageYears: 44,
     });
+  });
+
+  /**
+   * ═══ FD-25 — THE CONFIDENTIAL TICK THAT WAS A 400 FOR EVERY CLERK WHO EVER USED IT ═══
+   *
+   * `registration.ts` throws `alias_required` when `isConfidential` arrives without an alias. This
+   * screen sent the flag and had no alias field, and `WireRegisterBody` did not declare one — so
+   * the refusal was unreachable from the UI in both directions: the clerk could not satisfy it, and
+   * no compiler could point at why.
+   *
+   * It survived a close review because every test here asserts what the SCREEN does, and the screen
+   * did the wrong thing consistently. These two are written from the SERVER's rule instead — the
+   * body must satisfy `alias_required`, and the screen must not let a clerk submit one that cannot.
+   */
+  it("a sealed record carries its alias — the flag alone is a refusal the server always makes", async () => {
+    const posted: { body: unknown }[] = [];
+    mountDesk(posted);
+    await openEnrolment();
+    const user = userEvent.setup({ delay: null });
+
+    await user.type(screen.getByTestId("reg-name"), "Staff Member");
+    await user.type(screen.getByTestId("reg-age"), "39");
+    await user.click(screen.getByTestId("reg-sex-female"));
+
+    await user.click(screen.getByTestId("fold-flags"));
+    await user.click(screen.getByTestId("reg-confidential"));
+
+    /* Ticked and no alias yet: the screen refuses BEFORE the server has to, exactly as it does for
+       a minor with no guardian. A submit that is enabled here is a guaranteed 400 at the counter. */
+    expect(screen.getByTestId("reg-submit")).toBeDisabled();
+
+    await user.type(screen.getByTestId("reg-alias"), "Patient 44");
+    expect(screen.getByTestId("reg-submit")).toBeEnabled();
+    await user.click(screen.getByTestId("reg-submit"));
+
+    await waitFor(() => expect(posted).toHaveLength(1));
+    const body = posted[0]!.body as { isConfidential?: boolean; alias?: string };
+    expect(body.isConfidential).toBe(true);
+    expect(body.alias).toBe("Patient 44");
+  });
+
+  it("an ordinary record sends no alias, even if one was typed and the box then unticked", async () => {
+    const posted: { body: unknown }[] = [];
+    mountDesk(posted);
+    await openEnrolment();
+    const user = userEvent.setup({ delay: null });
+
+    await user.type(screen.getByTestId("reg-name"), "Ordinary Patient");
+    await user.type(screen.getByTestId("reg-age"), "39");
+    await user.click(screen.getByTestId("reg-sex-female"));
+
+    await user.click(screen.getByTestId("fold-flags"));
+    await user.click(screen.getByTestId("reg-confidential"));
+    await user.type(screen.getByTestId("reg-alias"), "Patient 44");
+    /* Untick: the alias field goes away with the decision it belonged to, and must not travel. An
+       alias on an unsealed record is a public name for somebody who never asked to be hidden. */
+    await user.click(screen.getByTestId("reg-confidential"));
+    expect(screen.queryByTestId("reg-alias")).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId("reg-submit"));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    const body = posted[0]!.body as { isConfidential?: boolean; alias?: string };
+    expect(body.isConfidential).toBeUndefined();
+    expect(body.alias).toBeUndefined();
   });
 });

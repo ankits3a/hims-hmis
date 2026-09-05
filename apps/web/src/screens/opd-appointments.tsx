@@ -13,6 +13,7 @@ import { PatientPicker } from "../components/patient-picker";
 import type { PatientPickerHit } from "../components/patient-picker";
 import { TokenSlip } from "../components/token-slip";
 import type { TokenSlipProps } from "../components/token-slip";
+import { PaperScreen } from "../components/paper-screen";
 import type { QrCardData } from "../components/qr-card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
@@ -496,7 +497,7 @@ export function OpdAppointments(): React.ReactElement {
    * worst outcome — so they were kept green throughout rather than rewritten alongside.
    */
   return (
-    <div className="pp" style={{ display: "flex", flexDirection: "column", minHeight: "calc(100vh - 96px)" }}>
+    <PaperScreen>
       <div style={{ flexGrow: 1, padding: "20px 24px" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 11 }}>
           <span style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-.01em" }}>{t("opdAppt.title")}</span>
@@ -605,6 +606,6 @@ export function OpdAppointments(): React.ReactElement {
         placeholder={t("opdAppt.askPlaceholder")}
         idle={t("opdAppt.agentIdle")}
       />
-    </div>
+    </PaperScreen>
   );
 }

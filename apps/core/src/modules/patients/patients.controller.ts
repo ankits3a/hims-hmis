@@ -11,6 +11,8 @@ import { ApprovalError } from "../../kernel/approvals/types";
 import { WorkflowError } from "../../kernel/workflow/instances";
 import { withTx } from "../../kernel/db/client";
 import { PatientError } from "./uhid";
+import { listPatientCoverages } from "./coverages";
+import type { CoverageRow } from "./coverages";
 import { getPatient, registerPatient, updatePatient } from "./registration";
 import { nearMatches } from "./duplicates";
 import { abhaCapability } from "./abdm";
@@ -498,6 +500,29 @@ export class PatientsController {
     const photo = await getPatientPhoto(this.db, actor, id);
     if (!photo) throw new NotFoundException("no photo");
     return { mimeType: photo.mimeType, imageBase64: photo.bytes.toString("base64") };
+  }
+
+  /**
+   * ═══ FD-25 — THE READ THAT MAKES `patient_coverages` NOT WRITE-ONLY ═══
+   *
+   * `POST /patients` has been writing these since FD-12 — every entitlement a patient produces at
+   * the desk, in the same transaction as the patient — and NOTHING has ever read one back. A clerk
+   * asked somebody for their policy number, typed it in, and the product could not show it to
+   * anybody afterwards.
+   *
+   * ON `patients.read`, NOT a billing string, and that is the deliberate choice: a coverage row is
+   * a fact about the PATIENT that billing happens to consume, not a fact about a bill. Gating it on
+   * `billing.invoice.read` would say the opposite and would put it out of reach of the registration
+   * seat that collected it. The cashier holds `patients.read` as of the owner's 2026-09-04 ruling,
+   * so the billing counter can call it without a second grant.
+   *
+   * Every call that returns anything writes ONE `patient.coverage` PHI-access row — see the reader
+   * for why that surface is its own name rather than a reuse of `patient.detail`.
+   */
+  @RequirePermission("patients.read", "hospital")
+  @Get(":id/coverages")
+  async coverages(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ items: CoverageRow[] }> {
+    return { items: await listPatientCoverages(this.db, actor, id) };
   }
 
   @RequirePermission("patients.read", "hospital")

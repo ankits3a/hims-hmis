@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, HttpCode, Inject, Param, Post, Query } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Inject, Param, Post, Query } from "@nestjs/common";
 import { asc, inArray } from "drizzle-orm";
 import { z } from "zod";
 import type { Actor } from "@hmis/contracts";
@@ -56,6 +56,15 @@ const appointmentsQuery = z.object({
   patientId: z.string().min(1).optional(),
   status: z.string().max(200).optional(), // comma-separated
   needsRebooking: z.enum(["true", "false"]).optional(),
+  /**
+   * FD-25 — the rebooking rail's phone numbers, opt-in and NARROW ON PURPOSE.
+   *
+   * Accepted only alongside `needsRebooking=true` (enforced below, not merely documented): the one
+   * screen that needs a number is the one answering "the doctor is away, who do I have to call?".
+   * Left open, this would have become a contact-details tap on every appointment read in the
+   * product, which is the privacy widening the narrow option was chosen to avoid.
+   */
+  contact: z.enum(["true", "false"]).optional(),
 });
 // z.coerce.date() on an ISO instant: the wire carries slot starts as ISO strings (flag ⑫).
 const appointmentCreateBody = z.object({
@@ -263,7 +272,21 @@ export class OpdVisitsController {
       status: q.status === undefined ? undefined : q.status.split(",").filter((s) => s !== ""),
       needsRebooking: q.needsRebooking === "true",
     });
-    return { items: await this.withPatients(actor, items) };
+    /*
+      CONTACT DETAILS ONLY ON THE REBOOKING READ, and refused rather than ignored elsewhere. A
+      silently-dropped parameter teaches a caller that it worked; a refusal tells them the rule.
+    */
+    if (q.contact === "true" && q.needsRebooking !== "true") {
+      throw new BadRequestException({
+        code: "contact_needs_rebooking",
+        message: "contact=true is available only with needsRebooking=true — the rebooking rail is the one surface that calls patients",
+      });
+    }
+    return {
+      items: await this.withPatients(actor, items, q.contact === "true"
+        ? { reason: `rebooking rail: ${String(items.length)} appointment(s) needing a call` }
+        : undefined),
+    };
   }
 
   @RequirePermission("opd.appointments.manage", "hospital")
@@ -636,8 +659,15 @@ export class OpdVisitsController {
   }
 
   /** Attaches the patients module's summaries to a list — ONE call per request (spec §4: no patient table here). */
-  private async withPatients(actor: Actor, items: AppointmentRow[]): Promise<AppointmentView[]> {
-    const summaries = await getPatientSummaries(this.db, actor, items.map((a) => a.patientId));
+  private async withPatients(
+    actor: Actor,
+    items: AppointmentRow[],
+    withContact?: { reason: string },
+  ): Promise<AppointmentView[]> {
+    const summaries = await getPatientSummaries(
+      this.db, actor, items.map((a) => a.patientId),
+      withContact === undefined ? {} : { withContact },
+    );
     const byPatient = new Map(summaries.map((s) => [s.requestedId, s] as const));
     return items.map((a) => ({ ...a, patient: byPatient.get(a.patientId) ?? null }));
   }

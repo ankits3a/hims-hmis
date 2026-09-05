@@ -60,7 +60,9 @@
     "labReports": "Report centre",
     "pharmacyCounter": "Dispense counter",
     "pharmacyItems": "Pharmacy sale items",
-    "radiationSafety": "Radiation safety"
+    "radiationSafety": "Radiation safety",
+    "registration": "Registration",
+    "appointment": "Booking desk"
   },
   "palette": {
     "title": "Search",
@@ -76,18 +78,10 @@
     }
   },
   "shortcuts": {
-    "title": "Shortcuts",
     "search": "/ — Search",
     "new": "F4 New patient",
     "confirm": "Ctrl+⏎ Confirm",
     "release": "Esc Release the patient",
-    "merge": "Alt+M Merge",
-    "approvals": "Alt+A Approvals",
-    "opdDesk": "Alt+D OPD desk",
-    "opdVitals": "Alt+V Vitals",
-    "opdConsult": "Alt+C Consult",
-    "opdAppointments": "Alt+P Appointments",
-    "billing": "Alt+B Counter",
     "book": "F7 Appointments"
   },
   "login": {
@@ -372,6 +366,14 @@
     "leaveStatus": {
       "scheduled": "Scheduled",
       "cancelled": "Cancelled"
+    },
+    "askPlaceholder": "ask about departments, rooms, doctors or schedules…",
+    "agentIdle": "I read these masters only — the departments, rooms and doctors on this deployment and which of them are active. I have no model behind me and I change nothing.",
+    "agent": {
+      "counts": "{{departments}} department(s), {{rooms}} room(s), {{doctors}} doctor(s).",
+      "inactive": "Deactivated and still on file: {{list}}. A deactivated master stops being offered at the counter; it is never deleted, because past visits point at it.",
+      "allActive": "Everything here is active.",
+      "cannot": "I cannot answer that from this screen. I can tell you about the departments, rooms and doctors on this deployment, and which are deactivated."
     }
   },
   "opdAppt": {
@@ -651,7 +653,47 @@
     "advisedTestsNoMatch": "No active service matches. The catalogue is curated in the tariff, not here.",
     "advisedTestsEmpty": "No investigation advised.",
     "advisedTestsRemove": "Remove {{name}}",
-    "remove": "Remove"
+    "remove": "Remove",
+    "scribe": {
+      "title": "Voice scribe",
+      "hold": "Hold to dictate",
+      "listening": "Listening — release to send",
+      "cap": "stops at {{seconds}}s",
+      "sending": "transcribing…",
+      "insert": "Insert into complaint",
+      "discard": "Discard",
+      "notConfigured": "Dictation is not switched on yet. Your typing is unaffected — this panel will start working the day the hospital enables it, and nothing you have written is lost.",
+      "failed": "The transcription did not come back. Nothing was saved; type the note as usual.",
+      "noMic": "This browser offers no microphone to the page. Dictation needs one; typing works as it always has.",
+      "noPermission": "The microphone was not allowed for this site. Nothing was recorded."
+    },
+    "askPlaceholder": "ask about this patient, the queue or the prescription…",
+    "agentIdle": "I read this consultation only — the patient in the chair, their vitals and allergies on file, the queue behind them, and the lines you have written. I have no model behind me and I cannot look anything up outside this screen.",
+    "agent": {
+      "queueDepth": "{{waiting}} waiting, {{done}} seen. The next token is {{next}}.",
+      "noQueue": "No session is open for you today, so there is no queue to read.",
+      "allergies": "On file: {{list}}. The server checks every line you write against these and refuses a clash — it does not rely on you remembering.",
+      "noAllergies": "No allergies are recorded for this patient. That is an absence of a record, not a negative test.",
+      "vitals": "Bay One charted BP {{bp}}, pulse {{pulse}}, SpO₂ {{spo2}}. {{flags}}",
+      "noVitals": "No vitals have been charted for this visit yet.",
+      "dangerFlags": "The bay flagged: {{list}}.",
+      "noDangerFlags": "Nothing was flagged.",
+      "rxLines": "{{n}} line(s) written, not yet issued. Issuing runs the allergy, interaction and duplicate checks server-side.",
+      "noRx": "No prescription lines written yet.",
+      "advised": "{{n}} test(s) advised. These print as advice on the prescription and create no order — the counter converts them.",
+      "noAdvised": "No tests advised yet.",
+      "cannot": "I cannot answer that from this screen. I can tell you about the queue, this patient's allergies and vitals, the lines you have written, and the tests you have advised."
+    },
+    "keys": {
+      "legend": "keys",
+      "complete": "complete",
+      "agent": "assistant",
+      "back": "back to the queue"
+    },
+    "seat": "Consulting room",
+    "queueRail": "The queue",
+    "noPatientTitle": "Nobody is in the chair",
+    "noPatientBody": "Call the next token, or press Enter. The queue on the left is live."
   },
   "rx": {
     "regNo": "Reg. No.",
@@ -1179,6 +1221,18 @@
       "username_taken": "That username already exists",
       "user_not_found": "That person no longer exists — reload the list",
       "role_not_found": "That role does not exist on this deployment — reload the list"
+    },
+    "revokeRoleFor": "Revoke {{roleKey}} from {{username}}",
+    "askPlaceholder": "ask about accounts, roles or who can do what…",
+    "agentIdle": "I read this roster only — the accounts on this deployment, the roles each one holds, and how many full administrators there are. I have no model behind me and I cannot change anything; every button here is yours.",
+    "agent": {
+      "admins": "{{n}} full administrator(s). Two is the floor: with one, a single lost password locks the hospital out of its own access control.",
+      "counts": "{{total}} account(s): {{active}} active, {{inactive}} deactivated.",
+      "noRoles": "These accounts hold no role at all, so they can sign in and do nothing: {{list}}.",
+      "allHaveRoles": "Every account holds at least one role.",
+      "inert": "{{n}} role assignment(s) are scoped below hospital. Every route in this system requires a hospital scope, so those rows grant their holder nothing — the screen marks each one.",
+      "noInert": "No inert role assignments — every holding is hospital-scoped.",
+      "cannot": "I cannot answer that from this screen. I can tell you about the accounts listed here, the roles they hold, how many full administrators there are, and which assignments are inert."
     }
   },
   "counterInstruments": {
@@ -1460,11 +1514,12 @@
     "gates": "Gates",
     "open": "Open cockpit",
     "publish": "Publish the list",
-    "published": "Published {{count}} case(s); {{ready}} ready.",
     "publishHint": "Publishing moves every booked case to `listed` and evaluates readiness at once.",
     "gateOpen": "open",
     "gateSatisfied": "satisfied",
-    "patient": "Patient"
+    "patient": "Patient",
+    "published_one": "Published {{count}} case; {{ready}} ready.",
+    "published_other": "Published {{count}} cases; {{ready}} ready."
   },
   "otBook": {
     "title": "Book a day-care case",
@@ -1792,7 +1847,17 @@
     "docTitle": "Daily report",
     "docFor": "For {{date}}",
     "signedBy": "Signed",
-    "receivedBy": "Received by"
+    "receivedBy": "Received by",
+    "askPlaceholder": "ask about your day, this document or the export…",
+    "agentIdle": "I read this shift report only — the sections the server built for the date you picked, and whether the day is closed. I have no model behind me.",
+    "agent": {
+      "sections": "{{n}} section(s) for {{date}}.",
+      "provisional": "This day is NOT closed, so what you print says so on its face. The flag is the server's, which is why the file, the print and the screen cannot disagree.",
+      "closed": "This day is closed. What you print is the close.",
+      "empty": "Nothing recorded for this date. A day before you existed here, or a day you did nothing, is zeroes rather than a blank.",
+      "signature": "The printed report carries two signature lines — yours and whoever receives the handover. A printout with nowhere to sign gets a line drawn on it in biro, which is the same document with worse provenance.",
+      "cannot": "I cannot answer that from this screen. I can tell you what is in today's report, whether the day is closed, and what the printed document contains."
+    }
   },
   "brief": {
     "title": "Your brief",
@@ -1840,7 +1905,8 @@
       "compared": "{{total}} collected, against a median of {{median}}.",
       "drift": "{{total}} collected — {{first}} in the first half, {{second}} in the second."
     },
-    "failed": "The brief could not be read — try again, or ask an administrator."
+    "failed": "The brief could not be read — try again, or ask an administrator.",
+    "periodLabel": "How far back"
   },
   "staffReports": {
     "title": "Staff reports",
@@ -1852,7 +1918,16 @@
     "drillWarning": "This reveals patient rows from that person's day. It requires a reason and is recorded against your account.",
     "reason": "Why are you opening these rows?",
     "drillAction": "Open the rows",
-    "drillFailed": "The rows could not be opened. Check your permission, or ask an administrator."
+    "drillFailed": "The rows could not be opened. Check your permission, or ask an administrator.",
+    "askPlaceholder": "ask about this brief or what this screen can show…",
+    "agentIdle": "I read this brief only — the figures the server generated for the person and period you picked. I cannot see patient rows, and neither can this screen until somebody drills with a reason.",
+    "agent": {
+      "brief": "The brief for this period has {{n}} clause(s), covering {{from}} to {{to}}. Every one is generated on the server from typed facts; nothing here is composed prose.",
+      "empty": "The brief has nothing to say for this period. On somebody's first week most comparison clauses are absent, which is a thin history rather than a quiet one.",
+      "noSubject": "Pick a person first — nothing is read until you do.",
+      "drill": "Drilling shows the patient rows behind the figures. It needs a reason of at least eight characters, and the reason is written to the audit log with your name against it.",
+      "cannot": "I cannot answer that from this screen. I can tell you what the brief says, what period it covers, and what drilling costs."
+    }
   },
   "assurance": {
     "self_declared": "Self declared",
@@ -2108,14 +2183,15 @@
       "preview": "What they will receive",
       "collector": "Collected by",
       "print": "Print and hand over",
-      "held": "Held: ₹{{amount}} outstanding on {{count}} invoice(s).",
       "channel": "Hand over by",
       "channel_print": "Printed copy",
       "channel_in_person": "In person",
       "channel_whatsapp": "WhatsApp",
       "heldNoPreview": "The report is held. It is shown and printed once the bill is settled or a billing manager releases it.",
       "live": "live",
-      "offline": "offline"
+      "offline": "offline",
+      "held_one": "Held: ₹{{amount}} outstanding on {{count}} invoice.",
+      "held_other": "Held: ₹{{amount}} outstanding on {{count}} invoices."
     },
     "print": {
       "department": "Department of Laboratory Medicine",
@@ -2204,7 +2280,6 @@
       "results_one": "{{count}} result",
       "results_other": "{{count}} results",
       "signedBy": "signed {{when}}",
-      "heldLine": "Held: ₹{{amount}} outstanding on {{count}} invoice(s). The print lights the moment billing settles it.",
       "releaseHint": "If the patient cannot pay today, only the billing manager can release it — the dues stand.",
       "requestRelease": "Ask the billing manager to release",
       "releaseRequested": "Release requested — approval {{id}}. Enter it below when granted.",
@@ -2227,7 +2302,9 @@
       "channelsNote": "WhatsApp / SMS carry a values-free notice today; the counter is the door for the paper and for in-person-only tests.",
       "askElsewhere": "Your login cannot raise this request. The lab reception counter can, and a billing manager decides it in the approvals inbox; enter the granted approval id here.",
       "printPaper": "Print the paper",
-      "hindiCopy": "Hindi copy"
+      "hindiCopy": "Hindi copy",
+      "heldLine_one": "Held: ₹{{amount}} outstanding on {{count}} invoice. The print lights the moment billing settles it.",
+      "heldLine_other": "Held: ₹{{amount}} outstanding on {{count}} invoices. The print lights the moment billing settles it."
     }
   },
   "radiology": {
@@ -2264,7 +2341,6 @@
       "unknown": "No such study, or you may not see it.",
       "gates": "Safety gates",
       "ready": "Every gate is clear — this study is ready.",
-      "openGates": "{{count}} gate(s) still open.",
       "evidence": "Evidence (JSON)",
       "reason": "Reason",
       "satisfy": "Satisfy",
@@ -2283,7 +2359,9 @@
       "studyUidRecorded": "Study Instance UID recorded",
       "openImages": "Open images",
       "imagesNeverOpened": "Images not opened yet",
-      "imagesOpened": "Opened {{count}}×, last by {{by}}"
+      "imagesOpened": "Opened {{count}}×, last by {{by}}",
+      "openGates_one": "{{count}} gate still open.",
+      "openGates_other": "{{count}} gates still open."
     },
     "report": {
       "title": "Report",
@@ -2399,7 +2477,13 @@
         "spouse": "Spouse",
         "sibling": "Sibling",
         "legal": "Legal guardian",
-        "other": "Other"
+        "other": "Other",
+        "authority": "what they may do",
+        "authorityMessages": "messages",
+        "authorityBills": "bills",
+        "authorityConsents": "consents",
+        "authorityRecords": "records",
+        "authorityWhy": "What the guardian may do on this child's behalf is recorded now, and it is revocable. Consent is not the same as billing — the two are separate switches on purpose."
       },
       "abha": {
         "title": "ABHA",
@@ -2487,7 +2571,11 @@
         "promotional": "The patient agreed to receive health-camp and offer messages",
         "promotionalWhy": "DPDP consent. Leave unticked unless the patient actually said yes — silence is not consent.",
         "legacyUhid": "old paper UHID",
-        "language": "messages in"
+        "language": "messages in",
+        "alias": "alias shown on every screen",
+        "aliasPlaceholder": "Patient 44",
+        "sensitiveContext": "A sensitive context — a staff member, a VIP, a legal matter",
+        "sensitiveContextWhy": "Recorded beside the seal rather than inferred from it. It changes nothing a reader may see; it records why the record was sealed."
       }
     },
     "quote": {
@@ -2592,7 +2680,8 @@
       "yourDay": "Your day",
       "yourDayHint": "the signed document: what you registered, what you took, by tender. Provisional until the day is closed.",
       "reportFailed": "Your day could not be read — nothing is printed until it can be.",
-      "everyone": "everyone's bookings —"
+      "everyone": "everyone's bookings —",
+      "noRegistrationCard": "No registration figures for you yet — this fills in once you have registered somebody."
     },
     "photo": {
       "caption": "photo",
@@ -2609,7 +2698,8 @@
       "title": "on their account",
       "outstanding": "outstanding",
       "clear": "Nothing carried forward.",
-      "carried": "Carried forward from {{count}} earlier bill(s) — it travels onto this one."
+      "carried_one": "Carried forward from {{count}} earlier bill — it travels onto this one.",
+      "carried_other": "Carried forward from {{count}} earlier bills — it travels onto this one."
     },
     "schemes": {
       "title": "Schemes",
@@ -2694,11 +2784,13 @@
         "stale_version": "That card was reissued — ask for the new one",
         "unknown_patient": "That card belongs to no patient on file"
       },
-      "saving": "A save is still on its way — wait for the ✓ before taking the next person"
+      "saving": "A save is still on its way — wait for the ✓ before taking the next person",
+      "next": "Next patient"
     },
     "valve": {
       "bench": "bench {{count}}",
-      "callable": "callable {{count}}"
+      "callable": "callable {{count}}",
+      "why": "this bench is the doctors' wait time"
     },
     "bench": {
       "title": "The bench",
@@ -2715,7 +2807,8 @@
         "done": "✓ with doctor",
         "escalated": "class 0 — escalated",
         "recheck": "other arm, now"
-      }
+      },
+      "valveNote": "The valve: every minute a patient waits here is a minute a doctor waits downstream."
     },
     "session": {
       "empty": "Nobody in hand — scan, or type a token number or UHID",
@@ -2726,9 +2819,12 @@
       "firstVisit": "No history — first visit",
       "last": "Last chart {{date}}:",
       "carry": "Carried forward, locked until a reason: {{vitals}}",
-      "expectedFlags": "{{count}} expected flag(s) from history",
       "noHistory": "No history to show for this visit",
-      "sealed": "Confidential record — the band is known, the history is sealed at this desk"
+      "sealed": "Confidential record — the band is known, the history is sealed at this desk",
+      "expectedFlags_one": "{{count}} expected flag from history",
+      "expectedFlags_other": "{{count}} expected flags from history",
+      "title": "On the stool",
+      "dignity": "This screen faces you. The patient display shows a token and a direction — never a weight, never a number."
     },
     "band": {
       "infant": "Infant",
@@ -2789,7 +2885,16 @@
       "rrNudge": "RR {{value}} in under fifteen seconds? Charted — but count it:",
       "rrCount": "count 15 s",
       "rrCounting": "counting… {{seconds}} s — watch the chest",
-      "rrCounted": "fifteen seconds done — type the count"
+      "rrCounted": "fifteen seconds done — type the count",
+      "source": {
+        "auto": "AUTO",
+        "typed": "TYPED",
+        "counted": "COUNTED",
+        "rodeCuff": "RODE THE CUFF"
+      },
+      "reenter": "Re-enter {{tile}}",
+      "delta": "{{month}} {{from}} → {{delta}}",
+      "weightQuiet": "🔇 never said aloud — it's on the slip"
     },
     "gate": {
       "slippedDigit": "{{value}} kg on an adult — a slipped digit becomes a chart fact in one keystroke",
@@ -2863,7 +2968,25 @@
       "stale": "This chart was amended elsewhere while you were typing — re-open it from the bench to correct the current one"
     },
     "doctor": "Doctor",
-    "allDoctors": "All doctors on the bench"
+    "allDoctors": "All doctors on the bench",
+    "keys": {
+      "why": "the zero-typing proof — device reads are the number the serial lane is bought for"
+    },
+    "log": {
+      "saved": "Token {{token}} saved and sent to {{doctor}}",
+      "amended": "Token {{token}} — saved chart amended, old value kept in the trail"
+    },
+    "agent": {
+      "placeholder": "ask about the band, the bench or a bump…",
+      "idle": "I read this bay only — the patient on the stool, what their band requires, the escalation the server has recorded, and the bench. I have no model behind me and I cannot look anything else up.",
+      "scope": "I answer from what is on this bay: the band and what it requires, the escalation state, and the bench. Anything else I would be guessing at.",
+      "noPatient": "Nobody is on the stool, so there is no band and nothing is required yet. — from this bay.",
+      "required": "{{band}} — required before this chart can be saved: {{vitals}}. The band decides that, not habit. — from the server's pre-stage.",
+      "noEscalation": "Nothing is escalated for this patient. — from the server's escalation state, not from the numbers on screen.",
+      "escalation": "The server has this patient at '{{state}}'. — from the escalation state; the countdown and the class come from there, never from this screen.",
+      "bench_one": "{{count}} patient on the bench. — from the bench poll.",
+      "bench_other": "{{count}} patients on the bench. — from the bench poll."
+    }
   },
   "pharmacyItems": {
     "title": "Pharmacy sale items",
@@ -2915,7 +3038,12 @@
     "nothing_to_dispense": "Every line is declined — cancel the dispense instead",
     "scheduled_needs_pharmacist": "A registered pharmacist must hand over a Schedule H/H1 dispense",
     "identity_confirmation_required": "Confirm the patient’s identity first",
-    "batch_not_saleable": "That batch cannot be sold"
+    "batch_not_saleable": "That batch cannot be sold",
+    "short_stock": "The earliest batch does not hold enough for this line. Dispense a partial quantity with a reason, or choose a batch that covers it.",
+    "fefo_override_unavailable": "That batch cannot cover this quantity at this store.",
+    "invoice_not_settled": "This dispense carries no settled invoice yet — it cannot be handed over until billing is done.",
+    "identity_mismatch": "Those four digits do not end the phone number on the record.",
+    "batch_expired": "That batch has expired and cannot be dispensed. Choose another batch."
   },
   "pharmacyCounter": {
     "title": "Dispense counter",
@@ -2989,7 +3117,6 @@
     "label": "Label",
     "handedOver": "Handed over. Labels can be printed.",
     "billed": "Billed. Invoice {{no}}.",
-    "shortStock": "Short stock on line {{n}}: {{available}} available",
     "directions": "Directions",
     "expiry": "Exp",
     "substitutedFor": "in place of {{brand}}"
@@ -3033,7 +3160,105 @@
     "complaintHint": "In their own words — seene mein dard · bukhar · ghutne mein dard",
     "themDefault": "them",
     "bySuggestion": "suggested from the complaint",
-    "byKeyword": "matched on keywords"
+    "byKeyword": "matched on keywords",
+    "header": {
+      "title": "Booking desk",
+      "backToSearch": "Back to the search box",
+      "noLeave": "no leave declared this week",
+      "leaveDeclared_one": "{{count}} doctor on leave — bookings need moving",
+      "leaveDeclared_other": "{{count}} doctors on leave — bookings need moving"
+    },
+    "rail": {
+      "bookingFor": "Booking for",
+      "nobodyYet": "Nobody picked yet — search for the patient.",
+      "theirHistory": "Their history",
+      "noHistory": "No visits on file yet.",
+      "needRebooking": "Need rebooking",
+      "none": "none",
+      "nothingToMove": "Nothing needs moving. No declared leave has stranded a booking.",
+      "restricted": "restricted record",
+      "noPhone": "no number on file",
+      "patients_one": "{{count}} patient",
+      "patients_other": "{{count}} patients"
+    },
+    "history": {
+      "seen": "seen",
+      "missed": "missed",
+      "open": "open"
+    },
+    "book": {
+      "heading": "Book a slot",
+      "subtitle": "a booking is a promise about a time — the board only shows times that exist",
+      "doctor": "Doctor",
+      "day": "Day",
+      "room": "Room",
+      "noRoom": "set by the schedule",
+      "theSlots": "the day's slots",
+      "nothingHeld": "nothing held yet",
+      "held": "{{time}} held for this patient",
+      "pickFirst": "Pick a time first",
+      "confirm": "Book {{time}} with {{doctor}}",
+      "confirmMove": "Move {{who}} to {{time}}",
+      "stopMoving": "Stop moving",
+      "moving": "Moving {{who}} from {{was}} — pick the new time, or stop.",
+      "notHeldYet": "a slot is not held until it is booked",
+      "confirmsBy": "confirms by SMS · no token until they arrive"
+    },
+    "day": {
+      "heading": "The day's book",
+      "empty": "Nothing booked for this doctor on this day.",
+      "time": "Time",
+      "patient": "Patient",
+      "status": "Status",
+      "action": "Action",
+      "checkedIn": "{{count}} checked in",
+      "toArrive": "{{count}} to arrive",
+      "missed": "{{count}} missed",
+      "checkIn": "Check in",
+      "checkedInMark": "checked in",
+      "rebook": "Rebook",
+      "cancel": "Cancel",
+      "cancelReason": "why is it being cancelled?",
+      "cancelConfirm": "Cancel the booking",
+      "cancelAbandon": "Keep it"
+    },
+    "state": {
+      "seen": "seen",
+      "in_consult": "in consult",
+      "waiting": "waiting",
+      "booked": "booked",
+      "missed": "missed",
+      "cancelled": "cancelled",
+      "needs_rebooking": "needs rebooking"
+    },
+    "errors": {
+      "noPatient": "Pick the patient first — a booking needs somebody to be for."
+    },
+    "log": {
+      "booked": "Booked {{time}} with {{doctor}}",
+      "moved": "{{who}} moved from {{from}} to {{to}}",
+      "moving": "Moving {{who}} — pick a new time",
+      "checkedIn": "{{who}} checked in",
+      "cancelled": "Booking cancelled",
+      "call": "Call {{who}} on {{phone}} — was {{was}}"
+    },
+    "agent": {
+      "placeholder": "ask about the book, the free slots or the calls…",
+      "idleQuiet": "I read this screen only — the patient in hand, the doctor and day you have picked, the slots that exist, and today's book. The rail above is empty, so there is nothing I would chase.",
+      "draftCalls": "Draft the calls",
+      "nothingToMove": "Nothing needs moving today. — from the rebooking read.",
+      "noDoctor": "No doctor is picked, so there is no diary to read. — from this screen.",
+      "counts": "{{checkedIn}} checked in, {{toArrive}} still to arrive, {{missed}} missed. — from the day's book on this screen.",
+      "scope": "I answer from what is on this screen: the patient in hand, the doctor and day you picked, the slots, the day's book and the rebooking rail. Anything else I would be guessing at.",
+      "idleCalls_one": "{{count}} booking needs moving and there are {{free}} free slots on the day you are looking at.",
+      "idleCalls_other": "{{count}} bookings need moving and there are {{free}} free slots on the day you are looking at.",
+      "drafted_one": "{{count}} call drafted into the log below — name, number and the time they lost.",
+      "drafted_other": "{{count}} calls drafted into the log below — name, number and the time they lost.",
+      "toCall_one": "{{count}} booking needs a call. It is listed in the rail, with the number. — from the rebooking read.",
+      "toCall_other": "{{count}} bookings need a call. They are listed in the rail, with numbers. — from the rebooking read.",
+      "freeSlots_one": "{{count}} free slot for {{doctor}} on {{date}}. — from the slot board on this screen.",
+      "freeSlots_other": "{{count}} free slots for {{doctor}} on {{date}}. — from the slot board on this screen."
+    }
   },
   "aerb": {
     "title": "Radiation safety (AERB)",
@@ -3225,6 +3450,200 @@
       "surrenderArmed": "Terminal — the machine becomes unlicensed:",
       "surrenderConfirm": "Confirm surrender",
       "decommissionRef": "Decommissioning ref."
+    }
+  },
+  "registrationSeat": {
+    "header": {
+      "title": "Registration",
+      "noDrawer": "drawer not needed here",
+      "searchHere": "Search — the cursor starts here",
+      "backToSearch": "Back to the search box"
+    },
+    "rail": {
+      "inHand": "Patient in hand",
+      "nobodyYet": "Nobody at the counter yet.",
+      "theirCard": "Their card",
+      "uhidPending": "allocated the moment you register — the next number is not reserved, because the counter beside you may take it first",
+      "uhidIssued": "issued to this patient, and it never changes",
+      "takePhoto": "Take a photo",
+      "guardianOnFile": "guardian on file",
+      "noAbha": "no ABHA",
+      "notYetRegistered": "not registered yet",
+      "guardianNeeded": "guardian required"
+    },
+    "search": {
+      "heading": "Who is in front of you?",
+      "placeholder": "name, mobile or UHID — any part of the name",
+      "helper": "Search before you type a single form field — a duplicate stopped here costs nothing. A surname works: Kumar finds every Kumar."
+    },
+    "hits": {
+      "noneOfThese": "None of these is the person in front of you?",
+      "noneFound": "Nobody on file matches that.",
+      "registerNew": "Register new"
+    },
+    "form": {
+      "newPatient": "New patient",
+      "fourFields": "four fields open a visit — the rest is only asked when it applies",
+      "female": "Female",
+      "male": "Male",
+      "other": "Other"
+    },
+    "doors": {
+      "heading": "Who will see them?",
+      "hint": "a doctor by name, or the complaint and we route it",
+      "byName": "A doctor, by name",
+      "byNamePlaceholder": "type a name…",
+      "complaint": "Or what brings them in",
+      "complaintPlaceholder": "seene mein dard · fever · sugar-BP…"
+    },
+    "proposal": {
+      "ruleContinuity": "Rule 1 · continuity of care",
+      "ruleShortest": "Rule 2 · nobody has seen them here",
+      "ruleDepartment": "Rule 3 · the department queue",
+      "badgeSeenBefore": "seen them before",
+      "badgeShortest": "shortest wait",
+      "noDoctor": "No doctor is free in this department",
+      "waitLine": "{{ahead}} ahead · ~{{minutes}}m · {{clock}}",
+      "reasonContinuity": "{{doctor}} consulted them on {{seenOn}}. Continuity wins even when his line is longer — the history does not have to be taken again.",
+      "reasonShortest": "First visit to {{department}}. Of the doctors on today, this one has the shortest line — availability decides only when continuity has nothing to say.",
+      "reasonDepartmentQueue": "Nobody in {{department}} is taking patients right now, so this joins the department queue and is assigned when somebody opens.",
+      "reasonAnchorAway": "{{doctor}} has seen them before but is not on today's board, so this falls to the shortest line. Tell the patient that, rather than that nobody has seen them.",
+      "reasonAnchorOnLeave": "{{doctor}} has seen them before and is on leave today. That is a different sentence from 'not scheduled', and it is the one to say to a patient asking for him by name.",
+      "delayed": "That line is over 20 minutes. {{doctor}} is about {{minutes}}m — offer it, but the choice is the patient's.",
+      "badgeUnassigned": "nobody assigned yet"
+    },
+    "guardian": {
+      "required": "{{age}} years old — a guardian is required"
+    },
+    "folds": {
+      "open": "open",
+      "notLinked": "not linked",
+      "noneOnFile": "none on file",
+      "ordinary": "ordinary record",
+      "sealed": "sealed",
+      "abhaHint": "the national health id, if they have one",
+      "abhaBody": "Recorded as self-declared, which is what this hospital can honestly say — only ABDM answering can make it verified, and we are not connected to ABDM. Self-declared and verified are different facts and the record keeps them apart.",
+      "photo": "Photograph",
+      "photoHint": "taken at the counter, attached to the card",
+      "photoBody": "The photo is confirmed against the demographics before it attaches — large, side by side, an explicit yes. A photo on the wrong record is worse than no photo. It needs a UHID first, so it is taken after registration.",
+      "confidential": "Confidential record",
+      "confidentialHint": "a VIP, a staff member, a sensitive context",
+      "confidentialBody": "The alias replaces the name on furniture — the strip, the board, the queue display — for everyone, including people who may read the real name. Sealing is revocable; a UHID is not, which is why status never lives in the number."
+    },
+    "duplicate": {
+      "why": "This is a warning, not a refusal. A second real Asha Devi on a shared family phone must be registrable — a desk that cannot register her learns to invent phone numbers instead, and that is how a patient master rots.",
+      "override": "None of these is them — register anyway",
+      "heading_one": "{{count}} record on file looks like this person",
+      "heading_other": "{{count}} records on file look like this person"
+    },
+    "footer": {
+      "registerAndOpen": "Register and open the visit",
+      "registerOnly": "Register only",
+      "cancel": "Cancel",
+      "issuesAndPrints": "issues a UHID and prints the token",
+      "issuesOnly": "issues a UHID · no visit is opened, and no token prints"
+    },
+    "log": {
+      "registered": "Registered — UHID {{uhid}}",
+      "seated": "Token {{token}} · {{doctor}}",
+      "tookHit": "Took {{uhid}} from the search",
+      "duplicate_one": "Refused: {{count}} near match. The clerk decides.",
+      "duplicate_other": "Refused: {{count}} near matches. The clerk decides."
+    },
+    "agent": {
+      "placeholder": "ask about this patient, the routing or the form…",
+      "idle": "I read this screen only — the form in front of you, the search hits, the routing proposal and its wait. I have no model behind me and I cannot look anything else up.",
+      "scope": "I answer from what is on this screen: the form, the search hits, the routing proposal and the UHID once it exists. Anything else I would be guessing at, so I do not.",
+      "guardianNeeded": "The age says {{age}}, so a guardian is required before this can be registered — DPDP §9, and the server refuses without one. The block is already open. — from the age you typed.",
+      "guardianNotNeeded": "The age says {{age}}, so no guardian is required. — from the age you typed.",
+      "guardianUnknownAge": "No age is entered yet. An unknown age is deliberately not treated as a minor — the server takes the same position, and demanding a guardian from every adult who cannot recall a birth year would be its own trap. — from the form.",
+      "route": "{{doctor}}, on rule '{{rule}}', about {{minutes}} minutes' wait. — from the routing proposal on this screen.",
+      "noRoute": "No doctor is proposed yet — answer either door above and the proposal appears with the rule that chose it. — from this screen.",
+      "uhidPending": "No UHID yet — it is allocated when you register, and it is never previewed because the counter beside you may take the next number first. — from this screen.",
+      "uhidIssued": "{{uhid}}. — from the registration this screen just made.",
+      "noDuplicates_one": "The search is showing {{count}} row and nothing has been refused as a duplicate. — from this screen.",
+      "noDuplicates_other": "The search is showing {{count}} rows and nothing has been refused as a duplicate. — from this screen.",
+      "duplicates_one": "The server refused this registration on {{count}} near match. It is listed above, and you may override. — from the last server answer.",
+      "duplicates_other": "The server refused this registration on {{count}} near matches. They are listed above, and you may override. — from the last server answer."
+    }
+  },
+  "slotBoard": {
+    "free": "free",
+    "taken": "taken",
+    "yours": "yours",
+    "past": "already gone",
+    "reading": "reading the diary…",
+    "noSession": "No session that day — this doctor is not sitting, so there is nothing to book. Try another day or another doctor.",
+    "dayFull": "Every slot that day is taken. The times below show who has them — try another day."
+  },
+  "billingSeat": {
+    "header": {
+      "noDrawer": "no drawer open",
+      "drawerOpen": "drawer open · {{float}} float"
+    },
+    "rail": {
+      "paying": "Paying",
+      "thisVisit": "This visit",
+      "onTheirAccount": "On their account",
+      "unpaidStamp": "UNPAID",
+      "panelStamp": "PANEL",
+      "nothingCarried": "Nothing carried forward. Dues from an earlier visit would show here and travel onto this bill."
+    },
+    "bill": {
+      "heading": "The bill",
+      "subtitle": "every figure is the server's — nothing is added up on this screen",
+      "service": "Service",
+      "gross": "Gross",
+      "benefit": "Benefit",
+      "net": "Net",
+      "sac": "SAC {{code}}",
+      "exempt": "exempt",
+      "gstNote": "GST as the tariff rules it — the server decides, not this screen",
+      "previewFailed": "The price could not be fetched. Do not tell the patient anything is due — or not due — until it loads.",
+      "previewPending": "The price is still being fetched. Wait for the figure before issuing.",
+      "previewRetry": "Retry the price"
+    },
+    "contest": {
+      "heading": "Why this price",
+      "noStacking": "Only the best single benefit applies — they do not stack. The loser is named rather than hidden, so the counter can answer “what about my camp slip?” without opening another screen."
+    },
+    "pay": {
+      "heading": "Take payment",
+      "laneHint": "the keys are the lanes — 1 cash, 2 UPI, 3 card",
+      "take": "Take {{amount}}",
+      "printsNote": "prints the receipt and stamps the token PAID",
+      "surplus": "{{amount}} more than the bill. Whatever is not handed back stays on the patient's account as an advance — say which, because the drawer is counted on it.",
+      "nothingToBill": "Add a line to bill",
+      "issueNoCollection": "Issue — nothing to collect",
+      "priceUnknown": "Price unavailable — retry before issuing",
+      "pricing": "Pricing…"
+    },
+    "schemes": {
+      "heading": "Schemes",
+      "hint": "attach before you take the money",
+      "corporate": "Corporate / TPA",
+      "panelPayer": "panel payer",
+      "selfPay": "self-pay",
+      "noPanel": "No payer arrangement on file for this patient.",
+      "employee": "employee {{id}}",
+      "nothingToCollect": "nothing to collect at this counter",
+      "panelStillPayable": "{{amount}} is still payable on this bill — the panel rate is the price",
+      "package": "Package",
+      "footer": "Only the best single benefit applies — they do not stack. The contest is shown on the bill so the clerk can say why."
+    },
+    "log": {
+      "lane": "{{mode}} lane · {{amount}}"
+    },
+    "agent": {
+      "placeholder": "ask about the benefit, the panel or what they owe…",
+      "idle": "I read this screen only — the priced bill the server sent back, the payer arrangement on file, and what this patient already owes. Nothing is added up here.",
+      "scope": "I answer from what is on this screen: the server's priced bill, the benefit contest, the payer arrangement and the dues. Any figure I gave you came from the server, not from arithmetic on this side.",
+      "benefit": "{{amount}} came off this bill. The winning benefit and the ones it beat are named on the bill above. — from the server's priced preview.",
+      "noBenefit": "No benefit applied to this bill. Anything the patient is holding would contest here and the winner would be named. — from the server's priced preview.",
+      "panel": "{{payer}}, {{id}}. — from the coverage registration recorded for this patient.",
+      "noPanel": "No payer arrangement is on file for this patient, so this is self-pay. — from the coverage read.",
+      "dues_one": "{{count}} unpaid bill on their account. It is listed in the rail. — from the dues poll.",
+      "dues_other": "{{count}} unpaid bills on their account. They are listed in the rail. — from the dues poll."
     }
   }
 }

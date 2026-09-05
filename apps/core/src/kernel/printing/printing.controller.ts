@@ -2,13 +2,14 @@ import { Body, Controller, ForbiddenException, Get, Inject, Post, Query } from "
 import { z } from "zod";
 import { DB } from "../tokens";
 import { CurrentActor, RequirePermission } from "../auth/decorators";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
-import { printJobs } from "../db/schema";
+import { printJobs, users } from "../db/schema";
 import { claimPrintJobs, reportFailed, reportPrinted } from "./claim";
 import { enqueuePrintJob } from "./enqueue";
 import { withTx } from "../db/client";
 import { renderDocument } from "./render";
+import { getPatient } from "../../modules/patients";
 import { recordPhiAccess } from "../phi/audit";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
@@ -75,6 +76,19 @@ type PrintJobPayload = {
   page: { widthMm: number; heightMm: number | null };
 };
 
+/**
+ * FD-25 CLOSE — the actor this controller uses to RESOLVE a patient, never to decide about one.
+ *
+ * `recordPhiAccess` documents its `patientId` as *"the CANONICAL patient id — callers resolve the
+ * merge chain before writing"*, and the legal-hold clamp in `prunePhiAccessLog` matches holds by
+ * that column: a row filed under a merged-away id is invisible to an enquiry about the surviving
+ * patient and unprotected by a hold placed on them. `getPatient` is the chain walk, and it takes an
+ * actor — so the resolution needs one that is guaranteed to see the row. `system` is that actor by
+ * `getPatient`'s own rule ("internal machinery must resolve"), and it is emphatically NOT the
+ * §14 decision: who may see the NAME is decided per requester, in `displayNameForRelease`.
+ */
+const PRINT_AUDIT_ACTOR: Actor = { type: "system", id: "printing-audit" };
+
 @Controller("print")
 export class PrintingController {
   constructor(@Inject(DB) private readonly db: Db) {}
@@ -108,6 +122,63 @@ export class PrintingController {
     });
 
     /*
+      ═══ FD-25, OWNER RULING 2026-09-05 — THE RENDERER IS TOLD WHO ASKED FOR THE PAPER ═══
+
+      A §14 patient's slip carries their ALIAS unless the operator who asked for it has been through
+      the grant, and `renderDocument` cannot know that from a job id. `print_jobs.requested_by` is the
+      column that knows: `openVisitInTx` writes the clerk who opened the visit, and `reprint` below
+      writes the clerk who asked for the second copy. Both write it ONLY for a user actor, so
+      rebuilding a `user` actor from it is faithful rather than a guess — and a value that somehow was
+      not a user id resolves to no permissions, which is the alias, which is the safe direction.
+
+      IT IS A SECOND READ RATHER THAN A FIELD ON `ClaimedJob` because `claim.ts` belongs to another
+      lane this session; the natural home for this is beside `patientId` on the claim itself, which
+      already travels for exactly this kind of question. One indexed read per claim, not per job.
+
+      A NULL REQUESTER IS NOT AN OMISSION — it is the answer for a row nobody signed, and the
+      renderer's default treats it as such.
+
+      ═══ FD-25 CLOSE — AND THE `user` TYPE IS RESOLVED, NOT ASSERTED ═══
+
+      `print_jobs.requested_by` is nullable text with NO foreign key, deliberately: the enqueue rides
+      the visit's own transaction, so an FK there would REFUSE THE WHOLE REGISTRATION for any actor
+      with no `users` row — caught by `perf-opd-queue` before it shipped, and exactly what owner
+      ruling R7 forbids (see the schema's own note). The check below is a READ and re-introduces
+      none of that: nothing here can refuse an enqueue. So the column can hold any string, and this
+      route USED to declare whatever it held to be a user id. Both of today's writers do guard it
+      (`openVisitInTx` and `reprint`, each `actor.type === "user" ? actor.id : null`), and
+      `break_glass_grants.user_id` carries a real FK to `users`, so no machine id could ever have
+      inherited a person's grant — the manufactured type leaked nothing.
+
+      IT IS RESOLVED NOW BECAUSE THE AUDIT BELOW ATTRIBUTES A DISCLOSURE TO THIS ID. A row in
+      `phi_access_log` saying `actor_type = 'user'` over a nightly batch's id would be a false
+      answer to the one question that log is asked, and the next producer to queue paper —
+      `enqueue.ts` records that `opd_payment_receipt` still owes one — is one forgotten ternary
+      away from writing it. An id that is not a live user resolves to NO requester, which is the
+      alias and no attribution: the safe direction on both counts.
+    */
+    const requesters = new Map<string, string | null>();
+    if (jobs.length > 0) {
+      const rows = await this.db
+        .select({ id: printJobs.id, requestedBy: printJobs.requestedBy })
+        .from(printJobs)
+        .where(inArray(printJobs.id, jobs.map((j) => j.id)));
+      const claimedIds = rows.map((r) => r.requestedBy).filter((r): r is string => r !== null);
+      const liveUsers = new Set<string>();
+      if (claimedIds.length > 0) {
+        const found = await this.db
+          .select({ id: users.id })
+          .from(users)
+          .where(and(inArray(users.id, claimedIds), eq(users.active, true)));
+        for (const u of found) liveUsers.add(u.id);
+      }
+      for (const row of rows) {
+        const id = row.requestedBy;
+        requesters.set(row.id, id !== null && liveUsers.has(id) ? id : null);
+      }
+    }
+
+    /*
       ═══ THE DOCUMENT TRAVELS WITH THE CLAIM, AND THAT IS THE OFFLINE GUARANTEE ═══
 
       The brief's binding constraint is *"patient care must never depend on internet
@@ -121,7 +192,11 @@ export class PrintingController {
     */
     const out: PrintJobPayload[] = [];
     for (const job of jobs) {
-      const rendered = await renderDocument(this.db, job.document, job.params);
+      const requestedBy = requesters.get(job.id) ?? null;
+      const rendered = await renderDocument(
+        this.db, job.document, job.params, new Date(),
+        requestedBy === null ? null : { type: "user", id: requestedBy },
+      );
       if (rendered === null) {
         await reportFailed(this.db, job.id, relayId, `no renderer produced a document for ${job.document}`);
         continue;
@@ -150,11 +225,70 @@ export class PrintingController {
       building. `recordPhiAccess` swallows its own errors by design, so this cannot fail a claim the
       relay is waiting on — printing is advisory (R7) and an audit write must not become the thing
       that stops paper.
+
+      ═══ FD-25 CLOSE — AND THE ROW SAYS WHAT WAS ACTUALLY DISCLOSED, AND ON WHOSE CLEARANCE ═══
+
+      Two things were wrong with it, and they compounded. **`sealed` was left to default false**
+      (`phi/audit.ts`), so a §14 patient's paper — which THIS route releases, the reprint only ever
+      being the second copy — was filed as an ordinary read, and the enquiry the flag exists for
+      ("who read SEALED records last month") answered no for the route that put the name on paper.
+      The reprint was fixed for exactly this a few lines down; the first print was not.
+
+      **And the row named the RELAY.** `relayId` guarantees the actor is an agent, so the only
+      accountable party in the log was a machine, while the clearance that released the legal name
+      belonged to a person who is on `pendingReviews` with their stated reason attached. "Who caused
+      this patient's legal name to be printed, and under what justification" had no answer: the
+      grant sat in `break_glass_grants` joined to no disclosure.
+
+      SO A SEALED PATIENT'S RELEASE GETS A SECOND ROW PER REQUESTING OPERATOR, attributed to them.
+      Not one per job — two slips for one person on one clearance is one disclosure — and NOT for
+      an ordinary patient, whose claim is still exactly the one relay row it always was. That keeps
+      the FD-24 rule ("one row per patient disclosed") for the 99.9% of paper this hospital prints
+      and pays the extra write only where accountability for a §14 release is the actual question.
     */
-    const disclosed = new Set(jobs.filter((j) => out.some((o) => o.id === j.id)).map((j) => j.patientId).filter((p): p is string => p !== null));
-    const reason = `print relay ${relayId} claimed ${String(out.length)} document(s) for ${input.destinations.join(", ")}`;
-    for (const patientId of disclosed) {
-      await recordPhiAccess(this.db, { actor, patientId, surface: "print.claim", reason });
+    const disclosed = new Map<string, Set<string>>();
+    for (const job of jobs) {
+      if (job.patientId === null) continue;
+      if (!out.some((o) => o.id === job.id)) continue;
+      const askedBy = disclosed.get(job.patientId) ?? new Set<string>();
+      const requestedBy = requesters.get(job.id) ?? null;
+      if (requestedBy !== null) askedBy.add(requestedBy);
+      disclosed.set(job.patientId, askedBy);
+    }
+    const claimed = `print relay ${relayId} claimed ${String(out.length)} document(s) for ${input.destinations.join(", ")}`;
+    for (const [rawPatientId, askedBy] of disclosed) {
+      /* THE CANONICAL ID, because that is what `recordPhiAccess` documents its column to be and
+         what `prunePhiAccessLog`'s legal-hold clamp matches on. A print job carries the id the
+         encounter had; a merge moves the person. */
+      const resolved = await getPatient(this.db, PRINT_AUDIT_ACTOR, rawPatientId);
+      const patientId = resolved === null ? rawPatientId : resolved.patient.id;
+      const sealed = resolved !== null && resolved.patient.isConfidential;
+      await recordPhiAccess(this.db, {
+        actor,
+        patientId,
+        surface: "print.claim",
+        sealed,
+        reason: `${claimed} · requested by ${askedBy.size === 0 ? "nobody — the job carried no requester" : [...askedBy].join(", ")}`,
+      });
+      if (!sealed) continue;
+      for (const userId of askedBy) {
+        /* `getPatient` is asked AS THE OPERATOR, so the grant it reports is the one that actually
+           opened this record for them — the justification, not merely the fact. It is the same call
+           the reprint route logs from, and a second implementation of "which grant let them in"
+           is how the two start disagreeing about a VIP. */
+        const asRequester = await getPatient(this.db, { type: "user", id: userId }, patientId);
+        const grant = asRequester === null ? null : asRequester.breakGlass;
+        await recordPhiAccess(this.db, {
+          actor: { type: "user", id: userId },
+          patientId,
+          surface: "print.claim",
+          sealed: true,
+          reason: [
+            `paper released to print relay ${relayId} on this operator's clearance`,
+            grant === null ? null : `break-glass ${grant.id}: ${grant.reason}`,
+          ].filter((x) => x !== null).join(" · "),
+        });
+      }
     }
     return { jobs: out };
   }
@@ -180,8 +314,8 @@ export class PrintingController {
    */
   @Get("jobs")
   @RequirePermission("opd.visits.open", "hospital")
-  async jobsFor(@Query("encounterId") encounterId: string): Promise<{
-    jobs: { id: string; document: string; status: string; attempts: number; lastError: string | null; printedAt: string | null }[];
+  async jobsFor(@CurrentActor() actor: Actor, @Query("encounterId") encounterId: string): Promise<{
+    jobs: { id: string; document: string; status: string; attempts: number; lastError: string | null; printedAt: string | null; createdAt: string }[];
   }> {
     if (typeof encounterId !== "string" || encounterId.trim() === "") return { jobs: [] };
     const rows = await this.db
@@ -189,8 +323,49 @@ export class PrintingController {
       .from(printJobs)
       .where(eq(printJobs.encounterId, encounterId))
       .orderBy(desc(printJobs.createdAt));
+
+    /**
+     * ═══ FD-25 CLOSE — THE SAME §14 GATE THE REPRINT GOT, ON THE SAME PERMISSION ═══
+     *
+     * The reprint's gate below states the class and this route was the other instance of it:
+     * `opd.visits.open` is held at HOSPITAL scope by every front-desk role, and this route took a
+     * bare `encounterId`. It answered an encounter that does not exist with an empty list, and a
+     * SEALED patient's encounter with document kinds, statuses, attempt counts, relay-authored
+     * error text and print times. Encounter ids for sealed patients are on the queue board — which
+     * aliases the NAME and not the ID — so that difference is an enumeration oracle: lift the ids
+     * off the board, call this, and the shape of the answer says which of your colleagues' patients
+     * are confidential.
+     *
+     * `getPatient` IS the decision, exactly as it is for the reprint, rather than a second
+     * confidentiality rule written here. And the refusal is the SAME `{ jobs: [] }` an unknown
+     * encounter gets (07a DD2): sealed and absent must be indistinguishable from outside.
+     *
+     * ONE INVISIBLE SUBJECT HIDES THE WHOLE LIST rather than filtering row by row. Every job on one
+     * encounter is about one patient, so a partial answer could only ever be a partial answer about
+     * a patient this caller may not know exists — which is the leak wearing a fix's clothes.
+     *
+     * A job with a NULL `patient_id` gates on nothing, and that is right rather than an omission:
+     * `print_jobs.patient_id` is nullable precisely so a document about no person (a session
+     * summary, a day's totals) need not invent one, and there is no confidentiality question to
+     * ask about a document that names nobody. No producer writes one for an OPD encounter today.
+     */
+    const subjects = new Set(rows.map((r) => r.patientId).filter((p): p is string => p !== null));
+    for (const patientId of subjects) {
+      const visible = await getPatient(this.db, actor, patientId);
+      if (visible === null) return { jobs: [] };
+    }
     return {
       jobs: rows.map((r) => ({
+        /*
+          FD-25 — `createdAt` TRAVELS, so the screen does not have to trust this route's ORDER.
+
+          The rows come back newest-first and the client's own comment said so, which made the
+          summary's correctness depend on a sentence in a comment two files apart. A reprint is a
+          NEW row for a document that already has one, so "which of these is the current state of
+          the token slip" is a question the screen genuinely has to answer — and it should answer it
+          from a value, not from an ordering somebody may change for a good reason later.
+        */
+        createdAt: r.createdAt.toISOString(),
         id: r.id,
         document: r.document,
         status: r.status,
@@ -223,6 +398,30 @@ export class PrintingController {
     const original = rows[0];
     if (original === undefined) return { id: null };
 
+    /**
+     * ═══ FD-25 — THE §14 GATE THIS ROUTE DID NOT HAVE ═══
+     *
+     * `opd.visits.open` is held at HOSPITAL scope by every front-desk role, and this route took a
+     * bare `jobId`. So any holder could reprint any job in the outbox — INCLUDING a document about
+     * a patient whose record they cannot open. The paper carries a legal name, a UHID and an age;
+     * the confidentiality model exists precisely to keep those from someone without the grant, and
+     * `kernel/printing` contained zero references to it.
+     *
+     * `getPatient` IS the decision — merge chain, `patients.confidential.read`, and an active
+     * break-glass grant if the reader has one — so the gate is that call rather than a second
+     * confidentiality rule written here. A second implementation of "may this person see this
+     * patient" is how the two start disagreeing.
+     *
+     * `{ id: null }` FOR BOTH REFUSALS, and that is 07a DD2 rather than laziness: a route that
+     * answered differently for "sealed" and "no such job" would let a caller enumerate which of
+     * their colleagues' patients are confidential by reprinting ids and reading the shape of the
+     * refusal. Sealed and absent must be indistinguishable from outside.
+     */
+    const visible = original.patientId === null
+      ? null
+      : await getPatient(this.db, actor, original.patientId);
+    if (original.patientId !== null && visible === null) return { id: null };
+
     const id = await withTx(this.db, (tx) => enqueuePrintJob(tx, {
       document: original.document as Parameters<typeof enqueuePrintJob>[1]["document"],
       params: original.params,
@@ -245,13 +444,33 @@ export class PrintingController {
       patient id, so the one question this is asked — what did they see, and why did they say they
       needed it — could not be answered from either place.
     */
-    if (original.patientId !== null) {
+    if (original.patientId !== null && visible !== null) {
       await recordPhiAccess(this.db, {
         actor,
-        patientId: original.patientId,
+        /*
+          FD-25 CLOSE — THE CANONICAL ID, WHICH `visible` ALREADY HOLDS AND `original` DOES NOT.
+          `recordPhiAccess` documents this column as "the CANONICAL patient id — callers resolve the
+          merge chain before writing", and `prunePhiAccessLog`'s legal-hold clamp matches holds by
+          it. Writing the job's raw id filed the disclosure under a merged-away duplicate: invisible
+          to an enquiry about the surviving patient, unprotected by a hold placed on them, and — in
+          the same object literal — contradicted by a `sealed` flag read from the OTHER row.
+        */
+        patientId: visible.patient.id,
         surface: "print.reprint",
         encounterId: original.encounterId,
-        reason: `reprint of ${original.document} (job ${original.id})${reason === undefined ? "" : `: ${reason}`}`,
+        /*
+          FD-25 — `sealed` AND THE BREAK-GLASS REASON, both of which defaulted to nothing.
+          `recordPhiAccess` defaults `sealed` to false, so every reprint of a confidential patient's
+          document was logged as an ordinary read. The whole point of the flag is that an enquiry
+          can ask "who read SEALED records", and it was answering no for the one route that had no
+          gate at all — the two failures compounding rather than one covering the other.
+        */
+        sealed: visible.patient.isConfidential,
+        reason: [
+          `reprint of ${original.document} (job ${original.id})`,
+          reason === undefined ? null : reason,
+          visible.breakGlass === null ? null : `break-glass ${visible.breakGlass.id}: ${visible.breakGlass.reason}`,
+        ].filter((x) => x !== null).join(" · "),
       });
     }
     return { id };

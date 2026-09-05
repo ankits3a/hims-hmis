@@ -16,7 +16,12 @@ import type { WirePrintJob } from "./print-api";
  * one place rather than in JSX.
  */
 function job(over: Partial<WirePrintJob>): WirePrintJob {
-  return { id: "j1", document: "opd_token_slip", status: "queued", attempts: 0, lastError: null, printedAt: null, ...over };
+  /* FD-25 — `createdAt` decides which row is a document's CURRENT state; a fixture without one
+     would make every row equally new and hide the reprint case entirely. */
+  return {
+    id: "j1", document: "opd_token_slip", status: "queued", attempts: 0,
+    lastError: null, printedAt: null, createdAt: "2026-09-05T04:00:00.000Z", ...over,
+  };
 }
 
 describe("printSummary", () => {
@@ -69,5 +74,50 @@ describe("printSummary", () => {
       expect(PRINT_DOCUMENT_LABEL[key]).toBeTruthy();
       expect(PRINT_DOCUMENT_LABEL[key]).not.toContain("_");
     }
+  });
+
+  /**
+   * ═══ FD-25 — A SUCCESSFUL REPRINT CLEARS THE MESSAGE THAT OFFERED IT ═══
+   *
+   * `reportFailed` at MAX_ATTEMPTS is terminal and a reprint mints a NEW row, so the old filter —
+   * "is any job for this encounter failed?" — could never come back. The desk read "The token slip
+   * did not print." for the rest of the encounter, INCLUDING after the reprint came out of the
+   * printer. The one action the message offered could not clear the message.
+   *
+   * Fails against the old implementation, which returns `failed` here.
+   */
+  it("goes back to printed once a REPRINT of the failed document succeeds", () => {
+    const s = printSummary([
+      job({ id: "old", document: "opd_token_slip", status: "failed", createdAt: "2026-09-05T04:00:00.000Z" }),
+      job({ id: "new", document: "opd_token_slip", status: "printed", createdAt: "2026-09-05T04:05:00.000Z" }),
+      job({ id: "rx", document: "opd_prescription", status: "printed", createdAt: "2026-09-05T04:00:00.000Z" }),
+    ]);
+    expect(s.state).toBe("printed");
+    expect(s.failed).toEqual([]);
+  });
+
+  /**
+   * AND A DOCUMENT IS NAMED ONCE. Joining per JOB rather than per DOCUMENT produced "The token slip
+   * and token slip did not print." the moment a reprint of a failed slip also failed — a sentence
+   * that reads like a bug because it is one.
+   */
+  it("names a document once, however many attempts it has taken", () => {
+    const s = printSummary([
+      job({ id: "old", document: "opd_token_slip", status: "failed", createdAt: "2026-09-05T04:00:00.000Z" }),
+      job({ id: "new", document: "opd_token_slip", status: "failed", createdAt: "2026-09-05T04:05:00.000Z" }),
+    ]);
+    expect(s.text).toBe("The token slip did not print.");
+    expect(s.failed).toHaveLength(1);
+    /* …and it is the NEWEST attempt that is offered for reprint, not the first one that failed. */
+    expect(s.failed[0]!.id).toBe("new");
+  });
+
+  /** A reprint still in flight is "waiting", not "failed" — the desk should not chase a live job. */
+  it("waits while a reprint of a failed document is still queued", () => {
+    const s = printSummary([
+      job({ id: "old", document: "opd_token_slip", status: "failed", createdAt: "2026-09-05T04:00:00.000Z" }),
+      job({ id: "new", document: "opd_token_slip", status: "queued", createdAt: "2026-09-05T04:05:00.000Z" }),
+    ]);
+    expect(s.state).toBe("waiting");
   });
 });

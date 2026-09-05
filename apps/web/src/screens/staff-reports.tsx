@@ -5,7 +5,9 @@ import { api } from "../lib/api";
 import { BRIEF_PERIODS, todayIst } from "../lib/desk-api";
 import type { WireBrief, WireBriefPeriod, WireReportSection } from "../lib/desk-api";
 import { useAuth } from "../lib/auth";
-import { Button } from "@/components/ui/button";
+import { PaperScreen, ScreenTitle } from "../components/paper-screen";
+import { AgentDock, logged } from "../components/agent-dock";
+import type { AgentLine } from "../components/agent-dock";
 
 /**
  * PLAN 07c T9 / DD14 — THE SUPERVISOR'S VIEW: **WHAT, NOT WHOM.**
@@ -49,15 +51,39 @@ export function StaffReports(): React.ReactElement {
 
   const canDrill = can("staff.reports.drill");
 
-  return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-4 p-4">
-      <h1 className="text-lg font-semibold">{t("staffReports.title")}</h1>
+  /*
+    THE CO-PILOT HERE IS BOUND BY DD14 EXACTLY AS THE SCREEN IS. It can describe the brief and it can
+    explain what drilling costs; it cannot see a patient row, because this screen cannot either until
+    somebody types a reason that goes into the audit log under their own name. An agent that summarised
+    patient rows would be the drill without the reason.
+  */
+  const [agentAnswer, setAgentAnswer] = useState<string | null>(null);
+  const [agentLog, setAgentLog] = useState<AgentLine[]>([]);
+  const ask = (question: string): void => {
+    const q = question.toLowerCase();
+    const b = brief.data;
+    const answer = subject === ""
+      ? t("staffReports.agent.noSubject")
+      : /drill|patient|row|detail|behind/.test(q)
+        ? t("staffReports.agent.drill")
+        : /brief|figure|summary|say|period|week/.test(q)
+          ? (b === undefined || b.clauses.length === 0
+            ? t("staffReports.agent.empty")
+            : t("staffReports.agent.brief", { n: b.clauses.length, from: b.from, to: b.to }))
+          : t("staffReports.agent.cannot");
+    setAgentAnswer(answer);
+    setAgentLog((l) => logged(l, question));
+  };
 
-      <div className="flex flex-wrap items-baseline gap-3">
-        <label className="text-sm">
-          <span className="mr-2">{t("staffReports.person")}</span>
+  return (
+    <PaperScreen testId="staff-reports" style={{ padding: "18px 22px", gap: 14 }}>
+      <ScreenTitle title={t("staffReports.title")} route="/staff" />
+
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 14 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+          <span className="tag">{t("staffReports.person")}</span>
           <select
-            className="rounded border px-2 py-1"
+            className="in" style={{ height: 34, fontSize: 12.5, minWidth: 220 }}
             value={subject}
             aria-label={t("staffReports.person")}
             onChange={(e) => { setSubject(e.target.value); setDrill(null); setError(null); }}
@@ -68,13 +94,13 @@ export function StaffReports(): React.ReactElement {
             ))}
           </select>
         </label>
-        <div className="flex gap-1" role="group" aria-label={t("brief.period")}>
+        <div style={{ display: "flex", gap: 6 }} role="group" aria-label={t("brief.periodLabel")}>
           {BRIEF_PERIODS.map((p) => (
             <button
               key={p}
               type="button"
               aria-pressed={p === period}
-              className={`rounded border px-2 py-0.5 text-xs ${p === period ? "bg-accent font-medium" : ""}`}
+              className={p === period ? "pill on" : "pill"}
               onClick={() => { setPeriod(p); }}
             >
               {t(`brief.period.${p}`)}
@@ -83,17 +109,17 @@ export function StaffReports(): React.ReactElement {
         </div>
       </div>
 
-      {subject === "" ? <p className="text-sm text-muted-foreground">{t("staffReports.pickFirst")}</p> : null}
+      {subject === "" ? <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{t("staffReports.pickFirst")}</p> : null}
 
       {brief.data === undefined ? null : (
-        <section className="flex flex-col gap-2 rounded border p-3">
-          <span className="text-xs text-muted-foreground">
+        <section className="box" style={{ display: "flex", flexDirection: "column", gap: 7, padding: "13px 15px" }}>
+          <span className="mo" style={{ fontSize: 10.5, color: "var(--faint)" }}>
             {t("brief.range", { from: brief.data.from, to: brief.data.to })}
           </span>
           {brief.data.clauses.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t("brief.nothingToSay")}</p>
+            <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{t("brief.nothingToSay")}</p>
           ) : (
-            <ul className="flex flex-col gap-1 text-sm">
+            <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 5, fontSize: 13 }}>
               {brief.data.clauses.map((c) => <li key={c.key}>{t(c.key, c.values)}</li>)}
             </ul>
           )}
@@ -106,17 +132,23 @@ export function StaffReports(): React.ReactElement {
         wondered it.
       */}
       {subject === "" ? null : (
-        <p className="text-xs text-muted-foreground">{t("staffReports.whatNotWhom")}</p>
+        <p style={{ margin: 0, fontSize: 11, color: "var(--dim)" }}>{t("staffReports.whatNotWhom")}</p>
       )}
 
+      {/*
+        MARIGOLD, AND ONLY MARIGOLD. The palette's rule is that gold means ATTENTION — this panel
+        reads one named person's actual rows and writes a reason to the audit log, so it must not
+        look like the rest of the page. It is equally not brick: drilling is permitted, not refused,
+        and brick is reserved for refusals.
+      */}
       {subject === "" || !canDrill ? null : (
-        <section className="flex flex-col gap-2 rounded border border-state-waiting p-3">
-          <h2 className="text-sm font-semibold">{t("staffReports.drillTitle")}</h2>
-          <p className="text-xs text-muted-foreground">{t("staffReports.drillWarning")}</p>
-          <label className="text-sm">
+        <section className="box" style={{ display: "flex", flexDirection: "column", gap: 8, padding: "13px 15px", borderColor: "var(--gold-line)", background: "var(--gold-soft)" }}>
+          <h2 style={{ margin: 0, fontSize: 13.5, fontWeight: 700 }}>{t("staffReports.drillTitle")}</h2>
+          <p style={{ margin: 0, fontSize: 11.5, color: "var(--dim)" }}>{t("staffReports.drillWarning")}</p>
+          <label>
             <span className="sr-only">{t("staffReports.reason")}</span>
             <input
-              className="w-full rounded border px-2 py-1"
+              className="in" style={{ width: "100%", height: 34, fontSize: 13 }}
               placeholder={t("staffReports.reason")}
               aria-label={t("staffReports.reason")}
               value={reason}
@@ -124,7 +156,8 @@ export function StaffReports(): React.ReactElement {
             />
           </label>
           <div>
-            <Button
+            <button
+              type="button" className="pri" style={{ padding: "5px 14px" }}
               disabled={reason.trim().length < 8}
               onClick={() => {
                 setError(null);
@@ -134,35 +167,47 @@ export function StaffReports(): React.ReactElement {
               }}
             >
               {t("staffReports.drillAction")}
-            </Button>
+            </button>
           </div>
-          {error === null ? null : <p className="text-sm text-destructive">{error}</p>}
+          {error === null ? null : <p role="alert" style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: "var(--red)" }}>{error}</p>}
         </section>
       )}
 
       {drill === null ? null : (
-        <section className="flex flex-col gap-3">
+        <section style={{ display: "flex", flexDirection: "column", gap: 13 }}>
           {drill.map((s) => (
-            <div key={s.key} className="flex flex-col gap-1">
-              <h3 className="text-sm font-semibold">{t(s.titleKey)}</h3>
-              <table className="w-full border-collapse text-sm">
-                <thead>
-                  <tr className="border-b text-left">
-                    {s.columnKeys.map((c) => <th key={c} className="py-1 pr-3 font-medium text-muted-foreground">{t(c)}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {s.rows.map((row, i) => (
-                    <tr key={`${s.key}-${String(i)}`} className="border-b last:border-b-0">
-                      {row.map((cell, j) => <td key={`${s.key}-${String(i)}-${String(j)}`} className="py-1 pr-3">{cell}</td>)}
+            <div key={s.key} className="box" style={{ display: "flex", flexDirection: "column", gap: 7, padding: "13px 15px" }}>
+              <h3 className="tag" style={{ margin: 0 }}>{t(s.titleKey)}</h3>
+              {/* A drilled table scrolls inside itself; the page body never scrolls sideways. */}
+              <div style={{ overflowX: "auto" }}>
+                <table className="mo" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                  <thead>
+                    <tr>
+                      {s.columnKeys.map((c) => (
+                        <th key={c} className="tag" style={{ textAlign: "left", padding: "0 14px 6px 0", borderBottom: "1px solid var(--line)", whiteSpace: "nowrap" }}>{t(c)}</th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {s.rows.map((row, i) => (
+                      <tr key={`${s.key}-${String(i)}`}>
+                        {row.map((cell, j) => (
+                          <td key={`${s.key}-${String(i)}-${String(j)}`} style={{ padding: "6px 14px 6px 0", borderBottom: "1px solid var(--line2, var(--line))" }}>{cell}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           ))}
         </section>
       )}
-    </div>
+
+      <AgentDock
+        answer={agentAnswer} log={agentLog} onAsk={ask}
+        placeholder={t("staffReports.askPlaceholder")} idle={t("staffReports.agentIdle")}
+      />
+    </PaperScreen>
   );
 }

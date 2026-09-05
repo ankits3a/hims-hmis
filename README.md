@@ -1268,6 +1268,34 @@ billing exceptions and a stopgap cover has no business creating one it could the
 segregation that matters is untouched — `assertNotSodPair` compares the two PEOPLE on one approval,
 so a manager covering a counter still cannot approve their own variance.
 
+**FD-25 — the cashier's own seat (owner ruling, 2026-09-04).**
+Owner ruling of 2026-09-04 gives the `cashier` the two strings its own screen actually calls.
+`tariff.read` is the sharpest: `billing-counter.tsx`'s line editor calls `GET /tariff/services`,
+which is guarded on it, and neither `cashier` nor `billing_manager` held any `tariff.*` string — the
+only holders in the whole model were `doctor`, `owner` and `tariff_editor`. Nobody who actually
+works the billing counter could read the service catalogue their own screen searches, so a cashier
+who typed two characters into the line editor got a 403 and no explanation.
+
+**Two further strings were granted here and have been removed (FD-25 close review, pass 1).** They
+are recorded rather than deleted, because a go-live trainer who read the earlier version of this
+paragraph was told something about this seat that is not true. `opd.visits.read` was justified as
+"resolving `?encounterId=` to a person is an OPD read" — it is not: `billing-counter.tsx` imports
+nothing from `opd-api`, and the fee quote it calls rides `billing.invoice.read`, which this role
+already held. `opd.visits.open` was justified as FD-24's print pair, and **the cashier's screen has
+no print rail**: the only caller of `listPrintJobs`/`reprintJob` in the tree is Desk One, which is
+`front_office`. So a cashier cannot reprint a jammed receipt from `/billing`, and no training should
+say otherwise. That string also guards `POST /opd/visits/:id/reclassify`, which changes the consult
+fee band — at a money seat it would have let one actor lower a fee and then collect it.
+
+`patients.read` is the one that needed a ruling rather than a decision, and it is why this paragraph
+exists. `billing.controller.ts` documents the absence deliberately, and widening who may read
+patient identity is a DPDP question — law, which is reserved to the owner alongside money and
+procurement. Ruled **yes**, on the ordinary argument: the cashier already has the patient standing
+at the window and reads their name off the bill being handed over. A counter that can take a
+person's money but cannot say whose bill it is showing is not more private, only less accountable.
+It gains no `patients.register`, no `patients.update` and nothing confidential — reading the
+identity on the bill in front of them is the whole of the grant.
+
 **Plan 07d T5 / DD6 — advised investigations (owner ruling O-2 of 07d, 2026-08-28).** `doctor`
 gains `tariff.read`, because a doctor advising an ultrasound should be able to tell the patient what
 it costs without walking them to the counter — and the price is the patient's first question. The

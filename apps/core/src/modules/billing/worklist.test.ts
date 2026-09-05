@@ -55,6 +55,69 @@ describe("the cashier's collection worklist (FD-8)", () => {
     return { encounterId, patientId: patient.id };
   }
 
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * CLOSE PASS 2, CRITICAL — THE WORKLIST HANDS A §14 PATIENT'S LEGAL NAME TO THE WHOLE FLOOR
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * `byId` is built by selecting straight from `patients` with an `inArray`, and the row carries
+   * `patientName: person.name` — the LEGAL name — beside `isConfidential: true`. So the row
+   * correctly announces that this person is sealed and then discloses exactly what the seal exists
+   * to withhold, to anyone holding `billing.invoice.read`. Nobody holds
+   * `patients.confidential.read`: it is granted to ZERO roles.
+   *
+   * This is not a product question. The patients module already decided how a confidential name is
+   * rendered to somebody who may not see it — `displayNameFor(exec, actor, patient)` returns the
+   * alias — and this reader simply never asked it.
+   *
+   * ═══ AND IT IS THE ROAD THE COVERAGES FIX WAS WRITTEN AGAINST ═══
+   *
+   * Pass 1's §14 finding on `/patients/:id/coverages` reasoned that a cashier gets a sealed
+   * patient's ID from THIS route, because a sealed patient must still be billable. That reasoning
+   * was right and incomplete: the same route was already handing over the name. Gating the
+   * coverages read while the worklist prints the name is a seal with a hole one level up.
+   *
+   * Found by close review pass 2. Pre-existing — this shape is on `origin/main` — so it is reported
+   * as well as fixed.
+   */
+  it("CLOSE PASS 2 CRITICAL: a sealed patient bills under their ALIAS, and the disclosure is logged as sealed", async () => {
+    const { patient: sealed } = await withTx(db, (tx) => registerPatient(tx, clerk, {
+      name: "Ravi Shankar Menon", sex: "male", ageYears: 41,
+      isConfidential: true, alias: "Patient A",
+    }));
+    const encounterId = newId();
+    await db.insert(opdEncounters).values({
+      id: encounterId, visitNo: `V-${encounterId.slice(-6)}`, patientId: sealed.id, workflowInstanceId: newId(),
+      serviceDate: SERVICE_DAY, visitType: "new", status: "waiting", intendedPayer: "self",
+      openedBy: "shaped", updatedBy: "shaped", openedAt: NOW,
+    });
+
+    const rows = await collectionWorklist(db, cashier.actor, SERVICE_DAY);
+    const row = rows.find((r) => r.patientId === sealed.id);
+
+    /*
+      THE PATIENT IS STILL BILLABLE — that is the whole reason this route answers for a sealed
+      record, and removing them from the list would be the wrong fix: an unbillable patient is a
+      patient the hospital cannot charge.
+    */
+    expect(row).toBeDefined();
+    expect(row!.isConfidential).toBe(true);
+    expect(row!.uhid).toMatch(/^HMS\d+$/);
+
+    /* But the name a cashier reads off the screen is the alias. */
+    expect(row!.patientName).toBe("Patient A");
+    expect(row!.patientName).not.toBe("Ravi Shankar Menon");
+
+    /*
+      AND THE ROW SAYS SEALED. `recordPhiAccess` defaults the flag to false, so this disclosure was
+      being logged as an ordinary read — the one enquiry the flag exists for, answering no.
+    */
+    const logged = (await db.select().from(phiAccessLog))
+      .filter((r) => r.surface === "billing.collection_worklist" && r.patientId === sealed.id);
+    expect(logged).toHaveLength(1);
+    expect(logged[0]!.sealed).toBe(true);
+  });
+
   it("lists today's unsettled visits with what the cashier needs to call the patient", async () => {
     const { encounterId, patientId } = await visitFor("Asha Devi");
 

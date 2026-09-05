@@ -250,9 +250,15 @@
 
   `[data-seat="registration-counter"]` STAYS: `counter-figures.tsx` still carries that attribute on
   its root (it was the seat's alias layer and it is still reached from the desk's palette).
+
+  FD-25 — AND `[data-seat="vitals-bay"]` GOES, for the same reason the other two went. Bay One now
+  wears `.pp` and takes its palette from `styles/paper-pine.css` as literal values; `grep -c
+  "@/components/ui"` across all four `vitals-bay*.tsx` files returns 0. This block re-maps shadcn's
+  token names, so with no shadcn component left under that root it styled nothing at all — a
+  selector with no element left to match is dead code that reads like a promise, which is this
+  comment's own rule applied to the screen it was written for.
 */
-[data-seat="registration-counter"],
-[data-seat="vitals-bay"] {
+[data-seat="registration-counter"] {
   --background: #f4f7f4;          /* paper */
   --card: #ffffff;
   --popover: #ffffff;

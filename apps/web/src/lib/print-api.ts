@@ -26,6 +26,8 @@ export type WirePrintJob = {
   attempts: number;
   lastError: string | null;
   printedAt: string | null;
+  /** FD-25 — so a reprint can be told from the row it replaces without trusting the route's order. */
+  createdAt: string;
 };
 
 /** Every job queued for one visit, newest first. Scoped to the patient in hand, never a queue browser. */
@@ -69,14 +71,39 @@ export function printSummary(jobs: WirePrintJob[]): {
   failed: WirePrintJob[];
 } {
   if (jobs.length === 0) return { state: "none", text: "", failed: [] };
-  const failed = jobs.filter((j) => j.status === "failed");
+
+  /*
+    ═══ FD-25 — THE RAIL COULD NOT RECOVER, INCLUDING FROM A SUCCESSFUL REPRINT ═══
+
+    This read `jobs.filter(status === "failed")` over EVERY job for the encounter and short-circuited
+    on any hit. `reportFailed` at MAX_ATTEMPTS is terminal and a reprint mints a NEW row, so once a
+    token slip failed the desk read "The token slip did not print." for the rest of the encounter —
+    and went on reading it after a reprint came out of the printer. The one action the message
+    offered could not clear the message.
+
+    It also said "The token slip and token slip did not print." once a failed reprint existed,
+    because the names were joined per JOB rather than per DOCUMENT.
+
+    A DOCUMENT HAS ONE CURRENT STATE and it is the newest row's. Grouping by document and taking the
+    latest `createdAt` is the whole fix: two rows for one slip are two ATTEMPTS at one thing, not
+    two things.
+  */
+  const latestPerDocument = new Map<string, WirePrintJob>();
+  for (const job of jobs) {
+    const held = latestPerDocument.get(job.document);
+    if (held === undefined || job.createdAt > held.createdAt) latestPerDocument.set(job.document, job);
+  }
+  const current = [...latestPerDocument.values()];
+
+  const failed = current.filter((j) => j.status === "failed");
   if (failed.length > 0) {
+    /* De-duplicated by construction now: one entry per document, so one name per document. */
     const names = failed.map((j) => PRINT_DOCUMENT_LABEL[j.document] ?? j.document).join(" and ");
     return { state: "failed", text: `The ${names} did not print.`, failed };
   }
-  const pending = jobs.filter((j) => j.status === "queued" || j.status === "claimed");
+  const pending = current.filter((j) => j.status === "queued" || j.status === "claimed");
   if (pending.length > 0) {
-    return { state: "waiting", text: `Printing ${String(pending.length)} of ${String(jobs.length)}…`, failed: [] };
+    return { state: "waiting", text: `Printing ${String(pending.length)} of ${String(current.length)}…`, failed: [] };
   }
   return { state: "printed", text: "Slip and sheet printed.", failed: [] };
 }

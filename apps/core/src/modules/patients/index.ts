@@ -9,6 +9,13 @@ export { getPatient, registerPatient, resolvePatientId, updatePatient } from "./
 export type { CoverageInput, GuardianInput, PatientPatch, PatientRow, RegisterPatientInput } from "./registration";
 export { getPatientSummaries, listMergedLoserIds } from "./registration"; // Plan 07 read helpers
 export type { PatientSummary } from "./registration";
+/**
+ * FD-25 — the read that makes `patient_coverages` not write-only. See the file's header for what
+ * that meant: registration has been collecting policy numbers at the counter since FD-12 and the
+ * product could not show one to anybody afterwards.
+ */
+export { listPatientCoverages } from "./coverages";
+export type { CoverageRow } from "./coverages";
 export { listAllergies } from "./allergies";
 export type { AllergyRow } from "./allergies";
 export { searchPatients, visiblePatientIds } from "./search";
@@ -25,7 +32,9 @@ export type { GuardianAuthority, GuardianRow } from "./guardians";
  * violation; re-implementing the signature check in the OT module would be a second answer to "is
  * this card genuine", which is the one question that must have exactly one.
  */
-export { displayName, displayNameFor } from "./display-name";
+/* FD-25 — `displayNameForRelease` is the PAPER answer and joins its siblings deliberately: see
+   `display-name.ts` for why there are two and which surfaces may ask the wider one. */
+export { displayName, displayNameFor, displayNameForRelease } from "./display-name";
 export type { NameablePatient } from "./display-name";
 export { verifyQrScan } from "./qr";
 export type { QrVerifyResult } from "./qr";

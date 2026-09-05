@@ -245,7 +245,13 @@ describe("AdminUsers", () => {
     });
     renderWithProviders(<AdminUsers />);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Revoke" }));
+    /*
+      NAMED BY THE ROLE AND THE PERSON, not "Revoke". This deployment's admin account holds THIRTY
+      role assignments, so thirty buttons on one screen shared one accessible name — a screen-reader
+      user tabbing that column heard "Revoke, Revoke, Revoke" with nothing to distinguish the
+      irreversible presses from each other. The label now says which; this assertion says so too.
+    */
+    await user.click(await screen.findByRole("button", { name: "Revoke front_office from asha" }));
 
     await waitFor(() => expect(callsTo("DELETE", "/api/admin/users/u-asha/roles/a-1")).toHaveLength(1));
     expect(await screen.findByTestId("admin-notice"))
@@ -318,7 +324,7 @@ describe("AdminUsers", () => {
 
     // The roster still loads, and the refusal is the boundary working rather than an error to show.
     await screen.findByTestId("admin-user-asha");
-    expect(screen.getByRole("button", { name: "Revoke" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Revoke front_office from asha" })).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByTestId("admin-role-select-asha")).not.toBeInTheDocument());
     expect(screen.queryByTestId("admin-row-error")).not.toBeInTheDocument();
   });

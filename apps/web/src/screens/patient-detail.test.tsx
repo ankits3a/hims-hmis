@@ -452,7 +452,17 @@ describe("22c-A T7 — the amendment surface", () => {
 
     const user = userEvent.setup();
     await user.type(screen.getByTestId("agent-ask"), "what is their uhid?{Enter}");
-    await user.click(screen.getByTestId("agent-log-toggle"));
+    /*
+      FD-25 — THE TOGGLE CLICK IS GONE, AND ITS ABSENCE IS THE FIX.
+
+      This test used to ask a question and then click "▲ LOG" to reveal the answer, which is an
+      accurate description of what the bar did and a bad description of what a clerk would do: the
+      answer was rendered only inside the pull-up, so asking produced nothing visible and the person
+      who typed the question had no reason to know a toggle existed. Submitting now opens the panel,
+      so the click that used to reveal the answer would now hide it.
+
+      A test that documents a workaround is a test that will keep the workaround alive.
+    */
 
     /* Scoped to the dock: the UHID is also in the header, and the claim here is about the ANSWER. */
     const dock = within(screen.getByTestId("agent-dock"));

@@ -22,11 +22,15 @@ function renderApp(opts: { hospital?: string[]; groups?: unknown[]; mode?: strin
     "GET /api/auth/me": {
       actor: { type: "user", id: "u1" },
       /*
-        FD-9 — `opd.visits.open` joins the default grant. The shell sentinel every test here waits
-        on is the front-desk NAV LINK, and that row is `{ to: "/counter", permission:
-        "opd.visits.open" }` since `/registration` was deleted. `front_office` holds both, so this
-        is the truer fixture; the palette's own `/counter` COMMAND still rides `patients.register`,
-        which is what a register-only role reaches the desk by.
+        FD-25 — THE SHELL SENTINEL MOVED, AND WHY IT HAD TO. Every test here waits on a nav link to
+        know the shell has drawn before it presses a key; the link it waited on was Desk One, and the
+        owner's 2026-09-05 ruling took that ROW off the nav while keeping the route. So the sentinel
+        is now `Registration`, which rides `patients.register` in the same grant.
+
+        The sentinel is incidental to every assertion in this file — it is "has the shell rendered",
+        not "is this link correct". `shell-nav.test.tsx` is where nav membership is asserted, and it
+        is where the ruling is actually pinned. What the palette offers is asserted below, and Desk
+        One is still among its COMMANDS: off the menu, still reachable by name.
       */
       permissions: { hospital: opts.hospital ?? ["opd.visits.open", "patients.register", "patients.read"], scoped: { department: {}, floor: {} } },
     },
@@ -62,7 +66,7 @@ const paletteInput = (): HTMLInputElement | null => document.querySelector<HTMLI
 
 it("`/` OPENS THE PALETTE — including on screens that never had a search box", async () => {
   renderApp();
-  await waitFor(() => expect(screen.getByRole("link", { name: "Desk One" })).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByRole("link", { name: "Registration" })).toBeInTheDocument());
 
   fireEvent.keyDown(window, { key: "/" });
 
@@ -83,7 +87,7 @@ it("`/` OPENS THE PALETTE — including on screens that never had a search box",
  */
 it("Ctrl+K does NOT open it — it belongs to the browser (the 03-Sep ruling)", async () => {
   renderApp();
-  await waitFor(() => expect(screen.getByRole("link", { name: "Desk One" })).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByRole("link", { name: "Registration" })).toBeInTheDocument());
 
   fireEvent.keyDown(window, { key: "k", ctrlKey: true });
   fireEvent.keyDown(window, { key: "K", metaKey: true });
@@ -96,7 +100,7 @@ it("Ctrl+K does NOT open it — it belongs to the browser (the 03-Sep ruling)", 
 
 it("A `/` TYPED INTO AN INPUT IS A CHARACTER, NEVER A COMMAND", async () => {
   renderApp();
-  await waitFor(() => expect(screen.getByRole("link", { name: "Desk One" })).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByRole("link", { name: "Registration" })).toBeInTheDocument());
   const someInput = document.createElement("input");
   document.body.appendChild(someInput);
   someInput.focus();
@@ -109,7 +113,7 @@ it("A `/` TYPED INTO AN INPUT IS A CHARACTER, NEVER A COMMAND", async () => {
 
 it("Escape closes it", async () => {
   renderApp();
-  await waitFor(() => expect(screen.getByRole("link", { name: "Desk One" })).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByRole("link", { name: "Registration" })).toBeInTheDocument());
   fireEvent.keyDown(window, { key: "/" });
   await waitFor(() => expect(paletteInput()).toBeInTheDocument());
 
@@ -126,7 +130,7 @@ it("shows results, and marks an APPROXIMATE match as one", async () => {
       total: 1, timedOut: false, errored: false,
     }],
   });
-  await waitFor(() => expect(screen.getByRole("link", { name: "Desk One" })).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByRole("link", { name: "Registration" })).toBeInTheDocument());
   fireEvent.keyDown(window, { key: "/" });
   await waitFor(() => expect(paletteInput()).toBeInTheDocument());
 
@@ -165,7 +169,7 @@ it("offers COMMANDS the person may reach, and never those they may not", async (
 
 it("A WEDGE SCAN OPENS THE PATIENT; the same payload typed by a human does not", async () => {
   renderApp({ groups: [] });
-  await waitFor(() => expect(screen.getByRole("link", { name: "Desk One" })).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByRole("link", { name: "Registration" })).toBeInTheDocument());
   fireEvent.keyDown(window, { key: "/" });
   await waitFor(() => expect(paletteInput()).toBeInTheDocument());
 
@@ -240,7 +244,7 @@ describe("the two decisions, asserted directly", () => {
 
 it("NO MICROPHONE RENDERS while voice is inert — not a disabled one, none at all", async () => {
   renderApp();
-  await waitFor(() => expect(screen.getByRole("link", { name: "Desk One" })).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByRole("link", { name: "Registration" })).toBeInTheDocument());
   fireEvent.keyDown(window, { key: "/" });
   await waitFor(() => expect(paletteInput()).toBeInTheDocument());
 
@@ -251,7 +255,7 @@ it("NO MICROPHONE RENDERS while voice is inert — not a disabled one, none at a
 
 it("SAYS SO IN DOWNTIME rather than spinning — a desk needs to know to reach for the paper kit", async () => {
   renderApp({ mode: "downtime", groups: [] });
-  await waitFor(() => expect(screen.getByRole("link", { name: "Desk One" })).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByRole("link", { name: "Registration" })).toBeInTheDocument());
   fireEvent.keyDown(window, { key: "/" });
 
   await waitFor(() => expect(screen.getByTestId("palette-degraded")).toBeInTheDocument());
@@ -260,7 +264,7 @@ it("SAYS SO IN DOWNTIME rather than spinning — a desk needs to know to reach f
 
 it("in NORMAL mode it says nothing extra", async () => {
   renderApp({ mode: "normal", groups: [] });
-  await waitFor(() => expect(screen.getByRole("link", { name: "Desk One" })).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByRole("link", { name: "Registration" })).toBeInTheDocument());
   fireEvent.keyDown(window, { key: "/" });
   await waitFor(() => expect(paletteInput()).toBeInTheDocument());
 

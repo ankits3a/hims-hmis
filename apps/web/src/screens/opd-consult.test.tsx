@@ -386,9 +386,11 @@ describe("OpdConsult", () => {
     expect(callsTo("POST", "/api/opd/visits/enc-1/consult/start")[0]!.body).toBe("");
     expect(await screen.findByTestId("patient-panel")).toBeInTheDocument();
 
-    // the screen's OWN Alt+N (a local useEffect handler — lib/keyboard.tsx is not touched) calls next
-    // again, and this time the server refuses: a 409 call_conflict is rendered where the doctor reads it.
-    await user.keyboard("{Alt>}n{/Alt}");
+    // Calling next AGAIN, and this time the server refuses: a 409 call_conflict is rendered where
+    // the doctor reads it. Through the button, deliberately — the signed-off keymap gives Enter to
+    // "the obvious next thing" and with a consultation already open the obvious next thing is
+    // nothing, so there is no key for this and the control is the only road.
+    await user.click(screen.getByRole("button", { name: "Call next" }));
     await waitFor(() => expect(callsTo("POST", "/api/opd/queues/sess-1/call-next")).toHaveLength(2));
     const refusal = await screen.findByText("another patient is already called");
     expect(refusal).toHaveAttribute("role", "alert");
@@ -407,7 +409,12 @@ describe("OpdConsult", () => {
     // active allergies only, and rendered as red chips
     const chip = await screen.findByTestId("allergy-chip-al-1");
     expect(chip).toHaveTextContent("Penicillin");
-    expect(chip).toHaveClass("text-red-800");
+    /*
+      THE CHIP IS `.pill rd` — the design system's brick pill — not a Tailwind red. The assertion
+      moved with the paint because it is the same claim: an allergy is shown in the danger colour,
+      not merely listed.
+    */
+    expect(chip).toHaveClass("pill", "rd");
     expect(screen.queryByTestId("allergy-chip-al-2")).toBeNull();
     expect(screen.getByTestId("allergy-chips")).not.toHaveTextContent("Sulfa");
 
@@ -682,13 +689,28 @@ describe("OpdConsult", () => {
     expect(within(dialog).getByText(/bleeding risk/)).toBeInTheDocument();
 
     /**
-     * The doctor moves on with the keyboard — Alt+Enter completes the consultation, and the
+     * The doctor moves on with the keyboard — Ctrl+Enter completes the consultation, and the
      * handler is WINDOW-LEVEL, so it fires while the modal is open. That is not a contrivance to
      * reach a blocked button: it is the reviewer's actual scenario, and it is why a stale dialog
      * was dangerous rather than merely untidy. `complete()` calls `resetPanel()`, which is the
      * function that used to clear the allergy state and none of 16a's.
+     *
+     * ═══ CLOSE PASS 1 — THE MECHANISM CHANGED AND THE CLAIM DID NOT ═══
+     *
+     * This drove the completion with Ctrl+Enter THROUGH the open dialog, which was possible because
+     * the screen's window handler ran straight past the modal. Pass 1 found that to be a CRITICAL in
+     * its own right — a doctor typing an override reason and pressing the chord their own keycap row
+     * advertises completed the visit, discarded the prescription and showed no error — so the screen
+     * now stands down while a `role="dialog"` is mounted.
+     *
+     * The route to the same state is therefore the dialog's own Escape, then the Complete button.
+     * What is asserted below is unchanged and is the whole point: `resetPanel` must leave NO trace of
+     * patient A's checks behind for patient B. Rewriting the mechanism rather than weakening the
+     * assertion, because the assertion was never about the keyboard.
      */
-    await user.keyboard("{Alt>}{Enter}{/Alt}");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await user.click(screen.getByRole("button", { name: "Complete consultation" }));
 
     /**
      * THE DIALOG IS GONE — not merely emptied of allergy matches. Before the fix `resetPanel` nulled
@@ -833,48 +855,59 @@ describe("OpdConsult", () => {
   });
 
   /**
-   * ——— K44 / Plan 08 T15: the three unasserted shortcuts, absorbed from Plan 07 ———
+   * ——— THE SIGNED-OFF KEYMAP, absorbing K44 / Plan 08 T15 ———
    *
-   * Plan 07 shipped this screen with FOUR local Alt handlers and asserted ONE of them (Alt+N,
-   * above). Its gate mutant `gateX4` — a copy of the screen with the other three handlers stripped
-   * — SURVIVED the whole suite, which is the definition of an untested lane: the doctor's fastest
-   * three keys were held up by nothing. Plan 08 absorbs them as required-DIED (W-8), and each test
-   * asserts THE POSTED CALL rather than a rendered state, because a rendered state can be reached
-   * by the mouse and would not tell the two apart.
+   * Plan 07 shipped this screen with FOUR local Alt handlers and asserted ONE of them. Its gate
+   * mutant `gateX4` — a copy of the screen with the other three handlers stripped — SURVIVED the
+   * whole suite, which is the definition of an untested lane: the doctor's fastest three keys were
+   * held up by nothing. Plan 08 absorbed them as required-DIED (W-8).
+   *
+   * FD-25 replaces the CHORDS and keeps the DISCIPLINE. The keyboard artboard is signed off and
+   * contains no Alt chord at all — FD-5 parked them — so these tests now describe the keys this
+   * screen actually binds. Each still asserts THE POSTED CALL rather than a rendered state, because
+   * a rendered state can be reached with a mouse and would not tell the two apart.
    */
-  it("K44: Alt+K skips the called patient — the POSTED skip, and nothing else on the queue moves", async () => {
+  it("the keymap: Enter with nobody called CALLS NEXT, and does not start or skip anybody", async () => {
     mockRoutes({
       ...baseRoutes(),
-      "POST /api/opd/queues/entries/qe-cur/skip": { status: 201, body: { entry: { ...CURRENT, status: "waiting" } } },
+      /* Nobody is in the chair — this is the state where "the obvious next thing" is to call. */
+      "GET /api/opd/queues": { status: 200, body: { ...QUEUE_VIEW, current: null } },
+      "POST /api/opd/queues/sess-1/call-next": { status: 201, body: { entry: CURRENT, encounter: ENCOUNTER } },
     });
     const user = userEvent.setup();
     renderWithProviders(<OpdConsult />);
-    await screen.findByTestId("queue-row-qe-cur");
+    await screen.findByTestId("queue-row-qe-a");
 
-    await user.keyboard("{Alt>}k{/Alt}");
+    await user.keyboard("{Enter}");
 
-    await waitFor(() => expect(callsTo("POST", "/api/opd/queues/entries/qe-cur/skip")).toHaveLength(1));
-    expect(callsTo("POST", "/api/opd/queues/entries/qe-cur/skip")[0]!.body).toBe("");
-    // one key, one lane: Alt+K is not a general "do the next thing"
+    await waitFor(() => expect(callsTo("POST", "/api/opd/queues/sess-1/call-next")).toHaveLength(1));
+    expect(callsTo("POST", "/api/opd/queues/sess-1/call-next")[0]!.body).toBe("");
+    /* One key, one lane: Enter is "the obvious next thing", not "do everything". */
     expect(callsTo("POST", "/api/opd/visits/enc-1/consult/start")).toHaveLength(0);
-    expect(callsTo("POST", "/api/opd/queues/sess-1/call-next")).toHaveLength(0);
+    expect(callsTo("POST", "/api/opd/queues/entries/qe-cur/skip")).toHaveLength(0);
   });
 
-  it("K44: Alt+S with no consultation in progress posts consult/start and opens the panel", async () => {
+  /**
+   * THE SAME KEY, THE OTHER STATE. This is the half that makes Enter worth binding at all: a doctor
+   * presses one key twice to go from an empty chair to an open consultation, and never has to know
+   * which of two commands they are issuing. A binding that always called next would leave the
+   * patient standing; one that always started would post `consult/start` against nobody.
+   */
+  it("the keymap: Enter with a patient CALLED starts the consultation instead", async () => {
     mockRoutes(baseRoutes());
     const user = userEvent.setup();
     renderWithProviders(<OpdConsult />);
     await screen.findByTestId("queue-row-qe-cur");
 
-    await user.keyboard("{Alt>}s{/Alt}");
+    await user.keyboard("{Enter}");
 
     await waitFor(() => expect(callsTo("POST", "/api/opd/visits/enc-1/consult/start")).toHaveLength(1));
     expect(callsTo("POST", "/api/opd/visits/enc-1/consult/start")[0]!.body).toBe("");
     expect(await screen.findByTestId("patient-panel")).toBeInTheDocument();
-    expect(callsTo("POST", "/api/opd/queues/entries/qe-cur/skip")).toHaveLength(0);
+    expect(callsTo("POST", "/api/opd/queues/sess-1/call-next")).toHaveLength(0);
   });
 
-  it("K44: Alt+Enter completes the open consultation — the same body the button posts, with the default follow-up window OMITTED", async () => {
+  it("the keymap: Ctrl+Enter completes the open consultation — the same body the button posts, with the default follow-up window OMITTED", async () => {
     mockRoutes({
       ...baseRoutes(),
       "POST /api/opd/visits/enc-1/consult/complete": {
@@ -885,7 +918,7 @@ describe("OpdConsult", () => {
     await openPanel(user);
     const path = "/api/opd/visits/enc-1/consult/complete";
 
-    await user.keyboard("{Alt>}{Enter}{/Alt}");
+    await user.keyboard("{Control>}{Enter}{/Control}");
 
     await waitFor(() => expect(callsTo("POST", path)).toHaveLength(1));
     // K49's rule holds through the keyboard too: the key is ABSENT, so the OPD config's own
@@ -896,7 +929,161 @@ describe("OpdConsult", () => {
     await waitFor(() => expect(screen.queryByTestId("patient-panel")).toBeNull());
   });
 
-  it("NOT OVER-BROAD (§3.44): a key this screen does not bind fires nothing, the same letters typed WITHOUT Alt into the note fire nothing, and Alt+S inside the prescription FORM is that form's own submit alone — never a second one from this screen", async () => {
+  /**
+   * ESCAPE IS TWO-STAGE, AND THE FIRST PRESS MUST NOT RELEASE ANYBODY.
+   *
+   * The Keymap's words are "once back to the search box, twice clear the desk" — on this seat, once
+   * back to the queue and twice release the patient. The reason it is two presses rather than one
+   * with a confirm dialog is that a doctor learns to dismiss a dialog: the second press IS the
+   * confirmation, and it costs nothing to reach.
+   *
+   * This screen had no Escape at all before FD-25, which is why the assertion is written from both
+   * sides — the panel SURVIVES the first press and is gone after the second.
+   */
+  it("the keymap: Escape once leaves the field, Escape twice releases the patient", async () => {
+    mockRoutes(baseRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.keyboard("{Escape}");
+    /* Still in hand. A single press that released the patient would lose a half-written note. */
+    expect(screen.getByTestId("patient-panel")).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByTestId("patient-panel")).toBeNull());
+    /* Releasing is a SCREEN act, not a server one — nothing about the encounter changed. */
+    expect(callsTo("POST", "/api/opd/visits/enc-1/consult/complete")).toHaveLength(0);
+  });
+
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * CLOSE PASS 2, CRITICAL — THE MODAL GUARD MADE THE DISARM UNREACHABLE
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Pass 1 fixed a real defect: Ctrl+Enter fired straight through the override dialog and completed
+   * the visit. The fix was an early return at the top of the handler whenever a `role="dialog"` is
+   * mounted — and that return sits ABOVE `escArmed = false`, the line every non-Escape key reaches.
+   *
+   * So the two-stage Escape's memory, a closure variable, stopped being cleared by typing. Arm it
+   * before a dialog opens and it is still armed after the dialog closes:
+   *
+   *   1. Esc once — "let me look at the queue".            escArmed = true   (correct)
+   *   2. Issue the prescription; the server refuses; the override dialog opens.
+   *   3. Type the override reason.                          every keystroke returns at the guard
+   *   4. Confirm. The dialog closes.
+   *   5. Esc ONCE, meaning "back to the queue".             THE PATIENT IS RELEASED
+   *
+   * Pass 1's own scenario — two presses with nothing between — was genuinely fixed. This is the same
+   * failure moved one press EARLIER, and the existing tests could not see it because none of them
+   * puts a keystroke inside a dialog and an Escape outside one.
+   *
+   * A fix aimed at an instance closes the instance. This is what pass 2 is for.
+   */
+  /**
+   * ═══ CLOSE PASS 2 — THE MODAL GUARD ITSELF HAD NOTHING WATCHING IT ═══
+   *
+   * Pass 1 fixed a CRITICAL: Ctrl+Enter fired through the override dialog, completing the visit and
+   * discarding the prescription with no error. The 16a test used to travel that road, and rewriting
+   * its mechanism (correctly — the road is now closed) left the guard itself unasserted. A revert
+   * pair run at `efc10dd` in an isolated worktree measured it: delete the guard and all 25 consult
+   * tests still pass.
+   *
+   * This is that test. The chord must do NOTHING while the dialog is up.
+   */
+  it("CLOSE PASS 2: Ctrl+Enter does not complete the visit while the override dialog is open", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/formulary/medicines": { status: 200, body: FORMULARY },
+      "POST /api/opd/visits/enc-1/prescriptions": {
+        status: 409,
+        body: { statusCode: 409, code: "allergy_conflict", message: "allergy", detail: { matches: [{ lineIndex: 0, substance: "Penicillin" }] } },
+      },
+      "POST /api/opd/visits/enc-1/consult/complete": { status: 201, body: { encounter: ENCOUNTER } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(await screen.findByLabelText("Drug"), "Tab Penicillin V");
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+    await screen.findByRole("dialog");
+
+    /* The doctor reaches for the chord their own keycap row advertises, mid-override. */
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    await act(async () => { await Promise.resolve(); });
+
+    /*
+      NOTHING WAS POSTED and the dialog is still up. Before the guard this completed the visit, ran
+      `resetPanel()` — clearing `matches`, `interactionHits` and the whole prescription form — and
+      showed no error, because nothing had failed.
+    */
+    expect(callsTo("POST", "/api/opd/visits/enc-1/consult/complete")).toHaveLength(0);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByTestId("patient-panel")).toBeInTheDocument();
+  });
+
+  it("CLOSE PASS 2: typing inside a dialog disarms the two-stage Escape — one press afterwards does not release the patient", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/formulary/medicines": { status: 200, body: FORMULARY },
+      "POST /api/opd/visits/enc-1/prescriptions": {
+        status: 409,
+        body: { statusCode: 409, code: "allergy_conflict", message: "allergy", detail: { matches: [{ lineIndex: 0, substance: "Penicillin" }] } },
+      },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    /*
+      (1) The prescription is written FIRST. Order matters and it is the whole reason this defect is
+      reachable: typing disarms, so the arming press has to be the last KEYSTROKE before the dialog.
+      Everything after it is a CLICK, and a click never reaches a keydown handler.
+    */
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(await screen.findByLabelText("Drug"), "Tab Penicillin V");
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+
+    /* (2) The doctor glances at the queue before issuing. Stage one, exactly as designed. */
+    await user.keyboard("{Escape}");
+    expect(screen.getByTestId("patient-panel")).toBeInTheDocument();
+
+    /* (3) Issues with the mouse; the server refuses; the override dialog opens. */
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+    const dialog = await screen.findByRole("dialog");
+
+    /* (4) The doctor types a reason. Every one of these keystrokes must disarm. */
+    await user.type(within(dialog).getByLabelText(/Penicillin/), "documented tolerance");
+
+    /* (5) Escape dismisses the dialog — and is consumed by it. */
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    /*
+      (6) THE ASSERTION. One Escape, meaning "back to the queue". The patient must still be in hand:
+      a doctor who has typed into a dialog has given this screen no instruction to drop anybody.
+    */
+    await user.keyboard("{Escape}");
+    expect(screen.getByTestId("patient-panel")).toBeInTheDocument();
+
+    /* And the stage machine is not broken — from a clean start, two presses still release. */
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByTestId("patient-panel")).toBeNull());
+  });
+
+  /**
+   * ═══ NOT OVER-BROAD (§3.44) — THE GUARD THAT KEEPS A BOUND KEY OUT OF A FIELD ═══
+   *
+   * Binding bare Enter is the risky half of the signed-off keymap, and this is the test that makes
+   * it safe. `inField()` is new in FD-25 and it is the only thing standing between "Enter does the
+   * obvious next thing" and "Enter in the middle of a chief complaint calls the next patient while
+   * this one is still talking".
+   *
+   * Ctrl+Enter is deliberately NOT guarded that way — a commit chord must work from wherever the
+   * cursor happens to be, which is the whole reason the Keymap made it a chord — so this asserts
+   * both halves: the bare key stands down inside a field and the chord does not.
+   */
+  it("NOT OVER-BROAD (§3.44): a key this screen does not bind fires nothing, bare Enter inside the note is TEXT and not a command, Ctrl+Enter is a chord that commits from anywhere, and a form's own submit is not doubled by this screen", async () => {
     mockRoutes({
       ...baseRoutes(),
       "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
@@ -912,7 +1099,7 @@ describe("OpdConsult", () => {
     renderWithProviders(<OpdConsult />);
     await screen.findByTestId("queue-row-qe-cur");
 
-    // (a) Alt on a letter the screen does not bind reaches none of the four lanes
+    // (a) a key this screen does not bind reaches none of its lanes
     await user.keyboard("{Alt>}x{/Alt}");
     await act(async () => {
       await Promise.resolve();
@@ -921,8 +1108,8 @@ describe("OpdConsult", () => {
     expect(callsTo("POST", "/api/opd/visits/enc-1/consult/start")).toHaveLength(0);
     expect(callsTo("POST", "/api/opd/queues/sess-1/call-next")).toHaveLength(0);
 
-    // (b) the SAME letters, without Alt, typed where a doctor actually types them: `k`, `s` and
-    // Enter inside the note are text, not commands (`if (!e.altKey) return`).
+    // (b) BARE ENTER WHERE A DOCTOR ACTUALLY TYPES IT. Inside the chief complaint it is a newline,
+    // and it must reach none of this screen's lanes — `inField()`.
     await user.click(screen.getByRole("button", { name: "Start consultation" }));
     await screen.findByTestId("patient-panel");
     await user.type(screen.getByLabelText("Chief complaint"), "ks");
@@ -932,12 +1119,22 @@ describe("OpdConsult", () => {
     });
     expect(callsTo("POST", "/api/opd/queues/entries/qe-cur/skip")).toHaveLength(0);
     expect(callsTo("POST", "/api/opd/visits/enc-1/consult/complete")).toHaveLength(0);
+    expect(callsTo("POST", "/api/opd/queues/sess-1/call-next")).toHaveLength(0);
     // Enter landed in the note as a NEWLINE — the keystroke was text, exactly as it should be.
     expect(screen.getByLabelText("Chief complaint")).toHaveValue("ks\n");
 
-    // (c) inside the FormKit prescription form Alt+S is ALREADY that form's submit, so the screen's
-    // own handler stands down (`e.target.closest("form")`). Exactly ONE prescription is posted —
-    // a handler without that guard would issue the e-Rx twice from one keystroke.
+    // (b2) THE CHORD IS NOT GUARDED THE SAME WAY, and that is the point of it being a chord: the
+    // cursor is still inside the note, and Ctrl+Enter commits from there.
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    await waitFor(() => expect(callsTo("POST", "/api/opd/visits/enc-1/consult/complete")).toHaveLength(1));
+    /* Completing closes the panel, so the prescription half below re-opens one. */
+    await waitFor(() => expect(screen.queryByTestId("patient-panel")).toBeNull());
+    await user.click(screen.getByRole("button", { name: "Start consultation" }));
+    await screen.findByTestId("patient-panel");
+
+    // (c) the FormKit prescription form keeps its OWN submit chord, and this screen adds nothing to
+    // it. Exactly ONE prescription is posted — a screen-level handler on the same keystroke would
+    // issue the e-Rx twice from one press, which is a duplicate prescription and not a UI glitch.
     await user.click(screen.getByRole("tab", { name: "Prescription" }));
     await user.type(await screen.findByLabelText("Drug"), "Tab Paracetamol");
     await user.type(screen.getByLabelText("Dose"), "500 mg");

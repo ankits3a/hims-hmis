@@ -3,6 +3,12 @@ import {
   opdDepartments, opdDoctors, opdEncounters, opdQueueEntries, patients,
 } from "../db/schema";
 import { encounterFeeStatuses } from "../../modules/billing/fee-status";
+import { LAB_DEPARTMENT_CODE } from "../../modules/opd/encounters";
+/* FD-25 §14 — the ONE place a confidential patient's name is decided. See `subjectOf`.
+   `resolvePatientId` is the OTHER half of that decision: it names WHOSE record this is after a
+   merge, and the rule cannot be asked without that. See `canonicalPersonOf`. */
+import { displayName, displayNameForRelease, resolvePatientId } from "../../modules/patients";
+import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
 
 /**
@@ -160,6 +166,10 @@ function thermalPage(title: string, body: string): RenderedDocument {
 
 /** The identity every document repeats, because a slip that cannot be matched to a person is litter. */
 type SlipSubject = {
+  /**
+   * FD-25 — the name that may be PRINTED, which for a §14 patient is not the name in the record.
+   * `subjectOf` resolves it through the patients module; nothing downstream re-reads `patients.name`.
+   */
   patientName: string; uhid: string; ageSex: string;
   visitNo: string; serviceDate: string;
   /** FD-24 close — the fee projection reads it; see `renderTokenSlip`'s stamp. */
@@ -193,13 +203,66 @@ function ageSexOf(dob: string | Date | null, gender: string | null, on: Date): s
 }
 
 /**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-25 CLOSE — THE PERSON A SLIP IS ABOUT IS THE CANONICAL RECORD, NOT THE ROW IT JOINS
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * `executeMerge` moves allergies and guardians to the winner and then FREEZES the loser
+ * (`status = 'merged'`, `merged_into_patient_id`). **It never repoints `opd_encounters.patient_id`,
+ * and `updatePatient` refuses to touch a frozen row** (`patient_not_active`) — so a merged-away
+ * duplicate keeps its own `name`, `alias` and `is_confidential` for ever while its encounters go on
+ * pointing at it. A printer that reads the §14 decision off the joined row therefore asks the rule
+ * about a record that has stopped being the patient, and gets it wrong in BOTH directions: a
+ * duplicate registered before anyone knew who the patient was prints the LEGAL NAME of someone the
+ * hospital has since sealed, and a break-glass grant — written against the id `getPatient` matched,
+ * which is the CANONICAL one — fails to open the paper for the clinician who took it.
+ *
+ * Every other §14 and PHI decision in this tree resolves the chain first: `getPatient` walks it
+ * before it asks about the permission or the grant, and `lab`, `aerb` and `membership` all call
+ * `resolvePatientId` before they key anything on a patient. This is that call.
+ *
+ * ═══ THE WHOLE IDENTITY BAND MOVES, NOT ONLY THE NAME ═══
+ *
+ * A slip carrying the survivor's NAME beside the duplicate's retired UHID would match no record at
+ * any counter in the building — a second way to hand paper to the wrong person, invented while
+ * fixing the first. `getPatient` hands a reader the surviving row entire, and the paper must not
+ * disagree with the screen it is printed beside.
+ *
+ * ═══ AND IT COSTS NOTHING ON THE PATH THAT MATTERS ═══
+ *
+ * `status` comes back on the join that was already running, so an ordinary slip — every slip, on
+ * every ordinary day — walks no chain and issues no extra query. Only a merged row pays, and only
+ * a merged row has anything to pay for.
+ */
+type SlipPerson = {
+  id: string; name: string; alias: string | null; isConfidential: boolean;
+  uhid: string; dob: Date | null; gender: string;
+};
+
+async function canonicalPersonOf(db: Db, patientId: string): Promise<SlipPerson | null> {
+  const canonicalId = await resolvePatientId(db, patientId);
+  if (canonicalId === null) return null;
+  const rows = await db
+    .select({
+      id: patients.id, name: patients.name, alias: patients.alias,
+      isConfidential: patients.isConfidential, uhid: patients.uhid,
+      dob: patients.dob, gender: patients.administrativeGender,
+    })
+    .from(patients)
+    .where(eq(patients.id, canonicalId));
+  return rows[0] ?? null;
+}
+
+/**
  * Resolves everything a slip says about one visit, AT RENDER TIME.
  *
  * This is why `print_jobs.params` carries an encounter id and not a name: a reprint after a
  * correction hands over the CORRECTED name, and the queue row never becomes a stale second copy of
  * the patient record.
  */
-async function subjectOf(db: Db, encounterId: string, now: Date): Promise<SlipSubject | null> {
+async function subjectOf(
+  db: Db, encounterId: string, now: Date, requester: Actor | null,
+): Promise<SlipSubject | null> {
   const rows = await db
     .select({
       visitNo: opdEncounters.visitNo,
@@ -208,6 +271,22 @@ async function subjectOf(db: Db, encounterId: string, now: Date): Promise<SlipSu
          `encounterFeeStatuses` reads `visitType` to decide which fee service applies. */
       visitType: opdEncounters.visitType,
       patientName: patients.name,
+      /* FD-25 — `alias` and `is_confidential` travel because `displayNameForRelease` needs all three
+         to answer. `billing/worklist.ts` selects exactly these beside the name for the same reason.
+         The ID travels too: a break-glass grant is scoped to ONE patient, so the rule cannot be
+         asked without naming whose record this is.
+
+         **AND THIS ROW IS NOT NECESSARILY THAT RECORD.** An earlier draft of this comment argued
+         that `patients.id` and `opd_encounters.patient_id` "are the join condition and therefore
+         equal", which is true of the join and beside the point: after a merge the encounter still
+         points at the FROZEN DUPLICATE, and the seal, the alias and the grant all live on the
+         survivor. `canonicalPersonOf` below resolves that before the rule is asked. */
+      patientId: patients.id,
+      alias: patients.alias,
+      isConfidential: patients.isConfidential,
+      /* FD-25 CLOSE — the one column that says the joined row is not the person any more. See
+         `canonicalPersonOf`: it costs nothing to select and saves a chain walk on every ordinary slip. */
+      patientStatus: patients.status,
       uhid: patients.uhid,
       dob: patients.dob,
       gender: patients.administrativeGender,
@@ -239,11 +318,73 @@ async function subjectOf(db: Db, encounterId: string, now: Date): Promise<SlipSu
     .from(opdQueueEntries)
     .where(eq(opdQueueEntries.encounterId, encounterId));
 
+  /*
+    ═══ FD-25, OWNER RULING 2026-09-05 — WHOSE NAME REACHES PAPER IS A §14 DECISION ═══
+
+    This file printed `patients.name` — the LEGAL name — on every document, for every patient, on the
+    first print and on every reprint. `kernel/printing` contained no reference to §14 at all. The
+    reprint route grew a gate this session (`getPatient` decides who may ASK for a second copy) and
+    the paper it produced still said the name the seal exists to withhold: a gate on the REQUEST with
+    none on the DOCUMENT is a seal with a hole one level down.
+
+    THE RULE IS NOT RE-ANSWERED HERE. `display-name.ts` is the ONE place a confidential patient's
+    name is decided — keyed on `patients.confidential.read` rather than on a role, because a role is
+    what the permission is granted TO, and a dash rather than the legal name when a sealed row has
+    no alias. `billing/worklist.ts` and `kernel/orders/read.ts` are the precedents for a reader
+    calling it. A second implementation inside the printer is how the two start disagreeing about a
+    VIP.
+
+    ═══ AND IT IS THE `Release` SIBLING, WHICH IS THE OTHER HALF OF THE OWNER'S RULING ═══
+
+    The ruling reads: *"alias by default; the LEGAL NAME prints only when the operator goes through
+    the existing break-glass grant, which is already logged."* `displayNameFor` answers only the
+    first clause — it decides on `patients.confidential.read`, and break-glass does not confer that
+    permission; it writes `break_glass_grants`, a table `hasPermission` has never read. Asking it
+    here handed the 2 a.m. clinician who had just opened the sealed record through break-glass — and
+    who is reading the legal name off `GET /patients/:id` at that moment — a slip saying "Patient A".
+    Paper that disagrees with the screen beside it is settled by a pen, and a pen logs nothing.
+
+    `displayNameForRelease` is that second clause, and it lives BESIDE the rule rather than here:
+    this file reading `break_glass_grants` itself would be the second authority the patients module
+    exists to prevent. It is NOT a general widening — every screen still asks `displayNameFor`, and
+    who may see a sealed name on the BILLING WORKLIST is a decision nobody has taken.
+
+    ═══ NO REQUESTER MEANS THE ALIAS, AND THAT IS THE SAFE DIRECTION ═══
+
+    `print_jobs.requested_by` is NULLABLE, and a row without one is the shape most likely to be a
+    background producer — the case with no human to answer for the disclosure. So an unattributed
+    print gets the same answer `displayNameFor` gives a `system` actor: the alias. The relay's own
+    agent credential gets it too; claiming a job is not a clearance.
+
+    ═══ AND IT IS RESOLVED AT RENDER TIME, LIKE EVERY OTHER FACT ON THESE DOCUMENTS ═══
+
+    The clerk who queued the slip may have been through break-glass when they asked; a grant expires
+    and a role is revoked. Printing is asynchronous by design — the relay may claim minutes later —
+    and the moment the clearance has to be true is the moment paper comes out. That cuts the safe way
+    round: a lapsed grant prints the alias, never the reverse.
+  */
+  /*
+    THE ROW THE ENCOUNTER JOINS IS ONLY THE STARTING POINT — see `canonicalPersonOf` for why, and
+    for why the ordinary slip pays nothing for this. A chain that ends nowhere renders NOTHING
+    rather than falling back to the frozen row: `followMergeChain` returning null means the record
+    this paper is about cannot be identified, and a slip naming a record the system cannot resolve
+    is worse than no slip — printing is advisory (R7) and the screen reports the failure.
+  */
+  const person = row.patientStatus === "merged"
+    ? await canonicalPersonOf(db, row.patientId)
+    : {
+      id: row.patientId, name: row.patientName, alias: row.alias,
+      isConfidential: row.isConfidential, uhid: row.uhid, dob: row.dob, gender: row.gender,
+    };
+  if (person === null) return null;
+
   return {
-    patientName: row.patientName,
-    uhid: row.uhid,
+    patientName: requester === null
+      ? displayName(person, false)
+      : await displayNameForRelease(db, requester, person, person.id),
+    uhid: person.uhid,
     visitType: row.visitType,
-    ageSex: ageSexOf(row.dob, row.gender, now),
+    ageSex: ageSexOf(person.dob, person.gender, now),
     visitNo: row.visitNo,
     serviceDate: row.serviceDate,
     departmentName: row.departmentName,
@@ -266,10 +407,13 @@ export async function renderTokenSlip(
   db: Db,
   params: { encounterId?: unknown; unpaid?: unknown },
   now = new Date(),
+  /* FD-25 — who asked for this paper. `null` DEFAULTS TO THE ALIAS for a §14 patient: a caller that
+     forgets to thread the requester leaks nothing, which is the only safe way round for a default. */
+  requester: Actor | null = null,
 ): Promise<RenderedDocument | null> {
   const encounterId = typeof params.encounterId === "string" ? params.encounterId : null;
   if (encounterId === null) return null;
-  const s = await subjectOf(db, encounterId, now);
+  const s = await subjectOf(db, encounterId, now, requester);
   if (s === null) return null;
 
   /*
@@ -303,6 +447,32 @@ export async function renderTokenSlip(
   const status = (await encounterFeeStatuses(db, [{ id: encounterId, visitType: s.visitType }])).get(encounterId);
   const unpaid = status === undefined ? params.unpaid === true : status === "unsettled";
 
+  /*
+    ═══ FD-25 — A LAB WALK-IN IS NOT AN OPD VISIT, AND ITS SLIP MUST NOT PRETEND TO BE ═══
+
+    `openLabWalkinInTx` opens a real visit through `openVisitInTx`, so the two print jobs fire for a
+    lab patient too. The paper was then written entirely for the OPD road: an UNPAID stamp pointing
+    at the billing counter the patient has just left, and directions to a vitals desk expecting
+    nobody and a consulting room they are not going to.
+
+    So the LAB DEPARTMENT gets its own onward line and no stamp. What it does NOT get is a decision
+    about money: whether a lab walk-in carries an OPD consult-fee obligation at all is the owner's
+    question, and suppressing the slip entirely — or printing the lab invoice on it — would answer
+    it in code. Dropping the stamp and the two wrong directions is reversible whichever way he
+    rules; the slip still says who the patient is, what their token is, and where to sit.
+
+    `departmentCode` is already selected by `subjectOf`, so this costs no query.
+  */
+  const isLab = s.departmentCode.trim().toUpperCase() === LAB_DEPARTMENT_CODE;
+  const stampHtml = isLab || !unpaid
+    ? ""
+    : `<div class="stamp"><div class="w">UNPAID</div><div class="hi">भुगतान शेष — बिलिंग काउंटर</div></div>`;
+  const onwardHtml = isLab
+    ? `<li>Sample collection — ${esc(s.departmentName)}<div class="hi">नमूना संग्रह</div></li>`
+    : `${unpaid ? `<li>Billing counter — ground floor<div class="hi">बिलिंग काउंटर, भूतल</div></li>` : ""}
+        <li>Vitals desk — 1st floor<div class="hi">प्राथमिक जाँच डेस्क, प्रथम तल</div></li>
+        <li>${esc(s.doctorName)} — ${esc(s.departmentName)}<div class="hi">डॉक्टर का कक्ष</div></li>`;
+
   const body = `
     <div class="hd">
       <div class="nm">${HOSPITAL.name}</div>
@@ -312,7 +482,7 @@ export async function renderTokenSlip(
     <div class="tok">
       <div class="lbl">Token</div>
       <div class="no mo">${esc(tokenLabel(s.departmentCode, s.tokenNo))}</div>
-      <div class="dr">${esc(s.doctorName)}</div>
+      ${isLab ? "" : `<div class="dr">${esc(s.doctorName)}</div>`}
       <div class="dept">${esc(s.departmentName)}</div>
     </div>
     <div class="sec">
@@ -322,13 +492,11 @@ export async function renderTokenSlip(
       <div class="row"><span class="k">Visit</span><span class="v mo">${esc(s.visitNo)}</span></div>
       <div class="row"><span class="k">Date</span><span class="v">${esc(s.serviceDate)}</span></div>
     </div>
-    ${unpaid ? `<div class="stamp"><div class="w">UNPAID</div><div class="hi">भुगतान शेष — बिलिंग काउंटर</div></div>` : ""}
+    ${stampHtml}
     <div class="next sec">
       <div class="t">Go next to</div>
       <ol>
-        ${unpaid ? `<li>Billing counter — ground floor<div class="hi">बिलिंग काउंटर, भूतल</div></li>` : ""}
-        <li>Vitals desk — 1st floor<div class="hi">प्राथमिक जाँच डेस्क, प्रथम तल</div></li>
-        <li>${esc(s.doctorName)} — ${esc(s.departmentName)}<div class="hi">डॉक्टर का कक्ष</div></li>
+        ${onwardHtml}
       </ol>
     </div>
     <div class="ft">${esc(s.serviceDate)} · ${esc(s.visitNo)}</div>
@@ -348,10 +516,12 @@ export async function renderPaymentReceipt(
   db: Db,
   params: { encounterId?: unknown; amountPaise?: unknown; mode?: unknown; receiptNo?: unknown },
   now = new Date(),
+  /** FD-25 — see `renderTokenSlip`. A receipt names the patient exactly as the slip does. */
+  requester: Actor | null = null,
 ): Promise<RenderedDocument | null> {
   const encounterId = typeof params.encounterId === "string" ? params.encounterId : null;
   if (encounterId === null) return null;
-  const s = await subjectOf(db, encounterId, now);
+  const s = await subjectOf(db, encounterId, now, requester);
   if (s === null) return null;
   const paise = typeof params.amountPaise === "number" ? params.amountPaise : 0;
   const rupees = `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -391,10 +561,12 @@ export async function renderPrescriptionSheet(
   db: Db,
   params: { encounterId?: unknown },
   now = new Date(),
+  /** FD-25 — see `renderTokenSlip`. This is the sheet the patient CARRIES out of the building. */
+  requester: Actor | null = null,
 ): Promise<RenderedDocument | null> {
   const encounterId = typeof params.encounterId === "string" ? params.encounterId : null;
   if (encounterId === null) return null;
-  const s = await subjectOf(db, encounterId, now);
+  const s = await subjectOf(db, encounterId, now, requester);
   if (s === null) return null;
 
   const css = `
@@ -477,11 +649,17 @@ export async function renderDocument(
   document: string,
   params: Record<string, unknown>,
   now = new Date(),
+  /**
+   * FD-25 — the print job's `requested_by`, as an actor. It travels to EVERY document rather than to
+   * the token slip alone: a fix aimed at one instance closes one instance, and the prescription is
+   * the sheet that leaves the building in the patient's hand.
+   */
+  requester: Actor | null = null,
 ): Promise<RenderedDocument | null> {
   switch (document) {
-    case "opd_token_slip": return await renderTokenSlip(db, params, now);
-    case "opd_payment_receipt": return await renderPaymentReceipt(db, params, now);
-    case "opd_prescription": return await renderPrescriptionSheet(db, params, now);
+    case "opd_token_slip": return await renderTokenSlip(db, params, now, requester);
+    case "opd_payment_receipt": return await renderPaymentReceipt(db, params, now, requester);
+    case "opd_prescription": return await renderPrescriptionSheet(db, params, now, requester);
     default: return null;
   }
 }

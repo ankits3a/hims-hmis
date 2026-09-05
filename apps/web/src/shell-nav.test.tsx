@@ -61,6 +61,18 @@ it("offers only the screens the signed-in person holds a permission for", async 
     command palette's `/counter` command, which is declared on `patients.register` for exactly that
     reason (`components/command-palette.tsx`). Asserted below so the gap is a recorded decision
     rather than something a later reader has to rediscover.
+
+    ═══ FD-25 — AND THAT GAP IS NOW CLOSED, WHICH IS WHY THIS TEST CHANGED ═══
+
+    `patients.register` opens a nav row again, because `/registration` is a real route again for a
+    real second seat. Read the paragraph above as history: `lab_reception` and
+    `radiology_receptionist` were the two roles it named as having no registration door but the
+    command palette, and they are the two roles that get one back here — WITHOUT gaining
+    `opd.visits.open`, which they should not have and still do not.
+
+    That is the second time this file has recorded a real access consequence of a nav decision
+    rather than a fixture edit, and it is worth keeping both halves: the deletion cost two roles a
+    door, and restoring the route gave it back to exactly those two.
   */
   renderShell(["patients.register", "billing.invoice.issue"]);
 
@@ -75,21 +87,106 @@ it("offers only the screens the signed-in person holds a permission for", async 
   // clerk with a counter permission is not offered it, which is also why the link is invisible on
   // the live deployment today: that role exists and has no holders.
   expect(screen.queryByRole("link", { name: "Formulary" })).not.toBeInTheDocument();
-  // FD-9 — and the deleted routes are offered by nobody, under any grant.
-  expect(screen.queryByRole("link", { name: "Registration" })).not.toBeInTheDocument();
+  // FD-25 — `patients.register` reaches the REGISTRATION seat, and this is the assertion that
+  // records the reversal: it read `not.toBeInTheDocument()` while the route was deleted.
+  expect(screen.getByRole("link", { name: "Registration" })).toBeInTheDocument();
+  // `/appointment` is still deleted, so it is still offered by nobody under any grant.
   expect(screen.queryByRole("link", { name: "Appointment" })).not.toBeInTheDocument();
-  // `patients.register` alone does not reach the desk row — `opd.visits.open` is what does.
+  // …and it still does NOT reach Desk One. `opd.visits.open` is what does, and these two roles do
+  // not hold it — a seat offered to somebody who would 403 on arrival is worse than no seat.
   expect(screen.queryByRole("link", { name: "Desk One" })).not.toBeInTheDocument();
 });
 
-/** FD-9 — and the counter clerk, who holds the visit permission, IS offered the one front desk. */
-it("FD-9: a counter clerk is offered Desk One, and it is the only front-desk row in the nav", async () => {
-  renderShell(["opd.visits.open", "patients.register", "billing.invoice.issue"]);
-  await waitFor(() => expect(screen.getByRole("link", { name: "Desk One" })).toBeInTheDocument());
+/**
+ * ═══ FD-25 — TWO SEATS, EACH OFFERED ONCE. THE GUARD IS "ONCE", NOT "ONE ROW" ═══
+ *
+ * FD-9 asserted that Desk One was the ONLY front-desk row, because the hospital staffed one person
+ * and three names for one job is what put the owner on the wrong counter in FD-1.
+ *
+ * The hospital now staffs three seats and `/registration` is a real route again. That does NOT
+ * re-open FD-1's defect, and the difference is worth stating precisely because it is the thing a
+ * future reader will get wrong: FD-1's defect was two names for ONE SCREEN. These are two screens
+ * for two staffing shapes — `/counter` on `opd.visits.open` is one person doing registration,
+ * appointment and billing as stages of one session; `/registration` on `patients.register` is a
+ * clerk who registers and routes and holds no drawer.
+ *
+ * So the invariant that survives is EXACTLY-ONCE-EACH, and it is the one that would actually catch
+ * a regression: a duplicated row, or a row appearing under a permission its holder does not have.
+ */
+/**
+ * ═══ FD-25 — NO TWO NAV ROWS MAY READ THE SAME ═══
+ *
+ * FOUND BY LOOKING, not by this suite: `/appointment` and `/opd/appointments` both rendered the
+ * label "Appointments", one under DESK and one under OPD, a centimetre apart. Both rows were
+ * correct in their own file; the defect only exists in the relationship between them, which is why
+ * nothing failed.
+ *
+ * A nav is a list of PLACES. Two places a person cannot tell apart is FD-1's defect — the one that
+ * put the owner on the wrong counter and had them report the right screen as broken — and it will
+ * recur every time a screen is named after its noun instead of its job. So it is mechanical now:
+ * whatever a person holds, no two links they are offered may carry the same words.
+ */
+it("FD-25: no two nav rows a person can see read the same", async () => {
+  /* An owner-shaped grant list: the widest nav anybody gets, which is where collisions surface. */
+  renderShell([
+    "opd.visits.open", "patients.register", "opd.appointments.manage", "opd.appointments.read",
+    "patients.merge", "billing.invoice.issue", "opd.masters.manage", "opd.vitals.record",
+    "staff.reports.read", "approvals.requests.read",
+  ]);
+  /*
+    Waits on a row this test does NOT make a claim about. Anchoring the wait on "Booking desk" —
+    the label the first version of this guard was written to protect — made the test fail on the
+    WAIT rather than on the duplicate assertion when that label regressed, which is a proof of
+    nothing. A guard must fail on its own claim.
+  */
+  await waitFor(() => expect(screen.getByRole("link", { name: "Registration" })).toBeInTheDocument());
+  const labels = screen.getAllByRole("link").map((a) => a.textContent?.trim() ?? "");
+  const seen = new Map<string, number>();
+  for (const label of labels) seen.set(label, (seen.get(label) ?? 0) + 1);
+  const duplicated = [...seen.entries()].filter(([, n]) => n > 1).map(([label]) => label);
+  expect(duplicated, `these nav labels appear more than once, so a clerk cannot tell the places apart: ${duplicated.join(", ")}`).toEqual([]);
+});
+
+it("FD-25: a clerk holding all three seat grants is offered each seat exactly once, and Desk One is not a fourth", async () => {
+  /*
+    ALL THREE GRANTS, and the third one is the point of the fixture: `/appointment` rides
+    `opd.appointments.manage`, which is a DIFFERENT key from the other two. The first version of
+    this test asserted the appointment row while granting only the counter clerk's three, and it
+    failed — correctly. A row must appear for the grant that opens it and for no other, so a test
+    asserting a row must hold that row's key or it is asserting a privacy defect.
+  */
+  renderShell(["opd.visits.open", "patients.register", "opd.appointments.manage", "billing.invoice.issue"]);
+  await waitFor(() => expect(screen.getByRole("link", { name: "Registration" })).toBeInTheDocument());
   const hrefs = screen.getAllByRole("link").map((a) => a.getAttribute("href"));
-  expect(hrefs.filter((h) => h === "/counter")).toHaveLength(1);
-  expect(hrefs).not.toContain("/registration");
-  expect(hrefs).not.toContain("/appointment");
+  /*
+    FD-25 — AND DESK ONE IS NOT A FOURTH DOOR. The owner ruled on 2026-09-05 that `/counter` keeps
+    working and leaves the nav: the row is a recommendation ("here is where you work") and offering
+    four front-desk entries to a clerk who works at one is how a nav stops being read. The ROUTE
+    still serves — a one-person desk wants exactly that screen — and the command palette still
+    offers it by name, which is a search rather than a menu.
+  */
+  expect(hrefs).not.toContain("/counter");
+  expect(hrefs.filter((h) => h === "/registration")).toHaveLength(1);
+  /*
+    FD-25 — and `/appointment` too, now that its screen exists. THREE SEATS, EACH OFFERED ONCE, is
+    the invariant that survives FD-9's "only one front-desk row": that ruling was about three NAMES
+    for one job, and these are three screens for three staffing shapes. A duplicated row, or a row
+    offered to somebody who would 403 on arrival, still fails here.
+  */
+  expect(hrefs.filter((h) => h === "/appointment")).toHaveLength(1);
+});
+
+/**
+ * THE HALF THAT MATTERS MORE: a seat is offered to the grant that opens it AND TO NOBODY ELSE. A
+ * registration clerk holding no `opd.visits.open` must not be shown Desk One — being offered a
+ * screen that 403s on arrival is how a clerk learns to distrust the nav.
+ */
+it("FD-25: the registration clerk is offered the registration seat and NOT Desk One", async () => {
+  renderShell(["patients.register"]);
+  await waitFor(() => expect(screen.getByRole("link", { name: "Registration" })).toBeInTheDocument());
+  const hrefs = screen.getAllByRole("link").map((a) => a.getAttribute("href"));
+  expect(hrefs.filter((h) => h === "/registration")).toHaveLength(1);
+  expect(hrefs).not.toContain("/counter");
 });
 
 /**
@@ -176,10 +273,23 @@ it("07b T8: the nav is grouped, and a counter clerk's Desk group comes before th
    * decision and should not be able to break a structural test.
    */
   const hrefs = screen.getAllByRole("link").map((a) => a.getAttribute("href"));
-  expect(hrefs.indexOf("/counter")).toBeGreaterThanOrEqual(0);
-  expect(hrefs.indexOf("/counter")).toBeLessThan(hrefs.indexOf("/merge"));
-  // And the deleted route is not offered by any group: one door to the front desk, not three.
-  expect(hrefs).not.toContain("/registration");
+  /*
+    FD-25 — DESK ONE IS NO LONGER A ROW, on the owner's 2026-09-05 ruling: keep it working, keep it
+    out of the nav. So the desk group's leading row is `/registration`, and this test's claim is
+    unchanged — the group a front desk works in reads before the patient-record rows. The absence is
+    asserted below rather than left implied, because "the row quietly came back" is exactly the
+    regression a ruling like this suffers.
+  */
+  expect(hrefs).not.toContain("/counter");
+  expect(hrefs.indexOf("/registration")).toBeGreaterThanOrEqual(0);
+  expect(hrefs.indexOf("/registration")).toBeLessThan(hrefs.indexOf("/merge"));
+  /*
+    FD-25 — `/registration` is asserted here and `/appointment` is NOT, and the difference is the
+    fixture rather than an oversight: this person holds `patients.register` but not
+    `opd.appointments.manage`, so the appointment row correctly does not appear for them. The claim
+    this test makes is about GROUP ORDER, and one desk row proves it. Widening the grant to force a
+    third row in would be changing the fixture to suit the assertion.
+  */
   expect(hrefs).not.toContain("/appointment");
 });
 
@@ -187,11 +297,15 @@ it("07b T8: the nav is grouped, and a counter clerk's Desk group comes before th
 it("07b T8: a group the person holds nothing in does not render at all", async () => {
   /*
     FD-9 — `patients.merge` replaces `patients.register` as the one grant here. The claim is about
-    EMPTY GROUPS, and it needs a person who holds something in exactly one group: after the deletion
-    of `/registration`, `patients.register` opens no nav row at all, so the old fixture would have
-    tested the "no screens available" sentence instead. `patients.merge` keeps the Patients group
-    populated with one row — and now the DESK group is the empty one, which is a stronger version of
-    the same assertion than the original could make.
+    EMPTY GROUPS, and it needs a person who holds something in exactly one group.
+
+    FD-25 — AND IT STILL HAS TO BE `patients.merge`, FOR A NEW REASON. FD-9's reason was that
+    `patients.register` opened no nav row at all once `/registration` was deleted, so the old
+    fixture would have tested the "no screens available" sentence instead. That reason has expired:
+    `/registration` is back and `patients.register` opens it. The grant is still correct because
+    `/registration` sits in the DESK group, so `patients.register` would populate TWO groups and
+    this test needs exactly one. `patients.merge` populates Patients alone and leaves DESK empty,
+    which is still the assertion being made.
   */
   renderShell(["patients.merge"]);
   await waitFor(() => { expect(screen.getByText("Merge review")).toBeInTheDocument(); });
