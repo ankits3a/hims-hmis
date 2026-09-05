@@ -127,9 +127,33 @@ signature and then looking for `withTx(<the Db param>, …)` in the body yields:
 | `modules/lab/results.ts:~1200` | `amendResultInTx` (`:1098`) | the same, on the amend path |
 | `modules/lab/verify.ts:~181` | `verifyResultInTx` (`:130`) | `lab.sod_violation_blocked` audit |
 
-**The signature is a candidate filter, not a finding** — and the negative control matters as much as
-the hits: `modules/lab/specimens.ts:134` `printLabelsInTx` carries exactly the same `(db, tx)`
-signature and does **not** nest. Four candidates, three real.
+**The signature is a candidate filter, not a finding.** Four candidates, and this document first
+recorded three as real with `modules/lab/specimens.ts:134` `printLabelsInTx` as a clean negative
+control — *"carries exactly the same signature and does not nest."*
+
+### That negative control was WRONG, and the way it was wrong is the lesson
+
+`printLabelsInTx` **does** nest. Two frames down:
+
+```ts
+// specimens.ts, inside printLabelsInTx, holding the open `tx`:
+await assertRightPatient(db, actor, { … });        // the handle escapes by ARGUMENT
+
+// collection.ts:53, assertRightPatient(db: Db, …):
+await withTx(db, (flagTx) => appendEvent(flagTx, labTubeMismatchFlagged.make({ … })));
+```
+
+The pairing key we had agreed on asks *"does THIS function, holding both handles, call `withTx` on
+its `Db`?"* — and `printLabelsInTx` does not. It hands its `db` to a callee that does. **A third
+shape: the handle escapes by argument, one frame further than either scan looked.** Found by the
+LIMS lane following callers, which is a call-graph question and not a regex one.
+
+**The uncomfortable part is not the miss — it is that the false negative was published as evidence
+of rigour.** A filter that reports only hits is indistinguishable from one that reports everything,
+so a negative control was volunteered to show the filter discriminated. It did not discriminate; it
+agreed with the scan because it shared the scan's blind spot, and it made the census read as MORE
+trustworthy than it was. **A negative control drawn with the same instrument as the positives is not
+a control.**
 
 ### THE TRAP FOR WHOEVER FIXES IT — the obvious repair deletes the evidence
 
@@ -140,17 +164,47 @@ REFUSED entry still leaves the near-miss behind for NABL. Collapsing the inner w
 and every test would stay green, because the refusal still refuses.
 
 The repair that keeps both properties is to move the audit write **outside** the outer transaction:
-let `withTx` roll back and return or throw, write the near-miss on a fresh connection at the
-`Db`-first layer, then rethrow. Two connections are never held at once and the audit still survives.
-**The LIMS lane owns this and is taking it**; it is described here so the document states the class
-rather than one lane's queue.
+let `withTx` roll back, write the near-miss on a fresh connection at the `Db`-first layer, then
+rethrow. Two connections are never held at once and the audit still survives.
 
-### The census, and what it is now worth
+**The LIMS lane owns this and has taken all four (PR #87).** Its implementation is worth recording
+because two of its choices are not the obvious ones:
 
-**Six sites, two shapes:** three direct (`billing` ×2, `ot` ×1) and three indirect (`lab` ×3). The
-earlier "three is a floor" warning is discharged for these two shapes. A third shape — a handle
-reached from module scope rather than passed as a parameter — would still be invisible to both
-scans, but neither scan found any evidence of one.
+- The event **rides the thrown error on a non-enumerable symbol**, and the `Db`-first wrapper
+  appends it once the outer transaction has fully unwound — *deferred*, not merely moved. A symbol
+  rather than `LabError.detail`, because `detail` is serialised into the HTTP response and an audit
+  payload naming sibling specimens is not the client's business.
+- For `assertRightPatient` it **removed the `db` parameter** rather than leaving it unused: with no
+  handle in scope the function *cannot* re-acquire the shape. Structural, not a promise.
+- On the path that PROCEEDS (an override accepted) there is nothing to outlive the rollback, so that
+  one appends on `tx` and takes no second connection at all.
+- It verified the precondition that makes deferral safe rather than assuming it: each `*InTx` has
+  exactly **one** caller, its own wrapper, so there is no door the flush can be missed through.
+
+**And the trap earned itself twice: the collapse-onto-`tx` version passes 29 suites / 245 tests.**
+It was not shipped, but it would have been green — 17d T1 D3's *"the swap is EVENTED even though the
+entry rolls back"* is the single assertion standing between that repair and a silently deleted audit
+trail.
+
+### The census — SEVEN, and the floor warning is STRENGTHENED rather than discharged
+
+**Seven sites, three shapes:** three direct (`billing` ×2, `ot` ×1) and four indirect (`lab` ×4).
+
+The earlier draft discharged the "this is a floor" caveat once a second scan reproduced three sites
+independently. **That was the wrong conclusion from the right evidence.** Two independent scans,
+written by two lanes, agreed on three — and the fourth was invisible to both, because they shared a
+blind spot rather than because it was subtle. **Agreement between two instruments of the same kind
+is not corroboration.**
+
+So the caveat stands and is now explicit about what remains unscanned:
+
+- a handle reached from **module scope** rather than passed at all;
+- a handle escaping **more than two frames**, or through a callback, an object field or a closure —
+  the third shape above was found at two frames by following callers, and nothing here proves two is
+  the limit.
+
+**Treat seven as the count that two regex scans and one call-graph walk could find, not as the
+number of sites that exist.**
 
 ---
 
