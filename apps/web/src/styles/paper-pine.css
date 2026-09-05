@@ -25,9 +25,31 @@
  * first, and a second copy of the marigold is how a hospital ends up with two shades of "needs
  * attention".
  */
+/*
+ * ═══ FD-25 T0 — `.pp` JOINS THE LIST, AND IT WAS MISSING FOR TWO SHIPPED SCREENS ═══
+ *
+ * `.pp` is the scope for a paper-and-pine screen that lives INSIDE the app shell, as opposed to
+ * `.d1`, which owns the viewport. `desk-one.css` has carried `.pp` variants of every primitive
+ * since FD-23 — `.d1 .box, .pp .box`, `.d1 .pri, .pp .pri`, thirty of them — so the primitives
+ * were shared correctly. The PALETTE was not: this selector list is the only definition of
+ * `--paper`/`--ink`/`--line`/`--dim`/`--green`/`--gold` in the whole web app (`grep -rn -- '--paper:'
+ * apps/web/src` returns exactly this one hit), and `.pp` was never added to it.
+ *
+ * `.shell` is on the <header> element only (`router.tsx`), not on an ancestor of the outlet, so it
+ * does not cascade down to a screen. The consequence is that every `var(--green)`, `var(--dim)` and
+ * `var(--line)` inside a `.pp` subtree resolved to NOTHING — an unstyled border, transparent text
+ * on white. This is not a future risk: `/opd/appointments` and `/patients/:id` have both been live
+ * with it since FD-23.
+ *
+ * No vitest run could have caught it. jsdom does not compute CSS custom properties, so a screen
+ * with a colourless palette renders identically to a correct one in every assertion this repo can
+ * make. It is the FD-11 class exactly — green suites, wrong screen — and the only instrument that
+ * finds it is a browser.
+ */
 .d1,
 .lg,
 .dash,
+.pp,
 .shell {
   --paper: #f4f7f4;
   --card: #ffffff;

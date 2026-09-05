@@ -1,6 +1,7 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "../test-utils";
+import { parseRupees } from "../components/money-input";
 import { BillingCounter } from "./billing-counter";
 
 /**
@@ -15,6 +16,24 @@ const searchState = vi.hoisted(() => ({ current: {} as { encounterId?: string } 
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tanstack/react-router")>()),
   useSearch: () => searchState.current,
+}));
+
+/**
+ * ═══ THE PALETTE'S CONTEXT, SUPPLIED — the one clause of the digit guard no test could reach ═══
+ *
+ * `usePaletteOptional` returns `null` outside a `PaletteProvider` and this harness mounts none, so
+ * `palette?.isOpen === true` in the lane-key guard was dead in every row of this file: deleting the
+ * clause left the whole suite green while the behaviour it protects — an open palette owns the
+ * keyboard, and its result rows are `<button>`s that `isTypingTarget` does not cover — is real.
+ *
+ * Mounting the REAL provider is not the answer: opening it mounts `CommandPalette`, which wants a
+ * router, the search API and the ops mode. What the clause actually reads is the CONTEXT VALUE, so
+ * that is what is supplied here. `null` by default — the production shape for a screen mounted
+ * outside a provider — so every other test in this file runs exactly as it did.
+ */
+const paletteState = vi.hoisted(() => ({ current: null as { isOpen: boolean } | null }));
+vi.mock("../components/command-palette", () => ({
+  usePaletteOptional: () => paletteState.current,
 }));
 
 type Reply = { status: number; body: unknown };
@@ -97,6 +116,15 @@ const FEE_DRAFT = { tariffVersionId: "tv-1", intendedPayer: "self", lines: [pric
 const QUOTE_NEW = { encounterId: "enc-1", visitType: "new", free: false, feeServiceId: "svc-consult", draft: FEE_DRAFT };
 const QUOTE_REVISIT = { encounterId: "enc-2", visitType: "revisit", free: true, feeServiceId: null, draft: null };
 
+/*
+  The desk registered this visit to a panel. The server STILL PRICES IT AT FULL GROSS —
+  `apps/core/src/modules/billing/benefits-payer.test.ts`: "full gross — the panel rate is the
+  price" — so `intendedPayer` is a statement about WHO is billed and never about money arriving.
+  `QUOTE_NEW` carries no top-level `intendedPayer` at all, which is why the PANEL branch had
+  never once been rendered by this suite.
+*/
+const QUOTE_PANEL = { ...QUOTE_NEW, intendedPayer: "corporate" };
+
 const SERVICES = {
   items: [
     { id: "svc-consult", code: "OPD-CONS", name: "OPD consultation", category: "consultation", regulated: false, active: true },
@@ -152,9 +180,30 @@ const PRINT = {
 async function pickPatient(user: ReturnType<typeof userEvent.setup>): Promise<void> {
   await user.type(screen.getByLabelText("Search"), "98765");
   await user.click(await screen.findByRole("button", { name: /Asha Devi/ }));
-  // "Asha Devi" is also the picker's own result row, so the selection is asserted on the
-  // counter's OWN panel line rather than on the name alone.
-  expect(await screen.findByText(/Selected patient: Asha Devi/)).toBeInTheDocument();
+  /*
+    "Asha Devi" is also the picker's own result row, so the selection is asserted on the counter's
+    OWN rail rather than on the name alone.
+    FD-25 — by TESTID now, not by the sentence "Selected patient: …". That sentence was a developer
+    label the redesign removed: the rail's tag already says "Paying", so repeating "Selected
+    patient:" beside the name was the screen explaining itself to nobody. A testid says the same
+    thing to this test without pinning prose that a designer may legitimately change.
+  */
+  expect(await screen.findByTestId("paying-name")).toHaveTextContent("Asha Devi");
+}
+
+/**
+ * FD-25 backlog 3 — THE SUBMIT BUTTON IS NOW A GATE, so every click on it waits for the gate.
+ *
+ * The counter no longer offers to issue against a price it has not got: while the debounced
+ * preview is in flight (which it is, briefly, after EVERY edit to the encounter, the coupons or
+ * the slip) `payablePaise` is null and the button is disabled and reads "Pricing…". A test that
+ * clicked without waiting was racing a 250 ms timer, and this lane has already been bitten by
+ * unasserted wall-clock margins. `toBeEnabled` also strengthens each refusal test: the request was
+ * not sent even though the button was live.
+ */
+async function clickIssue(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await waitFor(() => { expect(screen.getByTestId("submit-invoice")).toBeEnabled(); });
+  await user.click(screen.getByTestId("submit-invoice"));
 }
 
 /** The two routes every write test needs before it can post anything. */
@@ -168,6 +217,7 @@ const BASE_ROUTES: Record<string, Handler> = {
 describe("BillingCounter", () => {
   beforeEach(() => {
     searchState.current = {};
+    paletteState.current = null;
   });
 
   afterEach(() => {
@@ -326,7 +376,7 @@ describe("BillingCounter", () => {
       });
     });
 
-    await user.click(screen.getByTestId("submit-invoice"));
+    await clickIssue(user);
     await waitFor(() => expect(bodiesOf("POST", "/api/billing/invoices")).toHaveLength(1));
     expect(bodiesOf("POST", "/api/billing/invoices")[0]).toMatchObject({
       couponCodes: ["DIWALI20", "STAFF5"],
@@ -405,7 +455,7 @@ describe("BillingCounter", () => {
     await waitFor(() => expect((screen.getByTestId("counter-referral") as HTMLInputElement).value).toBe("PTR-FROM-DESK"));
     await waitFor(() => expect(screen.getByTestId("preview-net")).toHaveTextContent("₹560.00"));
     await user.type(screen.getByLabelText("Amount", { selector: "#tender-amount-0" }), "560");
-    await user.click(screen.getByTestId("submit-invoice"));
+    await clickIssue(user);
 
     await waitFor(() => expect(bodiesOf("POST", "/api/billing/invoices")).toHaveLength(1));
     expect(bodiesOf("POST", "/api/billing/invoices")[0]).toMatchObject({ attributionCode: "PTR-FROM-DESK" });
@@ -434,8 +484,18 @@ describe("BillingCounter", () => {
     await user.clear(screen.getByTestId("counter-referral"));
     await waitFor(() => expect((screen.getByTestId("counter-referral") as HTMLInputElement).value).toBe(""));
 
+    /*
+      THE CLEARED SLIP RE-PRICES, and the write must wait for that preview rather than race its
+      250 ms debounce: once the request for the cleared body has been SENT the debounce has already
+      fired, so nothing further is pending and `clickIssue`'s gate is deterministic. It is also the
+      assertion this test was missing — the clearing travels on the PREVIEW as well as the invoice.
+    */
+    await waitFor(() =>
+      expect(bodiesOf("POST", "/api/billing/invoices/preview").at(-1)).not.toHaveProperty("attributionCode"),
+    );
+
     await user.type(screen.getByLabelText("Amount", { selector: "#tender-amount-0" }), "560");
-    await user.click(screen.getByTestId("submit-invoice"));
+    await clickIssue(user);
     await waitFor(() => expect(bodiesOf("POST", "/api/billing/invoices")).toHaveLength(1));
     expect(bodiesOf("POST", "/api/billing/invoices")[0]).not.toHaveProperty("attributionCode"); // THE KILL
   });
@@ -535,7 +595,7 @@ describe("BillingCounter", () => {
     await waitFor(() => expect(screen.getByTestId("preview-net")).toHaveTextContent("₹560.00"));
 
     await user.type(screen.getByLabelText("Amount", { selector: "#tender-amount-0" }), "560");
-    await user.click(screen.getByTestId("submit-invoice"));
+    await clickIssue(user);
 
     await waitFor(() => expect(callsTo("POST", "/api/billing/invoices")).toHaveLength(1));
     const first = bodiesOf("POST", "/api/billing/invoices")[0]!;
@@ -558,7 +618,7 @@ describe("BillingCounter", () => {
     expect(screen.getByTestId("counter-error-code")).toHaveTextContent("pan_required");
 
     await user.type(screen.getByLabelText("PAN"), "ABCDE1234F");
-    await user.click(screen.getByTestId("submit-invoice"));
+    await clickIssue(user);
 
     await waitFor(() => expect(callsTo("POST", "/api/billing/invoices")).toHaveLength(2));
     const second = bodiesOf("POST", "/api/billing/invoices")[1]!;
@@ -584,8 +644,10 @@ describe("BillingCounter", () => {
 
     await pickPatient(user);
     await screen.findByTestId("line-row-fee");
+    // the SERVER's figure has to be in hand before a write is offered at all (FD-25 backlog 3)
+    await waitFor(() => expect(screen.getByTestId("preview-net")).toHaveTextContent("₹560.00"));
     await user.type(screen.getByLabelText("Amount", { selector: "#tender-amount-0" }), "560");
-    await user.click(screen.getByTestId("submit-invoice"));
+    await clickIssue(user);
 
     await waitFor(() => expect(callsTo("POST", "/api/billing/invoices")).toHaveLength(1));
     expect(await screen.findByTestId("counter-error")).toHaveTextContent(
@@ -629,7 +691,7 @@ describe("BillingCounter", () => {
 
     // D2 step 3 / owner ruling 2: unsettled without a reason is refused BEFORE the request. The
     // button is not disabled, so "no request was sent" has exactly one cause.
-    await user.click(screen.getByTestId("submit-invoice"));
+    await clickIssue(user);
     await act(async () => {
       await Promise.resolve();
     });
@@ -637,7 +699,7 @@ describe("BillingCounter", () => {
     expect(screen.getByTestId("counter-error")).toHaveTextContent("A reason is required to extend credit");
 
     await user.type(screen.getByLabelText("Credit reason"), "camp patient, dues cleared Friday");
-    await user.click(screen.getByTestId("submit-invoice"));
+    await clickIssue(user);
 
     await waitFor(() => expect(callsTo("POST", "/api/billing/invoices")).toHaveLength(1));
     expect(bodiesOf("POST", "/api/billing/invoices")[0]!.credit).toEqual({ reason: "camp patient, dues cleared Friday" });
@@ -649,7 +711,7 @@ describe("BillingCounter", () => {
     expect(screen.getByTestId("counter-error")).toHaveTextContent("exceeds the per-invoice credit cap");
 
     await user.type(screen.getByLabelText("Approval id", { selector: "#counter-credit-approval" }), "ap-7");
-    await user.click(screen.getByTestId("submit-invoice"));
+    await clickIssue(user);
 
     await waitFor(() => expect(callsTo("POST", "/api/billing/invoices")).toHaveLength(2));
     expect(bodiesOf("POST", "/api/billing/invoices")[1]!.credit).toEqual({
@@ -676,7 +738,7 @@ describe("BillingCounter", () => {
 
     await user.type(screen.getByLabelText("Amount", { selector: "#tender-amount-0" }), "600");
     expect(screen.getByTestId("tender-state")).toHaveTextContent("Over by ₹40.00");
-    await user.click(screen.getByTestId("submit-invoice"));
+    await clickIssue(user);
 
     await waitFor(() => expect(callsTo("GET", "/api/billing/invoices/inv-1/print")).toHaveLength(1));
 
@@ -697,4 +759,623 @@ describe("BillingCounter", () => {
     await user.click(screen.getByRole("button", { name: "Print invoice" }));
     expect(printSpy).toHaveBeenCalledTimes(1);
   });
+
+  /* ══════════════════════════════════════════════════════════════════════════════════════════
+     FD-25 BACKLOG 3 — THE SCREEN MAY NOT STATE A MONEY FACT IT HAS NOT GOT
+
+     Two independent defects, one sentence: `/billing` derived "nothing to collect" from
+     `intendedPayer` (a registration INTENT) and rendered a FAILED preview as a ₹0 bill. Neither
+     had a single test in the tree — `QUOTE_NEW` has no top-level `intendedPayer`, so the PANEL
+     branch was never rendered, and `billing-counter.tsx` read no query error state at all.
+     ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+  it("FD-25 backlog 3: a FAILED preview is STATED, never a ₹0 bill — the counter refuses to issue at a price nobody has", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "POST /api/billing/invoices/preview": {
+        status: 503,
+        body: { statusCode: 503, code: "tariff_unavailable", message: "pricing is unavailable" },
+      },
+    });
+    renderWithProviders(<BillingCounter />);
+
+    // the fee line still seeds from the quote, so this is a real draft with a real line on it
+    await screen.findByTestId("line-row-fee");
+
+    // the failure is stated where the missing figure was, in the server's own code
+    const banner = await screen.findByTestId("preview-error");
+    expect(banner).toHaveTextContent("price could not be fetched");
+    expect(banner).toHaveTextContent("tariff_unavailable");
+
+    // and nothing on the screen offers to issue at a figure nobody has
+    const submit = screen.getByTestId("submit-invoice");
+    expect(submit).toHaveTextContent("Price unavailable");
+    expect(submit).toBeDisabled();
+    expect(callsTo("POST", "/api/billing/invoices")).toHaveLength(0);
+
+    /*
+      FD-25 CLOSE REVIEW — THE REST OF THE RAIL, which this test asserted nothing about. Every
+      `payablePaise === null` branch added for backlog 3 except the submit button was load-bearing
+      prose: a refactor that dropped the null half of the lanes' `disabled` (leaving `=== 0`) left
+      the whole file green, and re-opened the case the fix was written for.
+    */
+    expect(screen.getByTestId("lane-cash")).toBeDisabled();
+    expect(screen.getByTestId("lane-cash")).toHaveTextContent("—");
+    fireEvent.keyDown(window, { key: "1" });
+    expect(screen.getByTestId("tender-sum")).toHaveTextContent("₹0.00");
+
+    /*
+      AND THE TENDER FOOTER, which is the one place `null` was still spent as a ₹0. Twelve lines
+      under a red "the price could not be fetched" the cashier read "Payable: ₹0.00" beside a GREEN
+      "Exact" pill — the settled verdict — on a bill nobody has priced.
+    */
+    expect(screen.getByTestId("tender-payable")).toHaveTextContent("—");
+    expect(screen.queryByTestId("tender-state")).toBeNull();
+  });
+
+  it("FD-25 backlog 3: a PANEL bill is UNPAID and says WHAT IS STILL PAYABLE — the payer intent never overwrites the priced net", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "GET /api/billing/visits/enc-1/fee-quote": { status: 200, body: QUOTE_PANEL },
+    });
+    renderWithProviders(<BillingCounter />);
+
+    await waitFor(() => expect(screen.getByTestId("preview-net")).toHaveTextContent("₹560.00"));
+
+    // TWO AXES, TWO MARKS. The payer fact rides BESIDE the money fact instead of erasing it —
+    // and `stamp pd` is the PAID class, which this screen used to paint on an unpaid bill.
+    const stamp = screen.getByTestId("token-stamp");
+    expect(stamp).toHaveTextContent("UNPAID");
+    expect(stamp).toHaveClass("stamp", "un");
+    expect(screen.getByTestId("payer-stamp")).toHaveTextContent("PANEL");
+
+    // THE AMOUNT, never an intermediate field: the panel card states the rupees the server priced.
+    expect(screen.getByTestId("panel-still-payable")).toHaveTextContent("₹560.00");
+    expect(screen.getByTestId("panel-card")).not.toHaveTextContent("nothing to collect");
+  });
+
+  /**
+   * COMPANION, NOT A REVERT PAIR — and it is labelled as one. It passes against the unfixed code
+   * on everything it asserts, and exists so the fix cannot be "delete the green line": the claim
+   * is NARROWED to the priced figure, not removed.
+   */
+  it("FD-25 backlog 3 (companion): a panel bill the server prices at ZERO still reads 'nothing to collect'", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    const zeroTotals = {
+      ...FEE_TOTALS,
+      grossPaise: 0, taxableBasePaise: 0, cgstPaise: 0, sgstPaise: 0,
+      taxableTurnoverPaise: 0, taxSummary: [], rawTotalPaise: 0, netPayablePaise: 0,
+    };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "GET /api/billing/visits/enc-1/fee-quote": { status: 200, body: QUOTE_PANEL },
+      "POST /api/billing/invoices/preview": {
+        status: 200,
+        body: { ...FEE_DRAFT, intendedPayer: "corporate", totals: zeroTotals },
+      },
+    });
+    renderWithProviders(<BillingCounter />);
+
+    await waitFor(() => expect(screen.getByTestId("preview-net")).toHaveTextContent("₹0.00"));
+    expect(screen.getByTestId("panel-card")).toHaveTextContent("nothing to collect");
+    expect(screen.queryByTestId("panel-still-payable")).toBeNull();
+    expect(screen.getByTestId("submit-invoice")).toHaveTextContent("Issue — nothing to collect");
+  });
+
+  /**
+   * THE BRANCH THE NARROWING COULD HAVE SILENTLY DELETED. A FREE panel revisit seeds no fee line
+   * (`quote.free` returns early), so the preview query never runs and `totals` is null FOREVER —
+   * a gate written only on the priced figure would print nothing at all about collection on the
+   * one visit where "nothing to collect" is unarguably true. `quote.free` is the server's own
+   * nothing-to-collect fact and the gate reads it too.
+   */
+  it("FD-25 backlog 3: a FREE panel visit keeps 'nothing to collect' and is stamped ₹0, not UNPAID", async () => {
+    searchState.current = { encounterId: "enc-2" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "GET /api/billing/visits/enc-2/fee-quote": {
+        status: 200,
+        body: { ...QUOTE_REVISIT, intendedPayer: "corporate" },
+      },
+    });
+    renderWithProviders(<BillingCounter />);
+
+    await screen.findByTestId("fee-free");
+    expect(screen.getByTestId("panel-card")).toHaveTextContent("nothing to collect");
+    expect(screen.queryByTestId("panel-still-payable")).toBeNull();
+    // the money stamp is not UNPAID on a visit the server has ruled costs nothing
+    expect(screen.getByTestId("token-stamp")).toHaveTextContent("₹0.00");
+  });
+
+  /* ══════════════════════════════════════════════════════════════════════════════════════════
+     FD-25 BACKLOG 2 — THE DRAWER IS COUNTED ON THE POSTED TENDER
+
+     `expectedCashPaise` at close is `openingFloat + Σ cash tenders − Σ cash vouchers`
+     (`sessions.ts`), so the number this screen posts IS the number the cashier is held to. The
+     lane armed the full payable into row state and the amount box showed nothing, so a ₹300
+     payment could leave as ₹560 with no figure on screen to contradict it.
+     ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+  it("FD-25 backlog 2: the counter posts exactly the amount its AMOUNT FIELD shows — ₹560 is never recorded against a ₹300 drawer", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "POST /api/billing/invoices": { status: 201, body: ISSUED },
+      "GET /api/billing/invoices/inv-1/print": { status: 200, body: PRINT },
+    });
+    renderWithProviders(<BillingCounter />);
+    // REAL timers throughout: `takeLane`'s `nonce: Date.now()` is frozen under fake ones, and a
+    // frozen nonce is swallowed by `TenderEditor`'s `lastLane` guard.
+    const user = userEvent.setup();
+    await pickPatient(user);
+    await screen.findByTestId("line-row-fee");
+    await waitFor(() => expect(screen.getByTestId("preview-net")).toHaveTextContent("₹560.00"));
+
+    const amount = (): HTMLInputElement =>
+      screen.getByLabelText("Amount", { selector: "#tender-amount-0" }) as HTMLInputElement;
+
+    // the cashier types what the patient actually handed over, THEN presses the lane to record
+    // HOW the money came — which is what the screen's own hint ("1 cash, 2 UPI, 3 card") trains
+    await user.type(amount(), "300");
+    expect(screen.getByTestId("tender-sum")).toHaveTextContent("₹300.00");
+
+    await user.click(screen.getByTestId("lane-cash"));
+
+    // read the box BEFORE issuing: the printed receipt REPLACES this screen, field and all
+    const shown = parseRupees(amount().value);
+    expect(amount()).toHaveValue("560.00");
+
+    await clickIssue(user);
+    await waitFor(() => expect(callsTo("POST", "/api/billing/invoices")).toHaveLength(1));
+    const body = bodiesOf("POST", "/api/billing/invoices")[0]!;
+    const posted = (body.receipt as { tenders: { mode: string; amountPaise: number }[] }).tenders;
+
+    // THE AMOUNT, both ways. The posted body is IDENTICAL fixed and unfixed — 56000 either way —
+    // so this equality against what the box showed is the only assertion here that can tell them
+    // apart, and it is the one the drawer count depends on.
+    expect(shown).toEqual({ ok: true, paise: posted[0]!.amountPaise });
+    expect(posted).toEqual([{ mode: "cash", amountPaise: 56000 }]);
+    expect(nonIntegerNumbers(body)).toEqual([]);
+  });
+
+  /* ══════════════════════════════════════════════════════════════════════════════════════════
+     FD-25 BACKLOG 6 — A KEYCAP THAT LIES IS WORSE THAN NONE
+
+     `/billing` drew `1` `2` `3` as `.kb` keycaps on its three lane buttons and printed "the keys
+     are the lanes — 1 cash, 2 UPI, 3 card" in English AND Hindi, and bound nothing: it was the one
+     screen missing from the census of window keydown listeners. Desk One answers the same trio at
+     its own bill stage, so a cashier moving between the two seats learned the key works on one
+     screen and is broken on the other. `shortcut-legend.test.ts` cannot see this class — it reads
+     the `shortcuts.*` namespace only — which is why a green suite missed it.
+     ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+  const LANES = [
+    { digit: "1", testId: "lane-cash", mode: "cash" },
+    { digit: "2", testId: "lane-upi", mode: "upi" },
+    { digit: "3", testId: "lane-card", mode: "card" },
+  ] as const;
+  const modeNow = (): string =>
+    (screen.getByLabelText("Mode", { selector: "#tender-mode-0" }) as HTMLSelectElement).value;
+
+  /**
+   * ONE `it` PER LANE, not one loop over three mounts: each iteration awaits a 250 ms debounced
+   * preview and this suite has a shared 5 s per-test budget it has been close to before.
+   *
+   * HONESTLY HALF-BLIND ON LANE 1 — cash IS the editor's default mode, so that iteration cannot
+   * tell a bound key from a dead one. The test below it, which reads the SUM, is what covers `1`.
+   */
+  it.each(LANES)(
+    "FD-25 backlog 6: the bare digit a lane DRAWS is the digit that seats it — $digit → $mode",
+    async (lane) => {
+      searchState.current = { encounterId: "enc-1" };
+      mockRoutes(BASE_ROUTES);
+      renderWithProviders(<BillingCounter />);
+      await screen.findByTestId("line-row-fee");
+      await waitFor(() => expect(screen.getByTestId("preview-net")).toHaveTextContent("₹560.00"));
+
+      // the keycap this button DRAWS is the promise the key has to keep — asserted in the SAME
+      // iteration as the behaviour, so re-ordering EITHER the caps or the bindings goes red
+      expect(screen.getByTestId(lane.testId).querySelector(".kb")?.textContent).toBe(lane.digit);
+
+      fireEvent.keyDown(window, { key: lane.digit });
+
+      await waitFor(() => { expect(modeNow()).toBe(lane.mode); });
+    },
+  );
+
+  /** Cash needs no reference, so the seeded row is a COMPLETE tender and the arithmetic is visible. */
+  it("FD-25 backlog 6: `1` seats the EXACT payable, not an empty cash row", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes(BASE_ROUTES);
+    renderWithProviders(<BillingCounter />);
+    await screen.findByTestId("line-row-fee");
+    await waitFor(() => expect(screen.getByTestId("preview-net")).toHaveTextContent("₹560.00"));
+    expect(screen.getByTestId("tender-sum")).toHaveTextContent("₹0.00");
+
+    fireEvent.keyDown(window, { key: "1" });
+
+    await waitFor(() => expect(screen.getByTestId("tender-sum")).toHaveTextContent("₹560.00"));
+    expect(screen.getByTestId("tender-state")).toHaveTextContent("Exact");
+    // and the seeded figure is IN the box, per backlog 2 — the two fixes meet here
+    expect(screen.getByLabelText("Amount", { selector: "#tender-amount-0" })).toHaveValue("560.00");
+  });
+
+  it("FD-25 backlog 6: a digit is a VALUE inside a field or a select, and Ctrl+3 belongs to the browser", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes(BASE_ROUTES);
+    renderWithProviders(<BillingCounter />);
+    await screen.findByTestId("line-row-fee");
+    await waitFor(() => expect(screen.getByTestId("preview-net")).toHaveTextContent("₹560.00"));
+
+    // (a) a `3` typed INTO a field is a value. The event still reaches window; the guard stops it.
+    fireEvent.keyDown(screen.getByLabelText("Encounter"), { key: "3" });
+    expect(modeNow()).toBe("cash");
+
+    // (b) and a digit on the tender MODE select is the browser's option type-ahead. A lane seed
+    //     REPLACES the whole row array, so a stray digit there would destroy a mixed tender under
+    //     construction — ₹200 cash + ₹360 UPI with its reference typed, gone.
+    fireEvent.keyDown(screen.getByLabelText("Mode", { selector: "#tender-mode-0" }), { key: "3" });
+    expect(modeNow()).toBe("cash");
+
+    // (c) Ctrl+3 switches browser tabs — `browserSafeKey`'s rule, honoured on this seat too
+    fireEvent.keyDown(window, { key: "3", ctrlKey: true });
+    expect(modeNow()).toBe("cash");
+
+    /*
+      (d) THE CONTROL, and the only line above that can go red if the binding is reverted.
+      (a), (b) and (c) are ABSENCE assertions: they pass against code that binds nothing at all.
+      Without this line the whole test is green on the unfixed screen and proves nothing. Each of
+      (a)/(b)/(c) is instead proved by a MUTANT that deletes its clause from the guard.
+    */
+    fireEvent.keyDown(window, { key: "3" });
+    await waitFor(() => { expect(modeNow()).toBe("card"); });
+  });
+
+  /**
+   * THE KEY IS NEVER STRONGER THAN ITS BUTTON. On a bill the server prices at ₹0 there is nothing
+   * to arm, the three lane buttons are dark — and `takeLane` would happily seed a ₹0 row, so this
+   * is the guard's own case rather than one another guard already covers.
+   */
+  it("FD-25 backlog 6: no key seats a lane its own button refuses — a ₹0 bill has nothing to arm", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    const zeroTotals = {
+      ...FEE_TOTALS,
+      grossPaise: 0, taxableBasePaise: 0, cgstPaise: 0, sgstPaise: 0,
+      taxableTurnoverPaise: 0, taxSummary: [], rawTotalPaise: 0, netPayablePaise: 0,
+    };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "POST /api/billing/invoices/preview": { status: 200, body: { ...FEE_DRAFT, totals: zeroTotals } },
+    });
+    renderWithProviders(<BillingCounter />);
+    await screen.findByTestId("line-row-fee");
+    await waitFor(() => expect(screen.getByTestId("preview-net")).toHaveTextContent("₹0.00"));
+
+    expect(screen.getByTestId("lane-upi")).toBeDisabled();
+    fireEvent.keyDown(window, { key: "2" });
+    expect(modeNow()).toBe("cash");
+    expect(screen.getByTestId("tender-sum")).toHaveTextContent("₹0.00");
+  });
+  /* ══════════════════════════════════════════════════════════════════════════════════════════
+     FD-25 CLOSE REVIEW — THE PAYABLE IS UNKNOWN UNLESS THE PREVIEW BOTH SUCCEEDED AND IS CURRENT
+
+     Backlog 3 made the counter refuse to issue against a price it has not got, and closed exactly
+     one of the three ways it can not have one: the FIRST fetch failing. Two were left open, and
+     both put a live "Issue" button under a red alert:
+
+       · a failed REFETCH — TanStack Query keeps `data` for a key when a background fetch of that
+         key fails (query-core's reducer: "flag existing data as invalidated if we get a background
+         error"), so `isError === true` and `data !== undefined` coexist, and the screen read them
+         as two independent facts;
+       · a preview that succeeded for a draft the cashier has since EDITED — `previewKey` is
+         debounced by 250 ms while the request body is built from the LIVE inputs.
+
+     Both are now one definition — `priced`, the current successful draft or nothing — so the
+     figure, the lanes, the tender footer, the surplus banner and the write agree or none of them
+     speaks.
+     ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+  it("FD-25 close review: a failed REFETCH takes the figure with it — a stale ₹560 is never left under the red alert", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "POST /api/billing/invoices/preview": (_init, callIndex) =>
+        (callIndex === 0
+          ? { status: 200, body: FEE_DRAFT }
+          : { status: 503, body: { statusCode: 503, code: "tariff_unavailable", message: "pricing is unavailable" } }),
+      "POST /api/billing/invoices": { status: 201, body: ISSUED },
+    });
+    renderWithProviders(<BillingCounter />);
+
+    await screen.findByTestId("line-row-fee");
+    await waitFor(() => expect(screen.getByTestId("preview-net")).toHaveTextContent("₹560.00"));
+
+    /*
+      The cashier alt-tabs to the queue screen and comes back — or the desk's wifi drops and
+      reconnects. React Query refetches the SAME preview key on focus (`refetchOnWindowFocus` is
+      left at its default), and the pricing route is down. `visibilitychange` on window is the
+      event `focusManager` actually listens to.
+    */
+    fireEvent(window, new Event("visibilitychange"));
+
+    await screen.findByTestId("preview-error");
+
+    // THE KILL: the ₹560 goes with the fetch that failed. Unfixed, it is still rendered in 22px
+    // bold immediately above the alert telling the cashier not to say anything is due.
+    await waitFor(() => { expect(screen.queryByTestId("preview-net")).toBeNull(); });
+
+    const submit = screen.getByTestId("submit-invoice");
+    expect(submit).toHaveTextContent("Price unavailable");
+    expect(submit).toBeDisabled();
+    fireEvent.click(submit);                       // the only button on the screen, pressed
+    expect(callsTo("POST", "/api/billing/invoices")).toHaveLength(0);
+
+    // and the rest of the rail agrees rather than staying armed at the stale figure
+    expect(screen.getByTestId("lane-cash")).toBeDisabled();
+    fireEvent.keyDown(window, { key: "1" });
+    expect(screen.getByTestId("tender-sum")).toHaveTextContent("₹0.00");
+    expect(screen.getByTestId("tender-payable")).toHaveTextContent("—");
+  });
+
+  /**
+   * "Price unavailable — RETRY before issuing" is what the button says, and there was no control
+   * on the screen that retries: the preview query is `retry: false` and polls nothing, so the only
+   * way out was to edit the bill. A promise in the copy with no control behind it is the
+   * keycap-that-lies rule wearing prose.
+   */
+  it("FD-25 close review: the price-failure box carries the RETRY its own copy promises", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "POST /api/billing/invoices/preview": (_init, callIndex) =>
+        (callIndex === 0
+          ? { status: 503, body: { statusCode: 503, code: "tariff_unavailable", message: "pricing is unavailable" } }
+          : { status: 200, body: FEE_DRAFT }),
+    });
+    renderWithProviders(<BillingCounter />);
+    const user = userEvent.setup();
+
+    await screen.findByTestId("line-row-fee");
+    await screen.findByTestId("preview-error");
+    expect(screen.getByTestId("submit-invoice")).toBeDisabled();
+
+    await user.click(screen.getByTestId("preview-retry"));
+
+    await waitFor(() => expect(screen.getByTestId("preview-net")).toHaveTextContent("₹560.00"));
+    expect(screen.queryByTestId("preview-error")).toBeNull();
+    expect(screen.getByTestId("submit-invoice")).toBeEnabled();
+  });
+
+  /**
+   * ═══ THE QUOTED DRAFT AND THE POSTED DRAFT ARE ONE DRAFT ═══
+   *
+   * Every money figure on this screen comes from the DEBOUNCED preview; the request body is built
+   * from the LIVE inputs. Inside the 250 ms trailing window they are two different bills, and the
+   * button was enabled across it reading the old one's amount. A coupon typed and issued inside
+   * that window posts `couponCodes` the screen never priced: the server prices ₹448, the cashier
+   * has taken the ₹560 the lane armed, and the ₹112 is banked as an advance the pre-write surplus
+   * banner never warned about — because it compared the tender against the STALE payable.
+   */
+  it("FD-25 close review: the invoice is priced on the draft the cashier is looking at — a coupon typed inside the debounce disarms the write", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    const couponTotals = {
+      ...FEE_TOTALS,
+      grossPaise: 50000, discountPaise: 10000, taxableBasePaise: 40000,
+      cgstPaise: 2400, sgstPaise: 2400, rawTotalPaise: 44800, netPayablePaise: 44800,
+    };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "POST /api/billing/invoices/preview": (init) => {
+        const body = JSON.parse(typeof init?.body === "string" ? init.body : "{}") as { couponCodes?: string[] };
+        return body.couponCodes === undefined
+          ? { status: 200, body: FEE_DRAFT }
+          : { status: 200, body: { ...FEE_DRAFT, totals: couponTotals } };
+      },
+      "POST /api/billing/invoices": { status: 201, body: ISSUED },
+      "GET /api/billing/invoices/inv-1/print": { status: 200, body: PRINT },
+    });
+    renderWithProviders(<BillingCounter />);
+    const user = userEvent.setup();
+
+    await pickPatient(user);
+    await screen.findByTestId("line-row-fee");
+    await waitFor(() => expect(screen.getByTestId("preview-net")).toHaveTextContent("₹560.00"));
+
+    // ₹560 quoted, ₹560 armed in the cash lane, ₹560 in the cashier's hand
+    fireEvent.keyDown(window, { key: "1" });
+    await waitFor(() => expect(screen.getByTestId("tender-sum")).toHaveTextContent("₹560.00"));
+
+    /*
+      The patient now produces a coupon. `fireEvent.change` is SYNCHRONOUS — no await runs between
+      it and the assertions below, so the 250 ms trailing timer provably has not fired and this is
+      the debounce window itself rather than a race against it.
+    */
+    fireEvent.change(screen.getByTestId("counter-coupons"), { target: { value: "DIWALI20" } });
+
+    // THE KILL: unfixed, the button still reads "Take ₹560.00" and is live over a draft that is
+    // no longer the one that was priced.
+    const submit = screen.getByTestId("submit-invoice");
+    expect(submit).toHaveTextContent("Pricing…");
+    expect(submit).toBeDisabled();
+    fireEvent.click(submit);
+    expect(callsTo("POST", "/api/billing/invoices")).toHaveLength(0);
+
+    // once the SAME draft is priced, the screen states the ₹112 the cashier is still holding —
+    // BEFORE the write, which is the whole point of the pre-write banner
+    await waitFor(() => expect(screen.getByTestId("preview-net")).toHaveTextContent("₹448.00"));
+    expect(screen.getByTestId("surplus-banner")).toHaveTextContent("₹112.00");
+
+    await clickIssue(user);
+    await waitFor(() => expect(callsTo("POST", "/api/billing/invoices")).toHaveLength(1));
+
+    // and the terms the invoice is priced on are the terms the preview was priced on, field for field
+    const quoted = bodiesOf("POST", "/api/billing/invoices/preview").at(-1)!;
+    const posted = bodiesOf("POST", "/api/billing/invoices")[0]!;
+    expect(posted.couponCodes).toEqual(quoted.couponCodes);
+    expect(posted.lines).toEqual(quoted.lines);
+    expect(posted.encounterId).toEqual(quoted.encounterId);
+  });
+
+  /**
+   * ═══ A BARE DIGIT MAY NOT DESTROY WHAT THE CASHIER HAS ENTERED ═══
+   *
+   * A lane seed REPLACES the whole row array, and the guard excluded only INPUT / TEXTAREA /
+   * SELECT / contentEditable. Chromium focuses a `<button>` when it is clicked, so the instant
+   * after "Add tender" — the button you must press to build a mixed tender at all — focus sits on
+   * an element the guard does not cover and every bare digit is live. The event's target is not
+   * what saves it here: neither `window` (this test) nor a `<button>` (the browser) is a typing
+   * target, so the two are the same case.
+   */
+  it("FD-25 close review: a bare digit never collapses a mixed tender under construction", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes(BASE_ROUTES);
+    renderWithProviders(<BillingCounter />);
+    const user = userEvent.setup();
+
+    await screen.findByTestId("line-row-fee");
+    await waitFor(() => expect(screen.getByTestId("preview-net")).toHaveTextContent("₹560.00"));
+
+    // ₹200 in cash, and the second row opened for the ₹360 on UPI
+    await user.type(screen.getByLabelText("Amount", { selector: "#tender-amount-0" }), "200");
+    const add = screen.getByRole("button", { name: "Add tender" });
+    await user.click(add);
+    expect(document.activeElement).toBe(add);           // the precondition, stated rather than assumed
+    expect(screen.getByTestId("tender-row-1")).toBeInTheDocument();
+
+    // following the hint printed above the lanes — "2 UPI" — she presses 2 for the new row's mode
+    fireEvent.keyDown(window, { key: "2" });
+
+    // THE KILL: unfixed, both rows are replaced by ONE UPI row for the full ₹560, the ₹200 of cash
+    // is gone from the receipt and `expectedCashPaise` at close is ₹200 short of the notes in hand.
+    expect(screen.getByTestId("tender-row-1")).toBeInTheDocument();
+    // the AMOUNT, format-independently: the box still holds the ₹200 that was actually handed over
+    // (`MoneyInput` keeps the typed text as typed, so "200" and "200.00" are the same money)
+    const box = screen.getByLabelText("Amount", { selector: "#tender-amount-0" }) as HTMLInputElement;
+    expect(parseRupees(box.value)).toEqual({ ok: true, paise: 20000 });
+    expect(screen.getByTestId("tender-sum")).toHaveTextContent("₹200.00");
+    expect(modeNow()).toBe("cash");
+  });
+
+  /**
+   * The digit stays a FAST PATH for an empty editor — refusing it once there is something to
+   * destroy must not turn the three keycaps into decoration. This is the control for the test
+   * above, and it is also why the guard reads "has the cashier entered anything" rather than
+   * "is a lane already armed": a lane press is the editor's own doing and may be corrected by
+   * another lane press.
+   */
+  it("FD-25 close review: the lane digits stay live over an untouched editor, and over a row a lane itself seeded", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes(BASE_ROUTES);
+    renderWithProviders(<BillingCounter />);
+
+    await screen.findByTestId("line-row-fee");
+    await waitFor(() => expect(screen.getByTestId("preview-net")).toHaveTextContent("₹560.00"));
+
+    fireEvent.keyDown(window, { key: "1" });
+    await waitFor(() => expect(screen.getByTestId("tender-sum")).toHaveTextContent("₹560.00"));
+
+    // pressed 1 by mistake, corrects to UPI: the row the lane seeded is not the cashier's work
+    fireEvent.keyDown(window, { key: "2" });
+    await waitFor(() => { expect(modeNow()).toBe("upi"); });
+  });
+
+  /**
+   * The keydown effect is declared ABOVE the `issued !== null` early return, so hooks mount it for
+   * the receipt screen too — while the doc comment on it claimed the opposite ("this screen is
+   * REPLACED by the printed receipt, so no lane key can survive the write") as the reason no extra
+   * guard was needed. A stray digit while the slip prints re-arms a lane for a bill that is already
+   * written and drops a line into the log dated after it, which then rides into the next patient's
+   * dock — the log is not cleared by "Next bill".
+   */
+  it("FD-25 close review: no lane key survives the write — the receipt screen claims no digit", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "POST /api/billing/invoices": { status: 201, body: ISSUED },
+      "GET /api/billing/invoices/inv-1/print": { status: 200, body: PRINT },
+    });
+    renderWithProviders(<BillingCounter />);
+    const user = userEvent.setup();
+
+    await pickPatient(user);
+    await screen.findByTestId("line-row-fee");
+    await waitFor(() => expect(screen.getByTestId("preview-net")).toHaveTextContent("₹560.00"));
+
+    // typed, not laned: the log is EMPTY at the write, so any lane line found afterwards is this
+    // keypress and nothing else
+    await user.type(screen.getByLabelText("Amount", { selector: "#tender-amount-0" }), "560");
+    await clickIssue(user);
+    await screen.findByTestId("issued-invoice-no");
+
+    // hands back on the keyboard while the slip prints
+    fireEvent.keyDown(window, { key: "1" });
+
+    await user.click(screen.getByRole("button", { name: "Next bill" }));
+    expect(screen.getByTestId("agent-ticker")).not.toHaveTextContent("lane ·");
+  });
+
+  /**
+   * A panel bill the server prices at ₹0 is the one case where an over-tender is PURE cashier
+   * error, and it was the one case with no warning: the banner was gated on `payablePaise > 0`.
+   * The lanes are dark at ₹0 but the amount box is hand-editable, `toWire` emits any positive
+   * amount, and the server banks it as `unallocatedPaise` — announced only AFTER the write, on a
+   * screen the cashier is already past.
+   */
+  it("FD-25 close review: an over-tender on a ₹0 bill warns BEFORE the write", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    const zeroTotals = {
+      ...FEE_TOTALS,
+      grossPaise: 0, taxableBasePaise: 0, cgstPaise: 0, sgstPaise: 0,
+      taxableTurnoverPaise: 0, taxSummary: [], rawTotalPaise: 0, netPayablePaise: 0,
+    };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "POST /api/billing/invoices/preview": { status: 200, body: { ...FEE_DRAFT, totals: zeroTotals } },
+    });
+    renderWithProviders(<BillingCounter />);
+    const user = userEvent.setup();
+
+    await screen.findByTestId("line-row-fee");
+    await waitFor(() => expect(screen.getByTestId("preview-net")).toHaveTextContent("₹0.00"));
+
+    await user.type(screen.getByLabelText("Amount", { selector: "#tender-amount-0" }), "560");
+
+    expect(screen.getByTestId("surplus-banner")).toHaveTextContent("₹560.00");
+  });
+
+  /**
+   * The palette clause of the digit guard, exercised at last — see `paletteState` at the top of
+   * this file for why the context is supplied rather than the provider mounted. The palette's
+   * result rows are `<button>`/`<li>` elements, so `isTypingTarget` does not cover them: arrowing
+   * down the list and typing a `3` to filter would seat a card lane behind the open overlay and
+   * destroy a mixed tender with nothing on screen naming what happened.
+   */
+  it("FD-25 close review: an open command palette owns the keyboard — the lane digits are not live behind it", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    paletteState.current = { isOpen: true };
+    mockRoutes(BASE_ROUTES);
+    renderWithProviders(<BillingCounter />);
+
+    await screen.findByTestId("line-row-fee");
+    await waitFor(() => expect(screen.getByTestId("preview-net")).toHaveTextContent("₹560.00"));
+
+    fireEvent.keyDown(window, { key: "3" });
+    expect(modeNow()).toBe("cash");
+    expect(screen.getByTestId("tender-sum")).toHaveTextContent("₹0.00");
+
+    /*
+      THE CONTROL, and it is what makes the leg above mean anything: an absence assertion passes
+      against a screen that binds no digit at all. The palette closes and the SAME key is live.
+      The credit-reason box is typed into only to force the re-render that lets the screen read the
+      new context — it is not part of the previewed draft, so the payable does not move.
+    */
+    paletteState.current = null;
+    fireEvent.change(document.querySelector("#counter-credit-reason")!, { target: { value: "x" } });
+
+    fireEvent.keyDown(window, { key: "3" });
+    await waitFor(() => { expect(modeNow()).toBe("card"); });
+  });
+
 });

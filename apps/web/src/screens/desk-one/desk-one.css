@@ -93,6 +93,33 @@
 }
 .d1 .in:focus, .pp .in:focus { border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
 
+/*
+  ═══ FD-25 — THE SHARED FORM KIT, WEARING THIS SYSTEM WITHOUT BEING REWRITTEN ═══
+
+  `components/form-kit.tsx` paints its own fields in Tailwind and is imported by EIGHT screens, so
+  the FD-25 build spec is explicit that it must not be restyled: changing it changes ops-mode,
+  ops-downtime-kit, change-password and patient-detail, none of which are in this wave.
+
+  But the four back-office seats mount it inside `.pp`, and a screen whose chrome is paper-and-pine
+  around fields that are visibly not is the exact "two type systems in one column" seam the owner
+  has called out three times. The resolution is scope rather than surgery: a field inside a `.pp`
+  screen gets `.in`'s geometry here, and a field anywhere else is untouched. Eight screens keep the
+  fields they have; four gain the ones they should have had.
+
+  `:not(.in)` so a field that already carries the class is not fighting two rules with equal say,
+  and the checkable inputs are excluded by type — a 40px-tall checkbox is not a checkbox.
+*/
+.pp input:not(.in):not([type="checkbox"]):not([type="radio"]),
+.pp select:not(.in),
+.pp textarea:not(.in) {
+  height: 40px; width: 100%; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--card); padding: 0 12px; font-size: 14px;
+}
+.pp textarea:not(.in) { height: auto; padding: 9px 12px; }
+.pp input:not(.in):not([type="checkbox"]):not([type="radio"]):focus,
+.pp select:not(.in):focus,
+.pp textarea:not(.in):focus { border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+
 /* ── pills and stamps ── */
 .d1 .pill, .pp .pill {
   display: inline-flex; align-items: center; gap: 6px; height: 23px; padding: 0 9px; border-radius: 4px;
@@ -214,10 +241,28 @@
  * `.mo` deliberately does NOT change, here as on the sign-in screen: it is worn by UHIDs, money,
  * tokens and times, which are Latin and digits, and a clerk compares those character by character.
  */
-.d1[data-lang="hi"], .pp[data-lang="hi"] {
+/*
+ * ═══ FD-25 — AND THE `<html lang>` SELECTOR, WHICH IS WHY THIS FIX NOW REACHES DIALOGS ═══
+ *
+ * An asymmetry scan over FD-25's own work found the FOURTH copy of this defect. Every screen mounts
+ * `.pp` through `components/paper-screen.tsx`, which stamps `data-lang` — that is the whole reason
+ * that component exists. But nine `<DialogContent className="pp">` mounts in `opd-appointments.tsx`
+ * and `patient-detail.tsx` carry the class WITHOUT the attribute, because a dialog portals to
+ * `document.body` and so needs its own `.pp` scope to reach the primitives at all.
+ *
+ * So a Hindi clerk got the Devanagari fix on every screen and lost it the moment a dialog opened —
+ * the labels inside reverting to a mono face with no Devanagari coverage, uppercased, at .14em.
+ *
+ * Adding the attribute to nine call sites would fix nine call sites. `html[lang="hi"]` fixes the
+ * class: `lib/i18n.ts:29` already stamps the document element on every language change, so any `.pp`
+ * subtree anywhere in the document — portalled, nested, or not yet written — is now covered by one
+ * definition. The `[data-lang]` selectors stay beside it: `.d1` and `.lg` set their own, and a
+ * component that stamps its own attribute must keep winning over the document's.
+ */
+.d1[data-lang="hi"], .pp[data-lang="hi"], html[lang="hi"] .pp {
   font-family: "IBM Plex Sans Devanagari", "Nirmala UI", Mangal, "IBM Plex Sans", sans-serif;
 }
-.d1[data-lang="hi"] .tag, .pp[data-lang="hi"] .tag {
+.d1[data-lang="hi"] .tag, .pp[data-lang="hi"] .tag, html[lang="hi"] .pp .tag {
   font-family: "IBM Plex Sans Devanagari", "Nirmala UI", Mangal, sans-serif;
   text-transform: none;
   letter-spacing: 0;

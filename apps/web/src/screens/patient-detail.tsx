@@ -13,6 +13,7 @@ import { FormKit, TextField, SelectField, CheckboxField } from "../components/fo
 import { SubmitButton } from "../components/submit-button";
 import { PatientPhoto } from "../components/patient-photo";
 import { QrCard, type QrCardData } from "../components/qr-card";
+import { PaperScreen } from "../components/paper-screen";
 import { usePatientInHand } from "../lib/patient-in-hand";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -854,7 +855,7 @@ export function PatientDetail(): React.ReactElement {
    * redesign that quietly changed behaviour would be the worst outcome.
    */
   return (
-    <div className="pp" style={{ display: "flex", flexDirection: "column", minHeight: "calc(100vh - 96px)" }}>
+    <PaperScreen>
       <div style={{ flexGrow: 1, display: "flex", gap: 18, padding: "20px 24px", alignItems: "flex-start" }}>
         {/* WHO THIS IS — the column that does not change as the clerk works down the record. */}
         <aside style={{ width: 320, flexShrink: 0, display: "flex", flexDirection: "column", gap: 13 }}>
@@ -880,6 +881,6 @@ export function PatientDetail(): React.ReactElement {
         placeholder={t("patient.askPlaceholder")}
         idle={t("patient.agentIdle")}
       />
-    </div>
+    </PaperScreen>
   );
 }

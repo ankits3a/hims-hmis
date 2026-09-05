@@ -335,8 +335,7 @@ export function MaterialsGrn(): React.ReactElement {
             <ul className="text-sm">
               {(discrepancies.data ?? []).map((tr) => (
                 <li key={tr.id} className="text-red-600">
-                  {tr.id} · {tr.lines.filter((l) => l.discrepancyReason !== null).length}
-                  {" "}{t("materialsGrn.shortLines")}
+                  {tr.id} · {t("materialsGrn.shortLines", { count: tr.lines.filter((l) => l.discrepancyReason !== null).length })}
                 </li>
               ))}
             </ul>

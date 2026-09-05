@@ -22,6 +22,8 @@ import { Desk } from "./screens/desk";
 import { MyDay } from "./screens/my-day";
 import { StaffReports } from "./screens/staff-reports";
 import { DeskOne } from "./screens/desk-one/desk-one";
+import { Registration } from "./screens/registration";
+import { AppointmentSeat } from "./screens/appointment";
 import { CounterFigures } from "./screens/counter-figures";
 import { PatientDetail } from "./screens/patient-detail";
 import { MergeReview } from "./screens/merge-review";
@@ -98,7 +100,51 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   // the owner ruled for the seat, so the second row is gone with the screen it pointed at. Two nav
   // links reading "Counter" and "Registration counter (new)" for one job is how the owner ended up
   // on the wrong one — a nav is a list of places, and a place should appear in it once.
-  { to: "/counter", label: "nav.counterDesk", permission: "opd.visits.open", group: "desk" },
+  /*
+    ═══ FD-25 — DESK ONE IS OFF THE NAV, AND STILL SERVES. OWNER RULING, 2026-09-05 ═══
+
+    The handoff's §3.2 asked whether `/counter` should be deleted now that the three seats it used
+    to combine exist separately. The owner ruled: keep it working, keep it out of the nav.
+
+    That is the right shape and worth writing down, because the row and the route answer different
+    questions. THE ROW is a recommendation — "here is where you work" — and offering four front-desk
+    entries to a clerk who works at one is how a nav stops being read. THE ROUTE is a capability, and
+    Desk One is the screen a ONE-PERSON front desk actually wants: one operator doing registration,
+    booking and cash without changing screens between patients. Deleting it would take that away
+    from every small deployment to tidy a menu.
+
+    So the row goes and the route stays. It is still reachable by URL, and — deliberately — from the
+    command palette (`components/command-palette.tsx`), which is a search rather than a menu: a
+    person who knows they want Desk One finds it by asking for it, and a person who does not is
+    never offered a fourth door they did not need.
+  */
+  /*
+    FD-25 — AND THE SECOND DESK ROW, WHICH IS NOT THE TWO-DOORS DEFECT ABOVE.
+
+    The comment above forbids a second row for ONE JOB. This is a second row for a second SEAT, and
+    the distinction is the permission: `/counter` is `opd.visits.open` (Desk One, where one person
+    does registration, appointment and billing as stages of one session) and `/registration` is
+    `patients.register` (a clerk who registers patients and routes them, and holds no drawer).
+
+    A person holding both grants sees both rows, which is correct and is what FD-1's defect was
+    NOT: FD-1 put two names on one screen. These are two screens for two staffing shapes, both
+    authorised, and `shell-nav.test.tsx` asserts each appears exactly once.
+  */
+  { to: "/registration", label: "nav.registration", permission: "patients.register", group: "desk" },
+  /*
+    ═══ "Booking desk", NOT "Appointments" — FOUND BY LOOKING AT THE NAV ═══
+
+    The artboard's header says "Appointments", and on a standalone canvas that was right. In the
+    shell it put TWO ROWS READING "Appointments" side by side: this seat and `/opd/appointments`
+    below it, which is the supervisor's read-gated browse of anybody's book. A clerk holding both
+    grants saw the same word twice and had nothing to choose by.
+
+    That is FD-1's defect exactly — two names a person cannot tell apart, in a list whose whole job
+    is to say where things are. The seat is renamed rather than the book because the seat is the one
+    with a distinguishing verb: it BOOKS. The screen's own title moved with it, so the nav and the
+    heading agree.
+  */
+  { to: "/appointment", label: "nav.appointment", permission: "opd.appointments.manage", group: "desk" },
   { to: "/merge", label: "nav.merge", permission: "patients.merge", group: "patients" },
   { to: "/approvals", label: "nav.approvals", permission: "approvals.requests.read", group: "admin" },
   { to: "/opd/admin", label: "nav.opdAdmin", permission: "opd.masters.manage", group: "opd" },
@@ -528,6 +574,67 @@ const staffReportsRoute = createRoute({
  * the token guard, the query client and the providers every other screen has, and `<Link>`
  * navigation out of it (the palette's "my figures") still works. Signing out lives in the dock.
  */
+/**
+ * ═══ FD-25 — `/registration` IS BACK, AND IT IS THE OTHER HALF OF FD-9'S RULING ═══
+ *
+ * The long comment below records why FD-9 deleted this route: one person served a walk-in by
+ * walking between three screens, losing the patient in hand at every hop, so the three became
+ * stages of one session at `/counter`. Nothing about that has been reversed — Desk One is still
+ * here, still the single-seat door, and still where this design system lives.
+ *
+ * What changed is the staffing. The hospital now runs three seats, and the FD-8 measurement records
+ * both shapes as authorised: three users = three routes, one user = Desk One's stages. This route
+ * serves a clerk who holds `patients.register` and NOT billing — somebody who should never be shown
+ * a cash drawer, and for whom Desk One's five stages are three stages of somebody else's job.
+ *
+ * IT IS NOT A SECOND NAME FOR DESK ONE, which is the defect FD-9's deletion was about. Different
+ * permission, different person, different screen. `shell-nav.test.tsx` pins that a holder of both
+ * grants is offered each exactly once.
+ *
+ * NO `staticData.fullViewport`, DELIBERATELY, AND NOT WHAT THE BUILD PLAN PROPOSED. Desk One earns
+ * the full viewport because it IS the application for the person using it — `.d1` is
+ * `position: fixed; inset: 0` and the shell must not render chrome underneath it (the FD-11
+ * invisible-but-tabbable defect). This screen wears `.pp` INSIDE the shell: it is one seat of three
+ * and its clerk still needs the nav to reach a patient record, the appointment book and their own
+ * figures. See `components/paper-screen.tsx` for the whole argument, including why the artboard's
+ * own header bar is rendered as a screen title rather than as a second header.
+ */
+const registrationRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/registration",
+  /*
+    `?new=true`, the same one-shot shape `counterDeskRoute` takes below and for the same caller: the
+    global F4 chord, meaning "a new patient is in front of me". This screen ALSO binds F4 locally
+    (in the capture phase, so it wins over the global handler and a clerk mid-registration is not
+    yanked to Desk One), so the search parameter is only how the key arrives from ELSEWHERE.
+  */
+  validateSearch: (search: Record<string, unknown>): { new?: boolean } => ({
+    new: search.new === true || search.new === "true" ? true : undefined,
+  }),
+  component: Registration,
+});
+
+/**
+ * ═══ FD-25 — `/appointment` IS BACK, ON THE *WRITE* GRANT ═══
+ *
+ * The third of FD-9's three deleted front-desk routes, and the last to return. Like
+ * `/registration` it is a SEAT rather than a second name for Desk One, and the permission is what
+ * makes that true: `opd.appointments.manage`, the WRITE, as against `/opd/appointments` which is
+ * gated on `.read` and is the supervisor's browse of anybody's book.
+ *
+ * The two are not duplicates. This one is organised around ONE PATIENT — who is this, when can they
+ * come, book it — and it carries the rebooking rail, which is the only surface in the product that
+ * answers "the doctor is away, who do I have to call?". That rail is the reason the route exists;
+ * everything else on it is available somewhere else.
+ *
+ * No `staticData.fullViewport`: one seat of three, inside the shell. See `registrationRoute` above.
+ */
+const appointmentRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/appointment",
+  component: AppointmentSeat,
+});
+
 const counterDeskRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/counter",
@@ -902,6 +1009,15 @@ export const router = createRouter({
       // the count and joins this task's Files list — the S11 rule this repository has now applied
       // to itself nine times.
       counterFiguresRoute,
+      // FD-25 T0 — +1, `/registration`: the first of the three front-desk seats to come back after
+      // FD-9 collapsed them into Desk One. `caddyfile-parity.test.ts` pins the count and joins this
+      // task's Files list — the S11 rule this repository has now applied to itself ten times. The
+      // number there was MEASURED against the merged tree, never predicted from this arithmetic.
+      registrationRoute,
+      // FD-25 — +1, `/appointment`: the last of FD-9's three deleted front-desk routes to come back,
+      // and the one carrying the rebooking rail. `caddyfile-parity.test.ts` pins the count and joins
+      // this task's Files list — MEASURED against the tree, never predicted from arithmetic.
+      appointmentRoute,
       vitalsBayRoute,
       formularyAdminRoute,
       // PLAN 14 T9 — 25 -> 28. `caddyfile-parity.test.ts` pins the count and joins this task's

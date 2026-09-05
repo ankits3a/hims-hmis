@@ -605,7 +605,7 @@ export function BillingOffice(): React.ReactElement {
             <p role="status" data-testid="eie-done" className="text-sm">
               {/* `reversed`, never `count`: i18next reads a `count` variable as a PLURAL selector
                   and would go looking for `done_one` / `done_other` keys that do not exist. */}
-              {t("billingOffice.eie.done", { reversed: eieDone.reversedAllocationIds.length })}
+              {t("billingOffice.eie.done", { count: eieDone.reversedAllocationIds.length })}
             </p>
           )}
         </div>

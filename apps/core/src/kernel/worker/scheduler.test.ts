@@ -247,7 +247,7 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
     jest.spyOn(retentionMod, "retentionSweep").mockImplementation(async () => {
       invoked.push("retentionSweep");
       return {
-        dropped: [], blocked: [], notificationsDeleted: 0,
+        dropped: [], blocked: [], notificationsDeleted: 0, printJobsDeleted: 0,
         idempotencyDeleted: 0, deliveriesDeleted: 0, deadLettersDeleted: 0,
         searchAuditDeleted: 0, // Plan 11h T5 — the sweep's result gained a leg
         phiAccessDeleted: 0, // Plan 07a T2 — and another

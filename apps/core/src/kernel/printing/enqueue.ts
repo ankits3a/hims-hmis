@@ -22,11 +22,37 @@ import type { Tx } from "../db/client";
  * Rendering happens when the relay claims the row.
  */
 
-/** The documents the renderer knows. A new one is a code change plus a template — never a migration. */
+/**
+ * The documents the renderer knows. A new one is a code change plus a template — never a migration.
+ *
+ * ═══ TWO OF THESE FOUR ARE DECLARED AND NOT YET PRODUCED, AND SAYING SO HERE IS THE POINT ═══
+ *
+ * A declared kind is a contract with three parts: a producer that enqueues it, a renderer that
+ * draws it, and a destination that prints it. Two of these have only the last two, and a reader who
+ * assumes otherwise wires a printer for paper that will never come.
+ *
+ * · `opd_payment_receipt` — HAS a renderer and a destination, and ZERO enqueue call sites. FD-24
+ *   declared the kind ahead of its producer; the plan assigns it to BILLING's settle path, so it is
+ *   DEFERRED rather than broken. It is the receipt the artboard's "prints the receipt and stamps
+ *   the token PAID" needs, and until billing queues one that sentence is unserved.
+ *
+ * · `vitals_slip` — HAS a destination (`vitals_thermal`, and `tools/print-relay/README.md` tells an
+ *   operator to configure a real CUPS queue for it) and its renderer DELIBERATELY RETURNS NULL,
+ *   pinned by `render.test.ts`. Owner ruling R3 created the document; it has no artboard yet, and
+ *   `render.ts` refuses rather than inventing a layout for a slip nobody designed. So a relay
+ *   operator is currently asked to wire a printer for a document the system cannot queue OR draw.
+ *   That is the honest state and it is written here rather than discovered at the printer.
+ *
+ * FD-24's own PR title said "the three documents". Three is the number that WORK; four is the
+ * number declared. A reader counting the union would have got it wrong, which is what this comment
+ * is for.
+ */
 export type PrintDocument =
   | "opd_token_slip"
+  /** Renderer + destination, NO producer — deferred to billing's settle path. See the header. */
   | "opd_payment_receipt"
   | "opd_prescription"
+  /** Destination only; the renderer returns null pending owner ruling R3's artboard. See the header. */
   | "vitals_slip";
 
 /**

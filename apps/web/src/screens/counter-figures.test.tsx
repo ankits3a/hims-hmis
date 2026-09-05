@@ -53,8 +53,28 @@ function stubFigures(who: "A" | "B", seen: string[]): void {
   }));
 }
 
-beforeEach(() => { setToken("t"); sessionStorage.clear(); });
-afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
+/**
+ * ═══ THE CLOCK IS PINNED — THE DEFAULT-DATE ASSERTION WAS A MIDNIGHT RACE ═══
+ *
+ * The screen computes its default date at RENDER; the assertion below recomputed it from
+ * `Date.now()` at ASSERT time. IST midnight is 18:30 UTC, so a run that crossed it between those
+ * two moments compared two different days and failed on a date input's value. On a loaded box the
+ * gap between render and assert is not milliseconds, so this was not as narrow as it looks.
+ *
+ * Pinned to midday IST — far from both the UTC and the IST rollover — with `vi.setSystemTime` and
+ * no fake timers, which is the pattern `my-day`, `billing-office`, `opd-appointments` and
+ * `alerts-bell` already use in this suite.
+ */
+const NOW_ISO = "2026-08-29T06:30:00.000Z"; // 12:00 IST on 2026-08-29
+const TODAY_IST = "2026-08-29";
+
+beforeEach(() => { setToken("t"); sessionStorage.clear(); vi.setSystemTime(new Date(NOW_ISO)); });
+afterEach(() => { vi.unstubAllGlobals(); setToken(null); vi.useRealTimers(); });
+
+/** The guard on the premise: the pinned instant IS the day the assertions below are written for. */
+it("the frozen clock is the day these assertions are dated", () => {
+  expect(new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10)).toBe(TODAY_IST);
+});
 
 describe("FD-1 T4 — your figures", () => {
   it("clerk A: the brief in sentences, today so far from the three tiles, what came back as three sentences, the drawer, and ONE printable day", async () => {
@@ -152,7 +172,7 @@ describe("FD-1 T4 — your figures", () => {
     fireEvent.change(screen.getByTestId("figures-date"), { target: { value: "2026-1" } });
     await act(async () => { /* settle */ });
     expect(seen.slice(before).some((u) => u.includes("date="))).toBe(false);
-    expect((screen.getByTestId("figures-date") as HTMLInputElement).value).toBe(new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10));
+    expect((screen.getByTestId("figures-date") as HTMLInputElement).value).toBe(TODAY_IST);
   });
 
   it("CLOSE pass 2: a report that was there and then fails to refetch is NOT printable — the alert and the button agree", async () => {
@@ -185,7 +205,7 @@ describe("FD-1 T4 — your figures", () => {
      * "Some other day" is now derived FROM today, so the pair can never collapse again.
      */
     const istToday = (offsetDays = 0): string =>
-      new Date(Date.now() + 330 * 60_000 + offsetDays * 86_400_000).toISOString().slice(0, 10);
+      new Date(new Date(NOW_ISO).getTime() + 330 * 60_000 + offsetDays * 86_400_000).toISOString().slice(0, 10);
     fireEvent.change(screen.getByTestId("figures-date"), { target: { value: istToday(-1) } });
     fireEvent.change(screen.getByTestId("figures-date"), { target: { value: istToday() } });
     await waitFor(() => expect(screen.getByTestId("report-failed")).toBeInTheDocument());

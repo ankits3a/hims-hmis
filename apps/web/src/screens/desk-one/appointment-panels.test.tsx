@@ -33,6 +33,34 @@ const PATIENT = {
   district: "Kanpur Nagar", registeredOn: "2020-12-01T00:00:00.000Z", matchedOn: ["name"],
 };
 
+/**
+ * ═══ THE CLOCK IS PINNED, AND THIS FILE COULD NOT BE TRUSTED WITHOUT IT ═══
+ *
+ * `tomorrowIst()` read the WALL CLOCK, and the screen computes its own "tomorrow" at RENDER. Those
+ * are two different instants, and IST midnight is 18:30 UTC — so a run that crossed 18:30 between
+ * evaluating a fixture and rendering the tab produced fixtures dated one day and a screen asking
+ * for another. Nothing times out and nothing errors: the grid renders, empty or short, and the
+ * assertion fails on a count.
+ *
+ * `const tomorrow = tomorrowIst()` at describe level (below) made it worse than a race — that is
+ * evaluated at module COLLECTION, minutes before the render in a full suite run, so the window was
+ * never milliseconds wide.
+ *
+ * THE REMEDY IS ONE DEFINITION OF "NOW", not a wider window: `vi.setSystemTime` pins `Date` for the
+ * whole file WITHOUT fake timers (Plan 07 §9 — fake timers and Testing Library's async waits do not
+ * mix), so the fixtures and the screen read the same instant by construction. Midday IST
+ * deliberately: far from both the UTC and the IST rollover, so neither can reach it.
+ *
+ * The same defect, diagnosed the same way, is what `lab-reports` D9 turned out to be — read the
+ * failure TEXT before choosing a remedy. A timeout renders nothing; a wrong bucket renders
+ * populated data with the wrong count in it, and raising a timeout would leave it live.
+ */
+const NOW_ISO = "2026-08-29T06:30:00.000Z"; // 12:00 IST on 2026-08-29
+const TOMORROW = "2026-08-30";
+
+beforeEach(() => { vi.setSystemTime(new Date(NOW_ISO)); });
+afterEach(() => { vi.useRealTimers(); });
+
 /** Tomorrow in IST — the date the tab opens on, so the fixtures line up with what it asks for. */
 function tomorrowIst(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" })
@@ -483,8 +511,25 @@ describe("FD-17: the appointment's type, and the bookings the desk did not warn 
   });
 });
 
+describe("the clock this file is pinned to", () => {
+  /**
+   * THE GUARD ON THE SUITE'S OWN PREMISE. It asserts the frozen instant against the SAME function
+   * the fixtures call, so a future edit to `NOW_ISO` fails HERE, in one line that says why, rather
+   * than as a mystifying count mismatch three hundred lines away.
+   */
+  it("is midday IST, and TOMORROW is the day after it", () => {
+    expect(tomorrowIst()).toBe(TOMORROW);
+  });
+});
+
 describe("FD-19: editing a future booking from the desk", () => {
-  const tomorrow = tomorrowIst();
+  /*
+    THE PINNED VALUE, not a call. This line runs at module COLLECTION — before any `beforeEach` has
+    pinned anything — so calling `tomorrowIst()` here would read the real wall clock however well
+    the rest of the file is pinned. It is the constant the pinned clock implies, and the guard test
+    below proves the two agree.
+  */
+  const tomorrow = TOMORROW;
   const theirBooking = {
     id: "11", patientId: "p-1", doctorId: "doc-1", departmentId: "d-1", serviceDate: tomorrow,
     slotStart: `${tomorrow}T09:15:00.000Z`, slotEnd: `${tomorrow}T09:30:00.000Z`,

@@ -168,6 +168,18 @@ export type WireRegisterBody = {
   monthlyIncomePaise?: number;
   legacyUhid?: string;
   isConfidential?: boolean;
+  /**
+   * FD-25 — THE FIELD WHOSE ABSENCE MADE `isConfidential` A 400 AT THE COUNTER.
+   *
+   * `registration.ts` throws `alias_required` when `isConfidential` arrives without one, and this
+   * type did not declare `alias`, so no caller could send it and no compiler could say why. Ticking
+   * the confidential box on Desk One failed for every clerk who ever tried it. The server has
+   * accepted `alias` (`patients.controller.ts`, `z.string().max(200).optional()`) since the column
+   * existed; only the client half was missing.
+   */
+  alias?: string;
+  /** A VIP, a staff member, a legal matter. Recorded beside the seal, not inferred from it. */
+  sensitiveContext?: boolean;
   promotionalOptIn?: boolean;
   referredBySource?: string;
   referredByName?: string;
@@ -179,6 +191,24 @@ export type WireRegisterBody = {
     phone?: string;
     idType?: "aadhaar" | "pan" | "voter_id" | "other";
     idNumberMasked?: string;
+    /**
+     * ═══ FD-25 — WHAT THE GUARDIAN MAY DO, AND WHY IT IS FOUR SWITCHES AND NOT ONE ═══
+     *
+     * The server has stored all four since the guardians table existed and accepted all four on
+     * this route; NOTHING HAS EVER SENT ONE. Every guardian in the database therefore holds the
+     * column defaults — and the defaults are not what a counter would choose: `consents` defaults
+     * TRUE and `dsr` (records) defaults FALSE, whereas the signed-off artboard puts messages and
+     * bills on, consents and records OFF.
+     *
+     * That difference is the whole point of the control. Consent to treat a child is not the same
+     * authority as paying their bill, and a form that collapses them into one tick has decided a
+     * DPDP §9 question by omission. So the four travel EXPLICITLY, always — never left to a
+     * default — and the screen's initial pills must agree with what gets posted.
+     */
+    authorityMessages?: boolean;
+    authorityBills?: boolean;
+    authorityConsents?: boolean;
+    authorityDsr?: boolean;
   };
   coverages?: {
     kind: "pmjay" | "insurance" | "tpa" | "corporate" | "cghs" | "esic" | "other";
@@ -254,4 +284,35 @@ export function putPatientPhoto(patientId: string, imageBase64: string): Promise
 
 export function getPatientPhoto(patientId: string): Promise<{ mimeType: string; imageBase64: string }> {
   return api("GET", `/patients/${encodeURIComponent(patientId)}/photo`);
+}
+
+/* ══ FD-25 — THE PATIENT'S PAYER ARRANGEMENTS, READABLE FOR THE FIRST TIME ═══════════════════════ */
+
+/**
+ * `patient_coverages` has been WRITE-ONLY since FD-12: registration collects an entitlement at the
+ * counter, writes it in the patient's own transaction, and nothing has ever read one back. This is
+ * the read, and it is what lets the billing counter's Corporate/TPA card say "East Central Railway ·
+ * employee 41129" instead of guessing.
+ *
+ * On `patients.read` — a coverage is a fact about the PATIENT that billing consumes, not a fact
+ * about a bill — and every call that returns anything writes one `patient.coverage` PHI-access row.
+ */
+export type WireCoverage = {
+  id: string;
+  kind: "pmjay" | "insurance" | "tpa" | "corporate" | "cghs" | "esic" | "other";
+  payerName: string | null;
+  tpaName: string | null;
+  policyNumber: string | null;
+  cardNumber: string | null;
+  beneficiaryId: string | null;
+  employeeId: string | null;
+  planClass: string | null;
+  sumInsuredPaise: number | null;
+  validFrom: string | null;
+  validTo: string | null;
+  verificationStatus: "self_declared" | "card_seen" | "verified";
+};
+
+export function listCoverages(patientId: string): Promise<{ items: WireCoverage[] }> {
+  return api("GET", `/patients/${encodeURIComponent(patientId)}/coverages`);
 }
