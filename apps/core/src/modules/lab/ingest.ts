@@ -7,6 +7,7 @@ import {
 } from "../../kernel/db/schema";
 import { LabError } from "./errors";
 import { instrumentCodeMap } from "./instruments";
+import { closeRunSheet, openRunSheetFor } from "./run-sheets";
 import { enterResult, LAB_RESULTS_INTERFACE } from "./results";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -61,7 +62,8 @@ export type IngestRow = {
 };
 
 export type ParkReason =
-  | "unmapped_code" | "unknown_sample" | "sample_not_received" | "no_open_item" | "guard_refused";
+  | "unmapped_code" | "unknown_sample" | "sample_not_received" | "no_open_item" | "guard_refused"
+  | "no_run_sheet";
 
 export type IngestOutcome = {
   transmissionId: string;
@@ -152,6 +154,18 @@ export async function ingestResults(
     receivedById: actor.id,
   });
 
+  /**
+   * ═══ T4 — A MACHINE THAT CAN ONLY COUNT RESOLVES BY THE SHEET, NOT BY A NAME ═══
+   *
+   * The EL-120 and the U120 send a POSITION. It names a result only inside the run that produced
+   * it, so the sheet the bench scanned before loading is the only thing that can turn it into a
+   * patient. No open sheet means no run was loaded, and every row parks — the alternative is
+   * reading positions against YESTERDAY's map, which is a swapped tube by construction.
+   */
+  const sheet = instrument.sampleIdMode === "run_sheet"
+    ? await openRunSheetFor(db, input.instrumentId)
+    : null;
+
   const codeMap = await instrumentCodeMap(db, input.instrumentId);
   const attached: IngestOutcome["attached"] = [];
   const parked: IngestOutcome["parked"] = [];
@@ -171,7 +185,19 @@ export async function ingestResults(
     const mapped = codeMap.get(row.code);
     if (mapped === undefined) { await park(row, "unmapped_code"); continue; }
 
-    const sample = await resolveSample(db, row.sampleId);
+    let sample: { specimenId: string } | { park: ParkReason };
+    if (instrument.sampleIdMode === "run_sheet") {
+      /**
+       * **A GAP PARKS THAT POSITION AND ONLY THAT POSITION.** There is deliberately nothing to fall
+       * back to: no nearest-filled, no next-in-sequence, no "the only unscanned cup". A sheet with a
+       * hole at strip 43 means nobody scanned strip 43, and the tube physically in that slot is
+       * unknown — reading it as strip 44's patient is exactly the swap the sheet exists to prevent.
+       */
+      const specimenId = sheet?.positions.get(row.position);
+      sample = specimenId === undefined ? { park: "no_run_sheet" } : { specimenId };
+    } else {
+      sample = await resolveSample(db, row.sampleId);
+    }
     if ("park" in sample) { await park(row, sample.park); continue; }
 
     /** The open item on THIS tube for THIS analyte. An absent one is not an error, it is a park. */
@@ -222,6 +248,18 @@ export async function ingestResults(
     }
     if (!wrote) await park(row, "no_open_item");
   }
+
+  /**
+   * ═══ THE BLOCK CONSUMES THE SHEET ═══
+   *
+   * Once this run has landed, the sheet's positions describe cups that are no longer on the machine.
+   * A SECOND block is therefore not a retry — it is a new run whose sheet nobody built — and with
+   * the sheet closed it finds none and parks whole, rather than resolving against a stale map.
+   *
+   * Closed even when every row parked: the sheet was still the one this run was loaded against, and
+   * leaving it open would offer it to the next block.
+   */
+  if (sheet !== null) await closeRunSheet(db, sheet.id, transmissionId, now);
 
   return { transmissionId, arrivedAt: now, duplicate: false, attached, parked };
 }
