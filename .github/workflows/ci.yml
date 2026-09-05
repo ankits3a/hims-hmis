@@ -33,11 +33,23 @@ jobs:
       # protection are `static`, `core` and `web`, and adding a fourth name would need that setting
       # changed in lockstep across eight lanes. ~3 s, no services.
       #
-      # `ubuntu-latest` has no chromium, so the two end-to-end checks that render a real PDF SKIP
-      # there and say so in the TAP output (13 of 15 gate in CI; all 15 gate on the build host).
-      # Installing chromium here was considered and rejected: a runner-vs-host browser difference
-      # reddening `main` for every lane is a worse outcome than two loudly-skipped checks.
+      # THE TWO END-TO-END CHECKS ARE SKIPPED HERE ON PURPOSE, AND THE SKIP IS FORCED RATHER THAN
+      # ASSUMED. An earlier version of this comment claimed `ubuntu-latest` has no chromium and let
+      # the test decide for itself. That was FALSE — actions/runner-images symlinks
+      # /usr/local/share/chromium/chrome-linux/chrome to /usr/bin/chromium in
+      # install-google-chrome.sh, and the image readme lists Chromium under Browsers and Drivers. So
+      # those two checks would have RUN: spawning a headless browser, scraping a `ws://` URL out of
+      # stderr, speaking raw CDP, and waiting on a hard-coded 900 ms layout settle — inside a
+      # REQUIRED check, where a monthly runner-image bump that moves any one of those reddens `main`
+      # for all eight lanes at once, and freezes every merge.
+      #
+      # `RELAY_CHROMIUM` is the switch the test already honours, so pointing it at a path that
+      # cannot exist makes the skip deterministic and makes this comment true: 13 of 15 gate in CI,
+      # all 15 gate on the build host, and nothing in a required check launches a browser.
+      # Gating the other two would need a pinned browser, not the image's — that is its own change.
       - run: node --test tools/print-relay/spool.test.mjs
+        env:
+          RELAY_CHROMIUM: /nonexistent-chromium-ci-forces-the-skip
 
   core:
     runs-on: ubuntu-latest

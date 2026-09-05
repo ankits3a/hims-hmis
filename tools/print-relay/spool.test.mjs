@@ -36,14 +36,29 @@
  *    writes `printed/<id>.json` the moment `lp` exits 0 and BEFORE any network call. The
  *    end-to-end pair below prints the same spooled job twice over and counts the `lp` invocations.
  *
+ * 4. WHICH MEANS EVERY ROAD TO THAT MARKER IS A ROAD TO DUPLICATE PAPER, and replay opened three
+ *    that a crash is not needed to reach. A marker write that FAILS (a full spool) threw out of
+ *    `replaySpool` and the retry loop reprinted the same slip every three seconds until the roll
+ *    ran out. `flushReports` deleted a marker BEFORE the document it guards, so the ordinary
+ *    success path of every job had a window that left work replay reads as owing paper. And two
+ *    relay processes on one spool — which this tool's own README invited — each print what the
+ *    other claimed. Sections 6, 7 and 8 hold those three.
+ *
  * ═══ WHAT NEEDS A BROWSER AND WHAT DOES NOT ═══
  *
- * Every check but the last two runs with no chromium, no CUPS and no network: a job whose
- * destination maps to no queue is refused by `printOne` before anything is spawned, so a `failed/`
- * marker is proof the spooled file was opened, parsed and attempted. The last two DO render a real
- * PDF and hand it to a fake `lp` on `PATH`, because "the file was attempted" and "paper came out"
- * are different claims and the offline guarantee is about the second. They skip loudly without a
- * usable chromium, exactly as the relay's own geometry check does.
+ * Almost everything here runs with no chromium, no CUPS and no network: a job whose destination maps
+ * to no queue is refused by `printOne` before anything is spawned, so a `failed/` marker is proof
+ * the spooled file was opened, parsed and attempted.
+ *
+ * THREE checks DO render a real PDF and hand it to a fake `lp` on `PATH`, because "the file was
+ * attempted" and "paper came out" are different claims and both the offline guarantee and the
+ * print-once guarantee are about the second. They skip loudly without a usable chromium, exactly as
+ * the relay's own geometry check does — CI forces that skip with `RELAY_CHROMIUM`, deliberately, so
+ * that no required check launches a browser.
+ *
+ * The CDP check in section 9 is the exception that proves the rule: it needs a browser that behaves
+ * in one specific way, so it brings its OWN fake chromium and gates everywhere, CI included. A real
+ * browser could not be made to emit the stderr line that matters exactly where it hurts.
  */
 
 import assert from "node:assert/strict";
@@ -52,7 +67,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from "no
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { after, test } from "node:test";
+import { after, beforeEach, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 /*
@@ -71,6 +86,23 @@ const RELAY = join(HERE, "relay.mjs");
 const scratch = [];
 after(async () => {
   for (const d of scratch) await rm(d, { recursive: true, force: true });
+});
+
+/*
+  THE RELAY REMEMBERS MARKERS THE DISK REFUSED, AND THAT MEMORY MUST NOT LEAK BETWEEN CHECKS.
+
+  `unwrittenMarkers` is deliberately module-scoped in `relay.mjs` — it has to outlive a `replaySpool`
+  call, because the reprint it prevents happens on the NEXT tick. In one test process that also means
+  it outlives a test, so an id left behind would silently make a LATER check pass for the wrong
+  reason. Cleared here rather than in each check, so a new check cannot forget.
+
+  `?.` is load-bearing: on a red-first run the export does not exist yet, and a `beforeEach` that
+  threw would red every check in the file with the same useless message instead of letting each one
+  fail with its own.
+*/
+beforeEach(() => {
+  relay.unwrittenMarkers?.printed.clear();
+  relay.unwrittenMarkers?.failed.clear();
 });
 
 /** A fresh, empty spool with its three subdirectories. */
@@ -530,4 +562,320 @@ test("--self-test still runs as a program, directly and through a symlink", asyn
     p.on("close", () => { resolve(out); });
   });
   assert.match(viaLink, /self-test passed/, "a symlinked install must still start the relay");
+});
+
+/* ── 6 · A SPOOL WRITE THAT FAILS MUST NOT PRINT PAPER NOBODY CAN COUNT ───────────────────────── */
+
+/**
+ * A spool whose marker directories are not directories: every `writeFile` into `printed/` or
+ * `failed/` throws ENOTDIR, and every `readdir` of them throws too and reads back as empty.
+ *
+ * That is ENOSPC's shape from this code's point of view, and ENOSPC is the case that matters —
+ * `jobs/` holds whole rendered documents and is swept only at seven days, so the spool disk filling
+ * is the ordinary end of a relay left offline. The CAUSE here is synthetic because this process is
+ * root and cannot be told "no" by a permission bit. The CLASS is not.
+ */
+async function spoolThatCannotBeWrittenTo(...subs) {
+  const spool = await newSpool();
+  for (const sub of subs) {
+    await rm(join(spool, sub), { recursive: true, force: true });
+    await writeFile(join(spool, sub), "a full disk, from this code's point of view", "utf8");
+  }
+  return spool;
+}
+
+test("a spool that cannot write its own markers must not stop the relay claiming work", async () => {
+  /*
+    THE WEDGE, MOVED RATHER THAN REMOVED. `replaySpool` writes a `failed/` marker for a spooled
+    document it cannot parse, and that write had nothing around it — so on a spool that cannot be
+    written the throw left `replaySpool`, left `tick` before `/print/claim`, and landed in the retry
+    loop in `main`. Every three seconds, and across every restart, exactly like the torn `failed/`
+    marker in check 1: the whole site stops printing while systemd reports the unit healthy.
+  */
+  const spool = await spoolThatCannotBeWrittenTo(relay.DIRS.failed);
+  await writeFile(join(spool, relay.DIRS.jobs, "job-nospace.json"), '{"id":"job-nospace","html":"<p>x', "utf8");
+
+  const stub = await stubServer((path) => (path === "/api/print/claim" ? { jobs: [] } : {}));
+  try {
+    await relay.tick(
+      { serverUrl: stub.url, agentKey: "k", queues: { front_desk_thermal: "T1" } },
+      spool, () => {},
+    );
+  } finally {
+    stub.close();
+  }
+
+  assert.equal(
+    stub.seen.filter((s) => s.path === "/api/print/claim").length, 1,
+    "a spool write that cannot land must not stop this relay claiming work",
+  );
+});
+
+test("a spool that cannot record what it printed stops, rather than reprinting every poll interval", {
+  skip: browserUsable ? false : `no usable chromium at ${CHROMIUM} — the runaway-printer road is NOT covered by this run`,
+}, async () => {
+  /*
+    THE CRITICAL, ASSERTED IN SHEETS OF PAPER.
+
+    `printOne` writes `printed/<id>.json` the moment `lp` exits 0, and that marker is the ONLY thing
+    that stops a second slip. When the write threw, it threw through `replaySpool`'s own catch —
+    whose `failed/` write throws for the same reason — out of `tick`, into `main`, and three seconds
+    later the identical un-marked job was replayed and THE SAME SLIP CAME OUT AGAIN. The front-desk
+    thermal emits one patient's name, UHID and doctor every poll interval until the roll runs out,
+    `/print/claim` is never reached so nothing else in the hospital prints, and `systemctl status`
+    says `active (running)`.
+
+    Three passes, because one is not a loop. The server is unreachable throughout: nothing but this
+    relay's own memory of what it printed can be doing the stopping.
+  */
+  const spool = await spoolThatCannotBeWrittenTo(relay.DIRS.printed, relay.DIRS.failed);
+  const port = await deadPort();
+  const lp = await fakeLp();
+  const path0 = process.env.PATH;
+  process.env.PATH = `${lp.dir}:${String(path0)}`;
+  try {
+    await writeFile(join(spool, relay.DIRS.jobs, "job-noroom.json"), JSON.stringify({
+      id: "job-noroom", destination: "front_desk_thermal", title: "Token 16",
+      html: "<!doctype html><html><body><div>MED-3</div></body></html>",
+      page: { widthMm: 72, heightMm: null },
+    }), "utf8");
+
+    const config = {
+      serverUrl: `http://127.0.0.1:${String(port)}`, agentKey: "k",
+      chromium: CHROMIUM, queues: { front_desk_thermal: "CRK-Thermal-1" },
+    };
+    await relay.replaySpool(config, spool, () => {});
+    await relay.replaySpool(config, spool, () => {});
+    await relay.replaySpool(config, spool, () => {});
+
+    assert.equal(
+      (await lp.invocations()).length, 1,
+      "the paper is out and the disk cannot say so — the relay must stop, not hand out the same slip for ever",
+    );
+  } finally {
+    process.env.PATH = path0;
+  }
+});
+
+/* ── 7 · THE MARKER OUTLIVES THE DOCUMENT IT GUARDS ───────────────────────────────────────────── */
+
+/**
+ * A spooled document that cannot be removed, so the order of the two `rm`s in `flushReports` is
+ * observable from outside without staging a power cut. Same synthetic cause as the sweep check: a
+ * non-empty directory where a file is expected is the cheapest thing that makes `rm` throw for a
+ * reason `force: true` does not suppress (EACCES / EPERM / EROFS being the real ones).
+ */
+async function unremovableDocument(spool, id) {
+  await mkdir(join(spool, relay.DIRS.jobs, `${id}.json`, "not-empty"), { recursive: true });
+}
+
+test("the printed marker outlives the document it guards", async () => {
+  /*
+    `flushReports` deleted `printed/<id>.json` FIRST and `jobs/<id>.json` second. Until the spool was
+    read back that ordering was inert — nothing ever opened `jobs/` again. Now `jobsToReplay` treats
+    a document with no marker beside it as work that still owes paper, so anything that interrupts
+    those two unlinks — a power cut, a `systemctl restart`, or an `rm` that throws for a local reason
+    — leaves a job that is printed AGAIN on the next tick. On the success path of every job.
+  */
+  const spool = await newSpool();
+  await writeFile(join(spool, relay.DIRS.printed, "job-order.json"), "{}", "utf8");
+  await unremovableDocument(spool, "job-order");
+
+  const stub = await stubServer();
+  try {
+    await relay.flushReports({ serverUrl: stub.url, agentKey: "k" }, spool, () => {});
+  } finally {
+    stub.close();
+  }
+
+  assert.equal(
+    stub.seen.filter((s) => s.path === "/api/print/printed").length, 1,
+    "the report still goes — the paper is out and the server has to be told",
+  );
+  assert.equal(
+    await exists(join(spool, relay.DIRS.printed, "job-order.json")), true,
+    "the marker is the ONLY thing between a document still on disk and a second slip",
+  );
+  assert.deepEqual(
+    relay.jobsToReplay(await relay.readSpoolState(spool), ["job-order"]), [],
+    "…so replay must not pick that document up",
+  );
+});
+
+test("the failed marker outlives the document it guards", async () => {
+  /*
+    The failed leg is worse in kind. The server has already been told this job failed, so it either
+    requeued it or marked it terminally `failed` and told the clerk on screen to reprint by hand
+    (R7). A local replay then produces a slip for a job the record says never printed.
+  */
+  const spool = await newSpool();
+  await writeFile(join(spool, relay.DIRS.failed, "job-orderf.json"),
+    JSON.stringify({ error: "lp exited 1: out of paper" }), "utf8");
+  await unremovableDocument(spool, "job-orderf");
+
+  const stub = await stubServer();
+  try {
+    await relay.flushReports({ serverUrl: stub.url, agentKey: "k" }, spool, () => {});
+  } finally {
+    stub.close();
+  }
+
+  assert.equal(stub.seen.filter((s) => s.path === "/api/print/failed").length, 1);
+  assert.equal(
+    await exists(join(spool, relay.DIRS.failed, "job-orderf.json")), true,
+    "the marker is what keeps replay off a job the server has already been told about",
+  );
+  assert.deepEqual(
+    relay.jobsToReplay(await relay.readSpoolState(spool), ["job-orderf"]), [],
+    "…so replay must not pick that document up either",
+  );
+});
+
+/* ── 8 · ONE RELAY PER SPOOL ──────────────────────────────────────────────────────────────────── */
+
+test("a second holder of the same spool is refused, and a released lock is released", async () => {
+  const spool = await newSpool();
+  const first = await relay.acquireSpoolLock(spool, () => {});
+  assert.notEqual(first, null, "an unlocked spool must be lockable");
+
+  assert.equal(
+    await relay.acquireSpoolLock(spool, () => {}), null,
+    "a spool this process already holds must not be handed out twice",
+  );
+
+  first();
+  const again = await relay.acquireSpoolLock(spool, () => {});
+  assert.notEqual(again, null, "and a released lock must be takeable");
+  again();
+});
+
+test("a lock left behind by a power cut does not stop the next relay", async () => {
+  /*
+    THE FIX MUST NOT BECOME THE OUTAGE. A hospital PC switched off at the wall leaves the lock file
+    behind, and a relay that then refuses to start is the same site-wide printing outage this file
+    has already produced twice — in the shape that survives every restart. "Cannot tell" therefore
+    has to mean STALE. 2147483647 is above any Linux `pid_max`, so nothing can be holding it.
+  */
+  const spool = await newSpool();
+  await writeFile(join(spool, "relay.lock"),
+    JSON.stringify({ pid: 2147483647, at: new Date().toISOString() }), "utf8");
+
+  const release = await relay.acquireSpoolLock(spool, () => {});
+  assert.notEqual(release, null, "a stale lock must be taken over, or one power cut stops the site for ever");
+  release();
+});
+
+/** Run the relay's CLI, and if it is still going after `ms`, kill it and say so. */
+function runRelayBounded(args, ms, env = {}) {
+  return new Promise((resolve) => {
+    const p = spawn(process.execPath, [RELAY, ...args], { env: { ...process.env, ...env } });
+    let out = "";
+    p.stdout.on("data", (d) => { out += String(d); });
+    p.stderr.on("data", (d) => { out += String(d); });
+    const timer = setTimeout(() => { p.kill("SIGKILL"); }, ms);
+    p.on("close", (code, signal) => { clearTimeout(timer); resolve({ code, signal, out }); });
+  });
+}
+
+test("a second relay against the same spool refuses to start, and a clean stop gives the lock back", {
+  timeout: 30_000,
+}, async () => {
+  /*
+    THE WIRING, WHICH IS THE ASSERTION THAT MATTERS. A lock nothing takes is not a lock, and the
+    place it has to be taken is `main` — BEFORE the loop, because `replaySpool` is the one code path
+    that acts on another process's claim. README.md's own Run section shows the by-hand command
+    twenty lines above the systemd unit that runs the same command against the same spool, so the
+    second instance is what a technician debugging a jam actually does.
+  */
+  const spool = await newSpool();
+  const port = await deadPort();
+  const dir = await mkdtemp(join(tmpdir(), "relay-cfg-"));
+  scratch.push(dir);
+  const cfg = join(dir, "config.json");
+  await writeFile(cfg, JSON.stringify({
+    serverUrl: `http://127.0.0.1:${String(port)}`, agentKey: "k", spoolDir: spool,
+    queues: { front_desk_thermal: "T1" }, pollSeconds: 1,
+  }), "utf8");
+
+  const first = spawn(process.execPath, [RELAY, "--config", cfg]);
+  let firstOut = "";
+  first.stdout.on("data", (d) => { firstOut += String(d); });
+  try {
+    await new Promise((resolve, reject) => {
+      const started = Date.now();
+      const poll = setInterval(() => {
+        if (/relay up/.test(firstOut)) { clearInterval(poll); resolve(undefined); }
+        else if (Date.now() - started > 10_000) { clearInterval(poll); reject(new Error(`the first relay never came up: ${firstOut}`)); }
+      }, 25);
+    });
+
+    const second = await runRelayBounded(["--config", cfg], 4000);
+    assert.equal(second.signal, null, `the second relay must exit on its own, it had to be killed: ${second.out}`);
+    assert.notEqual(second.code, 0, `and it must exit non-zero: ${second.out}`);
+    assert.match(second.out, /already/, second.out);
+    assert.match(second.out, new RegExp(String(first.pid)), `it must name the process that holds the spool: ${second.out}`);
+  } finally {
+    first.kill("SIGTERM");
+    await new Promise((r) => { first.on("close", () => { r(undefined); }); });
+  }
+
+  assert.equal(
+    await exists(join(spool, "relay.lock")), false,
+    "a relay that is asked to stop must give the lock back, or the next start finds a stale one",
+  );
+});
+
+/* ── 9 · ONE CHROMIUM LAUNCH IS ONE CDP SESSION ───────────────────────────────────────────────── */
+
+test("a second line on chromium's stderr must not open a second CDP session", async () => {
+  /*
+    The DevTools endpoint is scraped out of chromium's stderr, and the handler re-ran the regex
+    against the WHOLE accumulated buffer on every chunk, guarded only by `settled` — which is not set
+    until the render has finished, two to three seconds later. So any routine stderr line in that
+    window (fontconfig, `bus.cc`, a GPU or OOM-score notice — and this relay's own slips load a
+    Devanagari face, which is exactly what makes fontconfig talk) started a SECOND concurrent CDP
+    session, with its own render and its own `writeFile` against the same `doc.pdf` the first was
+    writing. Two writes truncating and interleaving leave a PDF whose `/MediaBox` cannot be found,
+    `pdfHeightMm` silently falls back to 297 mm, `lp` exits 0 and the marker goes down: the clerk is
+    told it printed and is holding a blank 297 mm strip, with nothing to reprint from.
+
+    A real browser is not needed to see it, and must not be used — a fake chromium is the only way to
+    put a second stderr line exactly where it hurts. The stub accepts the upgrade, holds it while the
+    second line lands, then destroys the socket so `htmlToPdf` settles in half a second rather than
+    waiting out its 60 s timer.
+  */
+  const dir = await mkdtemp(join(tmpdir(), "relay-cdp-"));
+  scratch.push(dir);
+
+  let upgrades = 0;
+  const server = createServer();
+  server.on("upgrade", (_req, socket) => {
+    upgrades += 1;
+    setTimeout(() => { socket.destroy(); }, 500);
+  });
+  await new Promise((r) => { server.listen(0, "127.0.0.1", () => { r(undefined); }); });
+  const addr = server.address();
+  const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+  const script = join(dir, "fake-chromium.mjs");
+  await writeFile(script, [
+    `process.stderr.write("DevTools listening on ws://127.0.0.1:${String(port)}/devtools/browser/abc\\n");`,
+    'setTimeout(() => { process.stderr.write("[0905/000000.0:ERROR:bus.cc(407)] Failed to connect to the bus\\n"); }, 150);',
+    "setTimeout(() => {}, 30000);",
+  ].join("\n"), "utf8");
+  const bin = join(dir, "chromium");
+  await writeFile(bin, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(script)} "$@"\n`, "utf8");
+  await chmod(bin, 0o755);
+
+  const html = join(dir, "doc.html");
+  await writeFile(html, "<!doctype html><html><body>x</body></html>", "utf8");
+
+  await assert.rejects(
+    relay.htmlToPdf({ chromium: bin }, html, join(dir, "doc.pdf"), { widthMm: 72, heightMm: null }),
+    "the stub never completes a handshake, so the render itself must fail",
+  );
+  server.closeAllConnections?.();
+  await new Promise((r) => { server.close(() => { r(undefined); }); });
+
+  assert.equal(upgrades, 1, "one chromium launch is one CDP session — a routine stderr line must not start another");
 });

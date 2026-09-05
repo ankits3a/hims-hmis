@@ -57,8 +57,8 @@
  */
 
 import { spawn } from "node:child_process";
-import { realpathSync } from "node:fs";
-import { mkdir, readFile, readdir, rm, writeFile, stat } from "node:fs/promises";
+import { realpathSync, rmSync } from "node:fs";
+import { mkdir, open, readFile, readdir, rm, writeFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -160,18 +160,99 @@ export async function ensureSpool(dir) {
   for (const sub of Object.values(DIRS)) await mkdir(join(dir, sub), { recursive: true });
 }
 
+/* ── the spool's own writes, which are NEVER allowed to throw ─────────────────────────────────── */
+
+/**
+ * ═══ A MARKER THIS RELAY COULD NOT WRITE TO DISK IS STILL A MARKER ═══
+ *
+ * `printed/<id>.json` is the only thing that stops a slip being printed a second time, and it is put
+ * down by a plain `writeFile` onto a spool disk that CAN FILL — `jobs/` holds whole rendered
+ * documents and is swept only at seven days, so a relay left offline for a week fills it as designed.
+ * When that write threw, it threw through `replaySpool`'s own catch (whose `failed/` write fails for
+ * the identical reason), out of `tick` BEFORE `/print/claim`, and into the retry loop in `main`.
+ * Three seconds later the same un-marked job was replayed and THE SAME SLIP CAME OUT AGAIN: one
+ * patient's name, UHID and doctor, once per poll interval until the roll ran out, while nothing else
+ * in the hospital printed at all and `systemctl status` said `active (running)`.
+ *
+ * That is the wedge the failure-marker parse used to be — moved from `failed/` to `jobs/`, and now
+ * moving paper with it. So there is ONE rule here rather than a guard at each of the five call sites:
+ *
+ *   A SPOOL WRITE NEVER THROWS, AND A MARKER THE DISK REFUSED IS HELD IN MEMORY INSTEAD.
+ *
+ * `readSpoolState` folds these in, so every decision that reads a marker — `decide` on the claim
+ * path, `jobsToReplay` on the replay path — sees what this relay KNOWS rather than only what the
+ * disk managed to keep. Each pass tries the refused writes again, so the moment the disk has room
+ * the durable record replaces the one in RAM and this process stops carrying it.
+ *
+ * A restart loses the RAM copy, and that is the honest limit of this: ONE duplicate slip, once, on
+ * the first tick after a reboot onto a spool that still cannot be written — not one every three
+ * seconds, for ever. It is the same trade `printOne` already makes by marking AFTER `lp` rather than
+ * before: a clerk handed two token slips throws one away, a patient handed none stands at a counter
+ * that believes it printed.
+ *
+ * Per PROCESS, not per spool directory, because a relay serves exactly one spool — and now refuses
+ * to start if another process is already serving it (`acquireSpoolLock`).
+ */
+export const unwrittenMarkers = { printed: new Map(), failed: new Map() };
+
+/**
+ * Put a marker down, and if the disk refuses, remember it instead of throwing.
+ *
+ * Returns whether the DURABLE record is on disk. The caller has to know, because a `printed/` marker
+ * that exists only in this process's memory is a promise that a reboot can break.
+ */
+async function markSpool(spool, sub, id, body, log) {
+  const written = await writeFile(join(spool, sub, `${id}.json`), body, "utf8").then(() => true, (e) => {
+    log(`could not write ${sub}/${id}.json: ${String(e)}`);
+    return false;
+  });
+  if (written) unwrittenMarkers[sub].delete(id);
+  else unwrittenMarkers[sub].set(id, body);
+  return written;
+}
+
+/** Retry every marker the disk has refused so far. Cheap, and it is how the relay heals itself. */
+async function flushUnwrittenMarkers(spool, log) {
+  for (const sub of [DIRS.printed, DIRS.failed]) {
+    for (const [id, body] of [...unwrittenMarkers[sub]]) await markSpool(spool, sub, id, body, log);
+  }
+}
+
+/**
+ * Take a file out of the spool, logging rather than throwing, and say whether it is gone.
+ *
+ * `force: true` SUPPRESSES ENOENT AND NOTHING ELSE. An immutable attribute, a read-only remount, a
+ * spool restored from a backup under the wrong owner — each throws EACCES/EPERM/EROFS out of an
+ * unguarded `rm`, and every caller here sits upstream of `/print/claim` in `tick`, so that is the
+ * same silent, restart-surviving wedge in a third shape.
+ *
+ * The RETURN VALUE is the load-bearing part, not the catch: a caller deleting a marker and the
+ * document it guards has to know whether the document actually went.
+ */
+async function removeSpoolFile(path, log) {
+  return await rm(path, { force: true }).then(() => true, (e) => {
+    log(`could not remove ${path}: ${String(e)}`);
+    return false;
+  });
+}
+
 /**
  * The two marker sets the spool holds: paper that is out, and work this relay gave up on.
  *
  * `failed` is new, and `decide` deliberately still reads only `printed` — see `jobsToReplay` for
  * why the CLAIM path and the REPLAY path must answer that question differently.
+ *
+ * Markers the disk refused are folded in from `unwrittenMarkers`. That is deliberate and it is the
+ * whole point of holding them: a decision made from the disk alone would reprint a slip this relay
+ * knows perfectly well is already on the counter.
  */
 export async function readSpoolState(dir) {
-  const idsIn = async (sub) => new Set(
-    (await readdir(join(dir, sub)).catch(() => []))
+  const idsIn = async (sub) => new Set([
+    ...(await readdir(join(dir, sub)).catch(() => []))
       .filter((f) => f.endsWith(".json"))
       .map((f) => f.replace(/\.json$/, "")),
-  );
+    ...unwrittenMarkers[sub].keys(),
+  ]);
   return { printed: await idsIn(DIRS.printed), failed: await idsIn(DIRS.failed) };
 }
 
@@ -196,7 +277,7 @@ const PX_PER_IN = 96;
  * The DevTools protocol is spoken directly over the global `WebSocket` Node 22 already has, so this
  * stays a zero-dependency file that copies onto a Pi.
  */
-function htmlToPdf(config, htmlPath, pdfPath, page) {
+export function htmlToPdf(config, htmlPath, pdfPath, page) {
   return new Promise((resolve, reject) => {
     const bin = config.chromium ?? "chromium";
     const chrome = spawn(bin, [
@@ -205,14 +286,38 @@ function htmlToPdf(config, htmlPath, pdfPath, page) {
 
     let stderr = "";
     let settled = false;
+    /*
+      ═══ ONE CHROMIUM LAUNCH IS ONE CDP SESSION, AND `settled` CANNOT SAY SO ═══
+
+      The DevTools endpoint is scraped out of chromium's stderr, and this handler re-ran the regex
+      against the WHOLE accumulated buffer on every chunk — guarded only by `settled`, which is not
+      set until `done` runs at the very end of the render, two to three seconds later. Any ordinary
+      stderr line inside that window therefore re-matched the `ws://` still sitting in the buffer and
+      opened a SECOND, concurrent CDP session: its own target, its own render, and its own
+      `writeFile` against the same `doc.pdf` the first one was writing. Headless chromium talks on
+      stderr routinely (fontconfig, `bus.cc`, GPU and OOM-score notices) and every slip here loads a
+      Devanagari face, which is precisely what makes fontconfig talk.
+
+      Two writes truncating and interleaving leave a PDF with no findable `/MediaBox`, so
+      `pdfHeightMm` silently returns its 297 fallback, CUPS is told `Custom.72x297mm`, `lp` exits 0
+      and the marker goes down: the clerk is told it printed and is holding a blank strip, with no
+      failure anywhere to reprint from. `settled` cannot serve as the guard because `done()` has to
+      stay callable later; this is a separate one-shot.
+
+      The listener stays attached rather than being removed, because nothing else drains
+      `chrome.stderr` and an unread pipe blocks the child once its buffer fills.
+    */
+    let started = false;
     const done = (fn, arg) => { if (!settled) { settled = true; try { chrome.kill(); } catch { /* already gone */ } fn(arg); } };
     const timer = setTimeout(() => { done(reject, new Error("chromium timed out rendering")); }, 60_000);
 
     chrome.on("error", (e) => { clearTimeout(timer); done(reject, e); });
     chrome.stderr.on("data", (d) => {
       stderr += String(d);
+      if (started || settled) return;
       const m = /ws:\/\/[^\s]+/.exec(stderr);
-      if (m === null || settled) return;
+      if (m === null) return;
+      started = true;
       const endpoint = m[0];
       (async () => {
         const ws = new WebSocket(endpoint);
@@ -300,6 +405,35 @@ async function api(config, path, body) {
 }
 
 /**
+ * ═══ THE DOCUMENT GOES FIRST. ITS MARKER IS WHAT KEEPS IT OFF THE PRINTER ═══
+ *
+ * Both report legs used to delete their own marker and THEN the rendered document. Until the spool
+ * was read back that order was inert — nothing ever opened `jobs/` again except the seven-day sweep.
+ * `replaySpool` made it live: `jobsToReplay` defines "work that still owes paper" as a file in
+ * `jobs/` with no marker beside it, which is EXACTLY what those two unlinks leave behind between
+ * them. A power cut or a `systemctl restart` in that window — on the ordinary success path of every
+ * job — meant a second copy of a patient's prescription off the laser on the next start. And with no
+ * crash at all: if the `jobs/` unlink threw for a local reason (EROFS, EACCES) while the marker's had
+ * already succeeded, the relay reprinted that job once per poll interval for ever.
+ *
+ * Reversed, the same interruption leaves a marker with no document: `flushReports` re-reports it next
+ * tick (a no-op on the server, which guards on `status = 'claimed'`) and tidies it away, and
+ * `jobsToReplay` cannot see it at all because there is no document to replay. No paper either way.
+ *
+ * So the rule, in one place rather than at four call sites: THE DURABLE RECORD OF "THIS PRINTED"
+ * OUTLIVES ANYTHING THAT COULD MAKE IT PRINT AGAIN. A document that would not go keeps its marker,
+ * loudly, and the next job is still reported — a disk fault here is not an uplink outage.
+ */
+async function removeSpooledDocumentBeforeMarker(spool, sub, markerFile, id, log) {
+  if (!await removeSpoolFile(join(spool, DIRS.jobs, `${id}.json`), log)) {
+    log(`keeping ${sub}/${markerFile}: its spooled document is still on disk and nothing else stops a reprint`);
+    return false;
+  }
+  await removeSpoolFile(join(spool, sub, markerFile), log);
+  return true;
+}
+
+/**
  * Deliver every report the spool is still holding.
  *
  * Runs BEFORE each claim, deliberately: a relay that reconnects should tell the server what it
@@ -312,15 +446,15 @@ export async function flushReports(config, spool, log) {
     const id = file.replace(/\.json$/, "");
     try {
       await api(config, "/print/printed", { jobId: id });
-      await rm(join(spool, DIRS.printed, file), { force: true });
-      await rm(join(spool, DIRS.jobs, `${id}.json`), { force: true });
-      log(`reported printed ${id}`);
     } catch (e) {
       // The uplink is down. The paper is out and the marker stays — this is not an error worth
-      // shouting about, and retrying it forever is the correct behaviour.
+      // shouting about, and retrying it forever is the correct behaviour. The try is NARROW on
+      // purpose: the two deletions below are local-disk work and must not be filed as an outage.
       log(`report deferred ${id}: ${String(e)}`);
       return;
     }
+    if (!await removeSpooledDocumentBeforeMarker(spool, DIRS.printed, file, id, log)) continue;
+    log(`reported printed ${id}`);
   }
   for (const file of await readdir(join(spool, DIRS.failed)).catch(() => [])) {
     if (!file.endsWith(".json")) continue;
@@ -358,22 +492,28 @@ export async function flushReports(config, spool, log) {
     }
     try {
       await api(config, "/print/failed", { jobId: id, error: String(reason).slice(0, 2000) });
-      await rm(join(spool, DIRS.failed, file), { force: true });
-      /*
-        ═══ AND THE RENDERED DOCUMENT, WHICH THIS LEG WAS LEAVING ON DISK FOR EVER ═══
-
-        `jobs/<id>.json` holds the CLAIM — the fully rendered HTML, with the patient's name, UHID,
-        age, sex, visit number and doctor in it. The printed leg above has always removed it. This
-        one removed only its own marker, so every permanently failed job left a copy of a patient's
-        document on in-hospital hardware, invisible from the server, with nothing that would ever
-        clean it up. A jammed printer was a privacy leak with a long half-life.
-      */
-      await rm(join(spool, DIRS.jobs, `${id}.json`), { force: true });
-      log(`reported failed ${id}`);
     } catch { return; }
+    /*
+      ═══ AND THE RENDERED DOCUMENT, WHICH THIS LEG WAS LEAVING ON DISK FOR EVER ═══
+
+      `jobs/<id>.json` holds the CLAIM — the fully rendered HTML, with the patient's name, UHID,
+      age, sex, visit number and doctor in it. The printed leg above has always removed it. This
+      one removed only its own marker, so every permanently failed job left a copy of a patient's
+      document on in-hospital hardware, invisible from the server, with nothing that would ever
+      clean it up. A jammed printer was a privacy leak with a long half-life.
+    */
+    if (!await removeSpooledDocumentBeforeMarker(spool, DIRS.failed, file, id, log)) continue;
+    log(`reported failed ${id}`);
   }
 }
 
+/**
+ * Render one job and hand it to the printer.
+ *
+ * THROWS when no paper came out. RESOLVES FALSE when the paper IS out but the `printed/` marker
+ * could not reach the disk — the caller must then stop rather than go on printing work it cannot
+ * record, which is the difference between one slip and one every poll interval.
+ */
 export async function printOne(config, spool, job, log) {
   const queue = queueFor(config, job.destination);
   if (queue === null) throw new Error(`no queue configured for destination ${job.destination}`);
@@ -391,11 +531,16 @@ export async function printOne(config, spool, job, log) {
     const pdfHeight = await pdfHeightMm(pdfPath);
     await lpPrint(queue, pdfPath, `${String(Math.round(page.widthMm))}x${String(pdfHeight)}`);
     // THE MARKER GOES DOWN THE MOMENT `lp` ACCEPTS, before any attempt to tell the server. If the
-    // uplink dies now, the next claim finds the marker and re-reports instead of reprinting.
-    await writeFile(join(spool, DIRS.printed, `${job.id}.json`), JSON.stringify({ at: new Date().toISOString(), queue }), "utf8");
+    // uplink dies now, the next claim finds the marker and re-reports instead of reprinting. And if
+    // the DISK refuses it, `markSpool` keeps it in memory and says so — see its header.
+    const recorded = await markSpool(spool, DIRS.printed, job.id,
+      JSON.stringify({ at: new Date().toISOString(), queue }), log);
     log(`printed ${job.id} → ${queue} (${job.title})`);
+    return recorded;
   } finally {
-    await rm(work, { recursive: true, force: true });
+    // Not even the tidying may throw: the paper is out and the marker is down, and failing to clear
+    // a scratch directory under /tmp is no reason to tell the server this job did not print.
+    await rm(work, { recursive: true, force: true }).catch((e) => { log(`could not clear ${work}: ${String(e)}`); });
   }
 }
 
@@ -425,21 +570,19 @@ export async function sweepSpool(spool, log) {
     const info = await stat(path).catch(() => null);
     if (info === null || info.mtimeMs >= cutoff) continue;
     /*
-      `force: true` SUPPRESSES ENOENT AND NOTHING ELSE. An immutable attribute, a read-only remount,
-      a spool restored from a backup under the wrong owner — each throws EACCES/EPERM/EROFS out of
-      here, and `sweepSpool` runs one line before `flushReports` in `tick`, so that is the same
-      silent, restart-surviving wedge the failure-marker parse used to be: the entry is already past
-      the cutoff, so it is hit again on every single tick and the relay never claims work again.
+      `removeSpoolFile` rather than a bare `rm`, and it is the same reason every other deletion here
+      uses it: `force: true` suppresses ENOENT AND NOTHING ELSE. An immutable attribute, a read-only
+      remount, a spool restored from a backup under the wrong owner — each throws EACCES/EPERM/EROFS
+      out of an unguarded `rm`, and `sweepSpool` runs one line before `flushReports` in `tick`, so
+      that is the same silent, restart-surviving wedge the failure-marker parse used to be: the entry
+      is already past the cutoff, so it is hit again on every single tick and the relay never claims
+      work again.
 
       Logged and stepped over instead. Once every poll interval is noisy, and noisy is the point —
       a line an operator can grep beats a unit that reports itself healthy while nothing prints.
       The count stays honest: a file that could not be removed was not swept.
     */
-    const swept = await rm(path, { force: true }).then(() => true, (e) => {
-      log(`could not sweep ${file}: ${String(e)}`);
-      return false;
-    });
-    if (swept) removed += 1;
+    if (await removeSpoolFile(path, log)) removed += 1;
   }
   if (removed > 0) log(`swept ${String(removed)} spooled document(s) older than 7 days`);
 }
@@ -473,19 +616,39 @@ export async function sweepSpool(spool, log) {
  *   3. spooled, never printed, relay dies → replay prints it; if the server also re-offers it, (2).
  *   4. spooled, print failed → a `failed/` marker; replay skips, the server owns the retry.
  *
- * The one window left open is between `lp` exiting 0 and the marker reaching disk — milliseconds.
- * It is left open ON PURPOSE. Closing it means writing the marker BEFORE `lp`, which converts the
- * failure mode from a duplicate slip into a MISSING one, and `kernel/printing/claim.ts` rules that
- * way round explicitly: a clerk who gets two token slips throws one away, while a patient who gets
- * none stands at a counter that believes it printed. This does not widen the window; it does reach
- * it sooner, because a restart now replays locally instead of waiting out the lease — and the lease
- * would have produced the same reprint two minutes later anyway.
+ * The window between `lp` exiting 0 and the marker reaching disk — milliseconds — is left open ON
+ * PURPOSE. Closing it means writing the marker BEFORE `lp`, which converts the failure mode from a
+ * duplicate slip into a MISSING one, and `kernel/printing/claim.ts` rules that way round explicitly:
+ * a clerk who gets two token slips throws one away, while a patient who gets none stands at a
+ * counter that believes it printed. This does not widen the window; it does reach it sooner, because
+ * a restart now replays locally instead of waiting out the lease — and the lease would have produced
+ * the same reprint two minutes later anyway.
+ *
+ * ═══ AND THIS PARAGRAPH USED TO SAY THAT WAS THE ONLY WINDOW ═══
+ *
+ * It was not, and the two it missed were both opened by replay itself, on roads that had nothing to
+ * do with a crash. They are closed elsewhere and named here because this is where anyone reasoning
+ * about duplicate paper will look:
+ *
+ *   5. The marker WRITE fails. A full or read-only spool threw the write out of this function,
+ *      out of `tick` before the claim, and into the retry loop in `main` — which replayed the same
+ *      un-marked job three seconds later, and again, for ever. `markSpool` and `unwrittenMarkers`
+ *      hold the record in memory instead and this loop stops the pass; see their header.
+ *   6. `flushReports` deleted a marker BEFORE the document it guards, so anything interrupting those
+ *      two unlinks left a document that `jobsToReplay` reads as owing paper. Reversed; see
+ *      `removeSpooledDocumentBeforeMarker`.
+ *
+ * And two relays on one spool print everything twice, because replay is what turned `jobs/` from a
+ * write-only store into shared state. See `acquireSpoolLock`.
  *
  * Nothing in here is allowed to throw for a local-disk reason. That was the whole lesson of the
  * failure-marker parse above, and implementing replay carelessly would simply have moved the wedge
  * from `failed/` to `jobs/`.
  */
 export async function replaySpool(config, spool, log) {
+  // A marker the disk refused earlier gets another chance BEFORE anything is decided from the
+  // markers, so a spool that has recovered stops carrying the record in RAM.
+  await flushUnwrittenMarkers(spool, log);
   const state = await readSpoolState(spool);
   const spooled = (await readdir(join(spool, DIRS.jobs)).catch(() => []))
     .filter((f) => f.endsWith(".json"))
@@ -497,24 +660,40 @@ export async function replaySpool(config, spool, log) {
       job = JSON.parse(await readFile(join(spool, DIRS.jobs, `${id}.json`), "utf8"));
     } catch (e) {
       log(`unreadable spooled job ${id}: ${String(e)}`);
-      await writeFile(join(spool, DIRS.failed, `${id}.json`),
-        JSON.stringify({ error: `spooled document unreadable: ${String(e).slice(0, 160)}` }), "utf8");
+      await markSpool(spool, DIRS.failed, id,
+        JSON.stringify({ error: `spooled document unreadable: ${String(e).slice(0, 160)}` }), log);
       continue;
     }
     if (typeof job?.html !== "string" || typeof job?.destination !== "string") {
       log(`spooled file ${id} is not a print job`);
-      await writeFile(join(spool, DIRS.failed, `${id}.json`),
-        JSON.stringify({ error: "spooled file is not a print job" }), "utf8");
+      await markSpool(spool, DIRS.failed, id,
+        JSON.stringify({ error: "spooled file is not a print job" }), log);
       continue;
     }
     log(`replaying spooled job ${id}`);
+    let recorded;
     try {
       // THE FILENAME IS THE ID, not whatever the payload says. A disagreement between the two must
       // never write a `printed/` or `failed/` marker under a job id this relay never claimed.
-      await printOne(config, spool, { ...job, id }, log);
+      recorded = await printOne(config, spool, { ...job, id }, log);
     } catch (e) {
       log(`FAILED (replay) ${id}: ${String(e)}`);
-      await writeFile(join(spool, DIRS.failed, `${id}.json`), JSON.stringify({ error: String(e) }), "utf8");
+      await markSpool(spool, DIRS.failed, id, JSON.stringify({ error: String(e) }), log);
+      continue;
+    }
+    if (!recorded) {
+      /*
+        A SPOOL THAT CANNOT RECORD WHAT IT PRINTED MUST STOP PRINTING, NOT CARRY ON.
+
+        `unwrittenMarkers` already keeps THIS job off the printer next pass. Stopping the pass is the
+        other half: the reason the marker did not land is almost always a full or read-only spool,
+        and every further job in this pass would come off the printer with the same nothing recorded
+        about it. Paper nobody can count is the state to avoid, and it is cheap to avoid — the next
+        tick starts again from `flushUnwrittenMarkers`, and picks up where this left off the moment
+        the disk takes a write.
+      */
+      log(`stopping this replay pass: ${id} is on paper but its printed marker is not on disk`);
+      return;
     }
   }
 }
@@ -535,19 +714,135 @@ export async function tick(config, spool, log) {
   for (const job of claimed.jobs ?? []) {
     // SPOOL FIRST, PRINT SECOND. If this process is killed between the two, the job is on disk and
     // the next tick prints it — from the spool, without needing the server (`replaySpool`, above).
-    await writeFile(join(spool, DIRS.jobs, `${job.id}.json`), JSON.stringify(job), "utf8");
+    const spooledOk = await writeFile(join(spool, DIRS.jobs, `${job.id}.json`), JSON.stringify(job), "utf8")
+      .then(() => true, (e) => {
+        log(`could not spool ${job.id}: ${String(e)}`);
+        return false;
+      });
+    if (!spooledOk) {
+      // A job that is not on the spool cannot be replayed, cannot be swept and cannot be re-reported,
+      // so printing it now would put paper on a counter that nothing here remembers. Stop instead:
+      // the lease lapses, the server offers it again, and nothing was printed twice. This used to
+      // throw out of `tick`, which at least also printed nothing — but it lost the report flush
+      // below with it, which is the one thing a full spool still needs to get done.
+      log(`not printing ${job.id}: it could not be written to the spool`);
+      break;
+    }
     if (decide(state, job.id) === "report-only") {
       log(`already printed ${job.id}, re-reporting only`);
       continue;
     }
+    let recorded;
     try {
-      await printOne(config, spool, job, log);
+      recorded = await printOne(config, spool, job, log);
     } catch (e) {
       log(`FAILED ${job.id}: ${String(e)}`);
-      await writeFile(join(spool, DIRS.failed, `${job.id}.json`), JSON.stringify({ error: String(e) }), "utf8");
+      await markSpool(spool, DIRS.failed, job.id, JSON.stringify({ error: String(e) }), log);
+      continue;
+    }
+    // Same rule as the replay loop: paper this spool cannot record is where duplicates come from.
+    if (!recorded) {
+      log(`stopping this claim: ${job.id} is on paper but its printed marker is not on disk`);
+      break;
     }
   }
   await flushReports(config, spool, log);
+}
+
+/* ── one relay per spool ──────────────────────────────────────────────────────────────────────── */
+
+const LOCK_FILE = "relay.lock";
+
+/**
+ * The pid holding an existing lock, or null if nobody is.
+ *
+ * "CANNOT TELL" MUST MEAN STALE, and that is not caution, it is the whole safety argument for having
+ * a lock at all. A hospital PC switched off at the wall leaves this file behind; a relay that then
+ * refuses to start is a site-wide printing outage that survives every restart — the exact failure
+ * this file has already produced twice, and strictly worse than the duplicate slip the lock prevents.
+ * So an unreadable, unparseable or unbelievable lock is treated as abandoned.
+ *
+ * EPERM is the one exception: that is the kernel saying the process exists and belongs to someone
+ * else, which is a live holder and not a stale file.
+ */
+async function lockHolder(spool) {
+  const raw = await readFile(join(spool, LOCK_FILE), "utf8").catch(() => null);
+  if (raw === null) return null;
+  let pid = 0;
+  try {
+    pid = Number(JSON.parse(raw)?.pid);
+  } catch {
+    return null;
+  }
+  if (!Number.isInteger(pid) || pid <= 0) return null;
+  try {
+    process.kill(pid, 0);
+    return pid;
+  } catch (e) {
+    return e?.code === "EPERM" ? pid : null;
+  }
+}
+
+/**
+ * ═══ TWO RELAYS ON ONE SPOOL NOW MEANS TWO SLIPS ═══
+ *
+ * Until the spool was read back, a second relay process was harmless: the only consumer of a claim
+ * was the process that made it, and the server's `for update skip locked` guaranteed two relays
+ * could never hold the same job. `jobs/` was write-only. `replaySpool` makes it SHARED MUTABLE
+ * STATE that any process pointed at the spool will act on — and README.md's own Run section shows
+ * the by-hand command twenty lines above the systemd unit that runs the same command against the
+ * same spool, which is exactly what a technician clearing a jam does.
+ *
+ * Process A claims job X, writes `jobs/X.json`, and spends two or three seconds in chromium. B's
+ * tick lands inside that window, sees a document with no marker, and prints the same token slip:
+ * the patient is handed two. Both are also rendering through `join(tmpdir(), "hmis-print-<id>")`,
+ * a fixed path per job id, so A's `finally` can delete the PDF out from under B's `lp` — B then
+ * reports a failure for a job whose paper is already on the counter and the server requeues it.
+ *
+ * Returns a release function when this process owns the spool, and NULL when a live relay already
+ * does — the caller must then refuse to start. A lock that cannot be created for a reason other
+ * than contention (a read-only spool, wrong ownership) is logged loudly and started WITHOUT: a
+ * relay that will not start is a worse outcome than one running unlocked, and it is the same
+ * ruling as everywhere else in this file — never stop the counter.
+ */
+export async function acquireSpoolLock(spool, log) {
+  const path = join(spool, LOCK_FILE);
+  // Two passes at most: one to find a stale lock and clear it, one to take the lock itself. The
+  // create is `wx` — O_CREAT|O_EXCL — so two relays racing to replace the same stale file cannot
+  // both win, and the loser sees a live holder on its second pass.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    let handle = null;
+    try {
+      handle = await open(path, "wx");
+    } catch (e) {
+      if (e?.code !== "EEXIST") {
+        log(`could not take the spool lock at ${path} (${String(e)}) — starting WITHOUT it`);
+        return () => {};
+      }
+      const held = await lockHolder(spool);
+      if (held !== null) {
+        log(`another relay (pid ${String(held)}) already holds ${path}`);
+        return null;
+      }
+      log(`clearing a stale relay lock at ${path} — the process that wrote it is gone`);
+      if (!await removeSpoolFile(path, log)) return null;
+      continue;
+    }
+    // The lock is ours the moment `wx` succeeded; the pid inside it is only how the NEXT start tells
+    // a live holder from an abandoned file. So a failure to write it is logged and stepped over
+    // rather than thrown — an empty lock reads as stale, which is the safe direction, and refusing
+    // to start over 60 bytes would be the outage this whole guard exists to avoid.
+    try {
+      await handle.writeFile(`${JSON.stringify({ pid: process.pid, at: new Date().toISOString() })}\n`, "utf8");
+    } catch (e) {
+      log(`took the spool lock but could not record this pid in it: ${String(e)}`);
+    }
+    await handle.close().catch(() => { /* the fd goes with the process, and the file is the lock */ });
+    // `rmSync`, because this also runs from a `process.on("exit")` handler, where nothing async can.
+    return () => { try { rmSync(path, { force: true }); } catch { /* the next start clears it */ } };
+  }
+  log(`another relay took the spool lock at ${path} first`);
+  return null;
 }
 
 /* ── self-test: the spool and dedupe logic, with no server and no printer ─────────────────────── */
@@ -642,6 +937,25 @@ async function main() {
   await ensureSpool(spool);
   const log = (m) => { console.log(`${new Date().toISOString()} ${m}`); };
   const pollMs = Math.max(1, Number(config.pollSeconds ?? 3)) * 1000;
+
+  /*
+    THE LOCK COMES BEFORE THE LOOP, because `replaySpool` is the one code path that acts on another
+    process's claim — and it runs on the very first tick. Refusing here is the only place refusing is
+    still free: nothing has been claimed, nothing has been rendered and no paper is at stake.
+  */
+  const release = await acquireSpoolLock(spool, log);
+  if (release === null) {
+    console.error(`another relay is already running against ${spool} — refusing to start a second one`);
+    process.exitCode = 3;
+    return;
+  }
+  // systemd stops this unit with SIGTERM, whose default handler exits WITHOUT running `exit`
+  // listeners, so the lock has to be given back on the signal too or every restart clears a stale
+  // one it did not need to.
+  process.on("exit", release);
+  for (const signal of ["SIGINT", "SIGTERM"]) {
+    process.on(signal, () => { release(); process.exit(0); });
+  }
 
   log(`relay up · server ${config.serverUrl} · serving ${servedDestinations(config).join(", ")}`);
   for (;;) {

@@ -107,6 +107,29 @@ node relay.mjs --config /etc/hmis-print-relay.json
 node relay.mjs --self-test     # no server, no printer needed
 ```
 
+> **ONE RELAY PER SPOOL. THE SECOND ONE PRINTS THE SAME SLIP AGAIN.**
+>
+> The unit below runs that exact first command against that exact spool, so starting it by hand to
+> watch a jam — the obvious thing to do, and what this page used to invite without a word of warning
+> — means two processes reading one `jobs/` directory. Process A claims a job, writes it to the
+> spool and spends two or three seconds in chromium; B's tick lands inside that window, sees a
+> document with no marker beside it, and prints the same token slip. The patient is handed two.
+>
+> That is not a risk the design used to carry: until the spool was replayed, `jobs/` was write-only
+> and a second relay was merely idle. Replay is what made the directory shared state.
+>
+> So the relay now takes `<spoolDir>/relay.lock` before its first tick and a second one **refuses to
+> start**, naming the pid that holds it. To watch what the running relay is doing, read its log
+> (`journalctl -u hmis-print-relay -f`) or the spool itself; to run it by hand, stop the unit first:
+>
+> ```bash
+> sudo systemctl stop hmis-print-relay
+> ```
+>
+> A lock left behind by a power cut is **not** a reason to refuse: the relay checks whether the
+> process named in it is still alive and clears it if not. A relay that would not start after a
+> power cut would be a worse bug than the one the lock fixes.
+
 There is a second, fuller set of checks that does not belong on the hospital PC:
 
 ```bash
@@ -161,9 +184,10 @@ The spool is the whole status UI:
 
 ```
 /var/lib/hmis-print-relay/
-  jobs/     claimed, document on disk
-  printed/  paper is out, the server has not been told yet
-  failed/   gave up, waiting to report why
+  jobs/       claimed, document on disk
+  printed/    paper is out, the server has not been told yet
+  failed/     gave up, waiting to report why
+  relay.lock  the pid of the relay that owns this spool
 ```
 
 A file sitting in `printed/` means the uplink is down, not that anything is wrong. A file in
@@ -177,6 +201,21 @@ document unreadable: …` — and then deleted, so the job is requeued and the r
 matters more than it sounds: an unreadable file used to throw out of every tick before the claim,
 which stopped the whole site printing, permanently and across restarts, while `systemctl status`
 still reported the unit `active (running)`.
+
+**And a disk that is FULL cannot make it print twice.** `printed/<id>.json` is the only thing that
+stops a second slip, and it is written the moment `lp` accepts the job. If that write fails — a full
+spool is the ordinary end of a relay left offline for a week, since `jobs/` holds whole rendered
+documents and is swept only at seven days — the relay keeps the marker **in memory**, stops the pass
+rather than printing more work it cannot record, and writes it out on the first tick the disk
+accepts. Watch for `could not write printed/<id>.json` in the log; it means **free space on the spool
+disk now**. Left unguarded this was the worst failure this relay had: the same patient's slip off the
+front-desk thermal every three seconds until the roll ran out, while nothing else in the hospital
+printed at all.
+
+The one thing that memory cannot survive is a reboot, so a relay restarted onto a still-full spool
+may reprint **one** slip, once. That is the same trade the marker itself makes by going down *after*
+`lp` rather than before: a clerk handed two token slips throws one away, and a patient handed none
+stands at a counter that believes it printed.
 
 > **`jobs/` HOLDS PATIENT DATA. TREAT THE SPOOL DIRECTORY AS A CLINICAL RECORD.**
 >
