@@ -141,6 +141,37 @@ Two measured facts that shape the design and would otherwise be guessed:
   lock every analyser from its first run. `interface_down` **is** written here (T7) because the
   bridge can observe it; `qc_locked` and `calibration_due` need Levey–Jennings and a calibration
   schedule, which is its own phase. Recorded in §6, not silently skipped.
+- **D12 — A plate reader names its sample by the WELL, and `position` is never consulted for
+  identity.** DECIDED at T5. The well arrives in `sampleId`, the field whose whole meaning is "how
+  the machine named this sample"; `position` stays the transmission's own ordinal and is the key the
+  parked-results table is unique on. Two fields that could each answer "which well is this" is one
+  answer too many, and the wrong one would report a control as a patient.
+- **D13 — On a plate whose controls failed, NOTHING from that block reaches a human — not a result,
+  and not an inbox row either.** DECIDED at T5, and it is the half of D10 that D10 did not say out
+  loud. T6's inbox exists so somebody can NAME an unidentified number and attach it, which re-runs
+  the whole attachment path; every guard on that path would let a void well through, because none of
+  them knows about the plate. A parked row from a rejected plate is therefore an *invitation* to
+  release the exact value the rejection refused. So parking is DEFERRED until the controls have
+  spoken: the rows are collected first and written only once the plate is known to be good. The
+  plate row — status, both control means, the computed cut-off, and a sentence naming the fault — is
+  the whole record of the rejection, and every optical density on it is kept. **T6 must render a
+  `controls_failed` plate somewhere**, because the inbox deliberately will not.
+- **D14 — What a patient well REPORTS follows the catalogue, not the plate.** DECIDED at T5. A
+  qualitative screen is a `coded` analyte and carries the interpretation (`Reactive` /
+  `Non-Reactive`); a lab that catalogued the index as a number gets the S/CO ratio. Either way the
+  other figure travels in the result's remarks with the plate, the kit lot, the well, the OD and the
+  cut-off — so the number that produced the interpretation is on the record, and a report can never
+  show a bare optical density, which is meaningless off its own plate and, worse, looks comparable
+  across plates. The remarks are also where a first-run reactive carries its REPEAT instruction, so
+  whoever verifies it sees the requirement without opening the plate.
+- **D15 — A dedicated cut-off control REPLACES the kit formula when the plate carries one; blanks are
+  never subtracted.** DECIDED at T5. Some kits ship a cut-off control and say to use its mean
+  directly, others give a formula over the negative controls — the plate says which kit this is by
+  whether the control was laid out, rather than this file preferring one house style and applying it
+  to a kit whose insert says otherwise. Blank wells are recorded and deliberately not subtracted:
+  whether the reader has already blanked its own readings is a property of the reader, and
+  subtracting a second time would silently halve every cut-off, which makes borderline samples read
+  as reactive and would never announce itself.
 
 ## 4. Tasks — one PR each, fail-first, rail + consumer together
 
@@ -305,3 +336,69 @@ table, the README-parity derived base, and the V5 database census **twice** (fir
 **Evidence:** 29 suites / 263 tests exit 0 (lab + lab e2e + seed-roles), typecheck 0, lint 0.
 
 
+
+### 8.5 T5 — The plate map, and the controls that can void it (executed 2026-09-05)
+
+Migration **0073** — `lab_plate_maps` + `lab_plate_wells`, additive, no existing table touched.
+Built on `lane/lims-17e-t5-clean`, cut fresh from `origin/main` with the parked schema
+(`beed060`) cherry-picked rather than the stale T4 base merged.
+
+- **The kit defines the arithmetic; the tables only store and apply it.** `cutoff_multiplier`,
+  `cutoff_offset`, `min_pc_nc_ratio` and `max_nc_od` come off the kit insert at lay-out. A cut-off
+  formula hard-coded here would be this software quietly overruling a regulated document, and NABL
+  asks which kit and which lot — the plate carries both.
+- **`evaluatePlateControls` is PURE and takes only readings from the plate being evaluated.** There
+  is no parameter through which another plate's controls, a cached figure or yesterday's number
+  could reach it. That is the shape of the guard, not a comment about it.
+- **The biconditional is a database CHECK**: `specimen_id` non-null exactly for `patient` wells.
+- One open plate per reader (partial unique index), one well per specimen, a rejected plate NAMES
+  its reason, and every computed OD is kept on a failed plate.
+
+**Four decisions taken and recorded in §3 as D12–D15.** D13 is the one a later task must not
+undo: on a controls-failed plate NOTHING parks either, so **T6 must render a rejected plate from
+`lab_plate_maps`, because the inbox deliberately will not show one.**
+
+**One defect the plan did not name, found by asking what else could move the cut-off.** A well
+transmitted TWICE in one block silently drags the negative-control mean, and the cut-off every
+patient well is measured against moves with it, in a direction nothing reports. Neither reading is
+used now. It is the same shape as the four mandated mutants and nobody had written it down.
+
+**The four naming modes had grown four copies of "attach a machine value or say why it parked."**
+They are one closure in `ingest.ts` now, collapsed BEFORE T5's arm was added rather than after —
+four copies is four places a later task can loosen one guard on one path. T3's and T4's merged
+suites are what proved the collapse did not change their behaviour.
+
+**MUTANTS — six applied, six killed, each mutation OBSERVED rather than assumed.**
+
+| mutant | result |
+|---|---|
+| the cut-off computed from something other than this plate's controls | KILLED — 4 failed / 11 passed |
+| patient wells released off a plate whose controls failed (D10 defeated) | KILLED — 1 failed / 14 passed |
+| the service lets a control well carry a tube | KILLED — 1 failed / 14 passed |
+| the DB biconditional `lab_plate_wells_specimen_ck` dropped | KILLED — 1 failed / 14 passed |
+| a reactive screen skips the repeat-in-duplicate flag | KILLED — 1 failed / 14 passed |
+| a doubled well keeps its FIRST reading | KILLED — 1 failed / 14 passed |
+
+**TWO METHOD FINDINGS, and the second is worth more than the feature.**
+
+- **A mutant must be PROVED PRESENT before its survival means anything.** The constraint mutant
+  first "survived". It had never been applied: the lane's worker databases persist between runs and
+  drizzle applies migrations by timestamp, so editing an already-applied migration FILE is not a
+  lever on a live schema. Measured afterwards, `lab_plate_wells_specimen_ck` was still present in
+  both worker DBs. Reporting that survival would have been a fabricated finding about our own test,
+  sourced from an experiment that never ran. The harness now drops the constraint with `ALTER TABLE`
+  against both worker DBs and prints the constraint list before and after. **A survivor is a claim
+  about the test only if the mutation was real; otherwise it is a claim about the harness.**
+- **"The test throws, so the guard works" is unsound whenever more than one layer could throw.**
+  Chasing that survivor found a real defect underneath: the test inserted `specimenId: newId()` into
+  a column with an FK to `lab_specimens`, so the row was refused by the **foreign key** and not by
+  the biconditional the test is named for — it would have stayed green with the CHECK deleted. A row
+  can be refused by a type, a NOT NULL, an FK, a unique index, a CHECK or a trigger, and the cheapest
+  fires first. The test now uses a REAL tube and asserts `.toThrow(/lab_plate_wells_specimen_ck/)`,
+  naming the constraint it is about. It also asserts the half no foreign key could ever cover — a
+  `patient` well with a NULL specimen, which nothing but the biconditional can refuse. **Enumerate
+  what the invariant forbids before choosing the mutant: there were two forbidden things, not one.**
+
+**Evidence:** 34 suites / 296 tests exit 0 (`src/modules/lab` + `test/lab.e2e.test.ts`), typecheck 0,
+lint 0 (2 pre-existing warnings in files this task does not touch). Migration serial 0073 verified
+free against `origin/main` and every remote branch at push time.
