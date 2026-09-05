@@ -54,9 +54,49 @@ const appointment = (over: Record<string, unknown>): Record<string, unknown> => 
   ...over,
 });
 
+/**
+ * ═══ READING WHAT WAS ACTUALLY POSTED, AND WHY THIS FILE COULD NOT ═══
+ *
+ * Copied from `opd-appointments.test.tsx:52-62` — they are local to that file and exported from
+ * nowhere, and a shared home for them is a refactor of two suites, not of this finding.
+ *
+ * `stubFetch` installs a `vi.fn()`, so every call is on the mock: the METHOD, the PATH and the
+ * BODY. Until this file read them, all four of this screen's write paths could carry the wrong
+ * patient, the wrong slot or the wrong reason and stay green — the recorder at `mount` parsed
+ * every booking body and nothing ever asked it a question.
+ */
+function fetchCalls(): { url: string; path: string; method: string; body: string }[] {
+  return vi.mocked(fetch).mock.calls.map(([input, init]) => {
+    const url = String(input);
+    return { url, path: url.split("?")[0]!, method: init?.method ?? "GET", body: typeof init?.body === "string" ? init.body : "" };
+  });
+}
+function callsTo(method: string, path: string): ReturnType<typeof fetchCalls> {
+  return fetchCalls().filter((c) => c.method === method && c.path === path);
+}
+function bodyOf(method: string, path: string): Record<string, unknown> {
+  return JSON.parse(callsTo(method, path)[0]?.body ?? "{}") as Record<string, unknown>;
+}
+
 function mount(
   posted: { url: string; body: unknown }[],
-  opts: { rebooking?: unknown[]; book?: unknown[]; leaves?: unknown[]; canCheckIn?: boolean } = {},
+  opts: {
+    rebooking?: unknown[]; book?: unknown[]; leaves?: unknown[]; canCheckIn?: boolean;
+    /**
+     * ═══ THE THREE WRITE ROUTES THIS HARNESS DID NOT HAVE, AND THE TRAP THEY SET ═══
+     *
+     * `mount` registered exactly ONE write route — `POST /api/opd/appointments` — so check-in,
+     * reschedule and cancel were not merely unasserted here, they were UNREACHABLE: `stubFetch`
+     * answers an unregistered key with a 404 (`test-utils.tsx:37`) and `rowAct` swallows that into
+     * a row-error. "The call did not happen" would have passed for entirely the wrong reason.
+     *
+     * Spread LAST, so a test may also REPLACE a read route (the slot board does exactly that when
+     * it needs the board to change under a held slot). And in the two-row tests, register BOTH
+     * rows' routes: a mutant that calls the wrong row must get a 200 and be caught by the COUNT,
+     * never by an incidental 404 whose error banner could be misread as the guard working.
+     */
+    routes?: Record<string, unknown>;
+  } = {},
 ): void {
   const hospital = [
     "opd.appointments.manage", "opd.appointments.read", "opd.masters.read",
@@ -98,6 +138,7 @@ function mount(
       posted.push({ url: url ?? "", body: JSON.parse(String(init?.body ?? "{}")) });
       return { appointment: appointment({}) };
     },
+    ...(opts.routes ?? {}),
   });
   setToken("t");
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -356,5 +397,321 @@ describe("FD-25: the leave pill, which is why anybody opens this screen on a bad
     mount([], { leaves: [{ id: "l-1", doctorId: "doc-1", fromDate: TOMORROW, toDate: TOMORROW, status: "scheduled", reason: "personal" }] });
     await arrive();
     await waitFor(() => { expect(screen.getByTestId("leave-pill")).toHaveTextContent(/1 doctor/i); });
+  });
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-25 CLOSE, BACKLOG 1 — WHAT EACH BUTTON ACTUALLY PUTS ON THE WIRE
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Everything above this line asserts what the screen SHOWS. Nothing above it asserted what the
+ * screen WRITES: the recorder existed, parsed every booking body, and the only question ever asked
+ * of it was `expect(posted).toHaveLength(0)` — a negative. So `slotStart: picked` → `all[0].start`,
+ * `checkInAppointment(a.id)` → `bookRows[0].id`, a transposed reschedule and a dropped cancel
+ * reason all shipped green through sixteen tests, typecheck and lint.
+ *
+ * Every test below therefore pins the METHOD, the URL and EVERY FIELD THAT CARRIES A DECISION —
+ * which patient, which slot, which reason — and each of them was watched failing against a mutant
+ * of the line it guards. `toEqual` on the whole body, never `toMatchObject`: a field that should
+ * not travel is a decision too.
+ *
+ * Two of them (`refuses to book…` and the two `drops the held slot…`) are not coverage but repair:
+ * they were RED against the tree as it stood, and the fixes they hold are in `appointment.tsx`.
+ */
+describe("FD-25 close: every write path, and the decision it carries", () => {
+  const user = (): ReturnType<typeof userEvent.setup> =>
+    userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
+
+  /** Two rows, both today, both still to come — so both offer Check in AND Cancel. */
+  const twoRowBook = [
+    appointment({ id: "first", serviceDate: TODAY, slotStart: `${TODAY}T06:00:00.000Z`, slotEnd: `${TODAY}T06:10:00.000Z` }),
+    appointment({
+      id: "second", serviceDate: TODAY, slotStart: `${TODAY}T06:10:00.000Z`, slotEnd: `${TODAY}T06:20:00.000Z`,
+      patientId: "p-3", patient: summary("p-3", "Sunita Kumar"),
+    }),
+  ];
+
+  /**
+   * THE CHIP THAT WAS PRESSED, NOT THE DAY'S FIRST FREE SLOT. Clicking index [1] is the whole
+   * point of this test: against index [0] "the chip pressed" and "the first slot on the board" are
+   * the same string, and the mutant `slotStart: all[0].start` survives however loudly it is named.
+   */
+  it("books the patient the rail is showing, into the slot that was actually clicked", async () => {
+    mount([]);
+    await arrive();
+    const u = user();
+    await u.type(screen.getByLabelText("Search"), "Ramesh");
+    await u.click(await screen.findByRole("button", { name: /Ramesh Kumar/ }));
+    await waitFor(() => { expect(screen.getByTestId("rail-name")).toHaveTextContent("Ramesh Kumar"); });
+    await waitFor(() => { expect(screen.getAllByTestId("slot-free")).toHaveLength(2); });
+
+    await u.click(screen.getAllByTestId("slot-free")[1]!);
+    expect(screen.getByTestId("slot-picked")).toHaveTextContent("09:50");
+    await u.click(screen.getByTestId("confirm-slot"));
+
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/appointments")).toHaveLength(1); });
+    expect(bodyOf("POST", "/api/opd/appointments")).toEqual({
+      patientId: "p-1", doctorId: "doc-1", slotStart: `${TOMORROW}T04:20:00.000Z`,
+    });
+  });
+
+  /**
+   * ═══ D2: THE BOOKING GOES TO THE CARD, NOT TO SESSION STORAGE ═══
+   *
+   * The seat kept two ideas of "who": `whoPicked`, the "Booking for" card this rail draws, and the
+   * app-wide patient in hand, which survives a route change and is written by three roads that all
+   * BLANK the card — arriving from `/counter`, a rebooking-rail row, and a row's Rebook. On every
+   * one of them the rail says "Nobody picked yet" while `commit` posted whoever was in storage.
+   *
+   * The road driven here is the rail row: click Lakshmi's row (takes p-2 in hand, blanks the card),
+   * think better of it, press "Stop moving", then book. Before the fix that booked LAKSHMI, and the
+   * agent log line names a time and a doctor and no patient, so the desk could not read it back.
+   *
+   * `/registration` closed the identical hole in its own close pass 2 and the ruling was the same:
+   * the write goes to what is on screen, and being wrong in the safe direction costs one search.
+   */
+  it("refuses to book when the rail is showing nobody, though somebody is still in hand", async () => {
+    mount([], {
+      rebooking: [appointment({
+        id: "r-9", status: "needs_rebooking", serviceDate: TOMORROW,
+        patientId: "p-2", patient: summary("p-2", "Lakshmi Prasad", "9835120114"),
+      })],
+    });
+    await arrive();
+    await waitFor(() => { expect(screen.getByTestId("rebooking-count")).toHaveTextContent("1 patient"); });
+
+    const u = user();
+    await u.click(screen.getByTestId("rebook-r-9"));   // p-2 goes in hand, the card is blanked
+    await u.click(screen.getByTestId("cancel-move"));  // …and p-2 is STILL in hand
+    expect(screen.getByTestId("rail-empty")).toBeInTheDocument();
+
+    await waitFor(() => { expect(screen.getAllByTestId("slot-free")).toHaveLength(2); });
+    await u.click(screen.getAllByTestId("slot-free")[0]!);
+    await u.click(screen.getByTestId("confirm-slot"));
+
+    await waitFor(() => { expect(screen.getByTestId("appt-error")).toHaveTextContent(/Pick the patient first/); });
+    expect(callsTo("POST", "/api/opd/appointments")).toHaveLength(0);
+  });
+
+  /**
+   * THE URL IS HALF THE ASSERTION. `rescheduleAppointment(appointmentId, slotStart, doctorId?)`
+   * takes three strings, so transposing the first two typechecks and lints clean; it shows up only
+   * as the path `/api/opd/appointments/2026-09-06T04%3A20%3A00.000Z/reschedule`, which `callsTo`
+   * on the `r-9` path counts as zero. The body half kills a dropped `doctorId` and a wrong slot.
+   */
+  it("moves the appointment it was told to move, to the slot that was clicked", async () => {
+    const moved = appointment({
+      id: "r-9", status: "needs_rebooking", serviceDate: TOMORROW,
+      patientId: "p-2", patient: summary("p-2", "Lakshmi Prasad", "9835120114"),
+    });
+    mount([], {
+      rebooking: [moved],
+      routes: {
+        "POST /api/opd/appointments/r-9/reschedule": {
+          from: moved, to: appointment({ id: "r-10", slotStart: `${TOMORROW}T04:20:00.000Z` }),
+        },
+      },
+    });
+    await arrive();
+    await waitFor(() => { expect(screen.getByTestId("rebooking-count")).toHaveTextContent("1 patient"); });
+
+    const u = user();
+    await u.click(screen.getByTestId("rebook-r-9"));
+    await waitFor(() => { expect(screen.getAllByTestId("slot-free")).toHaveLength(2); });
+    await u.click(screen.getAllByTestId("slot-free")[1]!);
+    await u.click(screen.getByTestId("confirm-move"));
+
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/appointments/r-9/reschedule")).toHaveLength(1); });
+    expect(bodyOf("POST", "/api/opd/appointments/r-9/reschedule")).toEqual({
+      slotStart: `${TOMORROW}T04:20:00.000Z`, doctorId: "doc-1",
+    });
+  });
+
+  /**
+   * TWO ROWS ARE STRUCTURALLY REQUIRED, and this is the same shape as the finding itself. With one
+   * row `bookRows[0].id === a.id`, so the mutant "check in the first row in the book" passes a
+   * one-row test whatever the test is called. `bookOrder` ranks both booked rows 0 and sorts by
+   * `slotStart`, so `first` is index 0 and `second` is the one the clerk presses.
+   */
+  it("checks in the row whose button was pressed, not the first row in the book", async () => {
+    mount([], {
+      book: twoRowBook,
+      routes: {
+        "POST /api/opd/appointments/first/check-in": { tokenNo: 3, roomId: "r-1", visitType: "new", encounter: { id: "enc-3", visitNo: "V2609050003" } },
+        "POST /api/opd/appointments/second/check-in": { tokenNo: 4, roomId: "r-1", visitType: "new", encounter: { id: "enc-4", visitNo: "V2609050004" } },
+      },
+    });
+    await arrive();
+    await waitFor(() => { expect(screen.getByTestId("checkin-second")).toBeInTheDocument(); });
+
+    await user().click(screen.getByTestId("checkin-second"));
+
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/appointments/second/check-in")).toHaveLength(1); });
+    /* The half that kills the mutant: the OTHER row was not touched. */
+    expect(callsTo("POST", "/api/opd/appointments/first/check-in")).toHaveLength(0);
+    expect(screen.queryByTestId("row-error-second")).not.toBeInTheDocument();
+  });
+
+  /**
+   * THE PADDED REASON IS DELIBERATE. `toEqual({ reason: "patient rang to cancel" })` is what pins
+   * `reason.trim()` at the call site rather than the raw input value — the server refuses a blank
+   * reason, and "   " is a blank reason that looks like text. The existing "will not cancel without
+   * a reason" test stays: it guards the disabled flip, which is a different claim from this one.
+   */
+  it("cancels the row whose button was pressed, and sends the typed reason trimmed", async () => {
+    mount([], {
+      book: twoRowBook,
+      routes: {
+        "POST /api/opd/appointments/first/cancel": { appointment: appointment({ id: "first", status: "cancelled" }) },
+        "POST /api/opd/appointments/second/cancel": { appointment: appointment({ id: "second", status: "cancelled" }) },
+      },
+    });
+    await arrive();
+    await waitFor(() => { expect(screen.getByTestId("cancel-second")).toBeInTheDocument(); });
+
+    const u = user();
+    await u.click(screen.getByTestId("cancel-second"));
+    await u.type(screen.getByTestId("cancel-reason"), "  patient rang to cancel  ");
+    await u.click(screen.getByTestId("cancel-confirm"));
+
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/appointments/second/cancel")).toHaveLength(1); });
+    expect(bodyOf("POST", "/api/opd/appointments/second/cancel")).toEqual({ reason: "patient rang to cancel" });
+    expect(callsTo("POST", "/api/opd/appointments/first/cancel")).toHaveLength(0);
+  });
+
+  /**
+   * ═══ D1: A HELD SLOT DIES WITH THE DAY IT BELONGED TO ═══
+   *
+   * The rebooking-rail row moves the doctor AND the day in one click. Every other road that moves
+   * the board clears the held slot — the doctor select, the date input, "Stop moving" — and this
+   * one did not, so a slot held for one doctor-day survived into a move aimed at another. The grid
+   * cannot highlight a start it is not rendering, so nothing on screen said it was still held,
+   * while `commit` posts `picked` and never `date`: the server derives `serviceDate` FROM the slot
+   * it is handed, so when the new doctor happens to sit that clock time the move lands silently on
+   * the wrong day, and when they do not the clerk gets a refusal for a slot the board never offered.
+   *
+   * FIXTURE HONESTY, said out loud because the test's name could be read as more than it proves:
+   * `GET /api/opd/slots` is stubbed date-BLIND, so after the board jumps to 08-Sep it still returns
+   * 06-Sep starts and the held slot is still findable on it. That is deliberate — it models the
+   * WORST case, the one where both days carry the same clock time and the server accepts silently —
+   * and it is what makes this assertion discriminate: nothing but clearing the pick can satisfy it.
+   */
+  it("drops the held slot when the clerk switches to moving somebody on another day", async () => {
+    mount([], {
+      rebooking: [appointment({
+        id: "r-9", status: "needs_rebooking", serviceDate: "2026-09-08",
+        slotStart: "2026-09-08T04:00:00.000Z", slotEnd: "2026-09-08T04:10:00.000Z",
+        patientId: "p-2", patient: summary("p-2", "Lakshmi Prasad", "9835120114"),
+      })],
+    });
+    await arrive();
+    await waitFor(() => { expect(screen.getAllByTestId("slot-free")).toHaveLength(2); });
+
+    const u = user();
+    await u.click(screen.getAllByTestId("slot-free")[0]!);   // 09:30 on 06-Sep, held for somebody else
+    expect(screen.getByTestId("slot-picked")).toBeInTheDocument();
+
+    await u.click(screen.getByTestId("rebook-r-9"));         // the board jumps to Dr Iyer / 08-Sep
+    expect(screen.getByTestId("appt-date")).toHaveValue("2026-09-08");
+    /*
+      Wait for the NEW board before judging, and gate on the TAKEN chip: it is the one chip whose
+      testid does not depend on what is held, so it settles the query without pre-judging the very
+      thing under test. A board still pending would satisfy every assertion below for the wrong
+      reason — the vacuous pass this whole item is about.
+    */
+    await waitFor(() => { expect(screen.getAllByTestId("slot-taken")).toHaveLength(1); });
+    expect(screen.queryByTestId("slot-picked")).not.toBeInTheDocument();
+    expect(screen.getByTestId("confirm-move")).toBeDisabled();
+    expect(screen.getByTestId("confirm-move")).toHaveTextContent("Pick a time first");
+  });
+
+  /**
+   * THE SECOND ROAD INTO THE SAME RULE, and it needs its own test because the two handlers are
+   * independent: a fix applied to the rail row leaves a row's Rebook reachable. This lane's close
+   * pass 2 found five of six fixes closing an instance rather than a rule, which is exactly what a
+   * shared test would have hidden here.
+   *
+   * Honest about what this one is: the day's-book Rebook changes neither doctor nor day, so the
+   * held slot stays visible and the button names it. No wrong-day write is reachable on this road —
+   * this pins the consistency (a new move starts with nothing held, as Desk One's move does), at a
+   * cost of one re-click.
+   */
+  it("a row's Rebook drops the held slot too", async () => {
+    mount([], {
+      book: [appointment({ id: "gone", serviceDate: TODAY, slotStart: `${TODAY}T03:20:00.000Z`, slotEnd: `${TODAY}T03:30:00.000Z` })],
+    });
+    await arrive();
+    await waitFor(() => { expect(screen.getByTestId("rebook-row-gone")).toBeInTheDocument(); });
+    await waitFor(() => { expect(screen.getAllByTestId("slot-free")).toHaveLength(2); });
+
+    const u = user();
+    await u.click(screen.getAllByTestId("slot-free")[0]!);
+    expect(screen.getByTestId("slot-picked")).toBeInTheDocument();
+
+    await u.click(screen.getByTestId("rebook-row-gone"));
+    expect(screen.getByTestId("moving-banner")).toBeInTheDocument();
+    expect(screen.queryByTestId("slot-picked")).not.toBeInTheDocument();
+    expect(screen.getByTestId("confirm-move")).toBeDisabled();
+    expect(screen.getByTestId("confirm-move")).toHaveTextContent("Pick a time first");
+  });
+
+  /**
+   * ═══ D1 AS A RULE, NOT AS TWO HANDLERS: YOU MAY ONLY COMMIT A SLOT THE BOARD IS OFFERING ═══
+   *
+   * Clearing the pick on the two roads that exist today closes today's two roads. The rule survives
+   * a road nobody has written yet, and it is reached WITHOUT either of those handlers: hold 09:50,
+   * check somebody in — which refreshes the board — and discover another clerk took 09:50 while it
+   * was held. The pick is untouched by that road, so only resolving it against the board being
+   * shown can disable the button; before the fix it stayed live and read "Book 09:50 with Dr Meera
+   * Iyer" for a chip the same screen was drawing as taken.
+   *
+   * This is the sibling booking stage's rule (`desk-one/stages.tsx`, `all.find((x) => x.start ===
+   * picked)`) that this seat was built without.
+   */
+  it("will not commit a slot the board has stopped offering", async () => {
+    let taken = false;
+    mount([], {
+      book: [appointment({ id: "later", serviceDate: TODAY, slotStart: `${TODAY}T06:00:00.000Z`, slotEnd: `${TODAY}T06:10:00.000Z` })],
+      routes: {
+        "GET /api/opd/slots": () => ({
+          slots: taken ? SLOTS.map((s) => (s.start === `${TOMORROW}T04:20:00.000Z` ? { ...s, booked: true } : s)) : SLOTS,
+        }),
+        "POST /api/opd/appointments/later/check-in": { tokenNo: 5, roomId: "r-1", visitType: "new", encounter: { id: "enc-5", visitNo: "V2609050005" } },
+      },
+    });
+    await arrive();
+    const u = user();
+    /*
+      A PATIENT IS PICKED FIRST, AND THAT IS LOAD-BEARING. The Ctrl+Enter assertion at the foot of
+      this test has to reach the SLOT rule, and `commit` refuses a booking with no patient on the
+      card before it ever looks at the slot. Without this the keyboard road would be stopped by the
+      wrong guard and the assertion would pass whatever the slot rule did — measured, not assumed:
+      it did exactly that until the patient was added.
+    */
+    await u.type(screen.getByLabelText("Search"), "Ramesh");
+    await u.click(await screen.findByRole("button", { name: /Ramesh Kumar/ }));
+    await waitFor(() => { expect(screen.getByTestId("rail-name")).toHaveTextContent("Ramesh Kumar"); });
+    await waitFor(() => { expect(screen.getAllByTestId("slot-free")).toHaveLength(2); });
+
+    await u.click(screen.getAllByTestId("slot-free")[1]!);
+    expect(screen.getByTestId("confirm-slot")).toHaveTextContent(/Book 09:50 with Dr Meera Iyer/);
+
+    /* Somebody else takes 09:50, and the check-in's refresh is what brings the news. */
+    taken = true;
+    await u.click(screen.getByTestId("checkin-later"));
+    await waitFor(() => { expect(screen.getAllByTestId("slot-taken")).toHaveLength(2); });
+
+    expect(screen.getByTestId("confirm-slot")).toBeDisabled();
+    expect(screen.getByTestId("confirm-slot")).toHaveTextContent("Pick a time first");
+
+    /*
+      AND THE GUARD LIVES IN `commit`, NOT ONLY ON THE BUTTON. Ctrl+Enter reaches `commit` through
+      a window keydown listener and never consults the `disabled` attribute, so a rule enforced only
+      in the affordance is a rule with a door left open. Reverting either half turns this test red,
+      which is the point of asserting both.
+    */
+    await u.keyboard("{Control>}{Enter}{/Control}");
+    expect(callsTo("POST", "/api/opd/appointments")).toHaveLength(0);
   });
 });

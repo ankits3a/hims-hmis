@@ -153,6 +153,26 @@ export function AppointmentSeat(): React.ReactElement {
   });
   const all: WireSlot[] = slots.data?.slots ?? [];
   const free = all.filter((s) => !s.booked && !s.past);
+  /*
+    ═══ THE HELD SLOT IS RESOLVED AGAINST THE BOARD, NOT REMEMBERED ═══
+
+    `picked` is an ISO string kept in state, and it outlives the board it was chosen on: the doctor
+    and the day are separate state, the slots are a query keyed on both, and every road that moves
+    either one has to remember to drop the pick. Two roads did not, and the failure was invisible in
+    exactly the way that matters — `SlotGrid` can only highlight a start it is RENDERING, so the
+    board showed nothing held while the confirm button stayed live and `commit` posted `picked`,
+    never `date`. The server derives `serviceDate` FROM the slot it is handed, so a move onto a day
+    the screen was no longer showing succeeded silently whenever the new doctor sat the same clock
+    time, and was an unexplainable `invalid_slot` refusal when they did not.
+
+    Clearing the pick on each road closes those two roads. THIS closes the rule — you may only
+    commit a slot the board is offering — and it holds for a road nobody has written yet, and for
+    the board changing under a held slot (another clerk takes it while the refresh is in flight).
+    It is the sibling booking stage's guard, `all.find((x) => x.start === picked)` in
+    `desk-one/stages.tsx`, which this seat was built without. Resolved against `free` rather than
+    `all` because a slot that has been taken or has gone past is not a slot this screen may promise.
+  */
+  const held: WireSlot | null = free.find((s) => s.start === picked) ?? null;
 
   /*
     THE ROOM IS DERIVED, NEVER CHOSEN. The artboard shows "OPD-1 · Ground" as a fact about the
@@ -215,19 +235,44 @@ export function AppointmentSeat(): React.ReactElement {
       refusal the clerk did not cause and cannot act on. The ref is the guard; `busy` is only the
       affordance, because two clicks in one React tick both observe `busy === false`.
     */
-    if (picked === null || chosen === null || inFlight.current) return;
+    if (held === null || chosen === null || inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
     setError(null);
     try {
       if (moving !== null) {
-        await rescheduleAppointment(moving.id, picked, chosen.id);
-        note(t("appointmentSeat.log.moved", { who: moving.who, from: moving.was, to: slotClock(picked) }), "ok");
+        await rescheduleAppointment(moving.id, held.start, chosen.id);
+        note(t("appointmentSeat.log.moved", { who: moving.who, from: moving.was, to: slotClock(held.start) }), "ok");
         setMoving(null);
       } else {
-        if (inHandId === null || inHandId === "") { setError(t("appointmentSeat.errors.noPatient")); return; }
-        await bookAppointment({ patientId: inHandId, doctorId: chosen.id, slotStart: picked });
-        note(t("appointmentSeat.log.booked", { time: slotClock(picked), doctor: chosen.displayName }), "ok");
+        /*
+          ═══ THE BOOKING GOES TO THE CARD, NOT TO SESSION STORAGE ═══
+
+          This seat holds two ideas of "who". `inHand` is app-wide, lives in sessionStorage and
+          survives a route change; `whoPicked` is the "Booking for" card this rail draws. They come
+          apart on three roads, and on every one of them the rail reads "Nobody picked yet" while
+          somebody is still in hand: arriving from `/counter`, a rebooking-rail row, and a row's
+          Rebook — the last two take a patient in hand precisely so the MOVE knows who it is for,
+          and blank the card as they do it. Booking `inHandId` there books a patient this screen is
+          not showing, and the confirm button's own label names a time and a doctor and no patient,
+          so nothing in this seat contradicted the write.
+
+          `/registration` closed the identical hole in its close pass 2 — `registration.tsx` posted
+          `{ existingId: held.id }` while somebody else's details were on screen — and its ruling
+          applies here: the write goes to what is displayed, and being wrong in the safe direction
+          costs one search.
+
+          A STOPGAP, AND SAID SO. The shell's `PatientStrip` DOES resolve the in-hand id live, so
+          after a handover from `/counter` the strip names Ramesh at the top of the screen while
+          this button now answers "Pick the patient first". That contradiction is the safe half of a
+          handover that was already broken in its visible half. The proper repair is for this rail
+          to render the in-hand id as a card — reusing the strip's own query key, which costs no
+          extra request and no extra PHI-access row — and it is a design decision about this seat's
+          arrival path, not a bug fix. Until it is taken, the refusal is the honest half.
+        */
+        if (whoPicked === null) { setError(t("appointmentSeat.errors.noPatient")); return; }
+        await bookAppointment({ patientId: whoPicked.id, doctorId: chosen.id, slotStart: held.start });
+        note(t("appointmentSeat.log.booked", { time: slotClock(held.start), doctor: chosen.displayName }), "ok");
       }
       setPicked(null);
       await refresh();
@@ -239,7 +284,7 @@ export function AppointmentSeat(): React.ReactElement {
       inFlight.current = false;
       setBusy(false);
     }
-  }, [picked, chosen, moving, inHandId, note, t, refresh]);
+  }, [held, chosen, moving, whoPicked, note, t, refresh]);
   const inFlight = useRef(false);
 
   /*
@@ -407,6 +452,13 @@ export function AppointmentSeat(): React.ReactElement {
                         setWhoPicked(null);
                         setDoctorId(a.doctorId);
                         setDate(a.serviceDate);
+                        /*
+                          THE HELD SLOT DIES WITH THE DAY IT BELONGED TO. Every other road that
+                          moves this board clears it — the doctor select, the date input, "Stop
+                          moving" — and this row moves the doctor AND the day in one click. A pick
+                          carried across it belongs to a board nobody is looking at any more.
+                        */
+                        setPicked(null);
                         setMoving({
                           id: a.id,
                           who: a.patient?.name ?? a.patient?.alias ?? t("appointmentSeat.rail.restricted"),
@@ -488,9 +540,9 @@ export function AppointmentSeat(): React.ReactElement {
                 <div style={{ display: "flex", alignItems: "center", gap: 13, marginBottom: 10 }}>
                   <span className="tag">{t("appointmentSeat.book.theSlots")}</span>
                   <span style={{ fontSize: 11, color: "var(--faint)" }}>
-                    {picked === null
+                    {held === null
                       ? t("appointmentSeat.book.nothingHeld")
-                      : t("appointmentSeat.book.held", { time: slotClock(picked) })}
+                      : t("appointmentSeat.book.held", { time: slotClock(held.start) })}
                   </span>
                   <SlotLegend />
                 </div>
@@ -513,14 +565,19 @@ export function AppointmentSeat(): React.ReactElement {
                   className="pri"
                   type="button"
                   data-testid={moving === null ? "confirm-slot" : "confirm-move"}
-                  disabled={picked === null || busy || chosen === null}
+                  disabled={held === null || busy || chosen === null}
                   onClick={() => { void commit(); }}
                 >
-                  {picked === null
+                  {/*
+                    THE KEYCAP MUST NOT LIE. Both the affordance and the label are the RESOLVED
+                    slot, not the remembered one, so a button that offers to book 09:50 is a button
+                    whose 09:50 is on the board underneath it.
+                  */}
+                  {held === null
                     ? t("appointmentSeat.book.pickFirst")
                     : moving === null
-                      ? t("appointmentSeat.book.confirm", { time: slotClock(picked), doctor: chosen?.displayName ?? "" })
-                      : t("appointmentSeat.book.confirmMove", { who: moving.who, time: slotClock(picked) })}
+                      ? t("appointmentSeat.book.confirm", { time: slotClock(held.start), doctor: chosen?.displayName ?? "" })
+                      : t("appointmentSeat.book.confirmMove", { who: moving.who, time: slotClock(held.start) })}
                   <span className="kb" style={{ borderColor: "rgba(255,255,255,.3)", background: "transparent", color: "#cfe8dc" }}>
                     Ctrl ⏎
                   </span>
@@ -531,7 +588,7 @@ export function AppointmentSeat(): React.ReactElement {
                   </button>
                 )}
                 <span style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--faint)" }}>
-                  {picked === null ? t("appointmentSeat.book.notHeldYet") : t("appointmentSeat.book.confirmsBy")}
+                  {held === null ? t("appointmentSeat.book.notHeldYet") : t("appointmentSeat.book.confirmsBy")}
                 </span>
               </div>
             </div>
@@ -572,6 +629,8 @@ export function AppointmentSeat(): React.ReactElement {
                 onRebook={() => {
                   takePatient(a.patientId);
                   setWhoPicked(null);
+                  /* Same rule as the rail row, and Desk One's: a new move starts with nothing held. */
+                  setPicked(null);
                   setMoving({ id: a.id, who: a.patient?.name ?? t("appointmentSeat.rail.restricted"), was: slotClock(a.slotStart) });
                 }}
                 onCancel={() => { setCancelling({ id: a.id, reason: "" }); }}
