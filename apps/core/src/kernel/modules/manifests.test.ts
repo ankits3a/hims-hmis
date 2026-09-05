@@ -47,6 +47,17 @@ import { labManifest } from "../../modules/lab";
 const SRC_ROOT = resolve(__dirname, "..", "..");
 const APP_MODULE = resolve(SRC_ROOT, "app.module.ts");
 const WORKER_MODULE = resolve(SRC_ROOT, "kernel", "worker", "worker.module.ts");
+/**
+ * PLAN 18c T6 — this file reads its OWN source, so the sentence in the title below can be checked
+ * against the array it describes. See the block beside that assertion for why the count is still
+ * written by hand rather than derived.
+ */
+const SELF = resolve(SRC_ROOT, "kernel", "modules", "manifests.test.ts");
+const NUMBER_WORDS = [
+  "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+  "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen",
+  "nineteen", "twenty",
+];
 
 /**
  * Every manifest identifier this repository can install, by the NAME it is installed under.
@@ -190,7 +201,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     expect(manifestKeys(extras, "app.module.ts")).toEqual([]);
   });
 
-  it("the worker's registry differs from ALL_MANIFESTS in exactly six enumerated, intentional ways", () => {
+  it("the worker's registry differs from ALL_MANIFESTS in exactly seven enumerated, intentional ways", () => {
     const workerKeys = manifestKeys(
       installArguments(readFileSync(WORKER_MODULE, "utf8"), "worker.module.ts"),
       "worker.module.ts",
@@ -291,7 +302,35 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //      touches the PCPNDT register and not this one. If a later phase gives the register a
     //      consumer (T4's badge ladder is the candidate, if it ever stops being record-only), its
     //      subscription and its worker install land in ONE commit — the (1b) discipline, unchanged.
-    expect(allKeys.filter((k) => !workerKeys.includes(k))).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb"]);
+    //
+    //      **THE TITLE'S "six" BECAME "seven" WITH THIS LINE — and it did not, for a day.** T1
+    //      appended `aerb` to the array and left the sentence saying six, which is the one thing
+    //      every note from (1d) onward is written to prevent. The assertion below now checks the
+    //      sentence against the array, so the next note cannot be the same apology.
+    const appOnly = allKeys.filter((k) => !workerKeys.includes(k));
+    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb"]);
+
+    /**
+     * ═══ THE COUNT IS THE FRICTION, AND UNTIL NOW NOTHING ENFORCED IT ═══
+     *
+     * (1d) calls the title moving from "three" to "four" *the friction working as designed*: a new
+     * manifest cannot join `ALL_MANIFESTS` without somebody stating which side of this difference
+     * it falls on. But the number was maintained by hand, so the friction only worked when the
+     * author remembered — and 18c T1 did not. The array said seven, the sentence said six, and all
+     * of `manifests.test.ts` passed.
+     *
+     * **The count stays SPELLED OUT and hand-written rather than being interpolated from
+     * `appOnly.length`.** A title that tracked the array silently would delete the friction instead
+     * of enforcing it; the whole value is that a human types the number and, in typing it, has to
+     * say which side the new manifest falls on. What changes here is only that the file now reads
+     * its own sentence and checks it against its own array — so forgetting is a red test rather
+     * than a quiet inaccuracy that survives review.
+     */
+    const titleCount = /it\("the worker's registry differs from ALL_MANIFESTS in exactly (\w+) enumerated/
+      .exec(readFileSync(SELF, "utf8"))?.[1];
+    const spelled = NUMBER_WORDS[appOnly.length];
+    expect(spelled).not.toBeUndefined();
+    expect(titleCount).toBe(spelled);
 
     // (2) The worker ADDS `notify`. It declares five `kernel.notify` subscriptions, and
     //     `buildSubscriptionBus` (kernel/worker/jobs.ts) makes a declared subscription with no
