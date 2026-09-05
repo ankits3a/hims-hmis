@@ -187,10 +187,10 @@ export function AdminUsers(): React.ReactElement {
     const q = question.toLowerCase();
     const { rows: list, fullAdmins: admins } = agentState.current;
     const answer = ((): string => {
-      if (/admin|owner|full/.test(q)) return t("adminUsers.agent.admins", { n: admins ?? 0 });
+      if (/admin|owner|full/.test(q)) return t("adminUsers.agent.admins", { count: admins ?? 0 });
       if (/inert|scope/.test(q)) {
         const n = list.reduce((acc, u) => acc + u.roles.filter((r) => r.scopeType !== "hospital").length, 0);
-        return n === 0 ? t("adminUsers.agent.noInert") : t("adminUsers.agent.inert", { n });
+        return n === 0 ? t("adminUsers.agent.noInert") : t("adminUsers.agent.inert", { count: n });
       }
       if (/role|permission|access|can do/.test(q)) {
         const none = list.filter((u) => u.roles.length === 0).map((u) => u.username);
@@ -198,7 +198,7 @@ export function AdminUsers(): React.ReactElement {
       }
       if (/how many|count|user|account|active|inactive|list/.test(q)) {
         const active = list.filter((u) => u.active).length;
-        return t("adminUsers.agent.counts", { total: list.length, active, inactive: list.length - active });
+        return t("adminUsers.agent.counts", { count: list.length, active, inactive: list.length - active });
       }
       return t("adminUsers.agent.cannot");
     })();

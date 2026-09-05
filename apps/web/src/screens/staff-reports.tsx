@@ -69,7 +69,7 @@ export function StaffReports(): React.ReactElement {
         : /brief|figure|summary|say|period|week/.test(q)
           ? (b === undefined || b.clauses.length === 0
             ? t("staffReports.agent.empty")
-            : t("staffReports.agent.brief", { n: b.clauses.length, from: b.from, to: b.to }))
+            : t("staffReports.agent.brief", { count: b.clauses.length, from: b.from, to: b.to }))
           : t("staffReports.agent.cannot");
     setAgentAnswer(answer);
     setAgentLog((l) => logged(l, question));

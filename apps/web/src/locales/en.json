@@ -370,7 +370,13 @@
     "askPlaceholder": "ask about departments, rooms, doctors or schedules…",
     "agentIdle": "I read these masters only — the departments, rooms and doctors on this deployment and which of them are active. I have no model behind me and I change nothing.",
     "agent": {
-      "counts": "{{departments}} department(s), {{rooms}} room(s), {{doctors}} doctor(s).",
+      "counts": "{{departments}}, {{rooms}}, {{doctors}}.",
+      "countDepartments_one": "{{count}} department",
+      "countDepartments_other": "{{count}} departments",
+      "countRooms_one": "{{count}} room",
+      "countRooms_other": "{{count}} rooms",
+      "countDoctors_one": "{{count}} doctor",
+      "countDoctors_other": "{{count}} doctors",
       "inactive": "Deactivated and still on file: {{list}}. A deactivated master stops being offered at the counter; it is never deleted, because past visits point at it.",
       "allActive": "Everything here is active.",
       "cannot": "I cannot answer that from this screen. I can tell you about the departments, rooms and doctors on this deployment, and which are deactivated."
@@ -511,7 +517,8 @@
     "worklistEmpty": "Every line prescribed in the last 30 days resolves.",
     "pairsTitle": "Interaction pairs on issued prescriptions",
     "pairsCaveat": "A severe pair cannot reach an issued prescription without an override, so the count IS the number of click-throughs. How often a warning fired and the prescription was changed instead is not recorded.",
-    "pairCount": "on {{n}} issued prescription(s)",
+    "pairCount_one": "on {{count}} issued prescription",
+    "pairCount_other": "on {{count}} issued prescriptions",
     "pairNeedsReview": "— review this grading",
     "severity": {
       "severe": "Severe",
@@ -678,9 +685,11 @@
       "noVitals": "No vitals have been charted for this visit yet.",
       "dangerFlags": "The bay flagged: {{list}}.",
       "noDangerFlags": "Nothing was flagged.",
-      "rxLines": "{{n}} line(s) written, not yet issued. Issuing runs the allergy, interaction and duplicate checks server-side.",
+      "rxLines_one": "{{count}} line written, not yet issued. Issuing runs the allergy, interaction and duplicate checks server-side.",
+      "rxLines_other": "{{count}} lines written, not yet issued. Issuing runs the allergy, interaction and duplicate checks server-side.",
       "noRx": "No prescription lines written yet.",
-      "advised": "{{n}} test(s) advised. These print as advice on the prescription and create no order — the counter converts them.",
+      "advised_one": "{{count}} test advised. It prints as advice on the prescription and creates no order — the counter converts it.",
+      "advised_other": "{{count}} tests advised. These print as advice on the prescription and create no order — the counter converts them.",
       "noAdvised": "No tests advised yet.",
       "cannot": "I cannot answer that from this screen. I can tell you about the queue, this patient's allergies and vitals, the lines you have written, and the tests you have advised."
     },
@@ -1028,7 +1037,8 @@
       "confirmTitle": "Void this receipt?",
       "cascade": "Every allocation this receipt made will be reversed and the bills it settled go back to outstanding. Receipt {{receiptId}} cannot be un-voided.",
       "confirm": "Void the receipt",
-      "done": "The receipt is voided and {{reversed}} allocation(s) were reversed."
+      "done_one": "The receipt is voided and {{count}} allocation was reversed.",
+      "done_other": "The receipt is voided and {{count}} allocations were reversed."
     },
     "recon": {
       "title": "Upload a settlement statement",
@@ -1226,11 +1236,14 @@
     "askPlaceholder": "ask about accounts, roles or who can do what…",
     "agentIdle": "I read this roster only — the accounts on this deployment, the roles each one holds, and how many full administrators there are. I have no model behind me and I cannot change anything; every button here is yours.",
     "agent": {
-      "admins": "{{n}} full administrator(s). Two is the floor: with one, a single lost password locks the hospital out of its own access control.",
-      "counts": "{{total}} account(s): {{active}} active, {{inactive}} deactivated.",
+      "admins_one": "{{count}} full administrator. Two is the floor: with one, a single lost password locks the hospital out of its own access control.",
+      "admins_other": "{{count}} full administrators. Two is the floor: with one, a single lost password locks the hospital out of its own access control.",
+      "counts_one": "{{count}} account: {{active}} active, {{inactive}} deactivated.",
+      "counts_other": "{{count}} accounts: {{active}} active, {{inactive}} deactivated.",
       "noRoles": "These accounts hold no role at all, so they can sign in and do nothing: {{list}}.",
       "allHaveRoles": "Every account holds at least one role.",
-      "inert": "{{n}} role assignment(s) are scoped below hospital. Every route in this system requires a hospital scope, so those rows grant their holder nothing — the screen marks each one.",
+      "inert_one": "{{count}} role assignment is scoped below hospital. Every route in this system requires a hospital scope, so that row grants its holder nothing — the screen marks it.",
+      "inert_other": "{{count}} role assignments are scoped below hospital. Every route in this system requires a hospital scope, so those rows grant their holder nothing — the screen marks each one.",
       "noInert": "No inert role assignments — every holding is hospital-scoped.",
       "cannot": "I cannot answer that from this screen. I can tell you about the accounts listed here, the roles they hold, how many full administrators there are, and which assignments are inert."
     }
@@ -1485,7 +1498,8 @@
     "onHand": "{{qty}} on hand",
     "discrepancyTitle": "Transfers that did not tally",
     "noDiscrepancies": "Every transfer tallied",
-    "shortLines": "short line(s)",
+    "shortLines_one": "{{count}} short line",
+    "shortLines_other": "{{count}} short lines",
     "rule_item_unknown": "No such item",
     "rule_item_inactive": "That item is retired — reactivate it before receiving against it",
     "rule_uom_unknown": "That unit is not one of this item's units",
@@ -1680,7 +1694,8 @@
     "openVisit": "Open visit",
     "token": "Token {{n}}",
     "registered": "newly registered",
-    "duplicateWarning": "{{n}} existing patient(s) closely match this registration. Check before creating a second record.",
+    "duplicateWarning_one": "{{count}} existing patient closely matches this registration. Check before creating a second record.",
+    "duplicateWarning_other": "{{count}} existing patients closely match this registration. Check before creating a second record.",
     "useExisting": "Search for the existing patient",
     "registerAnyway": "Register anyway",
     "exitFree": "No fee — this revisit is inside the follow-up window. Nothing to collect.",
@@ -1851,7 +1866,8 @@
     "askPlaceholder": "ask about your day, this document or the export…",
     "agentIdle": "I read this shift report only — the sections the server built for the date you picked, and whether the day is closed. I have no model behind me.",
     "agent": {
-      "sections": "{{n}} section(s) for {{date}}.",
+      "sections_one": "{{count}} section for {{date}}.",
+      "sections_other": "{{count}} sections for {{date}}.",
       "provisional": "This day is NOT closed, so what you print says so on its face. The flag is the server's, which is why the file, the print and the screen cannot disagree.",
       "closed": "This day is closed. What you print is the close.",
       "empty": "Nothing recorded for this date. A day before you existed here, or a day you did nothing, is zeroes rather than a blank.",
@@ -1922,7 +1938,8 @@
     "askPlaceholder": "ask about this brief or what this screen can show…",
     "agentIdle": "I read this brief only — the figures the server generated for the person and period you picked. I cannot see patient rows, and neither can this screen until somebody drills with a reason.",
     "agent": {
-      "brief": "The brief for this period has {{n}} clause(s), covering {{from}} to {{to}}. Every one is generated on the server from typed facts; nothing here is composed prose.",
+      "brief_one": "The brief for this period has {{count}} clause, covering {{from}} to {{to}}. It is generated on the server from typed facts; nothing here is composed prose.",
+      "brief_other": "The brief for this period has {{count}} clauses, covering {{from}} to {{to}}. Every one is generated on the server from typed facts; nothing here is composed prose.",
       "empty": "The brief has nothing to say for this period. On somebody's first week most comparison clauses are absent, which is a thin history rather than a quiet one.",
       "noSubject": "Pick a person first — nothing is read until you do.",
       "drill": "Drilling shows the patient rows behind the figures. It needs a reason of at least eight characters, and the reason is written to the audit log with your name against it.",

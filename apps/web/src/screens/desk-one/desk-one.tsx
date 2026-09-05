@@ -424,7 +424,7 @@ export function DeskOne(): React.ReactElement {
       if (candidates !== null) {
         setS((prev) => ({
           ...prev, busy: null, duplicates: candidates,
-          log: logged(prev.log, `${String(candidates.length)} close match(es) — registration held for your judgement`, "warn"),
+          log: logged(prev.log, `${String(candidates.length)} close ${candidates.length === 1 ? "match" : "matches"} — registration held for your judgement`, "warn"),
         }));
         return;
       }

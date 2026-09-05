@@ -2,6 +2,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import en from "../locales/en.json";
+import hi from "../locales/hi.json";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -58,6 +59,13 @@ const T_CALL = /\bt\(\s*["']([a-zA-Z][\w.]*\.[\w.]+)["']/g;
  * paren means they were not. That one character is the whole of the second test below.
  */
 const T_CALL_ARGS = /\bt\(\s*["']([a-zA-Z][\w.]*\.[\w.]+)["']\s*([,)])/g;
+
+/**
+ * The same call again, but keeping UP TO 160 CHARACTERS OF WHAT FOLLOWS — enough to see whether the
+ * options object mentions `count`, which is the whole of the plural test at the bottom of this file.
+ * `T_CALL_ARGS` above cannot serve: it captures one character and stops.
+ */
+const T_CALL_WITH_ARGS = /\bt\(\s*["']([a-zA-Z][\w.]*\.[\w.]+)["']\s*(?:,([\s\S]{0,160}))?/g;
 
 /** i18next's own interpolation syntax: `{{who}}`, `{{count}}`, `{{ value }}`. */
 const PLACEHOLDER = /\{\{\s*[\w.]+\s*\}\}/;
@@ -139,12 +147,42 @@ function resolves(key: string): boolean {
  * "1 patient(s)". The assertions passed: `toHaveTextContent("1 patient")` is satisfied by
  * "1 patient(s)", so the suite could not tell the difference and neither could the parity test.
  *
- * i18next has real plurals — `key_one` / `key_other` — and this repository already uses them in
- * eleven places. The parenthetical is what a developer writes when they are thinking about the
- * string and not about the person reading it, and once one ships the next one is easier.
+ * i18next has real plurals — `key_one` / `key_other`, selected from the `count` OPTION through
+ * `Intl.PluralRules`. This repository uses them in 28 base keys / 56 leaves, `_one` and `_other`
+ * only, and both `en` and `hi` have exactly those two CLDR categories, so a pair is complete for
+ * both languages.
  *
- * So the rule becomes mechanical: a value carrying `{{count}}` must be a plural form. That is the
- * whole check, and it is cheap because i18next's own naming makes it decidable.
+ * ═══ THE FIRST VERSION OF THIS RULE WAS SELF-VACUOUS AND GREEN FOR ITS WHOLE LIFE ═══
+ *
+ * It read:
+ *
+ *     leaves(en)
+ *       .filter(([, value]) => value.includes("{{count}}"))    <-- the defect
+ *       .filter(([, value]) => /\(s\)|\(es\)/.test(value));    <-- the real rule
+ *
+ * The first filter is the POST-CONDITION of the fix, used as the PRE-CONDITION of the hunt. A
+ * developer who writes "(s)" is by definition not using i18next plurals, so they are not passing
+ * `count`, so the string interpolates `{{n}}`, `{{total}}`, `{{reversed}}` — or nothing at all
+ * ("short line(s)", where the number was rendered as a JSX sibling). Not one of the TWELVE
+ * offenders sitting in en.json carried `{{count}}`, so the offender array was empty on every run.
+ * The guard could not have fired on anything, ever. Nobody learned that, because the two keys that
+ * motivated it were converted by hand in the same change — the test was born green and stayed green
+ * while the exact defect it names shipped on nine screens.
+ *
+ * ═══ AIMED AT THE PROPERTY, NOT AT THE ONE SPELLING THAT HAPPENED TO BE HERE ═══
+ *
+ * The rule is the hand-spelled plural, in every spelling of it. "(s)" is what this tree contained;
+ * a person reaching for the same shortcut also writes "box(es)", "categor(ies)", and the slash
+ * forms "patient/s" and "box/es". All of them are one defect — a string that refuses to choose,
+ * shown to a clerk who is looking at exactly one thing.
+ *
+ * WHAT IS DELIBERATELY *NOT* THE RULE: "every `{{count}}` string must be a plural form". That was
+ * tried and fired on twenty-three keys of which most were correct — "{{count}} checked in",
+ * "{{count}} ahead", "bench {{count}}" have no noun to inflect and read the same at one and at
+ * five. A guard with that many false positives is a guard somebody deletes.
+ *
+ * MEASURED at the moment of widening: 12 offenders in en.json, 0 in hi.json, 2 hardcoded in the web
+ * source, and zero false positives in any of the three corpora.
  */
 function leaves(obj: unknown, path: string[] = [], out: [string, string][] = []): [string, string][] {
   if (typeof obj === "string") { out.push([path.join("."), obj]); return out; }
@@ -153,21 +191,90 @@ function leaves(obj: unknown, path: string[] = [], out: [string, string][] = [])
   return out;
 }
 
+/** Parenthetical and slash plurals, either case: `patient(s)`, `box(es)`, `categor(ies)`, `patient/s`, `box/es`. */
+const MANUAL_PLURAL = /\((?:s|es|ies)\)|\w\/(?:s|es|ies)\b/i;
+
+function manualPlurals(bundle: unknown): [string, string][] {
+  return leaves(bundle).filter(([, value]) => MANUAL_PLURAL.test(value));
+}
+
+/**
+ * ═══ THE LOCALE FILES ARE NOT THE ONLY PLACE A CLERK'S COPY LIVES ═══
+ *
+ * Two of this defect's live instances never entered a locale file at all: the co-pilot answer on
+ * `opd-appointments.tsx` and the registration log line in `desk-one.tsx` are built with template
+ * literals. The first of them is on the very screen whose screenshot motivated this rule — clean
+ * the locale files alone and that screen still reads "doctor(s) on file". A census scoped to
+ * en.json would have reported the class closed while the instance that started it stayed on screen.
+ *
+ * STRING LITERALS ONLY, AND THAT RESTRICTION IS THE DIFFERENCE BETWEEN A GUARD AND A NUISANCE.
+ * Run the pattern over raw file text and it matches `(s) =>` — an arrow-function parameter — in
+ * about twenty files, which is exactly the false-positive rate that gets a guard deleted. Confined
+ * to quoted and template strings it found the two real sites and nothing else. It cannot see raw
+ * JSX text (`<li>short line(s)</li>`), which is a known and accepted narrowing: this errs toward
+ * missing one rather than inventing twenty.
+ */
+const STRING_LITERAL = /"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/g;
+
 describe("counted strings use i18next plurals, not a parenthetical", () => {
   /*
-    ONLY THE PARENTHETICAL, AND THAT IS DELIBERATE. A first version also required every `{{count}}`
-    string to BE a plural form, and it fired on twenty-three keys of which most were correct —
-    "{{count}} checked in", "{{count}} ahead", "bench {{count}}" have no noun to inflect and read
-    the same at one and at five. A guard with that many false positives is a guard somebody deletes,
-    which is the rule this file already states about plurals and comments.
+    THE GUARD ON THE GUARD (§2.49), and here it is load-bearing rather than decorative.
+
+    The three tests below are ABSENCE assertions — "no hand-spelled plural exists" — and an absence
+    cannot be proved by a revert pair on the guard. Once the locales are clean the vacuous predicate
+    and the correct one BOTH return [] and BOTH print green; put the `{{count}}` filter back and
+    nothing goes red. An absence is proved by ADDING the forbidden thing, which is what this fixture
+    does, and it keeps proving it independent of what the locale files contain on any given day.
+
+    Every fixture string here is invisible to the old predicate: not one carries `{{count}}`, which
+    is precisely what the old filter demanded. So this case is RED against the rule it replaces and
+    GREEN against this one. It is the manufactured revert pair for the guard itself, and the guard
+    change must not land without it.
   */
-  it("no string interpolating {{count}} spells its plural as (s)", () => {
-    const offenders = leaves(en)
-      .filter(([, value]) => value.includes("{{count}}"))
-      .filter(([, value]) => /\(s\)|\(es\)/.test(value));
-    expect(offenders, `these say "(s)" where i18next has _one/_other:\n${offenders.map(([k, v]) => `${k}  ${v}`).join("\n")}\n`).toEqual([]);
+  it("the guard sees a hand-spelled plural that carries no {{count}}", () => {
+    expect(manualPlurals({
+      paren: { s: "{{n}} patient(s)", es: "1 box(es)", ies: "3 categor(ies)", caps: "2 FILE(S)" },
+      slash: "2 patient/s",
+      bare: "short line(s)",
+      fine: { real: "{{count}} patients", andOr: "open and/or closed", clock: "24/7 pharmacy", none: "one patient" },
+    })).toEqual([
+      ["paren.s", "{{n}} patient(s)"],
+      ["paren.es", "1 box(es)"],
+      ["paren.ies", "3 categor(ies)"],
+      ["paren.caps", "2 FILE(S)"],
+      ["slash", "2 patient/s"],
+      ["bare", "short line(s)"],
+    ]);
   });
 
+  it("no counted string in en.json spells its plural by hand", () => {
+    const offenders = manualPlurals(en);
+    expect(offenders, `these hand-spell a plural where i18next has _one/_other:\n${offenders.map(([k, v]) => `${k}  ${v}`).join("\n")}\n`).toEqual([]);
+  });
+
+  /*
+    hi.json has never carried the parenthetical — the translator never copied the English shape.
+    Zero offenders today, so this test is GREEN before this change and GREEN after it: it is forward
+    cover against a future translator, and it is evidence of nothing about the fix that added it.
+    Said plainly so that nobody counts it as evidence.
+  */
+  it("no counted string in hi.json spells its plural by hand", () => {
+    const offenders = manualPlurals(hi);
+    expect(offenders, `these hand-spell a plural where i18next has _one/_other:\n${offenders.map(([k, v]) => `${k}  ${v}`).join("\n")}\n`).toEqual([]);
+  });
+
+  it("no hardcoded string in the web source spells its plural by hand", () => {
+    const offenders: string[] = [];
+    for (const file of sourceFiles(SRC)) {
+      const text = readFileSync(file, "utf8");
+      for (const match of stripComments(text).matchAll(STRING_LITERAL)) {
+        if (!MANUAL_PLURAL.test(match[0])) continue;
+        const line = text.slice(0, match.index).split("\n").length;
+        offenders.push(`${relative(SRC, file)}:${String(line)}  ${match[0]}`);
+      }
+    }
+    expect(offenders, `these hardcoded strings hand-spell a plural — inflect them in code, or move them into the locale files as _one/_other:\n${offenders.join("\n")}\n`).toHaveLength(0);
+  });
 });
 
 describe("every t(\"ns.key\") written in the web source resolves in en.json", () => {
@@ -243,5 +350,50 @@ describe("every t(\"ns.key\") written in the web source resolves in en.json", ()
       }
     }
     expect(unfilled, `these t() calls pass no values to a string that interpolates, so the braces reach the screen:\n${unfilled.join("\n")}\n`).toHaveLength(0);
+  });
+
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * A PLURAL KEY THAT IS NOT PASSED `count` IS A MISSING KEY, AND NOTHING ELSE HERE CAN SEE IT
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * i18next appends `_one` / `_other` only when `options.count !== undefined`. Call
+   * `t("adminUsers.agent.admins", { n })` against a key that exists ONLY as a plural pair and
+   * i18next never applies plural resolution at all: it looks up the bare key, finds nothing, and —
+   * `lib/i18n.ts` sets no `parseMissingKeyHandler` and no `saveMissing` — returns THE KEY ITSELF.
+   * The clerk reads `adminUsers.agent.admins` where a sentence belongs.
+   *
+   * ═══ WHY THIS FILE'S OTHER THREE TESTS ARE ALL BLIND TO IT ═══
+   *
+   *   · `resolves every literal key` passes, because `resolves()` accepts the `_one` suffix (line
+   *     125) without ever asking whether the CALL supplies a count.
+   *   · `passes values to every key whose string interpolates` skips it, because that test only
+   *     looks at calls with NO arguments — and this one has arguments, just the wrong ones.
+   *   · the parenthetical rule above reads locale text and never looks at code.
+   *
+   * And there is a sharper edge: converting a key to a plural pair REMOVES it from the
+   * interpolation test's reach, because that test's `lookup(key)` returns undefined for a
+   * plural-only key. So remediating a "(s)" string without this test in place trades one guard for
+   * none — the converted keys lose the cover they had and gain nothing.
+   *
+   * That is how the fix for a bad string ships something worse than the string: FD-11's
+   * `vitalsBay.rest.go` read "Rest {{minutes}} min" to a nurse over an elevated blood pressure, with
+   * both locale files complete, both parity tests green, and forty-five tests on that screen.
+   */
+  it("passes count to every key that exists only as a plural", () => {
+    const wrong: string[] = [];
+    for (const file of files) {
+      const text = readFileSync(file, "utf8");
+      for (const match of stripComments(text).matchAll(T_CALL_WITH_ARGS)) {
+        const key = match[1];
+        if (key === undefined) continue;
+        if (lookup(key) !== undefined) continue;
+        if (!PLURAL_SUFFIXES.some((suffix) => typeof lookup(`${key}${suffix}`) === "string")) continue;
+        if (/\bcount\b/.test(match[2] ?? "")) continue;
+        const line = text.slice(0, match.index).split("\n").length;
+        wrong.push(`${relative(SRC, file)}:${String(line)}  t("${key}") — plural key, no count passed`);
+      }
+    }
+    expect(wrong, `these keys exist only as _one/_other, so i18next needs a count option — without it the key itself reaches the screen:\n${wrong.join("\n")}\n`).toHaveLength(0);
   });
 });

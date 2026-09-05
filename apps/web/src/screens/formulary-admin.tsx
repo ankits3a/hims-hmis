@@ -316,7 +316,7 @@ export function FormularyAdmin(): React.ReactElement {
                 {p.note}
                 {" "}
                 <span className="text-neutral-600">
-                  {t("formularyAdmin.pairCount", { n: p.timesOnIssued })}
+                  {t("formularyAdmin.pairCount", { count: p.timesOnIssued })}
                 </span>
                 {p.severity === "severe" && p.timesOnIssued >= 10 && (
                   <span data-testid={`pair-review-${p.saltAId}-${p.saltBId}`} className="ml-1 text-amber-700">

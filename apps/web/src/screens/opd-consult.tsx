@@ -747,12 +747,12 @@ export function OpdConsult(): React.ReactElement {
         });
       }
       if (/rx|prescri|medicine|drug|dawa|line/.test(q)) {
-        return lines.length === 0 ? t("opdConsult.agent.noRx") : t("opdConsult.agent.rxLines", { n: lines.length });
+        return lines.length === 0 ? t("opdConsult.agent.noRx") : t("opdConsult.agent.rxLines", { count: lines.length });
       }
       if (/test|lab|invest|jaanch|advis/.test(q)) {
         return st.advisedTests.length === 0
           ? t("opdConsult.agent.noAdvised")
-          : t("opdConsult.agent.advised", { n: st.advisedTests.length });
+          : t("opdConsult.agent.advised", { count: st.advisedTests.length });
       }
       return t("opdConsult.agent.cannot");
     })();

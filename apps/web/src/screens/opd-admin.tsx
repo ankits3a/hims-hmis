@@ -564,7 +564,11 @@ export function OpdAdmin(): React.ReactElement {
     const answer = /inactive|deactivat|off|disabled|missing|hidden/.test(q)
       ? (off.length === 0 ? t("opdAdmin.agent.allActive") : t("opdAdmin.agent.inactive", { list: off.join(", ") }))
       : /how many|count|department|room|doctor|list/.test(q)
-        ? t("opdAdmin.agent.counts", { departments: departmentItems.length, rooms: roomItems.length, doctors: doctorItems.length })
+        ? t("opdAdmin.agent.counts", {
+            departments: t("opdAdmin.agent.countDepartments", { count: departmentItems.length }),
+            rooms: t("opdAdmin.agent.countRooms", { count: roomItems.length }),
+            doctors: t("opdAdmin.agent.countDoctors", { count: doctorItems.length }),
+          })
         : t("opdAdmin.agent.cannot");
     setAgentAnswer(answer);
     setAgentLog((l) => logged(l, question));

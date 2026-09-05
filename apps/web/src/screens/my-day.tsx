@@ -173,7 +173,7 @@ export function MyDay(): React.ReactElement {
       : /sign|print|paper|document|hand ?over/.test(q)
         ? t("myDay.agent.signature")
         : /section|report|day|figure|what|how many|total/.test(q)
-          ? (sections.length === 0 ? t("myDay.agent.empty") : t("myDay.agent.sections", { n: sections.length, date }))
+          ? (sections.length === 0 ? t("myDay.agent.empty") : t("myDay.agent.sections", { count: sections.length, date }))
           : t("myDay.agent.cannot");
     setAgentAnswer(answer);
     setAgentLog((l) => logged(l, question));

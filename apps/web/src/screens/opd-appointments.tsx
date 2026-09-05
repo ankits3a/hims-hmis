@@ -467,7 +467,7 @@ export function OpdAppointments(): React.ReactElement {
       setAnswer(
         departmentId === ""
           ? "No department is picked, so the doctor list is empty. Pick one above. — from the filters on this screen."
-          : `${departmentItems.find((dep) => dep.id === departmentId)?.name ?? "That department"} has ${String(doctorItems.length)} doctor(s) on file. — from the doctor master.`,
+          : `${departmentItems.find((dep) => dep.id === departmentId)?.name ?? "That department"} has ${String(doctorItems.length)} ${doctorItems.length === 1 ? "doctor" : "doctors"} on file. — from the doctor master.`,
       );
     } else if (q.includes("today") || q.includes("date")) {
       setAnswer(`This book is showing ${date}; today is ${todayIst()}. Check-in is only offered on today's bookings. — from the filters and the K42 rule.`);
