@@ -147,7 +147,7 @@ it("FD-25: no two nav rows a person can see read the same", async () => {
   expect(duplicated, `these nav labels appear more than once, so a clerk cannot tell the places apart: ${duplicated.join(", ")}`).toEqual([]);
 });
 
-it("FD-25: a clerk holding all three seat grants is offered each seat exactly once", async () => {
+it("FD-25: a clerk holding all three seat grants is offered each seat exactly once, and Desk One is not a fourth", async () => {
   /*
     ALL THREE GRANTS, and the third one is the point of the fixture: `/appointment` rides
     `opd.appointments.manage`, which is a DIFFERENT key from the other two. The first version of
@@ -156,9 +156,16 @@ it("FD-25: a clerk holding all three seat grants is offered each seat exactly on
     asserting a row must hold that row's key or it is asserting a privacy defect.
   */
   renderShell(["opd.visits.open", "patients.register", "opd.appointments.manage", "billing.invoice.issue"]);
-  await waitFor(() => expect(screen.getByRole("link", { name: "Desk One" })).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByRole("link", { name: "Registration" })).toBeInTheDocument());
   const hrefs = screen.getAllByRole("link").map((a) => a.getAttribute("href"));
-  expect(hrefs.filter((h) => h === "/counter")).toHaveLength(1);
+  /*
+    FD-25 — AND DESK ONE IS NOT A FOURTH DOOR. The owner ruled on 2026-09-05 that `/counter` keeps
+    working and leaves the nav: the row is a recommendation ("here is where you work") and offering
+    four front-desk entries to a clerk who works at one is how a nav stops being read. The ROUTE
+    still serves — a one-person desk wants exactly that screen — and the command palette still
+    offers it by name, which is a search rather than a menu.
+  */
+  expect(hrefs).not.toContain("/counter");
   expect(hrefs.filter((h) => h === "/registration")).toHaveLength(1);
   /*
     FD-25 — and `/appointment` too, now that its screen exists. THREE SEATS, EACH OFFERED ONCE, is
@@ -266,13 +273,14 @@ it("07b T8: the nav is grouped, and a counter clerk's Desk group comes before th
    * decision and should not be able to break a structural test.
    */
   const hrefs = screen.getAllByRole("link").map((a) => a.getAttribute("href"));
-  expect(hrefs.indexOf("/counter")).toBeGreaterThanOrEqual(0);
-  expect(hrefs.indexOf("/counter")).toBeLessThan(hrefs.indexOf("/merge"));
   /*
-    FD-25 — the DESK group now holds two rows and they are adjacent, which is what this test is
-    about: reading order is the order a desk WORKS in, so both front-desk seats come before the
-    patient-record rows. `/appointment` is still deleted and still asserted absent.
+    FD-25 — DESK ONE IS NO LONGER A ROW, on the owner's 2026-09-05 ruling: keep it working, keep it
+    out of the nav. So the desk group's leading row is `/registration`, and this test's claim is
+    unchanged — the group a front desk works in reads before the patient-record rows. The absence is
+    asserted below rather than left implied, because "the row quietly came back" is exactly the
+    regression a ruling like this suffers.
   */
+  expect(hrefs).not.toContain("/counter");
   expect(hrefs.indexOf("/registration")).toBeGreaterThanOrEqual(0);
   expect(hrefs.indexOf("/registration")).toBeLessThan(hrefs.indexOf("/merge"));
   /*

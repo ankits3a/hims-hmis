@@ -100,7 +100,24 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   // the owner ruled for the seat, so the second row is gone with the screen it pointed at. Two nav
   // links reading "Counter" and "Registration counter (new)" for one job is how the owner ended up
   // on the wrong one — a nav is a list of places, and a place should appear in it once.
-  { to: "/counter", label: "nav.counterDesk", permission: "opd.visits.open", group: "desk" },
+  /*
+    ═══ FD-25 — DESK ONE IS OFF THE NAV, AND STILL SERVES. OWNER RULING, 2026-09-05 ═══
+
+    The handoff's §3.2 asked whether `/counter` should be deleted now that the three seats it used
+    to combine exist separately. The owner ruled: keep it working, keep it out of the nav.
+
+    That is the right shape and worth writing down, because the row and the route answer different
+    questions. THE ROW is a recommendation — "here is where you work" — and offering four front-desk
+    entries to a clerk who works at one is how a nav stops being read. THE ROUTE is a capability, and
+    Desk One is the screen a ONE-PERSON front desk actually wants: one operator doing registration,
+    booking and cash without changing screens between patients. Deleting it would take that away
+    from every small deployment to tidy a menu.
+
+    So the row goes and the route stays. It is still reachable by URL, and — deliberately — from the
+    command palette (`components/command-palette.tsx`), which is a search rather than a menu: a
+    person who knows they want Desk One finds it by asking for it, and a person who does not is
+    never offered a fourth door they did not need.
+  */
   /*
     FD-25 — AND THE SECOND DESK ROW, WHICH IS NOT THE TWO-DOORS DEFECT ABOVE.
 
