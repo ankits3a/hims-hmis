@@ -9,6 +9,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { transition } from "../../kernel/workflow/instances";
 import { resolvePatientId } from "../patients";
 import { LabError } from "./errors";
+import { flushNearMiss } from "./results";
 import { labLabelPrinted } from "./events";
 import { assertRightPatient } from "./collection";
 import type { Actor } from "@hmis/contracts";
@@ -128,7 +129,13 @@ export async function printLabels(
   input: PrintLabelsInput,
   now: Date = new Date(),
 ): Promise<PrintLabelsResult> {
-  return await withTx(db, (tx) => printLabelsInTx(db, tx, actor, input, now));
+  try {
+    return await withTx(db, (tx) => printLabelsInTx(db, tx, actor, input, now));
+  } catch (e) {
+    /** The tube-mismatch flag, appended after this transaction has unwound (see `collection.ts`). */
+    await flushNearMiss(db, e);
+    throw e;
+  }
 }
 
 async function printLabelsInTx(
@@ -186,7 +193,7 @@ async function printLabelsInTx(
    * fired. `lab_specimens` stays untouched, which is the assertion — and the flag goes on `db`,
    * OUTSIDE the transaction that is about to roll back (F20).
    */
-  await assertRightPatient(db, actor, {
+  await assertRightPatient(actor, {
     orderGroupId: input.orderGroupId, patientId,
     expectedUhid: patient.uhid, scannedUhid: input.scannedUhid,
   }, now);

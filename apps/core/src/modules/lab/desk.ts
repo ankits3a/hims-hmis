@@ -229,6 +229,40 @@ export async function deskOrder(
   }
 
   /**
+   * ═══ THE ENCOUNTER IS RESOLVED ONCE, HERE, AND ITS **ID** IS WHAT TRAVELS ═══
+   *
+   * This function used to pass `input.encounterNo` — a `V…` string — straight into four different
+   * `encounterId` fields: the invoice, the lab item's workflow subject, and two event envelopes.
+   * Every one of those columns holds a ULID everywhere else in the system.
+   *
+   * The money consequence is what made it a MAJOR rather than an untidiness. `fee-status.ts`
+   * selects `inArray(invoices.encounterId, encounters.map(e => e.id))`, and a V-number can never
+   * equal a ULID — so **no lab invoice could ever be matched to its encounter**, and every lab
+   * walk-in sat on the cashier's collection worklist owing a fee nobody could clear.
+   *
+   * Resolved ONCE rather than fixed at the call sites, because five patches would have left the
+   * sixth to be written next week. `encounterNo` remains in the event PAYLOADS under its own name:
+   * that field means the human-facing number and is correct as it stands.
+   *
+   * `getEncounter` accepts either form — it dispatches on `VISIT_NO_RE` — so callers may keep
+   * passing a number, which is what the counter has in its hand.
+   *
+   * ═══ AND IT FALLS BACK, BECAUSE NOT EVERY EPISODE IS AN OPD VISIT ═══
+   *
+   * The first cut of this REFUSED an unresolvable number, and 131 tests said no. They were right.
+   * Plan 17's `registerEncounterResolver` is a deliberate seam: a module may own an episode PREFIX
+   * and answer for numbers that have no `opd_encounters` row at all, which is how a lab order gets
+   * placed against an episode that is not an OPD visit. `getEncounter` knows only OPD, so refusing
+   * what it cannot find would have broken every non-OPD episode to fix an OPD one.
+   *
+   * So: **store the id when an id exists.** Where there is no OPD row there is no id to store, and
+   * `fee-status.ts` — which joins `opd_encounters.id` — is not asking about that episode anyway.
+   * The defect was never "a number is present", it was "a number stood in for an id that existed".
+   */
+  const encounter = await getEncounter(tx, input.encounterNo);
+  const encounterId = encounter?.id ?? input.encounterNo;
+
+  /**
    * (1) EVERY SERVICE ID IS AN ORDERABLE THIS HOSPITAL HAS, AND AN ORPHAN IS NAMED (A5).
    *
    * `advised_tests` carries a `serviceId` the consult snapshotted; between that afternoon and this
@@ -401,7 +435,7 @@ export async function deskOrder(
     {
       draftId,
       patientId: input.patientId,
-      encounterId: input.encounterNo,
+      encounterId,
       lines: input.items.map((item) => ({ lineId: newId(), serviceId: item.serviceId, qty: 1 })),
       tags: input.tags,
       receipt: input.receipt,
@@ -439,7 +473,7 @@ export async function deskOrder(
   for (const [index, itemId] of placed.itemIds.entries()) {
     const item = input.items[index]!;
     const { instanceId } = await startInstance(tx, LAB_ITEM_DEF_KEY, {
-      type: "lab_item", id: itemId, patientId: input.patientId, encounterId: input.encounterNo,
+      type: "lab_item", id: itemId, patientId: input.patientId, encounterId,
     });
     await tx.insert(labItems).values({
       orderItemId: itemId,
@@ -459,7 +493,7 @@ export async function deskOrder(
   await appendEvent(tx, labOrderDesked.make({
     actor,
     patientId: input.patientId,
-    encounterId: input.encounterNo,
+    encounterId,
     correlationId: placed.orderId,
     payload: {
       orderId: placed.orderId, orderNo: placed.orderNo, orderGroupId,
