@@ -126,5 +126,5 @@ export async function billDispense(db: Db, actor: Actor, dispenseId: string, inp
       payload: { dispenseId: d.id, patientId: d.patientId, encounterId: d.encounterId, invoiceId: result.invoiceId, netPaise: result.totals.netPayablePaise },
     }));
   });
-  return getDispense(db, actor, d.id);
+  return getDispense(db, actor, d.id, now);
 }
