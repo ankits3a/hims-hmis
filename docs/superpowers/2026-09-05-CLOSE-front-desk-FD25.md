@@ -170,6 +170,15 @@ pnpm --filter @hmis/web exec vitest run            103 files /  821 tests, exit 
 pnpm --filter @hmis/core exec jest -w 2            384 suites / 3968 tests, exit 0  (830 s)
 ```
 
+Re-run on the MERGED tree (`4ce668e`, onto main `b9fd9e4`), which is the only run that counts:
+
+```
+pnpm --filter @hmis/core exec jest -w 2            389 suites / 3998 tests, exit 0  (701 s)
+pnpm --filter @hmis/web exec vitest run            103 files  /  825 tests, exit 0
+pnpm typecheck                                     0 errors
+pnpm lint                                          0 errors, 3 warnings (pre-existing)
+```
+
 Both full suites were run under `test-lock.sh` on the final tree, with no peer runner — the lane's
 own rule after 2026-09-01 burned four of five passes to contention rather than to code.
 
@@ -197,6 +206,35 @@ an unrelated arithmetic bug; a new role moves `heldPermissions` (143 here) and `
 
 Note for whoever reads a board summary instead of this table: caddyfile is **48 → 50**, two routes,
 not 49. `/registration` and `/appointment` are both new.
+
+### RESOLVED at the merge, 2026-09-05 — `4ce668e` onto main `b9fd9e4`
+
+Measured, one failure at a time, exactly as the note above demanded:
+
+| | measured |
+|---|---|
+| `modelPairs` | **308** (read off `Received length: 308`) |
+| granted-length array | **index 7, `cashier` 11 → 15**, and nothing else |
+| already-length array | the same index, its twin |
+| caddyfile SPA routes | **50**, unchanged by the merge — re-measured, not assumed |
+| `seed-staff.test.ts` | did not move; these grants add no role |
+
+**306 + 2 = 308 is the same number, and that is not why it is written here.** The array changed
+LENGTH under this branch: 17-E T2 inserted a new role, `lab_bridge`, making it 37 entries where
+FD-25 measured 36, so every position after the insertion shifted. Anybody carrying "edit the eighth
+entry" across the merge would have edited the eighth entry of a different list and been rewarded
+with a green suite for the wrong reason. The merge took main's array wholesale and let the diff name
+the one position that moved; index 7 was then confirmed to be `cashier` by reading `ROLE_MODEL`'s
+key order, because this array's own comment records that somebody has already moved the wrong `2`
+in it.
+
+**A TENTH CENSUS SITE EXISTS: `test/seed-staff.test.ts`.** `seed:staff` keeps its own role-key list,
+separate from `seed:roles`, and it does not fail as a count — it REFUSES A WHOLE ROSTER naming any
+key outside the list. A test selection is a function of the diff, so it cannot find this one: no
+file it names is touched by a permission change, and the coupling runs through a derived constant.
+Only the full suite or CI's shard split sees it. **For any count-pinned shared-surface change, run
+the full core suite before pushing — not a selection, and not a wider selection either, which is the
+same instrument asking the same question.**
 
 Every screen was opened in Chromium at 1440×980 against the real API, signed in as the role that
 owns it, and driven — not screenshotted empty. Recorded per screen in its own commit message.
