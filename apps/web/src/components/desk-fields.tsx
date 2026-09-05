@@ -272,3 +272,50 @@ export function TabStrip<T extends string>(
     </div>
   );
 }
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-25 — THE TABLE, WHICH IS A REAL `<table>` AND NOT A GRID OF DIVS
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * `@/components/ui/table` is five wrappers around the five HTML elements, and that is what makes it
+ * safe to replace: the semantics that matter — `role="table"`, `role="row"`, header association —
+ * come from the elements themselves, not from the wrapper. FD-23's commit message records what
+ * happens when a restyle forgets that: `role="table"` and `role="tab"` were dropped on the first
+ * pass and only the existing tests noticed.
+ *
+ * So these are the same five elements with the design system's rules on them, in one definition
+ * rather than repeated inline across four tabs. `DeskTable` wraps itself in an `overflow-x: auto`
+ * box: an admin table is the widest thing on any of these screens, and a page body that scrolls
+ * sideways is a page that has lost its left edge.
+ */
+export function DeskTable({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }): React.ReactElement {
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, ...style }}>{children}</table>
+    </div>
+  );
+}
+export function DeskTHead({ children }: { children: React.ReactNode }): React.ReactElement {
+  return <thead>{children}</thead>;
+}
+export function DeskTBody({ children }: { children: React.ReactNode }): React.ReactElement {
+  return <tbody>{children}</tbody>;
+}
+export function DeskTR({ children }: { children: React.ReactNode }): React.ReactElement {
+  return <tr style={{ verticalAlign: "top" }}>{children}</tr>;
+}
+export function DeskTH({ children }: { children: React.ReactNode }): React.ReactElement {
+  return (
+    <th className="tag" style={{ textAlign: "left", padding: "0 14px 7px 0", borderBottom: "1px solid var(--line)", whiteSpace: "nowrap" }}>
+      {children}
+    </th>
+  );
+}
+export function DeskTD({ children, className, style }: { children?: React.ReactNode; className?: string; style?: React.CSSProperties }): React.ReactElement {
+  return (
+    <td className={className} style={{ padding: "8px 14px 8px 0", borderBottom: "1px solid var(--line)", ...style }}>
+      {children}
+    </td>
+  );
+}

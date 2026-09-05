@@ -366,6 +366,14 @@
     "leaveStatus": {
       "scheduled": "Scheduled",
       "cancelled": "Cancelled"
+    },
+    "askPlaceholder": "ask about departments, rooms, doctors or schedules…",
+    "agentIdle": "I read these masters only — the departments, rooms and doctors on this deployment and which of them are active. I have no model behind me and I change nothing.",
+    "agent": {
+      "counts": "{{departments}} department(s), {{rooms}} room(s), {{doctors}} doctor(s).",
+      "inactive": "Deactivated and still on file: {{list}}. A deactivated master stops being offered at the counter; it is never deleted, because past visits point at it.",
+      "allActive": "Everything here is active.",
+      "cannot": "I cannot answer that from this screen. I can tell you about the departments, rooms and doctors on this deployment, and which are deactivated."
     }
   },
   "opdAppt": {
@@ -1213,6 +1221,18 @@
       "username_taken": "That username already exists",
       "user_not_found": "That person no longer exists — reload the list",
       "role_not_found": "That role does not exist on this deployment — reload the list"
+    },
+    "revokeRoleFor": "Revoke {{roleKey}} from {{username}}",
+    "askPlaceholder": "ask about accounts, roles or who can do what…",
+    "agentIdle": "I read this roster only — the accounts on this deployment, the roles each one holds, and how many full administrators there are. I have no model behind me and I cannot change anything; every button here is yours.",
+    "agent": {
+      "admins": "{{n}} full administrator(s). Two is the floor: with one, a single lost password locks the hospital out of its own access control.",
+      "counts": "{{total}} account(s): {{active}} active, {{inactive}} deactivated.",
+      "noRoles": "These accounts hold no role at all, so they can sign in and do nothing: {{list}}.",
+      "allHaveRoles": "Every account holds at least one role.",
+      "inert": "{{n}} role assignment(s) are scoped below hospital. Every route in this system requires a hospital scope, so those rows grant their holder nothing — the screen marks each one.",
+      "noInert": "No inert role assignments — every holding is hospital-scoped.",
+      "cannot": "I cannot answer that from this screen. I can tell you about the accounts listed here, the roles they hold, how many full administrators there are, and which assignments are inert."
     }
   },
   "counterInstruments": {
@@ -1827,7 +1847,17 @@
     "docTitle": "Daily report",
     "docFor": "For {{date}}",
     "signedBy": "Signed",
-    "receivedBy": "Received by"
+    "receivedBy": "Received by",
+    "askPlaceholder": "ask about your day, this document or the export…",
+    "agentIdle": "I read this shift report only — the sections the server built for the date you picked, and whether the day is closed. I have no model behind me.",
+    "agent": {
+      "sections": "{{n}} section(s) for {{date}}.",
+      "provisional": "This day is NOT closed, so what you print says so on its face. The flag is the server's, which is why the file, the print and the screen cannot disagree.",
+      "closed": "This day is closed. What you print is the close.",
+      "empty": "Nothing recorded for this date. A day before you existed here, or a day you did nothing, is zeroes rather than a blank.",
+      "signature": "The printed report carries two signature lines — yours and whoever receives the handover. A printout with nowhere to sign gets a line drawn on it in biro, which is the same document with worse provenance.",
+      "cannot": "I cannot answer that from this screen. I can tell you what is in today's report, whether the day is closed, and what the printed document contains."
+    }
   },
   "brief": {
     "title": "Your brief",
@@ -1888,7 +1918,16 @@
     "drillWarning": "This reveals patient rows from that person's day. It requires a reason and is recorded against your account.",
     "reason": "Why are you opening these rows?",
     "drillAction": "Open the rows",
-    "drillFailed": "The rows could not be opened. Check your permission, or ask an administrator."
+    "drillFailed": "The rows could not be opened. Check your permission, or ask an administrator.",
+    "askPlaceholder": "ask about this brief or what this screen can show…",
+    "agentIdle": "I read this brief only — the figures the server generated for the person and period you picked. I cannot see patient rows, and neither can this screen until somebody drills with a reason.",
+    "agent": {
+      "brief": "The brief for this period has {{n}} clause(s), covering {{from}} to {{to}}. Every one is generated on the server from typed facts; nothing here is composed prose.",
+      "empty": "The brief has nothing to say for this period. On somebody's first week most comparison clauses are absent, which is a thin history rather than a quiet one.",
+      "noSubject": "Pick a person first — nothing is read until you do.",
+      "drill": "Drilling shows the patient rows behind the figures. It needs a reason of at least eight characters, and the reason is written to the audit log with your name against it.",
+      "cannot": "I cannot answer that from this screen. I can tell you what the brief says, what period it covers, and what drilling costs."
+    }
   },
   "assurance": {
     "self_declared": "Self declared",

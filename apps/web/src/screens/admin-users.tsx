@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormProvider, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useTranslation } from "react-i18next";
 import { FormKit, TextField } from "../components/form-kit";
-import { Button } from "@/components/ui/button";
+import { PaperScreen, ScreenTitle } from "../components/paper-screen";
+import { AgentDock, logged } from "../components/agent-dock";
+import type { AgentLine } from "../components/agent-dock";
 import { SubmitButton } from "../components/submit-button";
 import {
   adminErrorCode, adminErrorMessage, assignRole, createUser, deactivateUser, listRoles, listUsers,
@@ -169,9 +171,44 @@ export function AdminUsers(): React.ReactElement {
   /** `undefined` while the list is in flight: an unloaded screen must not accuse a deployment. */
   const fullAdmins = users.data?.fullAdministrators;
 
+  /*
+    THE CO-PILOT ON AN ACCESS-CONTROL SCREEN READS AND NEVER ACTS. Everything it can say is already
+    on the page; what it adds is arithmetic nobody wants to do by eye across thirty rows — how many
+    full administrators are left, which accounts hold nothing, which assignments are inert. It has no
+    model behind it, and on this screen of all screens that is the feature: an agent that could
+    invent a role holding would be inventing a permission.
+  */
+  const [agentAnswer, setAgentAnswer] = useState<string | null>(null);
+  const [agentLog, setAgentLog] = useState<AgentLine[]>([]);
+  const agentState = useRef({ rows, fullAdmins });
+  agentState.current = { rows, fullAdmins };
+
+  const ask = useCallback((question: string): void => {
+    const q = question.toLowerCase();
+    const { rows: list, fullAdmins: admins } = agentState.current;
+    const answer = ((): string => {
+      if (/admin|owner|full/.test(q)) return t("adminUsers.agent.admins", { n: admins ?? 0 });
+      if (/inert|scope/.test(q)) {
+        const n = list.reduce((acc, u) => acc + u.roles.filter((r) => r.scopeType !== "hospital").length, 0);
+        return n === 0 ? t("adminUsers.agent.noInert") : t("adminUsers.agent.inert", { n });
+      }
+      if (/role|permission|access|can do/.test(q)) {
+        const none = list.filter((u) => u.roles.length === 0).map((u) => u.username);
+        return none.length === 0 ? t("adminUsers.agent.allHaveRoles") : t("adminUsers.agent.noRoles", { list: none.join(", ") });
+      }
+      if (/how many|count|user|account|active|inactive|list/.test(q)) {
+        const active = list.filter((u) => u.active).length;
+        return t("adminUsers.agent.counts", { total: list.length, active, inactive: list.length - active });
+      }
+      return t("adminUsers.agent.cannot");
+    })();
+    setAgentAnswer(answer);
+    setAgentLog((l) => logged(l, question));
+  }, [t]);
+
   return (
-    <div className="space-y-6 p-6">
-      <h1 className="text-xl font-semibold">{t("adminUsers.title")}</h1>
+    <PaperScreen testId="admin-users" style={{ padding: "18px 22px", gap: 18 }}>
+      <ScreenTitle title={t("adminUsers.title")} route="/admin/users" />
 
       {/*
         PLAN 11f D2 — the takeover rule's mitigation, unmet, said out loud on the one surface that
@@ -185,111 +222,120 @@ export function AdminUsers(): React.ReactElement {
         one — interrupting a screen reader mid-row to repeat something that has not changed.
        */}
       {fullAdmins !== undefined && fullAdmins < 2 && (
-        <p role="status" data-testid="admin-two-admin-warning"
-          className="rounded border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900">
+        <p role="status" data-testid="admin-two-admin-warning" className="box"
+          style={{ margin: 0, padding: "12px 14px", fontSize: 12.5, fontWeight: 600, borderColor: "var(--gold-line)", background: "var(--gold-soft)" }}>
           {/* `n`, not `count`: i18next reads `count` as a plural selector and would look for
               `_one`/`_other` variants this catalogue does not carry. */}
           {t("adminUsers.twoAdminWarning", { n: fullAdmins })}
         </p>
       )}
 
-      <section className="space-y-3 rounded border p-4">
-        <h2 className="text-sm font-semibold">{t("adminUsers.createTitle")}</h2>
-        <p className="text-xs text-neutral-500">{t("adminUsers.createWhy")}</p>
+      <section className="box" style={{ display: "flex", flexDirection: "column", gap: 10, padding: "15px 17px" }}>
+        <h2 className="tag" style={{ margin: 0 }}>{t("adminUsers.createTitle")}</h2>
+        <p style={{ margin: 0, fontSize: 11.5, color: "var(--dim)" }}>{t("adminUsers.createWhy")}</p>
         <FormProvider {...form}>
-          <FormKit onSubmit={submitCreate} className="grid gap-3 md:grid-cols-2">
+          <FormKit onSubmit={submitCreate}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 13 }}>
             <TextField name="username" label={t("adminUsers.username")} autoFocus />
             <TextField name="fullName" label={t("adminUsers.fullName")} />
             <TextField name="password" label={t("adminUsers.password")} type="password" />
             <TextField name="pin" label={t("adminUsers.pin")} type="password" />
-            <p className="text-xs text-neutral-500 md:col-span-2">{t("adminUsers.rule")}</p>
+            <p style={{ margin: 0, gridColumn: "1 / -1", fontSize: 11.5, color: "var(--dim)" }}>{t("adminUsers.rule")}</p>
             {createError !== null && (
-              <p role="alert" data-testid="admin-create-error" className="text-sm text-red-600 md:col-span-2">
+              <p role="alert" data-testid="admin-create-error" style={{ margin: 0, gridColumn: "1 / -1", fontSize: 12.5, fontWeight: 600, color: "var(--red)" }}>
                 {createError}
               </p>
             )}
-            <div className="md:col-span-2">
-              <Button type="submit" disabled={form.formState.isSubmitting}>{t("adminUsers.create")}</Button>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <button type="submit" className="pri" disabled={form.formState.isSubmitting}>{t("adminUsers.create")}</button>
+            </div>
             </div>
           </FormKit>
         </FormProvider>
       </section>
 
       {notice !== null && (
-        <p role="status" data-testid="admin-notice" className="text-sm text-green-700">{notice}</p>
+        <p role="status" data-testid="admin-notice" style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: "var(--green)" }}>{notice}</p>
       )}
       {rowError !== null && (
-        <p role="alert" data-testid="admin-row-error" className="text-sm text-red-600">{rowError}</p>
+        <p role="alert" data-testid="admin-row-error" style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: "var(--red)" }}>{rowError}</p>
       )}
 
       {pending !== null && (
-        <section className="space-y-2 rounded border border-amber-400 p-4" data-testid="admin-reset-panel">
-          <h2 className="text-sm font-semibold">
+        <section className="box" data-testid="admin-reset-panel"
+          style={{ display: "flex", flexDirection: "column", gap: 8, padding: "15px 17px", borderColor: "var(--gold-line)", background: "var(--gold-soft)" }}>
+          <h2 style={{ margin: 0, fontSize: 13.5, fontWeight: 700 }}>
             {t(pending.kind === "password" ? "adminUsers.resetPasswordFor" : "adminUsers.resetPinFor", {
               username: pending.user.username,
             })}
           </h2>
-          <p className="text-xs text-neutral-500">
+          <p style={{ margin: 0, fontSize: 11.5, color: "var(--dim)" }}>
             {t(pending.kind === "password" ? "adminUsers.resetPasswordWhy" : "adminUsers.resetPinWhy")}
           </p>
-          <label className="block text-sm font-medium" htmlFor="reset-value">
+          <label className="tag" style={{ display: "block" }} htmlFor="reset-value">
             {t(pending.kind === "password" ? "adminUsers.password" : "adminUsers.pin")}
           </label>
           <input
             id="reset-value"
             type="password"
-            className="w-64 rounded border px-2 py-1"
+            className="in mo" style={{ width: 260, height: 34, fontSize: 13 }}
             value={resetValue}
             onChange={(e) => setResetValue(e.target.value)}
           />
-          <div className="flex gap-2">
-            <SubmitButton type="button" onClick={submitReset}>{t("adminUsers.confirmReset")}</SubmitButton>
-            <Button
+          <div style={{ display: "flex", gap: 8 }}>
+            <SubmitButton plain type="button" className="pri" onClick={submitReset}>{t("adminUsers.confirmReset")}</SubmitButton>
+            <button
               type="button"
-              variant="outline"
+              className="sec"
               onClick={() => { setPending(null); setResetValue(""); }}
             >
               {t("adminUsers.cancel")}
-            </Button>
+            </button>
           </div>
         </section>
       )}
 
-      <section className="space-y-2">
-        <h2 className="text-sm font-semibold">{t("adminUsers.listTitle")}</h2>
+      <section style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+        <h2 className="tag" style={{ margin: 0 }}>{t("adminUsers.listTitle")}</h2>
         {users.data === undefined ? (
-          <p className="text-sm text-neutral-500">{t("app.loading")}</p>
+          <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{t("app.loading")}</p>
         ) : rows.length === 0 ? (
-          <p className="text-sm text-neutral-500">{t("adminUsers.empty")}</p>
+          <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{t("adminUsers.empty")}</p>
         ) : (
-          <table className="w-full text-sm">
+          <div className="box" style={{ padding: "4px 15px 10px", overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
             <thead>
-              <tr className="border-b text-left">
-                <th className="py-1">{t("adminUsers.username")}</th>
-                <th>{t("adminUsers.fullName")}</th>
-                <th>{t("adminUsers.status")}</th>
-                <th>{t("adminUsers.roles")}</th>
-                <th>{t("adminUsers.actions")}</th>
+              <tr>
+                {[t("adminUsers.username"), t("adminUsers.fullName"), t("adminUsers.status"), t("adminUsers.roles"), t("adminUsers.actions")].map((h) => (
+                  <th key={h} className="tag" style={{ textAlign: "left", padding: "10px 14px 7px 0", borderBottom: "1px solid var(--line)" }}>{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {rows.map((u) => (
-                <tr key={u.id} className="border-b align-top" data-testid={`admin-user-${u.username}`}>
-                  <td className="py-1">{u.username}</td>
-                  <td>{u.fullName}</td>
-                  <td data-testid={`admin-status-${u.username}`}>
+                <tr key={u.id} style={{ verticalAlign: "top" }} data-testid={`admin-user-${u.username}`}>
+                  <td className="mo" style={{ padding: "9px 14px 9px 0", borderBottom: "1px solid var(--line)", fontWeight: 600 }}>{u.username}</td>
+                  <td style={{ padding: "9px 14px 9px 0", borderBottom: "1px solid var(--line)" }}>{u.fullName}</td>
+                  <td data-testid={`admin-status-${u.username}`} style={{ padding: "9px 14px 9px 0", borderBottom: "1px solid var(--line)", color: u.active ? "var(--ink)" : "var(--dim)" }}>
                     {u.active ? t("adminUsers.active") : t("adminUsers.inactive")}
                     {u.hasPin && <> · {t("adminUsers.hasPin")}</>}
                     {u.mustChangePassword && <> · {t("adminUsers.mustChange")}</>}
                   </td>
-                  <td className="min-w-64">
+                  <td style={{ minWidth: 260, padding: "9px 14px 9px 0", borderBottom: "1px solid var(--line)" }}>
                     {u.roles.length === 0 ? (
-                      <span className="text-neutral-500">{t("adminUsers.noRoles")}</span>
+                      <span style={{ color: "var(--dim)" }}>{t("adminUsers.noRoles")}</span>
                     ) : (
-                      <ul>
+                      /*
+                        THE ROLES WRAP, and that is a readability fix a screenshot forced rather
+                        than a preference. This deployment's `admin` account holds THIRTY roles, and
+                        one per line made a single table row taller than the viewport — the account
+                        most likely to need auditing was the one hardest to read. Wrapped chips put
+                        the same thirty in four lines, and each keeps its own revoke.
+                      */
+                      <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexWrap: "wrap", gap: 5 }}>
                         {u.roles.map((r) => (
-                          <li key={r.assignmentId}>
-                            {r.roleKey}
+                          <li key={r.assignmentId} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 4px 2px 8px", border: "1px solid var(--line)", borderRadius: 4, background: "var(--wash)" }}>
+                            <span className="mo" style={{ fontSize: 11 }}>{r.roleKey}</span>
                             {r.scopeType !== "hospital" && (
                               /*
                                 AN INERT ASSIGNMENT, SAID ON ITS FACE. `hasPermission` refuses a
@@ -300,14 +346,16 @@ export function AdminUsers(): React.ReactElement {
                                 exist, and a person meeting 403 everywhere while the screen shows
                                 them holding a role is the worst version of this bug.
                                */
-                              <span className="ml-1 text-xs text-amber-700" data-testid={`admin-inert-${r.assignmentId}`}>
+                              <span style={{ marginLeft: 4, fontSize: 11, fontWeight: 600, color: "var(--gold)" }} data-testid={`admin-inert-${r.assignmentId}`}>
                                 ({r.scopeType}{r.scopeId !== null && `: ${r.scopeId}`}) {t("adminUsers.inertScope")}
                               </span>
-                            )}{" "}
+                            )}
                             <SubmitButton
+                              plain
                               type="button"
-                              variant="link"
-                              size="xs"
+                              className="sec"
+                              aria-label={t("adminUsers.revokeRoleFor", { roleKey: r.roleKey, username: u.username })}
+                              style={{ padding: "0 6px", height: 19, fontSize: 10 }}
                               onClick={() => run(
                                 () => revokeRole(u.id, r.assignmentId),
                                 t("adminUsers.roleRevoked", { roleKey: r.roleKey, username: u.username }),
@@ -331,17 +379,17 @@ export function AdminUsers(): React.ReactElement {
                       const scope = catalogue.data.assignableScopes[0] ?? "hospital";
                       const warns = options.find((r) => r.key === chosen)?.grantsAccessAuthority === true;
                       if (options.length === 0) {
-                        return <p className="mt-1 text-xs text-neutral-500">{t("adminUsers.allRolesHeld")}</p>;
+                        return <p style={{ margin: "6px 0 0", fontSize: 11, color: "var(--dim)" }}>{t("adminUsers.allRolesHeld")}</p>;
                       }
                       return (
-                        <div className="mt-1 space-y-1">
+                        <div style={{ marginTop: 7, display: "flex", flexDirection: "column", gap: 5 }}>
                           <label className="sr-only" htmlFor={`assign-${u.id}`}>
                             {t("adminUsers.assignRoleFor", { username: u.username })}
                           </label>
                           <select
                             id={`assign-${u.id}`}
                             data-testid={`admin-role-select-${u.username}`}
-                            className="w-full rounded border px-1 py-0.5 text-xs"
+                            className="in" style={{ width: "100%", height: 28, fontSize: 11.5 }}
                             value={chosen}
                             onChange={(e) => setPicked((p) => ({ ...p, [u.id]: e.target.value }))}
                           >
@@ -354,14 +402,15 @@ export function AdminUsers(): React.ReactElement {
                           </select>
                           {warns && (
                             <p role="status" data-testid={`admin-authority-warning-${u.username}`}
-                              className="text-xs text-amber-800">
+                              style={{ margin: 0, fontSize: 11, fontWeight: 600, color: "var(--gold)" }}>
                               {t("adminUsers.grantsAccessAuthority")}
                             </p>
                           )}
                           <SubmitButton
+                            plain
                             type="button"
-                            variant="outline"
-                            size="xs"
+                            className="sec grn"
+                            style={{ alignSelf: "flex-start", padding: "0 10px", height: 26, fontSize: 11 }}
                             disabled={chosen === ""}
                             onClick={() => run(
                               async () => {
@@ -377,26 +426,28 @@ export function AdminUsers(): React.ReactElement {
                       );
                     })()}
                   </td>
-                  <td className="space-x-2 whitespace-nowrap">
+                  <td style={{ whiteSpace: "nowrap", padding: "9px 0", borderBottom: "1px solid var(--line)" }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                     <button
                       type="button"
-                      className="text-xs underline"
+                      className="sec" style={{ padding: "0 8px", height: 24, fontSize: 10.5 }}
                       onClick={() => { setPending({ user: u, kind: "password" }); setResetValue(""); }}
                     >
                       {t("adminUsers.resetPassword")}
                     </button>
                     <button
                       type="button"
-                      className="text-xs underline"
+                      className="sec" style={{ padding: "0 8px", height: 24, fontSize: 10.5 }}
                       onClick={() => { setPending({ user: u, kind: "pin" }); setResetValue(""); }}
                     >
                       {t("adminUsers.resetPin")}
                     </button>
                     {u.active ? (
                       <SubmitButton
+                        plain
                         type="button"
-                        variant="link"
-                        size="xs"
+                        className="sec"
+                        style={{ padding: "0 8px", height: 24, fontSize: 10.5 }}
                         onClick={() => run(
                           () => deactivateUser(u.id),
                           t("adminUsers.deactivated", { username: u.username }),
@@ -406,9 +457,10 @@ export function AdminUsers(): React.ReactElement {
                       </SubmitButton>
                     ) : (
                       <SubmitButton
+                        plain
                         type="button"
-                        variant="link"
-                        size="xs"
+                        className="sec"
+                        style={{ padding: "0 8px", height: 24, fontSize: 10.5 }}
                         onClick={() => run(
                           () => reactivateUser(u.id),
                           t("adminUsers.reactivated", { username: u.username }),
@@ -417,13 +469,20 @@ export function AdminUsers(): React.ReactElement {
                         {t("adminUsers.reactivate")}
                       </SubmitButton>
                     )}
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
-    </div>
+
+      <AgentDock
+        answer={agentAnswer} log={agentLog} onAsk={ask}
+        placeholder={t("adminUsers.askPlaceholder")} idle={t("adminUsers.agentIdle")}
+      />
+    </PaperScreen>
   );
 }

@@ -4,7 +4,9 @@ import { useTranslation } from "react-i18next";
 import { BRIEF_PERIODS, downloadReportCsv, fetchBrief, fetchReport, todayIst } from "../lib/desk-api";
 import type { WireBriefPeriod, WireReportSection } from "../lib/desk-api";
 import { useAuth } from "../lib/auth";
-import { Button } from "@/components/ui/button";
+import { PaperScreen, ScreenTitle } from "../components/paper-screen";
+import { AgentDock, logged } from "../components/agent-dock";
+import type { AgentLine } from "../components/agent-dock";
 
 /**
  * PLAN 07c T2/T3/T5 — MY DAY: ONE MODEL, RENDERED THREE WAYS.
@@ -34,13 +36,20 @@ import { Button } from "@/components/ui/button";
 export function SectionTable({ section }: { section: WireReportSection }): React.ReactElement {
   const { t } = useTranslation();
   return (
-    <div className="flex flex-col gap-1">
-      <h2 className="text-sm font-semibold">{t(section.titleKey)}</h2>
-      <table className="w-full border-collapse text-sm">
+    /*
+      RESTYLED FOR PAPER FIRST. This node is INSIDE `.print-doc` — it is the document that gets
+      printed, signed and filed — so its colours are the ink ones and never the faint ones: a
+      `--dim` column heading that reads correctly on a monitor is a grey smudge from a laser printer,
+      and `--faint` is worse. The design system supplies the type and the rules; the contrast here is
+      chosen for the paper, which is the harder of the two surfaces.
+    */
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <h2 style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>{t(section.titleKey)}</h2>
+      <table className="mo" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
         <thead>
-          <tr className="border-b text-left">
+          <tr>
             {section.columnKeys.map((c) => (
-              <th key={c} className="py-1 pr-3 font-medium text-muted-foreground">{t(c)}</th>
+              <th key={c} style={{ textAlign: "left", padding: "0 14px 5px 0", borderBottom: "1px solid var(--ink)", fontWeight: 700, whiteSpace: "nowrap" }}>{t(c)}</th>
             ))}
           </tr>
         </thead>
@@ -48,15 +57,15 @@ export function SectionTable({ section }: { section: WireReportSection }): React
           {section.rows.length === 0 ? (
             /* E-4 — a day before this person existed, or a day they did nothing, is ZEROES. */
             <tr>
-              <td className="py-2 text-muted-foreground" colSpan={section.columnKeys.length}>
+              <td style={{ padding: "9px 0", color: "var(--dim)" }} colSpan={section.columnKeys.length}>
                 {t("myDay.noRows")}
               </td>
             </tr>
           ) : (
             section.rows.map((row, i) => (
-              <tr key={`${section.key}-${String(i)}`} className="border-b last:border-b-0">
+              <tr key={`${section.key}-${String(i)}`}>
                 {row.map((cell, j) => (
-                  <td key={`${section.key}-${String(i)}-${String(j)}`} className="py-1 pr-3 tabular-nums">{cell}</td>
+                  <td key={`${section.key}-${String(i)}-${String(j)}`} style={{ padding: "5px 14px 5px 0", borderBottom: "1px solid var(--line)" }}>{cell}</td>
                 ))}
               </tr>
             ))
@@ -64,9 +73,9 @@ export function SectionTable({ section }: { section: WireReportSection }): React
         </tbody>
         {section.totals === undefined ? null : (
           <tfoot>
-            <tr className="border-t font-semibold">
+            <tr>
               {section.totals.map((cell, j) => (
-                <td key={`${section.key}-total-${String(j)}`} className="py-1 pr-3 tabular-nums">{cell}</td>
+                <td key={`${section.key}-total-${String(j)}`} style={{ padding: "6px 14px 5px 0", borderTop: "1px solid var(--ink)", fontWeight: 700 }}>{cell}</td>
               ))}
             </tr>
           </tfoot>
@@ -99,16 +108,16 @@ export function BriefPanel({ date }: { date: string }): React.ReactElement {
   const brief = useQuery({ queryKey: ["me", "brief", who, period, date], queryFn: () => fetchBrief(period, date), enabled: who !== "" });
 
   return (
-    <section className="no-print flex flex-col gap-2 rounded border p-3">
-      <div className="flex flex-wrap items-baseline gap-3">
-        <h2 className="text-sm font-semibold">{t("brief.title")}</h2>
-        <div className="flex gap-1" role="group" aria-label={t("brief.periodLabel")}>
+    <section className="no-print box" style={{ display: "flex", flexDirection: "column", gap: 8, padding: "13px 15px" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 11 }}>
+        <h2 className="tag" style={{ margin: 0 }}>{t("brief.title")}</h2>
+        <div style={{ display: "flex", gap: 5 }} role="group" aria-label={t("brief.periodLabel")}>
           {BRIEF_PERIODS.map((p) => (
             <button
               key={p}
               type="button"
               aria-pressed={p === period}
-              className={`rounded border px-2 py-0.5 text-xs ${p === period ? "bg-accent font-medium" : ""}`}
+              className={p === period ? "pill on" : "pill"}
               onClick={() => { setPeriod(p); }}
             >
               {t(`brief.period.${p}`)}
@@ -116,20 +125,20 @@ export function BriefPanel({ date }: { date: string }): React.ReactElement {
           ))}
         </div>
         {brief.data === undefined ? null : (
-          <span className="ml-auto text-xs text-muted-foreground">
+          <span className="mo" style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--faint)" }}>
             {t("brief.range", { from: brief.data.from, to: brief.data.to })}
           </span>
         )}
       </div>
 
-      {brief.isPending ? <p className="text-sm text-muted-foreground">{t("app.loading")}</p> : null}
-      {brief.isError ? <p role="alert" className="text-sm">{t("brief.failed")}</p> : null}
+      {brief.isPending ? <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{t("app.loading")}</p> : null}
+      {brief.isError ? <p role="alert" style={{ margin: 0, fontSize: 12.5, color: "var(--red)" }}>{t("brief.failed")}</p> : null}
 
       {brief.data !== undefined && brief.data.clauses.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t("brief.nothingToSay")}</p>
+        <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{t("brief.nothingToSay")}</p>
       ) : null}
 
-      <ul className="flex flex-col gap-1 text-sm">
+      <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 5, fontSize: 13, lineHeight: 1.5 }}>
         {(brief.data?.clauses ?? []).map((c) => (
           <li key={c.key}>{t(c.key, c.values)}</li>
         ))}
@@ -150,49 +159,70 @@ export function MyDay(): React.ReactElement {
   const sections = report.data?.sections ?? [];
   const provisional = report.data?.provisional ?? false;
 
+  /*
+    THE ONE THING THIS DOCK EXISTS TO SAY OUT LOUD is whether the day is closed. The stamp is on the
+    screen and on the paper already, but "is this the close or a draft" is the question somebody asks
+    at 21:00 with a printout in their hand, and it deserves a sentence rather than a badge.
+  */
+  const [agentAnswer, setAgentAnswer] = useState<string | null>(null);
+  const [agentLog, setAgentLog] = useState<AgentLine[]>([]);
+  const ask = (question: string): void => {
+    const q = question.toLowerCase();
+    const answer = /closed|provisional|final|draft|lock/.test(q)
+      ? t(provisional ? "myDay.agent.provisional" : "myDay.agent.closed")
+      : /sign|print|paper|document|hand ?over/.test(q)
+        ? t("myDay.agent.signature")
+        : /section|report|day|figure|what|how many|total/.test(q)
+          ? (sections.length === 0 ? t("myDay.agent.empty") : t("myDay.agent.sections", { n: sections.length, date }))
+          : t("myDay.agent.cannot");
+    setAgentAnswer(answer);
+    setAgentLog((l) => logged(l, question));
+  };
+
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-4 p-4">
-      <div className="no-print flex flex-wrap items-baseline gap-3">
-        <h1 className="text-lg font-semibold">{t("myDay.title")}</h1>
-        <label className="text-sm">
+    <PaperScreen testId="my-day" style={{ padding: "18px 22px", gap: 14 }}>
+      <div className="no-print">
+        <ScreenTitle
+          title={t("myDay.title")} route="/my-day"
+          actions={
+            <>
+              {/*
+                E-5 / T2 A4 — the day is not closed, and the document says so on the screen AND on
+                the paper. The flag comes from the server so that the file, the print and this line
+                cannot disagree about whether what is being filed is the close.
+              */}
+              {provisional ? <span className="stamp un">{t("myDay.provisional")}</span> : null}
+              <button type="button" className="sec" onClick={() => { window.print(); }}>{t("myDay.print")}</button>
+              <button
+                type="button" className="pri" style={{ padding: "5px 14px" }}
+                disabled={downloading}
+                onClick={() => {
+                  setError(null);
+                  setDownloading(true);
+                  downloadReportCsv(date)
+                    .catch(() => { setError(t("myDay.exportFailed")); })
+                    .finally(() => { setDownloading(false); });
+                }}
+              >
+                {t("myDay.export")}
+              </button>
+            </>
+          }
+        />
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 9 }}>
           <span className="sr-only">{t("myDay.date")}</span>
           <input
             type="date"
-            className="rounded border px-2 py-1"
+            className="in mo" style={{ height: 34, fontSize: 12.5 }}
             value={date}
             aria-label={t("myDay.date")}
             onChange={(e) => { setDate(e.target.value); }}
           />
         </label>
-        {/*
-          E-5 / T2 A4 — the day is not closed, and the document says so on the screen AND on the
-          paper. The flag comes from the server so that the file, the print and this line cannot
-          disagree about whether what is being filed is the close.
-        */}
-        {provisional ? (
-          <span className="rounded border border-state-waiting px-2 py-0.5 text-xs text-state-waiting">
-            {t("myDay.provisional")}
-          </span>
-        ) : null}
-        <div className="ml-auto flex gap-2">
-          <Button variant="outline" onClick={() => { window.print(); }}>{t("myDay.print")}</Button>
-          <Button
-            disabled={downloading}
-            onClick={() => {
-              setError(null);
-              setDownloading(true);
-              downloadReportCsv(date)
-                .catch(() => { setError(t("myDay.exportFailed")); })
-                .finally(() => { setDownloading(false); });
-            }}
-          >
-            {t("myDay.export")}
-          </Button>
-        </div>
       </div>
-      {error === null ? null : <p className="no-print text-sm text-destructive">{error}</p>}
+      {error === null ? null : <p role="alert" className="no-print" style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: "var(--red)" }}>{error}</p>}
 
-      {report.isPending ? <p className="text-sm text-muted-foreground">{t("app.loading")}</p> : null}
+      {report.isPending ? <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{t("app.loading")}</p> : null}
 
       <BriefPanel date={date} />
 
@@ -201,16 +231,16 @@ export function MyDay(): React.ReactElement {
         a second copy for the screen would be the two-source failure this whole model exists to
         prevent, one level down.
       */}
-      <div className="print-doc flex flex-col gap-4">
-        <div className="flex flex-col gap-0.5 border-b pb-2">
-          <span className="text-base font-semibold">{t("myDay.docTitle")}</span>
-          <span className="text-sm">{t("myDay.docFor", { date })}</span>
-          <span className="text-sm">{actor === null ? "" : actor.id}</span>
-          {provisional ? <span className="text-sm">{t("myDay.provisionalNote")}</span> : null}
+      <div className="print-doc" style={{ display: "flex", flexDirection: "column", gap: 17 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2, borderBottom: "1px solid var(--ink)", paddingBottom: 8 }}>
+          <span style={{ fontSize: 15, fontWeight: 700 }}>{t("myDay.docTitle")}</span>
+          <span style={{ fontSize: 12.5 }}>{t("myDay.docFor", { date })}</span>
+          <span className="mo" style={{ fontSize: 12 }}>{actor === null ? "" : actor.id}</span>
+          {provisional ? <span style={{ fontSize: 12.5, fontWeight: 600 }}>{t("myDay.provisionalNote")}</span> : null}
         </div>
 
         {!report.isPending && sections.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t("myDay.empty")}</p>
+          <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{t("myDay.empty")}</p>
         ) : null}
 
         {sections.map((s) => (
@@ -223,11 +253,19 @@ export function MyDay(): React.ReactElement {
           a printout with nowhere to sign gets a line drawn on it in biro, which is the same
           document with worse provenance.
         */}
-        <div className="mt-8 flex gap-12 text-sm">
-          <div className="flex-1 border-t pt-1">{t("myDay.signedBy")}</div>
-          <div className="flex-1 border-t pt-1">{t("myDay.receivedBy")}</div>
+        <div style={{ marginTop: 34, display: "flex", gap: 48, fontSize: 12.5 }}>
+          <div style={{ flex: 1, borderTop: "1px solid var(--ink)", paddingTop: 5 }}>{t("myDay.signedBy")}</div>
+          <div style={{ flex: 1, borderTop: "1px solid var(--ink)", paddingTop: 5 }}>{t("myDay.receivedBy")}</div>
         </div>
       </div>
-    </div>
+
+      {/* `no-print` on the dock: the agent is not part of the document being filed. */}
+      <div className="no-print">
+        <AgentDock
+          answer={agentAnswer} log={agentLog} onAsk={ask}
+          placeholder={t("myDay.askPlaceholder")} idle={t("myDay.agentIdle")}
+        />
+      </div>
+    </PaperScreen>
   );
 }
