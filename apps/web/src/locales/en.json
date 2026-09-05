@@ -3600,7 +3600,8 @@
       "exempt": "exempt",
       "gstNote": "GST as the tariff rules it — the server decides, not this screen",
       "previewFailed": "The price could not be fetched. Do not tell the patient anything is due — or not due — until it loads.",
-      "previewPending": "The price is still being fetched. Wait for the figure before issuing."
+      "previewPending": "The price is still being fetched. Wait for the figure before issuing.",
+      "previewRetry": "Retry the price"
     },
     "contest": {
       "heading": "Why this price",

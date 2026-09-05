@@ -42,6 +42,25 @@ function toWire(rows: Row[]): WireTender[] {
   return tenders;
 }
 
+/**
+ * ═══ IS THERE ANYTHING IN HERE THE CASHIER PUT THERE? ═══
+ *
+ * `billing-counter`'s three lane keys REPLACE this editor's whole row array, so the screen that
+ * binds them has to be able to ask what a bare digit would destroy — and only this component can
+ * answer, because an INCOMPLETE row (a UPI amount typed with the reference still blank) is
+ * deliberately absent from the emitted tenders and is exactly the work that would be thrown away.
+ *
+ * PRISTINE is the one row this component mounts with, untouched: cash, no amount, no reference.
+ * Anything else — a second row, a typed amount, a changed mode — is the cashier's, and a key may
+ * not take it. (A row array the LANE ITSELF installed is not the cashier's work either; that case
+ * is handled by identity in the emission below, since every other path here builds a new array.)
+ */
+function isPristine(rows: Row[]): boolean {
+  const only = rows[0];
+  return rows.length === 1 && only !== undefined
+    && only.mode === "cash" && only.amountPaise === undefined && only.refText.trim() === "";
+}
+
 let seq = 0;
 function nextKey(): string {
   seq += 1;
@@ -51,9 +70,25 @@ function nextKey(): string {
 export function TenderEditor({
   payablePaise, onChange, lane,
 }: {
-  payablePaise: number;
-  /** The complete tenders, in row order. Integer paise, always. */
-  onChange: (tenders: WireTender[]) => void;
+  /**
+   * The server's payable, or `null` when the screen above does not have one — a failed price, a
+   * price for a draft that has since been edited, a preview still in flight.
+   *
+   * NULL IS NOT ZERO, and this component used to be handed `payablePaise ?? 0` for want of a
+   * number to do arithmetic with. It rendered that zero as a hard money fact: "Payable: ₹0.00"
+   * beside a GREEN "Exact" pill — a settled bill — twelve lines under a red "the price could not
+   * be fetched" alert. The arithmetic still needs a number, so short/exact/over simply has no
+   * verdict to give without one, and the footer says `—` rather than a figure nobody has.
+   */
+  payablePaise: number | null;
+  /**
+   * The complete tenders, in row order. Integer paise, always.
+   *
+   * `drafted` rides with them: TRUE when this editor holds anything the cashier entered, so a
+   * caller binding a destructive shortcut can refuse it. A caller that does not care declares one
+   * parameter and is unaffected (`billing-dues` passes `setTenders` straight through).
+   */
+  onChange: (tenders: WireTender[], drafted: boolean) => void;
   /**
    * ═══ FD-25 — THE FAST PATH, DRIVING THIS EDITOR RATHER THAN REPLACING IT ═══
    *
@@ -80,10 +115,14 @@ export function TenderEditor({
   const [rows, setRows] = useState<Row[]>(() => [{ key: nextKey(), mode: "cash", amountPaise: undefined, refText: "" }]);
 
   const lastLane = useRef<number | null>(null);
+  /* The exact array the last lane press installed — see `isPristine` for what identity buys here. */
+  const laneRows = useRef<Row[] | null>(null);
   useEffect(() => {
     if (lane === undefined || lane === null || lane.nonce === lastLane.current) return;
     lastLane.current = lane.nonce;
-    setRows([{ key: nextKey(), mode: lane.mode, amountPaise: lane.amountPaise, refText: "" }]);
+    const seeded: Row[] = [{ key: nextKey(), mode: lane.mode, amountPaise: lane.amountPaise, refText: "" }];
+    laneRows.current = seeded;
+    setRows(seeded);
   }, [lane]);
 
   // `onChange` is re-created by most parents on every render, so it is held in a ref rather than a
@@ -91,7 +130,7 @@ export function TenderEditor({
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   useEffect(() => {
-    onChangeRef.current(toWire(rows));
+    onChangeRef.current(toWire(rows), !(rows === laneRows.current || isPristine(rows)));
   }, [rows]);
 
   const patch = (key: string, next: Partial<Row>): void => {
@@ -99,8 +138,14 @@ export function TenderEditor({
   };
 
   const sumPaise = toWire(rows).reduce((total, tender) => total + tender.amountPaise, 0);
-  const state = sumPaise === payablePaise ? "exact" : sumPaise < payablePaise ? "short" : "over";
-  const differencePaise = state === "short" ? payablePaise - sumPaise : sumPaise - payablePaise;
+  /* `null` — no payable, so no verdict. The running total below is a fact this component owns and
+     is still stated; short/exact/over is a comparison, and there is nothing to compare against. */
+  const state: "exact" | "short" | "over" | null = payablePaise === null
+    ? null
+    : sumPaise === payablePaise ? "exact" : sumPaise < payablePaise ? "short" : "over";
+  const differencePaise = payablePaise === null
+    ? 0
+    : state === "short" ? payablePaise - sumPaise : sumPaise - payablePaise;
 
   /*
     ═══ FD-25 — THE ONE BLOCK OF THE OLD DESIGN LEFT IN THE MIDDLE OF THE MONEY COLUMN ═══
@@ -209,21 +254,26 @@ export function TenderEditor({
 
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 13, paddingTop: 9, borderTop: "1px solid var(--line2)", fontSize: 12 }}>
         <span style={{ color: "var(--dim)" }}>
-          {t("billing.tender.payable")}: <span className="mo" data-testid="tender-payable" style={{ color: "var(--ink)" }}>{fmtPaise(payablePaise)}</span>
+          {t("billing.tender.payable")}: <span className="mo" data-testid="tender-payable" style={{ color: "var(--ink)" }}>
+            {payablePaise === null ? "—" : fmtPaise(payablePaise)}
+          </span>
         </span>
         <span style={{ color: "var(--dim)" }}>
           {t("billing.tender.tendered")}: <span className="mo" data-testid="tender-sum" style={{ color: "var(--ink)" }}>{fmtPaise(sumPaise)}</span>
         </span>
-        <span
-          data-testid="tender-state"
-          className={state === "short" ? "pill rd" : state === "over" ? "pill gd" : "pill on"}
-        >
-          {state === "exact"
-            ? t("billing.tender.exact")
-            : state === "short"
-              ? t("billing.tender.short", { amount: fmtPaise(differencePaise) })
-              : t("billing.tender.over", { amount: fmtPaise(differencePaise) })}
-        </span>
+        {/* No payable, no pill: a verdict is the one thing this footer must not invent. */}
+        {state === null ? null : (
+          <span
+            data-testid="tender-state"
+            className={state === "short" ? "pill rd" : state === "over" ? "pill gd" : "pill on"}
+          >
+            {state === "exact"
+              ? t("billing.tender.exact")
+              : state === "short"
+                ? t("billing.tender.short", { amount: fmtPaise(differencePaise) })
+                : t("billing.tender.over", { amount: fmtPaise(differencePaise) })}
+          </span>
+        )}
       </div>
     </div>
   );

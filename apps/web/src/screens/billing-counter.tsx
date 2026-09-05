@@ -136,6 +136,12 @@ export function BillingCounter(): React.ReactElement {
   const [lines, setLines] = useState<CounterLine[]>([]);
   const [serviceQuery, setServiceQuery] = useState("");
   const [tenders, setTenders] = useState<WireTender[]>([]);
+  /*
+   * Whether the tender editor holds anything the cashier entered — reported BY the editor, because
+   * only it can see an incomplete row (a UPI amount with the reference still blank) that never
+   * reaches `tenders`. It is what the bare lane digits refuse on; see the key handler below.
+   */
+  const [tenderDrafted, setTenderDrafted] = useState(false);
   const [discountApprovals, setDiscountApprovals] = useState<Record<string, string>>({});
   const [panNumber, setPanNumber] = useState("");
   const [form60, setForm60] = useState(false);
@@ -237,10 +243,14 @@ export function BillingCounter(): React.ReactElement {
    * issued at ₹500". The preview and the invoice must be asked in the SAME terms or the money
    * disagrees, so the coupon text and the slip travel inside the debounced key rather than beside it.
    */
-  const previewKey = useDebounced(
-    JSON.stringify({ encounterId: encounterId.trim(), lines: lineInputs, couponCodes, referral }),
-    PREVIEW_DEBOUNCE_MS,
-  );
+  /*
+   * ONE EXPRESSION, DEBOUNCED — not two that happen to agree. `liveKey` is every term the price
+   * depends on as it stands right now; `previewKey` is that same string 250 ms later, and the gap
+   * between them is what `previewIsCurrent` below reads. A hand-built second copy could drift by a
+   * field and the comparison would quietly be false forever, so there is only one serialisation.
+   */
+  const liveKey = JSON.stringify({ encounterId: encounterId.trim(), lines: lineInputs, couponCodes, referral });
+  const previewKey = useDebounced(liveKey, PREVIEW_DEBOUNCE_MS);
   const previewBody = JSON.parse(previewKey) as {
     encounterId: string; lines: WireInvoiceLineInput[]; couponCodes: string[]; referral: string;
   };
@@ -255,6 +265,34 @@ export function BillingCounter(): React.ReactElement {
       }),
     enabled: previewBody.lines.length > 0,
   });
+
+  /*
+    ═══ ONE DEFINITION OF "THIS SCREEN HAS A PRICE": THE SERVER'S, SUCCEEDED, AND STILL THIS DRAFT ═══
+
+    The `?? 0` that used to sit on the payable was the first half of this; the close review found the
+    other two halves, both of which put a LIVE primary button under the red "do not tell the patient
+    anything is due" alert:
+
+     · A FAILED REFETCH. TanStack Query keeps `data` for a key when a background fetch of that key
+       fails — query-core's reducer says so in as many words, "flag existing data as invalidated if
+       we get a background error" — so `isError === true` and `data !== undefined` coexist. With
+       `refetchOnWindowFocus` at its default, a cashier alt-tabbing away and back over a pricing
+       outage lands there in one event. The screen read `preview.isError` and `preview.data` as two
+       independent facts, so it printed ₹560.00 in 22px bold, the red alert under it, and an enabled
+       button reading "Price unavailable — retry before issuing".
+
+     · A PRICE FOR A DRAFT THAT HAS MOVED ON. `previewKey` is debounced by 250 ms and the request
+       body is built from the LIVE inputs, so inside that window the figures on screen describe the
+       PREVIOUS draft while the write would post the current one. A coupon typed and issued inside
+       it posts codes the screen never priced: the server re-prices, and the difference between what
+       the cashier took and what the bill came to is banked as an advance nobody warned her about.
+
+    So there is one question — is `preview.data` a price for the draft in front of the cashier? —
+    asked once, here. Every figure below reads `priced`, and the ignorance travels with it as
+    `null`: `preview` itself is read only for the FAILURE, which is a different sentence to say.
+  */
+  const previewIsCurrent = previewKey === liveKey;
+  const priced = preview.isError || !previewIsCurrent ? null : preview.data ?? null;
 
   /**
    * FD-25 — THE COVERAGE READ, and it is what closes a write-only table.
@@ -326,7 +364,7 @@ export function BillingCounter(): React.ReactElement {
     below has to say what it does about that rather than inherit a zero. That is one definition
     instead of a guard at each of the six sites that read it.
   */
-  const totals = preview.data?.totals ?? null;
+  const totals = priced?.totals ?? null;
   const payablePaise: number | null = totals === null ? null : totals.netPayablePaise;
   /** The preview asked and was refused — distinct from "not asked yet", which is also `null` above. */
   const previewFailed = preview.isError;
@@ -351,7 +389,7 @@ export function BillingCounter(): React.ReactElement {
   const collectablePaise: number | null = payablePaise !== null
     ? payablePaise
     : quote?.free === true && lines.length === 0 ? 0 : null;
-  const approvalLines = (preview.data?.lines ?? []).filter((line) =>
+  const approvalLines = (priced?.lines ?? []).filter((line) =>
     line.candidates.some((candidate) => candidate.requiresApproval),
   );
 
@@ -373,21 +411,41 @@ export function BillingCounter(): React.ReactElement {
    * three and the seat promises them in prose in two languages — and deleting them would have
    * meant editing both locale files to unsay it.
    *
-   * GUARDED ON THE SAME PREDICATE THE BUTTONS REFUSE ON: `payablePaise === null || payablePaise
-   * === 0` is verbatim the `disabled` on `lane-*` below, so a key can never do what its button
-   * refuses. That is the exact gap Desk One's own close review found on this very trio.
+   * NEVER STRONGER THAN ITS BUTTON, AND DELIBERATELY WEAKER IN TWO PLACES. `payablePaise === null
+   * || payablePaise === 0` is verbatim the `disabled` on `lane-*` below, so a key can never do what
+   * its button refuses — the exact gap Desk One's own close review found on this very trio. On top
+   * of that the key refuses two things a CLICK is still allowed to do, because a click is aimed at
+   * a control and a bare digit is not:
+   *
+   *  · IT WILL NOT DESTROY A TENDER UNDER CONSTRUCTION. A lane seed REPLACES the whole row array.
+   *    `isTypingTarget` covers a cursor in a field, and Chromium focuses a `<button>` when it is
+   *    clicked — so the instant after "Add tender", the very button a mixed tender must be built
+   *    with, focus sat on an element the predicate does not cover and every bare digit was live:
+   *    ₹200 cash and ₹360 UPI with its reference typed, collapsed into one ₹560 row by a keystroke
+   *    the hint above the lanes had just invited. `tenderDrafted` is the editor's own answer to
+   *    "is there anything in me the cashier put there", so a row a LANE seeded is still replaceable
+   *    (press 1, then 2 to correct it) and a row the cashier typed is not.
+   *
+   *  · IT IS DEAD ONCE THE INVOICE IS WRITTEN. This effect is declared above the `issued !== null`
+   *    early return and hooks do not care about early returns, so the listener was mounted on the
+   *    printed-receipt screen too — while the comment here claimed the return was the reason no
+   *    guard was needed. A stray digit while the slip printed re-armed a lane against a bill that
+   *    was already written and dropped a line into the log dated after it, which then rode into the
+   *    next patient's dock (the log is not cleared by "Next bill"). The invariant is now asserted in
+   *    the handler rather than assumed from the render.
    *
    * Ctrl/Alt/Meta + a digit is left to the browser (`Ctrl+1` switches tabs); `browserSafeKey` in
-   * `lib/keyboard.tsx` is where that rule is written down. This screen is REPLACED by the printed
-   * receipt once `issued !== null`, so no lane key can survive the write.
+   * `lib/keyboard.tsx` is where that rule is written down.
    */
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
+      if (issued !== null) return;
       if (e.altKey || e.ctrlKey || e.metaKey || isTypingTarget(e.target) || palette?.isOpen === true) return;
       // "1".."3" → the three lanes. Anything else (a letter, "", "Enter") indexes to undefined.
       const mode = LANE_ORDER[Number(e.key) - 1];
       if (mode === undefined) return;
       if (payablePaise === null || payablePaise === 0) return;
+      if (tenderDrafted) return;
       e.preventDefault();
       takeLane(mode);
     };
@@ -395,7 +453,7 @@ export function BillingCounter(): React.ReactElement {
     // always returns its cleanup and the listener is never left attached across a re-render.
     window.addEventListener("keydown", onKey);
     return () => { window.removeEventListener("keydown", onKey); };
-  }, [palette?.isOpen, payablePaise, takeLane]);
+  }, [issued, palette?.isOpen, payablePaise, takeLane, tenderDrafted]);
 
   // ——— the write ————————————————————————————————————————————————————————————————————————————
 
@@ -411,10 +469,14 @@ export function BillingCounter(): React.ReactElement {
       return;
     }
     /*
-      THE COUNTER CANNOT ISSUE AGAINST A PRICE IT HAS NOT GOT. The button is also disabled in this
-      state, so this is defence in depth rather than the load-bearing half — but it is what makes
-      the refusal SAY something: `unsettled_issue_refused` (`invoices.ts`) would refuse the write
-      anyway, from the server, in words a cashier cannot connect to the 503 she never saw.
+      THE COUNTER CANNOT ISSUE AGAINST A PRICE IT HAS NOT GOT — including a price that belongs to a
+      draft the cashier has since edited, which is now the same `null` (see `priced`).
+
+      HONESTLY LABELLED: this is UNREACHABLE through the button, and it is kept anyway. `disabled`
+      at the submit button is computed from the same render's `payablePaise`, so no click can arrive
+      here with it null; the refusal below is defence in depth against a future caller, not the
+      load-bearing half. (The credit-reason refusal further down is the opposite by design: its
+      button is deliberately left enabled so the refusal can SAY something.)
     */
     if (payablePaise === null) {
       setError(t(previewFailed ? "billingSeat.bill.previewFailed" : "billingSeat.bill.previewPending"));
@@ -534,7 +596,7 @@ export function BillingCounter(): React.ReactElement {
     return needle !== "" && (service.name.toLowerCase().includes(needle) || service.code.toLowerCase().includes(needle));
   });
 
-  const pricedLines = preview.data?.lines ?? [];
+  const pricedLines = priced?.lines ?? [];
   /*
     ═══ THE CONTEST'S LOSERS, AND THE ONE THING THEY ARE NOT ═══
 
@@ -546,7 +608,7 @@ export function BillingCounter(): React.ReactElement {
   */
   const contested = pricedLines.filter((line) => line.winner !== null
     && line.candidates.some((c) => c !== line.winner && c.rejected === null));
-  const benefitPaise = (preview.data?.totals?.discountPaise ?? 0);
+  const benefitPaise = (priced?.totals?.discountPaise ?? 0);
 
   /* The panel arrangement, if registration recorded one. See `listCoverages` for why it is new. */
   const panel: WireCoverage | null = (coverages.data?.items ?? [])
@@ -960,6 +1022,21 @@ export function BillingCounter(): React.ReactElement {
                   <p className="mo" style={{ margin: "4px 0 0", fontSize: 11, color: "var(--faint)" }}>
                     {billingErrorCode(preview.error) ?? ""}
                   </p>
+                  {/*
+                    THE BUTTON SAYS "retry before issuing" AND THERE WAS NOTHING TO PRESS. The
+                    preview query is `retry: false` and polls nothing, so the only way out of a
+                    pricing outage was to edit the bill until the key changed — a keycap that lies,
+                    written as prose. One control, doing exactly what the copy names.
+                  */}
+                  <button
+                    type="button"
+                    className="sec"
+                    data-testid="preview-retry"
+                    style={{ marginTop: 9 }}
+                    onClick={() => { void preview.refetch(); }}
+                  >
+                    {t("billingSeat.bill.previewRetry")}
+                  </button>
                 </div>
               )}
             </div>
@@ -1033,10 +1110,18 @@ export function BillingCounter(): React.ReactElement {
               </div>
 
               <div style={{ marginTop: 12 }}>
-                {/* An unknown payable is not a ₹0 payable, but the editor's short/exact/over
-                    arithmetic needs a number; the lanes above are dark and `submit` refuses, so
-                    nothing can be tendered against this zero. */}
-                <TenderEditor payablePaise={payablePaise ?? 0} onChange={setTenders} lane={lane} />
+                {/*
+                  THE UNKNOWN TRAVELS. This used to pass `payablePaise ?? 0` with the reasoning that
+                  nothing could be tendered against the zero because the lanes were dark and `submit`
+                  refused — which covered POSTING and not STATING. The editor rendered that zero as a
+                  money fact: "Payable: ₹0.00" beside a green "Exact" pill, the settled verdict, on a
+                  bill whose price had just failed to load. It now takes the `null` and says `—`.
+                */}
+                <TenderEditor
+                  payablePaise={payablePaise}
+                  onChange={(next, drafted) => { setTenders(next); setTenderDrafted(drafted); }}
+                  lane={lane}
+                />
               </div>
 
               {/*
@@ -1044,7 +1129,10 @@ export function BillingCounter(): React.ReactElement {
                 handed back stays on the patient's account as an advance" is a promise the drawer is
                 counted on, so the cashier has to read it while they still have the notes in hand.
               */}
-              {payablePaise !== null && payablePaise > 0 && tenderedPaise > payablePaise && (
+              {/* NOT gated on `payablePaise > 0`: a bill the panel covers entirely is priced at ₹0,
+                  the lanes are dark, and the amount box is still hand-editable — so ₹0 is the case
+                  where an over-tender is PURE cashier error and the warning matters most. */}
+              {payablePaise !== null && tenderedPaise > payablePaise && (
                 <p data-testid="surplus-banner" className="pill gd" style={{ height: "auto", padding: "9px 11px", marginTop: 11 }}>
                   {t("billingSeat.pay.surplus", { amount: fmtPaise(tenderedPaise - payablePaise) })}
                 </p>
@@ -1207,11 +1295,11 @@ export function BillingCounter(): React.ReactElement {
             </div>
 
             {/* What is left on a bundle — the question a patient actually asks. */}
-            {(preview.data?.balances ?? []).length > 0 && (
+            {(priced?.balances ?? []).length > 0 && (
               <div className="box" data-testid="counter-balances" style={{ padding: 13 }}>
                 <span className="tag">{t("billingSeat.schemes.package")}</span>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
-                  {(preview.data?.balances ?? []).map((b) => (
+                  {(priced?.balances ?? []).map((b) => (
                     <div key={b.benefitKey} data-testid={`balance-${b.benefitKey}`} style={{ display: "flex", alignItems: "baseline", gap: 8, fontSize: 12 }}>
                       <span style={{ fontWeight: 500, flexGrow: 1 }}>{b.title}</span>
                       <span data-testid={`balance-left-${b.benefitKey}`} className="mo" style={{ color: "var(--dim)" }}>
