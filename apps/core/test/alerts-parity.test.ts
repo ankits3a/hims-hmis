@@ -28,8 +28,22 @@ import { resolve } from "node:path";
  * `job=~` legs are required to be DISJOINT, so a leg that swallowed every name could not pass;
  * and the `absent()` set is compared independently of both legs.
  *
- * The count in the first test is deliberate friction. A task that registers a job edits four
- * places in one commit: `jobs.ts`, both censuses, `alerts.yml`, and that number.
+ * The count in the first test is deliberate friction. A task that registers a job edits FIVE FILES
+ * in one commit, and this docstring said "four places" through four consecutive registrations
+ * while the true bill was five — an undercount that each of those tasks then paid as a red test
+ * (F14, F19, and 16c F11's own close). Corrected here from the fifth registration's measurement,
+ * because the sixth registrant will read this sentence and not the commit that disproved it:
+ *
+ *   1. `apps/core/src/kernel/worker/jobs.ts`            — the registration itself
+ *   2. `apps/core/src/kernel/worker/jobs.test.ts`       — the census COUNT
+ *   3. `apps/core/src/kernel/worker/scheduler.test.ts`  — `THE_SIXTEEN` **and** its spy list (two edits)
+ *   4. `apps/core/test/alerts-parity.test.ts`           — the sorted names **and** the separate
+ *                                                         `toHaveLength` below (two edits)
+ *   5. `docker/prod/prometheus/alerts.yml`              — the `job=~` leg and the `absent()` chain
+ *
+ * …plus `apps/core/test/worker-runtime.e2e.test.ts`, which pins the runtime census and where this
+ * same list is written out for whoever reaches it from that direction. "Both censuses" was never
+ * two files: three test files carry a number, and two of them carry two.
  */
 const REPO_ROOT = resolve(__dirname, "..", "..", "..");
 const JOBS_TS = resolve(REPO_ROOT, "apps", "core", "src", "kernel", "worker", "jobs.ts");
@@ -123,12 +137,12 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
         "sweepLabSla",
         // PLAN 16c CLOSE / F11 — the SIXTEENTH. An INTERVAL job (`every(60_000)`), so it joins leg
         // 1a's alternation and leg 2's `absent()` chain; the DAILY leg does not move. **The
-        // docstring above predicted this edit for a FOURTH time** — "a task that registers a job
-        // edits four places in one commit: `jobs.ts`, both censuses, `alerts.yml`, and that number"
-        // — and this time the close-review commit that added the job carried all four plus the
-        // scheduler census, because this file's prediction was read BEFORE the job was written
-        // rather than discovered by a red test after it. That is the whole return on writing a
-        // prediction down: the fifth task to register a job paid none of the tax the first four did.
+        // docstring above predicted this edit for a FOURTH time**, and reading it before writing
+        // the job rather than after a red test is why the fifth registrant paid none of the tax the
+        // first four did. It also MEASURED the prediction and found it short: the docstring said
+        // four places and the commit touched five files, two of them twice. The docstring above now
+        // carries the enumeration rather than the slogan — corrected in pass 2, once the sixth
+        // registrant was the one who would pay for the difference.
         "sweepExpiredPharmacyPicks",
       ].sort(),
     );

@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import {
   opdDepartments, opdDoctors, opdEncounters, opdQueueEntries, patients,
 } from "../db/schema";
+import { encounterFeeStatuses } from "../../modules/billing/fee-status";
 import type { Db } from "../db/client";
 
 /**
@@ -161,6 +162,8 @@ function thermalPage(title: string, body: string): RenderedDocument {
 type SlipSubject = {
   patientName: string; uhid: string; ageSex: string;
   visitNo: string; serviceDate: string;
+  /** FD-24 close — the fee projection reads it; see `renderTokenSlip`'s stamp. */
+  visitType: string;
   departmentName: string; departmentCode: string; doctorName: string; doctorRegistrationNo: string | null;
   tokenNo: number | null; roomCode: string | null;
 };
@@ -201,6 +204,9 @@ async function subjectOf(db: Db, encounterId: string, now: Date): Promise<SlipSu
     .select({
       visitNo: opdEncounters.visitNo,
       serviceDate: opdEncounters.serviceDate,
+      /* FD-24 CLOSE — the token slip's paid stamp is a projection of the ledger, and
+         `encounterFeeStatuses` reads `visitType` to decide which fee service applies. */
+      visitType: opdEncounters.visitType,
       patientName: patients.name,
       uhid: patients.uhid,
       dob: patients.dob,
@@ -236,6 +242,7 @@ async function subjectOf(db: Db, encounterId: string, now: Date): Promise<SlipSu
   return {
     patientName: row.patientName,
     uhid: row.uhid,
+    visitType: row.visitType,
     ageSex: ageSexOf(row.dob, row.gender, now),
     visitNo: row.visitNo,
     serviceDate: row.serviceDate,
@@ -264,7 +271,37 @@ export async function renderTokenSlip(
   if (encounterId === null) return null;
   const s = await subjectOf(db, encounterId, now);
   if (s === null) return null;
-  const unpaid = params.unpaid === true;
+
+  /*
+    ═══ FD-24 CLOSE — THE PAID STAMP IS RESOLVED HERE, NOT CARRIED IN `params` ═══
+
+    It used to arrive as `params.unpaid`, written at the call site as the literal `true`. That was
+    wrong twice, and the second way is the one a patient met:
+
+      1. `queueFeeStatusHook` calls `joinQueueInTx` EXACTLY WHEN THE MONEY IS DONE — it returns
+         early on `unsettled`. So every bill-first, scheme, credit and free-revisit patient was
+         handed a slip stamped UNPAID and directed to the billing counter they had just left.
+      2. A REPRINT COPIED THE PARAM VERBATIM, so a slip reprinted an hour after the patient paid
+         repeated the same instruction.
+
+    Both disappear when the stamp is resolved at RENDER TIME, and render time is also the only
+    correct moment: printing is asynchronous by design — the relay may claim a job minutes after it
+    was queued, and the patient may have paid in between. A stamp written at enqueue is a claim
+    about the past printed onto paper handed over in the present.
+
+    `encounterFeeStatuses` is the ONE projection of the invoice ledger — the same one the queue view
+    and the fee gate read — imported directly rather than through the billing module's index, which
+    is the shape `kernel/orders/read.ts` already uses for `displayName`. Nothing is re-derived here.
+
+    UNKNOWN IS NOT UNPAID. An unconfigured billing module returns an empty map, and a hospital that
+    has not configured billing has no fee for a stamp to be a fact about; painting every token amber
+    on day one of commissioning is the failure that reasoning exists to prevent.
+
+    `params.unpaid` is still READ, and only as a fallback for rows queued before this change — they
+    exist in the outbox on the deployed system and their slips must still print something sane.
+  */
+  const status = (await encounterFeeStatuses(db, [{ id: encounterId, visitType: s.visitType }])).get(encounterId);
+  const unpaid = status === undefined ? params.unpaid === true : status === "unsettled";
 
   const body = `
     <div class="hd">

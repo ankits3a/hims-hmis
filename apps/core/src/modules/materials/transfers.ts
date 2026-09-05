@@ -140,7 +140,15 @@ export async function issueStock(
       });
       continue;
     }
-    const picked = await fefoPick(tx, input.fromResourceId, line.itemId, line.qtyBase);
+    /**
+     * `occurredAt`, not the wall clock (16c close review, pass 2). `fefoPick` gained an `asOf` in
+     * the close review that stopped it offering EXPIRED stock, with the rule "the caller resolves
+     * the clock" — and this caller, the only other one in the tree, went on taking the default
+     * `new Date()`. It has a clock: an issue carries the moment it happened, and a transfer
+     * recorded after the fact must pick the batches that were in date THEN, not the ones in date
+     * when somebody got round to typing it in.
+     */
+    const picked = await fefoPick(tx, input.fromResourceId, line.itemId, line.qtyBase, input.occurredAt);
     const total = picked.reduce((a, p) => a + p.qty, 0);
     if (total < line.qtyBase) {
       // `fefoPick` returns what it CAN; deciding that a short pick is an error is the CALLER's,

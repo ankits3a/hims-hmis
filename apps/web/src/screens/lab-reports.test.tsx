@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { renderWithProviders } from "../test-utils";
 import { LabReports } from "./lab-reports";
+import { istToday } from "../lib/lab-api";
 import type { WireDeliveryRegisterRow, WirePatientReports } from "../lib/lab-api";
 
 /**
@@ -31,18 +32,40 @@ function mockRoutes(handlers: Record<string, Reply | (() => Reply)>): Seen {
 }
 
 /**
- * ═══ FD-6 — THE FIXTURE'S SERVICE DATE IS *TODAY*, AND HARD-CODING IT WAS A DAILY TIME BOMB ═══
+ * ═══ FD-6 / D9 — THE FIXTURE'S SERVICE DATE IS *TODAY*, AND THE CLOCK IS NOW PINNED ═══
  *
- * These rows were dated `"2026-09-02"`. `lab-reports.tsx:220` buckets a patient's reports with
- * `r.serviceDate === serviceDate` where `serviceDate = istToday()`, so from IST midnight on
- * 2026-09-03 the fixture's only report stopped being "1 report ready" and became "1 earlier report
- * on file" — and the D9 assertion failed. Not a flake: a hard red, on every run, for every lane,
- * from that moment on. It was FOUND that way, at 00:06 IST, by a full suite run in another lane.
+ * `lab-reports.tsx` buckets a patient's reports with `r.serviceDate === serviceDate`, where
+ * `serviceDate = istToday()` is read AT RENDER. So the fixture's date and the screen's date are two
+ * readings of one clock, and every gap between them is a hole.
  *
- * The date a test means is "the day the counter is open", which is today by definition — so it is
- * computed the same way the screen computes it rather than written down once and left to rot.
+ * FD-6 was the first hole: the rows were dated `"2026-09-02"`, so from IST midnight on 2026-09-03
+ * the only report stopped being "1 report ready" and became "1 earlier report on file". A hard red,
+ * every run, every lane. The repair — mint the fixture date from the wall clock at module load —
+ * closed that one and opened a narrower one.
+ *
+ * D9's flake was the narrower hole, and it is the SAME defect. The fixture date was minted when this
+ * module was imported; `istToday()` is read when the screen renders. Those are different moments, so
+ * a run whose import and render straddle IST midnight (18:30 UTC) buckets the report as "earlier"
+ * and D9 fails with `0 reports ready · 1 earlier reports on file` — which is exactly what the
+ * pharmacy lane saw three times running on 2026-09-03, and what the next run, on the other side of
+ * the boundary, no longer saw. It was written up as load-sensitivity and a shared timeout budget; it
+ * is neither. A timeout does not render a card, and this card rendered, fully populated, with the
+ * wrong bucket. MEASURED: the two date algorithms are equivalent (0 disagreements over a week of
+ * minutes, full ICU) — only the two MOMENTS differ — and forcing a straddle reproduces the string
+ * above exactly.
+ *
+ * So the clock is pinned, the way `billing-office`, `opd-desk`, `my-day`, `opd-consult` and
+ * `opd-appointments` already pin theirs. Two properties matter and neither is optional:
+ *
+ *   1. NOTHING here reads the wall clock — not at import, not at render. The suite's result no
+ *      longer depends on the minute it happens to run in, so there is no boundary left to straddle
+ *      and no third repair waiting for the next lane to find at 00:06.
+ *   2. "Today in IST" has ONE definition, the screen's own `istToday()`, applied to the pinned
+ *      instant. The test can no longer agree with the screen about the calendar and disagree about
+ *      the formatting, because it is no longer doing its own arithmetic.
  */
-const IST_TODAY = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+const NOW_ISO = "2026-09-04T06:30:00.000Z"; // 12:00 IST — mid-day, as far from either midnight as it gets
+const IST_TODAY = istToday(new Date(NOW_ISO));
 
 const snapshot = {
   orderId: "o-1", orderNo: "L2609010102", encounterNo: "V2609010044", serviceDate: IST_TODAY,
@@ -96,8 +119,8 @@ const hit = (id: string, name: string, uhid: string) => ({
   id, uhid, name, phone: "9876543210", administrativeGender: "female", dob: "1974-03-02", isConfidential: false, hasPhoto: false, matchedOn: ["uhid"],
 });
 
-beforeEach(() => { setToken("t"); vi.stubGlobal("print", vi.fn()); });
-afterEach(() => { setToken(null); vi.unstubAllGlobals(); });
+beforeEach(() => { vi.setSystemTime(new Date(NOW_ISO)); setToken("t"); vi.stubGlobal("print", vi.fn()); });
+afterEach(() => { setToken(null); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 async function pickPatient(uhid: string, name: string): Promise<void> {
   await userEvent.type(screen.getByLabelText("Search"), uhid);
