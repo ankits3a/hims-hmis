@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import type React from "react";
 
 /**
@@ -235,6 +236,23 @@ export function TogglePills<K extends string>(
  * types expects a tab strip to behave. Tab itself moves OUT of the strip and into the panel — that
  * is the point of the roving tabindex, and it is why a doctor tabbing through a prescription does
  * not have to walk past three headings first.
+ *
+ * AN ARROW MOVES THE CARET, NOT ONLY THE PAINT. This is the half that was missing until FD-25's
+ * backlog item 8. `onChange` alone repainted the strip and left the caret on a tab that now read
+ * `aria-selected="false"` and `tabIndex="-1"` — which is neither of the two shapes the ARIA tabs
+ * pattern allows (automatic activation moves focus and selection follows; manual activation moves
+ * focus and selection does not). It was a third thing, and it cost three separate things:
+ *
+ *   1. A screen reader announces the FOCUSED element. The focused element did not change, so the
+ *      panel swapped underneath a doctor who was told nothing at all.
+ *   2. The next Space or Enter — the ordinary "activate what I am on" reflex — re-fired the
+ *      stranded tab's `onClick` below and threw the selection straight back where it started.
+ *   3. Tab, which the paragraph above promises leads into the panel, led onto the NEXT TAB
+ *      instead: a `tabindex="-1"` button stays in the tab ring while it holds focus, and the
+ *      stranded one sits before the newly selected one in document order. Two Tabs to reach the
+ *      panel after an ArrowRight, one after an ArrowLeft — a contract that was direction-dependent.
+ *
+ * Selection and focus travel together, or the roving tabindex above is a decoration.
  */
 export function TabStrip<T extends string>(
   { label, value, onChange, options, testId }: {
@@ -242,24 +260,72 @@ export function TabStrip<T extends string>(
     options: readonly (readonly [T, string])[]; testId?: string;
   },
 ): React.ReactElement {
+  /*
+    The strip owns its own caret. The buttons are keyed by tab VALUE and every option renders in
+    every state — only `tabIndex` and `className` change — so a button never remounts across a
+    selection change and the node captured here is the node still on screen after `onChange`.
+  */
+  const tabs = useRef(new Map<T, HTMLButtonElement>());
+
+  /*
+    FOCUS FOLLOWS SELECTION ON A KEY PRESS, AND ONLY ON A KEY PRESS — never from an effect on
+    `value`. `/opd/consult` sets the tab from its own Escape handler (opd-consult.tsx:847,
+    `setTab("note")` on the second press), and an effect would rip the caret out of whatever the
+    doctor was typing in on a keystroke that is supposed to be a RETREAT. The click path needs
+    nothing here either: the browser focuses the button it activates, which is exactly why all
+    twelve existing tab tests in this repo — every one of them `user.click` — stayed green over
+    this defect for its whole life.
+
+    The `.focus()` runs synchronously in the handler, BEFORE React flushes the `onChange` state
+    update, and that is correct rather than a race: the button already exists, `HTMLElement.focus()`
+    works on a `tabindex="-1"` element, and after the flush that same node carries `tabIndex={0}`.
+  */
+  const go = (v: T): void => {
+    onChange(v);
+    tabs.current.get(v)?.focus();
+  };
   const move = (delta: number): void => {
     const i = options.findIndex(([v]) => v === value);
     const next = options[(i + delta + options.length) % options.length];
-    if (next !== undefined) onChange(next[0]);
+    if (next !== undefined) go(next[0]);
+  };
+  /*
+    Home and End, which the pattern asks for and which are free once `go` exists. The `undefined`
+    checks here and in `move` are load-bearing, not defensive noise: `noUncheckedIndexedAccess` is
+    on (apps/web/tsconfig.json:9), so `options[0]` is typed `readonly [T, string] | undefined`.
+  */
+  const edge = (which: "first" | "last"): void => {
+    const target = which === "first" ? options[0] : options[options.length - 1];
+    if (target !== undefined) go(target[0]);
   };
   return (
     <div
       role="tablist" aria-label={label}
       {...(testId === undefined ? {} : { "data-testid": testId })}
       style={{ display: "flex", gap: 6, borderBottom: "1px solid var(--line)", paddingBottom: 9 }}
+      /*
+        `else if` rather than four bare `if`s: with four keys this is the exhaustive key table it
+        reads as. No `stopPropagation` — opd-consult.tsx:859 installs a window keydown listener,
+        but it handles only Ctrl/Cmd+Enter, Escape and bare Enter, so there is no arrow conflict to
+        resolve and stopping propagation would change that screen's contract for nothing.
+      */
       onKeyDown={(e) => {
         if (e.key === "ArrowRight") { e.preventDefault(); move(1); }
-        if (e.key === "ArrowLeft") { e.preventDefault(); move(-1); }
+        else if (e.key === "ArrowLeft") { e.preventDefault(); move(-1); }
+        else if (e.key === "Home") { e.preventDefault(); edge("first"); }
+        else if (e.key === "End") { e.preventDefault(); edge("last"); }
       }}
     >
       {options.map(([v, l]) => (
         <button
           key={v} type="button" role="tab" id={`tab-${v}`} aria-selected={value === v} aria-controls={`tabpanel-${v}`}
+          /*
+            The handle `go` focuses through. BLOCK body, returning undefined: React 19 reads a ref
+            callback's return value as a cleanup function, so the expression form
+            `ref={(el) => tabs.current.set(v, el)}` would hand React the Map as a destructor.
+            Precedent for the block form is vitals-bay-capture.tsx:676.
+          */
+          ref={(el) => { if (el === null) tabs.current.delete(v); else tabs.current.set(v, el); }}
           /* The roving tabindex: one stop for the whole strip, not one per tab. */
           tabIndex={value === v ? 0 : -1}
           className={value === v ? "pill on" : "pill"}
