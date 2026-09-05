@@ -1,11 +1,8 @@
 import { eq } from "drizzle-orm";
 import { Pool } from "pg";
-import { drizzle } from "drizzle-orm/node-postgres";
 import { buildSubscriptionBus, registerAllJobs, type JobIntervals } from "./jobs";
 import { Scheduler, type Locks } from "./scheduler";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
-import { requireEnv } from "../config";
-import * as schema from "../db/schema";
 import { notifications, patients, events } from "../db/schema";
 import * as interfacesMod from "../ops/interfaces";
 import { ModuleRegistry } from "../modules/loader";
@@ -255,37 +252,43 @@ describe("registerAllJobs threads WORKER_INTERFACE_SWEEP_INTERVAL_MS to the tent
   const stubLocks = (): Locks => ({ tryLock: async () => true, unlock: async () => {} });
 
   /**
-   * A dedicated pool on the SAME per-worker database `setupTestDb()` already migrated, with
-   * `idleTimeoutMillis: 0`. This test fakes ALL timers, and `pg`'s Pool runs its idle-connection
-   * eviction on a real `setTimeout` that the fake clock would intercept — advancing 28 fake
-   * seconds in a few real milliseconds makes that eviction close live connections. Verbatim the
-   * reason `scheduler.test.ts`'s census carries the same helper.
+   * ═══ THE SCHEDULER'S HEARTBEAT WRITES, AND NOTHING ELSE (V12 flake fix, 2026-09-05) ═══
+   *
+   * `executeJob` does TWO REAL DATABASE ROUND-TRIPS per tick — an upsert into
+   * `scheduler_heartbeats` before the job and an update of `lastOkAt` after it. This test ran four
+   * ticks, so EIGHT real writes, and it ran all of them with `jest.useFakeTimers()` installed.
+   * That combination — real I/O inside a frozen clock — is the whole flake:
+   *
+   *   · on this box, idle:             269 ms
+   *   · the suite in CI, PASSING:      7.008 s   (run 33916527826)
+   *   · the suite in CI, FAILING:     63.826 s   (run 33911750224, "Exceeded timeout of 60000 ms")
+   *
+   * BIMODAL, not a continuum — 7 s against 60 s is a STALL, not a slow runner. The budget had
+   * already been raised once for this (15 000 -> 60 000 at Plan 15 T3) and the docstring justified
+   * 60 000 as "~50x the observed idle cost". A third raise is the third patch of one shape, and no
+   * ceiling is high enough for something that hangs.
+   *
+   * The heartbeat writes are INCIDENTAL to what V12 proves. Its claim is that `registerAllJobs`
+   * threads the OPERATOR'S cadence into the real `Scheduler`; heartbeat behaviour is asserted in
+   * `scheduler.test.ts`. So the writes are satisfied here rather than performed, and the test
+   * becomes what its own docstring above already claims it is — "THE DISCRIMINATOR IS ARITHMETIC,
+   * NOT A WAIT ... nothing below sleeps or measures a clock". That sentence was false when written
+   * and is true now.
+   *
+   * Deleting the I/O deleted three workarounds with it: the dedicated `idleTimeoutMillis: 0` pool
+   * (which existed because fake timers eat `pg`'s eviction timer), the 200 real event-loop turns
+   * that drained the writes, and the 60 000 ms ceiling. The `pool` argument is unused whenever
+   * `locks` is passed explicitly — it only feeds the `pgLocks(pool)` DEFAULT — and this test has
+   * always passed `stubLocks()`.
    */
-  function freshWorkerDb(): { db: Db; pool: Pool; close: () => Promise<void> } {
-    const baseUrl = requireEnv("TEST_DATABASE_URL");
-    const workerId = process.env.JEST_WORKER_ID ?? "1";
-    const parsed = new URL(baseUrl);
-    const baseDbName = parsed.pathname.replace(/^\//, "");
-    const workerUrl = new URL(parsed.toString());
-    workerUrl.pathname = `/${baseDbName}_${workerId}`;
-    const dedicatedPool = new Pool({ connectionString: workerUrl.toString(), idleTimeoutMillis: 0 });
-    return { db: drizzle(dedicatedPool, { schema }), pool: dedicatedPool, close: () => dedicatedPool.end() };
-  }
-
-  /** A handle to the REAL event loop, captured while the timers in this file are still real. */
-  const realSetTimeout = setTimeout;
-
-  /**
-   * Yields `turns` REAL event-loop turns so the heartbeat writes each tick issues can actually
-   * finish while fake time stands still. It asserts nothing and cannot fail — a sequencing wait,
-   * not a timing assertion (GC8/GC10).
-   */
-  async function settleRealTurns(turns: number): Promise<void> {
-    for (let i = 0; i < turns; i += 1) {
-      await new Promise<void>((resolve) => {
-        realSetTimeout(() => { resolve(); }, 0);
-      });
-    }
+  function heartbeatOnlyDb(): { db: Db; writes: number } {
+    const counter = { writes: 0 };
+    const settled = (): Promise<void> => { counter.writes += 1; return Promise.resolve(); };
+    const double = {
+      insert: () => ({ values: () => ({ onConflictDoUpdate: settled }) }),
+      update: () => ({ set: () => ({ where: settled }) }),
+    };
+    return { db: double as unknown as Db, get writes() { return counter.writes; } };
   }
 
   /** Every other cadence pushed out of the window; only the tenth job can fire in 28 seconds. */
@@ -401,32 +404,34 @@ describe("registerAllJobs threads WORKER_INTERFACE_SWEEP_INTERVAL_MS to the tent
         invoked.push("sweepInterfaceHeartbeats");
         return [];
       });
-    const fresh = freshWorkerDb();
+    const fake = heartbeatOnlyDb();
     jest.useFakeTimers({ now: V12_PIN });
     try {
       // The daily ticker is pushed out of the window too: this test is about ONE cadence.
-      const scheduler = new Scheduler(fresh.db, fresh.pool, stubLocks(), NINE_HOURS_MS);
-      registerAllJobs(scheduler, fresh.db, new ModuleRegistry(), {}, V12_INTERVALS);
+      // `pool` is unused when `locks` is passed — it feeds only the `pgLocks(pool)` default.
+      const scheduler = new Scheduler(fake.db, {} as unknown as Pool, stubLocks(), NINE_HOURS_MS);
+      registerAllJobs(scheduler, fake.db, new ModuleRegistry(), {}, V12_INTERVALS);
       expect(scheduler.jobs()).toContain("sweepInterfaceHeartbeats");
 
       scheduler.start();
       for (let i = 0; i < ADVANCE_STEPS; i += 1) {
         await jest.advanceTimersByTimeAsync(INTERFACE_SWEEP_EVERY_MS);
-        await settleRealTurns(50);
       }
       await scheduler.stop();
 
-      // At the 60 000 default this window contains NO tick at all, so a single invocation is only
-      // reachable through the registered value. The bound is `>= 1` rather than `=== 4`
-      // deliberately: a starved container may not drain every tick's real database round-trips,
-      // and this assertion is about WHICH CADENCE fired, not about how many times it did.
-      expect(invoked.length).toBeGreaterThanOrEqual(1);
-      expect(new Set(invoked)).toEqual(new Set(["sweepInterfaceHeartbeats"]));
+      // At the 60 000 default this window contains NO tick at all, so these invocations are only
+      // reachable through the registered value. The bound is now EXACT: with no real I/O left to
+      // drain there is nothing for a starved container to fail to finish, so the old `>= 1`
+      // hedge — which was there to tolerate exactly that — would now hide a cadence that fired
+      // the wrong number of times.
+      expect(invoked).toEqual(Array.from({ length: ADVANCE_STEPS }, () => "sweepInterfaceHeartbeats"));
       expect(scheduler.leakedErrors()).toEqual([]);
+      // and the Scheduler really did try to write its heartbeats — two per tick. If a refactor
+      // ever stops calling them, this double stops being an honest stand-in for the real thing.
+      expect(fake.writes).toBe(ADVANCE_STEPS * 2);
     } finally {
       jest.useRealTimers();
       spy.mockRestore();
-      await fresh.close();
     }
-  }, 60_000);
+  });
 });

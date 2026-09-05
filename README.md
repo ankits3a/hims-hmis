@@ -55,7 +55,7 @@ Merge/unmerge are approval-gated through the approvals engine (types `patient_me
 `patient_unmerge` — act-first enabled; `executeMerge` itself stays check-on-execute BY DESIGN,
 never an event consumer — a merge is a synchronous admin action a human is waiting on at the
 screen, and the worker existing does not change that). Guardian majority is read-time-enforced;
-`sweepGuardianMajority` is one of the worker's six scheduled sweeps as of Plan 08.5 (daily 00:05
+`sweepGuardianMajority` is one of the worker's scheduled sweeps as of Plan 08.5 (daily 00:05
 IST — see **Worker process** below), alongside `runDispatchCycle`, `sweepExpiredTempRoles`,
 `runDueTimers`, `sweepAppointmentNoShows` and `runDailyClose`.
 
@@ -264,7 +264,7 @@ side is realigned.
 `consultation.completed` · `prescription.issued` · `referral.issued` · `admission.requested`, plus
 `qr.signature_failed` for e-Rx scans.
 
-**Sweeps.** `sweepAppointmentNoShows` is one of the worker's six scheduled sweeps as of Plan 08.5
+**Sweeps.** `sweepAppointmentNoShows` is one of the worker's scheduled sweeps as of Plan 08.5
 (daily 23:55 IST — see **Worker process** below), alongside `runDispatchCycle`,
 `sweepExpiredTempRoles`, `runDueTimers`, `sweepGuardianMajority` and `runDailyClose`.
 
@@ -1386,18 +1386,25 @@ claim (a conditional `UPDATE … RETURNING`, or `INSERT … ON CONFLICT DO NOTHI
 same `.env`, no new environment variable is ever required). Dev compose is unchanged; a
 production compose service, restart policy and heartbeat alerting are Plan 11's.
 
-**The six jobs and their cadences** (every interval defaults in the config schema):
+**The jobs and their cadences.** This section used to carry the whole list, headed *"the six jobs"*.
+`registerAllJobs` now registers **sixteen**, and the list here was a SECOND COPY of a census that
+already exists in code — which is exactly how it came to say six. It is not maintained here any
+more. The authoritative census is **`THE_SIXTEEN` in `apps/core/src/kernel/worker/scheduler.test.ts`**,
+which is a test rather than prose, so it cannot drift without going red. `registerAllJobs` in
+`kernel/worker/jobs.ts` is the registration itself, and every configurable interval defaults in the
+config schema.
 
-| Job | Cadence | Config key |
-|---|---|---|
-| `runDispatchCycle` | every 2 s | `WORKER_DISPATCH_INTERVAL_MS` (default 2 000) |
-| `runDueTimers` | every 20 s | `WORKER_TIMERS_INTERVAL_MS` (default 20 000) |
-| `sweepExpiredTempRoles` | every 60 s | `WORKER_TEMP_ROLES_INTERVAL_MS` (default 60 000) |
-| `sweepGuardianMajority` | daily, 00:05 IST | code constant, not a knob |
-| `sweepAppointmentNoShows` | daily, 23:55 IST | code constant, not a knob |
-| `runDailyClose` | daily, 23:59 IST | code constant, not a knob |
+> **REGISTERING A JOB COSTS FIVE FILES, TWO OF THEM EDITED TWICE.** Four consecutive plans each
+> discovered this as a red test, because the in-repo comments said "four places". The bill is
+> `kernel/worker/jobs.ts` (the registration) · `kernel/worker/jobs.test.ts` (the count) ·
+> `kernel/worker/scheduler.test.ts` (`THE_SIXTEEN` **and** its spy list) ·
+> `test/alerts-parity.test.ts` (the sorted names **and** a separate `toHaveLength`) ·
+> `docker/prod/prometheus/alerts.yml` (the `job=~` leg and the `absent()` chain) — plus
+> `test/worker-runtime.e2e.test.ts`, which pins the runtime census. Read this before you write the
+> job, not after the suite goes red.
 
-The three daily jobs share one ticker, `WORKER_DAILY_TICK_MS` (default 30 000 ms): each tick it
+Cadences come in two kinds: INTERVAL jobs, each with its own `WORKER_*_INTERVAL_MS` key, and DAILY
+jobs pinned to an IST instant as a code constant rather than a knob. The daily jobs share one ticker, `WORKER_DAILY_TICK_MS` (default 30 000 ms): each tick it
 checks whether `now` is past today's IST instant AND the job's heartbeat has no `last_ok_at` yet
 on this IST day — the heartbeat doubles as the daily-run memory, so a failed daily run retries on
 the next tick until it succeeds, and a successful one does not re-fire until tomorrow.
