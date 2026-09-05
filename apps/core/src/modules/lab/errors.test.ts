@@ -104,6 +104,8 @@ const OWNED_BY: Record<LabErrorCode, string> = {
   unknown_report: "reports.ts",
   report_not_amendable: "reports.ts",
   release_approval_invalid: "reports.ts",
+  /** 17-E T1 — the machine register. `instruments.ts` is the only file that names a machine. */
+  unknown_instrument: "instruments.ts",
 };
 
 describe("the lab error union (Plan 17 T2)", () => {
@@ -148,8 +150,8 @@ describe("the lab error union (Plan 17 T2)", () => {
 
   it("the statuses say what they mean: 404 unknown, 409 race, 403 authority, 422 clinical stop", () => {
     expect(LAB_ERROR_CODES.filter((c) => labHttpStatus(c) === 404).sort()).toEqual([
-      "unknown_analyte", "unknown_item", "unknown_orderable", "unknown_report", "unknown_result",
-      "unknown_service", "unknown_specimen",
+      "unknown_analyte", "unknown_instrument", "unknown_item", "unknown_orderable", "unknown_report",
+      "unknown_result", "unknown_service", "unknown_specimen",
     ]);
     // A compare-and-set loser is a CONFLICT: the caller's correct response is to re-read, not to
     // fix its body.
