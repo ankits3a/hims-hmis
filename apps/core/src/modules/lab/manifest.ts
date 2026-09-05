@@ -85,6 +85,8 @@ export const labManifest: ModuleManifest = {
     "lab.instruments.manage",
     /** 17-E T2 — the bridge's grant: ask what to run, and nothing else. */
     "lab.instruments.read",
+    /** 17-E T3 — the bridge POSTS what the machine measured. Separate from the human entry grant. */
+    "lab.results.interface",
   ],
   subscriptions: [],
   orderKinds: [

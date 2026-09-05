@@ -39,13 +39,13 @@ describe("the lab manifest (Plan 17 T2)", () => {
     expect(labManifest.orderKinds?.[0]?.seriesKey).not.toBe("lab_specimen");
   });
 
-  it("declares the seventeen permissions of DD16 plus 17-E's register and its bridge read, and its own place permission among them", () => {
+  it("declares the eighteen permissions of DD16 plus 17-E's register, bridge read and interface write, and its own place permission among them", () => {
     expect([...labManifest.permissions].sort()).toEqual([
       "lab.accession.operate", "lab.catalogue.manage", "lab.catalogue.read", "lab.collection.operate",
       "lab.criticals.close", "lab.desk.operate", "lab.instruments.manage", "lab.instruments.read",
       "lab.orders.place",
       "lab.reports.amend",
-      "lab.reports.print", "lab.reports.publish", "lab.reports.release_unpaid", "lab.results.enter",
+      "lab.reports.print", "lab.reports.publish", "lab.reports.release_unpaid", "lab.results.enter", "lab.results.interface",
       "lab.results.read", "lab.results.verify", "lab.worklist.read",
     ]);
     // `collectOrderKinds` refuses a `placePermission` no manifest declares — the refusal that stops

@@ -1186,7 +1186,7 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    */
   {
     roleKey: "lab_bridge",
-    permissions: ["lab.instruments.read"],
+    permissions: ["lab.instruments.read", "lab.results.interface"],
   },
   /**
    * PLAN 16c T1 — THE DISPENSING AIDE (doc 16 role 25c). May claim, verify-assist and pick; may
@@ -1440,7 +1440,7 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   // administrator would otherwise assign it to a person.
   modality_bridge: "Modality bridge (a MACHINE account: pulls the worklist export; holds nothing else)",
   // PLAN 17-E T2 — the analyser bridge, the same shape one department over.
-  lab_bridge: "Laboratory instrument bridge (a MACHINE account: asks what to run on a tube; holds nothing else)",
+  lab_bridge: "Laboratory instrument bridge (a MACHINE account: asks what to run on a tube and posts what it measured; holds nothing else)",
   // PLAN 16c T1 — the aide's title names the one thing the role cannot do.
   pharmacy_assistant: "Pharmacy Assistant (claims, picks and labels; completes NO Schedule H/H1 dispense)",
 };
