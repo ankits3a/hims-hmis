@@ -22,6 +22,22 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm lint
+      # THE PRINT RELAY IS A DEPENDENCY-FREE .mjs OUTSIDE BOTH TEST PROJECTS, so until FD-25 nothing
+      # in this repository ever executed it: `tools/` is not a workspace package, so `pnpm typecheck`
+      # never reads it despite the `// @ts-check` at its head, and apps/core's jest rootDir and
+      # apps/web's vitest root each stop at their own package. Its own `--self-test` had been a guard
+      # nobody ran since the day it was written — which is how a `JSON.parse` outside a try survived
+      # in the one process that turns a queued job into paper.
+      #
+      # A STEP in `static`, deliberately, and not a job: the required checks on main's branch
+      # protection are `static`, `core` and `web`, and adding a fourth name would need that setting
+      # changed in lockstep across eight lanes. ~3 s, no services.
+      #
+      # `ubuntu-latest` has no chromium, so the two end-to-end checks that render a real PDF SKIP
+      # there and say so in the TAP output (13 of 15 gate in CI; all 15 gate on the build host).
+      # Installing chromium here was considered and rejected: a runner-vs-host browser difference
+      # reddening `main` for every lane is a worse outcome than two loudly-skipped checks.
+      - run: node --test tools/print-relay/spool.test.mjs
 
   core:
     runs-on: ubuntu-latest

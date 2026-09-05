@@ -23,8 +23,17 @@ design requirement rather than a slogan:
 
 - the rendered document arrives **with** the claim, so a claimed job needs nothing further;
 - every claim is written to the spool **before** anything is printed;
+- a claim that outlived the process is **read back off the spool and printed on the next tick**,
+  with the server still unreachable — `jobs/` is replayed, not just written;
 - a report that cannot be delivered is kept and retried — the paper is already out, and losing the
   record would be worse than delivering it late.
+
+> **This third bullet was a promise before it was a mechanism.** Until FD-25 nothing ever opened a
+> file in `jobs/` again — one write, one `readdir` for the age sweep, three deletes — so a relay
+> that was killed between spooling a claim and printing it recovered only when the server's
+> 120-second lease lapsed. In Bihar the mains take out the relay's PC and the site router together,
+> so that was precisely the channel missing in the case the spool exists for. `jobs/` was a
+> write-only store of rendered patient documents whose only consumer was a seven-day deleter.
 
 **It does not print the same slip twice.** The server leases a claim so that a dead relay strands
 nothing; the cost is that a relay which printed and then lost its uplink can be handed the same job
@@ -78,7 +87,9 @@ lp -d CRK-Thermal-1 /usr/share/cups/data/testprint   # prove the queue before wi
 >
 > Map it anyway. The queue name is the thing that needs a human, a store cupboard and a cable; the
 > day the slip exists you want the relay already able to reach the printer rather than discovering
-> the mapping is wrong with a nurse waiting. `--self-test` will exercise the queue without one.
+> the mapping is wrong with a nurse waiting. `--self-test` checks the **mapping**; the `lp -d` above
+> is what proves the **queue** — the self-test never calls `lp` and never touches CUPS, so it cannot
+> tell you a printer is plugged in.
 
 
 The **agent key** is created by an administrator on the server (`createAgent`). Only its SHA-256 is
@@ -95,6 +106,17 @@ printer to another desk is an edit to this file — not a deploy, not a migratio
 node relay.mjs --config /etc/hmis-print-relay.json
 node relay.mjs --self-test     # no server, no printer needed
 ```
+
+There is a second, fuller set of checks that does not belong on the hospital PC:
+
+```bash
+node --test tools/print-relay/spool.test.mjs
+```
+
+It drives the spool logic against a loopback stub server and, where a usable chromium exists, prints
+a spooled job end to end through a fake `lp` on `PATH` — including replaying the same job twice to
+prove the second slip never comes out. `--self-test` is the on-box smoke check; this is the one that
+holds the offline and print-once guarantees in place.
 
 As a service:
 
@@ -128,7 +150,10 @@ the server says the height is continuous, and prints at exactly that size. The s
 real 72 mm document and reads the page box back out of the PDF. If someone simplifies this back to
 the CLI flag, it fails with `got 216 mm — the CSS @page was ignored`.
 
-It skips loudly — never silently — on a machine with no usable chromium.
+It skips loudly — never silently — on a machine with no usable chromium, and the summary line says
+so: a browserless run ends `self-test passed: queue mapping, served destinations, print-once dedupe
+— page geometry SKIPPED (no usable chromium)`. It used to print `…, page geometry` on that run too,
+which meant every browserless run claimed a check it had not made.
 
 ## Operating it
 
@@ -142,7 +167,16 @@ The spool is the whole status UI:
 ```
 
 A file sitting in `printed/` means the uplink is down, not that anything is wrong. A file in
-`failed/` is worth reading: `cat failed/<id>.json` gives the reason the job did not print.
+`failed/` is worth reading: `cat failed/<id>.json` gives the reason the job did not print. A file in
+`jobs/` with no marker beside it is **work that still owes paper**, and it prints on the next tick
+whether or not the uplink is back.
+
+**Nothing on this disk can stop the relay.** A marker or a spooled document that a power cut left
+half-written is reported to the server as a failure — `failure marker unreadable (…)`, or `spooled
+document unreadable: …` — and then deleted, so the job is requeued and the relay heals itself. That
+matters more than it sounds: an unreadable file used to throw out of every tick before the claim,
+which stopped the whole site printing, permanently and across restarts, while `systemctl status`
+still reported the unit `active (running)`.
 
 > **`jobs/` HOLDS PATIENT DATA. TREAT THE SPOOL DIRECTORY AS A CLINICAL RECORD.**
 >
@@ -155,6 +189,9 @@ A file sitting in `printed/` means the uplink is down, not that anything is wron
 > acknowledges the outcome, and sweeps anything older than seven days on every tick — that sweep
 > exists for the one case the acknowledgement cannot cover, which is the relay being killed or the
 > machine powered off between spooling a claim and reporting it.
+>
+> That killed-in-the-middle case is also the one the replay serves, so most of these files now leave
+> by being **printed and reported** rather than by ageing out.
 
 **A print failure never blocks the counter** (owner ruling R7). The screen tells the clerk and
 offers a reprint; a patient can be sent to the doctor on a spoken token. A hospital that stops

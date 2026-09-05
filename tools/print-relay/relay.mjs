@@ -57,12 +57,21 @@
  */
 
 import { spawn } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { mkdir, readFile, readdir, rm, writeFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
-/** Where the spool keeps its three kinds of state. A directory each, so `ls` is the whole status UI. */
-const DIRS = /** @type {const} */ ({ jobs: "jobs", printed: "printed", failed: "failed" });
+/**
+ * Where the spool keeps its three kinds of state. A directory each, so `ls` is the whole status UI.
+ *
+ * EXPORTED, LIKE THE I/O FUNCTIONS BELOW, FOR ONE REASON: this relay is a dependency-free `.mjs`
+ * that lives outside both test projects — `apps/core`'s jest rootDir and `apps/web`'s vitest root
+ * both stop at their own package — so the only thing that can drive it is a sibling script run by
+ * `node --test`. See `spool.test.mjs`. Nothing else in the repository imports this file.
+ */
+export const DIRS = /** @type {const} */ ({ jobs: "jobs", printed: "printed", failed: "failed" });
 
 /* ── the pure decisions, kept separate so `--self-test` can exercise them ─────────────────────── */
 
@@ -97,6 +106,28 @@ export function decide(spoolState, jobId) {
   return "print";
 }
 
+/**
+ * Which spooled jobs still owe paper, in the order the server handed them over.
+ *
+ * A `printed/` marker means the slip is on the counter and only the report is outstanding. A
+ * `failed/` marker means THIS relay already gave up and the SERVER owns the retry — `MAX_ATTEMPTS`
+ * and the backoff live in `kernel/printing/claim.ts`, not here — so replaying one would spin a
+ * jammed printer once every poll interval with nothing at all counting the attempts.
+ *
+ * THE ASYMMETRY WITH `decide` IS DELIBERATE, not an oversight. `decide` answers "the server has
+ * just handed me this job again, what now?", and a server that re-offers a job after `reportFailed`
+ * requeued it is ordering a genuine retry — so the CLAIM path must not consult `failed`. Only
+ * REPLAY does, because replay is this relay arguing with itself.
+ *
+ * Sorted by id: the id is a ULID and `claimPrintJobs` tie-breaks on `id asc`, so this reproduces
+ * the server's own order and the queue tokens come off the roll the way they were issued.
+ */
+export function jobsToReplay(spoolState, spooledIds) {
+  return [...spooledIds]
+    .filter((id) => !spoolState.printed.has(id) && !spoolState.failed.has(id))
+    .sort();
+}
+
 /* ── the I/O ──────────────────────────────────────────────────────────────────────────────────── */
 
 /**
@@ -125,13 +156,23 @@ async function pdfHeightMm(pdfPath) {
   return Math.max(1, Math.round((pts * MM_PER_IN) / 72));
 }
 
-async function ensureSpool(dir) {
+export async function ensureSpool(dir) {
   for (const sub of Object.values(DIRS)) await mkdir(join(dir, sub), { recursive: true });
 }
 
-async function readSpoolState(dir) {
-  const printed = new Set((await readdir(join(dir, DIRS.printed)).catch(() => [])).map((f) => f.replace(/\.json$/, "")));
-  return { printed };
+/**
+ * The two marker sets the spool holds: paper that is out, and work this relay gave up on.
+ *
+ * `failed` is new, and `decide` deliberately still reads only `printed` — see `jobsToReplay` for
+ * why the CLAIM path and the REPLAY path must answer that question differently.
+ */
+export async function readSpoolState(dir) {
+  const idsIn = async (sub) => new Set(
+    (await readdir(join(dir, sub)).catch(() => []))
+      .filter((f) => f.endsWith(".json"))
+      .map((f) => f.replace(/\.json$/, "")),
+  );
+  return { printed: await idsIn(DIRS.printed), failed: await idsIn(DIRS.failed) };
 }
 
 const MM_PER_IN = 25.4;
@@ -265,7 +306,7 @@ async function api(config, path, body) {
  * already printed before asking for more, or the server will keep re-offering jobs whose paper is
  * sitting on the counter.
  */
-async function flushReports(config, spool, log) {
+export async function flushReports(config, spool, log) {
   for (const file of await readdir(join(spool, DIRS.printed)).catch(() => [])) {
     if (!file.endsWith(".json")) continue;
     const id = file.replace(/\.json$/, "");
@@ -284,7 +325,37 @@ async function flushReports(config, spool, log) {
   for (const file of await readdir(join(spool, DIRS.failed)).catch(() => [])) {
     if (!file.endsWith(".json")) continue;
     const id = file.replace(/\.json$/, "");
-    const reason = JSON.parse(await readFile(join(spool, DIRS.failed, file), "utf8")).error ?? "unknown";
+    /*
+      ═══ A TORN MARKER MUST NOT WEDGE THE RELAY, AND THIS READ USED TO BE OUTSIDE THE TRY ═══
+
+      This file is written by a plain `writeFile` (the catch in `tick`) on a hospital PC that gets
+      switched off at the wall, onto a spool disk that can fill. A power cut mid-write leaves it
+      truncated — on ext4, commonly NUL-filled — and parsing that out here threw past this function,
+      past `tick`, into the retry loop in `main`. Nothing sweeps `failed/`, so the SAME file re-threw
+      every three seconds and across every restart, and `tick` never got as far as `/print/claim`
+      again: token slips, receipts, prescriptions and vitals slips all stopped, for the whole site,
+      while `systemctl status` still said `active (running)`. Recovery meant a human deleting a file
+      whose path no log line named.
+
+      The REASON TEXT is a detail; the fact that this job failed is what the server needs. So an
+      unreadable marker still reports — it just reports that — and is then deleted like any other,
+      which is what lets the relay heal itself on the first tick that reaches the server.
+
+      `?.error` rather than `.error` is load-bearing: a marker holding the literal `null` parses
+      cleanly and then dies on the property access with a TypeError. The inner catch would hold it,
+      but `?.` gives the honest "unknown" instead of dressing an ordinary empty record as a tear.
+
+      The try is deliberately NARROW — read and parse only. The existing `catch { return; }` below
+      means "the uplink is down, stop and retry next tick"; folding a permanent local-disk fault
+      into it would rebuild the wedge in a new shape.
+    */
+    let reason = "unknown";
+    try {
+      reason = JSON.parse(await readFile(join(spool, DIRS.failed, file), "utf8"))?.error ?? "unknown";
+    } catch (e) {
+      reason = `failure marker unreadable (${String(e).slice(0, 160)})`;
+      log(`unreadable failure marker ${file}, reporting anyway: ${String(e)}`);
+    }
     try {
       await api(config, "/print/failed", { jobId: id, error: String(reason).slice(0, 2000) });
       await rm(join(spool, DIRS.failed, file), { force: true });
@@ -303,7 +374,7 @@ async function flushReports(config, spool, log) {
   }
 }
 
-async function printOne(config, spool, job, log) {
+export async function printOne(config, spool, job, log) {
   const queue = queueFor(config, job.destination);
   if (queue === null) throw new Error(`no queue configured for destination ${job.destination}`);
 
@@ -345,7 +416,7 @@ async function printOne(config, spool, job, log) {
  */
 const SPOOL_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
-async function sweepSpool(spool, log) {
+export async function sweepSpool(spool, log) {
   const cutoff = Date.now() - SPOOL_MAX_AGE_MS;
   let removed = 0;
   for (const file of await readdir(join(spool, DIRS.jobs)).catch(() => [])) {
@@ -353,15 +424,108 @@ async function sweepSpool(spool, log) {
     const path = join(spool, DIRS.jobs, file);
     const info = await stat(path).catch(() => null);
     if (info === null || info.mtimeMs >= cutoff) continue;
-    await rm(path, { force: true });
-    removed += 1;
+    /*
+      `force: true` SUPPRESSES ENOENT AND NOTHING ELSE. An immutable attribute, a read-only remount,
+      a spool restored from a backup under the wrong owner — each throws EACCES/EPERM/EROFS out of
+      here, and `sweepSpool` runs one line before `flushReports` in `tick`, so that is the same
+      silent, restart-surviving wedge the failure-marker parse used to be: the entry is already past
+      the cutoff, so it is hit again on every single tick and the relay never claims work again.
+
+      Logged and stepped over instead. Once every poll interval is noisy, and noisy is the point —
+      a line an operator can grep beats a unit that reports itself healthy while nothing prints.
+      The count stays honest: a file that could not be removed was not swept.
+    */
+    const swept = await rm(path, { force: true }).then(() => true, (e) => {
+      log(`could not sweep ${file}: ${String(e)}`);
+      return false;
+    });
+    if (swept) removed += 1;
   }
   if (removed > 0) log(`swept ${String(removed)} spooled document(s) older than 7 days`);
 }
 
-async function tick(config, spool, log) {
+/**
+ * ═══ THE SPOOL IS READ BACK, WHICH IS WHAT MAKES THE OFFLINE GUARANTEE TRUE ═══
+ *
+ * `tick` has always written each claim to `jobs/` BEFORE printing it, under a comment promising
+ * that "the next tick prints it — from the spool, without needing the server". NOTHING EVER OPENED
+ * ONE OF THOSE FILES AGAIN: one write, one `readdir` for the age sweep, three deletes. Recovery ran
+ * entirely through the server's 120-second lease, which is precisely the channel that is gone in
+ * the case the spool exists for — in Bihar the mains take out the relay's host and the site router
+ * together. So `jobs/` was a write-only store of rendered patient documents whose only consumer was
+ * a seven-day deleter, and the brief's binding constraint ("patient care must never depend on
+ * internet connectivity") was carried by a sentence rather than by code.
+ *
+ * Everything needed was already on disk: the claim carries `id`, `destination`, `title`, `html` and
+ * `page`, and `printOne` consumes exactly those.
+ *
+ * ═══ AND IT STILL MUST NOT PRINT THE SAME SLIP TWICE ═══
+ *
+ * No new mechanism is introduced for that, because the right one already exists: `printOne` writes
+ * `printed/<id>.json` the moment `lp` exits 0 and BEFORE any network call, and `jobsToReplay`
+ * filters on it. Four roads, all closed:
+ *
+ *   1. printed, uplink dead, relay restarts → the marker is there, replay skips it.
+ *   2. printed, uplink dead, lease lapses, the server re-offers it → `decide` says "report-only".
+ *      That keeps working because replay writes its marker through the same `printOne`, and
+ *      because this runs BEFORE `readSpoolState` in `tick`, so the state the claim loop reads
+ *      already contains anything replay has just printed.
+ *   3. spooled, never printed, relay dies → replay prints it; if the server also re-offers it, (2).
+ *   4. spooled, print failed → a `failed/` marker; replay skips, the server owns the retry.
+ *
+ * The one window left open is between `lp` exiting 0 and the marker reaching disk — milliseconds.
+ * It is left open ON PURPOSE. Closing it means writing the marker BEFORE `lp`, which converts the
+ * failure mode from a duplicate slip into a MISSING one, and `kernel/printing/claim.ts` rules that
+ * way round explicitly: a clerk who gets two token slips throws one away, while a patient who gets
+ * none stands at a counter that believes it printed. This does not widen the window; it does reach
+ * it sooner, because a restart now replays locally instead of waiting out the lease — and the lease
+ * would have produced the same reprint two minutes later anyway.
+ *
+ * Nothing in here is allowed to throw for a local-disk reason. That was the whole lesson of the
+ * failure-marker parse above, and implementing replay carelessly would simply have moved the wedge
+ * from `failed/` to `jobs/`.
+ */
+export async function replaySpool(config, spool, log) {
+  const state = await readSpoolState(spool);
+  const spooled = (await readdir(join(spool, DIRS.jobs)).catch(() => []))
+    .filter((f) => f.endsWith(".json"))
+    .map((f) => f.replace(/\.json$/, ""));
+
+  for (const id of jobsToReplay(state, spooled)) {
+    let job;
+    try {
+      job = JSON.parse(await readFile(join(spool, DIRS.jobs, `${id}.json`), "utf8"));
+    } catch (e) {
+      log(`unreadable spooled job ${id}: ${String(e)}`);
+      await writeFile(join(spool, DIRS.failed, `${id}.json`),
+        JSON.stringify({ error: `spooled document unreadable: ${String(e).slice(0, 160)}` }), "utf8");
+      continue;
+    }
+    if (typeof job?.html !== "string" || typeof job?.destination !== "string") {
+      log(`spooled file ${id} is not a print job`);
+      await writeFile(join(spool, DIRS.failed, `${id}.json`),
+        JSON.stringify({ error: "spooled file is not a print job" }), "utf8");
+      continue;
+    }
+    log(`replaying spooled job ${id}`);
+    try {
+      // THE FILENAME IS THE ID, not whatever the payload says. A disagreement between the two must
+      // never write a `printed/` or `failed/` marker under a job id this relay never claimed.
+      await printOne(config, spool, { ...job, id }, log);
+    } catch (e) {
+      log(`FAILED (replay) ${id}: ${String(e)}`);
+      await writeFile(join(spool, DIRS.failed, `${id}.json`), JSON.stringify({ error: String(e) }), "utf8");
+    }
+  }
+}
+
+export async function tick(config, spool, log) {
   await sweepSpool(spool, log);
   await flushReports(config, spool, log);
+  // Paper the previous run owed, printed off the disk. Before the claim, because the claim is the
+  // first thing in this function that can throw on a dead uplink — and an outage is exactly when
+  // the spool has to earn its keep.
+  await replaySpool(config, spool, log);
 
   const state = await readSpoolState(spool);
   const claimed = await api(config, "/print/claim", {
@@ -370,7 +534,7 @@ async function tick(config, spool, log) {
   });
   for (const job of claimed.jobs ?? []) {
     // SPOOL FIRST, PRINT SECOND. If this process is killed between the two, the job is on disk and
-    // the next tick prints it — from the spool, without needing the server.
+    // the next tick prints it — from the spool, without needing the server (`replaySpool`, above).
     await writeFile(join(spool, DIRS.jobs, `${job.id}.json`), JSON.stringify(job), "utf8");
     if (decide(state, job.id) === "report-only") {
       log(`already printed ${job.id}, re-reporting only`);
@@ -419,6 +583,7 @@ async function selfTest() {
     Skipped, loudly, when there is no chromium — a CI box without a browser should not fail here,
     but it must not silently claim to have checked either.
   */
+  let geometryChecked = false;
   const cfg2 = { chromium: process.env.RELAY_CHROMIUM ?? "chromium" };
   const html = join(tmpdir(), `relay-geom-${String(Date.now())}.html`);
   const pdf = html.replace(/\.html$/, ".pdf");
@@ -430,6 +595,7 @@ async function selfTest() {
     await htmlToPdf(cfg2, html, pdf, { widthMm: 72, heightMm: null });
     const w = await pdfWidthMm(pdf);
     const h = await pdfHeightMm(pdf);
+    geometryChecked = true;
     if (Math.abs(w - 72) > 1.5) fail(`the PDF should be 72 mm wide, got ${String(w)} mm — the CSS @page was ignored`);
     if (h > 120) fail(`a two-line slip should be short, got ${String(h)} mm — the height was not measured`);
     if (!process.exitCode) console.log(`geometry checked: ${String(w)} x ${String(h)} mm, continuous`);
@@ -441,8 +607,19 @@ async function selfTest() {
   }
 
   await rm(dir, { recursive: true, force: true });
+  /*
+    ═══ THE SUMMARY LINE IS ITSELF AN ASSERTION, AND IT USED TO LIE ═══
+
+    This printed "… print-once dedupe, page geometry" unconditionally — including on the run that
+    had just printed `geometry check SKIPPED (no usable chromium)` two lines above it. Every
+    browserless run therefore claimed a check it had not made, in a repository whose first binding
+    rule is "never report a test green you did not run in that state". The skip was always meant to
+    be loud; the line that followed it took the loudness back.
+  */
+  const checked = "queue mapping, served destinations, print-once dedupe";
   if (process.exitCode) console.error("self-test FAILED");
-  else console.log("self-test passed: queue mapping, served destinations, print-once dedupe, page geometry");
+  else if (geometryChecked) console.log(`self-test passed: ${checked}, page geometry`);
+  else console.log(`self-test passed: ${checked} — page geometry SKIPPED (no usable chromium)`);
 }
 
 /* ── entry ────────────────────────────────────────────────────────────────────────────────────── */
@@ -479,4 +656,27 @@ async function main() {
   }
 }
 
-await main();
+/*
+  ═══ RUN THE LOOP ONLY WHEN THIS FILE IS THE PROGRAM ═══
+
+  This was a bare `await main();`, which meant that merely IMPORTING this file ran the relay. Under
+  a test runner `process.argv` carries no `--config`, so `main` printed the usage line and set
+  `process.exitCode = 2` — a test run where every assertion passed would still have exited 2. That
+  is why `spool.test.mjs` can exist at all.
+
+  `realpathSync` rather than a bare string compare: Node resolves the entry point through its real
+  path, so `import.meta.url` is already the real file. An install that puts a SYMLINK in
+  `/opt/hmis-print-relay/relay.mjs` would otherwise compare a symlink path against a real one, miss,
+  and start a relay that silently prints nothing — the worst possible way for this guard to be
+  wrong. `spool.test.mjs` runs the real CLI through a symlink for exactly that reason.
+*/
+const invokedAs = (() => {
+  const entry = process.argv[1];
+  if (entry === undefined) return null;
+  try {
+    return pathToFileURL(realpathSync(entry)).href;
+  } catch {
+    return pathToFileURL(entry).href;
+  }
+})();
+if (invokedAs === import.meta.url) await main();
