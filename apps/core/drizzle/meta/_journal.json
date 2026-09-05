@@ -491,6 +491,13 @@
       "when": 1788529727974,
       "tag": "0069_print_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1788593517955,
+      "tag": "0070_lab_instruments",
+      "breakpoints": true
     }
   ]
 }

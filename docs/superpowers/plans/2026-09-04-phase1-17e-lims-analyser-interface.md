@@ -4,7 +4,7 @@
 **Stop-loss: 2,120,000** = main-session `7 × 200,000` + task-subagent `0` (§2.143a) + review `240,000 × (1 + 2.0)` (§2.145, the repair term).
 **Lane:** `/opt/hmis-lanes/lims/hmis`, branch `lane/lims-17e` cut fresh from `origin/main`. Own test DBs `hmis_lane_lims_test*`. **One task = one PR**: commit by pathspec, push, `gh pr create`; CI is the gate; locally only the touched suites, always through `test-lock.sh`. **Migration numbers are taken at rebase, never at authoring** (CLAUDE.md).
 
-**Status: AUTHORED, NOT APPROVED, NOT STARTED.**
+**Status: APPROVED BY THE OWNER 2026-09-05 ("Execute 17E as necessary"). T1 EXECUTED.**
 
 ## 1. Why this phase
 
@@ -78,10 +78,29 @@ Two measured facts that shape the design and would otherwise be guessed:
   two HTTP routes it talks to and the tables behind them, and nothing else. Building a serial
   daemon here would put an untestable, un-CI-able device driver in a monorepo that has no hardware —
   18b made exactly this call for DICOM (`mwl.ts` D1) and it held.
-- **D2 — The bridge authenticates as an AGENT, using the mechanism that already exists.** No new
-  auth. `agents` + `api_key_hash` + `kill_switch`, and `entered_by_type = 'agent'` on every row it
-  writes. The kill switch matters more here than anywhere else in the system: it is the one control
-  that stops a misbehaving machine writing results, and it is already built and already tested.
+- **D2 — CORRECTED AT T2. The bridge is a SERVICE USER with a one-permission role, not an agent.**
+
+  *As authored, this decision said the bridge authenticates as an agent, on the strength of `agents`
+  + `api_key_hash` + `kill_switch` already existing. **That is impossible and the doc was wrong.***
+  `kernel/auth/guards.ts` throws `ForbiddenException("agents hold no permissions yet")` for **any**
+  non-user actor before it reaches `hasPermission`, so an agent cannot pass `@RequirePermission` at
+  all — the agent-permission table is a declared Plan 12 seam that has not shipped. The original D2
+  was written from a fact that was read (the table exists) without checking it against the thing
+  that would have to accept it.
+
+  **18b had already solved this and the precedent is followed.** `modality_bridge` is a role holding
+  exactly one permission (`radiology.mwl.read`), and its own title in `seed-roles.ts` says what it
+  is: *"Modality bridge (a MACHINE account: pulls the worklist export; holds nothing else)"*. So the
+  lab's bridge is `lab_bridge`, a service user whose role holds the narrow interface grants and
+  nothing else.
+
+  Two consequences worth stating rather than discovering:
+  - `lab_results.entered_by_type` will read `'user'` with the bridge's user id, not `'agent'`.
+    That is more precise, not less: `entry_mode = 'interface'` already says the value came off a
+    machine, and `entered_by_id` says which account carried it. HOW and WHO stay separate columns.
+  - The agent kill switch is not available, so **revoking the role (or the account) is the control**
+    that stops a misbehaving machine. That is a real difference from what this doc first claimed and
+    it belongs in the runbook.
 - **D3 — A transmission is received whole and ATTACHED one result at a time.** The board: *"One
   block, many patients. One unreadable row parks that row; the other nine go on."* So ingest is two
   steps, not one — `lab_transmissions` (what arrived, from which instrument, when) and per-result
@@ -229,15 +248,60 @@ task. A phase whose tests were written after the code proves the code compiles, 
 - **Referral lab (GAP #9) and camp/corporate bulk (GAP #10).** Still unauthored. `sent_out` remains
   a declared order state with no writer.
 
-## 7. Owner rulings — none
+## 7. Owner rulings
 
-Nothing here is money, procurement or law. D0 (17-E before 17-M), D11 (QC deferred) and the §6 cuts
-are all standard-hospital scope calls and are marked DECIDED per CLAUDE.md.
+**None were needed for 17-E itself** — D0 (17-E before 17-M), D11 (QC deferred) and the §6 cuts are
+standard-hospital scope calls, marked DECIDED per CLAUDE.md. The owner approved execution on
+2026-09-05.
 
-One thing the owner will eventually need to rule on, recorded so it is not discovered late: **17-M
-needs a ruling before it can be authored at all** — which partner labs, on what terms, and whose
-letterhead the returned report carries. That is procurement and it is genuinely his.
+**17-M IS NOW UNBLOCKED.** The ruling this doc said would be needed before 17-M could be authored at
+all — which partner labs, on what terms, whose letterhead — was given on 2026-09-05:
+
+> *"CRK MEDICAL COLLEGE & HOSPITAL Letter head. Use synthetic data as partner labs and terms. I will
+> test the operating system on synthetic data."*
+
+So: the returned report carries the **CRK Medical College & Hospital** letterhead, and the partner
+labs and their commercial terms are **synthetic fixtures** rather than real contracts, because the
+owner is exercising the system on synthetic data first. That removes the procurement blocker, and
+17-M becomes an ordinary authoring task whenever this phase clears.
 
 ## 8. CLOSE — filled at execution
 
-*(empty — nothing has been executed)*
+### 8.1 T1 — The instruments the lab actually has (executed 2026-09-05)
+
+Migration **0070** — `lab_instruments` + `lab_instrument_codes`, additive, no existing table
+touched. **The first migration generated after the snapshot re-baseline (#81), and it came out with
+7 statements, all its own** — against the 26 foreign ones the stale baseline would have re-emitted.
+
+- The machine is a kernel `resources` row of kind `analyzer`, which `kinds.ts` declared in Plan 17
+  T2 and said 17-E would be the first to write. `registerInstrument` is that writer: one transaction
+  creating the resource and the lab's row together.
+- `sample_id_mode` is the design compressed into a column — `barcode | typed_id | run_sheet |
+  plate_map`, the four ways the board's nine machines name a sample. Every later task branches on it
+  and on nothing else about the hardware.
+- `connection` is documentation. Nothing reads it (D1: the bridge is out of this repository), and a
+  column the server branched on would be a lie about where that decision is made.
+- Codes map **per instrument**, never globally: `GLU` is a serum glucose on the chemistry analyser
+  and a urine strip pad on the U120.
+- New permission `lab.instruments.manage`, granted to `pathologist` — the bench's machines are the
+  lab head's estate for the same reason the range book is. **The bridge never holds it**: it
+  authenticates as an agent, and the actor TYPE is checked before the permission so an agent gets
+  `user_actor_required` rather than a misleading "this user lacks the grant".
+
+**Mutants, all three proved by measurement rather than by reading.** A probe dropped the three
+guards and re-ran the writes: a second instrument row on one machine, a `sample_id_mode` of
+`telepathy`, and a factor of `0` were **all accepted** — 4 instrument rows written where there
+should be 2. With the guards in place each is refused by name.
+
+The factor check is the one worth naming: a factor of zero does not fail, it reports every value on
+that channel as **0**, and a potassium of zero on a live patient is a plausible number no absurd
+envelope catches.
+
+**The census tax was NINE places, not the five the notes claimed**: the lab manifest's permission
+list and its count-in-prose, the error-code union, the error STATUS map, the error-owner census,
+`ALL_MANIFESTS`' per-module count, the role model's per-role grant map, the README's lab permission
+table, the README-parity derived base, and the V5 database census **twice** (first run and second).
+
+**Evidence:** 29 suites / 263 tests exit 0 (lab + lab e2e + seed-roles), typecheck 0, lint 0.
+
+

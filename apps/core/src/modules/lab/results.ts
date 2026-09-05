@@ -7,6 +7,7 @@ import {
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { transition } from "../../kernel/workflow/instances";
+import { getEncounter } from "../opd";
 import { resolvePatientId } from "../patients";
 import { analytesFor, rangesFor } from "./catalogue";
 import { LabError } from "./errors";
@@ -110,6 +111,15 @@ type ResultContext = {
   orderId: string;
   orderGroupId: string;
   encounterNo: string;
+  /**
+   * THE ENCOUNTER'S ID, resolved once here so no consumer has to. `orders.encounterNo` is the
+   * human-facing `V…` string; every `encounter_id` column in the system holds a ULID. Nine sites
+   * across `results.ts` and `verify.ts` were writing the NUMBER into those columns — an invoice,
+   * event envelopes and workflow subjects alike — which is the same defect the desk had, reached
+   * through a different door. Resolved on the CONTEXT rather than at each site, because nine
+   * patches would have left the tenth to be written next week.
+   */
+  encounterId: string;
   serviceDate: string;
   serviceId: string;
   instanceId: string;
@@ -211,6 +221,14 @@ export async function resultContext(tx: Tx, orderItemId: string): Promise<Result
    * under two ids and a delta keyed on the raw one would miss yesterday's value entirely (02 A3).
    */
   const canonical = (await resolvePatientId(tx, row.patientId)) ?? row.patientId;
+
+  /**
+   * The visit behind the order. `getEncounter` accepts either form — it dispatches on the visit-no
+   * pattern — so this reads the `V…` the order carries and hands back the row whose `id` every
+   * `encounter_id` column expects. A missing one is a refusal rather than a fallback: falling back
+   * to the number is exactly the defect this resolve exists to end.
+   */
+  const encounter = await getEncounter(tx, row.encounterNo);
   const [patient] = await tx
     .select({ dob: patients.dob, administrativeGender: patients.administrativeGender })
     .from(patients).where(eq(patients.id, canonical));
@@ -220,6 +238,7 @@ export async function resultContext(tx: Tx, orderItemId: string): Promise<Result
     orderId: row.orderId,
     orderGroupId: row.orderGroupId,
     encounterNo: row.encounterNo,
+    encounterId: encounter?.id ?? row.encounterNo,
     serviceDate: row.serviceDate,
     serviceId: row.serviceId,
     instanceId: row.instanceId,
@@ -259,13 +278,57 @@ function isoDay(d: Date): string {
  * So the shape is now theirs exactly: a `Db`-first entry point wrapping a `Tx`-first body that
  * holds BOTH handles, and writes its near-miss on `db` before it throws on `tx`.
  */
+/**
+ * ═══ THE NEAR-MISS SURVIVES THE ROLLBACK **WITHOUT** HOLDING TWO CONNECTIONS ═══
+ *
+ * 17d D3 requires the suspected-swap flag to outlive the refusal it records: an event appended on
+ * the caller's `tx` is undone by the very throw it exists to document. The first implementation got
+ * that right and paid for it with a nested `withTx(db, …)` called while the outer transaction still
+ * held its connection — so ten concurrent breaches could take every connection in a default pool of
+ * ten, each waiting for an eleventh that cannot come. `pool.connect()` has no
+ * `connectionTimeoutMillis`, so the wait is unbounded, and Postgres cannot see it: an
+ * application-side queue never reaches `deadlock_timeout`.
+ *
+ * THE OBVIOUS REPAIR IS THE DANGEROUS ONE. Collapsing the append onto `tx` removes the second
+ * connection, destroys the audit row, and LEAVES EVERY TEST GREEN — the refusal still refuses, and
+ * nobody wrote down "and the near-miss must survive it".
+ *
+ * So the write is DEFERRED instead of moved. The event rides the thrown error on a symbol, and the
+ * `Db`-first wrapper appends it AFTER the outer transaction has fully unwound — one connection at a
+ * time, and the record still outlives the rollback. On the path that PROCEEDS there is nothing to
+ * outlive, so that one appends on `tx` and takes no second connection at all.
+ *
+ * A symbol rather than `LabError.detail` because `detail` is serialised to the HTTP response, and
+ * an audit payload naming sibling specimens is not the client's business.
+ */
+const NEAR_MISS = Symbol("hmis.lab.nearMiss");
+type PendingEvent = Parameters<typeof appendEvent>[1];
+
+export function deferNearMiss<E extends Error>(err: E, event: PendingEvent): E {
+  Object.defineProperty(err, NEAR_MISS, { value: event, enumerable: false });
+  return err;
+}
+
+/** Appends a deferred near-miss, if the error carries one. Never masks the original failure. */
+export async function flushNearMiss(db: Db, e: unknown): Promise<void> {
+  const event = (e as Record<symbol, PendingEvent | undefined>)[NEAR_MISS];
+  if (event === undefined) return;
+  await withTx(db, (auditTx) => appendEvent(auditTx, event));
+}
+
+
 export async function enterResult(
   db: Db,
   actor: Actor,
   input: EnterResultInput,
   now: Date = new Date(),
 ): Promise<EnterResultOutcome> {
-  return await withTx(db, (tx) => enterResultInTx(db, tx, actor, input, now));
+  try {
+    return await withTx(db, (tx) => enterResultInTx(db, tx, actor, input, now));
+  } catch (e) {
+    await flushNearMiss(db, e);
+    throw e;
+  }
 }
 
 async function enterResultInTx(
@@ -338,43 +401,46 @@ async function enterResultInTx(
             : null;
 
     const siblings = await siblingTubesDrawnInTheSameMinute(tx, ctx);
-    await withTx(db, (flagTx) => appendEvent(flagTx, labTubeSwapSuspected.make({
+    const nearMiss = labTubeSwapSuspected.make({
       actor,
       patientId: ctx.patientId,
-      encounterId: ctx.encounterNo,
+      encounterId: ctx.encounterId,
       correlationId: ctx.orderId,
       payload: {
         orderItemId: ctx.orderItemId, orderGroupId: ctx.orderGroupId, analyteId: analyte.id,
         specimenId: ctx.specimenId, siblingSpecimenIds: siblings.map((sp) => sp.id),
         breach: breach.kind, raisedBy: actor.id, overridden: refusal === null,
       },
-    })));
+    });
 
-    if (refusal === "no_override") {
-      throw new LabError(
-        "analyte_not_applicable",
-        applicabilityBreachText(analyte.code, breach),
-        {
-          analyteCode: analyte.code, breach: breach.kind,
-          /** What the bench screen puts in front of the technologist: the tubes to go and look at. */
-          suspectSpecimenNos: siblings.map((sp) => sp.specimenNo),
-        },
-      );
-    }
-    if (refusal === "same_actor") {
-      throw new LabError(
-        "impossible_override_same_actor",
-        "a value impossible for this patient is vouched for by a SECOND holder of " +
-          "lab.results.enter — the person who keyed it cannot be the person who confirms the tube " +
-          "is theirs, which is the whole of the control",
-      );
-    }
-    if (refusal === "not_permitted") {
-      throw new LabError(
-        "permission_denied",
-        `the named override ${override!.by} does not hold ${LAB_RESULTS_ENTER}`,
-      );
-    }
+    const failure =
+      refusal === "no_override"
+        ? new LabError(
+            "analyte_not_applicable",
+            applicabilityBreachText(analyte.code, breach),
+            {
+              analyteCode: analyte.code, breach: breach.kind,
+              /** What the bench screen puts in front of the technologist: the tubes to look at. */
+              suspectSpecimenNos: siblings.map((sp) => sp.specimenNo),
+            },
+          )
+        : refusal === "same_actor"
+          ? new LabError(
+              "impossible_override_same_actor",
+              "a value impossible for this patient is vouched for by a SECOND holder of " +
+                "lab.results.enter — the person who keyed it cannot be the person who confirms the " +
+                "tube is theirs, which is the whole of the control",
+            )
+          : refusal === "not_permitted"
+            ? new LabError(
+                "permission_denied",
+                `the named override ${override!.by} does not hold ${LAB_RESULTS_ENTER}`,
+              )
+            : null;
+
+    /** The accepted path commits with the entry; the refused one rides the error and outlives it. */
+    if (failure !== null) throw deferNearMiss(failure, nearMiss);
+    await appendEvent(tx, nearMiss);
     impossibleOverriddenBy = override!.by;
   }
 
@@ -598,7 +664,7 @@ async function writeResult(
   await appendEvent(tx, labResultEntered.make({
     actor,
     patientId: ctx.patientId,
-    encounterId: ctx.encounterNo,
+    encounterId: ctx.encounterId,
     correlationId: ctx.orderId,
     payload: {
       resultId, orderItemId: ctx.orderItemId, orderGroupId: ctx.orderGroupId, analyteId: analyte.id, enteredBy: actor.id,
@@ -766,7 +832,7 @@ async function mergeChainOf(tx: Tx, canonicalId: string): Promise<string[]> {
  * `amendResult` opens the ladder for a `completed` item and `resultContext` refuses one — the
  * function that decides an item is resultable must not also be the only way to name its patient.
  */
-type CallSubject = { orderItemId: string; orderId: string; encounterNo: string; patientId: string };
+type CallSubject = { orderItemId: string; orderId: string; encounterNo: string; encounterId: string; patientId: string };
 
 async function openCriticalCall(
   tx: Tx,
@@ -782,7 +848,7 @@ async function openCriticalCall(
   await appendEvent(tx, labResultCriticalFlagged.make({
     actor,
     patientId: ctx.patientId,
-    encounterId: ctx.encounterNo,
+    encounterId: ctx.encounterId,
     correlationId: ctx.orderId,
     payload: {
       resultId: input.resultId, callId, orderItemId: ctx.orderItemId, analyteId: input.analyteId,
@@ -1092,7 +1158,12 @@ export async function amendResult(
   input: AmendResultInput,
   now: Date = new Date(),
 ): Promise<EnteredResult> {
-  return await withTx(db, (tx) => amendResultInTx(db, tx, actor, input, now));
+  try {
+    return await withTx(db, (tx) => amendResultInTx(db, tx, actor, input, now));
+  } catch (e) {
+    await flushNearMiss(db, e);
+    throw e;
+  }
 }
 
 async function amendResultInTx(
@@ -1166,6 +1237,9 @@ async function amendResultInTx(
       sex: subjectRow?.administrativeGender ?? null,
     },
   };
+
+  /** The visit's ID, for the same reason `resultContext` resolves one: every `encounter_id` holds a ULID. */
+  const amendEncounterId = (await getEncounter(tx, row.encounterNo))?.id ?? row.encounterNo;
   /**
    * ═══ CLOSE REVIEW PASS 2, F1 — AND NEITHER IS AN AMENDMENT AN EXEMPTION FROM *THIS* ═══
    *
@@ -1203,10 +1277,10 @@ async function amendResultInTx(
         ne(labSpecimens.id, prior.specimenId),
       ))
       .orderBy(labSpecimens.specimenNo);
-    await withTx(db, (flagTx) => appendEvent(flagTx, labTubeSwapSuspected.make({
+    const nearMiss = labTubeSwapSuspected.make({
       actor,
       patientId: canonical,
-      encounterId: base.encounterNo,
+      encounterId: amendEncounterId,
       correlationId: base.orderId,
       payload: {
         orderItemId: prior.orderItemId, orderGroupId: base.orderGroupId, analyteId: analyte.id,
@@ -1214,31 +1288,31 @@ async function amendResultInTx(
         siblingSpecimenIds: siblings.map((sp) => sp.id),
         breach: breach.kind, raisedBy: actor.id, overridden: refusal === null,
       },
-    })));
+    });
 
-    if (refusal === "no_override") {
-      throw new LabError(
-        "analyte_not_applicable",
-        applicabilityBreachText(analyte.code, breach),
-        {
-          analyteCode: analyte.code, breach: breach.kind,
-          suspectSpecimenNos: siblings.map((sp) => sp.specimenNo),
-        },
-      );
-    }
-    if (refusal === "same_actor") {
-      throw new LabError(
-        "impossible_override_same_actor",
-        "a value impossible for this patient is vouched for by a SECOND holder of " +
+    const failure =
+      refusal === "no_override"
+        ? new LabError(
+            "analyte_not_applicable",
+            applicabilityBreachText(analyte.code, breach),
+            {
+              analyteCode: analyte.code, breach: breach.kind,
+              suspectSpecimenNos: siblings.map((sp) => sp.specimenNo),
+            },
+          )
+        : refusal === "same_actor"
+          ? new LabError(
+              "impossible_override_same_actor",
+              "a value impossible for this patient is vouched for by a SECOND holder of " +
           "lab.results.enter — correcting it rather than keying it changes nothing about that",
-      );
-    }
-    if (refusal === "not_permitted") {
-      throw new LabError(
-        "permission_denied",
-        `the named override ${override!.by} does not hold ${LAB_RESULTS_ENTER}`,
-      );
-    }
+            )
+          : refusal === "not_permitted"
+            ? new LabError("permission_denied", `the named override ${override!.by} does not hold ${LAB_RESULTS_ENTER}`)
+            : null;
+
+    /** Same shape as the entry path: accepted commits with the amendment, refused outlives it. */
+    if (failure !== null) throw deferNearMiss(failure, nearMiss);
+    await appendEvent(tx, nearMiss);
     impossibleOverriddenBy = override!.by;
   }
 
@@ -1324,7 +1398,7 @@ async function amendResultInTx(
   const criticalCallId = flag === "LL" || flag === "HH"
     ? await openCriticalCall(tx, actor, {
         orderItemId: prior.orderItemId, orderId: row.orderId,
-        encounterNo: row.encounterNo, patientId: canonical,
+        encounterNo: row.encounterNo, encounterId: amendEncounterId, patientId: canonical,
       }, {
         resultId, analyteId: prior.analyteId, value: input.value.trim(),
         band: flag === "LL" ? "low" : "high",
@@ -1361,7 +1435,8 @@ async function amendResultInTx(
   const analytes = await analytesFor(tx, row.serviceId);
   const computed = await computeFormulaAnalytes(tx, actor, {
     orderItemId: prior.orderItemId, orderId: row.orderId, orderGroupId: row.orderGroupId,
-    encounterNo: row.encounterNo, serviceDate: row.serviceDate, serviceId: row.serviceId,
+    encounterNo: row.encounterNo, encounterId: amendEncounterId,
+    serviceDate: row.serviceDate, serviceId: row.serviceId,
     instanceId: row.instanceId, itemStatus: "in_progress",
     rawPatientId: row.patientId, patientId: canonical,
     specimenId: prior.specimenId ?? "", collectedAt: prior.enteredAt,

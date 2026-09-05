@@ -77,7 +77,21 @@ describe("lab verification, concurrency (17b T6)", () => {
       (await db.select({ code: labAnalytes.code, id: labAnalytes.id }).from(labAnalytes))
         .map((r) => [r.code, r.id] as const),
     );
-    const observed: { winners: number; losers: number; events: number }[] = [];
+    /**
+     * ═══ THE REFUSAL IS RECORDED, NOT COUNTED ═══
+     *
+     * This held `losers: number` — a count of rejections whose reason WAS `already_verified`. A
+     * rejection for any other reason did not fail loudly; it silently decremented that count and
+     * threw the reason away. So when this suite failed on #90 (a docs-only PR) with
+     * `{winners: 1, losers: 0, events: 1}`, the log recorded that one fewer thing was
+     * `already_verified` and **nothing anywhere recorded what it actually was** — and would not have
+     * recorded it next time either.
+     *
+     * Keeping the REASONS is the same instinct as reporting the whole per-round array below rather
+     * than a total, one level deeper: the round was already visible in the failure output, and the
+     * reason was not. A count can only ever say "one fewer than expected"; a list says what arrived.
+     */
+    const observed: { winners: number; refusals: string[]; events: number }[] = [];
 
     for (const [code, value] of ROUND) {
       const at = new Date("2026-08-30T06:00:00Z");
@@ -110,12 +124,23 @@ describe("lab verification, concurrency (17b T6)", () => {
         verifyResult(db, fx.pathologist.actor, fx.decls, { resultId: entered.resultId }, at),
       ]);
       const winners = settled.filter((s) => s.status === "fulfilled").length;
-      const losers = settled.filter(
-        (s) => s.status === "rejected"
-          && s.reason instanceof LabError && s.reason.code === "already_verified",
-      ).length;
+      /**
+       * A `LabError` reports its CODE; anything else reports its type and message, truncated. The
+       * second branch is the one that matters — a `pg` serialization failure (40001) or a deadlock
+       * (40P01) surfacing instead of the domain error is a candidate nobody could confirm precisely
+       * because the old classifier discarded it.
+       */
+      const refusals = settled
+        .filter((s): s is PromiseRejectedResult => s.status === "rejected")
+        .map((s) => {
+          const r: unknown = s.reason;
+          if (r instanceof LabError) return r.code;
+          const name = r instanceof Error ? r.constructor.name : typeof r;
+          const msg = r instanceof Error ? r.message : String(r);
+          return `${name}: ${msg.slice(0, 120)}`;
+        });
       const after = (await db.select().from(events).where(eq(events.name, "lab.result_verified"))).length;
-      observed.push({ winners, losers, events: after - before });
+      observed.push({ winners, refusals, events: after - before });
 
       /** And the row itself carries ONE verifier and ONE instant, whoever won. */
       const [row] = await db.select().from(labResults).where(eq(labResults.id, entered.resultId));
@@ -129,7 +154,7 @@ describe("lab verification, concurrency (17b T6)", () => {
      * averaged away — §2.3's "report the observed rate, never engineer the window".
      */
     expect(observed).toEqual(
-      Array.from({ length: ROUNDS }, () => ({ winners: 1, losers: 1, events: 1 })),
+      Array.from({ length: ROUNDS }, () => ({ winners: 1, refusals: ["already_verified"], events: 1 })),
     );
   }, 180_000);
 });
