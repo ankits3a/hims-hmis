@@ -6,7 +6,8 @@ import { openVisit } from "../../modules/opd/encounters";
 import { issuePaidInvoice, mkCashier, openSessionFor, seedBillingBase } from "../../../test/helpers/billing";
 import { renderDocument, renderPaymentReceipt, renderPrescriptionSheet, renderTokenSlip } from "./render";
 import { eq } from "drizzle-orm";
-import { opdEncounters } from "../db/schema";
+import { newId } from "@hmis/contracts";
+import { opdDepartments, opdEncounters } from "../db/schema";
 import type { Db } from "../db/client";
 
 /**
@@ -122,6 +123,41 @@ describe("FD-24 T3: rendering the counter's documents", () => {
       expect(doc!.html).not.toContain("UNPAID");
       expect(doc!.html).not.toContain("भुगतान शेष");
       expect(doc!.html).not.toContain("Billing counter");
+    });
+
+    /**
+     * ═══ FD-25 — A LAB WALK-IN'S SLIP SENDS THEM TO THE LAB, NOT ROUND THE OPD ═══
+     *
+     * `openLabWalkinInTx` opens a real visit, so the two print jobs fire for a lab patient too, and
+     * the paper was written entirely for the OPD road: an UNPAID stamp pointing at the billing
+     * counter they had just left, directions to a vitals desk expecting nobody, and a consulting
+     * room they were not going to. A patient holding it would have walked the wrong building.
+     *
+     * What this does NOT do is decide the money. Whether a lab walk-in carries an OPD consult-fee
+     * obligation is the owner's question; suppressing the slip or printing the lab invoice would
+     * answer it in code. Dropping the stamp and the two wrong directions is correct whichever way
+     * he rules.
+     */
+    it("prints no UNPAID stamp and no OPD directions for a LAB department visit", async () => {
+      /* The lab department, made the way the lab's own walk-in makes it. */
+      const labDeptId = newId();
+      await db.insert(opdDepartments).values({ id: labDeptId, code: "LAB", name: "Laboratory", createdBy: "t", updatedBy: "t" });
+      const labDoctor = await mkDoctor(db, { username: `dr-lab-${String(Date.now())}`, departmentId: labDeptId, roomId, displayName: "Lab Collection" });
+      const clerk = await mkUser(db, `labclerk-${String(Date.now())}`, ["front_office"]);
+      const patient = await mkPatient(db, clerk.actor, { name: "Sunil Prasad", sex: "male", ageYears: 41 });
+      const visit = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: labDeptId, doctorId: labDoctor.doctorId }, MON);
+
+      const doc = await renderTokenSlip(db, { encounterId: visit.encounter.id, unpaid: true }, MON);
+
+      /* The stamp is suppressed even though `params.unpaid` says otherwise — the department wins. */
+      expect(doc!.html).not.toContain("UNPAID");
+      expect(doc!.html).not.toContain("Billing counter");
+      expect(doc!.html).not.toContain("Vitals desk");
+      /* And it says where they ARE going. */
+      expect(doc!.html).toContain("Sample collection");
+      /* The patient's own details are untouched — this is a routing fix, not a redaction. */
+      expect(doc!.html).toContain("Sunil Prasad");
+      expect(doc!.html).toContain(visit.encounter.visitNo);
     });
 
     it("routes the patient onward in Devanagari as well as English", async () => {

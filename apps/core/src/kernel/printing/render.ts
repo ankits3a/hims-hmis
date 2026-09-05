@@ -3,6 +3,7 @@ import {
   opdDepartments, opdDoctors, opdEncounters, opdQueueEntries, patients,
 } from "../db/schema";
 import { encounterFeeStatuses } from "../../modules/billing/fee-status";
+import { LAB_DEPARTMENT_CODE } from "../../modules/opd/encounters";
 import type { Db } from "../db/client";
 
 /**
@@ -303,6 +304,32 @@ export async function renderTokenSlip(
   const status = (await encounterFeeStatuses(db, [{ id: encounterId, visitType: s.visitType }])).get(encounterId);
   const unpaid = status === undefined ? params.unpaid === true : status === "unsettled";
 
+  /*
+    ═══ FD-25 — A LAB WALK-IN IS NOT AN OPD VISIT, AND ITS SLIP MUST NOT PRETEND TO BE ═══
+
+    `openLabWalkinInTx` opens a real visit through `openVisitInTx`, so the two print jobs fire for a
+    lab patient too. The paper was then written entirely for the OPD road: an UNPAID stamp pointing
+    at the billing counter the patient has just left, and directions to a vitals desk expecting
+    nobody and a consulting room they are not going to.
+
+    So the LAB DEPARTMENT gets its own onward line and no stamp. What it does NOT get is a decision
+    about money: whether a lab walk-in carries an OPD consult-fee obligation at all is the owner's
+    question, and suppressing the slip entirely — or printing the lab invoice on it — would answer
+    it in code. Dropping the stamp and the two wrong directions is reversible whichever way he
+    rules; the slip still says who the patient is, what their token is, and where to sit.
+
+    `departmentCode` is already selected by `subjectOf`, so this costs no query.
+  */
+  const isLab = s.departmentCode.trim().toUpperCase() === LAB_DEPARTMENT_CODE;
+  const stampHtml = isLab || !unpaid
+    ? ""
+    : `<div class="stamp"><div class="w">UNPAID</div><div class="hi">भुगतान शेष — बिलिंग काउंटर</div></div>`;
+  const onwardHtml = isLab
+    ? `<li>Sample collection — ${esc(s.departmentName)}<div class="hi">नमूना संग्रह</div></li>`
+    : `${unpaid ? `<li>Billing counter — ground floor<div class="hi">बिलिंग काउंटर, भूतल</div></li>` : ""}
+        <li>Vitals desk — 1st floor<div class="hi">प्राथमिक जाँच डेस्क, प्रथम तल</div></li>
+        <li>${esc(s.doctorName)} — ${esc(s.departmentName)}<div class="hi">डॉक्टर का कक्ष</div></li>`;
+
   const body = `
     <div class="hd">
       <div class="nm">${HOSPITAL.name}</div>
@@ -312,7 +339,7 @@ export async function renderTokenSlip(
     <div class="tok">
       <div class="lbl">Token</div>
       <div class="no mo">${esc(tokenLabel(s.departmentCode, s.tokenNo))}</div>
-      <div class="dr">${esc(s.doctorName)}</div>
+      ${isLab ? "" : `<div class="dr">${esc(s.doctorName)}</div>`}
       <div class="dept">${esc(s.departmentName)}</div>
     </div>
     <div class="sec">
@@ -322,13 +349,11 @@ export async function renderTokenSlip(
       <div class="row"><span class="k">Visit</span><span class="v mo">${esc(s.visitNo)}</span></div>
       <div class="row"><span class="k">Date</span><span class="v">${esc(s.serviceDate)}</span></div>
     </div>
-    ${unpaid ? `<div class="stamp"><div class="w">UNPAID</div><div class="hi">भुगतान शेष — बिलिंग काउंटर</div></div>` : ""}
+    ${stampHtml}
     <div class="next sec">
       <div class="t">Go next to</div>
       <ol>
-        ${unpaid ? `<li>Billing counter — ground floor<div class="hi">बिलिंग काउंटर, भूतल</div></li>` : ""}
-        <li>Vitals desk — 1st floor<div class="hi">प्राथमिक जाँच डेस्क, प्रथम तल</div></li>
-        <li>${esc(s.doctorName)} — ${esc(s.departmentName)}<div class="hi">डॉक्टर का कक्ष</div></li>
+        ${onwardHtml}
       </ol>
     </div>
     <div class="ft">${esc(s.serviceDate)} · ${esc(s.visitNo)}</div>
