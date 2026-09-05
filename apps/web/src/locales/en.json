@@ -78,18 +78,10 @@
     }
   },
   "shortcuts": {
-    "title": "Shortcuts",
     "search": "/ — Search",
     "new": "F4 New patient",
     "confirm": "Ctrl+⏎ Confirm",
     "release": "Esc Release the patient",
-    "merge": "Alt+M Merge",
-    "approvals": "Alt+A Approvals",
-    "opdDesk": "Alt+D OPD desk",
-    "opdVitals": "Alt+V Vitals",
-    "opdConsult": "Alt+C Consult",
-    "opdAppointments": "Alt+P Appointments",
-    "billing": "Alt+B Counter",
     "book": "F7 Appointments"
   },
   "login": {
@@ -653,7 +645,47 @@
     "advisedTestsNoMatch": "No active service matches. The catalogue is curated in the tariff, not here.",
     "advisedTestsEmpty": "No investigation advised.",
     "advisedTestsRemove": "Remove {{name}}",
-    "remove": "Remove"
+    "remove": "Remove",
+    "scribe": {
+      "title": "Voice scribe",
+      "hold": "Hold to dictate",
+      "listening": "Listening — release to send",
+      "cap": "stops at {{seconds}}s",
+      "sending": "transcribing…",
+      "insert": "Insert into complaint",
+      "discard": "Discard",
+      "notConfigured": "Dictation is not switched on yet. Your typing is unaffected — this panel will start working the day the hospital enables it, and nothing you have written is lost.",
+      "failed": "The transcription did not come back. Nothing was saved; type the note as usual.",
+      "noMic": "This browser offers no microphone to the page. Dictation needs one; typing works as it always has.",
+      "noPermission": "The microphone was not allowed for this site. Nothing was recorded."
+    },
+    "askPlaceholder": "ask about this patient, the queue or the prescription…",
+    "agentIdle": "I read this consultation only — the patient in the chair, their vitals and allergies on file, the queue behind them, and the lines you have written. I have no model behind me and I cannot look anything up outside this screen.",
+    "agent": {
+      "queueDepth": "{{waiting}} waiting, {{done}} seen. The next token is {{next}}.",
+      "noQueue": "No session is open for you today, so there is no queue to read.",
+      "allergies": "On file: {{list}}. The server checks every line you write against these and refuses a clash — it does not rely on you remembering.",
+      "noAllergies": "No allergies are recorded for this patient. That is an absence of a record, not a negative test.",
+      "vitals": "Bay One charted BP {{bp}}, pulse {{pulse}}, SpO₂ {{spo2}}. {{flags}}",
+      "noVitals": "No vitals have been charted for this visit yet.",
+      "dangerFlags": "The bay flagged: {{list}}.",
+      "noDangerFlags": "Nothing was flagged.",
+      "rxLines": "{{n}} line(s) written, not yet issued. Issuing runs the allergy, interaction and duplicate checks server-side.",
+      "noRx": "No prescription lines written yet.",
+      "advised": "{{n}} test(s) advised. These print as advice on the prescription and create no order — the counter converts them.",
+      "noAdvised": "No tests advised yet.",
+      "cannot": "I cannot answer that from this screen. I can tell you about the queue, this patient's allergies and vitals, the lines you have written, and the tests you have advised."
+    },
+    "keys": {
+      "legend": "keys",
+      "complete": "complete",
+      "agent": "assistant",
+      "back": "back to the queue"
+    },
+    "seat": "Consulting room",
+    "queueRail": "The queue",
+    "noPatientTitle": "Nobody is in the chair",
+    "noPatientBody": "Call the next token, or press Enter. The queue on the left is live."
   },
   "rx": {
     "regNo": "Reg. No.",

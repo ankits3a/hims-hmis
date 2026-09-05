@@ -183,7 +183,13 @@ export function ScreenTitle({
 }): React.ReactElement {
   return (
     <div style={{ display: "flex", alignItems: "baseline", gap: 11, flexWrap: "wrap" }}>
-      <span style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-.01em" }}>{title}</span>
+      {/*
+        AN <h1>, NOT A STYLED SPAN. A screen with no heading gives a screen-reader user no landmark
+        to jump to and no answer to "where am I" — and the consult suite caught it the moment the
+        old `<h1 className="text-xl">` was replaced, by asking for `role="heading"` and finding
+        none. The size is the artboard's; the element is the document's.
+      */}
+      <h1 style={{ margin: 0, fontSize: 19, fontWeight: 700, letterSpacing: "-.01em" }}>{title}</h1>
       {route === undefined ? null : (
         <span className="mo" style={{ fontSize: 11, color: "var(--faint)" }}>{route}</span>
       )}

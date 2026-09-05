@@ -216,3 +216,59 @@ export function TogglePills<K extends string>(
     </div>
   );
 }
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-25 — TABS, WITH THE SEMANTICS THAT MAKE THEM TABS
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * `Segmented` above looks almost identical and is the wrong component here: it publishes
+ * `role="radiogroup"` / `role="radio"`, which says "pick one of these values". A tab strip says
+ * something different — "this is which of several panels you are looking at" — and a screen reader
+ * announces the two differently, as it should.
+ *
+ * The difference is not academic on the consult screen. Note, Prescription and History are three
+ * views of one patient, and the doctor's suite drives them with `getByRole("tab", …)` because that
+ * is what a doctor's screen reader will call them too.
+ *
+ * ARROW KEYS move between tabs, which is the ARIA tab pattern and is also simply how anybody who
+ * types expects a tab strip to behave. Tab itself moves OUT of the strip and into the panel — that
+ * is the point of the roving tabindex, and it is why a doctor tabbing through a prescription does
+ * not have to walk past three headings first.
+ */
+export function TabStrip<T extends string>(
+  { label, value, onChange, options, testId }: {
+    label: string; value: T; onChange: (v: T) => void;
+    options: readonly (readonly [T, string])[]; testId?: string;
+  },
+): React.ReactElement {
+  const move = (delta: number): void => {
+    const i = options.findIndex(([v]) => v === value);
+    const next = options[(i + delta + options.length) % options.length];
+    if (next !== undefined) onChange(next[0]);
+  };
+  return (
+    <div
+      role="tablist" aria-label={label}
+      {...(testId === undefined ? {} : { "data-testid": testId })}
+      style={{ display: "flex", gap: 6, borderBottom: "1px solid var(--line)", paddingBottom: 9 }}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowRight") { e.preventDefault(); move(1); }
+        if (e.key === "ArrowLeft") { e.preventDefault(); move(-1); }
+      }}
+    >
+      {options.map(([v, l]) => (
+        <button
+          key={v} type="button" role="tab" id={`tab-${v}`} aria-selected={value === v} aria-controls={`tabpanel-${v}`}
+          /* The roving tabindex: one stop for the whole strip, not one per tab. */
+          tabIndex={value === v ? 0 : -1}
+          className={value === v ? "pill on" : "pill"}
+          style={{ fontSize: 12.5 }}
+          onClick={() => { onChange(v); }}
+        >
+          {l}
+        </button>
+      ))}
+    </div>
+  );
+}
