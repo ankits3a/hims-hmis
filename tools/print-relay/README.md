@@ -144,6 +144,18 @@ The spool is the whole status UI:
 A file sitting in `printed/` means the uplink is down, not that anything is wrong. A file in
 `failed/` is worth reading: `cat failed/<id>.json` gives the reason the job did not print.
 
+> **`jobs/` HOLDS PATIENT DATA. TREAT THE SPOOL DIRECTORY AS A CLINICAL RECORD.**
+>
+> Each file there is the whole rendered document — the patient's name, UHID, age and sex, the visit
+> number and the doctor. It has to be: the relay carries the document with the claim so it can keep
+> printing with the uplink down, and that is the offline guarantee the brief demands.
+>
+> So: `chmod 700` the spool directory, put it on the same disk you would put any patient record on,
+> and do not copy it into a bug report. The relay deletes each file as soon as the server
+> acknowledges the outcome, and sweeps anything older than seven days on every tick — that sweep
+> exists for the one case the acknowledgement cannot cover, which is the relay being killed or the
+> machine powered off between spooling a claim and reporting it.
+
 **A print failure never blocks the counter** (owner ruling R7). The screen tells the clerk and
 offers a reprint; a patient can be sent to the doctor on a spoken token. A hospital that stops
 taking money because a printer jammed is worse than one that prints late.

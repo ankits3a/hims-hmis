@@ -9,6 +9,7 @@ import { claimPrintJobs, reportFailed, reportPrinted } from "./claim";
 import { enqueuePrintJob } from "./enqueue";
 import { withTx } from "../db/client";
 import { renderDocument } from "./render";
+import { getPatient } from "../../modules/patients";
 import { recordPhiAccess } from "../phi/audit";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
@@ -181,7 +182,7 @@ export class PrintingController {
   @Get("jobs")
   @RequirePermission("opd.visits.open", "hospital")
   async jobsFor(@Query("encounterId") encounterId: string): Promise<{
-    jobs: { id: string; document: string; status: string; attempts: number; lastError: string | null; printedAt: string | null }[];
+    jobs: { id: string; document: string; status: string; attempts: number; lastError: string | null; printedAt: string | null; createdAt: string }[];
   }> {
     if (typeof encounterId !== "string" || encounterId.trim() === "") return { jobs: [] };
     const rows = await this.db
@@ -191,6 +192,16 @@ export class PrintingController {
       .orderBy(desc(printJobs.createdAt));
     return {
       jobs: rows.map((r) => ({
+        /*
+          FD-25 — `createdAt` TRAVELS, so the screen does not have to trust this route's ORDER.
+
+          The rows come back newest-first and the client's own comment said so, which made the
+          summary's correctness depend on a sentence in a comment two files apart. A reprint is a
+          NEW row for a document that already has one, so "which of these is the current state of
+          the token slip" is a question the screen genuinely has to answer — and it should answer it
+          from a value, not from an ordering somebody may change for a good reason later.
+        */
+        createdAt: r.createdAt.toISOString(),
         id: r.id,
         document: r.document,
         status: r.status,
@@ -223,6 +234,30 @@ export class PrintingController {
     const original = rows[0];
     if (original === undefined) return { id: null };
 
+    /**
+     * ═══ FD-25 — THE §14 GATE THIS ROUTE DID NOT HAVE ═══
+     *
+     * `opd.visits.open` is held at HOSPITAL scope by every front-desk role, and this route took a
+     * bare `jobId`. So any holder could reprint any job in the outbox — INCLUDING a document about
+     * a patient whose record they cannot open. The paper carries a legal name, a UHID and an age;
+     * the confidentiality model exists precisely to keep those from someone without the grant, and
+     * `kernel/printing` contained zero references to it.
+     *
+     * `getPatient` IS the decision — merge chain, `patients.confidential.read`, and an active
+     * break-glass grant if the reader has one — so the gate is that call rather than a second
+     * confidentiality rule written here. A second implementation of "may this person see this
+     * patient" is how the two start disagreeing.
+     *
+     * `{ id: null }` FOR BOTH REFUSALS, and that is 07a DD2 rather than laziness: a route that
+     * answered differently for "sealed" and "no such job" would let a caller enumerate which of
+     * their colleagues' patients are confidential by reprinting ids and reading the shape of the
+     * refusal. Sealed and absent must be indistinguishable from outside.
+     */
+    const visible = original.patientId === null
+      ? null
+      : await getPatient(this.db, actor, original.patientId);
+    if (original.patientId !== null && visible === null) return { id: null };
+
     const id = await withTx(this.db, (tx) => enqueuePrintJob(tx, {
       document: original.document as Parameters<typeof enqueuePrintJob>[1]["document"],
       params: original.params,
@@ -245,13 +280,25 @@ export class PrintingController {
       patient id, so the one question this is asked — what did they see, and why did they say they
       needed it — could not be answered from either place.
     */
-    if (original.patientId !== null) {
+    if (original.patientId !== null && visible !== null) {
       await recordPhiAccess(this.db, {
         actor,
         patientId: original.patientId,
         surface: "print.reprint",
         encounterId: original.encounterId,
-        reason: `reprint of ${original.document} (job ${original.id})${reason === undefined ? "" : `: ${reason}`}`,
+        /*
+          FD-25 — `sealed` AND THE BREAK-GLASS REASON, both of which defaulted to nothing.
+          `recordPhiAccess` defaults `sealed` to false, so every reprint of a confidential patient's
+          document was logged as an ordinary read. The whole point of the flag is that an enquiry
+          can ask "who read SEALED records", and it was answering no for the one route that had no
+          gate at all — the two failures compounding rather than one covering the other.
+        */
+        sealed: visible.patient.isConfidential,
+        reason: [
+          `reprint of ${original.document} (job ${original.id})`,
+          reason === undefined ? null : reason,
+          visible.breakGlass === null ? null : `break-glass ${visible.breakGlass.id}: ${visible.breakGlass.reason}`,
+        ].filter((x) => x !== null).join(" · "),
       });
     }
     return { id };

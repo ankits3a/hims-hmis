@@ -57,7 +57,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -288,6 +288,16 @@ async function flushReports(config, spool, log) {
     try {
       await api(config, "/print/failed", { jobId: id, error: String(reason).slice(0, 2000) });
       await rm(join(spool, DIRS.failed, file), { force: true });
+      /*
+        ═══ AND THE RENDERED DOCUMENT, WHICH THIS LEG WAS LEAVING ON DISK FOR EVER ═══
+
+        `jobs/<id>.json` holds the CLAIM — the fully rendered HTML, with the patient's name, UHID,
+        age, sex, visit number and doctor in it. The printed leg above has always removed it. This
+        one removed only its own marker, so every permanently failed job left a copy of a patient's
+        document on in-hospital hardware, invisible from the server, with nothing that would ever
+        clean it up. A jammed printer was a privacy leak with a long half-life.
+      */
+      await rm(join(spool, DIRS.jobs, `${id}.json`), { force: true });
       log(`reported failed ${id}`);
     } catch { return; }
   }
@@ -318,7 +328,39 @@ async function printOne(config, spool, job, log) {
   }
 }
 
+/**
+ * ═══ THE SPOOL IS NOT A LOG, AND IT HOLDS PATIENT DATA ═══
+ *
+ * Every file in `jobs/` is a rendered document: a name, a UHID, an age and sex, a visit number and
+ * a doctor. The two report legs delete their own as soon as the server acknowledges them, which
+ * covers the ordinary roads — but not the one that actually happens on a hospital machine: the
+ * relay is killed, or the box is powered off, between spooling a claim and reporting its outcome.
+ * That file then belongs to nobody and no code path would ever remove it.
+ *
+ * So the spool is swept by AGE on every tick. The window is generous — a relay offline for a day is
+ * a normal Tuesday and its spool must survive that, because the offline guarantee is the whole
+ * reason the document travels with the claim. A week is long past the point where a document is
+ * still going to be printed, and any job still wanted after that will be re-claimed from the server
+ * rather than recovered from here.
+ */
+const SPOOL_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+async function sweepSpool(spool, log) {
+  const cutoff = Date.now() - SPOOL_MAX_AGE_MS;
+  let removed = 0;
+  for (const file of await readdir(join(spool, DIRS.jobs)).catch(() => [])) {
+    if (!file.endsWith(".json")) continue;
+    const path = join(spool, DIRS.jobs, file);
+    const info = await stat(path).catch(() => null);
+    if (info === null || info.mtimeMs >= cutoff) continue;
+    await rm(path, { force: true });
+    removed += 1;
+  }
+  if (removed > 0) log(`swept ${String(removed)} spooled document(s) older than 7 days`);
+}
+
 async function tick(config, spool, log) {
+  await sweepSpool(spool, log);
   await flushReports(config, spool, log);
 
   const state = await readSpoolState(spool);
