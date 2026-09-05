@@ -132,5 +132,5 @@ export async function pickDispense(
       payload: { dispenseId: d.id, patientId: d.patientId, lines: plan.map((p) => ({ lineIdx: p.lineIdx, batchId: p.batchId, qtyBase: p.qtyBase, fefoOverride: p.fefoOverride })) },
     }));
   });
-  return getDispense(db, actor, d.id);
+  return getDispense(db, actor, d.id, now);
 }

@@ -241,7 +241,7 @@ export async function verifyDispense(
       },
     }));
   });
-  return getDispense(db, actor, d.id);
+  return getDispense(db, actor, d.id, now);
 }
 
 /** A line the counter cannot fill: declined with a reason, its order item cancelled if one was placed. */
@@ -272,7 +272,7 @@ export async function declineLine(
       payload: { dispenseId: d.id, lineIdx, patientId: d.patientId, reason: trimmed },
     }));
   });
-  return getDispense(db, actor, d.id);
+  return getDispense(db, actor, d.id, now);
 }
 
 /** Cancel before hand-over: order items cancelled, reservations released, the instance closed. Never after money or stock moved (T4 owns those). */
@@ -328,5 +328,5 @@ export async function cancelDispense(
       payload: { dispenseId: d.id, patientId: d.patientId, fromStatus: d.status, reason: trimmed, reservationsReleased: released },
     }));
   });
-  return getDispense(db, actor, d.id);
+  return getDispense(db, actor, d.id, now);
 }
