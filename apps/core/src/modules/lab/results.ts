@@ -60,7 +60,22 @@ import type { Siblings } from "./formula";
 /** The permission a person needs to key a number. `lab.results.read` is the DOCTOR's; this is the bench's. */
 export const LAB_RESULTS_ENTER = "lab.results.enter";
 
-export type LabEntryMode = "manual" | "manual_from_printout";
+/**
+ * 17-E T3 — the grant a MACHINE's value is written under. Declared here rather than in `ingest.ts`
+ * so the gate below can name it without importing the module that calls it.
+ */
+export const LAB_RESULTS_INTERFACE = "lab.results.interface";
+
+/**
+ * 17-E T3 — `interface` joins the type. The DB CHECK has admitted it since Plan 17 T1 and nothing
+ * could write it, because this union could not express it.
+ *
+ * WIDENING THE TYPE DOES NOT OPEN THE BENCH ROUTE, which is D6 and the whole reason the boundary is
+ * the WIRE rather than the type: `lab-bench.controller.ts` keeps `z.enum(["manual",
+ * "manual_from_printout"])`, so a human keying a number still cannot label it machine-produced.
+ * `interface` is reachable only from the ingest route the bridge posts to.
+ */
+export type LabEntryMode = "manual" | "manual_from_printout" | "interface";
 
 export type EnterResultInput = {
   orderItemId: string;
@@ -69,6 +84,8 @@ export type EnterResultInput = {
   value: string;
   unit?: string | null;
   entryMode: LabEntryMode;
+  /** 17-E T3 — the instrument, when the value came off one. Set only by the ingest route. */
+  analyzerId?: string | null;
   remarks?: string | null;
   /**
    * 02 H1 — the SECOND holder of `lab.results.enter` who let an absurd value through. A `users.id`,
@@ -338,7 +355,23 @@ async function enterResultInTx(
   input: EnterResultInput,
   now: Date = new Date(),
 ): Promise<EnterResultOutcome> {
-  await assertMay(tx, actor, LAB_RESULTS_ENTER, "enter a lab result");
+  /**
+   * ═══ THE GRANT FOLLOWS THE ENTRY MODE, IN BOTH DIRECTIONS ═══
+   *
+   * A machine value is written under `lab.results.interface` and a keyed one under
+   * `lab.results.enter`, and the two are deliberately disjoint: the bridge holds only the first, so
+   * it CANNOT key a manual value at the bench route; a technologist holds only the second, so they
+   * cannot post one labelled as machine-produced.
+   *
+   * That second half is already enforced at the wire (D6 — `lab-bench.controller.ts` keeps its enum
+   * narrow), and this is the first half. Granting the bridge `lab.results.enter` instead would have
+   * been the obvious shortcut and would have handed a cron job the authority to type numbers into a
+   * patient's record under a human's permission — the same shape 18b refused when it gave
+   * `modality_bridge` one string rather than logging the bridge in as a radiographer.
+   */
+  const entryGrant = input.entryMode === "interface" ? LAB_RESULTS_INTERFACE : LAB_RESULTS_ENTER;
+  await assertMay(tx, actor, entryGrant, input.entryMode === "interface"
+    ? "post an instrument result" : "enter a lab result");
   const ctx = await resultContext(tx, input.orderItemId);
 
   const analytes = await analytesFor(tx, ctx.serviceId);
@@ -501,7 +534,8 @@ async function enterResultInTx(
     .orderBy(desc(labResults.enteredAt)).limit(1);
   const primary = await writeResult(tx, actor, ctx, {
     analyte, value: input.value, numeric, unit: input.unit ?? analyte.unit,
-    entryMode: input.entryMode, remarks: input.remarks ?? null, absurdOverriddenBy, impossibleOverriddenBy,
+    entryMode: input.entryMode, analyzerId: input.analyzerId ?? null,
+    remarks: input.remarks ?? null, absurdOverriddenBy, impossibleOverriddenBy,
     supersedesResultId: input.supersedesResultId ?? priorForAnalyte?.id ?? null,
     rerunOf: input.rerunOf ?? priorForAnalyte?.id ?? null,
   }, now);
@@ -553,6 +587,13 @@ function outsideAbsurdEnvelope(
 }
 
 type WriteResultInput = {
+  /**
+   * 17-E T3 — WHICH MACHINE PRODUCED THIS. `lab_results.analyzer_id` has existed since Plan 17 T1
+   * and appeared exactly once in the repository, in the schema, with no writer and no reader. This
+   * is its writer. Null for every keyed value, which is what makes it answer "was this measured or
+   * typed" on the row rather than by joining out to guess.
+   */
+  analyzerId?: string | null;
   analyte: typeof labAnalytes.$inferSelect;
   value: string;
   numeric: number | null;
@@ -640,6 +681,7 @@ async function writeResult(
     valueText: input.numeric === null && analyte.resultType !== "coded" ? input.value : null,
     valueCoded: input.numeric === null && analyte.resultType === "coded" ? input.value : null,
     unit: input.unit,
+    analyzerId: input.analyzerId ?? null,
     flag,
     refLow: range.low,
     refHigh: range.high,

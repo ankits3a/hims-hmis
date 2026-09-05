@@ -738,7 +738,7 @@ if (
 }
 
 describe("seed:roles — the census pins, stated before anything is compared (§2.49)", () => {
-  it("ALL_MANIFESTS declares one hundred and thirty-three permissions, by module", () => {
+  it("ALL_MANIFESTS declares one hundred and thirty-four permissions, by module", () => {
     const byKey = new Map(ALL_MANIFESTS.map((m) => [m.key, m.permissions.length]));
     expect(Object.fromEntries(byKey)).toEqual({
       auth: 7, // 11e's six + `auth.elevation.review` (the elevation-review queue)
@@ -777,7 +777,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // them, for the reason the `membership`/`partners` paragraph above gives: `seed-roles.ts`,
       // this file and `README.md` are named in T2's Files list and in NO later task's, so a string
       // first declared by T7 or T8 would fail this build for a task that is not allowed to fix it.
-      lab: 17, // 17-E T1: 15 -> 16 (lab.instruments.manage); T2: -> 17 (lab.instruments.read)
+      lab: 18, // 17-E T1: 15 -> 16 (lab.instruments.manage); T2: -> 17 (lab.instruments.read); T3: -> 18 (lab.results.interface)
       // PLAN 14 T2 / DD11. ELEVEN strings, all declared here ahead of the routes that guard on
       // them, for the reason the `membership`/`partners` paragraph above gives: `seed-roles.ts`,
       // this file and `README.md` are named in T2's Files list and in NO later task's, so a string
@@ -829,10 +829,10 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       radiology: 16, // PLAN 18b T1 — `radiology.mwl.read`
     });
     // VD-1 T4 — +1 with `opd.vitals.history.read` (vitals_desk + doctor).
-    expect(installedRegistry().allPermissions()).toHaveLength(159); // RC-1 T2: 146 -> 147; VD-1 T4: 148; RC-2 T4: 149; 18b T1: 150 (radiology.mwl.read); 16c T1: 154, the four pharmacy.* strings; 18c T1: 157, the three aerb.* strings; 17-E T1: 158 (lab.instruments.manage)
+    expect(installedRegistry().allPermissions()).toHaveLength(160); // RC-1 T2: 146 -> 147; VD-1 T4: 148; RC-2 T4: 149; 18b T1: 150 (radiology.mwl.read); 16c T1: 154, the four pharmacy.* strings; 18c T1: 157, the three aerb.* strings; 17-E T1: 158 (lab.instruments.manage)
   });
 
-  it("the role model is thirty-seven roles, three hundred and four grants, one hundred and thirty-nine distinct permissions", () => {
+  it("the role model is thirty-seven roles, three hundred and five grants, one hundred and forty distinct permissions", () => {
     expect(ROLE_MODEL.map((r) => r.roleKey)).toEqual([
       "front_office",
       "front_office_supervisor",
@@ -1014,7 +1014,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       lab_reception: 17, // 17c owner ruling 2026-09-02: +approvals.requests.create
       // PLAN 18b T1 — one string, on purpose (see the role's docstring in seed-roles.ts).
       modality_bridge: 1,
-      lab_bridge: 1, // PLAN 17-E T2 — the analyser bridge, one string like its radiology sibling
+      lab_bridge: 2, // PLAN 17-E T2 -> T3: +lab.results.interface. PLAN 17-E T2 — the analyser bridge, one string like its radiology sibling
       pharmacy_assistant: 5, // PLAN 16c T1
     });
     // PLAN 07c T9 — 156 → 158: `staff.reports.read` to `front_office_supervisor` and to
@@ -1032,7 +1032,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     // VD-1 T4 — 274 -> 276: `opd.vitals.history.read` to `vitals_desk` and to `doctor`.
     // 18c T1 — 297 -> 302: the RSO's three, plus `aerb.doses.read` to `radiologist` and to
     // `radiographer` (D2 — the cumulative-dose nudge is clinical; the licence file is not).
-    expect(modelPairs()).toHaveLength(304); // 17c owner ruling: +1, approvals.requests.create to lab_reception; RC-2 T4: +2, the enrol grants; 18b T1: +2 (radiology.mwl.read); 16c T1: +16 (pharmacy +11, pharmacy_assistant +5); 17-E T1: +1 (lab.instruments.manage to pathologist); T2: +1 (lab.instruments.read to lab_bridge)
+    expect(modelPairs()).toHaveLength(305); // 17c owner ruling: +1, approvals.requests.create to lab_reception; RC-2 T4: +2, the enrol grants; 18b T1: +2 (radiology.mwl.read); 16c T1: +16 (pharmacy +11, pharmacy_assistant +5); 17-E T1: +1 (lab.instruments.manage to pathologist); T2: +1 (lab.instruments.read to lab_bridge)
     // PLAN 07c T9 — 83 → 84 DISTINCT: one new string (`staff.reports.read`) across two roles.
     // 84 -> 85 DISTINCT: only `staff.reports.drill` is new to the MODEL. Every other string the
     // two rulings grant was already held by another role — the counter cover moves WHO may act,
@@ -1050,7 +1050,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     // VD-1 T4 — 126 -> 127 distinct model permissions.
     // 18c T1 — 134 -> 137: all three `aerb.*` strings are new to the model, because no role could
     // have held one before the manifest declaring them was installed.
-    expect(modelPermissions()).toHaveLength(139); // 17c owner ruling: +1, approvals.requests.create; RC-2 T4: +1, membership.instrument.enrol; 18b T1: +1, radiology.mwl.read; 16c T1: +4, pharmacy.*; 17-E T1: +1, lab.instruments.manage
+    expect(modelPermissions()).toHaveLength(140); // 17c owner ruling: +1, approvals.requests.create; RC-2 T4: +1, membership.instrument.enrol; 18b T1: +1, radiology.mwl.read; 16c T1: +4, pharmacy.*; 17-E T1: +1, lab.instruments.manage
     // No role lists the same permission twice — a duplicate would inflate the counts above
     // without changing a single row of `role_permissions`.
     for (const role of ROLE_MODEL) {
@@ -1061,7 +1061,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
   it("the reachability census closes: 157 declared = 142 held + 15 not yet modelled", () => {
     // VD-1 T4 — 147 -> 148 declared and 132 -> 133 held, NOT_YET_MODELLED UNCHANGED at fifteen:
     // the permission is granted in the same commit that declares it, so it never passes through.
-    expect(installedRegistry().allPermissions()).toHaveLength(159);
+    expect(installedRegistry().allPermissions()).toHaveLength(160);
     // 42 + 13 until the 2026-08-23 ruling moved the four `workflow.definitions.*` strings across;
     // 46 + 13 until Plan 09 declared fourteen and DD18 granted four of them.
     // 50 until `auth.elevation.review` was declared; it is held from the first deploy because
@@ -1121,11 +1121,11 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     // `orders.cancel` cross from one side of this sum to the other exactly as phase 0's entries
     // predicted they would. **`orders.read.restricted` stays**, deliberately — see the note in
     // `seed-roles.ts` where those three entries were removed.
-    expect(heldPermissions()).toHaveLength(145); // 17c owner ruling: 140 (approvals.requests.create); PLAN 18a T2: 111 -> 131; VD-1 T4: 133; RC-2 T4: 134; 18b T1: 135; 16c T1: 139, the four pharmacy.* strings, granted in the commit that declares them; 18c T1: 143; 17-E T1: 144, the three aerb.* strings, likewise granted where they are declared
+    expect(heldPermissions()).toHaveLength(146); // 17c owner ruling: 140 (approvals.requests.create); PLAN 18a T2: 111 -> 131; VD-1 T4: 133; RC-2 T4: 134; 18b T1: 135; 16c T1: 139, the four pharmacy.* strings, granted in the commit that declares them; 18c T1: 143; 17-E T1: 144, the three aerb.* strings, likewise granted where they are declared
     // RC-1 T2 — 146 -> 147 declared and 131 -> 132 held, NOT_YET_MODELLED UNCHANGED at fifteen:
     // the flow lock is granted in the same commit that declares it.
     expect(NOT_YET_MODELLED).toHaveLength(14); // 17c owner ruling: approvals.requests.create is held now
-    expect(heldPermissions().length + NOT_YET_MODELLED.length).toBe(159); // 18b T1: +1; 16c T1: +4; 18c T1: +3; 17-E T1: +1
+    expect(heldPermissions().length + NOT_YET_MODELLED.length).toBe(160); // 18b T1: +1; 16c T1: +4; 18c T1: +3; 17-E T1: +1
   });
 
   it("the README carries exactly four permission tables, of the measured shapes", () => {
@@ -1222,9 +1222,9 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     // Fourteen rows rather than fifteen: `lab.reports.release_unpaid` appears in NO column,
     // because the role that holds it is `billing_manager` and a lab station column for it would be
     // the lab approving its own override.
-    expect(labTable.rowCount).toBe(16); // 17-E T1: +1, lab.instruments.manage; T2: +1, lab.instruments.read
+    expect(labTable.rowCount).toBe(17); // 17-E T1: +1, lab.instruments.manage; T2: +1, lab.instruments.read; T3: +1, lab.results.interface
     expect(labTable.roles).toEqual(["pathologist", "lab_technician", "phlebotomist", "lab_reception", "lab_bridge"]);
-    expect(tablePairs(labTable)).toHaveLength(28); // 17-E T1: +1; T2: +1 (lab_bridge's single tick)
+    expect(tablePairs(labTable)).toHaveLength(29); // 17-E T1: +1; T2: +1; T3: +1 (the bridge's second tick)
     expect(tablePairs(labTable).filter((p) => p.startsWith("pathologist/"))).toHaveLength(13); // 17-E T1: +1
     expect(tablePairs(labTable).filter((p) => p.startsWith("lab_technician/"))).toHaveLength(6);
     expect(tablePairs(labTable).filter((p) => p.startsWith("phlebotomist/"))).toHaveLength(3);
@@ -1456,7 +1456,8 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     // because a50e68a moved the `opdTable` pins and not this base derived from them.
     // 129 since 17-E T1 — `lab.instruments.manage`'s single tick, the pathologist's alone.
     // 130 since 17-E T2 — `lab.instruments.read`'s single tick, the bridge's alone.
-    expect(fromReadme).toHaveLength(130 + tablePairs(radiologyTable).length + tablePairs(pharmacyTable).length);
+    // 131 since 17-E T3 — `lab.results.interface`, the bridge's second and last.
+    expect(fromReadme).toHaveLength(131 + tablePairs(radiologyTable).length + tablePairs(pharmacyTable).length);
     // Direction 1: nothing the README ticks is missing from the model.
     expect(fromReadme.filter((p) => !fromModel.includes(p))).toEqual([]);
     // Direction 2: nothing the model grants from a table is missing from that table.
@@ -1620,9 +1621,9 @@ describe("seed:roles — executed against a database (V5)", () => {
     // RC-2 T4 — the SECOND again (15 -> 16) and the FIFTEENTH (membership_admin 2 -> 3) by the
     // enrol split. INDEX 14, not 12: `staff_auditor` also holds two grants, and the first `2` in
     // this array is not the one that moves. A bare-integer census gives you no name to check.
-    expect(first.roles.map((r) => r.granted.length)).toEqual([12, 16, 6, 20, 8, 1, 19, 11, 20, 10, 10, 1, 2, 3, 3, 5, 1, 11, 6, 15, 9, 4, 4, 3, 6, 17, 8, 4, 17, 15, 10, 13, 4, 3, 1, 1, 5]); // 17c owner ruling: lab_reception 16 -> 17; 18b T1: radiographer 9, modality_bridge 1; 16c T1: pharmacy 8 -> 19, pharmacy_assistant 5; 18c T1: radiologist 14 -> 15, radiographer 9 -> 10, and radiation_safety_officer's 3 inserted after pcpndt_incharge; 17-E T1: INDEX 25, pathologist 16 -> 17 (lab.instruments.manage) — located by the diff's surrounding context, since the other 16 in this array is lab_reception's and a bare-integer census gives no name to check
+    expect(first.roles.map((r) => r.granted.length)).toEqual([12, 16, 6, 20, 8, 1, 19, 11, 20, 10, 10, 1, 2, 3, 3, 5, 1, 11, 6, 15, 9, 4, 4, 3, 6, 17, 8, 4, 17, 15, 10, 13, 4, 3, 1, 2, 5]); // 17c owner ruling: lab_reception 16 -> 17; 18b T1: radiographer 9, modality_bridge 1; 16c T1: pharmacy 8 -> 19, pharmacy_assistant 5; 18c T1: radiologist 14 -> 15, radiographer 9 -> 10, and radiation_safety_officer's 3 inserted after pcpndt_incharge; 17-E T1: INDEX 25, pathologist 16 -> 17 (lab.instruments.manage) — located by the diff's surrounding context, since the other 16 in this array is lab_reception's and a bare-integer census gives no name to check
     expect(first.roles.every((r) => r.already.length === 0)).toBe(true);
-    expect(first.declared).toBe(159); // RC-1 T2's flow lock, VD-1 T4's history read, RC-2 T4's enrol, 18b T1's mwl read, 16c T1's four pharmacy.* strings, 18c T1's three aerb.* strings, 17-E T1's lab.instruments.manage, 17-E T2's lab.instruments.read
+    expect(first.declared).toBe(160); // RC-1 T2's flow lock, VD-1 T4's history read, RC-2 T4's enrol, 18b T1's mwl read, 16c T1's four pharmacy.* strings, 18c T1's three aerb.* strings, 17-E T1's lab.instruments.manage, 17-E T2's lab.instruments.read
     // MEASURED from role_permissions, not derived from the model. On this database only seed:roles
     // has run, so what is held is exactly what the model granted — 57, not the 63 the model CLAIMS
     // once seed:admin and seed:ops have also run. That SEVEN-permission gap IS MAJOR 1 (it was ten
@@ -1631,9 +1632,9 @@ describe("seed:roles — executed against a database (V5)", () => {
     // 84 -> 85: `staff.reports.drill` is the one string these rulings add to the MODEL.
     // 87 -> 105: the lab's fifteen plus the kernel's three `orders.*`, all granted in the commit
     // that declares them.
-    expect(first.held).toBe(139); // 17c owner ruling: 133 -> 134 (approvals.requests.create); RC-1 T2 — 125 -> 126, flow lock; VD-1 T4 -> 127; RC-2 T4 -> 128; 18b T1 -> 129; 16c T1 -> 133; 17-E T1 -> 138; T2 -> 139
+    expect(first.held).toBe(140); // 17c owner ruling: 133 -> 134 (approvals.requests.create); RC-1 T2 — 125 -> 126, flow lock; VD-1 T4 -> 127; RC-2 T4 -> 128; 18b T1 -> 129; 16c T1 -> 133; 17-E T1 -> 138; T2 -> 139
     expect(first.held).toBe(modelPermissions().length);
-    expect(heldPermissions()).toHaveLength(145); // 17c owner ruling; RC-1 T2, VD-1 T4, RC-2 T4's enrol, 18b T1's mwl read, 16c T1's four pharmacy.* strings, then 18c T1's three aerb.* strings
+    expect(heldPermissions()).toHaveLength(146); // 17c owner ruling; RC-1 T2, VD-1 T4, RC-2 T4's enrol, 18b T1's mwl read, 16c T1's four pharmacy.* strings, then 18c T1's three aerb.* strings
     // PLAN 17 PHASE 0 T5 — 16 -> 20. All four `orders.*` strings, unheld on purpose (§8.11).
     // PLAN 17 T2 — 18 -> 15: three of those four are granted here and `orders.read.restricted`
     // stays, which is the one that needed an owner rather than a plan.
@@ -1657,7 +1658,7 @@ describe("seed:roles — executed against a database (V5)", () => {
     // PLAN 07c T9 — the same two entries as the first run's `granted` census above.
     // The FIRST run's `granted` census, read back — see the note there for Plan 17 T2's changes.
     // RC-1 T2 — the second run's `already` mirrors the first run's `granted`: 15 and 8.
-    expect(second.roles.map((r) => r.already.length)).toEqual([12, 16, 6, 20, 8, 1, 19, 11, 20, 10, 10, 1, 2, 3, 3, 5, 1, 11, 6, 15, 9, 4, 4, 3, 6, 17, 8, 4, 17, 15, 10, 13, 4, 3, 1, 1, 5]); // 17c owner ruling: lab_reception 16 -> 17; 18b T1: radiographer 9, modality_bridge 1; 16c T1: pharmacy 19, pharmacy_assistant 5; 17-E T1: INDEX 25, pathologist 16 -> 17
+    expect(second.roles.map((r) => r.already.length)).toEqual([12, 16, 6, 20, 8, 1, 19, 11, 20, 10, 10, 1, 2, 3, 3, 5, 1, 11, 6, 15, 9, 4, 4, 3, 6, 17, 8, 4, 17, 15, 10, 13, 4, 3, 1, 2, 5]); // 17c owner ruling: lab_reception 16 -> 17; 18b T1: radiographer 9, modality_bridge 1; 16c T1: pharmacy 19, pharmacy_assistant 5; 17-E T1: INDEX 25, pathologist 16 -> 17
     // The SAME bare-integer array as the granted-length pin above, duplicated for the idempotence
     // leg — so every permission moves it TWICE. Nothing names it and no grep finds it.
 
