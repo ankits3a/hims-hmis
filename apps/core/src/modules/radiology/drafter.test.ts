@@ -61,6 +61,7 @@ describe("the report drafter seam, offline (18b T4)", () => {
     studyType: { code: "CT-ABDO", name: "CT abdomen", modality: "ct", body_part: "abdomen", contrast_option: "required", ionising: true },
     laterality: "na", lockoutTier: "coded", contrastGiven: true, contrastAgent: "Iohexol", contrastVolumeMl: "80.00",
     dose: { ctdivol: "6.400", dlp: "320.500", dap: null, fluoroSeconds: null },
+    outside: null,
   };
 
 /**
@@ -82,7 +83,28 @@ describe("the report drafter seam, offline (18b T4)", () => {
     expect(oral.body.technique).not.toMatch(/intraven/);
   });
 
-  it("the offline drafter fills TECHNIQUE from the recorded facts and nothing clinical, deterministically", async () => {
+/**
+   * ═══ 18a-iii T4 / D5 — A REPORT ON SOMEBODY ELSE'S FILM SAYS SO, IN ITS FIRST SENTENCE ═══
+   *
+   * The label carries the centre, THEIR date and how the images arrived, because a radiologist
+   * reading this six months later needs all three to judge what the opinion rested on. And the DOSE
+   * IS NOT RENDERED: we did not irradiate this patient, and a CTDIvol printed under our letterhead
+   * for another hospital's exposure is the paper version of the false register entry T4 exists to
+   * prevent.
+   */
+  it("an OUTSIDE study is labelled as one, and states no dose of ours", async () => {
+    const draft = await offlineTemplateDrafter.draft({
+      ...FACTS,
+      outside: { centreName: "Sunrise Diagnostics, Kanpur", studyDate: "2026-02-14", arrival: "cd" },
+    }, NOW);
+    expect(draft.body.technique).toBe(
+      "CT: CT abdomen — OUTSIDE STUDY, performed at Sunrise Diagnostics, Kanpur on 2026-02-14, "
+      + "reported here from CD.",
+    );
+    expect(draft.body.technique).not.toMatch(/CTDIvol|DLP|Dose/);
+  });
+
+    it("the offline drafter fills TECHNIQUE from the recorded facts and nothing clinical, deterministically", async () => {
     const a = await offlineTemplateDrafter.draft(FACTS, NOW);
     const b = await offlineTemplateDrafter.draft(FACTS, NOW);
     expect(a).toEqual(b);

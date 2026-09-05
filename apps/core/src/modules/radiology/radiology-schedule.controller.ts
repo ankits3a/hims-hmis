@@ -5,6 +5,9 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { autoSlotWalkIn, cancelStudy, deviceDiary, markNoShow, rescheduleStudy, scheduleStudy } from "./schedule";
+import { registerOutsideStudy } from "./outside";
+import { IMAGE_ARRIVALS } from "../../kernel/db/schema/radiology";
+import { IMAGING_MODALITIES } from "./kinds";
 import { idSchema, parsed, toHttp } from "./radiology-http";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -37,6 +40,21 @@ const scheduleBody = z.object({
    * department. Only a portable device accepts one — `resolveBedside` refuses the rest.
    */
   bedsideLocation: z.string().min(1).max(120).nullish(),
+});
+
+/**
+ * 18a-iii T4 / D5 — a film from another centre. On `radiology.schedule`, not `radiology.acquire`:
+ * registering somebody else's study is a RECEPTION act — the desk takes the CD across the counter —
+ * and the technologist's permission is for the machine. It is also why the workflow edge names
+ * `radiology_receptionist` and `radiologist` and not `radiographer`.
+ */
+const outsideBody = z.object({
+  centreName: z.string().min(1).max(200),
+  studyDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  modality: z.enum(IMAGING_MODALITIES),
+  externalAccessionNo: z.string().min(1).max(64).nullish(),
+  arrival: z.enum(IMAGE_ARRIVALS),
+  notes: z.string().min(1).max(2_000).nullish(),
 });
 
 const cancelBody = z.object({
@@ -80,6 +98,31 @@ export class RadiologyScheduleController {
       return await withTx(this.db, (tx) => rescheduleStudy(tx, actor, {
         studyId, deviceResourceId: input.deviceResourceId, scheduledAt: new Date(input.scheduledAt),
         bedsideLocation: input.bedsideLocation,
+      }));
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * The outside film. It takes no slot, no machine and no gates, and it writes NO radiation dose —
+   * see `outside.ts` for why that last one is the point rather than an omission.
+   */
+  @Post(":studyId/outside")
+  @RequirePermission("radiology.schedule", "hospital")
+  async outside(
+    @CurrentActor() actor: Actor,
+    @Param("studyId") studyId: string,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    const input = parsed(outsideBody, body);
+    try {
+      return await withTx(this.db, (tx) => registerOutsideStudy(tx, actor, this.decls(), {
+        studyId,
+        centreName: input.centreName,
+        studyDate: input.studyDate,
+        modality: input.modality,
+        externalAccessionNo: input.externalAccessionNo ?? null,
+        arrival: input.arrival,
+        notes: input.notes ?? null,
       }));
     } catch (e) { toHttp(e); }
   }
