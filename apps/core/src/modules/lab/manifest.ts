@@ -81,6 +81,8 @@ export const labManifest: ModuleManifest = {
     "lab.reports.release_unpaid",
     "lab.criticals.close",
     "lab.worklist.read",
+    /** 17-E T1 — registering a machine and mapping its codes is an ESTATE act, never the bridge's. */
+    "lab.instruments.manage",
   ],
   subscriptions: [],
   orderKinds: [

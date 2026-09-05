@@ -6,6 +6,7 @@ import {
 import { invoiceLines, invoices } from "./billing";
 import { orderItems, orders } from "./orders";
 import { patients } from "./patients";
+import { resources } from "./resources";
 import { services } from "./tariff";
 
 /**
@@ -659,5 +660,90 @@ export const labSlaBreaches = pgTable(
   },
   (t) => [
     uniqueIndex("lab_sla_breaches_item_stage_ux").on(t.orderItemId, t.stage),
+  ],
+);
+
+/**
+ * ═══ PLAN 17-E T1 — THE INSTRUMENTS ON THE BENCH, AND HOW EACH ONE NAMES A SAMPLE ═══
+ *
+ * The machine itself is a `resources` row of kind `analyzer` — declared in `lab/kinds.ts` since
+ * Plan 17 T2 with a seven-word status vocabulary and, until now, no writer. That is where its STATE
+ * lives (`available`, `interface_down`, …) and where `resource_status_history` keeps it. This table
+ * is the lab's own half: the facts the kernel has no opinion about.
+ *
+ * ═══ `sample_id_mode` IS THE WHOLE DESIGN, COMPRESSED INTO ONE COLUMN ═══
+ *
+ * `Instruments.dc.html` describes nine machines and they differ in exactly one way that matters to
+ * software: **how the instrument names the sample it just measured.** A chemistry analyser reads the
+ * tube's barcode. A Zybio Z3 takes an id typed at the keypad. An EL-120 knows only a sequence
+ * number and needs a run sheet built by scanning. An ELISA reader knows only a WELL and needs a
+ * plate map. Everything else about the interface — the block splitting, the parking, the rerun rule
+ * — falls out of which of those four applies.
+ *
+ * `connection` is documentation and nothing reads it. RS-232 versus HL7-over-LAN is the bridge's
+ * problem (D1: the bridge is out of this repository), and a column the server branches on would be
+ * a lie about where that decision is made.
+ */
+export const labInstruments = pgTable(
+  "lab_instruments",
+  {
+    id: text("id").primaryKey(),
+    /** The machine as a resource. ONE instrument row per resource, enforced below. */
+    resourceId: text("resource_id").notNull().references(() => resources.id),
+    sampleIdMode: text("sample_id_mode").notNull(),
+    /** Free text, for a human reading the register. Nothing branches on it — see the header. */
+    connection: text("connection"),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdBy: text("created_by").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: text("updated_by").notNull(),
+  },
+  (t) => [
+    /**
+     * TWO instrument rows against one machine would give it two code maps and two sample-id modes,
+     * and an ingest resolving through "the" instrument would pick by row order. The machine is the
+     * identity; this table is an attribute of it.
+     */
+    uniqueIndex("lab_instruments_resource_ux").on(t.resourceId),
+    check(
+      "lab_instruments_sample_id_mode_ck",
+      sql`${t.sampleIdMode} in ('barcode', 'typed_id', 'run_sheet', 'plate_map')`,
+    ),
+  ],
+);
+
+/**
+ * ═══ EACH INSTRUMENT'S OWN TEST CODES, MAPPED ONCE, PER INSTRUMENT ═══
+ *
+ * The board's rule: *"Codes and units are mapped once. Each instrument's test code and unit map to
+ * ours PER INSTRUMENT."* Not globally — a global table would become ambiguous the day two machines
+ * use the same word for different tests, which is the ordinary case rather than the exotic one
+ * (`GLU` is a serum glucose on the chemistry analyser and a urine strip pad on the U120).
+ *
+ * `factor` converts the instrument's unit to ours, applied once at attachment. An unmapped code
+ * PARKS the result rather than guessing (D4), so this table's absences are as load-bearing as its
+ * rows.
+ */
+export const labInstrumentCodes = pgTable(
+  "lab_instrument_codes",
+  {
+    instrumentId: text("instrument_id").notNull().references(() => labInstruments.id),
+    /** The string the machine sends, verbatim and case-sensitive — it is the machine's word. */
+    instrumentCode: text("instrument_code").notNull(),
+    analyteId: text("analyte_id").notNull().references(() => labAnalytes.id),
+    /** The instrument's unit, for the record. OUR unit is the analyte's. */
+    unit: text("unit"),
+    factor: numeric("factor", { precision: 14, scale: 6 }).notNull().default("1"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.instrumentId, t.instrumentCode] }),
+    index("lab_instrument_codes_analyte_idx").on(t.analyteId),
+    /**
+     * A FACTOR OF ZERO IS THE QUIET CATASTROPHE this check exists for: it does not fail, it reports
+     * every value on that channel as 0 — a plausible-looking potassium of zero on a live patient.
+     * Negative is refused for the same reason a concentration cannot be negative.
+     */
+    check("lab_instrument_codes_factor_ck", sql`${t.factor} > 0`),
   ],
 );

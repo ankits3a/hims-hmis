@@ -916,6 +916,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // reflex rules are clinical documents, and NABL asks who signed them off.
       "lab.catalogue.read",
       "lab.catalogue.manage",
+      // 17-E T1 — the bench's machines are the lab head's estate for the same reason the range book
+      // is: which analyser reports which test, and under whose code, is a document NABL asks about.
+      // The BRIDGE never holds this — it authenticates as an agent and may not enrol itself.
+      "lab.instruments.manage",
       "lab.worklist.read",
       "lab.accession.operate",
       "lab.results.enter",
