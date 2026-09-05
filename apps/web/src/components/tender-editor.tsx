@@ -138,9 +138,28 @@ export function TenderEditor({
               </select>
             </div>
             <div style={{ flexGrow: 1, minWidth: 0 }}>
+              {/*
+                ═══ THE FIELD SHOWS WHAT WILL BE POSTED ═══
+
+                A lane seed (the `lane` effect above) writes an amount into ROW STATE and `toWire`
+                posts it; without `value` the cashier read a BLANK box while the full payable was
+                armed, and a figure typed before the lane press vanished with nothing in its place.
+                The drawer is counted on the posted tender (`sessions.ts`: `expectedCashPaise =
+                openingFloat + Σ cash tenders − …`), so a box that cannot state its own number is a
+                variance waiting at close. The REFERENCE input eleven lines below was bound all
+                along; the one control carrying the money was not.
+
+                `MoneyInput` reads `value` ONCE, at mount, on purpose — re-deriving it per keystroke
+                would rewrite "112." to "112.00" under the cashier's fingers — so the `key` is what
+                makes a re-seed land. The row wrapper already carries `row.key` and would remount
+                this anyway; it is restated HERE, at the thing that depends on it, so a later
+                refactor that reuses the row key cannot silently re-hide the amount again.
+              */}
               <MoneyInput
+                key={row.key}
                 id={`tender-amount-${String(index)}`}
                 label={t("billing.tender.amount")}
+                value={row.amountPaise}
                 onChange={(paise) => patch(row.key, { amountPaise: paise })}
               />
             </div>

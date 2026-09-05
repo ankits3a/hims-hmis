@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -17,6 +17,7 @@ import type {
   WireDiscountCategory, WireInvoiceLineInput, WireIssueInvoiceBody, WireIssueInvoiceResult, WireTender,
 } from "../lib/billing-api";
 import { PaperScreen, ScreenTitle } from "../components/paper-screen";
+import { usePaletteOptional } from "../components/command-palette";
 import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
 import { listCoverages } from "../lib/patients-api";
@@ -50,6 +51,39 @@ const PREVIEW_DEBOUNCE_MS = 250;
 
 /** The fee line's id, mirroring `charge-rules.ts`'s `FEE_LINE_ID` so quote and invoice agree. */
 const FEE_LINE_ID = "fee";
+
+/**
+ * ═══ FD-25 BACKLOG 6 — THE THREE LANE KEYS, DRAWN AND BOUND FROM ONE ARRAY ═══
+ *
+ * The signed-off keymap gives this seat three bare digits —
+ * `docs/design/2026-09-03-front-desk-three-seats/Keymap.dc.html`:
+ *     { keys: ["1","2","3"], what: "Cash · UPI · Card", why: "bare digits, only when the cursor
+ *       is not in a field" }
+ * — and its `/billing` field order reads "Tender lane · or bare 1 / 2 / 3". The screen drew the
+ * keycaps, `billingSeat.pay.laneHint` promised the keys in English AND Hindi, and nothing bound
+ * them: `billing-counter.tsx` was the one screen missing from the census of window keydown
+ * listeners. Desk One answers the same trio at its own bill stage, so a cashier moving between
+ * `/counter` and `/billing` found the same key alive on one seat and dead on the other — which is
+ * exactly the harm `desk-one.tsx` names: "a keycap that lies is worse than none".
+ *
+ * The order lives HERE rather than inline in the JSX so the digit a cashier READS on a lane button
+ * and the digit the listener ANSWERS are one definition and cannot drift apart.
+ */
+const LANE_ORDER: readonly TenderMode[] = ["cash", "upi", "card"];
+
+/**
+ * A digit shortcut must never fire while the cashier is typing an amount, a reference, a PAN or a
+ * credit reason into a field. Same predicate, same words, as `billing-office.tsx`'s tab keys —
+ * except that SELECT is included, as `counter-figures.tsx`'s copy has it. That is not cosmetic
+ * here: a lane seed REPLACES the whole tender row array, so a bare digit pressed while focus sits
+ * on the tender mode select would silently destroy a mixed tender under construction (₹200 cash
+ * and ₹360 UPI with its reference typed, collapsed into one ₹560 row). billing-office's digits
+ * only switch a read-only tab, so its narrower copy is not a precedent for a money editor.
+ */
+function isTypingTarget(el: EventTarget | null): boolean {
+  return el instanceof HTMLElement
+    && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
+}
 
 const DISCOUNT_CATEGORIES: WireDiscountCategory[] = ["charity", "scheme", "negotiated_corporate", "employee"];
 
@@ -93,6 +127,9 @@ function ErrorLine({ message, testId }: { message: string | null; testId: string
 export function BillingCounter(): React.ReactElement {
   const { t } = useTranslation();
   const search = useSearch({ strict: false }) as { encounterId?: string };
+  /* While the palette is open the screen claims no key — `counter-figures.tsx`'s rule, and it is
+     general rather than about Escape. Returns null outside a provider, as this suite mounts. */
+  const palette = usePaletteOptional();
 
   const [patient, setPatient] = useState<PatientPickerHit | null>(null);
   const [encounterId, setEncounterId] = useState(search.encounterId ?? "");
@@ -273,13 +310,92 @@ export function BillingCounter(): React.ReactElement {
 
   // ——— derived money ————————————————————————————————————————————————————————————————————————
 
+  /*
+    ═══ THE PAYABLE IS A SERVER FACT OR IT IS UNKNOWN — IT IS NEVER AN INVENTED ZERO ═══
+
+    This used to read `preview.data?.totals?.netPayablePaise ?? 0`, and that `?? 0` fused THREE
+    states into one number: never asked for, in flight, and FAILED. A 503 from the pricing route
+    therefore did not look like a failure anywhere on this screen — the totals block vanished, the
+    three tender lanes went dark with no stated reason, the credit-remainder box and its mandatory
+    reason input disappeared (disarming the pre-flight guard in `submit` with them), and the button
+    changed from "Take ₹560.00" to "Issue — nothing to collect" and stayed ENABLED. Nothing said a
+    request had failed. A cashier reads that as the verdict and tells the patient there is nothing
+    to pay.
+
+    So the type carries the ignorance: `null` means "this screen does not know", and every consumer
+    below has to say what it does about that rather than inherit a zero. That is one definition
+    instead of a guard at each of the six sites that read it.
+  */
   const totals = preview.data?.totals ?? null;
-  const netPayablePaise = totals?.netPayablePaise ?? 0;
+  const payablePaise: number | null = totals === null ? null : totals.netPayablePaise;
+  /** The preview asked and was refused — distinct from "not asked yet", which is also `null` above. */
+  const previewFailed = preview.isError;
   const tenderedPaise = tenders.reduce((sum, tender) => sum + tender.amountPaise, 0);
-  const remainderPaise = Math.max(netPayablePaise - tenderedPaise, 0);
+  /* Unknown payable ⇒ no remainder to extend credit against; `submit` refuses the write outright. */
+  const remainderPaise = payablePaise === null ? 0 : Math.max(payablePaise - tenderedPaise, 0);
+  /*
+    ═══ IS THERE ANYTHING TO COLLECT? ONE DEFINITION, TWO SOURCES, BOTH THE SERVER'S ═══
+
+    The panel card and the visit stamp both make a claim about MONEY, and both used to make it from
+    `intendedPayer` — a column on the encounter that says who the hospital MEANS to bill and nothing
+    whatever about money arriving (`charge-rules.ts`: "Read from the ENCOUNTER, not from
+    `draft.intendedPayer`"). A panel bill is priced at FULL GROSS — `benefits-payer.test.ts`: "full
+    gross — the panel rate is the price" — so the green line said "nothing to collect at this
+    counter" over a bill whose own submit button read "Take ₹560.00".
+
+    The money facts this screen actually has are the priced preview and, on a visit with no lines to
+    price, the quote's own `free` flag. A FREE revisit seeds no fee line, so the preview never runs
+    and `totals` stays null forever: a gate written on the priced figure alone would print nothing
+    at all about collection on the one visit where the sentence is unarguably true.
+  */
+  const collectablePaise: number | null = payablePaise !== null
+    ? payablePaise
+    : quote?.free === true && lines.length === 0 ? 0 : null;
   const approvalLines = (preview.data?.lines ?? []).filter((line) =>
     line.candidates.some((candidate) => candidate.requiresApproval),
   );
+
+  // ——— the three lanes, by button and by key ————————————————————————————————————————————————
+
+  const takeLane = useCallback((mode: TenderMode): void => {
+    // A lane arms the SERVER's payable. With no server figure there is nothing to arm, and the
+    // three buttons are dark for exactly that reason.
+    if (payablePaise === null) return;
+    setLane({ mode, amountPaise: payablePaise, nonce: Date.now() });
+    setLog((prev) => logged(prev, t("billingSeat.log.lane", { mode: t(`billing.tender.modes.${mode}`), amount: fmtPaise(payablePaise) })));
+  }, [payablePaise, t]);
+
+  /**
+   * ═══ 1 / 2 / 3 — THE KEYCAPS THE SCREEN ALREADY DRAWS, NOW BOUND ═══
+   *
+   * Screen-local, exactly as `/billing/office` binds 1–4 to its tabs; `lib/keyboard.tsx` owns the
+   * global keys and claims no digit. BOUND rather than deleted because the artboard assigns these
+   * three and the seat promises them in prose in two languages — and deleting them would have
+   * meant editing both locale files to unsay it.
+   *
+   * GUARDED ON THE SAME PREDICATE THE BUTTONS REFUSE ON: `payablePaise === null || payablePaise
+   * === 0` is verbatim the `disabled` on `lane-*` below, so a key can never do what its button
+   * refuses. That is the exact gap Desk One's own close review found on this very trio.
+   *
+   * Ctrl/Alt/Meta + a digit is left to the browser (`Ctrl+1` switches tabs); `browserSafeKey` in
+   * `lib/keyboard.tsx` is where that rule is written down. This screen is REPLACED by the printed
+   * receipt once `issued !== null`, so no lane key can survive the write.
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.altKey || e.ctrlKey || e.metaKey || isTypingTarget(e.target) || palette?.isOpen === true) return;
+      // "1".."3" → the three lanes. Anything else (a letter, "", "Enter") indexes to undefined.
+      const mode = LANE_ORDER[Number(e.key) - 1];
+      if (mode === undefined) return;
+      if (payablePaise === null || payablePaise === 0) return;
+      e.preventDefault();
+      takeLane(mode);
+    };
+    // The guard sits INSIDE the handler rather than short-circuiting the effect body, so the effect
+    // always returns its cleanup and the listener is never left attached across a re-render.
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("keydown", onKey); };
+  }, [palette?.isOpen, payablePaise, takeLane]);
 
   // ——— the write ————————————————————————————————————————————————————————————————————————————
 
@@ -292,6 +408,17 @@ export function BillingCounter(): React.ReactElement {
     if (lines.length === 0) {
       setError(t("billing.counter.noLines"));
       setErrorCode(null);
+      return;
+    }
+    /*
+      THE COUNTER CANNOT ISSUE AGAINST A PRICE IT HAS NOT GOT. The button is also disabled in this
+      state, so this is defence in depth rather than the load-bearing half — but it is what makes
+      the refusal SAY something: `unsettled_issue_refused` (`invoices.ts`) would refuse the write
+      anyway, from the server, in words a cashier cannot connect to the 503 she never saw.
+    */
+    if (payablePaise === null) {
+      setError(t(previewFailed ? "billingSeat.bill.previewFailed" : "billingSeat.bill.previewPending"));
+      setErrorCode(billingErrorCode(preview.error));
       return;
     }
     // D2 step 3 / owner ruling 2, mirrored at the counter: unsettled without a REASON is refused
@@ -426,11 +553,6 @@ export function BillingCounter(): React.ReactElement {
     .find((c) => c.kind === "corporate" || c.kind === "tpa" || c.kind === "cghs" || c.kind === "esic") ?? null;
   const panelPays = quote?.intendedPayer !== undefined && quote.intendedPayer !== "self";
 
-  const takeLane = (mode: TenderMode): void => {
-    setLane({ mode, amountPaise: netPayablePaise, nonce: Date.now() });
-    setLog((prev) => logged(prev, t("billingSeat.log.lane", { mode: t(`billing.tender.modes.${mode}`), amount: fmtPaise(netPayablePaise) })));
-  };
-
   const ask = (question: string): void => {
     const q = question.trim().toLowerCase();
     if (q === "") return;
@@ -519,12 +641,31 @@ export function BillingCounter(): React.ReactElement {
                       {/*
                         THE STAMP IS OUTLINED, NEVER FILLED — desk-one.css §3. A filled stamp reads
                         as a button; this is a state, and a patient sees it upside down across a
-                        counter. PANEL when somebody else is paying, UNPAID until the money lands.
+                        counter.
+
+                        TWO AXES, TWO MARKS, AND THEY USED TO BE ONE. "PANEL when somebody else is
+                        paying, UNPAID until the money lands" — the comment that stood here — names
+                        two different facts, and the single stamp made the first ERASE the second.
+                        A panel bill therefore never read UNPAID however much was outstanding, on a
+                        bill the server prices at full gross. Worse, `stamp pd` is literally the
+                        PAID class (`desk-one/overlays.tsx`'s own legend), so the counter was the
+                        one site in the repo painting PAID on an unpaid bill; the other four gate it
+                        on a money fact. `intendedPayer` says WHO is billed and never whether money
+                        arrived, so it now rides BESIDE the money stamp instead of replacing it.
+
+                        Nothing is ever collected on a DRAFT, so the money mark is UNPAID whenever
+                        something is owed — and ₹0, the same mark Desk One draws for a free visit,
+                        when the server's own figure says nothing is.
                       */}
-                      <div style={{ marginTop: 9 }}>
-                        <span className={panelPays ? "stamp pd" : "stamp un"} data-testid="token-stamp">
-                          {panelPays ? t("billingSeat.rail.panelStamp") : t("billingSeat.rail.unpaidStamp")}
-                        </span>
+                      <div style={{ marginTop: 9, display: "flex", gap: 7, alignItems: "center" }}>
+                        {collectablePaise === 0 ? (
+                          <span className="stamp pd" data-testid="token-stamp">{fmtPaise(0)}</span>
+                        ) : (
+                          <span className="stamp un" data-testid="token-stamp">{t("billingSeat.rail.unpaidStamp")}</span>
+                        )}
+                        {panelPays && (
+                          <span className="stamp pd" data-testid="payer-stamp">{t("billingSeat.rail.panelStamp")}</span>
+                        )}
                       </div>
                     </div>
                 </>
@@ -799,6 +940,28 @@ export function BillingCounter(): React.ReactElement {
                   </div>
                 </div>
               )}
+
+              {/*
+                THE FAILURE IS RENDERED WHERE THE FIGURE WOULD HAVE BEEN, because that is where the
+                cashier is looking. The sibling seat already does exactly this — `desk-one`'s
+                stages.tsx draws a red "The fee could not be quoted: …" box — and `/billing`, the
+                screen that actually takes the money, drew nothing at all: a grep for `isError` over
+                all 1048 of its lines came back empty.
+              */}
+              {previewFailed && (
+                <div
+                  role="alert"
+                  data-testid="preview-error"
+                  style={{ marginTop: 12, paddingTop: 11, borderTop: "1px solid var(--line)" }}
+                >
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "var(--red)" }}>
+                    {t("billingSeat.bill.previewFailed")}
+                  </p>
+                  <p className="mo" style={{ margin: "4px 0 0", fontSize: 11, color: "var(--faint)" }}>
+                    {billingErrorCode(preview.error) ?? ""}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* ═══ ADD A LINE ═══ */}
@@ -850,7 +1013,7 @@ export function BillingCounter(): React.ReactElement {
                 by hand. Mixed tenders are real and stay reachable; see `TenderEditor`'s `lane` prop.
               */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 9, marginTop: 12 }}>
-                {(["cash", "upi", "card"] as const).map((mode, i) => (
+                {LANE_ORDER.map((mode, i) => (
                   <button
                     key={mode}
                     type="button"
@@ -858,19 +1021,22 @@ export function BillingCounter(): React.ReactElement {
                     className={lane?.mode === mode ? "sec grn" : "sec"}
                     style={{ height: 44, gap: 9, justifyContent: "flex-start" }}
                     onClick={() => { takeLane(mode); }}
-                    disabled={netPayablePaise === 0}
+                    disabled={payablePaise === null || payablePaise === 0}
                   >
                     <span className="kb">{String(i + 1)}</span>
                     <span style={{ fontWeight: lane?.mode === mode ? 600 : 500 }}>{t(`billing.tender.modes.${mode}`)}</span>
                     <span className="mo" style={{ marginLeft: "auto", fontSize: 11.5 }}>
-                      {lane?.mode === mode ? fmtPaise(netPayablePaise) : "—"}
+                      {lane?.mode === mode && payablePaise !== null ? fmtPaise(payablePaise) : "—"}
                     </span>
                   </button>
                 ))}
               </div>
 
               <div style={{ marginTop: 12 }}>
-                <TenderEditor payablePaise={netPayablePaise} onChange={setTenders} lane={lane} />
+                {/* An unknown payable is not a ₹0 payable, but the editor's short/exact/over
+                    arithmetic needs a number; the lanes above are dark and `submit` refuses, so
+                    nothing can be tendered against this zero. */}
+                <TenderEditor payablePaise={payablePaise ?? 0} onChange={setTenders} lane={lane} />
               </div>
 
               {/*
@@ -878,9 +1044,9 @@ export function BillingCounter(): React.ReactElement {
                 handed back stays on the patient's account as an advance" is a promise the drawer is
                 counted on, so the cashier has to read it while they still have the notes in hand.
               */}
-              {tenderedPaise > netPayablePaise && netPayablePaise > 0 && (
+              {payablePaise !== null && payablePaise > 0 && tenderedPaise > payablePaise && (
                 <p data-testid="surplus-banner" className="pill gd" style={{ height: "auto", padding: "9px 11px", marginTop: 11 }}>
-                  {t("billingSeat.pay.surplus", { amount: fmtPaise(tenderedPaise - netPayablePaise) })}
+                  {t("billingSeat.pay.surplus", { amount: fmtPaise(tenderedPaise - payablePaise) })}
                 </p>
               )}
 
@@ -944,18 +1110,29 @@ export function BillingCounter(): React.ReactElement {
                   when the payer covers the whole amount the payable IS ₹0.00 and the invoice still
                   has to be issued. So the label distinguishes the two — nothing to bill yet, versus
                   nothing to collect — and only the first is refused.
+
+                  AND "NOTHING TO COLLECT" IS A CLAIM ABOUT THE SERVER'S FIGURE, so it is reachable
+                  only through `payablePaise`. An unpriced draft now says which kind of unpriced it
+                  is — refused, or still pricing — instead of offering to issue at a zero this
+                  screen made up. That covers the in-flight window on every edit too: the debounced
+                  key change emptied `preview.data`, so the button flashed "Issue — nothing to
+                  collect" mid-typing on the perfectly happy path.
                 */}
                 <SubmitButton
                   data-testid="submit-invoice"
                   className="pri"
-                  disabled={lines.length === 0}
+                  disabled={lines.length === 0 || payablePaise === null}
                   onClick={(k) => submit(k)}
                 >
                   {lines.length === 0
                     ? t("billingSeat.pay.nothingToBill")
-                    : netPayablePaise === 0
-                      ? t("billingSeat.pay.issueNoCollection")
-                      : t("billingSeat.pay.take", { amount: fmtPaise(netPayablePaise) })}
+                    : previewFailed
+                      ? t("billingSeat.pay.priceUnknown")
+                      : payablePaise === null
+                        ? t("billingSeat.pay.pricing")
+                        : payablePaise === 0
+                          ? t("billingSeat.pay.issueNoCollection")
+                          : t("billingSeat.pay.take", { amount: fmtPaise(payablePaise) })}
                 </SubmitButton>
                 <span style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--faint)" }}>
                   {t("billingSeat.pay.printsNote")}
@@ -1003,9 +1180,28 @@ export function BillingCounter(): React.ReactElement {
                   : [panel.payerName, panel.employeeId === null ? null : t("billingSeat.schemes.employee", { id: panel.employeeId })]
                     .filter((x) => x !== null).join(" · ")}
               </p>
-              {panelPays && (
+              {/*
+                "Nothing to collect at this counter" is a claim about MONEY, and it was gated on
+                `panelPays` alone — a registration intent. A panel bill prices at FULL GROSS, so
+                this line printed in green over a net the same screen was rendering as
+                "Take ₹560.00", and the cashier who reads the green line as the verdict collects
+                nothing and issues the bill on credit. It now reads the server's own figure through
+                `collectablePaise`, states the amount when there IS one, and says NOTHING while that
+                figure is unknown — silence is the only honest thing to print over a price we have
+                not got.
+              */}
+              {panelPays && collectablePaise === 0 && (
                 <p className="mo" style={{ margin: "7px 0 0", fontSize: 12, fontWeight: 600, color: "var(--green)" }}>
                   {t("billingSeat.schemes.nothingToCollect")}
+                </p>
+              )}
+              {panelPays && collectablePaise !== null && collectablePaise > 0 && (
+                <p
+                  className="mo"
+                  data-testid="panel-still-payable"
+                  style={{ margin: "7px 0 0", fontSize: 12, fontWeight: 600, color: "var(--gold)" }}
+                >
+                  {t("billingSeat.schemes.panelStillPayable", { amount: fmtPaise(collectablePaise) })}
                 </p>
               )}
             </div>

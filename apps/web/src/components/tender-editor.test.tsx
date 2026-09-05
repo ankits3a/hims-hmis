@@ -1,13 +1,37 @@
+import { useState } from "react";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "../test-utils";
 import { TenderEditor } from "./tender-editor";
-import type { WireTender } from "../lib/billing-api";
+import { parseRupees } from "./money-input";
+import type { TenderMode, WireTender } from "../lib/billing-api";
 
 /** The last value `onChange` emitted — the thing that becomes `receipt.tenders` in a request body. */
 function lastEmit(onChange: ReturnType<typeof vi.fn>): WireTender[] {
   const calls = onChange.mock.calls;
   return calls[calls.length - 1]![0] as WireTender[];
+}
+
+/** Flips the `lane` prop the way `billing-counter`'s three lane buttons do. */
+function LaneHarness({ onChange }: { onChange: (tenders: WireTender[]) => void }): React.ReactElement {
+  const [lane, setLane] = useState<{ mode: TenderMode; amountPaise: number; nonce: number } | null>(null);
+  return (
+    <>
+      <button
+        type="button"
+        data-testid="press-cash"
+        onClick={() => { setLane({ mode: "cash", amountPaise: 50000, nonce: 1 }); }}
+      >
+        cash lane
+      </button>
+      <TenderEditor payablePaise={50000} onChange={onChange} lane={lane} />
+    </>
+  );
+}
+
+/** `#tender-amount-0` — the ONE control in the row that can change the money. */
+function amountField(): HTMLInputElement {
+  return screen.getByLabelText("Amount", { selector: "#tender-amount-0" }) as HTMLInputElement;
 }
 
 describe("TenderEditor", () => {
@@ -108,5 +132,56 @@ describe("TenderEditor", () => {
     expect(JSON.stringify(emitted)).toBe(
       '[{"mode":"cash","amountPaise":11233},{"mode":"card","amountPaise":101099,"refText":"CARD-4411"}]',
     );
+  });
+
+  /* ══════════════════════════════════════════════════════════════════════════════════════════
+     FD-25 BACKLOG 2 — THE FIELD SHOWS WHAT WILL BE POSTED
+
+     A lane press seeds an amount into ROW STATE and `toWire` posts it. The `MoneyInput` that
+     displays and edits that amount was mounted with no `value`, so the cashier read a BLANK box
+     while the full payable was armed — and a figure typed BEFORE the press vanished with nothing
+     in its place, because the seed mints a fresh `row.key` and remounts the subtree. The reference
+     box two lines below was already bound; only the control carrying the money was not.
+
+     THE DISCRIMINATING ASSERTION IS THE FIELD AGAINST THE WIRE. The posted body is byte-identical
+     fixed and unfixed — 50000 either way, the lane's arming is what it is — so a test that only
+     inspects the request proves nothing here.
+     ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+  it("FD-25 backlog 2: a lane-seeded amount is IN the field the cashier edits, not only in the value it emits", async () => {
+    const onChange = vi.fn();
+    renderWithProviders(
+      <TenderEditor payablePaise={50000} onChange={onChange} lane={{ mode: "cash", amountPaise: 50000, nonce: 1 }} />,
+    );
+
+    const amount = await screen.findByLabelText("Amount", { selector: "#tender-amount-0" });
+    // THE AMOUNT, read both ways and format-independently: what the box says and what becomes
+    // `receipt.tenders` are ONE number. (`parseRupees("")` is `{ ok: true, paise: undefined }`,
+    // which is what an unfixed run puts on the left of this.)
+    expect(parseRupees((amount as HTMLInputElement).value))
+      .toEqual({ ok: true, paise: lastEmit(onChange)[0]!.amountPaise });
+    expect(lastEmit(onChange)).toEqual([{ mode: "cash", amountPaise: 50000 }]);
+    expect(amount).toHaveValue("500.00");                                   // the readable secondary
+    expect(screen.getByTestId("tender-sum")).toHaveTextContent("₹500.00");  // and the screen agrees
+    expect(screen.getByTestId("tender-state")).toHaveTextContent("Exact");
+  });
+
+  it("FD-25 backlog 2: a lane pressed over a typed amount replaces it VISIBLY — the field never disagrees with the wire", async () => {
+    const onChange = vi.fn();
+    renderWithProviders(<LaneHarness onChange={onChange} />);
+    const user = userEvent.setup();
+
+    await user.type(amountField(), "300");
+    expect(parseRupees(amountField().value)).toEqual({ ok: true, paise: 30000 });
+    expect(lastEmit(onChange)).toEqual([{ mode: "cash", amountPaise: 30000 }]);
+
+    await user.click(screen.getByTestId("press-cash"));
+
+    // ₹500 recorded against a drawer that took ₹300: unfixed, the box goes BLANK here while the
+    // full payable is on the wire, so nothing on the row states the figure it is about to post.
+    expect(parseRupees(amountField().value))
+      .toEqual({ ok: true, paise: lastEmit(onChange)[0]!.amountPaise });
+    expect(lastEmit(onChange)).toEqual([{ mode: "cash", amountPaise: 50000 }]);
+    expect(amountField()).toHaveValue("500.00");
   });
 });
