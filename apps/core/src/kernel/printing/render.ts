@@ -4,6 +4,9 @@ import {
 } from "../db/schema";
 import { encounterFeeStatuses } from "../../modules/billing/fee-status";
 import { LAB_DEPARTMENT_CODE } from "../../modules/opd/encounters";
+/* FD-25 §14 — the ONE place a confidential patient's name is decided. See `subjectOf`. */
+import { displayName, displayNameForRelease } from "../../modules/patients";
+import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
 
 /**
@@ -161,6 +164,10 @@ function thermalPage(title: string, body: string): RenderedDocument {
 
 /** The identity every document repeats, because a slip that cannot be matched to a person is litter. */
 type SlipSubject = {
+  /**
+   * FD-25 — the name that may be PRINTED, which for a §14 patient is not the name in the record.
+   * `subjectOf` resolves it through the patients module; nothing downstream re-reads `patients.name`.
+   */
   patientName: string; uhid: string; ageSex: string;
   visitNo: string; serviceDate: string;
   /** FD-24 close — the fee projection reads it; see `renderTokenSlip`'s stamp. */
@@ -200,7 +207,9 @@ function ageSexOf(dob: string | Date | null, gender: string | null, on: Date): s
  * correction hands over the CORRECTED name, and the queue row never becomes a stale second copy of
  * the patient record.
  */
-async function subjectOf(db: Db, encounterId: string, now: Date): Promise<SlipSubject | null> {
+async function subjectOf(
+  db: Db, encounterId: string, now: Date, requester: Actor | null,
+): Promise<SlipSubject | null> {
   const rows = await db
     .select({
       visitNo: opdEncounters.visitNo,
@@ -209,6 +218,15 @@ async function subjectOf(db: Db, encounterId: string, now: Date): Promise<SlipSu
          `encounterFeeStatuses` reads `visitType` to decide which fee service applies. */
       visitType: opdEncounters.visitType,
       patientName: patients.name,
+      /* FD-25 — `alias` and `is_confidential` travel because `displayNameForRelease` needs all three
+         to answer. `billing/worklist.ts` selects exactly these beside the name for the same reason.
+         The ID travels too: a break-glass grant is scoped to ONE patient, so the rule cannot be
+         asked without naming whose record this is. `patients.id` rather than
+         `opd_encounters.patient_id` — they are the join condition and therefore equal, but the
+         question is "may they see THIS ROW's name", and this is that row. */
+      patientId: patients.id,
+      alias: patients.alias,
+      isConfidential: patients.isConfidential,
       uhid: patients.uhid,
       dob: patients.dob,
       gender: patients.administrativeGender,
@@ -240,8 +258,57 @@ async function subjectOf(db: Db, encounterId: string, now: Date): Promise<SlipSu
     .from(opdQueueEntries)
     .where(eq(opdQueueEntries.encounterId, encounterId));
 
+  /*
+    ═══ FD-25, OWNER RULING 2026-09-05 — WHOSE NAME REACHES PAPER IS A §14 DECISION ═══
+
+    This file printed `patients.name` — the LEGAL name — on every document, for every patient, on the
+    first print and on every reprint. `kernel/printing` contained no reference to §14 at all. The
+    reprint route grew a gate this session (`getPatient` decides who may ASK for a second copy) and
+    the paper it produced still said the name the seal exists to withhold: a gate on the REQUEST with
+    none on the DOCUMENT is a seal with a hole one level down.
+
+    THE RULE IS NOT RE-ANSWERED HERE. `display-name.ts` is the ONE place a confidential patient's
+    name is decided — keyed on `patients.confidential.read` rather than on a role, because a role is
+    what the permission is granted TO, and a dash rather than the legal name when a sealed row has
+    no alias. `billing/worklist.ts` and `kernel/orders/read.ts` are the precedents for a reader
+    calling it. A second implementation inside the printer is how the two start disagreeing about a
+    VIP.
+
+    ═══ AND IT IS THE `Release` SIBLING, WHICH IS THE OTHER HALF OF THE OWNER'S RULING ═══
+
+    The ruling reads: *"alias by default; the LEGAL NAME prints only when the operator goes through
+    the existing break-glass grant, which is already logged."* `displayNameFor` answers only the
+    first clause — it decides on `patients.confidential.read`, and break-glass does not confer that
+    permission; it writes `break_glass_grants`, a table `hasPermission` has never read. Asking it
+    here handed the 2 a.m. clinician who had just opened the sealed record through break-glass — and
+    who is reading the legal name off `GET /patients/:id` at that moment — a slip saying "Patient A".
+    Paper that disagrees with the screen beside it is settled by a pen, and a pen logs nothing.
+
+    `displayNameForRelease` is that second clause, and it lives BESIDE the rule rather than here:
+    this file reading `break_glass_grants` itself would be the second authority the patients module
+    exists to prevent. It is NOT a general widening — every screen still asks `displayNameFor`, and
+    who may see a sealed name on the BILLING WORKLIST is a decision nobody has taken.
+
+    ═══ NO REQUESTER MEANS THE ALIAS, AND THAT IS THE SAFE DIRECTION ═══
+
+    `print_jobs.requested_by` is NULLABLE, and a row without one is the shape most likely to be a
+    background producer — the case with no human to answer for the disclosure. So an unattributed
+    print gets the same answer `displayNameFor` gives a `system` actor: the alias. The relay's own
+    agent credential gets it too; claiming a job is not a clearance.
+
+    ═══ AND IT IS RESOLVED AT RENDER TIME, LIKE EVERY OTHER FACT ON THESE DOCUMENTS ═══
+
+    The clerk who queued the slip may have been through break-glass when they asked; a grant expires
+    and a role is revoked. Printing is asynchronous by design — the relay may claim minutes later —
+    and the moment the clearance has to be true is the moment paper comes out. That cuts the safe way
+    round: a lapsed grant prints the alias, never the reverse.
+  */
+  const person = { name: row.patientName, alias: row.alias, isConfidential: row.isConfidential };
+
   return {
-    patientName: row.patientName,
+    patientName: requester === null
+      ? displayName(person, false)
+      : await displayNameForRelease(db, requester, person, row.patientId),
     uhid: row.uhid,
     visitType: row.visitType,
     ageSex: ageSexOf(row.dob, row.gender, now),
@@ -267,10 +334,13 @@ export async function renderTokenSlip(
   db: Db,
   params: { encounterId?: unknown; unpaid?: unknown },
   now = new Date(),
+  /* FD-25 — who asked for this paper. `null` DEFAULTS TO THE ALIAS for a §14 patient: a caller that
+     forgets to thread the requester leaks nothing, which is the only safe way round for a default. */
+  requester: Actor | null = null,
 ): Promise<RenderedDocument | null> {
   const encounterId = typeof params.encounterId === "string" ? params.encounterId : null;
   if (encounterId === null) return null;
-  const s = await subjectOf(db, encounterId, now);
+  const s = await subjectOf(db, encounterId, now, requester);
   if (s === null) return null;
 
   /*
@@ -373,10 +443,12 @@ export async function renderPaymentReceipt(
   db: Db,
   params: { encounterId?: unknown; amountPaise?: unknown; mode?: unknown; receiptNo?: unknown },
   now = new Date(),
+  /** FD-25 — see `renderTokenSlip`. A receipt names the patient exactly as the slip does. */
+  requester: Actor | null = null,
 ): Promise<RenderedDocument | null> {
   const encounterId = typeof params.encounterId === "string" ? params.encounterId : null;
   if (encounterId === null) return null;
-  const s = await subjectOf(db, encounterId, now);
+  const s = await subjectOf(db, encounterId, now, requester);
   if (s === null) return null;
   const paise = typeof params.amountPaise === "number" ? params.amountPaise : 0;
   const rupees = `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -416,10 +488,12 @@ export async function renderPrescriptionSheet(
   db: Db,
   params: { encounterId?: unknown },
   now = new Date(),
+  /** FD-25 — see `renderTokenSlip`. This is the sheet the patient CARRIES out of the building. */
+  requester: Actor | null = null,
 ): Promise<RenderedDocument | null> {
   const encounterId = typeof params.encounterId === "string" ? params.encounterId : null;
   if (encounterId === null) return null;
-  const s = await subjectOf(db, encounterId, now);
+  const s = await subjectOf(db, encounterId, now, requester);
   if (s === null) return null;
 
   const css = `
@@ -502,11 +576,17 @@ export async function renderDocument(
   document: string,
   params: Record<string, unknown>,
   now = new Date(),
+  /**
+   * FD-25 — the print job's `requested_by`, as an actor. It travels to EVERY document rather than to
+   * the token slip alone: a fix aimed at one instance closes one instance, and the prescription is
+   * the sheet that leaves the building in the patient's hand.
+   */
+  requester: Actor | null = null,
 ): Promise<RenderedDocument | null> {
   switch (document) {
-    case "opd_token_slip": return await renderTokenSlip(db, params, now);
-    case "opd_payment_receipt": return await renderPaymentReceipt(db, params, now);
-    case "opd_prescription": return await renderPrescriptionSheet(db, params, now);
+    case "opd_token_slip": return await renderTokenSlip(db, params, now, requester);
+    case "opd_payment_receipt": return await renderPaymentReceipt(db, params, now, requester);
+    case "opd_prescription": return await renderPrescriptionSheet(db, params, now, requester);
     default: return null;
   }
 }

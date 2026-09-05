@@ -2,7 +2,7 @@ import { Body, Controller, ForbiddenException, Get, Inject, Post, Query } from "
 import { z } from "zod";
 import { DB } from "../tokens";
 import { CurrentActor, RequirePermission } from "../auth/decorators";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { printJobs } from "../db/schema";
 import { claimPrintJobs, reportFailed, reportPrinted } from "./claim";
@@ -109,6 +109,32 @@ export class PrintingController {
     });
 
     /*
+      ═══ FD-25, OWNER RULING 2026-09-05 — THE RENDERER IS TOLD WHO ASKED FOR THE PAPER ═══
+
+      A §14 patient's slip carries their ALIAS unless the operator who asked for it has been through
+      the grant, and `renderDocument` cannot know that from a job id. `print_jobs.requested_by` is the
+      column that knows: `openVisitInTx` writes the clerk who opened the visit, and `reprint` below
+      writes the clerk who asked for the second copy. Both write it ONLY for a user actor, so
+      rebuilding a `user` actor from it is faithful rather than a guess — and a value that somehow was
+      not a user id resolves to no permissions, which is the alias, which is the safe direction.
+
+      IT IS A SECOND READ RATHER THAN A FIELD ON `ClaimedJob` because `claim.ts` belongs to another
+      lane this session; the natural home for this is beside `patientId` on the claim itself, which
+      already travels for exactly this kind of question. One indexed read per claim, not per job.
+
+      A NULL REQUESTER IS NOT AN OMISSION — it is the answer for a row nobody signed, and the
+      renderer's default treats it as such.
+    */
+    const requesters = new Map<string, string | null>();
+    if (jobs.length > 0) {
+      const rows = await this.db
+        .select({ id: printJobs.id, requestedBy: printJobs.requestedBy })
+        .from(printJobs)
+        .where(inArray(printJobs.id, jobs.map((j) => j.id)));
+      for (const row of rows) requesters.set(row.id, row.requestedBy);
+    }
+
+    /*
       ═══ THE DOCUMENT TRAVELS WITH THE CLAIM, AND THAT IS THE OFFLINE GUARANTEE ═══
 
       The brief's binding constraint is *"patient care must never depend on internet
@@ -122,7 +148,11 @@ export class PrintingController {
     */
     const out: PrintJobPayload[] = [];
     for (const job of jobs) {
-      const rendered = await renderDocument(this.db, job.document, job.params);
+      const requestedBy = requesters.get(job.id) ?? null;
+      const rendered = await renderDocument(
+        this.db, job.document, job.params, new Date(),
+        requestedBy === null ? null : { type: "user", id: requestedBy },
+      );
       if (rendered === null) {
         await reportFailed(this.db, job.id, relayId, `no renderer produced a document for ${job.document}`);
         continue;

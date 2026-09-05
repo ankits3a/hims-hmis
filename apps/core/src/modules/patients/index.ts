@@ -32,7 +32,9 @@ export type { GuardianAuthority, GuardianRow } from "./guardians";
  * violation; re-implementing the signature check in the OT module would be a second answer to "is
  * this card genuine", which is the one question that must have exactly one.
  */
-export { displayName, displayNameFor } from "./display-name";
+/* FD-25 — `displayNameForRelease` is the PAPER answer and joins its siblings deliberately: see
+   `display-name.ts` for why there are two and which surfaces may ask the wider one. */
+export { displayName, displayNameFor, displayNameForRelease } from "./display-name";
 export type { NameablePatient } from "./display-name";
 export { verifyQrScan } from "./qr";
 export type { QrVerifyResult } from "./qr";
