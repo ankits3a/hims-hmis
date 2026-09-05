@@ -247,13 +247,44 @@ matters**: `startAcquisition` calls `assertDeviceLicensed` and `mwlExport` calls
 migrations while the code is deployed is not**: every ionising acquisition will fail on a missing
 table. Roll back the application first, the migrations second, or neither.
 
-If licences are the problem — a machine stopped because its row is wrong rather than because its
-licence is — the fix is to correct the register, not to disable the gate. `POST /aerb/licences/:id/status`
-with `{"to":"suspended"}` on the wrong row, then file the right one.
+### If a LICENCE ROW is the problem — read this before you touch it
+
+A machine stopped because its row is wrong rather than because its licence is. The fix is to correct
+the register, not to disable the gate. **But the obvious correction does not work, and this section
+told you to do it until 2026-09-05:**
+
+> ~~`POST /aerb/licences/:id/status` with `{"to":"suspended"}` on the wrong row, then file the
+> right one.~~
+
+**Suspending does not clear the way.** `fileLicence`'s overlap pre-read excludes only `surrendered`
+rows (`ne(status, "surrendered")`), so a *suspended* row still occupies its dates and filing the
+corrected certificate comes back **`licence_already_active`, naming the row you just suspended** —
+at the exact moment a machine is dark and somebody is working under pressure.
+
+**What actually clears an overlapping row is SURRENDER, and surrender is terminal.** So today the
+only working correction for a mistyped window is an act §2 reserves for decommissioning.
+
+> **⚠ THIS IS AN OPEN QUESTION WITH THE OWNER, NOT A PROCEDURE.** Is a data-entry error a lawful
+> reason to surrender a licence? Until that is answered, **do not surrender a row to fix a typo on
+> your own authority.** Raise it with the RSO and the quality manager, record what you did and why,
+> and if the machine must run meanwhile that is a clinical decision made by a person — not one this
+> runbook can make for them.
+
+**What IS safe today, and covers the common cases:**
+
+- **The window is too SHORT** (you typed the wrong `validTo`, the machine goes dark early) — file
+  the *next* certificate starting the day after the wrong one ends. No overlap, nothing surrendered,
+  the machine keeps running. This is the renewal path and it is the answer more often than it looks.
+- **The window is too LONG or the dates overlap a real certificate** — the register is claiming
+  cover the hospital may not have. That is the case that needs the ruling above before anyone acts.
+- **The licence NUMBER or a reference is wrong, dates correct** — there is deliberately no edit
+  route (§2's header says why: a licence is a document AERB issued, and a correction must leave the
+  register able to say what it said on the day of a given scan). Record the discrepancy and raise
+  it; do not surrender to retype a number.
 
 ---
 
-## 8. Who can do any of this (T6)
+## 10. Who can do any of this (T6)
 
 `aerb.registers.read` buys the book; **`aerb.registers.manage` buys the pen.** The screen asks the
 server which one you hold and renders accordingly — a quality manager showing an inspector the file

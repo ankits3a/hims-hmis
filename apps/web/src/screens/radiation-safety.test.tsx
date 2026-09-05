@@ -1034,4 +1034,81 @@ describe("the AERB write surface (18c T6)", () => {
     expect(screen.getAllByRole("checkbox")).toHaveLength(1);
     expect(screen.queryAllByRole("textbox")).toHaveLength(0);
   });
+
+  /* ═════════════════════ SURRENDER IS TERMINAL ═════════════════════ */
+
+  /**
+   * ═══ THE ONE-CLICK IRREVERSIBLE ACT ═══
+   *
+   * `surrendered` has no way back and the machine is unlicensed from that instant — every ionising
+   * study on it refused. It sat one click from `Suspend`, on a row the RSO scans past at speed
+   * while working down the gap list at go-live, which is the exact user this screen exists for.
+   * Arming is a guard against a SLIP, not against a decision.
+   */
+  it("does not surrender on the first click — it arms, and posts nothing", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [licence()], canManage: true } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [PICKERS]: { status: 200, body: PICKER_BOOK },
+      "POST /api/aerb/licences/L1/status": { status: 201, body: { ok: true } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-licence-surrender-L1"));
+
+    expect(requestedKeys()).not.toContain("POST /api/aerb/licences/L1/status");
+    expect(screen.getByTestId("aerb-licence-surrender-confirm-L1")).toBeInTheDocument();
+    expect(screen.getByTestId("aerb-licence-decommission-ref-L1")).toBeInTheDocument();
+  });
+
+  it("surrenders on the SECOND click, carrying the decommissioning reference AERB requires", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [licence()], canManage: true } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [PICKERS]: { status: 200, body: PICKER_BOOK },
+      "POST /api/aerb/licences/L1/status": { status: 201, body: { ok: true } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-licence-surrender-L1"));
+    await userEvent.type(screen.getByTestId("aerb-licence-decommission-ref-L1"), "DECOM/2026/14");
+    await userEvent.click(screen.getByTestId("aerb-licence-surrender-confirm-L1"));
+
+    await waitFor(() => {
+      expect(sentBodies("POST /api/aerb/licences/L1/status")).toHaveLength(1);
+    });
+    expect(sentBodies("POST /api/aerb/licences/L1/status")[0]).toMatchObject({
+      to: "surrendered", decommissionRef: "DECOM/2026/14",
+    });
+  });
+
+  it("lets the RSO back out of an armed surrender, having posted nothing", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [licence()], canManage: true } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [PICKERS]: { status: 200, body: PICKER_BOOK },
+      "POST /api/aerb/licences/L1/status": { status: 201, body: { ok: true } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-licence-surrender-L1"));
+    await userEvent.click(screen.getByTestId("aerb-licence-surrender-cancel-L1"));
+
+    expect(requestedKeys()).not.toContain("POST /api/aerb/licences/L1/status");
+    expect(screen.queryByTestId("aerb-licence-surrender-confirm-L1")).not.toBeInTheDocument();
+    expect(screen.getByTestId("aerb-licence-surrender-L1")).toBeInTheDocument();
+  });
+
+  /** The REVERSIBLE acts must stay one click — a guard on everything is a guard on nothing. */
+  it("still suspends on a single click, because suspension is reversible", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [licence()], canManage: true } },
+      [GAPS]: { status: 200, body: { rows: [] } },
+      [PICKERS]: { status: 200, body: PICKER_BOOK },
+      "POST /api/aerb/licences/L1/status": { status: 201, body: { ok: true } },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-licence-suspend-L1"));
+    await waitFor(() => {
+      expect(sentBodies("POST /api/aerb/licences/L1/status")).toHaveLength(1);
+    });
+    expect(sentBodies("POST /api/aerb/licences/L1/status")[0]).toMatchObject({ to: "suspended" });
+  });
 });

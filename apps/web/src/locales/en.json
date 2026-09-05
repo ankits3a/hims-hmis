@@ -3221,7 +3221,10 @@
       "readRecorded": "Recorded: {{hp10}} mSv.",
       "setLevel": "Set the investigation level",
       "levelPerMonth": "Investigation level, mSv per month",
-      "levelSet": "The investigation level is now {{level}} mSv per month. Readings already recorded keep the level that was in force when they were entered."
+      "levelSet": "The investigation level is now {{level}} mSv per month. Readings already recorded keep the level that was in force when they were entered.",
+      "surrenderArmed": "Terminal — the machine becomes unlicensed:",
+      "surrenderConfirm": "Confirm surrender",
+      "decommissionRef": "Decommissioning ref."
     }
   }
 }
