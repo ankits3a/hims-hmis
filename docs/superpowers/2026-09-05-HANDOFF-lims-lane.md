@@ -73,6 +73,23 @@ agent. `kernel/auth/guards.ts` throws `"agents hold no permissions yet"` for any
 
 ## 3. T5 — the plate map. WHAT IS DONE AND WHAT REMAINS
 
+> **PICKED UP 2026-09-05 by the successor session, on `lane/lims-17e-t5-clean`** (`origin/main` +
+> `beed060` cherry-picked, not the stale T4 base). The six items below were built; the decisions
+> taken while building them are recorded as **D12–D15 in the 17-E phase doc §3**, not here, because
+> this file is a handoff and that one is the record. Two are worth knowing before reading the code:
+>
+> · **D13 — on a controls-failed plate NOTHING parks either**, not just "no result". §4's inbox is
+>   how a human NAMES an unidentified number and attaches it, and every guard on that path is blind
+>   to the plate — so a parked row from a rejected plate is an invitation to release the exact value
+>   the rejection refused. **T6 must therefore render a rejected plate from `lab_plate_maps`**, since
+>   the inbox deliberately will not show one.
+> · **A fifth mutant the plan did not name:** a well transmitted TWICE in one block silently drags
+>   the negative-control mean, and the cut-off every patient well is measured against moves with it,
+>   in a direction nothing reports. Neither reading is used now.
+>
+> The four naming modes had also grown four copies of "attach a machine value or say why it parked";
+> that is one closure in `ingest.ts` now, collapsed before T5's arm was added rather than after.
+
 **Parked as commit `beed060` on branch `lane/lims-17e-t5`** — 110 lines, schema only.
 
 That branch is based on the pre-merge T4 branch, so **do not merge it**. Rebuild it:
