@@ -960,11 +960,33 @@ export function RadiationSafety(): React.ReactElement {
    * rules of hooks the first time a branch appeared above it.
    */
   const [statusReason, setStatusReason] = useState("");
+  /**
+   * ═══ SURRENDER IS TERMINAL AND WAS ONE CLICK AWAY ═══
+   *
+   * `surrendered` has no way back — `changeLicenceStatus` refuses every transition out of it — and
+   * the machine is unlicensed from that moment, so every ionising study on it is refused. The
+   * person most exposed is the one this screen was built for: the RSO working down the gap list at
+   * go-live, clicking through rows at speed. Suspend and reactivate are reversible and stay one
+   * click; **surrender now ARMS first and posts on a second, separate click**, with the
+   * decommissioning reference beside it — AERB requires the decommissioning itself to be
+   * documented, and the route has always accepted the field while this screen sent null.
+   *
+   * This is a guard against a slip, not against a decision. It does not ask "are you sure" and it
+   * does not editorialise; it puts the irreversible act one deliberate step away from the
+   * reversible ones.
+   */
+  const [surrenderArmed, setSurrenderArmed] = useState<string | null>(null);
+  const [decommissionRef, setDecommissionRef] = useState("");
   const licenceStatus = useMutation({
     mutationFn: (v: { id: string; to: "active" | "suspended" | "surrendered"; licenceNo: string }) =>
-      changeLicenceStatus(v.id, v.to, { reason: blankToNull(statusReason), decommissionRef: null }),
+      changeLicenceStatus(v.id, v.to, {
+        reason: blankToNull(statusReason),
+        decommissionRef: v.to === "surrendered" ? blankToNull(decommissionRef) : null,
+      }),
     onSuccess: (_r, v) => {
       setStatusReason("");
+      setDecommissionRef("");
+      setSurrenderArmed(null);
       written(t(`aerb.write.statusChanged.${v.to}`, { licenceNo: v.licenceNo }));
     },
     onError: (e: unknown) => { setRowError(aerbErrorText(e)); },
@@ -1177,19 +1199,53 @@ export function RadiationSafety(): React.ReactElement {
                                   : null}
                                 {l.status === "surrendered"
                                   ? null
-                                  : (
-                                    <button
-                                      type="button"
-                                      data-testid={`aerb-licence-surrender-${l.id}`}
-                                      className="border px-2 py-0.5 text-xs text-red-700"
-                                      disabled={licenceStatus.isPending}
-                                      onClick={() => {
-                                        licenceStatus.mutate({ id: l.id, to: "surrendered", licenceNo: l.licenceNo });
-                                      }}
-                                    >
-                                      {t("aerb.write.surrender")}
-                                    </button>
-                                  )}
+                                  : surrenderArmed === l.id
+                                    ? (
+                                      <span className="flex items-center gap-1 flex-wrap border border-red-600 p-1">
+                                        <span className="text-xs text-red-700 font-semibold">
+                                          {t("aerb.write.surrenderArmed")}
+                                        </span>
+                                        <input
+                                          className="border px-1 py-0.5 text-xs"
+                                          data-testid={`aerb-licence-decommission-ref-${l.id}`}
+                                          placeholder={t("aerb.write.decommissionRef")}
+                                          value={decommissionRef}
+                                          onChange={(e) => { setDecommissionRef(e.target.value); }}
+                                        />
+                                        <button
+                                          type="button"
+                                          data-testid={`aerb-licence-surrender-confirm-${l.id}`}
+                                          className="border px-2 py-0.5 text-xs bg-red-700 text-white"
+                                          disabled={licenceStatus.isPending}
+                                          onClick={() => {
+                                            licenceStatus.mutate({
+                                              id: l.id, to: "surrendered", licenceNo: l.licenceNo,
+                                            });
+                                          }}
+                                        >
+                                          {t("aerb.write.surrenderConfirm")}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          data-testid={`aerb-licence-surrender-cancel-${l.id}`}
+                                          className="border px-2 py-0.5 text-xs"
+                                          onClick={() => { setSurrenderArmed(null); setDecommissionRef(""); }}
+                                        >
+                                          {t("aerb.write.cancel")}
+                                        </button>
+                                      </span>
+                                    )
+                                    : (
+                                      <button
+                                        type="button"
+                                        data-testid={`aerb-licence-surrender-${l.id}`}
+                                        className="border px-2 py-0.5 text-xs text-red-700"
+                                        disabled={licenceStatus.isPending}
+                                        onClick={() => { setSurrenderArmed(l.id); setDecommissionRef(""); }}
+                                      >
+                                        {t("aerb.write.surrender")}
+                                      </button>
+                                    )}
                               </div>
                             </td>
                           )

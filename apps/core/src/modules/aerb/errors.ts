@@ -18,10 +18,15 @@
  *
  *   · **403 `device_not_licensed`, `no_active_licence`, `not_appointed`** — authority refusals
  *     about what may emit and who may certify, which under the Rules is exactly what they are.
- *   · **409 `licence_already_active`** — a second active licence on one machine is the unique
- *     index talking; a lost race, not a malformed request.
- *   · **422 `invalid_validity`, `already_surrendered`** — hard stops with an instruction behind
- *     them.
+ *   · **409 `licence_already_active`** — **an OVERLAP, not "a second active licence".** Migration
+ *     `0065` dropped the one-active-per-device index: a machine legitimately holds a sequence of
+ *     certificates and two of them being `active` at once is normal. What is refused is two
+ *     covering the SAME DAY, decided by a pre-read under a `FOR UPDATE` lock on the device row.
+ *     This bullet described the dropped index for a day after it was dropped.
+ *   · **409 `already_surrendered`** — terminal-state refusal, and it is **409 in `STATUS` below**.
+ *     It was documented here as 422 while the code returned 409, so a client splitting 4xx by
+ *     status got it wrong from the comment.
+ *   · **422 `invalid_validity`** — a hard stop with an instruction behind it.
  *   · **404 `unknown_licence`, `unknown_person`.**
  */
 export const AERB_ERROR_CODES = [
