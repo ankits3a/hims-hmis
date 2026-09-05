@@ -86,7 +86,18 @@ export function AgentDock(
   }, []);
 
   return (
-    <div data-testid="agent-dock" style={{ flexShrink: 0, background: "var(--agent)", color: "var(--agent-fg)" }}>
+    <div
+      data-testid="agent-dock"
+      /*
+        STICKY, BECAUSE A DOCK BELOW THE FOLD IS NOT A FOOTER BAR.
+        The bay is a fixed frame and never scrolls, so this changes nothing there. `/registration`
+        is the opposite case and the one that needs it: a long form legitimately runs past the
+        viewport, so a dock at the end of the flow is reachable only by scrolling to the bottom of
+        the page — which is where the owner's "footer agent bar" ruling quietly dies. Sticky keeps
+        it on the bottom edge while the form scrolls underneath.
+      */
+      style={{ position: "sticky", bottom: 0, zIndex: 5, flexShrink: 0, background: "var(--agent)", color: "var(--agent-fg)" }}
+    >
       {open ? (
         <div style={{ borderBottom: "1px solid #24413631", maxHeight: 250 }}>
           <div style={{ display: "flex", gap: 26, padding: "16px 18px", maxHeight: 250 }}>
