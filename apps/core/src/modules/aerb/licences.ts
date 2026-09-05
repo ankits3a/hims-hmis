@@ -98,11 +98,21 @@ export interface FileLicenceInput {
 }
 
 /**
- * Files the certificate. The unique index does the work that matters: **one ACTIVE licence per
- * device**, so a renewal is "suspend or surrender the old row, then file the new one" and never two
- * live rows a reader picks between. The pre-read below exists to turn that into a NAMED refusal
- * rather than a constraint violation the controller would have to guess at — the constraint is
- * still what makes it true under concurrency.
+ * Files the certificate.
+ *
+ * ═══ THIS PARAGRAPH SAID THE OPPOSITE, IN THE FILE THAT IMPLEMENTS IT ═══
+ *
+ * It read: *"the unique index does the work that matters: one ACTIVE licence per device, so a
+ * renewal is 'suspend or surrender the old row, then file the new one'."* Migration `0065` deleted
+ * that index and pass 2 of the close review deleted that workflow — because surrendering the
+ * outgoing certificate to file the incoming one leaves the machine dark for the rest of its window
+ * and `surrendered` is terminal. The block below `assertMayManage` has explained the replacement
+ * since; this docstring, twelve lines above it, went on describing what was removed.
+ *
+ * **What is true:** a device holds a SEQUENCE of certificates with non-overlapping validity, any
+ * number of them `active`, and *which one is in force* is a question about the date. The pre-read
+ * below refuses an OVERLAP — two certificates covering one day — under a `FOR UPDATE` lock on the
+ * device row, which is race-free in a way no partial index could express.
  */
 export async function fileLicence(
   tx: Tx, actor: Actor, input: FileLicenceInput,
