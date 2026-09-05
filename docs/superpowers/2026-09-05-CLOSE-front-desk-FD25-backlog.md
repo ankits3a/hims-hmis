@@ -154,12 +154,29 @@ It is not in this branch because it is a schema migration plus a change to a hub
 that into a 44-commit body about to be marked ready would be trading a bounded risk for an unbounded
 one. It wants its own PR.
 
-**One thing to know before cutting that migration**, relayed from the LIMS lane the same evening and
-worth more than the numbering rule in CLAUDE.md: **drizzle applies migrations by TIMESTAMP, not by
-serial number.** So a migration that is RENUMBERED at rebase time but keeps its original `when` is
-silently skipped for ever on any database that has already passed that timestamp. Whoever merges
-second must have the LATER `when`, and only REGENERATING the migration produces one. Renumbering the
-file is not enough and fails quietly, which is the worst way for a schema change to fail.
+**One thing to know before cutting that migration**, measured by two peer lanes the same evening and
+worth more than the numbering rule in CLAUDE.md: **drizzle decides on `created_at` alone.** It writes
+a `hash` per applied migration and never reads it, so the serial number in the filename decides
+nothing.
+
+**A REGENERATED MIGRATION IS A NEW MIGRATION**, not the same one renumbered — it is a different
+migration that happens to run the same SQL, and BOTH directions fail silently:
+
+| the regenerated `when` is… | what happens |
+|---|---|
+| EARLIER than the database's watermark | silently **SKIPPED** — the table is never created |
+| LATER than the watermark | silently **RE-RUN** — `relation "…" already exists` |
+
+The radiology lane hit the second one and lost **20 suites in `beforeAll`, 257 tests**, from a
+migration that was perfectly correct. The failure looks exactly like broken SQL and the instinct is
+to debug the SQL. It is not the SQL.
+
+Two consequences for this lane specifically:
+- **Never regenerate a migration that has already merged.** FD-24's `0069` is on main, so
+  regenerating it would create a second migration that re-runs wherever the first was applied.
+- CI is safe (a fresh database every run); **the lane test databases are not.** After any
+  regeneration, drop `hmis_lane_front-desk_test_1` and `_2` rather than debug the red —
+  `ensureWorkerDatabaseExists` recreates them, one per jest worker.
 
 ---
 
