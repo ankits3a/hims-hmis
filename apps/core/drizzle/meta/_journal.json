@@ -519,6 +519,13 @@
       "when": 1788630072551,
       "tag": "0073_radiology_contrast_administrations",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1788634412463,
+      "tag": "0074_lab_plate_maps",
+      "breakpoints": true
     }
   ]
 }
