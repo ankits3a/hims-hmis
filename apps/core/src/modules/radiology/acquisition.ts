@@ -12,8 +12,8 @@ import { RADIOLOGY_RESOURCE_KINDS } from "./kinds";
 import { isValidDicomUid, mintStudyInstanceUid } from "./uid";
 import { RadiologyError } from "./errors";
 import { imagingStudyAcquired } from "./events";
-import { evaluateReadiness, isContrastAllergen, studyGates, IMAGING_TERMINAL_GATE_STATES } from "./gates";
-import { listAllergies } from "../patients";
+import { evaluateReadiness } from "./gates";
+import { assertContrastPermissible } from "./contrast";
 import { authorisationOf, encounterPayer, hasBillDecision, raiseBillDecision } from "./money";
 import { activeDoseReferenceLevels, drlFor, requireStudyType } from "./study-types";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -356,62 +356,18 @@ export async function recordAcquired(
    */
   const studyInstanceUid = resolveStudyInstanceUid(study.id, input);
   const contrastGiven = input.contrastGiven ?? false;
+  /**
+   * ═══ 18a-iii T1 — THE THREE REFUSALS MOVED TO `contrast.ts`, VERBATIM ═══
+   *
+   * They used to be sixty lines here: the F67 allergy re-read at the injection, the
+   * `contrast_option: 'none'` study type, and the consent gate that must be terminal. 18a-iii adds
+   * a SECOND door through which contrast facts are written (`recordContrastAdministration`, for the
+   * injection the abandoned scan never reaches), and two doors asking the safety question
+   * separately is how one of them ends up asking a slightly different one. `contrast.ts` carries
+   * the code and the argument for each refusal; this call is the only thing that changed here.
+   */
   if (contrastGiven) {
-    /**
-     * ═══ F67 (CLOSE REVIEW) — THE ALLERGY LIST IS RE-READ AT THE INJECTION ═══
-     *
-     * A gate's evidence was read ONCE, at the instant it was satisfied, and the terminal state is
-     * permanent: `satisfyGate` refuses any non-`open` gate and the definition has no edge back. So
-     * E9's *"the gate is re-evaluable"* ran only in the direction refused→retried, never
-     * satisfied→re-checked, and `recordAcquired` re-read exactly one gate's STATE and no gate's
-     * FACTS.
-     *
-     * The sequence that cost nothing to write and everything to miss: `prior_contrast_reaction` is
-     * satisfied at 09:05 against an empty allergy list; the ward nurse records *"Iohexol —
-     * anaphylaxis, 2019"* from the old file at 09:20; 100 ml of iohexol goes in at 09:40. Between
-     * 09:05 and the injection **nothing asked again**, and the gate that exists for P2/E38 held the
-     * right answer for fifteen minutes.
-     *
-     * This is not a re-run of the gate — the gate's terminal state is deliberately permanent, and
-     * re-opening it would let the floor satisfy the same gate twice and lose the audit of who
-     * cleared it. It is the LAST READ before the syringe: the fact is checked against the record as
-     * it stands NOW, and a contradiction is refused with the radiologist's override as the only way
-     * past, exactly as it would have been at 09:05.
-     */
-    const allergies = await listAllergies(tx as unknown as Db, study.patientId);
-    const contrastAllergy = allergies.find(
-      (a) => a.status === "active" && isContrastAllergen(a.substance),
-    );
-    if (contrastAllergy) {
-      const gate = (await studyGates(tx, study.id)).find((g) => g.kind === "prior_contrast_reaction");
-      if (gate?.state !== "overridden") {
-        throw new RadiologyError(
-          "contrast_mismatch",
-          `${contrastAllergy.substance} is on this patient's allergy list and contrast is being `
-          + "recorded — the list changed after the gate was cleared, and only the radiologist's "
-          + "override goes past a documented reaction (P2/E38, F67)",
-          { studyId: study.id, substance: contrastAllergy.substance },
-        );
-      }
-    }
-
-    if (studyType.contrast_option === "none") {
-      throw new RadiologyError(
-        "contrast_mismatch",
-        `${study.studyTypeCode} is a non-contrast examination and contrast was recorded`,
-        { studyTypeCode: study.studyTypeCode },
-      );
-    }
-    const gates = await studyGates(tx, study.id);
-    const consent = gates.find((g) => g.kind === "contrast_consent");
-    if (!consent || !(IMAGING_TERMINAL_GATE_STATES as readonly string[]).includes(consent.state)) {
-      throw new RadiologyError(
-        "contrast_mismatch",
-        "contrast was given on a study whose contrast consent gate is "
-        + `${consent ? consent.state : "not open"} — open and clear it before administering (T5's seam)`,
-        { studyId: study.id, gate: consent?.state ?? null },
-      );
-    }
+    await assertContrastPermissible(tx, study, studyType);
   }
   /**
    * F56 — the CHECK forbids the agent AND the volume; the guard tested only the agent, so

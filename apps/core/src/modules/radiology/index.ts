@@ -68,6 +68,11 @@ export {
 } from "./acquisition";
 export type { RecordAcquiredInput, StartAcquisitionResult } from "./acquisition";
 export {
+  CONTRAST_RECORDABLE_STATUSES, assertContrastPermissible, contrastAdministrationsFor,
+  recordContrastAdministration, summariseContrast,
+} from "./contrast";
+export type { ContrastAdministrationRow, RecordContrastInput } from "./contrast";
+export {
   authorisationOf, encounterPayer, hasBillDecision, linkInvoiceLine, openBillDecisions,
   raiseBillDecision, resolveBillDecision,
 } from "./money";
