@@ -167,7 +167,7 @@ export type DispenseView = {
  * rules (`getPatientSummaries`); the Rx lines are PHI and the read is logged on the pharmacy's own
  * surface. An invisible patient gives the same `unknown_dispense` as a missing row.
  */
-export async function getDispense(db: Db, actor: Actor, dispenseId: string): Promise<DispenseView> {
+export async function getDispense(db: Db, actor: Actor, dispenseId: string, now: Date = new Date()): Promise<DispenseView> {
   const d = await getDispenseRow(db, dispenseId);
   const [summary] = await getPatientSummaries(db, actor, [d.patientId]);
   const visible = summary === undefined ? null : await getPatient(db, actor, d.patientId);
@@ -198,8 +198,13 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string): Pro
         // The number on the screen is the number the PICK will honour — same exclusions, one
         // definition (`availableQty`). Summing raw balances here counted recalled and EXPIRED
         // batches the pick refuses, so the counter could promise fifty and then refuse twenty.
-        // A display read has no injected clock; "as of now" is exactly what a counter means.
-        available = await availableQty(db, d.storeResourceId, item.id);
+        //
+        // A plain display read still means "as of now" and gets the wall clock by default — that
+        // is exactly what a counter means. But a WRITE that was handed a clock, decided the pick
+        // with it and then returns this view must be answered on ITS clock, or the view it returns
+        // contradicts the write that produced it: a batch the pick refused as expired would be
+        // reported available. Hence `now`, defaulted rather than required.
+        available = await availableQty(db, d.storeResourceId, item.id, now);
       }
     }
     views.push({

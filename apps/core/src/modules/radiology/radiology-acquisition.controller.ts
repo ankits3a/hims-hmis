@@ -1,10 +1,12 @@
-import { Body, Controller, Inject, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Post } from "@nestjs/common";
 import { z } from "zod";
+import { CONTRAST_ROUTES } from "../../kernel/db/schema/radiology";
 import { DB, MODULE_REGISTRY } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { abortAcquisition, recordAcquired, startAcquisition } from "./acquisition";
+import { contrastAdministrationsFor, recordContrastAdministration } from "./contrast";
 import { linkInvoiceLine } from "./money";
 import { idSchema, parsed, toHttp } from "./radiology-http";
 import type { Actor } from "@hmis/contracts";
@@ -55,6 +57,22 @@ const acquiredBody = z.object({
   repeatReason: z.string().min(1).max(400).nullish(),
   /** E11 — the PAPER instant for a downtime backfill. `lateEntry` is derived, never sent. */
   acquiredAt: z.string().datetime().optional(),
+});
+
+/**
+ * 18a-iii T1 — the injection. `volumeMl` is `.positive()` for the reason the service repeats: a
+ * one-millilitre TEST DOSE is a real administration and a zero-millilitre one is not an event.
+ * `vialExpiry` is a DATE on a label, never an instant, and the service refuses an expired one.
+ */
+const contrastBody = z.object({
+  agent: z.string().min(1).max(120),
+  volumeMl: z.number().positive().max(9_999),
+  route: z.enum(CONTRAST_ROUTES),
+  site: z.string().min(1).max(120).nullish(),
+  vialBatchNo: z.string().min(1).max(60).nullish(),
+  vialExpiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
+  givenBy: idSchema,
+  givenAt: z.string().datetime(),
 });
 
 const abortBody = z.object({ reason: z.string().min(1).max(400) });
@@ -129,6 +147,47 @@ export class RadiologyAcquisitionController {
       return await withTx(this.db, (tx) => abortAcquisition(tx, actor, this.decls(), {
         studyId, reason: input.reason,
       }));
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * ═══ 18a-iii T1 — THE CONTRAST REGISTER, ON `radiology.acquire` AND NOT ON A NEW PERMISSION ═══
+   *
+   * The injection and the acquisition are one act by one person at one console. A separate
+   * permission would let a hospital grant the scan without the dose or the dose without the scan,
+   * which is a separation nobody has asked for and which the seed-roles model would then have to
+   * carry a reason for. `radiographer` and `radiologist` hold it; `radiology_receptionist` does
+   * not, which is the separation that actually matters here.
+   */
+  @Post(":studyId/contrast")
+  @RequirePermission("radiology.acquire", "hospital")
+  async contrast(
+    @CurrentActor() actor: Actor,
+    @Param("studyId") studyId: string,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    const input = parsed(contrastBody, body);
+    try {
+      return await withTx(this.db, (tx) => recordContrastAdministration(tx, actor, {
+        studyId,
+        agent: input.agent,
+        volumeMl: input.volumeMl,
+        route: input.route,
+        site: input.site ?? null,
+        vialBatchNo: input.vialBatchNo ?? null,
+        vialExpiry: input.vialExpiry ?? null,
+        givenBy: input.givenBy,
+        givenAt: new Date(input.givenAt),
+      }));
+    } catch (e) { toHttp(e); }
+  }
+
+  /** The register for one study. Codes and volumes; no name, no finding — nothing `worklist` hides. */
+  @Get(":studyId/contrast")
+  @RequirePermission("radiology.worklist.read", "hospital")
+  async contrastRegister(@Param("studyId") studyId: string): Promise<unknown> {
+    try {
+      return { administrations: await contrastAdministrationsFor(this.db, studyId) };
     } catch (e) { toHttp(e); }
   }
 

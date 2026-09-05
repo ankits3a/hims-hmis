@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, check, date, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import type { SQL } from "drizzle-orm";
 import { invoiceLines } from "./billing";
 import { orderItems, orders } from "./orders";
@@ -564,5 +564,96 @@ export const imagingImageViews = pgTable(
     index("imaging_image_views_study_idx").on(t.studyId, t.viewedAt),
     index("imaging_image_views_viewer_idx").on(t.viewerId, t.viewedAt),
     check("imaging_image_views_via_ck", inList(t.via, IMAGE_VIEW_CHANNELS)),
+  ],
+);
+
+/**
+ * ═══ PLAN 18a-iii T1 — `imaging_contrast_administrations`: WHAT WENT INTO THE ARM ═══
+ *
+ * 18a put three columns on the study — `contrast_given`, `contrast_agent`, `contrast_volume_ml` —
+ * and its own CHECK comment left this phase the note: *"A contrast agent nobody gave, or a volume
+ * with no agent, is a row 18a-iii cannot interpret."* Those three are a SUMMARY. This table is the
+ * fact they summarise: one row per injection, with the person who gave it, the instant, the route
+ * and the vial.
+ *
+ * ═══ THE SUMMARY IS DERIVED FROM HERE AND NEVER TYPED BESIDE IT (§2.54) ═══
+ *
+ * `contrast.ts`'s `summariseContrast` recomputes all three study columns from every row of this
+ * table inside the same transaction as the insert, under a `FOR UPDATE` on the study. There is no
+ * path that writes an administration and leaves the summary stale, and no path that edits the
+ * summary to disagree with the rows — which is what makes the study's columns safe for `read.ts`,
+ * `reports.ts` and `drafter.ts` to keep reading unchanged.
+ *
+ * ═══ THE VOLUME ON THE STUDY IS THE INTRAVASCULAR VOLUME, AND THAT IS A DECISION ═══
+ *
+ * `drafter.ts:76` already prints the study's volume as *"with 90 ml Omnipaque **intravenously**"*.
+ * Summing a litre of dilute oral barium into that number would make the report sentence say
+ * something false about a real patient, and the number itself would be true of nothing: the figure
+ * a nephrotoxicity or iodine-load question means is the INTRAVASCULAR one. So oral, rectal,
+ * intra-articular and the rest are recorded here in full, contribute their AGENT to the summary,
+ * and contribute no volume. A study given only oral contrast carries `contrast_given = true`, an
+ * agent and a NULL volume — which `imaging_studies_contrast_ck` permits and the drafter already has
+ * a sentence for.
+ *
+ * ═══ AN EXPIRED VIAL IS REFUSED AT THE DATABASE, NOT ONLY IN THE SERVICE ═══
+ *
+ * `vial_batch_no` and `vial_expiry` are the paper contrast register's two columns and they are
+ * OPTIONAL — contrast is not in this hospital's item master, and a clinical record that cannot be
+ * written because inventory is not set up is the worse error by a wide margin (Plan 14's
+ * `perBaseOrNull` argument). But an expiry that IS recorded is a fact with a consequence:
+ * `imaging_contrast_administrations_vial_expiry_ck` refuses a vial that had expired on the day it
+ * was given. Nobody writes *"do not inject expired contrast"* into a plan, which is exactly why it
+ * is here rather than in a service branch a later refactor can drop.
+ *
+ * No stock movement is posted. `materials` exposes `postMovement`/`issueStock` and radiology could
+ * call them (spike §3.2), but there is no radiology store, contrast is in no item master, and a
+ * one-sided `consume` row from a module that never received the stock would be a ledger entry
+ * nobody can reconcile. `vial_batch_no` is indexed so a manufacturer recall is one query against
+ * the patients who received the lot, which is the traceability the register is FOR.
+ */
+export const CONTRAST_ROUTES = [
+  "intravenous", "intraarterial", "oral", "rectal", "intraarticular", "intrathecal",
+  "intravesical", "intracavitary",
+] as const;
+export type ContrastRoute = (typeof CONTRAST_ROUTES)[number];
+
+/** The routes whose volume is a DOSE. The study summary's volume is the sum of these and no other. */
+export const INTRAVASCULAR_CONTRAST_ROUTES: readonly ContrastRoute[] = ["intravenous", "intraarterial"];
+
+export const imagingContrastAdministrations = pgTable(
+  "imaging_contrast_administrations",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    studyId: text("study_id").notNull().references(() => imagingStudies.id),
+    /** Free text, as `imaging_studies.contrast_agent` is: "Omnipaque 350", "Gadoterate meglumine". */
+    agent: text("agent").notNull(),
+    volumeMl: numeric("volume_ml", { precision: 8, scale: 2 }).notNull(),
+    route: text("route").notNull(),
+    /** Where the cannula was. An extravasation is followed up by SITE, and a null one cannot be. */
+    site: text("site"),
+    vialBatchNo: text("vial_batch_no"),
+    vialExpiry: date("vial_expiry"),
+    /** The person who INJECTED — not necessarily the actor who typed the row. */
+    givenBy: text("given_by").notNull(),
+    givenAt: timestamp("given_at", { withTimezone: true }).notNull(),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("imaging_contrast_administrations_study_idx").on(t.studyId, t.givenAt),
+    /** The recall query: every patient who received a lot. Partial — most rows carry no batch. */
+    index("imaging_contrast_administrations_batch_idx")
+      .on(t.vialBatchNo).where(sql`${t.vialBatchNo} is not null`),
+    check("imaging_contrast_administrations_route_ck", inList(t.route, CONTRAST_ROUTES)),
+    /**
+     * A zero-millilitre administration is not an administration. A one-millilitre TEST DOSE is,
+     * and is why this is `> 0` and not a floor of any other number.
+     */
+    check("imaging_contrast_administrations_volume_ck", sql`${t.volumeMl} > 0`),
+    /** The expired vial. Recorded expiry only; an unrecorded one is silent, never assumed good. */
+    check(
+      "imaging_contrast_administrations_vial_expiry_ck",
+      sql`${t.vialExpiry} is null or ${t.vialExpiry} >= (${t.givenAt} at time zone 'Asia/Kolkata')::date`,
+    ),
   ],
 );
