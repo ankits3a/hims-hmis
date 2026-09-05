@@ -99,12 +99,58 @@ the highest-traffic path in the system. Each in-flight invoice issuance therefor
 connections, so **five concurrent issuances saturate the API's pool of ten.** And if one of those
 second-connection reads touches a row the outer transaction has locked, it waits with no bound.
 
-**Limits of this scan, stated plainly:** it finds only *direct textual* nesting where the outer
-handle is passed positionally inside the same function. Indirect nesting — a function called in a
-transaction that reaches a module-level handle two frames down — would not appear. **The lab
-near-miss path that prompted this investigation did NOT show up in the scan**, so it is either the
-indirect kind or it is named something other than "near-miss"; whoever reported it should confirm
-which, because if it is indirect then the three above are a floor and not a census.
+### The indirect kind — found after the LIMS lane supplied the shape
+
+The first scan found only *direct* nesting and said so; the lab near-miss path it could not see was
+the reason. The LIMS lane supplied the missing shape and a **second scan, written to that shape,
+reproduces its three sites independently**:
+
+> The outer `db` handle is passed **into** the transaction callback, and the nesting happens one
+> frame down in a **different function body**. No grep for "a `withTx` inside a `withTx` callback"
+> can pair them, because they are not lexically nested at all.
+
+```ts
+// results.ts — nothing nested here. This line is clean to any textual scan.
+return await withTx(db, (tx) => amendResultInTx(db, tx, actor, input, now));
+                                            // ^^ the outer handle travels inside
+
+// …and one frame down, with `tx` demonstrably still open:
+await withTx(db, (flagTx) => appendEvent(flagTx, labTubeSwapSuspected.make({ … })));
+```
+
+**The pairing key is a function carrying BOTH a `Db` and a `Tx` parameter.** Scanning for that
+signature and then looking for `withTx(<the Db param>, …)` in the body yields:
+
+| site | outer opened in | inner write |
+|---|---|---|
+| `modules/lab/results.ts:~335` | `enterResultInTx` (`:271`) | `lab.tube_swap_suspected` near-miss |
+| `modules/lab/results.ts:~1200` | `amendResultInTx` (`:1098`) | the same, on the amend path |
+| `modules/lab/verify.ts:~181` | `verifyResultInTx` (`:130`) | `lab.sod_violation_blocked` audit |
+
+**The signature is a candidate filter, not a finding** — and the negative control matters as much as
+the hits: `modules/lab/specimens.ts:134` `printLabelsInTx` carries exactly the same `(db, tx)`
+signature and does **not** nest. Four candidates, three real.
+
+### THE TRAP FOR WHOEVER FIXES IT — the obvious repair deletes the evidence
+
+**The separate transaction is deliberate and load-bearing.** 17d D3 appends the near-miss on its own
+transaction *"so the rollback cannot take the audit record with it"*: the entire point is that a
+REFUSED entry still leaves the near-miss behind for NABL. Collapsing the inner write onto the outer
+`tx` removes the second connection and **silently destroys the audit row it exists to preserve** —
+and every test would stay green, because the refusal still refuses.
+
+The repair that keeps both properties is to move the audit write **outside** the outer transaction:
+let `withTx` roll back and return or throw, write the near-miss on a fresh connection at the
+`Db`-first layer, then rethrow. Two connections are never held at once and the audit still survives.
+**The LIMS lane owns this and is taking it**; it is described here so the document states the class
+rather than one lane's queue.
+
+### The census, and what it is now worth
+
+**Six sites, two shapes:** three direct (`billing` ×2, `ot` ×1) and three indirect (`lab` ×3). The
+earlier "three is a floor" warning is discharged for these two shapes. A third shape — a handle
+reached from module scope rather than passed as a parameter — would still be invisible to both
+scans, but neither scan found any evidence of one.
 
 ---
 
@@ -137,6 +183,10 @@ wait for a *connection*, which is the failure above. In rough order of cost-to-b
 
 ## What this pack does not claim
 
+- It no longer says the nesting census is a floor **for the two shapes it scanned for** — the
+  indirect kind was found once the LIMS lane supplied its shape, and a second scan reproduced its
+  three sites independently. A third shape (a handle reached from module scope rather than passed)
+  would still be invisible; neither scan found evidence of one.
 - It does not claim the worker deadlock has HAPPENED. It shows the shape is reachable on a timer and
   has no bound if it occurs. Nobody has observed it, and the module is not deployed.
 - It does not recommend numbers. Items 1 and 2 above are arguably safe defaults; 3 and 4 want
