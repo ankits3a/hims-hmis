@@ -715,3 +715,268 @@ describe("FD-25 close: every write path, and the decision it carries", () => {
     expect(callsTo("POST", "/api/opd/appointments")).toHaveLength(0);
   });
 });
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-25 CLOSE PASS 2 — THE GUARDS ADDED WITHOUT AN ESCAPE, AND THE BOARD THAT KEPT LYING
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Everything above this line was written against the screen as it was. An independent read of the
+ * fixes above found that two of them closed a road and left the clerk standing in it:
+ *
+ *   · `commit` now books `whoPicked`, the card the rail draws — and NOTHING on the screen could
+ *     clear that card. The header's "Back to the search box / Esc" and the Escape key both reached
+ *     for `pickerRef.current`, which is null exactly when there is a card to leave, so both were
+ *     no-ops for the whole time a patient was picked. A clerk who picked the wrong Ramesh Kumar of
+ *     two had no road back except a reload.
+ *
+ *   · The confirm button and the caption were moved onto the RESOLVED slot (`held`) and the slot
+ *     board was not, so a slot the board had stopped offering was still painted with the legend's
+ *     "yours" — solid green, white, bold, `aria-pressed="true"` — beside a button reading "Pick a
+ *     time first". `data-testid` puts `unavailable` first, which is why the testid said `taken`
+ *     while the pixels said `yours`, and why the test above could not see it.
+ *
+ * Both are the same mistake in two places: a rule enforced at one consumer and not at the others.
+ * The repairs make ONE definition each — `backToSearch` decides what "back to the search box"
+ * means for both affordances, and the board reads the same `held` the button reads.
+ */
+describe("FD-25 close pass 2: a guard the clerk can get out of, and a board that cannot lie", () => {
+  const user = (): ReturnType<typeof userEvent.setup> =>
+    userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
+
+  /** The search-and-pick that puts a card in the rail — three lines, used by most tests below. */
+  async function pickRamesh(u: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await u.type(screen.getByLabelText("Search"), "Ramesh");
+    await u.click(await screen.findByRole("button", { name: /Ramesh Kumar/ }));
+    await waitFor(() => { expect(screen.getByTestId("rail-name")).toHaveTextContent("Ramesh Kumar"); });
+  }
+
+  /** What `PatientStrip` needs to resolve the id it is handed — it reads the patient live, by design. */
+  const stripRoute = {
+    "GET /api/patients/p-1": {
+      patient: {
+        id: "p-1", uhid: "U00110012", name: "Ramesh Kumar",
+        administrativeGender: "male", isConfidential: false, alias: null,
+      },
+    },
+  };
+
+  /**
+   * HOLD 09:50, THEN LOSE IT — the board changing under a held slot, which is the one road into the
+   * `held` rule that no handler on this screen controls.
+   *
+   * "will not commit a slot the board has stopped offering" above builds the same state inline and
+   * is deliberately left doing so: its claim is about the WRITE, these two are about the PAINT and
+   * the MESSAGE, and one test that fails for three reasons names none of them.
+   */
+  async function holdASlotThatIsThenTaken(): Promise<ReturnType<typeof userEvent.setup>> {
+    let taken = false;
+    mount([], {
+      book: [appointment({ id: "later", serviceDate: TODAY, slotStart: `${TODAY}T06:00:00.000Z`, slotEnd: `${TODAY}T06:10:00.000Z` })],
+      routes: {
+        "GET /api/opd/slots": () => ({
+          slots: taken ? SLOTS.map((s) => (s.start === `${TOMORROW}T04:20:00.000Z` ? { ...s, booked: true } : s)) : SLOTS,
+        }),
+        "POST /api/opd/appointments/later/check-in": { tokenNo: 5, roomId: "r-1", visitType: "new", encounter: { id: "enc-5", visitNo: "V2609050005" } },
+      },
+    });
+    await arrive();
+    const u = user();
+    await pickRamesh(u);
+    await waitFor(() => { expect(screen.getAllByTestId("slot-free")).toHaveLength(2); });
+    await u.click(screen.getAllByTestId("slot-free")[1]!);
+    expect(screen.getByTestId("confirm-slot")).toHaveTextContent(/Book 09:50 with Dr Meera Iyer/);
+    /* Somebody else takes 09:50, and the check-in's refresh is what brings the news. */
+    taken = true;
+    await u.click(screen.getByTestId("checkin-later"));
+    await waitFor(() => { expect(screen.getAllByTestId("slot-taken")).toHaveLength(2); });
+    return u;
+  }
+
+  /**
+   * ═══ FREE, TAKEN AND YOURS ARE THREE DIFFERENT THINGS ═══
+   *
+   * `slot-board.tsx`'s own header forbids exactly this state, and the reason is written there: *"a
+   * greyed slot that might be either is how a desk double-books"*. The chip is asserted through
+   * `aria-pressed` AND through the style it was given, because they fail differently — the first is
+   * what a screen reader announces, the second is what the clerk who promised 09:50 is looking at.
+   */
+  it("stops drawing a slot as YOURS the moment the board stops offering it", async () => {
+    await holdASlotThatIsThenTaken();
+    const chip = screen.getByText("09:50");
+    expect(chip.tagName).toBe("BUTTON");
+    expect(chip.getAttribute("style") ?? "").not.toContain("var(--green)");
+    expect(chip).toHaveAttribute("aria-pressed", "false");
+  });
+
+  /**
+   * A REFUSAL A CLERK CANNOT EXPLAIN IS THE DEFECT, NOT THE REFUSAL. `commit` returned before it
+   * set anything, so the keyboard road — the only road left once the button greys — produced no
+   * banner, no log line and no change on screen at all. Pressing a key the button advertises and
+   * getting nothing is how a desk learns the seat is broken.
+   */
+  it("says why Ctrl+Enter refused, rather than doing nothing at all", async () => {
+    const u = await holdASlotThatIsThenTaken();
+    await u.keyboard("{Control>}{Enter}{/Control}");
+    expect(screen.getByTestId("appt-error")).toHaveTextContent(/Pick a time first/);
+    expect(callsTo("POST", "/api/opd/appointments")).toHaveLength(0);
+  });
+
+  /**
+   * ═══ THE POSITIVE CONTROL THE ABSENCE ASSERTIONS NEED ═══
+   *
+   * Two tests in this file now end in `expect(callsTo(…)).toHaveLength(0)` after a Ctrl+Enter, and
+   * zero POSTs is also what a DEAD keyboard road produces. Nothing else in the file touches the
+   * window listener, so without this the suite could not tell "the guard in `commit` held" from
+   * "the key never reached `commit`" — and a later hardening that scoped the listener would leave
+   * every one of them green while the keycap on the button became a lie.
+   *
+   * Proved by mutation, not by revert: deleting the `else if (e.key === "Enter" …)` branch turns
+   * THIS test red, which is the whole of its job.
+   */
+  it("books through Ctrl+Enter, so the refusals above are refusals and not a dead road", async () => {
+    mount([]);
+    await arrive();
+    const u = user();
+    await pickRamesh(u);
+    await waitFor(() => { expect(screen.getAllByTestId("slot-free")).toHaveLength(2); });
+    await u.click(screen.getAllByTestId("slot-free")[1]!);
+
+    await u.keyboard("{Control>}{Enter}{/Control}");
+
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/appointments")).toHaveLength(1); });
+    expect(bodyOf("POST", "/api/opd/appointments")).toEqual({
+      patientId: "p-1", doctorId: "doc-1", slotStart: `${TOMORROW}T04:20:00.000Z`,
+    });
+  });
+
+  /**
+   * ═══ THE HEADER BUTTON PROMISES A ROAD BACK. IT HAS TO BE ONE. ═══
+   *
+   * It renders unconditionally, with an `Esc` keycap on it, and it did nothing whenever a card was
+   * showing — which is the only state a clerk would press it in.
+   */
+  it("the header's back-to-search clears the card, so the wrong patient can be put down", async () => {
+    mount([]);
+    await arrive();
+    const u = user();
+    await pickRamesh(u);
+
+    await u.click(screen.getByTestId("focus-search"));
+
+    expect(screen.getByTestId("rail-empty")).toBeInTheDocument();
+    expect(screen.queryByTestId("rail-name")).not.toBeInTheDocument();
+  });
+
+  /** …and the card carries the same road where the clerk's eye actually is: on the rail. */
+  it("the card carries its own way out", async () => {
+    mount([]);
+    await arrive();
+    const u = user();
+    await pickRamesh(u);
+
+    await u.click(screen.getByTestId("rail-clear-patient"));
+
+    expect(screen.getByTestId("rail-empty")).toBeInTheDocument();
+    expect(screen.queryByTestId("rail-name")).not.toBeInTheDocument();
+  });
+
+  /**
+   * THE KEYMAP'S TWO-STEP, WHICH COULD NOT REACH ITS SECOND STEP. Once returns the cursor, twice
+   * puts the patient down. With a card showing there was no cursor to return and no release either;
+   * the first Escape now clears the card (the picker remounts autofocused in its place) and the
+   * second, with the cursor in that box, releases. `patient-strip` is the app-wide fact: it renders
+   * only while somebody is in hand, so its disappearance is the release, observed from outside.
+   */
+  it("Escape clears the card, and Escape again puts the patient down", async () => {
+    mount([], { routes: stripRoute });
+    await arrive();
+    const u = user();
+    await pickRamesh(u);
+    await waitFor(() => { expect(screen.getByTestId("patient-strip")).toBeInTheDocument(); });
+
+    await u.keyboard("{Escape}");
+    expect(screen.getByTestId("rail-empty")).toBeInTheDocument();
+    expect(screen.getByLabelText("Search")).toHaveFocus();
+    /* Step one is not a release — the patient is still in hand, which is what makes it a two-step. */
+    expect(screen.getByTestId("patient-strip")).toBeInTheDocument();
+
+    await u.keyboard("{Escape}");
+    await waitFor(() => { expect(screen.queryByTestId("patient-strip")).not.toBeInTheDocument(); });
+  });
+
+  /**
+   * ═══ RELEASE IS AN APP-WIDE CONTROL AND THIS SEAT HAD STOPPED LISTENING TO IT ═══
+   *
+   * `PatientStrip`'s Release clears the patient in hand and nothing else. Before the booking moved
+   * to the card that was harmless — the write read the same in-hand id, so releasing made the write
+   * refuse. Now the card is what gets booked, so a clerk who presses Release watches the strip
+   * vanish while the rail goes on offering to book the person she just put down.
+   *
+   * The two are set together by the picker; they are cleared together now.
+   */
+  it("releasing the patient in the strip clears the card that would otherwise still be booked", async () => {
+    mount([], { routes: stripRoute });
+    await arrive();
+    const u = user();
+    await pickRamesh(u);
+
+    await u.click(screen.getByTestId("strip-release"));
+
+    await waitFor(() => { expect(screen.getByTestId("rail-empty")).toBeInTheDocument(); });
+    expect(screen.queryByTestId("rail-name")).not.toBeInTheDocument();
+  });
+
+  /**
+   * ═══ A MOVE IS ARMED FOR A NAMED PATIENT; THE RAIL SAID "NOBODY PICKED YET" ═══
+   *
+   * Both move roads take the patient in hand and blank the card, so the rail fell back to its empty
+   * state — heading "Booking for", the words "Nobody picked yet", and a live autofocused picker.
+   * Typing a name there took SOMEBODY ELSE in hand, under a banner and a button that both still
+   * named Lakshmi, while `commit`'s move branch reschedules `moving.id` and never reads the card.
+   */
+  it("names the patient a move is for, instead of a picker that would take somebody else in hand", async () => {
+    mount([], {
+      rebooking: [appointment({
+        id: "r-9", status: "needs_rebooking", serviceDate: TOMORROW,
+        patientId: "p-2", patient: summary("p-2", "Lakshmi Prasad", "9835120114"),
+      })],
+    });
+    await arrive();
+    await waitFor(() => { expect(screen.getByTestId("rebooking-count")).toHaveTextContent("1 patient"); });
+
+    await user().click(screen.getByTestId("rebook-r-9"));
+
+    expect(screen.getByTestId("rail-moving")).toHaveTextContent("Lakshmi Prasad");
+    expect(screen.queryByTestId("rail-empty")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Search")).not.toBeInTheDocument();
+  });
+
+  /**
+   * ═══ THE HANDOVER ROAD, PINNED RATHER THAN REPAIRED ═══
+   *
+   * Arriving from another seat with a patient in hand is the one road where the strip and the rail
+   * disagree on purpose: the strip names Ramesh at the top of the screen and the rail says nobody
+   * is picked, because this seat books what it is SHOWING. That is `/registration`'s ruling applied
+   * here and it is the safe direction — being wrong costs one search.
+   *
+   * No test in this file arrived with a patient in hand (`beforeEach` clears sessionStorage), so
+   * the road was invisible to the suite in both directions: neither the refusal nor a future repair
+   * would have been noticed. This pins today's behaviour so that changing it is a decision.
+   */
+  it("a patient handed over from another seat is named by the strip and still not booked by this seat", async () => {
+    sessionStorage.setItem("hmis.inHand", JSON.stringify({ patientId: "p-1", encounterId: null }));
+    mount([], { routes: stripRoute });
+    await arrive();
+    await waitFor(() => { expect(screen.getByTestId("strip-label")).toHaveTextContent("Ramesh Kumar"); });
+    expect(screen.getByTestId("rail-empty")).toBeInTheDocument();
+
+    const u = user();
+    await waitFor(() => { expect(screen.getAllByTestId("slot-free")).toHaveLength(2); });
+    await u.click(screen.getAllByTestId("slot-free")[0]!);
+    await u.click(screen.getByTestId("confirm-slot"));
+
+    await waitFor(() => { expect(screen.getByTestId("appt-error")).toHaveTextContent(/Pick the patient first/); });
+    expect(callsTo("POST", "/api/opd/appointments")).toHaveLength(0);
+  });
+});

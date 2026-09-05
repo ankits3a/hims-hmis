@@ -129,6 +129,25 @@ export function AppointmentSeat(): React.ReactElement {
 
   /* ── who are we booking for ──────────────────────────────────────────────────────────────── */
 
+  /*
+    ═══ THE CARD AND THE PATIENT IN HAND ARE TAKEN TOGETHER, SO THEY ARE PUT DOWN TOGETHER ═══
+
+    The picker sets both in one handler — `takePatient(p.id); setWhoPicked(p)` — and until the
+    booking moved onto the card there was no way for them to disagree in the direction that
+    mattered. Now there is: `PatientStrip`'s Release (`components/patient-strip.tsx`) clears the
+    patient in hand and knows nothing about this screen's card, so a clerk who pressed it watched
+    the strip vanish while the rail went on offering to book the person she had just put down —
+    and the confirm button's label names a time and a doctor and no patient, so nothing on screen
+    contradicted it. Before the card existed the same click made the write refuse.
+
+    The other direction is deliberately NOT swept: arriving from `/counter` with somebody in hand
+    and no card is the handover road, and this seat's answer to it is to refuse and make the clerk
+    name the patient here (see `commit`). This effect only ever puts the card DOWN.
+  */
+  useEffect(() => {
+    if (whoPicked !== null && inHandId !== whoPicked.id) setWhoPicked(null);
+  }, [inHandId, whoPicked]);
+
   /* ── the doctor master, NOT today's board ────────────────────────────────────────────────── */
 
   /*
@@ -235,7 +254,28 @@ export function AppointmentSeat(): React.ReactElement {
       refusal the clerk did not cause and cannot act on. The ref is the guard; `busy` is only the
       affordance, because two clicks in one React tick both observe `busy === false`.
     */
-    if (held === null || chosen === null || inFlight.current) return;
+    if (chosen === null || inFlight.current) return;
+    /*
+      ═══ A REFUSAL THE CLERK CANNOT EXPLAIN IS THE DEFECT, NOT THE REFUSAL ═══
+
+      `held === null` used to return here beside the two conditions that are not the user's
+      business, and the button is disabled in exactly that state — so the ONLY road that reaches
+      this line is Ctrl+Enter, the road the button advertises with a keycap. It set nothing: no
+      banner, no log line, no change on screen. A clerk who held 09:50, watched another desk take
+      it, and pressed the key the button offers got silence, which is how a seat teaches its user
+      that it is broken.
+
+      The copy is the button's own — "Pick a time first" — because that is the action, and because
+      this file may not add a locale key. The sharper sentence this deserves ("09:50 has just been
+      taken, pick another time") needs `appointmentSeat.errors.slotGone` in `locales/en.json` and
+      `hi.json`, which belong to everyone; it is reported rather than smuggled in.
+    */
+    if (held === null) {
+      const why = t("appointmentSeat.book.pickFirst");
+      setError(why);
+      note(why, "err");
+      return;
+    }
     inFlight.current = true;
     setBusy(true);
     setError(null);
@@ -308,9 +348,27 @@ export function AppointmentSeat(): React.ReactElement {
   /* ── keyboard ────────────────────────────────────────────────────────────────────────────── */
 
   const backToSearch = useCallback((): void => {
+    /*
+      ═══ "BACK TO THE SEARCH BOX" HAS TO BE ABLE TO GET BACK TO THE SEARCH BOX ═══
+
+      The picker is rendered ONLY in the rail's `who === null` branch, so `pickerRef.current` is
+      null in exactly the state a clerk would want out of: a card is showing, and the card is now
+      what gets booked. Both affordances read this one function — the header button with its `Esc`
+      keycap, and the Escape key itself — so both did nothing at all whenever there was something
+      to leave. Two "Ramesh Kumar" rows is the seeded reality of this desk; she picks the wrong
+      one, sees the UHID, and the seat had no road back except a reload.
+
+      Clearing the card IS returning to the search box, because the picker remounts autofocused in
+      its place. The patient stays in hand: a SECOND Escape puts them down, which is the Keymap's
+      two-step reaching its second step for the first time.
+
+      One definition, three affordances (the header button, Escape, and the card's own control) —
+      the shape of the finding that produced it was one rule enforced at one consumer.
+    */
+    if (whoPicked !== null) { setWhoPicked(null); return; }
     const input = pickerRef.current?.querySelector("input");
     if (input !== null && input !== undefined) { input.focus(); input.select(); }
-  }, []);
+  }, [whoPicked]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -400,23 +458,53 @@ export function AppointmentSeat(): React.ReactElement {
           <div style={{ width: 290, flexShrink: 0, display: "flex", flexDirection: "column", gap: 13 }}>
             <div className="box" style={{ padding: 14 }}>
               <span className="tag">{t("appointmentSeat.rail.bookingFor")}</span>
-              {who === null ? (
+              {/*
+                THREE STATES, AND THE MIDDLE ONE WAS MISSING. A card, a named move, or nobody —
+                and both move roads (`rebook-*` in this rail, `Rebook` in the day's book) blank the
+                card as they arm the move, so the rail dropped to "Nobody picked yet" WITH a live
+                autofocused picker while a move for Lakshmi was armed a few centimetres below.
+                Typing a name into it took somebody else in hand under a banner and a button that
+                both still said Lakshmi, and `commit`'s move branch reschedules `moving.id` and
+                never reads the card — so the screen named the wrong person and wrote the right
+                one, which is the harder half of the same defect to notice.
+
+                The move card carries the name TWICE — once as the card's own answer to "booking
+                for", once inside the sentence that says what is being done with them. That is the
+                only copy this screen owns for the state and it is worth the repetition: identity
+                is the one thing a desk should be told more than once.
+              */}
+              {who !== null ? (
                 <>
-                  <p data-testid="rail-empty" style={{ margin: "9px 0 9px", color: "var(--faint)", fontSize: 12.5 }}>
-                    {t("appointmentSeat.rail.nobodyYet")}
-                  </p>
-                  <div ref={pickerRef}><PatientPicker onPick={(p) => { takePatient(p.id); setWhoPicked(p); }} autoFocus /></div>
-                </>
-              ) : (
-                <>
-                  <div style={{ marginTop: 9, display: "flex", flexDirection: "column", gap: 3 }}>
-                    <span data-testid="rail-name" style={{ fontSize: 16, fontWeight: 600, lineHeight: "20px" }}>{who.name}</span>
-                    <span className="mo" style={{ fontSize: 12.5, color: "var(--dim)" }}>{who.uhid}</span>
+                  <div style={{ marginTop: 9, display: "flex", alignItems: "flex-start", gap: 8 }}>
+                    <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+                      <span data-testid="rail-name" style={{ fontSize: 16, fontWeight: 600, lineHeight: "20px" }}>{who.name}</span>
+                      <span className="mo" style={{ fontSize: 12.5, color: "var(--dim)" }}>{who.uhid}</span>
+                    </div>
+                    <button
+                      className="sec" type="button" data-testid="rail-clear-patient" onClick={backToSearch}
+                      style={{ height: 24, padding: "0 8px", fontSize: 11, flexShrink: 0 }}
+                    >
+                      {t("appointmentSeat.header.backToSearch")}
+                    </button>
                   </div>
                   <div style={{ marginTop: 12, paddingTop: 11, borderTop: "1px solid var(--line2)" }}>
                     <span className="tag">{t("appointmentSeat.rail.theirHistory")}</span>
                     <History patientId={who.id} />
                   </div>
+                </>
+              ) : moving !== null ? (
+                <div style={{ marginTop: 9, display: "flex", flexDirection: "column", gap: 4 }}>
+                  <span data-testid="rail-moving" style={{ fontSize: 16, fontWeight: 600, lineHeight: "20px" }}>{moving.who}</span>
+                  <span style={{ fontSize: 11.5, color: "var(--dim)" }}>
+                    {t("appointmentSeat.book.moving", { who: moving.who, was: moving.was })}
+                  </span>
+                </div>
+              ) : (
+                <>
+                  <p data-testid="rail-empty" style={{ margin: "9px 0 9px", color: "var(--faint)", fontSize: 12.5 }}>
+                    {t("appointmentSeat.rail.nobodyYet")}
+                  </p>
+                  <div ref={pickerRef}><PatientPicker onPick={(p) => { takePatient(p.id); setWhoPicked(p); }} autoFocus /></div>
                 </>
               )}
             </div>
@@ -547,7 +635,18 @@ export function AppointmentSeat(): React.ReactElement {
                   <SlotLegend />
                 </div>
                 <SlotBoardEmptyState loading={slots.isFetching} total={all.length} free={free.length} />
-                <SlotGrid slots={all} picked={picked} onPick={setPicked} disabled={chosen === null} />
+                {/*
+                  THE BOARD READS THE SAME `held` THE BUTTON READS. Handed the raw `picked`, the
+                  grid painted a slot the board had stopped offering with the legend's "yours" —
+                  solid green, white, bold, `aria-pressed="true"` — beside a caption reading
+                  "nothing held yet" and a greyed button reading "Pick a time first". The testid
+                  resolves `unavailable` FIRST and the styles resolve `isPicked` first, so the
+                  chip reported itself taken while it drew itself yours, and every assertion in
+                  the suite was on the testid. `slot-board.tsx` states the rule this broke: free,
+                  taken and yours are three different things and must look like three different
+                  things, because *"a greyed slot that might be either is how a desk double-books"*.
+                */}
+                <SlotGrid slots={all} picked={held?.start ?? null} onPick={setPicked} disabled={chosen === null} />
               </div>
 
               {moving === null ? null : (
