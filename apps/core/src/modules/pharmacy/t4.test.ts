@@ -294,4 +294,29 @@ describe("the dispense counter — pick, bill, hand over (16c T4)", () => {
     const p = await pickDispense(db, fx.pharmacist.actor, fx.decls, v.id, {}, MON2);
     expect(p.lines[0]!.available).toBe(120);
   });
+
+  /**
+   * ═══ THE VIEW A WRITE RETURNS OBEYS THE WRITE'S OWN CLOCK ═══
+   *
+   * `verifyDispense`, `pickDispense`, `declineLine` and `cancelDispense` are each handed a `now`,
+   * decide with it — and all four used to end on a `getDispense` that read the wall clock instead.
+   * Wherever the two clocks differed the view contradicted the write that produced it: the pick
+   * refuses a batch its own clock calls expired, then returns a figure that still counts it (or,
+   * as here, the reverse). In production the gap is microseconds and invisible. In the suite it is
+   * months, and it was counting down — `CR-EARLY` (2027-01-31) would have expired in real time on
+   * **2027-02-01** while the fixture pick went on offering it, failing the test above on a date.
+   *
+   * A display read still means "as of now" and still defaults to the wall clock (`getDispense`'s
+   * own note). What changed is that a caller holding a clock no longer drops it.
+   *
+   * `CR-MID` expires BETWEEN MON2 and today, so it separates the two clocks on every run from here
+   * on rather than on one future morning — the wall-clock dependency is deleted, not postponed.
+   */
+  it("the available figure a verify RETURNS is as of the verify's own clock, not the wall clock", async () => {
+    await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "CR-MID", expiryDate: "2026-08-25", qtyBase: 40, mrpPaise: 12000 });
+    const v = await verified([line({ drug: "Crocin 500", medicineId: fx.med.crocin })], [20]);
+    // At MON2 (2026-08-17) all three batches are live: 100 late + 40 early + 40 mid. CR-MID is
+    // expired by the WALL clock and by nothing else, so a 140 here is the reader's clock winning.
+    expect(v.lines[0]!.available).toBe(180);
+  });
 });
