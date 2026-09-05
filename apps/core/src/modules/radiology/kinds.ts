@@ -78,6 +78,19 @@ export const SCHEDULABLE_DEVICE_STATUSES: readonly string[] = ["available", "in_
 export const DEVICE_MODALITY_ATTRIBUTE = "modality";
 
 /**
+ * 18a-iii T3 / D4 — the `attributes.portable` key that marks a MOBILE unit: the ward X-ray trolley,
+ * the portable ultrasound, the C-arm. Declared beside `modality` because this file owns the device
+ * attribute vocabulary, and `resources.attributes` is free jsonb — so marking a machine portable
+ * takes no migration and no schema edit, only a registry entry.
+ *
+ * **The rule it backs is deliberately ONE-DIRECTIONAL.** A bedside location may only be recorded on
+ * a portable device; a portable device may perfectly well be used in the department, wheeled into a
+ * room, and demanding a bedside location for it would make the rule false in an ordinary case. So
+ * "is this a portable study" is answered by whether it has a PLACE, not by which machine it used.
+ */
+export const DEVICE_PORTABLE_ATTRIBUTE = "portable";
+
+/**
  * The modalities this slice ships study types for. `attributes.modality` on a `device` resource is
  * matched against a study type's `modality` (T4 A3), so a spelling that drifts between the seed and
  * the scheduler produces a machine nothing can be booked on — 16a's DD5 again, and the reason both

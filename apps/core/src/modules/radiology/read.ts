@@ -216,6 +216,12 @@ export type StudyView = WorklistRow & {
   laterality: string;
   ionising: boolean;
   contrastGiven: boolean;
+  /**
+   * 18a-iii T3 / D4 — null when the study happens where the machine lives; the ward and bed when
+   * the machine goes to the patient. The console renders it because a technologist wheeling a
+   * trolley needs to know where, and a porter needs it before the machine moves.
+   */
+  bedsideLocation: string | null;
   acquiredAt: Date | null;
   authorisedBy: string | null;
   /** 18b T2 — null until acquisition; the console shows `mintedStudyInstanceUid` before that. */
@@ -281,6 +287,7 @@ export async function studyView(db: Db, actor: Actor, studyId: string): Promise<
     formFRequired: row.study.formFRequired, restricted: row.restricted,
     laterality: row.study.laterality,
     ionising: row.study.ionising, contrastGiven: row.study.contrastGiven,
+    bedsideLocation: row.study.bedsideLocation,
     acquiredAt: row.study.acquiredAt, authorisedBy: row.study.authorisedBy,
     studyInstanceUid: row.study.studyInstanceUid, imageSource: row.study.imageSource,
     mintedStudyInstanceUid: mintStudyInstanceUid(row.study.id),

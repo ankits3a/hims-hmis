@@ -223,6 +223,25 @@ export const imagingStudies = pgTable(
     repeatReason: text("repeat_reason"),
     /** DD14's applicability rule, evaluated at PLACEMENT and frozen on the row (T3). */
     formFRequired: boolean("form_f_required").notNull().default(false),
+    /**
+     * ═══ PLAN 18a-iii T3 / D4 — THE BEDSIDE. A PORTABLE STUDY IS THE SAME STUDY WITH A PLACE ═══
+     *
+     * *"It hangs off the existing `imaging_studies` row with a bedside location and the ward's
+     * request; there is no parallel table and no second workflow definition."* The temptation is a
+     * `portable_studies` table, and it would fork every report, bill, worklist and register query in
+     * this module — two shapes for one examination, and every later reader having to remember both.
+     *
+     * NULL means the study was performed where the machine lives. Non-null means the machine was
+     * taken to the patient, and the string is the ward and bed a porter and a technologist need.
+     * `scheduleStudy` refuses to write it for a device that does not carry `attributes.portable`.
+     *
+     * **The gate set does not change and that is the point.** `deriveGateSet` reads the study TYPE
+     * and `form_f_required`, and nothing else — so a portable USG on a ward opens `form_f` and
+     * `chaperone_present` exactly as it would in the department, and `assertFormFRecorded` still
+     * demands a RECORDED form before the exposure. §11.19-C-6 widened Form F to cover precisely this
+     * case, and it holds here by construction rather than by a second rule.
+     */
+    bedsideLocation: text("bedside_location"),
     /** DD12a — a line the COUNTER raised. This module composes no invoice. */
     invoiceLineId: text("invoice_line_id").references(() => invoiceLines.id),
     authorisedBy: text("authorised_by"),

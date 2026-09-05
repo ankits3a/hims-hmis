@@ -31,6 +31,12 @@ const scheduleBody = z.object({
   /** An ISO instant. The caller resolves the clock; a route that took a date and a time would be
    *  a second place that knows about IST. */
   scheduledAt: z.string().datetime(),
+  /**
+   * 18a-iii T3 / D4 — the ward and bed, when the machine goes to the patient. Absent leaves the
+   * row's value alone; explicit `null` clears it, which is how a study comes back into the
+   * department. Only a portable device accepts one — `resolveBedside` refuses the rest.
+   */
+  bedsideLocation: z.string().min(1).max(120).nullish(),
 });
 
 const cancelBody = z.object({
@@ -57,6 +63,7 @@ export class RadiologyScheduleController {
     try {
       return await withTx(this.db, (tx) => scheduleStudy(tx, actor, {
         studyId, deviceResourceId: input.deviceResourceId, scheduledAt: new Date(input.scheduledAt),
+        bedsideLocation: input.bedsideLocation,
       }));
     } catch (e) { toHttp(e); }
   }
@@ -72,6 +79,7 @@ export class RadiologyScheduleController {
     try {
       return await withTx(this.db, (tx) => rescheduleStudy(tx, actor, {
         studyId, deviceResourceId: input.deviceResourceId, scheduledAt: new Date(input.scheduledAt),
+        bedsideLocation: input.bedsideLocation,
       }));
     } catch (e) { toHttp(e); }
   }

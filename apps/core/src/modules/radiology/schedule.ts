@@ -4,7 +4,7 @@ import { resources } from "../../kernel/db/schema/resources";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { transition } from "../../kernel/workflow/instances";
 import { recordPhiAccess } from "../../kernel/phi/audit";
-import { DEVICE_MODALITY_ATTRIBUTE, SCHEDULABLE_DEVICE_STATUSES } from "./kinds";
+import { DEVICE_MODALITY_ATTRIBUTE, DEVICE_PORTABLE_ATTRIBUTE, SCHEDULABLE_DEVICE_STATUSES } from "./kinds";
 import { RadiologyError } from "./errors";
 import { imagingStudyScheduled } from "./events";
 import { appendEvent } from "../../kernel/events/append";
@@ -46,6 +46,12 @@ export type ScheduleInput = {
   studyId: string;
   deviceResourceId: string;
   scheduledAt: Date;
+  /**
+   * 18a-iii T3 / D4 — the ward and bed, when the machine goes to the patient. `undefined` leaves
+   * whatever the row already holds; `null` clears it, which is what a reschedule back into the
+   * department means.
+   */
+  bedsideLocation?: string | null;
 };
 
 export type ScheduleResult = {
@@ -197,6 +203,41 @@ const LIVE_SLOT_STATUSES = ["scheduled", "checked_in", "ready", "in_acquisition"
  * what makes two concurrent callers produce one winner and one `slot_taken` rather than two
  * bookings that both passed a check a microsecond apart.
  */
+/**
+ * ═══ 18a-iii T3 / D4 — WHERE THIS STUDY HAPPENS, AND THE ONE RULE ABOUT IT ═══
+ *
+ * A bedside location may only sit on a device carrying `attributes.portable`. The rule is
+ * **one-directional on purpose**: a portable unit wheeled into a department room is an ordinary
+ * thing and takes no bedside location, so the reverse ("a portable device must have a place") would
+ * be false on a real case. A study is portable because it has a PLACE, not because of its machine.
+ *
+ * **It is evaluated on the EFFECTIVE value rather than the caller's**, which is what makes it whole:
+ * `undefined` means "leave what the row holds", so a study already carrying "Ward 3, Bed 12" and
+ * being moved to the CT is refused rather than silently keeping a place the gantry cannot go to.
+ * Clearing it is explicit — `bedsideLocation: null`.
+ *
+ * The refusal names the MACHINE, not the field: the recoverable action is picking a different
+ * machine, because the CT does not come to the ward.
+ */
+function resolveBedside(
+  device: DeviceRow,
+  current: string | null,
+  input: ScheduleInput,
+): string | null {
+  const effective = input.bedsideLocation === undefined
+    ? current
+    : (input.bedsideLocation?.trim() || null);
+  if (effective !== null && device.attributes[DEVICE_PORTABLE_ATTRIBUTE] !== true) {
+    throw new RadiologyError(
+      "device_not_portable",
+      `device ${device.id} is not a portable unit and cannot be taken to a bedside — book a `
+      + "portable machine, or clear the bedside location and bring the patient to the department",
+      { deviceResourceId: device.id, bedsideLocation: effective },
+    );
+  }
+  return effective;
+}
+
 export async function scheduleStudy(
   tx: Tx,
   actor: Actor,
@@ -211,8 +252,9 @@ export async function scheduleStudy(
     );
   }
   const studyType = await requireStudyType(tx, study.studyTypeCode);
-  await assertDeviceBookable(tx, input.deviceResourceId, studyType.modality);
+  const device = await assertDeviceBookable(tx, input.deviceResourceId, studyType.modality);
   await assertSlotFree(tx, input.deviceResourceId, input.scheduledAt, studyType.duration_min, study.id);
+  const bedsideLocation = resolveBedside(device, study.bedsideLocation, input);
 
   try {
     await tx.update(imagingStudies)
@@ -221,6 +263,7 @@ export async function scheduleStudy(
         scheduledAt: input.scheduledAt,
         /** F55 — the length is snapshotted, so a later book edit cannot move a booked slot. */
         durationMin: studyType.duration_min,
+        bedsideLocation,
       })
       .where(eq(imagingStudies.id, input.studyId));
   } catch (e) {
@@ -292,8 +335,16 @@ export async function rescheduleStudy(
     );
   }
   const studyType = await requireStudyType(tx, study.studyTypeCode);
-  await assertDeviceBookable(tx, input.deviceResourceId, studyType.modality);
+  const device = await assertDeviceBookable(tx, input.deviceResourceId, studyType.modality);
   await assertSlotFree(tx, input.deviceResourceId, input.scheduledAt, studyType.duration_min, study.id);
+  /**
+   * 18a-iii T3 — **the same call, and this is the hole it closes.** A guard placed only on
+   * `scheduleStudy` would let a ward study booked on the portable trolley be RESCHEDULED onto the
+   * CT with its bedside location intact, and the row would then say a fixed gantry went to bed 12.
+   * `resolveBedside` evaluates the EFFECTIVE value — the caller's, or the one already on the row —
+   * so moving to a fixed machine refuses until the place is explicitly cleared.
+   */
+  const bedsideLocation = resolveBedside(device, study.bedsideLocation, input);
 
   try {
     await tx.update(imagingStudies)
@@ -301,6 +352,7 @@ export async function rescheduleStudy(
         deviceResourceId: input.deviceResourceId,
         scheduledAt: input.scheduledAt,
         durationMin: studyType.duration_min,
+        bedsideLocation,
       })
       .where(eq(imagingStudies.id, input.studyId));
   } catch (e) {
