@@ -194,5 +194,5 @@ export async function handOverDispense(
       },
     }));
   });
-  return getDispense(db, actor, d.id);
+  return getDispense(db, actor, d.id, now);
 }
