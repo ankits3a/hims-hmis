@@ -747,3 +747,187 @@ export const labInstrumentCodes = pgTable(
     check("lab_instrument_codes_factor_ck", sql`${t.factor} > 0`),
   ],
 );
+
+/**
+ * ═══ PLAN 17-E T3 — WHAT ARRIVED, AS ITS OWN FACT ═══
+ *
+ * A transmission is recorded BEFORE any of its rows is attached, because the two are different
+ * questions. "Did the ESR's run 3 reach us at 12:38" is answerable from this table even when every
+ * row in it parked; "which patient got which number" is answerable from `lab_results` only for the
+ * rows that found one. A design that recorded only the successful attachments could not tell a
+ * silent bridge from a bridge sending rows nobody can name.
+ *
+ * `transmission_ref` is the BRIDGE's own id for the run, and the unique pair with the instrument is
+ * what makes a retry idempotent. A bench PC that times out waiting for our response and re-sends is
+ * the ordinary case, not the exotic one — the analyser has already aspirated the sample and the
+ * bridge has nothing to do but try again.
+ *
+ * `arrived_at` is OURS and `instrument_at` (on the row) is theirs. D5: analyser clocks drift, are
+ * set wrong at install, and survive a power cut as 00:00. The instrument's own instant is kept
+ * beside ours and never read for turnaround.
+ */
+export const labTransmissions = pgTable(
+  "lab_transmissions",
+  {
+    id: text("id").primaryKey(),
+    instrumentId: text("instrument_id").notNull().references(() => labInstruments.id),
+    /** The bridge's id for this run. Unique per instrument — that pair IS the idempotency key. */
+    transmissionRef: text("transmission_ref").notNull(),
+    arrivedAt: timestamp("arrived_at", { withTimezone: true }).notNull().defaultNow(),
+    rowCount: integer("row_count").notNull(),
+    receivedByType: text("received_by_type").notNull(),
+    receivedById: text("received_by_id").notNull(),
+  },
+  (t) => [
+    uniqueIndex("lab_transmissions_instrument_ref_ux").on(t.instrumentId, t.transmissionRef),
+    index("lab_transmissions_instrument_arrived_idx").on(t.instrumentId, t.arrivedAt),
+  ],
+);
+
+/**
+ * ═══ THE RESULT THAT COULD NOT BE NAMED — D4's "NEVER ATTACH BY GUESS", AS A TABLE ═══
+ *
+ * The board's first rule: *"A result with no barcode, no run-sheet position and no plate-map well is
+ * PARKED. Somebody names the tube, or the result is discarded with a reason."* This is where it
+ * waits, and the payload is kept RAW — the instrument's own code, its own value, its own units,
+ * exactly as sent — because the whole point is that we could not interpret it. Storing a normalised
+ * guess would destroy the only evidence the human has to work from.
+ *
+ * `reason` says which resolution failed, and the distinction is operational rather than decorative:
+ * an unmapped CODE is a configuration problem the lab head fixes once, and an unknown SAMPLE is a
+ * tube somebody has to go and find.
+ *
+ * ═══ `guard_refused` IS THE ONE THAT IS NOT A RESOLUTION FAILURE ═══
+ *
+ * 17d T1's applicability control and 02 H1's absurd envelope both refuse a value unless a SECOND
+ * PAIR OF HANDS vouches for it. **A machine has none.** So a value the guards refuse cannot be
+ * entered by the bridge under any circumstances — and must not be silently dropped either, because
+ * a beta-hCG on a man is exactly the swapped tube those guards exist to catch. It parks, with the
+ * raw payload intact, for the human who can either vouch for it or discard it with a reason.
+ *
+ * The guards therefore apply to machine values EXACTLY as they do to typed ones. That is the whole
+ * design: an interface is a faster way to key a number, never a way around the controls on keying
+ * one.
+ */
+export const labParkedResults = pgTable(
+  "lab_parked_results",
+  {
+    id: text("id").primaryKey(),
+    transmissionId: text("transmission_id").notNull().references(() => labTransmissions.id),
+    instrumentId: text("instrument_id").notNull().references(() => labInstruments.id),
+    /** Position within the transmission — the ESR's rack slot, the strip number, the plate well. */
+    position: integer("position").notNull(),
+    /** RAW, as sent. Not normalised, because being unable to normalise it is why this row exists. */
+    sampleId: text("sample_id"),
+    instrumentCode: text("instrument_code").notNull(),
+    rawValue: text("raw_value").notNull(),
+    rawUnit: text("raw_unit"),
+    /** Theirs, kept and never trusted (D5). */
+    instrumentAt: timestamp("instrument_at", { withTimezone: true }),
+    reason: text("reason").notNull(),
+    status: text("status").notNull().default("parked"),
+    /** Set when a human names the tube or discards the row — never by the bridge. */
+    resolvedBy: text("resolved_by"),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    discardReason: text("discard_reason"),
+  },
+  (t) => [
+    index("lab_parked_results_status_idx").on(t.status, t.instrumentId),
+    uniqueIndex("lab_parked_results_transmission_position_ux").on(t.transmissionId, t.position),
+    check(
+      "lab_parked_results_reason_ck",
+      sql`${t.reason} in ('unmapped_code', 'unknown_sample', 'no_open_item', 'sample_not_received', 'no_run_sheet', 'no_plate_well', 'guard_refused')`,
+    ),
+    check("lab_parked_results_status_ck", sql`${t.status} in ('parked', 'matched', 'discarded')`),
+    /**
+     * A DISCARD CARRIES ITS REASON, both directions. The board: *"the result is discarded WITH A
+     * REASON"* — a row somebody dropped on a Tuesday with nothing to show is not a record, and this
+     * is the same biconditional shape `aerb_licences` uses for a surrender.
+     */
+    check(
+      "lab_parked_results_discard_ck",
+      sql`(${t.status} = 'discarded') = (${t.discardReason} is not null)`,
+    ),
+  ],
+);
+
+/**
+ * ═══ PLAN 17-E T4 — THE RUN SHEET, FOR A MACHINE THAT CAN ONLY COUNT ═══
+ *
+ * The board: *"An instrument that knows only a sequence number gets a run sheet: before loading,
+ * Abha scans each cup in order and the sheet remembers strip 41 → S2609010215. When the block
+ * arrives, every strip finds its patient. A sheet with a gap parks that one result."*
+ *
+ * The EL-120 and the U120 report a position and nothing else — no barcode, no typed id. Their
+ * sequence counter is the only name they give a result, and it means nothing outside the run it was
+ * produced in. So the mapping has to exist BEFORE the block arrives, and it has to be built by
+ * SCANNING rather than typing: a sheet somebody keyed from memory is the tube swap this whole phase
+ * is built to prevent, wearing a clipboard.
+ *
+ * ═══ ONE OPEN SHEET PER INSTRUMENT, ENFORCED BY THE DATABASE ═══
+ *
+ * Two open sheets on one machine is the state in which "position 4" has two answers and the ingest
+ * picks by row order. The partial unique index is the whole guard — a code-level check is a
+ * read-then-write, and 17d §9.2 is what that costs.
+ *
+ * ═══ AND A SHEET IS CLOSED BY THE BLOCK THAT CONSUMES IT ═══
+ *
+ * The U120 dumps its whole run at once. Once that block has landed, the sheet's positions describe
+ * cups that are no longer on the machine, so a SECOND block against the same sheet is not a retry —
+ * it is a new run whose sheet nobody built. It parks whole rather than re-using yesterday's map.
+ */
+export const labRunSheets = pgTable(
+  "lab_run_sheets",
+  {
+    id: text("id").primaryKey(),
+    instrumentId: text("instrument_id").notNull().references(() => labInstruments.id),
+    /** The bench's own label for the run — "run sheet 7", the board's words. Human-facing. */
+    runRef: text("run_ref").notNull(),
+    status: text("status").notNull().default("open"),
+    openedAt: timestamp("opened_at", { withTimezone: true }).notNull().defaultNow(),
+    openedBy: text("opened_by").notNull(),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    /** WHICH transmission consumed it, so "where did strip 41 go" is answerable from the sheet. */
+    closedByTransmissionId: text("closed_by_transmission_id"),
+  },
+  (t) => [
+    /**
+     * ONE OPEN SHEET PER MACHINE. Partial, so a closed sheet stays on the record for ever — the
+     * sheet is the audit trail for a position that has no other name.
+     */
+    uniqueIndex("lab_run_sheets_open_ux").on(t.instrumentId).where(sql`status = 'open'`),
+    index("lab_run_sheets_instrument_idx").on(t.instrumentId, t.openedAt),
+    check("lab_run_sheets_status_ck", sql`${t.status} in ('open', 'closed', 'abandoned')`),
+    /** A closed sheet carries its instant; an open one carries none. Both directions. */
+    check("lab_run_sheets_closed_ck", sql`(${t.status} = 'open') = (${t.closedAt} is null)`),
+  ],
+);
+
+/**
+ * One scanned cup. `position` is the instrument's own ordinal — the strip number, the rack slot —
+ * and the pair with the sheet is the primary key, so a position cannot be scanned twice onto one
+ * sheet and then resolve by whichever row came back first.
+ *
+ * **A GAP IS THE ABSENCE OF A ROW, and that is deliberate.** The alternative — a placeholder row
+ * meaning "nothing scanned here" — would make the ingest's lookup succeed and hand back a null
+ * specimen, which is the shape that invites a fallback. There is nothing to fall back to: an absent
+ * row parks that position and only that position.
+ */
+export const labRunSheetPositions = pgTable(
+  "lab_run_sheet_positions",
+  {
+    runSheetId: text("run_sheet_id").notNull().references(() => labRunSheets.id),
+    position: integer("position").notNull(),
+    specimenId: text("specimen_id").notNull().references(() => labSpecimens.id),
+    scannedAt: timestamp("scanned_at", { withTimezone: true }).notNull().defaultNow(),
+    scannedBy: text("scanned_by").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.runSheetId, t.position] }),
+    /**
+     * ONE CUP PER SHEET. The same tube scanned into two positions of one run would report two
+     * results for one sample and the bench would have no way to tell which cup was actually read.
+     */
+    uniqueIndex("lab_run_sheet_positions_specimen_ux").on(t.runSheetId, t.specimenId),
+  ],
+);

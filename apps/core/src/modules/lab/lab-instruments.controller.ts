@@ -1,8 +1,9 @@
-import { Controller, Get, Inject, Param, Query } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Post, Query } from "@nestjs/common";
 import { z } from "zod";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { parsed, toHttp } from "./lab-http";
+import { ingestResults, LAB_RESULTS_INTERFACE } from "./ingest";
 import { instrumentWorklist, LAB_INSTRUMENTS_READ, listInstruments } from "./instruments";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -35,6 +36,29 @@ import type { Db } from "../../kernel/db/client";
  */
 const worklistQuery = z.object({ sampleId: z.string().min(1).max(32) });
 
+/**
+ * ═══ 17-E T3 — THE TRANSMISSION, AS THE BRIDGE POSTS IT ═══
+ *
+ * One block, many patients. `transmissionRef` is the bridge's own id for the run and the server
+ * treats a repeat as a no-op, because a bench PC that times out waiting for our response and
+ * re-sends is the ordinary case rather than the exotic one — the analyser has already aspirated the
+ * sample and the bridge has nothing else to do.
+ *
+ * `instrumentAt` is accepted and stored and NEVER read for turnaround (D5). Analyser clocks drift,
+ * are set wrong at install, and survive a power cut reading 00:00.
+ */
+const ingestBody = z.object({
+  transmissionRef: z.string().min(1).max(64),
+  rows: z.array(z.object({
+    position: z.number().int().nonnegative(),
+    sampleId: z.string().max(64).nullish(),
+    code: z.string().min(1).max(64),
+    value: z.string().min(1).max(500),
+    unit: z.string().max(32).nullish(),
+    instrumentAt: z.coerce.date().nullish(),
+  })).min(1).max(500),
+});
+
 @Controller("lab")
 export class LabInstrumentsController {
   constructor(@Inject(DB) private readonly db: Db) {}
@@ -63,6 +87,31 @@ export class LabInstrumentsController {
     const q = parsed(worklistQuery, raw);
     try {
       return await instrumentWorklist(this.db, actor, { instrumentId, sampleId: q.sampleId });
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * The block arrives here. Every row is resolved and written on its OWN transaction, so one
+   * unreadable position parks that position and the other nine go on (D3) — the ESR's ten slots are
+   * ten different patients, and the samples are already consumed.
+   */
+  @Post("instruments/:instrumentId/results")
+  @RequirePermission(LAB_RESULTS_INTERFACE, "hospital")
+  async ingest(
+    @CurrentActor() actor: Actor,
+    @Param("instrumentId") instrumentId: string,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    const b = parsed(ingestBody, body);
+    try {
+      return await ingestResults(this.db, actor, {
+        instrumentId,
+        transmissionRef: b.transmissionRef,
+        rows: b.rows.map((r) => ({
+          position: r.position, sampleId: r.sampleId ?? null, code: r.code,
+          value: r.value, unit: r.unit ?? null, instrumentAt: r.instrumentAt ?? null,
+        })),
+      });
     } catch (e) { toHttp(e); }
   }
 }

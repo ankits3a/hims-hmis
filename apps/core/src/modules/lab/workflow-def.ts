@@ -105,11 +105,25 @@ export const LAB_ITEM_DEFINITION_JSON = {
     { from: "ordered", to: "awaiting_collection", roles: ["lab_reception", "lab_technician", "phlebotomist"] },
     { from: "awaiting_collection", to: "collected", roles: ["phlebotomist", "lab_technician", "nurse"] },
     { from: "collected", to: "accessioned", roles: ["lab_technician"] },
-    { from: "accessioned", to: "in_analysis", roles: ["lab_technician"] },
+    /**
+     * ═══ 17-E T3 — THE BRIDGE MOVES A SAMPLE INTO ANALYSIS, BECAUSE THE MACHINE DID ═══
+     *
+     * The workflow is a SECOND authority system beside permissions, and the ingest has to satisfy
+     * both: `lab.results.interface` says the bridge may write a machine value, and this says the
+     * item may leave `accessioned` when a machine reports on it.
+     *
+     * `lab_bridge` is added to exactly TWO transitions — this one and `in_analysis → resulted` —
+     * and to none of the others. It does not accession tubes, collect them, verify results or
+     * publish reports; a human does all four. Granting the bridge `lab_technician` instead would
+     * have satisfied the engine in one line and handed a cron job the whole technologist role,
+     * which is the shortcut 18b refused when it gave `modality_bridge` one string rather than
+     * logging the bridge in as a radiographer.
+     */
+    { from: "accessioned", to: "in_analysis", roles: ["lab_technician", "lab_bridge"] },
     /** 17-M's referral lane, declared and driven by nobody in this phase. */
     { from: "accessioned", to: "sent_out", roles: ["lab_technician", "pathologist"] },
     { from: "sent_out", to: "resulted", roles: ["lab_technician", "pathologist"] },
-    { from: "in_analysis", to: "resulted", roles: ["lab_technician", "pathologist"] },
+    { from: "in_analysis", to: "resulted", roles: ["lab_technician", "pathologist", "lab_bridge"] },
     /** THE RERUN LOOP — a pathologist sends a number back to the bench without a new order. */
     { from: "resulted", to: "in_analysis", roles: ["lab_technician", "pathologist"] },
     /** THE ONLY WAY INTO `verified`, and the engine checks the role itself (S4). */
