@@ -97,7 +97,7 @@ async function ensureQueued(db: Db, actor: Actor, rx: PrescriptionRow, now: Date
   const dispenseId = live?.id ?? (await withTx(db, (tx) => enqueueDispense(tx, actor, {
     prescriptionId: rx.id, prescriptionVersion: rx.version, patientId: rx.patientId, encounterId: rx.encounterId, source: "scan",
   }, now))).dispenseId;
-  return getDispense(db, actor, dispenseId);
+  return getDispense(db, actor, dispenseId, now);
 }
 
 /**
@@ -179,5 +179,5 @@ export async function claimDispense(
       payload: { dispenseId: d.id, patientId: d.patientId, encounterId: d.encounterId, prescriptionId: d.prescriptionId, lineCount: laid.length, door: input.door },
     }));
   });
-  return getDispense(db, actor, d.id);
+  return getDispense(db, actor, d.id, now);
 }

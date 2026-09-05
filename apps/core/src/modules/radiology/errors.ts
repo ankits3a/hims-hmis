@@ -101,6 +101,17 @@ export const RADIOLOGY_ERROR_CODES = [
   "forbidden",
   "unknown_invoice_line",
   "already_resolved",
+  /**
+   * ── 18a-iii T1 — the expired vial ──
+   *
+   * This file's header rules that a task needing a code the union does not carry has found a plan
+   * defect and reports it rather than borrowing a neighbour. `contrast_mismatch` is the nearest
+   * neighbour and it means *"the contrast does not match this study or this patient"* — a consent
+   * gate, a non-contrast examination, an allergy. An in-date vial for the right study, whose LABEL
+   * says it expired last month, is a different refusal, and a floor reading "contrast mismatch" on
+   * a correctly ordered CT would go looking for the wrong problem.
+   */
+  "vial_expired",
   // ── reports (T8) ──
   "second_factor_required",
   "laterality_mismatch",
@@ -163,6 +174,7 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   pacs_not_configured: 409,
   invalid_date: 422,
   machine_draft_not_signable: 422,
+  vial_expired: 422,
 
   second_factor_required: 403,
   laterality_mismatch: 422,

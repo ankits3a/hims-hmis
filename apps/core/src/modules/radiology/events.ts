@@ -106,6 +106,20 @@ export const imagingImageViewed = defineEvent("imaging.image_viewed", MODULE, z.
   studyId: id, viewerId: id, via: z.string().min(1),
 }));
 
+/**
+ * 18a-iii T1 — a contrast agent went into a patient. The AGENT and the ROUTE are a product name and
+ * a closed token; neither is a finding, and this file's rule lets both travel. The volume travels
+ * as the string the `numeric` column holds, so a consumer never has to guess a scale.
+ *
+ * Nothing subscribes to it yet, and that is the same posture 18c's D9 took: the hospital-wide ADR
+ * and incident registers are the quality pack's (28a) and it is unbuilt. This is the seam it will
+ * subscribe to, not a substitute for it.
+ */
+export const imagingContrastAdministered = defineEvent("imaging.contrast_administered", MODULE, z.object({
+  studyId: id, administrationId: id, agent: z.string().min(1), route: z.string().min(1),
+  volumeMl: z.string().min(1),
+}));
+
 /** Every event this module declares, for the catalogue parity test. */
 export const RADIOLOGY_EVENTS = [
   imagingStudyScheduled,
@@ -116,4 +130,5 @@ export const RADIOLOGY_EVENTS = [
   imagingCriticalAcknowledged,
   imagingBillDecisionRaised,
   imagingImageViewed,
+  imagingContrastAdministered,
 ] as const;
