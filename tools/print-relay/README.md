@@ -69,6 +69,18 @@ lp -d CRK-Thermal-1 /usr/share/cups/data/testprint   # prove the queue before wi
 }
 ```
 
+> **`vitals_thermal` HAS NOTHING TO PRINT YET, AND YOU SHOULD STILL MAP IT.**
+>
+> The vitals slip is a declared document with a destination and no producer: nothing enqueues one,
+> and its renderer deliberately returns null pending the artboard owner ruling R3 asked for. So the
+> vitals-desk printer will sit idle until that lands, and a relay that has never printed to it is
+> working correctly rather than misconfigured.
+>
+> Map it anyway. The queue name is the thing that needs a human, a store cupboard and a cable; the
+> day the slip exists you want the relay already able to reach the printer rather than discovering
+> the mapping is wrong with a nurse waiting. `--self-test` will exercise the queue without one.
+
+
 The **agent key** is created by an administrator on the server (`createAgent`). Only its SHA-256 is
 stored there, so the key is shown once — keep the config file `chmod 600`. A compromised relay is
 revoked with the agent **kill switch**, which takes effect immediately and needs no deploy.
