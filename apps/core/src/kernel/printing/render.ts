@@ -4,8 +4,10 @@ import {
 } from "../db/schema";
 import { encounterFeeStatuses } from "../../modules/billing/fee-status";
 import { LAB_DEPARTMENT_CODE } from "../../modules/opd/encounters";
-/* FD-25 §14 — the ONE place a confidential patient's name is decided. See `subjectOf`. */
-import { displayName, displayNameForRelease } from "../../modules/patients";
+/* FD-25 §14 — the ONE place a confidential patient's name is decided. See `subjectOf`.
+   `resolvePatientId` is the OTHER half of that decision: it names WHOSE record this is after a
+   merge, and the rule cannot be asked without that. See `canonicalPersonOf`. */
+import { displayName, displayNameForRelease, resolvePatientId } from "../../modules/patients";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
 
@@ -201,6 +203,57 @@ function ageSexOf(dob: string | Date | null, gender: string | null, on: Date): s
 }
 
 /**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-25 CLOSE — THE PERSON A SLIP IS ABOUT IS THE CANONICAL RECORD, NOT THE ROW IT JOINS
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * `executeMerge` moves allergies and guardians to the winner and then FREEZES the loser
+ * (`status = 'merged'`, `merged_into_patient_id`). **It never repoints `opd_encounters.patient_id`,
+ * and `updatePatient` refuses to touch a frozen row** (`patient_not_active`) — so a merged-away
+ * duplicate keeps its own `name`, `alias` and `is_confidential` for ever while its encounters go on
+ * pointing at it. A printer that reads the §14 decision off the joined row therefore asks the rule
+ * about a record that has stopped being the patient, and gets it wrong in BOTH directions: a
+ * duplicate registered before anyone knew who the patient was prints the LEGAL NAME of someone the
+ * hospital has since sealed, and a break-glass grant — written against the id `getPatient` matched,
+ * which is the CANONICAL one — fails to open the paper for the clinician who took it.
+ *
+ * Every other §14 and PHI decision in this tree resolves the chain first: `getPatient` walks it
+ * before it asks about the permission or the grant, and `lab`, `aerb` and `membership` all call
+ * `resolvePatientId` before they key anything on a patient. This is that call.
+ *
+ * ═══ THE WHOLE IDENTITY BAND MOVES, NOT ONLY THE NAME ═══
+ *
+ * A slip carrying the survivor's NAME beside the duplicate's retired UHID would match no record at
+ * any counter in the building — a second way to hand paper to the wrong person, invented while
+ * fixing the first. `getPatient` hands a reader the surviving row entire, and the paper must not
+ * disagree with the screen it is printed beside.
+ *
+ * ═══ AND IT COSTS NOTHING ON THE PATH THAT MATTERS ═══
+ *
+ * `status` comes back on the join that was already running, so an ordinary slip — every slip, on
+ * every ordinary day — walks no chain and issues no extra query. Only a merged row pays, and only
+ * a merged row has anything to pay for.
+ */
+type SlipPerson = {
+  id: string; name: string; alias: string | null; isConfidential: boolean;
+  uhid: string; dob: Date | null; gender: string;
+};
+
+async function canonicalPersonOf(db: Db, patientId: string): Promise<SlipPerson | null> {
+  const canonicalId = await resolvePatientId(db, patientId);
+  if (canonicalId === null) return null;
+  const rows = await db
+    .select({
+      id: patients.id, name: patients.name, alias: patients.alias,
+      isConfidential: patients.isConfidential, uhid: patients.uhid,
+      dob: patients.dob, gender: patients.administrativeGender,
+    })
+    .from(patients)
+    .where(eq(patients.id, canonicalId));
+  return rows[0] ?? null;
+}
+
+/**
  * Resolves everything a slip says about one visit, AT RENDER TIME.
  *
  * This is why `print_jobs.params` carries an encounter id and not a name: a reprint after a
@@ -221,12 +274,19 @@ async function subjectOf(
       /* FD-25 — `alias` and `is_confidential` travel because `displayNameForRelease` needs all three
          to answer. `billing/worklist.ts` selects exactly these beside the name for the same reason.
          The ID travels too: a break-glass grant is scoped to ONE patient, so the rule cannot be
-         asked without naming whose record this is. `patients.id` rather than
-         `opd_encounters.patient_id` — they are the join condition and therefore equal, but the
-         question is "may they see THIS ROW's name", and this is that row. */
+         asked without naming whose record this is.
+
+         **AND THIS ROW IS NOT NECESSARILY THAT RECORD.** An earlier draft of this comment argued
+         that `patients.id` and `opd_encounters.patient_id` "are the join condition and therefore
+         equal", which is true of the join and beside the point: after a merge the encounter still
+         points at the FROZEN DUPLICATE, and the seal, the alias and the grant all live on the
+         survivor. `canonicalPersonOf` below resolves that before the rule is asked. */
       patientId: patients.id,
       alias: patients.alias,
       isConfidential: patients.isConfidential,
+      /* FD-25 CLOSE — the one column that says the joined row is not the person any more. See
+         `canonicalPersonOf`: it costs nothing to select and saves a chain walk on every ordinary slip. */
+      patientStatus: patients.status,
       uhid: patients.uhid,
       dob: patients.dob,
       gender: patients.administrativeGender,
@@ -303,15 +363,28 @@ async function subjectOf(
     and the moment the clearance has to be true is the moment paper comes out. That cuts the safe way
     round: a lapsed grant prints the alias, never the reverse.
   */
-  const person = { name: row.patientName, alias: row.alias, isConfidential: row.isConfidential };
+  /*
+    THE ROW THE ENCOUNTER JOINS IS ONLY THE STARTING POINT — see `canonicalPersonOf` for why, and
+    for why the ordinary slip pays nothing for this. A chain that ends nowhere renders NOTHING
+    rather than falling back to the frozen row: `followMergeChain` returning null means the record
+    this paper is about cannot be identified, and a slip naming a record the system cannot resolve
+    is worse than no slip — printing is advisory (R7) and the screen reports the failure.
+  */
+  const person = row.patientStatus === "merged"
+    ? await canonicalPersonOf(db, row.patientId)
+    : {
+      id: row.patientId, name: row.patientName, alias: row.alias,
+      isConfidential: row.isConfidential, uhid: row.uhid, dob: row.dob, gender: row.gender,
+    };
+  if (person === null) return null;
 
   return {
     patientName: requester === null
       ? displayName(person, false)
-      : await displayNameForRelease(db, requester, person, row.patientId),
-    uhid: row.uhid,
+      : await displayNameForRelease(db, requester, person, person.id),
+    uhid: person.uhid,
     visitType: row.visitType,
-    ageSex: ageSexOf(row.dob, row.gender, now),
+    ageSex: ageSexOf(person.dob, person.gender, now),
     visitNo: row.visitNo,
     serviceDate: row.serviceDate,
     departmentName: row.departmentName,

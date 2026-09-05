@@ -170,10 +170,16 @@ describe("displayNameForRelease (§14 / FD-25 — permission OR break-glass)", (
   });
 
   /**
-   * A GRANT BELONGS TO A HUMAN, NOT TO AN ID. `break_glass_grants.user_id` is plain text with no
-   * foreign key and the print relay presents an AGENT credential; checking the id before the actor
-   * TYPE would let a machine inherit a person's justification on the one path with no human to be
-   * reviewed for it. The `system` actor is the same case wearing the other uniform.
+   * A GRANT BELONGS TO A HUMAN, NOT TO AN ID — and this row is what enforces that, on its own.
+   *
+   * **CORRECTED AT THE FD-25 CLOSE:** this comment used to say `break_glass_grants.user_id` is
+   * "plain text with no foreign key". It is not — the column references `users.id`, so no grant row
+   * for a machine id can exist in the first place. That makes this assertion belt AND braces rather
+   * than the only thing standing between a relay and a VIP's name, which is the honest description.
+   * It is kept because the rule it pins is a policy — the print relay presents an AGENT credential
+   * to the one caller of this function, and a machine must get the alias whatever any table says —
+   * and because a guard that leans on a constraint in another table is one a migration can silently
+   * remove. The `system` actor is the same case wearing the other uniform.
    */
   it("an agent or system actor carrying a grant-holder's id still gets the alias", async () => {
     const clerk = await plainClerk();

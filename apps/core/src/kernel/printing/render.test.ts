@@ -7,7 +7,7 @@ import { issuePaidInvoice, mkCashier, openSessionFor, seedBillingBase } from "..
 import { renderDocument, renderPaymentReceipt, renderPrescriptionSheet, renderTokenSlip } from "./render";
 import { eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
-import { breakGlassGrants, opdDepartments, opdEncounters, patients, printJobs } from "../db/schema";
+import { breakGlassGrants, opdDepartments, opdEncounters, patients, phiAccessLog, printJobs } from "../db/schema";
 /* FD-25 §14 — the fixtures the confidentiality rows need: the grant, the queue row, and the one
    production caller that has to thread the requester through. */
 import { grantPermissionToRole, syncPermissions } from "../auth/permissions";
@@ -277,6 +277,19 @@ describe("FD-24 T3: rendering the counter's documents", () => {
     }
 
     /**
+     * The merged state as `followMergeChain` reads it: two columns on the patient ROW, shaped
+     * rather than driven through `executeMerge`, which needs an approval workflow this suite is not
+     * about. `lab/duplicates.test.ts` A6 and `membership/import/match-queue.test.ts` set the same
+     * fixture the same way, and A6's own comment records why the first draft — a
+     * `patient_merge_requests` row — asserted nothing: that is the REQUEST, not the outcome.
+     */
+    async function mergeInto(loserId: string, winnerId: string): Promise<void> {
+      await db.update(patients)
+        .set({ status: "merged", mergedIntoPatientId: winnerId, updatedBy: "t" })
+        .where(eq(patients.id, loserId));
+    }
+
+    /**
      * THE DEFAULT IS THE ALIAS, and an unattributed job is the case to get right first: a row with no
      * `requested_by` is the one most likely to be a background producer, and a renderer that opened
      * up for "nobody in particular" would leak on exactly the path with no human to answer for it.
@@ -537,6 +550,236 @@ describe("FD-24 T3: rendering the counter's documents", () => {
       const doc = await renderTokenSlip(db, { encounterId: sealedEncounter }, MON, { type: "agent", id: clerk.id });
       expect(doc!.html).toContain(ALIAS);
       expect(doc!.html).not.toContain(SEALED_NAME);
+    });
+
+    /**
+     * ═══════════════════════════════════════════════════════════════════════════════════════════
+     * FD-25 CLOSE — THE RULE IS ASKED ABOUT THE CANONICAL PATIENT, NOT THE ROW THE ENCOUNTER JOINS
+     * ═══════════════════════════════════════════════════════════════════════════════════════════
+     *
+     * `subjectOf` joined `patients` straight onto `opd_encounters.patient_id` and read the WHOLE
+     * §14 decision — the flag, the alias, and the id a break-glass grant is keyed on — off that row.
+     * **`executeMerge` never repoints `opd_encounters.patient_id`.** It moves allergies and
+     * guardians and then freezes the loser with `status = 'merged'`, and `updatePatient` refuses to
+     * touch a frozen row (`patient_not_active`) — so a merged-away duplicate keeps its own `name`,
+     * `alias` and `is_confidential` for ever, and the encounter keeps pointing at it.
+     *
+     * Every other §14 decision in this tree resolves the chain FIRST (`getPatient`, and
+     * `resolvePatientId` in lab, aerb and membership). This one did not, and it failed in BOTH
+     * directions: a seal that did not travel to the paper, and a grant that did not open it.
+     */
+    describe("after a MERGE — the seal and the grant follow the SURVIVING record", () => {
+      /**
+       * THE SEAL DOES NOT TRAVEL. A §14 patient is already registered as the canonical record; the
+       * desk registers them AGAIN as a walk-in — an ordinary, unflagged row carrying the legal name
+       * in plain text — and opens a visit on it. MRD spots the duplicate and merges. The paper this
+       * encounter produces is now about a sealed person, and every fact the printer used to decide
+       * otherwise lives on a row nobody may edit any more.
+       */
+      it("prints the SURVIVING record's alias for an encounter opened on a duplicate that was merged away", async () => {
+        const clerk = await mkUser(db, "merge-clerk", ["front_office"]);
+        const doctor = await mkDoctor(db, { username: "dr-merge", departmentId: deptId, roomId, displayName: "Dr Anand Rao" });
+        const winner = await mkPatient(db, clerk.actor, {
+          name: SEALED_NAME, sex: "male", ageYears: 41, phone: "9876500021", isConfidential: true, alias: ALIAS,
+        });
+        /* The duplicate: the SAME person and the same legal name — that is what makes it one — and
+           NOT flagged, because the clerk at the counter did not know who they were serving. */
+        const loser = await mkPatient(db, clerk.actor, {
+          name: SEALED_NAME, sex: "male", ageYears: 41, phone: "9876500022",
+        });
+        const visit = await openVisit(db, clerk.actor, { patientId: loser.id, departmentId: deptId, doctorId: doctor.doctorId }, MON);
+        await mergeInto(loser.id, winner.id);
+
+        const doc = await renderTokenSlip(db, { encounterId: visit.encounter.id }, MON, clerk.actor);
+        expect(doc!.html).toContain(ALIAS);
+        expect(doc!.html).not.toContain(SEALED_NAME);
+        expect(doc!.title).not.toContain(SEALED_NAME);
+        /* The WHOLE identity band is the surviving record's, not a name off one row beside a UHID
+           off another: a slip naming the winner under the loser's retired identifier matches no
+           record at either counter, which is a second way to hand paper to the wrong person. */
+        expect(doc!.html).toContain(winner.uhid);
+        expect(doc!.html).not.toContain(loser.uhid);
+      });
+
+      /**
+       * AND THE MIRROR IMAGE, which needs no timing at all: a grant is written against the id
+       * `getPatient` matched — the CANONICAL one — so a clerk who legitimately broke the glass got
+       * paper saying "Patient A" while `GET /patients/:id` on the screen beside it said the legal
+       * name. That disagreement is the precise thing this ruling was written to end.
+       */
+      it("honours a break-glass grant taken on the SURVIVING record", async () => {
+        const clerk = await mkUser(db, "merge-clerk-b", ["front_office"]);
+        const doctor = await mkDoctor(db, { username: "dr-merge-b", departmentId: deptId, roomId, displayName: "Dr Meena Iyer" });
+        const winner = await mkPatient(db, clerk.actor, {
+          name: OTHER_SEALED_NAME, sex: "female", ageYears: 33, phone: "9876500023",
+          isConfidential: true, alias: OTHER_ALIAS,
+        });
+        const loser = await mkPatient(db, clerk.actor, {
+          name: SEALED_NAME, sex: "male", ageYears: 41, phone: "9876500024",
+          isConfidential: true, alias: ALIAS,
+        });
+        const visit = await openVisit(db, clerk.actor, { patientId: loser.id, departmentId: deptId, doctorId: doctor.doctorId }, MON);
+        await mergeInto(loser.id, winner.id);
+        await useBreakGlass(db, testCfg, clerk.actor, { patientId: winner.id, reason: "unconscious, 2 a.m." });
+
+        const doc = await renderTokenSlip(db, { encounterId: visit.encounter.id }, MON, clerk.actor);
+        expect(doc!.html).toContain(OTHER_SEALED_NAME);
+        expect(doc!.html).not.toContain(ALIAS);
+      });
+    });
+
+    /**
+     * ═══════════════════════════════════════════════════════════════════════════════════════════
+     * FD-25 CLOSE — THE CLAIM IS WHERE A SEALED PATIENT'S PAPER IS FIRST RELEASED, SO IT IS WHERE
+     * THE DISCLOSURE HAS TO BE RECORDED AS ONE
+     * ═══════════════════════════════════════════════════════════════════════════════════════════
+     *
+     * The reprint route logs `sealed` and the break-glass reason. The claim did not — and the claim
+     * is the FIRST print of every sealed patient's paper, the reprint only ever the second copy.
+     * `recordPhiAccess` defaults `sealed` to false, so an enquiry asking *"who read SEALED records
+     * last month"* got nothing back for the route that actually put the name on paper, and the one
+     * row it did write named the RELAY, a machine, while the clearance that released the name
+     * belonged to a person who is on `pendingReviews` for taking it.
+     */
+    describe("the audit the CLAIM writes", () => {
+      it("records a sealed patient's claim as SEALED and names the operator whose clearance released it", async () => {
+        const { patientId, clerk } = await sealedVisit();
+        const ordinaryId = (await db.select().from(opdEncounters).where(eq(opdEncounters.id, encounterId)))[0]!.patientId;
+        await useBreakGlass(db, testCfg, clerk, { patientId, reason: "unconscious, 2 a.m." });
+
+        const controller = new PrintingController(db);
+        const { jobs } = await controller.claim(
+          { type: "agent", id: "relay-1" },
+          { destinations: ["front_desk_thermal"], limit: 10 },
+        );
+        expect(jobs).toHaveLength(2); // the sealed patient's token slip and the ordinary patient's
+
+        const rows = (await db.select().from(phiAccessLog)).filter((r) => r.surface === "print.claim");
+        const sealedRows = rows.filter((r) => r.patientId === patientId);
+        expect(sealedRows.length).toBeGreaterThan(0);
+        // "who read SEALED records" must answer yes for every row about this disclosure
+        expect(sealedRows.every((r) => r.sealed)).toBe(true);
+        // and "who caused this name to be printed" must be answerable BY ACTOR, not by grepping prose
+        const byClerk = sealedRows.find((r) => r.actorId === clerk.id);
+        expect(byClerk).toBeDefined();
+        expect(byClerk!.sealed).toBe(true);
+        expect(byClerk!.reason).toContain("break-glass");
+
+        /* THE REGRESSION TO FEAR — 99.9% of the paper this hospital prints. An ordinary patient's
+           claim is still exactly ONE row, still the relay's, still unsealed. */
+        const ordinaryRows = rows.filter((r) => r.patientId === ordinaryId);
+        expect(ordinaryRows).toHaveLength(1);
+        expect(ordinaryRows[0]!.sealed).toBe(false);
+        expect(ordinaryRows[0]!.actorType).toBe("agent");
+      });
+
+      /**
+       * `RecordPhiAccessInput.patientId` is documented as *"the CANONICAL patient id — callers
+       * resolve the merge chain before writing"*, and the legal-hold clamp in `prunePhiAccessLog`
+       * matches holds by that column. A row filed under a merged-away id is invisible to an enquiry
+       * about the surviving patient AND unprotected by a hold placed on them — the log incomplete
+       * for the winner and self-contradictory for the loser at the same time.
+       */
+      it("files both print disclosures under the CANONICAL patient id", async () => {
+        const clerk = await mkUser(db, "canon-clerk", ["front_office"]);
+        const doctor = await mkDoctor(db, { username: "dr-canon", departmentId: deptId, roomId, displayName: "Dr Anand Rao" });
+        const winner = await mkPatient(db, clerk.actor, { name: "Sunita Devi", sex: "female", ageYears: 44, phone: "9876500031" });
+        const loser = await mkPatient(db, clerk.actor, { name: "Sunita Devi", sex: "female", ageYears: 44, phone: "9876500032" });
+        const visit = await openVisit(db, clerk.actor, { patientId: loser.id, departmentId: deptId, doctorId: doctor.doctorId }, MON);
+        const slipId = (await db.select().from(printJobs).where(eq(printJobs.dedupeKey, `token:${visit.encounter.id}`)))[0]!.id;
+        await mergeInto(loser.id, winner.id);
+
+        const controller = new PrintingController(db);
+        await controller.reprint(clerk.actor, { jobId: slipId });
+        await controller.claim({ type: "agent", id: "relay-1" }, { destinations: ["front_desk_thermal"], limit: 10 });
+
+        const printRows = (await db.select().from(phiAccessLog))
+          .filter((r) => r.surface === "print.claim" || r.surface === "print.reprint");
+        expect(printRows.filter((r) => r.patientId === winner.id).length).toBeGreaterThan(0);
+        expect(printRows.filter((r) => r.patientId === loser.id)).toHaveLength(0);
+      });
+    });
+
+    /**
+     * ═══════════════════════════════════════════════════════════════════════════════════════════
+     * FD-25 CLOSE — `GET /print/jobs` KEPT THE BARE-ID SHAPE THE REPRINT WAS FIXED FOR
+     * ═══════════════════════════════════════════════════════════════════════════════════════════
+     *
+     * The reprint's own gate comment states the class: *"`opd.visits.open` is held at HOSPITAL
+     * scope by every front-desk role, and this route took a bare `jobId`."* Its sibling on the same
+     * controller took a bare `encounterId` and answered a sealed patient's encounter with document
+     * kinds, statuses, attempt counts, relay-authored error text and print times — while answering
+     * an encounter that does not exist with an empty list. Encounter ids for sealed patients are on
+     * the queue board, which aliases the NAME and not the ID, so that difference is an enumeration
+     * oracle. **Sealed and absent must be indistinguishable from outside** (07a DD2).
+     */
+    describe("GET /print/jobs — the gate the reprint got and this route did not", () => {
+      it("answers a sealed patient's encounter exactly as it answers an unknown one", async () => {
+        const { encounterId: sealedEncounter, clerk } = await sealedVisit();
+        const holder = await grantHolder("vip-desk-reader-jobs");
+        const controller = new PrintingController(db);
+
+        expect((await controller.jobsFor(clerk, sealedEncounter)).jobs).toEqual([]);
+        expect((await controller.jobsFor(clerk, "no-such-encounter")).jobs).toEqual([]);
+
+        /* THE POSITIVE CONTROLS, so deleting the route would fail this row too: someone who may
+           open the record still sees the outbox, and an ORDINARY patient's encounter is untouched
+           for the very same clerk. */
+        const seen = await controller.jobsFor(holder, sealedEncounter);
+        expect(seen.jobs.map((j) => j.document).sort()).toEqual(["opd_prescription", "opd_token_slip"]);
+        const ordinary = await controller.jobsFor(clerk, encounterId);
+        expect(ordinary.jobs).toHaveLength(2);
+      });
+    });
+
+    /**
+     * ═══════════════════════════════════════════════════════════════════════════════════════════
+     * FD-25 CLOSE — WHAT THE AUDIT IS ALLOWED TO CALL A USER
+     * ═══════════════════════════════════════════════════════════════════════════════════════════
+     *
+     * The close review read the claim's `{ type: "user", id: requestedBy }` as a live hole: a
+     * manufactured type over a column with no foreign key, letting a machine walk through the
+     * id-first half of `displayNameForRelease` and inherit a person's justification. **IT IS NOT
+     * ONE, and the reason matters more than the verdict.** `break_glass_grants.user_id` carries a
+     * real FOREIGN KEY to `users.id` — the comment in `display-name.ts` said it did not, the review
+     * repeated it from there, and the fixture this row was first written with was refused by the
+     * database. A grant for a machine id cannot exist, so a manufactured actor over a batch id finds
+     * no permission and no grant and gets the alias.
+     *
+     * WHAT THAT COLUMN DOES REACH IS THE AUDIT, and only since this session: the claim now
+     * attributes a sealed release to the requesting operator, so an unchecked `requested_by` would
+     * put `actor_type = 'user'` over a nightly batch's id — a false answer to the one question
+     * `phi_access_log` is asked. `enqueue.ts` records that `opd_payment_receipt` still owes a
+     * producer; that producer is one forgotten ternary away from writing such a row.
+     */
+    it("never attributes a disclosure to a requester id that is not a live user", async () => {
+      const { encounterId: sealedEncounter, patientId, clerk } = await sealedVisit();
+      const machineId = "print-batch-agent-1"; // a producer's own id, with no `users` row behind it
+      const machineJobId = await withTx(db, (tx) => enqueuePrintJob(tx, {
+        document: "opd_token_slip",
+        params: { encounterId: sealedEncounter },
+        dedupeKey: `token-machine:${sealedEncounter}`,
+        patientId,
+        encounterId: sealedEncounter,
+        requestedBy: machineId,
+      }));
+
+      const controller = new PrintingController(db);
+      const { jobs } = await controller.claim(
+        { type: "agent", id: "relay-1" },
+        { destinations: ["front_desk_thermal"], limit: 10 },
+      );
+      /* The paper is the alias — which the FK alone would have guaranteed, and which is asserted
+         here so a future migration that drops it does not do so silently. */
+      expect(jobs.find((j) => j.id === machineJobId)!.html).toContain(ALIAS);
+      expect(jobs.find((j) => j.id === machineJobId)!.html).not.toContain(SEALED_NAME);
+
+      const rows = (await db.select().from(phiAccessLog)).filter((r) => r.surface === "print.claim");
+      /* THE POSITIVE CONTROL, in the very same claim: the clerk who opened the visit IS a live user
+         and IS attributed, so this row cannot be satisfied by a claim that attributes nobody. */
+      expect(rows.filter((r) => r.actorId === clerk.id && r.sealed)).toHaveLength(1);
+      /* And the machine id is named by nothing. */
+      expect(rows.filter((r) => r.actorId === machineId)).toHaveLength(0);
     });
   });
 

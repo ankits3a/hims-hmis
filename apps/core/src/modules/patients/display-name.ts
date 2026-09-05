@@ -106,13 +106,22 @@ export async function displayNameFor(
  * seal; it is a second authority on one question, and the operator settles it by writing the legal
  * name onto the slip in pen, where nothing logs it at all.
  *
- * ═══ THE ORDER OF THE TWO QUESTIONS IS ITSELF A GUARD ═══
+ * ═══ THE ACTOR'S TYPE IS CHECKED FIRST, AND NOT FOR THE REASON THIS COMMENT USED TO GIVE ═══
  *
- * The actor's TYPE is checked before either lookup. `break_glass_grants.user_id` is plain text with
- * no foreign key, and the print relay presents an AGENT credential to the one caller of this
- * function; an id-first check would let a machine inherit a person's justification on the single
- * path with no human present to be reviewed for it. `system` and `agent` never see through the
- * flag here, exactly as they never do above.
+ * **CORRECTED AT THE FD-25 CLOSE.** This paragraph asserted that `break_glass_grants.user_id` is
+ * "plain text with no foreign key" and that an id-first check would therefore let a machine inherit
+ * a person's justification. **The column carries a real FK to `users.id`** (`schema/auth.ts`), so a
+ * grant row for an agent or a batch id cannot be inserted at all, and the close review that
+ * repeated the claim inherited the error from here. A stated reason that is false is worse than no
+ * reason: the next reader either builds on it or deletes the guard when they discover it.
+ *
+ * The order stays, on two reasons that ARE true. First, it is the SAME RULE `displayNameFor` states
+ * one function above — a non-user actor never sees through the flag — and that is a policy about
+ * who may read a VIP's name, not a shortcut: the print relay's agent credential is the one machine
+ * credential that reaches a rendered document, and it must get the alias whatever any table says.
+ * Second, a guard that leans on a constraint in ANOTHER table is a guard a migration can silently
+ * remove; this one holds on its own. It also saves two reads for every machine-rendered document,
+ * which is the least interesting thing about it.
  */
 export async function displayNameForRelease(
   exec: Db | Tx, actor: Actor, patient: NameablePatient, patientId: string,
