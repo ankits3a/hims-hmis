@@ -8,12 +8,53 @@ import type { Db } from "../db/client";
 
 // OWASP-baseline argon2id. PIN verification rides the same params and must stay
 // inside the <2 s fast-switch budget (perf-tested in Task 7).
-const ARGON2_OPTS: argon2.Options = {
+const ARGON2_PROD: argon2.Options = {
   type: argon2.argon2id,
   memoryCost: 19456,
   timeCost: 2,
   parallelism: 1,
 };
+
+/**
+ * ═══ THE TEST COST, AND WHY IT CANNOT REACH A REAL PASSWORD ═══
+ *
+ * MEASURED: one OWASP-baseline hash costs ~36 ms, and the fixtures mint EIGHT users per
+ * `beforeEach` — ~290 ms of every test in the repository, paid roughly 3,000 times in a full core
+ * run. `createUser` has ONE production caller (`users-admin.controller.ts`) and ~150 test callers
+ * across ~70 files, so this is overwhelmingly a fixture cost.
+ *
+ * **TWO independent conditions, both required, because either one alone is a foot-gun.**
+ * `NODE_ENV` alone would weaken any process someone starts with the wrong value — and a stray
+ * `NODE_ENV=test` is a plausible deployment slip. An opt-in variable alone would be a switch named
+ * "make the password hashing weak" that anything could set. Requiring BOTH means a real deployment
+ * has to get two unrelated things wrong in the same breath, and `argon2-cost.test.ts` asserts each
+ * one alone is inert.
+ *
+ * The precedent is `test/helpers/env.ts`, which already supplies a test-only `SECRET_KEY` the same
+ * way: the HARNESS opts in, rather than the production code guessing where it is running.
+ *
+ * **This changes nothing about verification, now or retrospectively.** An argon2 encoded hash
+ * carries its own `m`, `t` and `p`, so `argon2.verify` reads the parameters out of the stored
+ * string. Every password hashed at production cost keeps verifying at production cost, and no
+ * existing hash is touched or needs rehashing.
+ */
+/**
+ * BOTH NUMBERS ARE ARGON2'S OWN FLOORS, not values chosen for taste. The library refuses anything
+ * lower — `Invalid memoryCost, must be between 1024 and 4294967295` and `Invalid timeCost, must be
+ * between 2 and 4294967295` — and both were found by trying to go under them, not by reading docs.
+ * So `timeCost` is UNCHANGED from production and the only lever is memory: 19456 KiB -> 1024, the
+ * cheapest hash argon2 will consent to produce.
+ */
+const ARGON2_TEST: argon2.Options = {
+  type: argon2.argon2id,
+  memoryCost: 1024,
+  timeCost: 2,
+  parallelism: 1,
+};
+
+export function argon2Options(env: NodeJS.ProcessEnv = process.env): argon2.Options {
+  return env["NODE_ENV"] === "test" && env["ARGON2_TEST_COST"] === "1" ? ARGON2_TEST : ARGON2_PROD;
+}
 
 /**
  * PLAN 11e: `mustChangePassword` is OPTIONAL and defaults to FALSE, deliberately.
@@ -36,8 +77,8 @@ export async function createUser(
   },
 ): Promise<{ id: string }> {
   const id = newId();
-  const passwordHash = await argon2.hash(input.password, ARGON2_OPTS);
-  const pinHash = input.pin === undefined ? null : await argon2.hash(input.pin, ARGON2_OPTS);
+  const passwordHash = await argon2.hash(input.password, argon2Options());
+  const pinHash = input.pin === undefined ? null : await argon2.hash(input.pin, argon2Options());
   await db.insert(users).values({
     id,
     username: input.username,
@@ -82,7 +123,7 @@ export async function setPassword(
   password: string,
   opts: { mustChangePassword: boolean },
 ): Promise<void> {
-  const passwordHash = await argon2.hash(password, ARGON2_OPTS);
+  const passwordHash = await argon2.hash(password, argon2Options());
   await db
     .update(users)
     .set({ passwordHash, mustChangePassword: opts.mustChangePassword, updatedAt: new Date() })
@@ -90,7 +131,7 @@ export async function setPassword(
 }
 
 export async function setPin(db: Db, userId: string, pin: string): Promise<void> {
-  const pinHash = await argon2.hash(pin, ARGON2_OPTS);
+  const pinHash = await argon2.hash(pin, argon2Options());
   await db.update(users).set({ pinHash, updatedAt: new Date() }).where(eq(users.id, userId));
 }
 

@@ -98,10 +98,14 @@ export const aerbLicences = pgTable(
      * As printed on the document.
      *
      * CLOSE REVIEW — this was `.unique()` across EVERY row, surrendered ones included, and eLORA
-     * renewals routinely keep the number. So the ordinary act of renewing a CT's licence —
-     * surrender the old row, file the new one — hit the constraint and came back a 500, and the
-     * register had no route that could record it at all. The rule that was meant is *two machines
-     * cannot share a live number*, which is a partial index below.
+     * renewals routinely keep the number. So renewing a CT's licence hit the constraint and came
+     * back a 500, and the register had no route that could record it at all. The rule that was
+     * meant is *two machines cannot share a live number*, which is a partial index below.
+     *
+     * **The sentence above used to describe renewal as "surrender the old row, file the new one"
+     * and called it the ordinary act.** It is not, and has not been since `0065`: surrendering to
+     * renew darkens the machine for the rest of the outgoing window, terminally. A renewal is the
+     * next non-overlapping window, filed the day the paperwork arrives.
      */
     licenceNo: text("licence_no").notNull(),
     /** The eLORA portal's own reference for the application/consent. */
