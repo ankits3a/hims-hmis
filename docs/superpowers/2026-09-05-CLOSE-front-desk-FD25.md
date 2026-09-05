@@ -173,5 +173,30 @@ pnpm --filter @hmis/core exec jest -w 2            384 suites / 3968 tests, exit
 Both full suites were run under `test-lock.sh` on the final tree, with no peer runner — the lane's
 own rule after 2026-09-01 burned four of five passes to contention rather than to code.
 
+### The five pinned counts are PROVISIONAL, and were already provisional when this was written
+
+Green here means green **against this branch's merge-base**, and that base has moved. Measured
+2026-09-05, not computed:
+
+| | merge-base `dff9d146` (what this branch measured against) | `origin/main` today (after #88 `db90eca`) | this branch |
+|---|---|---|---|
+| `modelPairs` | 302 | 303 | **306** |
+| `installedRegistry` | 157 | 158 | 157 |
+| `modelPermissions` | 137 | 138 | 137 |
+| caddyfile SPA routes | 48 | 48 | **50** |
+
+17-E T1 moved `seed-roles.ts` underneath this branch, and #89 (17-E T2) will move it again — it adds
+a new ROLE, `lab_bridge`, not merely a permission.
+
+**Do not add the deltas.** The census is measured, never computed, and a measurement is only valid
+against the main you actually land on. At rebase: make the change, run the four pinned suites, and
+read the failures one at a time. Expect `seed-roles.test.ts:1164` — the
+`heldPermissions + NOT_YET_MODELLED === installedRegistry` identity — to fail LAST and to read like
+an unrelated arithmetic bug; a new role moves `heldPermissions` (143 here) and `NOT_YET_MODELLED`
+(14 here) as well as the pair counts.
+
+Note for whoever reads a board summary instead of this table: caddyfile is **48 → 50**, two routes,
+not 49. `/registration` and `/appointment` are both new.
+
 Every screen was opened in Chromium at 1440×980 against the real API, signed in as the role that
 owns it, and driven — not screenshotted empty. Recorded per screen in its own commit message.
