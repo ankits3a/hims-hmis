@@ -47,7 +47,8 @@ function giveTheBrowserAMicrophone(): { stopped: number } {
 async function dictate(user: ReturnType<typeof userEvent.setup>): Promise<void> {
   const button = screen.getByTestId("scribe-hold");
   await user.pointer({ keys: "[MouseLeft>]", target: button });
-  await waitFor(() => expect(FakeRecorder.instances.length).toBeGreaterThan(0));
+  /* EXACTLY one. Two would be pass 1's dropped-release race, and `> 0` would sail past it. */
+  await waitFor(() => expect(FakeRecorder.instances).toHaveLength(1));
   await act(async () => { FakeRecorder.instances[0]!.stop(); });
 }
 
@@ -139,17 +140,43 @@ describe("the consult scribe", () => {
    * a consulting room. The component stops the tracks on every road out — this asserts the ordinary
    * one, and the unmount cleanup is the same call.
    */
-  it("stops the microphone when the clip is sent", async () => {
+  it("stops the microphone when the clip is sent — and the clip is actually sent", async () => {
     const counter = giveTheBrowserAMicrophone();
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(
-      JSON.stringify({ text: "x", auditId: "a-3" }), { status: 200, headers: { "Content-Type": "application/json" } },
-    )));
+    /* The parameter is declared so `mock.calls` is typed and the URL can be read back. */
+    const fetchSpy = vi.fn(async (input: RequestInfo | URL) => {
+      void input;
+      return new Response(
+        JSON.stringify({ text: "x", auditId: "a-3" }), { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    });
+    vi.stubGlobal("fetch", fetchSpy);
     const user = userEvent.setup();
     renderWithProviders(<ConsultScribe onInsert={() => { /* unused */ }} />);
 
     await dictate(user);
 
-    await waitFor(() => expect(counter.stopped).toBeGreaterThan(0));
+    /*
+      ═══ CI RED — THIS TEST LEAKED ITS OWN POST INTO THE NEXT ONE ═══
+
+      It awaited ONLY the track counter, and `rec.onstop` calls `stopTracks()` SYNCHRONOUSLY before
+      it starts the send. So the counter was already up while the request was still in flight: the
+      test ended, `beforeEach` ran `vi.unstubAllGlobals()`, the next test installed a fresh spy, and
+      this POST landed in it. Exactly one stray `/speech/transcribe` call, intermittently, in a spy
+      that had not existed when the call was provoked — which is why the same sha passed on the push
+      twin and failed on the pull_request twin.
+
+      Its NAME said "when the clip is sent" and it never checked that anything was sent. Awaiting the
+      POST fixes the leak and closes that gap with one assertion.
+
+      EXACT COUNTS, not `toBeGreaterThan(0)`. Close pass 1's asymmetry scan flagged both tolerances in
+      this file — "a tolerance is evidence of a dependency somebody could not name" — and I did not
+      take it. One hold makes exactly one recorder and sends exactly one clip; a second of either is
+      the push-to-hold race that pass 1 also reported, and `> 0` would pass straight through it.
+    */
+    await waitFor(() => {
+      expect(fetchSpy.mock.calls.filter((c) => String(c[0]).includes("/speech/transcribe"))).toHaveLength(1);
+    });
+    expect(counter.stopped).toBe(1);
   });
 
   /**
@@ -170,7 +197,25 @@ describe("the consult scribe", () => {
     await user.pointer({ keys: "[MouseLeft>]", target: screen.getByTestId("scribe-hold") });
 
     expect(await screen.findByTestId("scribe-off")).toHaveTextContent(/no microphone/i);
-    /* Not "fetch was never called" — the harness reads /auth/me. NOTHING went to the speech route. */
-    expect(fetchSpy.mock.calls.filter((c) => String(c[0]).includes("/speech/transcribe"))).toHaveLength(0);
+
+    /*
+      ═══ THE ASSERTION CARRIES THE EVIDENCE, BECAUSE IT HAS TO TELL TWO THINGS APART ═══
+
+      This used to be `.filter(...).toHaveLength(0)`, which threw away WHICH call and WHAT BODY. When
+      it went red on CI it read "expected 1 to be 0" and could not say whether the component had sent
+      audio from a browser with no microphone — a PRIVACY DEFECT, audio leaving a kiosk that has no
+      mic — or whether a previous test's request had arrived late, a harness defect. Those are not
+      remotely the same finding and the assertion reported them identically.
+
+      Naming the calls costs one line and makes the failure self-diagnosing: a real leak names this
+      component's own body, a late arrival names the clip of whichever test provoked it.
+
+      Not "fetch was never called" — the harness reads `/auth/me`. NOTHING goes to the speech route.
+    */
+    const speechCalls = fetchSpy.mock.calls.filter((c) => String(c[0]).includes("/speech/transcribe"));
+    expect(
+      speechCalls,
+      `a browser with NO microphone sent something to the speech route:\n${JSON.stringify(speechCalls, null, 2)}\n`,
+    ).toEqual([]);
   });
 });
