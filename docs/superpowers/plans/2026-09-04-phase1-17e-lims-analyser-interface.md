@@ -78,10 +78,29 @@ Two measured facts that shape the design and would otherwise be guessed:
   two HTTP routes it talks to and the tables behind them, and nothing else. Building a serial
   daemon here would put an untestable, un-CI-able device driver in a monorepo that has no hardware —
   18b made exactly this call for DICOM (`mwl.ts` D1) and it held.
-- **D2 — The bridge authenticates as an AGENT, using the mechanism that already exists.** No new
-  auth. `agents` + `api_key_hash` + `kill_switch`, and `entered_by_type = 'agent'` on every row it
-  writes. The kill switch matters more here than anywhere else in the system: it is the one control
-  that stops a misbehaving machine writing results, and it is already built and already tested.
+- **D2 — CORRECTED AT T2. The bridge is a SERVICE USER with a one-permission role, not an agent.**
+
+  *As authored, this decision said the bridge authenticates as an agent, on the strength of `agents`
+  + `api_key_hash` + `kill_switch` already existing. **That is impossible and the doc was wrong.***
+  `kernel/auth/guards.ts` throws `ForbiddenException("agents hold no permissions yet")` for **any**
+  non-user actor before it reaches `hasPermission`, so an agent cannot pass `@RequirePermission` at
+  all — the agent-permission table is a declared Plan 12 seam that has not shipped. The original D2
+  was written from a fact that was read (the table exists) without checking it against the thing
+  that would have to accept it.
+
+  **18b had already solved this and the precedent is followed.** `modality_bridge` is a role holding
+  exactly one permission (`radiology.mwl.read`), and its own title in `seed-roles.ts` says what it
+  is: *"Modality bridge (a MACHINE account: pulls the worklist export; holds nothing else)"*. So the
+  lab's bridge is `lab_bridge`, a service user whose role holds the narrow interface grants and
+  nothing else.
+
+  Two consequences worth stating rather than discovering:
+  - `lab_results.entered_by_type` will read `'user'` with the bridge's user id, not `'agent'`.
+    That is more precise, not less: `entry_mode = 'interface'` already says the value came off a
+    machine, and `entered_by_id` says which account carried it. HOW and WHO stay separate columns.
+  - The agent kill switch is not available, so **revoking the role (or the account) is the control**
+    that stops a misbehaving machine. That is a real difference from what this doc first claimed and
+    it belongs in the runbook.
 - **D3 — A transmission is received whole and ATTACHED one result at a time.** The board: *"One
   block, many patients. One unreadable row parks that row; the other nine go on."* So ingest is two
   steps, not one — `lab_transmissions` (what arrived, from which instrument, when) and per-result

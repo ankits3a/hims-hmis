@@ -1102,23 +1102,24 @@ billing manager still decides it — and the counter's report centre (`/lab/repo
 SIGNED report to print it, aliased and logged per read and only once the interlock allows the
 hand-over; what stays refused is any result before signature and every list's restricted test names.
 
-| Permission | pathologist | lab_technician | phlebotomist | lab_reception |
-|---|---|---|---|---|
-| `lab.catalogue.read` | ✓ | ✓ | ✓ | ✓ |
-| `lab.catalogue.manage` | ✓ | | | |
-| `lab.instruments.manage` | ✓ | | | |
-| `lab.worklist.read` | ✓ | ✓ | ✓ | ✓ |
-| `lab.desk.operate` | | | | ✓ |
-| `lab.collection.operate` | | | ✓ | |
-| `lab.accession.operate` | ✓ | ✓ | | |
-| `lab.results.enter` | ✓ | ✓ | | |
-| `lab.results.verify` | ✓ | | | |
-| `lab.results.read` | ✓ | ✓ | | |
-| `lab.criticals.close` | ✓ | ✓ | | |
-| `lab.reports.publish` | ✓ | | | |
-| `lab.reports.print` | ✓ | | | ✓ |
-| `lab.reports.amend` | ✓ | | | |
-| `lab.orders.place` | ✓ | | | ✓ |
+| Permission | pathologist | lab_technician | phlebotomist | lab_reception | lab_bridge |
+|---|---|---|---|---|---|
+| `lab.catalogue.read` | ✓ | ✓ | ✓ | ✓ | |
+| `lab.catalogue.manage` | ✓ | | | | |
+| `lab.instruments.manage` | ✓ | | | | |
+| `lab.instruments.read` | | | | | ✓ |
+| `lab.worklist.read` | ✓ | ✓ | ✓ | ✓ | |
+| `lab.desk.operate` | | | | ✓ | |
+| `lab.collection.operate` | | | ✓ | | |
+| `lab.accession.operate` | ✓ | ✓ | | | |
+| `lab.results.enter` | ✓ | ✓ | | | |
+| `lab.results.verify` | ✓ | | | | |
+| `lab.results.read` | ✓ | ✓ | | | |
+| `lab.criticals.close` | ✓ | ✓ | | | |
+| `lab.reports.publish` | ✓ | | | | |
+| `lab.reports.print` | ✓ | | | ✓ | |
+| `lab.reports.amend` | ✓ | | | | |
+| `lab.orders.place` | ✓ | | | ✓ | |
 
 Thirty-four grants are held outside that table. **`doctor` gains `lab.orders.place`,
 `lab.results.read` and `lab.catalogue.read`** — the doctor orders the test and reads the result, and

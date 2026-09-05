@@ -1172,6 +1172,23 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     permissions: ["radiology.mwl.read"],
   },
   /**
+   * PLAN 17-E T2 — THE LAB'S BRIDGE, AND IT IS `modality_bridge`'S SHAPE ON PURPOSE.
+   *
+   * A machine account holding exactly what a machine needs: the right to ASK WHAT TO RUN on a tube
+   * it has in front of it. NOT `lab.instruments.manage` — an account that could register machines
+   * and re-map their codes could rename any test it reports, and the bench PC is on a flat hospital
+   * LAN speaking a clear-text protocol.
+   *
+   * A USER rather than an agent, and that is forced rather than chosen: `guards.ts` throws
+   * `agents hold no permissions yet` for any non-user actor before `hasPermission` is reached, so
+   * the `agents` table cannot carry a permission until Plan 12's `agent_permissions` ships. 18b met
+   * this first and `modality_bridge` is its answer.
+   */
+  {
+    roleKey: "lab_bridge",
+    permissions: ["lab.instruments.read"],
+  },
+  /**
    * PLAN 16c T1 — THE DISPENSING AIDE (doc 16 role 25c). May claim, verify-assist and pick; may
    * read the patient and the formulary (stock is read for it by the counter's own routes, under the
    * pharmacy permission). **Holds no `pharmacy.dispense.scheduled`**:
@@ -1422,6 +1439,8 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   // PLAN 18b T1 — a machine account. The title says so, because a staffing card is where an
   // administrator would otherwise assign it to a person.
   modality_bridge: "Modality bridge (a MACHINE account: pulls the worklist export; holds nothing else)",
+  // PLAN 17-E T2 — the analyser bridge, the same shape one department over.
+  lab_bridge: "Laboratory instrument bridge (a MACHINE account: asks what to run on a tube; holds nothing else)",
   // PLAN 16c T1 — the aide's title names the one thing the role cannot do.
   pharmacy_assistant: "Pharmacy Assistant (claims, picks and labels; completes NO Schedule H/H1 dispense)",
 };
