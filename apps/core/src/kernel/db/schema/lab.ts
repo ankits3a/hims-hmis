@@ -850,3 +850,84 @@ export const labParkedResults = pgTable(
     ),
   ],
 );
+
+/**
+ * ═══ PLAN 17-E T4 — THE RUN SHEET, FOR A MACHINE THAT CAN ONLY COUNT ═══
+ *
+ * The board: *"An instrument that knows only a sequence number gets a run sheet: before loading,
+ * Abha scans each cup in order and the sheet remembers strip 41 → S2609010215. When the block
+ * arrives, every strip finds its patient. A sheet with a gap parks that one result."*
+ *
+ * The EL-120 and the U120 report a position and nothing else — no barcode, no typed id. Their
+ * sequence counter is the only name they give a result, and it means nothing outside the run it was
+ * produced in. So the mapping has to exist BEFORE the block arrives, and it has to be built by
+ * SCANNING rather than typing: a sheet somebody keyed from memory is the tube swap this whole phase
+ * is built to prevent, wearing a clipboard.
+ *
+ * ═══ ONE OPEN SHEET PER INSTRUMENT, ENFORCED BY THE DATABASE ═══
+ *
+ * Two open sheets on one machine is the state in which "position 4" has two answers and the ingest
+ * picks by row order. The partial unique index is the whole guard — a code-level check is a
+ * read-then-write, and 17d §9.2 is what that costs.
+ *
+ * ═══ AND A SHEET IS CLOSED BY THE BLOCK THAT CONSUMES IT ═══
+ *
+ * The U120 dumps its whole run at once. Once that block has landed, the sheet's positions describe
+ * cups that are no longer on the machine, so a SECOND block against the same sheet is not a retry —
+ * it is a new run whose sheet nobody built. It parks whole rather than re-using yesterday's map.
+ */
+export const labRunSheets = pgTable(
+  "lab_run_sheets",
+  {
+    id: text("id").primaryKey(),
+    instrumentId: text("instrument_id").notNull().references(() => labInstruments.id),
+    /** The bench's own label for the run — "run sheet 7", the board's words. Human-facing. */
+    runRef: text("run_ref").notNull(),
+    status: text("status").notNull().default("open"),
+    openedAt: timestamp("opened_at", { withTimezone: true }).notNull().defaultNow(),
+    openedBy: text("opened_by").notNull(),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    /** WHICH transmission consumed it, so "where did strip 41 go" is answerable from the sheet. */
+    closedByTransmissionId: text("closed_by_transmission_id"),
+  },
+  (t) => [
+    /**
+     * ONE OPEN SHEET PER MACHINE. Partial, so a closed sheet stays on the record for ever — the
+     * sheet is the audit trail for a position that has no other name.
+     */
+    uniqueIndex("lab_run_sheets_open_ux").on(t.instrumentId).where(sql`status = 'open'`),
+    index("lab_run_sheets_instrument_idx").on(t.instrumentId, t.openedAt),
+    check("lab_run_sheets_status_ck", sql`${t.status} in ('open', 'closed', 'abandoned')`),
+    /** A closed sheet carries its instant; an open one carries none. Both directions. */
+    check("lab_run_sheets_closed_ck", sql`(${t.status} = 'open') = (${t.closedAt} is null)`),
+  ],
+);
+
+/**
+ * One scanned cup. `position` is the instrument's own ordinal — the strip number, the rack slot —
+ * and the pair with the sheet is the primary key, so a position cannot be scanned twice onto one
+ * sheet and then resolve by whichever row came back first.
+ *
+ * **A GAP IS THE ABSENCE OF A ROW, and that is deliberate.** The alternative — a placeholder row
+ * meaning "nothing scanned here" — would make the ingest's lookup succeed and hand back a null
+ * specimen, which is the shape that invites a fallback. There is nothing to fall back to: an absent
+ * row parks that position and only that position.
+ */
+export const labRunSheetPositions = pgTable(
+  "lab_run_sheet_positions",
+  {
+    runSheetId: text("run_sheet_id").notNull().references(() => labRunSheets.id),
+    position: integer("position").notNull(),
+    specimenId: text("specimen_id").notNull().references(() => labSpecimens.id),
+    scannedAt: timestamp("scanned_at", { withTimezone: true }).notNull().defaultNow(),
+    scannedBy: text("scanned_by").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.runSheetId, t.position] }),
+    /**
+     * ONE CUP PER SHEET. The same tube scanned into two positions of one run would report two
+     * results for one sample and the bench would have no way to tell which cup was actually read.
+     */
+    uniqueIndex("lab_run_sheet_positions_specimen_ux").on(t.runSheetId, t.specimenId),
+  ],
+);
