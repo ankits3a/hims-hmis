@@ -188,7 +188,7 @@ async function verifyResultInTx(
     await withTx(db, (audit) => appendEvent(audit, labSodViolationBlocked.make({
       actor,
       patientId: ctx.patientId,
-      encounterId: ctx.encounterNo,
+      encounterId: ctx.encounterId,
       correlationId: ctx.orderId,
       payload: {
         resultId: input.resultId, orderItemId: ctx.orderItemId,
@@ -236,7 +236,7 @@ async function verifyResultInTx(
   await appendEvent(tx, labResultVerified.make({
     actor,
     patientId: ctx.patientId,
-    encounterId: ctx.encounterNo,
+    encounterId: ctx.encounterId,
     correlationId: ctx.orderId,
     payload: {
       resultId: input.resultId, orderItemId: ctx.orderItemId, orderGroupId: ctx.orderGroupId, analyteId: result.analyteId,
@@ -388,7 +388,7 @@ async function placeReflexOrders(
         {
           draftId: newId(),
           patientId: ctx.rawPatientId,
-          encounterId: ctx.encounterNo,
+          encounterId: ctx.encounterId,
           lines: [{ lineId: newId(), serviceId: match.addsServiceId, qty: 1 }],
           credit: { reason: `reflex rule ${match.ruleId} (${match.because})` },
         },
@@ -399,7 +399,7 @@ async function placeReflexOrders(
         .from(invoiceLines).where(eq(invoiceLines.invoiceId, invoice.invoiceId));
 
       const { instanceId } = await startInstance(sp, LAB_ITEM_DEF_KEY, {
-        type: "lab_item", id: reflexItemId, patientId: ctx.patientId, encounterId: ctx.encounterNo,
+        type: "lab_item", id: reflexItemId, patientId: ctx.patientId, encounterId: ctx.encounterId,
       });
       await sp.insert(labItems).values({
         orderItemId: reflexItemId,
@@ -435,7 +435,7 @@ async function placeReflexOrders(
       await appendEvent(sp, labReflexAdded.make({
         actor: LAB_REFLEX_ACTOR,
         patientId: ctx.patientId,
-        encounterId: ctx.encounterNo,
+        encounterId: ctx.encounterId,
         correlationId: order.orderId,
         payload: {
           ruleId: match.ruleId, ruleVersion: match.ruleVersion, triggerResultId: result.id,

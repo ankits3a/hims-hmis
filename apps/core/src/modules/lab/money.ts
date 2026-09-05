@@ -6,6 +6,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { transition, WorkflowError } from "../../kernel/workflow/instances";
 import { BillingError, cashThresholdBlocked, issueCreditNote } from "../billing";
+import { getEncounter } from "../opd";
 import { deskOrder, deskWalkinOrder } from "./desk";
 import { LabError } from "./errors";
 import type { Actor } from "@hmis/contracts";
@@ -332,10 +333,17 @@ export async function deskOrderAtCounter(
   } catch (e) {
     if (e instanceof BillingError && e.code === "cash_threshold_blocked") {
       const detail = (e.detail ?? {}) as CashThresholdDetail;
+      /**
+       * The ID, not the number — the same defect the desk carried, on the audit road. This runs in
+       * the CATCH, after the outer transaction has already unwound, so the resolve costs a
+       * connection nothing is holding. An audit row nobody can join to a visit is an audit row
+       * nobody can use.
+       */
+      const encounter = await getEncounter(db, input.encounterNo);
       await withTx(db, (audit) => appendEvent(audit, cashThresholdBlocked.make({
         actor,
         patientId: input.patientId,
-        encounterId: input.encounterNo,
+        encounterId: encounter?.id,
         payload: {
           patientId: input.patientId,
           episodeCashPaise: detail.episodeCashPaise ?? 0,
