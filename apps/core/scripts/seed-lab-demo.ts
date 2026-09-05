@@ -273,27 +273,37 @@ export async function seedLabDemo(db: Db): Promise<SeedLabDemoReport> {
   return report;
 }
 
-async function main(): Promise<void> {
-  const url = requireEnv("DATABASE_URL");
-  /**
-   * ═══ ASKED TWICE, ON PURPOSE ═══
-   *
-   * This is the only seed in the tree that invents PEOPLE. A patient cannot be deleted once orders,
-   * invoices and results reference them, so a synthetic one written to a live register is permanent.
-   * The banner names the database before anything is written, and the opt-in is a word the operator
-   * has to type rather than a flag they can inherit from a shell history.
-   */
-  const dbName = new URL(url).pathname.replace(/^\//, "");
-  if (process.env.NODE_ENV === "production") {
+/**
+ * ═══ ASKED TWICE, ON PURPOSE — AND EXPORTED SO IT IS TESTED ═══
+ *
+ * This is the only seed in the tree that invents PEOPLE. A patient cannot be deleted once orders,
+ * invoices and results reference them, so a synthetic one written to a live register is permanent.
+ * The banner names the database before anything is written, and the opt-in is a word the operator
+ * has to type rather than a flag they can inherit from a shell history.
+ *
+ * It is a PURE function taking the environment rather than reading `process.env` inside `main`,
+ * for one reason: the guard is the safety-critical half of this script and a guard that can only be
+ * exercised by launching a subprocess is a guard that gets verified by hand once and then rots.
+ */
+export function assertDemoDataAllowed(
+  env: { NODE_ENV?: string | undefined; ALLOW_DEMO_DATA?: string | undefined }, dbName: string,
+): void {
+  if (env.NODE_ENV === "production") {
     throw new Error("seed:lab-demo refuses to run with NODE_ENV=production — it creates synthetic patients");
   }
-  if (process.env.ALLOW_DEMO_DATA !== "yes") {
+  if (env.ALLOW_DEMO_DATA !== "yes") {
     throw new Error(
       `seed:lab-demo would write SYNTHETIC PATIENTS to the database "${dbName}".\n` +
         "  They are indistinguishable from real ones once orders and results reference them.\n" +
         "  If that is a demo or test database, re-run with ALLOW_DEMO_DATA=yes.",
     );
   }
+}
+
+async function main(): Promise<void> {
+  const url = requireEnv("DATABASE_URL");
+  const dbName = new URL(url).pathname.replace(/^\//, "");
+  assertDemoDataAllowed(process.env, dbName);
   process.stdout.write(`seed:lab-demo -> writing synthetic clinical data to "${dbName}"\n`);
 
   const { db, pool } = createDb(url);

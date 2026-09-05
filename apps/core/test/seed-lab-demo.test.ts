@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "./helpers/db";
 import { grantLabResultPermissions, seedLabDeskBase } from "./helpers/lab";
-import { seedLabDemo } from "../scripts/seed-lab-demo";
+import { assertDemoDataAllowed, seedLabDemo } from "../scripts/seed-lab-demo";
 import { grantPermissionToRole } from "../src/kernel/auth/permissions";
 import {
   labInstruments, labSpecimenItems, labSpecimens, orderItems, roleAssignments,
@@ -109,6 +109,34 @@ describe("seed:lab-demo — synthetic clinical data for the five seats", () => {
     expect([second.ordersPlaced, second.ordersSkipped]).toEqual([0, first.ordersPlaced]);
     expect(second.instrumentsRegistered).toBe(0);
     expect(await db.select().from(labInstruments)).toHaveLength(3);
+  });
+
+  /**
+   * ═══ THE TWO REFUSALS THAT KEEP SYNTHETIC PEOPLE OUT OF A LIVE REGISTER ═══
+   *
+   * A patient cannot be deleted once orders, invoices and results reference them, so this guard is
+   * the difference between a demo and a permanent contamination of a hospital's register. It is
+   * tested as a function rather than by launching the CLI, because a guard only exercisable by
+   * subprocess gets verified by hand once and then rots.
+   */
+  describe("assertDemoDataAllowed", () => {
+    it("refuses without the explicit opt-in, and NAMES the database it would have written to", () => {
+      expect(() => assertDemoDataAllowed({}, "hmis_prod")).toThrow(/hmis_prod/);
+      expect(() => assertDemoDataAllowed({}, "hmis_prod")).toThrow(/ALLOW_DEMO_DATA=yes/);
+      expect(() => assertDemoDataAllowed({ ALLOW_DEMO_DATA: "1" }, "d")).toThrow();
+      expect(() => assertDemoDataAllowed({ ALLOW_DEMO_DATA: "true" }, "d")).toThrow();
+    });
+
+    /** The opt-in does NOT override production — the two refusals are independent, not a ladder. */
+    it("refuses under NODE_ENV=production even WITH the opt-in", () => {
+      expect(() => assertDemoDataAllowed(
+        { NODE_ENV: "production", ALLOW_DEMO_DATA: "yes" }, "hmis",
+      )).toThrow(/refuses to run with NODE_ENV=production/);
+    });
+
+    it("allows exactly the one spelling, off production", () => {
+      expect(() => assertDemoDataAllowed({ ALLOW_DEMO_DATA: "yes" }, "hmis_dev")).not.toThrow();
+    });
   });
 
   /**
