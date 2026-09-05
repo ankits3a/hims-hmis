@@ -63,7 +63,7 @@ error and was therefore treated as an unverified hypothesis and re-derived by it
 | 4 | The relay's `jobs/` spool is write-only | Fixed — replay implemented, with idempotence. |
 | 5 | A `JSON.parse` outside the `try` in `relay.mjs` | Fixed. |
 | 6 | `/billing` draws keycaps `1 2 3` and binds nothing | Bound. |
-| 7 | The plural guard is keyed on `{{count}}`; the offenders use `(s)` | **NOT TAKEN — see §6.** |
+| 7 | The plural guard is keyed on `{{count}}`; the offenders use `(s)` | Fixed. **The census could not see the instance that prompted it** — see below. |
 | 8 | `TabStrip`'s arrow keys change selection without moving focus | Fixed; the component got its first test file. |
 
 ---
@@ -154,15 +154,26 @@ It is not in this branch because it is a schema migration plus a change to a hub
 that into a 44-commit body about to be marked ready would be trading a bounded risk for an unbounded
 one. It wants its own PR.
 
+**One thing to know before cutting that migration**, relayed from the LIMS lane the same evening and
+worth more than the numbering rule in CLAUDE.md: **drizzle applies migrations by TIMESTAMP, not by
+serial number.** So a migration that is RENUMBERED at rebase time but keeps its original `when` is
+silently skipped for ever on any database that has already passed that timestamp. Whoever merges
+second must have the LATER `when`, and only REGENERATING the migration produces one. Renumbering the
+file is not enough and fails quietly, which is the worst way for a schema change to fail.
+
 ---
 
 ## 6 · What is still owed
 
-**Backlog item 7 was not taken.** The plural guard in `i18n-keys.test.ts` is keyed on `{{count}}`
-while the offenders use `(s)`; roughly twelve strings across seven screens need proper
-`key_one`/`key_other` forms plus their call sites. It was scheduled last, behind the CRITICALs, and
-the review-remediation round consumed the slot. It touches `locales/*.json` (a
-coordinate-before-editing file) and seven screens, so it is a clean standalone piece of work.
+**All eight backlog items are closed.** Item 7 is worth one paragraph because of what it taught: the
+guard required `{{count}}` to be present *before* looking for a hand-spelled plural — the
+post-condition of the fix used as the pre-condition of the hunt — so it detected zero of the twelve
+strings it existed to catch. And the count was **fourteen, not twelve**: two offenders were hardcoded
+in `.tsx` template literals, invisible to any locale-scoped census, **and one of those two was the
+exact string whose screenshot motivated the guard in the first place.** A census that cannot see the
+instance that prompted it is the same shape as a negative control drawn with the instrument that
+cannot see the positive. Two latent Hindi agreement bugs fell out that no version of the guard could
+ever have caught, because they are not parentheticals.
 
 Carried forward from the fix reports, each recorded rather than quietly dropped:
 
@@ -207,9 +218,21 @@ after backlog   core  391 suites / 4041 tests   exit 0
 after review    core  391 suites / 4047 tests   exit 0
   remediation   web   104 files  /  874 tests   exit 0
                 relay  23 checks /   23 pass    exit 0   (20 pass / 3 skip browserless, as CI runs it)
-                pnpm typecheck   0 errors
-                pnpm lint        0 errors, 3 warnings (pre-existing)
+
+FINAL, after item 7, with every exit code captured explicitly rather than inferred:
+                TYPECHECK_EXIT=0   LINT_EXIT=0
+                CORE_EXIT=0        391 suites / 4047 tests
+                WEB_EXIT=0         104 files  /  878 tests
+                RELAY_EXIT=0        23 checks /   23 pass
 ```
+
+**Those exit codes are captured with a redirect, not a pipe, and that is deliberate.** A peer lane
+measured the trap the same evening: `$?` after a pipeline is the LAST command's status, so
+`pnpm test | tee run.log; echo $?` reports `tee`'s success no matter what the suite did, and
+`set -o pipefail` inside a script you CALL does not help — pipefail belongs to the shell that BUILDS
+the pipeline. An earlier check in this very session read `pnpm typecheck 2>&1 | tail -8`. The
+conclusion held only because tsc's evidence is its OUTPUT; the mechanism was wrong and would have
+hidden a non-zero exit with an empty log. **Nobody investigates a green.**
 
 `dmesg -T | grep -i oom-kill` was clean across all runs — checked because a peer lane warned that
 the box was tight and the kernel had already killed two of its processes. **Step 0 of the flake
