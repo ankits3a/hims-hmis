@@ -192,3 +192,48 @@ wrong paperwork.
 > Judgement calls are yours per CLAUDE.md — pick the standard Indian-corporate-hospital answer and
 > mark it DECIDED; only money, procurement and law go to the owner. §7 lists what this lane learned
 > the hard way; item 1 is the one that matters most.
+
+---
+
+## 9. ADDENDUM, 2026-09-05 ~17:55 UTC — §6 IS ALREADY STALE, AND THE SPIKE IS ANSWERED
+
+Written by the successor session this document was addressed to. §6 says 18a-iii is *"authored, not
+approved, not executed"*. That was true when it was written and is not true now, and a handoff whose
+"next task" section describes a state two hours gone is exactly the shape
+`written-diagnoses-go-stale` is about. So:
+
+**§3's spike has been RUN — all three questions answered by reading, 0 subagents, as the doc asked.**
+
+1. **Does `amend` already give us addenda? YES — and the task list needs no deletion, because none
+   was written.** `amendReport` (`reports.ts:620`) demands a reason, demands a fresh second factor,
+   inserts v(n+1) and flips v(n) to `superseded` in one transaction, with a partial unique making
+   two concurrent amends produce exactly one v2. The prior version is preserved and readable, which
+   is the property an addendum needs. **18a-iii writes no report code**, and §5's five tasks already
+   reflect that — the spike confirms the omission was deliberate rather than an oversight.
+2. **Does `materials` expose a seam a contrast vial could ride? YES, and T1 deliberately does not
+   ride it.** `materials/index.ts` exports `postMovement` (`reason: "consume"`, with `refType`,
+   `refId`, `patientId`, `encounterId`), `issueStock` and `consumptionsFor`. But there is no
+   radiology store, contrast is in no item master, and a one-sided `consume` row from a module that
+   never received the stock is a ledger entry nobody can reconcile. T1 records `vial_batch_no` and
+   `vial_expiry` as the paper register's two columns, indexed for the recall query. **DECIDED**;
+   revisit when radiology has a store.
+3. **Is there any portable/bedside notion in radiology already? NO — both hits are PROSE.**
+   `views.ts:27` and `kinds.ts:15` mention "portable" inside comments about `no_pacs_images` and
+   about biomedical engineering. There is no column, no enum member and no table. T3 designs it from
+   nothing. (A grep hit is a question: these two are the case where the name is present and the
+   capability is not.)
+
+**§2's ground truth re-measured at kickoff, unchanged:** the census is still `THE_SIXTEEN`;
+`IMAGE_SOURCES` is still `["pacs", "no_pacs_images", "outside"]` with nothing behind `outside`; the
+module list still has no quality/incident module and no ED module.
+
+**T1 is BUILT** on branch `lane/radiology-18aiii-t1` — `imaging_contrast_administrations`, migration
+`0073`, and the contrast safety block extracted out of `recordAcquired` so both doors ask one
+question. 23 suites / 316 tests green in `src/modules/radiology`; eight mutants run, seven died, the
+eighth recorded in the docstring rather than papered over. T2–T5 follow.
+
+**One thing this addendum exists to say beyond the record:** #100 sat green-and-red for two hours
+because CI runs every commit twice in two concurrency groups and a red twin blocks a green one. The
+orchestrator has that measurement now from two consecutive one-file documentation PRs. The fix is in
+§2 and it is the owner's: delete the `pull_request:` trigger, do not add the widely-copied
+concurrency one-liner — this lane measured that one to be a no-op here.
