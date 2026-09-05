@@ -931,3 +931,113 @@ export const labRunSheetPositions = pgTable(
     uniqueIndex("lab_run_sheet_positions_specimen_ux").on(t.runSheetId, t.specimenId),
   ],
 );
+
+/**
+ * ═══ PLAN 17-E T5 — THE PLATE MAP, AND THE CONTROLS THAT CAN VOID IT ═══
+ *
+ * The board: *"The reader sends 96 optical densities and nothing else. The plate map — blank,
+ * negative and positive controls, cut-off, then 92 patient wells scanned in order — is built here
+ * before the plate goes in. The cut-off is computed from the controls; a plate whose controls fail
+ * is rejected whole, and no patient gets a result from it. Reactive screens are repeated before
+ * anyone is told."*
+ *
+ * An ELISA reader is the extreme case of this phase's problem: it transmits 96 numbers and **no
+ * identity whatsoever** — not a barcode, not a sequence, not even a run. The well is the only
+ * handle, and the map is the only thing that turns a well into a person.
+ *
+ * ═══ THE KIT DEFINES THE ARITHMETIC; THIS TABLE ONLY STORES AND APPLIES IT ═══
+ *
+ * `cutoff_multiplier`, `cutoff_offset`, `min_pc_nc_ratio` and `max_nc_od` are read off the kit
+ * insert and entered when the plate is laid out. They are NOT constants in our code, and that is
+ * deliberate: an assay's cut-off formula and validity criteria are the manufacturer's, they differ
+ * per kit and per lot, and a number hard-coded here would be this software quietly overruling a
+ * regulated document. NABL asks which kit and which lot; the plate carries both.
+ */
+export const labPlateMaps = pgTable(
+  "lab_plate_maps",
+  {
+    id: text("id").primaryKey(),
+    instrumentId: text("instrument_id").notNull().references(() => labInstruments.id),
+    /** The bench's label — "plate 2". Human-facing. */
+    plateRef: text("plate_ref").notNull(),
+    /** The screen this plate runs: HBsAg, HCV, HIV. */
+    assay: text("assay").notNull(),
+    kitLot: text("kit_lot").notNull(),
+    status: text("status").notNull().default("open"),
+    /** From the kit insert: cutoff = ncMean × multiplier + offset. */
+    cutoffMultiplier: numeric("cutoff_multiplier", { precision: 8, scale: 4 }).notNull(),
+    cutoffOffset: numeric("cutoff_offset", { precision: 8, scale: 4 }).notNull(),
+    /** Validity, also from the insert: the plate is void unless both hold. */
+    minPcNcRatio: numeric("min_pc_nc_ratio", { precision: 8, scale: 4 }).notNull(),
+    maxNcOd: numeric("max_nc_od", { precision: 8, scale: 4 }).notNull(),
+    /** COMPUTED at read, and KEPT even when the plate is rejected — a void plate is a record. */
+    ncMeanOd: numeric("nc_mean_od", { precision: 8, scale: 4 }),
+    pcMeanOd: numeric("pc_mean_od", { precision: 8, scale: 4 }),
+    cutoffOd: numeric("cutoff_od", { precision: 8, scale: 4 }),
+    controlsFailReason: text("controls_fail_reason"),
+    openedAt: timestamp("opened_at", { withTimezone: true }).notNull().defaultNow(),
+    openedBy: text("opened_by").notNull(),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    readByTransmissionId: text("read_by_transmission_id"),
+  },
+  (t) => [
+    /** ONE open plate per machine, for the reason a run sheet has one: a well would have two maps. */
+    uniqueIndex("lab_plate_maps_open_ux").on(t.instrumentId).where(sql`status = 'open'`),
+    index("lab_plate_maps_instrument_idx").on(t.instrumentId, t.openedAt),
+    check(
+      "lab_plate_maps_status_ck",
+      sql`${t.status} in ('open', 'read', 'controls_failed', 'abandoned')`,
+    ),
+    /** A rejected plate NAMES why. A verdict with nothing to show is not a record. */
+    check(
+      "lab_plate_maps_failed_reason_ck",
+      sql`(${t.status} = 'controls_failed') = (${t.controlsFailReason} is not null)`,
+    ),
+    /** The kit's numbers must be usable: a zero multiplier and offset is a cut-off of nothing. */
+    check("lab_plate_maps_cutoff_ck", sql`${t.cutoffMultiplier} > 0 or ${t.cutoffOffset} > 0`),
+  ],
+);
+
+/**
+ * One well. `role` is what the well IS, and it is the reason a control can never be reported as a
+ * patient: `specimen_id` is non-null exactly for `patient` wells, both directions, enforced.
+ *
+ * A plate laid out with a control in a patient's row would report the kit's own positive control as
+ * somebody's HIV screen. That is not a hypothetical mistake — it is what a 96-well grid entered by
+ * hand invites — and it is why the biconditional is a database check rather than a convention.
+ */
+export const labPlateWells = pgTable(
+  "lab_plate_wells",
+  {
+    plateMapId: text("plate_map_id").notNull().references(() => labPlateMaps.id),
+    /** The reader's own coordinate: `A1` … `H12`. Text, because that is what it sends. */
+    well: text("well").notNull(),
+    role: text("role").notNull(),
+    specimenId: text("specimen_id").references(() => labSpecimens.id),
+    /** Filled at read. Kept on a failed plate too — the ODs are why it failed. */
+    od: numeric("od", { precision: 8, scale: 4 }),
+    verdict: text("verdict"),
+    /** The board: a reactive screen is repeated IN DUPLICATE before anyone is told. */
+    repeatRequired: boolean("repeat_required").notNull().default(false),
+    scannedAt: timestamp("scanned_at", { withTimezone: true }).notNull().defaultNow(),
+    scannedBy: text("scanned_by").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.plateMapId, t.well] }),
+    /** ONE well per specimen on a plate — the same tube in two wells reports itself twice. */
+    uniqueIndex("lab_plate_wells_specimen_ux").on(t.plateMapId, t.specimenId),
+    check(
+      "lab_plate_wells_role_ck",
+      sql`${t.role} in ('blank', 'negative_control', 'positive_control', 'cutoff_control', 'patient')`,
+    ),
+    /** THE BICONDITIONAL: a patient well has a specimen, and nothing else has one. */
+    check(
+      "lab_plate_wells_specimen_ck",
+      sql`(${t.role} = 'patient') = (${t.specimenId} is not null)`,
+    ),
+    check(
+      "lab_plate_wells_verdict_ck",
+      sql`${t.verdict} is null or ${t.verdict} in ('non_reactive', 'reactive', 'control_ok', 'control_failed')`,
+    ),
+  ],
+);
