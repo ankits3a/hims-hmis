@@ -83,6 +83,8 @@ export const labManifest: ModuleManifest = {
     "lab.worklist.read",
     /** 17-E T1 — registering a machine and mapping its codes is an ESTATE act, never the bridge's. */
     "lab.instruments.manage",
+    /** 17-E T2 — the bridge's grant: ask what to run, and nothing else. */
+    "lab.instruments.read",
   ],
   subscriptions: [],
   orderKinds: [

@@ -2,7 +2,10 @@ import { and, asc, eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
-import { labAnalytes, labInstrumentCodes, labInstruments, resources } from "../../kernel/db/schema";
+import {
+  labAnalytes, labInstrumentCodes, labInstruments, labOrderableAnalytes, labSpecimenItems,
+  labSpecimens, orderItems, resources,
+} from "../../kernel/db/schema";
 import { createResource } from "../../kernel/resources/registry";
 import { LabError } from "./errors";
 import { LAB_RESOURCE_KINDS } from "./kinds";
@@ -30,6 +33,12 @@ import type { Db, Tx } from "../../kernel/db/client";
  * through its vocabulary, and the lab's row describing how to talk to it.
  */
 export const LAB_INSTRUMENTS_MANAGE = "lab.instruments.manage";
+
+/**
+ * 17-E T2 — the bridge's own grant, and it is SEPARATE from `manage` on purpose. A machine account
+ * that could also register machines and re-map codes could rename any test it reports.
+ */
+export const LAB_INSTRUMENTS_READ = "lab.instruments.read";
 
 /** How the machine names its sample — the board's four cases, and the whole of the phase's shape. */
 export type SampleIdMode = "barcode" | "typed_id" | "run_sheet" | "plate_map";
@@ -177,4 +186,84 @@ export async function instrumentByResource(exec: Db | Tx, resourceId: string): P
     .innerJoin(resources, eq(resources.id, labInstruments.resourceId))
     .where(and(eq(labInstruments.resourceId, resourceId), eq(labInstruments.active, true)));
   return row ? { ...row, sampleIdMode: row.sampleIdMode as SampleIdMode } : null;
+}
+
+/**
+ * ═══ 17-E T2 — THE MACHINE ASKS WHAT TO RUN, AND IS TOLD ONLY THAT ═══
+ *
+ * The board's chemistry analyser is *"ASTM both ways: it asks the server what to run"*. This is the
+ * server's half of that sentence, and it is modelled on 18b's `mwl.ts` deliberately: a route the
+ * bridge PULLS, rather than files a consumer writes into a directory that does not exist yet.
+ *
+ * ═══ WHAT IS WITHHELD IS THE DESIGN ═══
+ *
+ * The answer is a list of the instrument's OWN test codes and nothing else. No patient name, no
+ * UHID, no date of birth, no diagnosis, no order number. An analyser needs a test list; a bench PC
+ * on a flat hospital LAN, speaking ASTM in clear text, is the last place in the building to put
+ * PHI — and the protocol has no way to protect it even if we wanted to.
+ *
+ * So this reader takes a SPECIMEN NUMBER and returns CODES. It is the narrowest possible answer to
+ * the machine's question, and the narrowness is the security property rather than a convenience.
+ *
+ * ═══ AND ONLY WHAT THIS INSTRUMENT CAN ACTUALLY RUN ═══
+ *
+ * The intersection with the instrument's own code map is not an optimisation. An analyser told to
+ * run a test it has no channel for either errors or, worse, runs something adjacent and reports it
+ * under a code we will later fail to map — which is a parked result at best. The machine is told
+ * what it can do, in its own vocabulary.
+ */
+export type WorklistEntry = { instrumentCode: string; analyteCode: string };
+
+export async function instrumentWorklist(
+  db: Db, actor: Actor, input: { instrumentId: string; sampleId: string },
+): Promise<{ specimenNo: string; entries: WorklistEntry[] }> {
+  if (!(await hasPermission(db, actor.id, LAB_INSTRUMENTS_READ, "hospital"))) {
+    throw new LabError("permission_denied", `pulling an instrument worklist needs ${LAB_INSTRUMENTS_READ}`);
+  }
+  const [instrument] = await db.select().from(labInstruments).where(eq(labInstruments.id, input.instrumentId));
+  if (!instrument) throw new LabError("unknown_instrument", `no laboratory instrument ${input.instrumentId}`);
+  if (!instrument.active) {
+    throw new LabError("unknown_instrument", `laboratory instrument ${input.instrumentId} is not active`);
+  }
+
+  /**
+   * A specimen the bench has NOT received is not work: the tube is still in transit, or was
+   * rejected and is awaiting a redraw. Answering for one would have the analyser aspirate from a
+   * rack position holding nothing, or holding the tube that replaced it.
+   */
+  const [specimen] = await db
+    .select({ id: labSpecimens.id, status: labSpecimens.status })
+    .from(labSpecimens)
+    .where(eq(labSpecimens.specimenNo, input.sampleId));
+  if (!specimen) throw new LabError("unknown_specimen", `no specimen ${input.sampleId}`);
+  if (specimen.status !== "received") {
+    return { specimenNo: input.sampleId, entries: [] };
+  }
+
+  const codeMap = await instrumentCodeMap(db, input.instrumentId);
+  if (codeMap.size === 0) return { specimenNo: input.sampleId, entries: [] };
+  const byAnalyte = new Map([...codeMap].map(([instrumentCode, m]) => [m.analyteId, instrumentCode]));
+
+  const rows = await db
+    .select({ analyteId: labOrderableAnalytes.analyteId, analyteCode: labAnalytes.code })
+    .from(labSpecimenItems)
+    .innerJoin(orderItems, eq(orderItems.id, labSpecimenItems.orderItemId))
+    .innerJoin(labOrderableAnalytes, eq(labOrderableAnalytes.serviceId, orderItems.serviceId))
+    .innerJoin(labAnalytes, eq(labAnalytes.id, labOrderableAnalytes.analyteId))
+    .where(and(
+      eq(labSpecimenItems.specimenId, specimen.id),
+      eq(labSpecimenItems.active, true),
+      eq(orderItems.status, "in_progress"),
+    ));
+
+  const seen = new Set<string>();
+  const entries: WorklistEntry[] = [];
+  for (const r of rows) {
+    const instrumentCode = byAnalyte.get(r.analyteId);
+    if (instrumentCode === undefined || seen.has(instrumentCode)) continue;
+    seen.add(instrumentCode);
+    entries.push({ instrumentCode, analyteCode: r.analyteCode });
+  }
+  entries.sort((a, b) => a.instrumentCode.localeCompare(b.instrumentCode));
+  return { specimenNo: input.sampleId, entries };
 }

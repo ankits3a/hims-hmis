@@ -133,7 +133,7 @@ function row(
 }
 
 describe("seed:staff — the census, stated before anything is compared (§2.49)", () => {
-  it("KNOWN_ROLE_KEYS is the thirty-eight keys some seed script in this tree can create", () => {
+  it("KNOWN_ROLE_KEYS is the thirty-nine keys some seed script in this tree can create", () => {
     expect(KNOWN_ROLE_KEYS).toEqual([
       "admin",
       // PLAN 15 / DD14, 2026-08-28 — the six OT roles arrive for FREE by the same derivation, and
@@ -161,6 +161,16 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       // collection queue depends on — would have been rejected as a typo, with the WHOLE roster
       // refused rather than half-provisioned. THIS FILE IS NOT IN PLAN 17 T2's FILES LIST as the
       // phase document wrote it; the census is pinned here and the task that moves it says so.
+      // PLAN 17-E T2, 2026-09-05 — the analyser bridge, arriving by the same DERIVATION and landing
+      // BEFORE its siblings in this sorted list. `modality_bridge` is its shape one department over.
+      // It matters here for the reason the note above gives: `seed:staff` REFUSES a roster naming a
+      // key outside this list, so until it carried this one, the roster that provisions the bench's
+      // bridge account would have been rejected as a typo with the WHOLE roster refused.
+      //
+      // This file is not in 17-E T2's Files list either, and it is the TENTH census site the task
+      // moved — found by CI on the shard that runs it, not locally, because the phase ran
+      // `seed-roles.test.ts` and this is `seed-staff`'s own separate census.
+      "lab_bridge",
       "lab_reception",
       "lab_technician",
       // PLAN 14 / DD11, 2026-08-27 — the two stores roles. They arrive here for FREE, because
@@ -228,7 +238,7 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
     for (const r of ROLE_MODEL) expect(KNOWN_ROLE_KEYS).toContain(r.roleKey);
     for (const g of GRANTED_BY_OTHER_SEEDS) expect(KNOWN_ROLE_KEYS).toContain(g.roleKey);
     for (const o of OPD_ROLE_KEYS) expect(KNOWN_ROLE_KEYS).toContain(o.key);
-    expect(KNOWN_ROLE_KEYS).toHaveLength(38); // 18c T1 — 37 -> 38 with `radiation_safety_officer`; 16c T1 — 36 -> 37 with `pharmacy_assistant`; 18b T1 — 35 -> 36 with `modality_bridge`; PLAN 18a T2 — 31 -> 35 with radiology's four
+    expect(KNOWN_ROLE_KEYS).toHaveLength(39); // 17-E T2 — 38 -> 39 with `lab_bridge`; 18c T1 — 37 -> 38 with `radiation_safety_officer`; 16c T1 — 36 -> 37 with `pharmacy_assistant`; 18b T1 — 35 -> 36 with `modality_bridge`; PLAN 18a T2 — 31 -> 35 with radiology's four
   });
 
   it("the vocabulary is WIDER than what seed:roles creates, which is what makes two refusals distinct", () => {
