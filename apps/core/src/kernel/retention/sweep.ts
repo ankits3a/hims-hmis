@@ -6,13 +6,14 @@ import {
   eventIdempotency,
   events,
   notifications,
+  printJobs,
   retentionLegalHolds,
 } from "../db/schema";
 import { withTx } from "../db/client";
 import type { Db } from "../db/client";
 import { appendEvent } from "../events/append";
 import { EVENTS_DEFAULT_PARTITION, listEventPartitions } from "../worker/partitions";
-import { dropBlocked, notificationsPruned, partitionDropped, sideTablesPruned } from "./events";
+import { dropBlocked, notificationsPruned, partitionDropped, printJobsPruned, sideTablesPruned } from "./events";
 import { SEARCH_AUDIT_RETAIN_DAYS, pruneSearchAudit } from "../search/audit";
 import { searchAuditPruned } from "../search/events";
 import { phiAccessPruned } from "../phi/events";
@@ -81,6 +82,33 @@ const MIN_RETAINED_MONTHS = 1;
 /** D7's terminal set. `queued` and `sending` are ABSENT and must stay absent — Global Constraint
  * 6: a `sending` row is the only record that a message may already be with a patient. */
 const TERMINAL_NOTIFICATION_STATUSES = ["sent", "expired", "suppressed", "undeliverable"];
+
+/**
+ * ═══ FD-25 — THE PRINT OUTBOX'S WINDOW, AND WHY IT IS SHORTER THAN THE MESSAGE OUTBOX'S ═══
+ *
+ * `notifications` keeps 180 days because a message is a thing a hospital may be asked whether it
+ * sent. A print job is not: the DOCUMENT it produced is reconstructible from the encounter at any
+ * time (`render.ts` resolves everything from ids, which is why a reprint after a name correction
+ * hands over the corrected name), and the fact that a slip printed is already on the encounter.
+ *
+ * So the row is an OPERATIONAL record of a queue, not a clinical or legal one, and 90 days is
+ * generous for the only question it answers — "did the relay ever drain this?". The Plan 11a rule
+ * applies: a retention window is a decision about what a table IS, not a number copied from the
+ * table next to it.
+ */
+const DEFAULT_PRINT_JOB_RETAIN_DAYS = 90;
+
+/**
+ * `queued` and `claimed` ARE NEVER PRUNED AT ANY AGE, and the reasoning is `notifications`' own
+ * Global Constraint 6 applied to paper: a `queued` row is a document still owed to a patient, and a
+ * `claimed` row may be at a printer THIS SECOND. Neither becomes safe to delete by getting old — an
+ * outbox that deletes its own backlog is an outbox that silently loses work.
+ *
+ * `failed` IS terminal here even though it looks unfinished. Owner ruling R7 makes a print failure
+ * advisory: the screen says so and offers a reprint, and the reprint is a NEW row. A failed row
+ * that nobody reprinted in ninety days is a slip nobody wanted.
+ */
+const TERMINAL_PRINT_JOB_STATUSES = ["printed", "failed"];
 /** D6's mirror of the same rule one table over: a `retrying` delivery is never touched at any
  * age, because it is still owed to a consumer. */
 const PRUNABLE_DELIVERY_STATUSES = ["done", "parked"];
@@ -98,6 +126,8 @@ export type RetentionSweepOptions = {
   searchAuditRetainDays?: number;
   phiAccessRetainDays?: number;
   batchSize?: number;
+  /** FD-25 — the print outbox's window, overridable like every other for the same reason. */
+  printJobRetainDays?: number;
   /** Global Constraint 11: the clock is a parameter, never read from the wall inside a branch. */
   now?: Date;
 };
@@ -113,6 +143,8 @@ export type RetentionSweepResult = {
   deadLettersDeleted: number;
   searchAuditDeleted: number;
   phiAccessDeleted: number;
+  /** FD-25 — the print outbox's terminal rows. See step 4. */
+  printJobsDeleted: number;
 };
 
 const inert = (): RetentionSweepResult => ({
@@ -124,6 +156,7 @@ const inert = (): RetentionSweepResult => ({
   deadLettersDeleted: 0,
   searchAuditDeleted: 0,
   phiAccessDeleted: 0,
+  printJobsDeleted: 0,
 });
 
 const pad2 = (n: number): string => String(n).padStart(2, "0");
@@ -288,6 +321,7 @@ export async function retentionSweep(
   const now = opts.now ?? new Date();
   const eventsMonths = opts.eventsMonths ?? DEFAULT_EVENTS_MONTHS;
   const notifyRetainDays = opts.notifyRetainDays ?? DEFAULT_NOTIFY_RETAIN_DAYS;
+  const printJobRetainDays = opts.printJobRetainDays ?? DEFAULT_PRINT_JOB_RETAIN_DAYS;
   const batchSize = opts.batchSize ?? DEFAULT_BATCH_SIZE;
 
   const currentMonth = istMonthIndex(now);
@@ -572,6 +606,64 @@ export async function retentionSweep(
             batches,
             retainDays: notifyRetainDays,
             cutoff: notifyCutoff.toISOString(),
+          },
+        }),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // 4. `print_jobs` — TERMINAL ROWS ONLY, in bounded batches. FD-25.
+  //
+  //    THIS TABLE PROMISED A PRUNE AND DID NOT HAVE ONE. `schema/printing.ts` builds
+  //    `print_jobs_status_updated_at_idx` on `(status, updatedAt)` and says in as many words that
+  //    it is "for the retention prune that is NOT the claim index", and its header says `patientId`
+  //    is a real column so "the retention sweep and any future erasure" can find these rows. Both
+  //    sentences were true about an intention. `kernel/retention/` referenced `printJobs` nowhere,
+  //    so the table grew forever and the index was write amplification on every insert serving a
+  //    query nobody made — and an erasure request had no path to these rows at all.
+  //
+  //    The promise without the thing is the worse state of the two, so the thing is written rather
+  //    than the sentences amended: the index is already there, the predicate it was designed for is
+  //    the one below, and the shape is `notifications`' because the table is `notifications` with a
+  //    different sink.
+  //
+  //    NOT GOVERNED BY A LEGAL HOLD, for `notifications`' reason and not by inheritance: a print job
+  //    is the paper side-effect of a clinical event, not the event. The encounter it points at is
+  //    what a hold preserves, and that is untouched by this loop. If counsel ever rules otherwise
+  //    the change is one `activeGlobalHold` check guarding it, exactly as step 3 records.
+  // ---------------------------------------------------------------------------------------------
+  const printCutoff = new Date(now.getTime() - printJobRetainDays * DAY_MS);
+  let printBatches = 0;
+  while (printBatches < MAX_NOTIFY_BATCHES) {
+    const doomed = await db
+      .select({ id: printJobs.id })
+      .from(printJobs)
+      .where(
+        and(
+          inArray(printJobs.status, TERMINAL_PRINT_JOB_STATUSES),
+          lt(printJobs.updatedAt, printCutoff),
+        ),
+      )
+      .limit(batchSize);
+    if (doomed.length === 0) break;
+    await db.delete(printJobs).where(inArray(printJobs.id, doomed.map((r) => r.id)));
+    result.printJobsDeleted += doomed.length;
+    printBatches += 1;
+    if (doomed.length < batchSize) break;
+  }
+
+  if (result.printJobsDeleted > 0) {
+    await withTx(db, (tx) =>
+      appendEvent(
+        tx,
+        printJobsPruned.make({
+          actor: RETENTION_ACTOR,
+          payload: {
+            deleted: result.printJobsDeleted,
+            batches: printBatches,
+            retainDays: printJobRetainDays,
+            cutoff: printCutoff.toISOString(),
           },
         }),
       ),

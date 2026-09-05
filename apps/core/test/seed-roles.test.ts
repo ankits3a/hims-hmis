@@ -368,6 +368,59 @@ const OT_PAIRS: readonly string[] = [
 const DOCTOR_TARIFF_PAIRS: readonly string[] = ["doctor/tariff.read"];
 
 /**
+ * The README prose line that authorises FD-25's cashier grants. Quoted, not paraphrased.
+ *
+ * ═══ CLOSE PASS 2 — THIS PIN PASSED WHILE THE SENTENCE IT QUOTES WAS FALSE ═══
+ *
+ * It read "the four strings", and pass 1 removed two of them. The assertion is `toContain`, so a
+ * substring of a paragraph that now describes the wrong grant still matched, and the README went on
+ * telling a go-live trainer that a cashier can reprint a jammed receipt from `/billing` — a seat
+ * with no print rail at all. Prose is the ONLY record of these pairs, because `NON_TABLE_PAIRS` are
+ * deliberately excluded from the cell-for-cell V3 parity: nothing else was checking it.
+ *
+ * The count is in the quoted sentence on purpose. A future grant that moves it fails here.
+ */
+const CASHIER_SEAT_README_PROSE =
+  "Owner ruling of 2026-09-04 gives the `cashier` the two strings its own screen actually calls";
+
+/**
+ * ═══ FD-25 / OWNER RULING 2026-09-04 — THE SIXTEENTH NON-TABLE SET ═══
+ *
+ * Four strings, one role, and not one of them is a billing-table cell — which is the whole reason
+ * they are here: `cashier` HAS a column in the billing table, so a `billing.*` grant would be
+ * table-derived and invisible to this list. These are a TARIFF string, a PATIENTS string and two
+ * OPD strings held by a billing role, and they belong to no table by construction.
+ *
+ * Two of them close a live defect rather than serving new work. `cashier` held no `tariff.*` at
+ * all, while `billing-counter.tsx`'s line editor calls `GET /tariff/services` — so the deployed
+ * counter 403s the moment a cashier types two characters into it. And `cashier` held no `opd.*`,
+ * while the counter is entered as `/billing?encounterId=…`, which has to be resolved to a person.
+ *
+ * `cashier/patients.read` IS THE ONE THAT NEEDED A RULING RATHER THAN A DECISION. `billing.controller.ts`
+ * documents the absence deliberately; widening who may read patient identity is a DPDP question,
+ * and `CLAUDE.md` reserves law to the owner. Ruled YES: the cashier already has the patient at the
+ * window and reads the name off the bill. A counter that takes money without being able to say
+ * whose bill it is showing is not more private, only less accountable.
+ *
+ * ═══ CLOSE PASS 1 REMOVED TWO STRINGS THIS DOCSTRING USED TO ARGUE FOR ═══
+ *
+ * `cashier/opd.visits.read` and `cashier/opd.visits.open` were granted here beyond the owner's
+ * ruling, on reasoning that was wrong twice. The screen imports nothing from `opd-api` and its fee
+ * quote rides `billing.invoice.read`; and the cashier's seat has NO print rail — the only caller of
+ * `listPrintJobs`/`reprintJob` in the tree is Desk One, which is `front_office`. Meanwhile
+ * `opd.visits.open` guards `POST /opd/visits/:id/reclassify`, which changes the consult fee band, so
+ * at a money seat it would have let one actor lower a fee and then collect it.
+ *
+ * Recorded rather than deleted: this array is the only enumerated record of these pairs — they are
+ * `NON_TABLE_PAIRS` and therefore excluded from the cell-for-cell README parity — so what was
+ * granted and withdrawn has to be legible from here.
+ */
+const CASHIER_SEAT_PAIRS: readonly string[] = [
+  "cashier/patients.read",
+  "cashier/tariff.read",
+];
+
+/**
  * PLAN 07c T9 / DD14 — OWNER RULING 2026-08-29. The THIRTEENTH non-table set: a role of its own,
  * carrying both staff-report strings, so the person who may open patient rows from a colleague's
  * shift is exactly ONE named human rather than everybody who happens to hold a supervisory role.
@@ -544,6 +597,7 @@ const NON_TABLE_PAIRS: readonly string[] = [
   ...RULING_7_PAIRS, ...WORKFLOW_RULING_PAIRS, ...PLAN_09_PAIRS, ...GROUP_C_PAIRS, ...GROUP_A_PAIRS,
   ...MERGE_LANE_PAIRS, ...GROUP_B_PAIRS, ...FORMULARY_PAIRS, ...RESOURCES_PAIRS, ...OT_PAIRS,
   ...STAFF_REPORT_PAIRS, ...DOCTOR_TARIFF_PAIRS, ...STAFF_AUDITOR_PAIRS, ...COUNTER_COVER_PAIRS,
+  ...CASHIER_SEAT_PAIRS,
   ...PRIVACY_WRITE_PAIRS, ...LAB_PAIRS, ...RADIOLOGY_PAIRS, ...RC2_ENROL_PAIRS, ...PHARMACY_PAIRS, ...LAB_RELEASE_REQUEST_PAIRS,
 ];
 
@@ -832,7 +886,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     expect(installedRegistry().allPermissions()).toHaveLength(160); // RC-1 T2: 146 -> 147; VD-1 T4: 148; RC-2 T4: 149; 18b T1: 150 (radiology.mwl.read); 16c T1: 154, the four pharmacy.* strings; 18c T1: 157, the three aerb.* strings; 17-E T1: 158 (lab.instruments.manage)
   });
 
-  it("the role model is thirty-seven roles, three hundred and five grants, one hundred and forty distinct permissions", () => {
+  it("the role model is thirty-seven roles, three hundred and seven grants, one hundred and forty distinct permissions", () => {
     expect(ROLE_MODEL.map((r) => r.roleKey)).toEqual([
       "front_office",
       "front_office_supervisor",
@@ -939,7 +993,10 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // as `CROC500` in three stores is curating half a fact.
       // PLAN 16c T1: 8 -> 19, the counter (four pharmacy.*, three orders.*, four billing.*).
       pharmacy: 19,
-      cashier: 11,
+      // FD-25 / owner ruling 2026-09-04 — 11 -> 13: `tariff.read` (a live 403 on the deployed
+      // counter) and `patients.read` (the DPDP ruling on reading patient identity). Close pass 1
+      // removed the two `opd.visits.*` strings this comment used to list; see `CASHIER_SEAT_PAIRS`.
+      cashier: 13,
       // PLAN 07b O-1, OWNER RULING 2026-08-29 — 11 -> 18. Seven strings that let this role WORK A
       // COUNTER while a cashier's drawer is locked pending its variance approval. Under R-4's
       // one-staffer counter that lockout closes the hospital's front door, and a cover that first
@@ -1032,7 +1089,17 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     // VD-1 T4 — 274 -> 276: `opd.vitals.history.read` to `vitals_desk` and to `doctor`.
     // 18c T1 — 297 -> 302: the RSO's three, plus `aerb.doses.read` to `radiologist` and to
     // `radiographer` (D2 — the cumulative-dose nudge is clinical; the licence file is not).
-    expect(modelPairs()).toHaveLength(305); // 17c owner ruling: +1, approvals.requests.create to lab_reception; RC-2 T4: +2, the enrol grants; 18b T1: +2 (radiology.mwl.read); 16c T1: +16 (pharmacy +11, pharmacy_assistant +5); 17-E T1: +1 (lab.instruments.manage to pathologist); T2: +1 (lab.instruments.read to lab_bridge)
+    // FD-25 / owner ruling 2026-09-04: the cashier's TWO (`tariff.read`, `patients.read`). Close
+    // pass 1 removed two more that had been granted beyond the ruling. `modelPermissions` and
+    // `heldPermissions` do NOT move with it — both strings already existed and were already held by
+    // somebody, so this ruling adds GRANTS and not vocabulary. A ruling that moved the census too
+    // would be declaring a new power, which this one deliberately is not.
+    //
+    // MEASURED AT THE MERGE, NOT CARRIED ACROSS IT. This branch measured 306 against a main at 302;
+    // by the time it landed, 17-E T1 and T2 had taken main to 304. Adding the deltas (306 + 2) is
+    // the one thing this file's own docstring forbids, so the merge took main's number and re-ran
+    // the suite for the answer below.
+    expect(modelPairs()).toHaveLength(307); // 17c owner ruling: +1, approvals.requests.create to lab_reception; RC-2 T4: +2, the enrol grants; 18b T1: +2 (radiology.mwl.read); 16c T1: +16 (pharmacy +11, pharmacy_assistant +5); 17-E T1: +1 (lab.instruments.manage to pathologist); T2: +1 (lab.instruments.read to lab_bridge)
     // PLAN 07c T9 — 83 → 84 DISTINCT: one new string (`staff.reports.read`) across two roles.
     // 84 -> 85 DISTINCT: only `staff.reports.drill` is new to the MODEL. Every other string the
     // two rulings grant was already held by another role — the counter cover moves WHO may act,
@@ -1499,7 +1566,10 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     // 106 -> 119 with Plan 18a T2's thirteen: the four new roles' kernel `orders.*` and the
     // receptionist's counter set, plus this phase's own strings held by `doctor` and
     // `billing_manager`, which are not columns in the radiology table. See `RADIOLOGY_PAIRS`.
-    expect(NON_TABLE_PAIRS).toHaveLength(132); // 17c owner ruling: +1 (lab_reception/approvals.requests.create); 16c T1: +10, PHARMACY_PAIRS
+    // 132 -> 134 with FD-25's two: the cashier's seat (owner ruling 2026-09-04), CASHIER_SEAT_PAIRS.
+    // It was 136 briefly — two further pairs were granted beyond the ruling and close pass 1 removed
+    // them. Measured at 134, never derived from either number.
+    expect(NON_TABLE_PAIRS).toHaveLength(134); // FD-25 close pass 1: -2, the two `cashier/opd.visits.*` pairs granted beyond the owner's ruling and removed; 17c owner ruling: +1 (lab_reception/approvals.requests.create); 16c T1: +10, PHARMACY_PAIRS
     expect(nonTable.filter((p) => p.includes("/materials."))).toEqual([]);
     // AMENDED BY PLAN 17 T2 — the guard was written as "no pair whose ROLE is an OT role", and that
     // stopped being the right claim the moment `surgeon` and `ot_incharge` gained lab strings for
@@ -1522,6 +1592,8 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     // The two 2026-08-29 owner rulings, held to exactly the standard of the eleven below.
     expect(readme).toContain(STAFF_AUDITOR_README_PROSE);
     expect(readme).toContain(COUNTER_COVER_README_PROSE);
+    // FD-25's own source sentence, held to exactly the standard of the twelve below.
+    expect(readme).toContain(CASHIER_SEAT_README_PROSE);
     // Plan 13 / DD14's own source sentence, held to exactly the standard of the eight below.
     expect(readme).toContain(RESOURCES_README_PROSE);
     // Plan 16a / DD10's own source sentence, held to exactly the standard of the seven below.
@@ -1621,7 +1693,15 @@ describe("seed:roles — executed against a database (V5)", () => {
     // RC-2 T4 — the SECOND again (15 -> 16) and the FIFTEENTH (membership_admin 2 -> 3) by the
     // enrol split. INDEX 14, not 12: `staff_auditor` also holds two grants, and the first `2` in
     // this array is not the one that moves. A bare-integer census gives you no name to check.
-    expect(first.roles.map((r) => r.granted.length)).toEqual([12, 16, 6, 20, 8, 1, 19, 11, 20, 10, 10, 1, 2, 3, 3, 5, 1, 11, 6, 15, 9, 4, 4, 3, 6, 17, 8, 4, 17, 15, 10, 13, 4, 3, 1, 2, 5]); // 17c owner ruling: lab_reception 16 -> 17; 18b T1: radiographer 9, modality_bridge 1; 16c T1: pharmacy 8 -> 19, pharmacy_assistant 5; 18c T1: radiologist 14 -> 15, radiographer 9 -> 10, and radiation_safety_officer's 3 inserted after pcpndt_incharge; 17-E T1: INDEX 25, pathologist 16 -> 17 (lab.instruments.manage) — located by the diff's surrounding context, since the other 16 in this array is lab_reception's and a bare-integer census gives no name to check
+    // FD-25 — `cashier` moves and nothing else does. Located BY NAME against ROLE_MODEL rather than
+    // counted along the row, because this array's own comment records that a bare-integer census
+    // gives you no name to check and that somebody has already moved the wrong `2` in it.
+    //
+    // AND THE INDEX MOVED AT THE MERGE. 17-E T2 inserted a new role, `lab_bridge`, so this array is
+    // 37 entries where FD-25 measured 36 and every position after the insertion shifted. That is
+    // precisely why the merge took main's array wholesale and re-ran the suite rather than editing
+    // the eighth entry of a list that had changed length underneath it.
+    expect(first.roles.map((r) => r.granted.length)).toEqual([12, 16, 6, 20, 8, 1, 19, 13, 20, 10, 10, 1, 2, 3, 3, 5, 1, 11, 6, 15, 9, 4, 4, 3, 6, 17, 8, 4, 17, 15, 10, 13, 4, 3, 1, 2, 5]); // 17c owner ruling: lab_reception 16 -> 17; 18b T1: radiographer 9, modality_bridge 1; 16c T1: pharmacy 8 -> 19, pharmacy_assistant 5; 18c T1: radiologist 14 -> 15, radiographer 9 -> 10, and radiation_safety_officer's 3 inserted after pcpndt_incharge; 17-E T1: INDEX 25, pathologist 16 -> 17 (lab.instruments.manage) — located by the diff's surrounding context, since the other 16 in this array is lab_reception's and a bare-integer census gives no name to check
     expect(first.roles.every((r) => r.already.length === 0)).toBe(true);
     expect(first.declared).toBe(160); // RC-1 T2's flow lock, VD-1 T4's history read, RC-2 T4's enrol, 18b T1's mwl read, 16c T1's four pharmacy.* strings, 18c T1's three aerb.* strings, 17-E T1's lab.instruments.manage, 17-E T2's lab.instruments.read
     // MEASURED from role_permissions, not derived from the model. On this database only seed:roles
@@ -1658,7 +1738,10 @@ describe("seed:roles — executed against a database (V5)", () => {
     // PLAN 07c T9 — the same two entries as the first run's `granted` census above.
     // The FIRST run's `granted` census, read back — see the note there for Plan 17 T2's changes.
     // RC-1 T2 — the second run's `already` mirrors the first run's `granted`: 15 and 8.
-    expect(second.roles.map((r) => r.already.length)).toEqual([12, 16, 6, 20, 8, 1, 19, 11, 20, 10, 10, 1, 2, 3, 3, 5, 1, 11, 6, 15, 9, 4, 4, 3, 6, 17, 8, 4, 17, 15, 10, 13, 4, 3, 1, 2, 5]); // 17c owner ruling: lab_reception 16 -> 17; 18b T1: radiographer 9, modality_bridge 1; 16c T1: pharmacy 19, pharmacy_assistant 5; 17-E T1: INDEX 25, pathologist 16 -> 17
+    // FD-25 — `cashier` again. This is the SECOND of the two places, and the comment below is why it
+    // is called out rather than quietly edited: nothing names this array and no grep finds it from
+    // the grant that moved it. Taken from main at the merge for the same reason as its twin above.
+    expect(second.roles.map((r) => r.already.length)).toEqual([12, 16, 6, 20, 8, 1, 19, 13, 20, 10, 10, 1, 2, 3, 3, 5, 1, 11, 6, 15, 9, 4, 4, 3, 6, 17, 8, 4, 17, 15, 10, 13, 4, 3, 1, 2, 5]); // 17c owner ruling: lab_reception 16 -> 17; 18b T1: radiographer 9, modality_bridge 1; 16c T1: pharmacy 19, pharmacy_assistant 5; 17-E T1: INDEX 25, pathologist 16 -> 17
     // The SAME bare-integer array as the granted-length pin above, duplicated for the idempotence
     // leg — so every permission moves it TWICE. Nothing names it and no grep finds it.
 

@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import type { WirePatientHit } from "../../lib/patients-api";
+import type { WirePatientHit, WireRegisterBody } from "../../lib/patients-api";
 import type { WireDepartment, WireDoctorSummary, WireSlot } from "../../lib/opd-api";
 import type { WireFeeQuote, WireIssueInvoiceResult, TenderMode } from "../../lib/billing-api";
 import type { WireRecognition } from "../../lib/membership-api";
@@ -130,6 +130,9 @@ export type Form = {
   monthlyIncome: string;
   legacyUhid: string;
   isConfidential: boolean;
+  /** FD-25 — required by the server whenever `isConfidential` is set; see `registerBodyOf`. */
+  alias: string;
+  sensitiveContext: boolean;
   promotionalOptIn: boolean;
   // the guardian — REQUIRED for a minor, which is why it is not merely another optional block
   guardianName: string;
@@ -137,6 +140,16 @@ export type Form = {
   guardianPhone: string;
   guardianIdType: string;
   guardianIdNumber: string;
+  /*
+    FD-25 — what the guardian may do on the child's behalf. The artboard's four pills, and the
+    defaults are the ARTBOARD's, not the column's: messages and bills on, consents and records off.
+    They travel explicitly on every registration precisely so the column defaults never decide a
+    DPDP §9 question by omission.
+  */
+  guardianAuthorityMessages: boolean;
+  guardianAuthorityBills: boolean;
+  guardianAuthorityConsents: boolean;
+  guardianAuthorityRecords: boolean;
   // how it gets paid for
   coverages: CoverageDraft[];
 };
@@ -150,9 +163,11 @@ export const EMPTY_FORM: Form = {
   nationality: "", nationalIdType: "", nationalIdNumber: "",
   referredBySource: "", referredByName: "", referredByPhone: "", referredBySpeciality: "",
   religion: "", occupation: "", monthlyIncome: "", legacyUhid: "",
-  isConfidential: false, promotionalOptIn: false,
+  isConfidential: false, alias: "", sensitiveContext: false, promotionalOptIn: false,
   guardianName: "", guardianRelationship: "", guardianPhone: "",
   guardianIdType: "", guardianIdNumber: "",
+  guardianAuthorityMessages: true, guardianAuthorityBills: true,
+  guardianAuthorityConsents: false, guardianAuthorityRecords: false,
   coverages: [],
 };
 
@@ -337,4 +352,138 @@ export const MAJORITY_AGE = 18;
 export function formNeedsGuardian(f: Pick<Form, "age" | "dob" | "ageMode">): boolean {
   const years = formAgeYears(f);
   return years !== null && years < MAJORITY_AGE;
+}
+
+/**
+ * ═══ FD-25 — THE REGISTRATION BODY, BUILT IN ONE PLACE ═══
+ *
+ * This was 90 lines inside `desk-one.tsx`'s `enrol` callback, which was fine while exactly one
+ * screen registered a patient. Three seats register a patient, so the mapping from what a clerk
+ * typed to what `POST /patients` receives becomes a thing that can DISAGREE WITH ITSELF — and the
+ * two defects below are what that looks like when it does. It is a pure function of the form, so
+ * it is testable without a screen, which is how both of them are now pinned.
+ *
+ * ═══ WHAT MOVING IT FIXED ═══
+ *
+ * 1. `isConfidential` WAS A HARD 400 AT THE COUNTER. `registration.ts` refuses
+ *    `alias_required` when the flag arrives with no alias; `desk-one.tsx` sent
+ *    `...(f.isConfidential ? { isConfidential: true } : {})` and never sent an alias, and
+ *    `WireRegisterBody` did not declare the field, so no compiler could point at it. Every clerk
+ *    who ticked that box got a refusal with no way to satisfy it. The alias now travels, and the
+ *    screen asks for one before it lets the box be ticked.
+ *
+ * 2. THE GUARDIAN'S FOUR AUTHORITIES WERE NEVER SENT. The server accepts and stores all four; no
+ *    caller has ever supplied one, so every guardian on file holds the column defaults — and the
+ *    defaults disagree with the signed-off design (`consents` defaults TRUE, `dsr` FALSE; the
+ *    artboard says messages+bills ON, consents+records OFF). They now travel explicitly on every
+ *    registration, because a DPDP §9 authority decided by a column default is a decision nobody made.
+ *
+ * ═══ THE RULE THIS FUNCTION KEEPS ═══
+ *
+ * FD-12: A BLANK BOX IS AN OMITTED KEY, NEVER AN EMPTY STRING. Posting `""` is a different claim
+ * from saying nothing — zod's `.max()` accepts it, the column holds an empty string, and "the clerk
+ * left this blank" and "the clerk answered nothing" stop being distinguishable in the master
+ * forever after. Every optional field below is spread in only when it has a value.
+ */
+export function registerBodyOf(
+  f: Form,
+  opts: { acknowledgeDuplicates?: boolean } = {},
+): WireRegisterBody {
+  const t = (v: string): string => v.trim();
+  const opt = (key: string, v: string): Record<string, string> => (t(v) === "" ? {} : { [key]: t(v) });
+  const age = Number.parseInt(f.age, 10);
+  const income = Number.parseInt(f.monthlyIncome, 10);
+  return {
+    name: t(f.name),
+    sex: f.sex as "male" | "female" | "other",
+    ...(f.phone.replace(/\s/g, "") === "" ? {} : { phone: f.phone.replace(/\s/g, "") }),
+    /*
+      ONE OF THE TWO, NEVER BOTH — the server refuses `dob_or_age` outright. `ageMode` is what the
+      clerk picked, so it is what decides, rather than "whichever box happens to be filled".
+    */
+    ...(f.ageMode === "dob"
+      ? opt("dob", f.dob)
+      : (Number.isFinite(age) && age >= 0 && age <= 130 ? { ageYears: age } : {})),
+    ...opt("addressLine", f.address),
+    ...(f.altPhone.replace(/\s/g, "") === "" ? {} : { altPhone: f.altPhone.replace(/\s/g, "") }),
+    ...opt("title", f.title),
+    ...opt("fatherHusbandName", f.fatherHusbandName),
+    ...opt("maritalStatus", f.maritalStatus),
+    ...opt("bloodGroup", f.bloodGroup),
+    ...(f.language === "" ? {} : { language: f.language }),
+    ...opt("district", f.district),
+    ...opt("stateName", f.stateName),
+    ...opt("pincode", f.pincode),
+    /*
+      A RECORDED ABHA IS `self_declared` AND THE SCREEN CANNOT SAY OTHERWISE. Only ABDM answering
+      may move it to `verified`, and this hospital is not connected to ABDM.
+    */
+    ...(t(f.abhaNumber) === "" && t(f.abhaAddress) === ""
+      ? {}
+      : {
+        ...opt("abhaNumber", f.abhaNumber),
+        ...opt("abhaAddress", f.abhaAddress),
+        abhaVerificationStatus: "self_declared" as const,
+      }),
+    ...opt("nationality", f.nationality),
+    ...opt("nationalIdType", f.nationalIdType),
+    ...opt("nationalIdMasked", f.nationalIdNumber),
+    ...opt("religion", f.religion),
+    ...opt("occupation", f.occupation),
+    ...(Number.isFinite(income) && income >= 0 ? { monthlyIncomePaise: income * 100 } : {}),
+    ...opt("legacyUhid", f.legacyUhid),
+    /*
+      THE ALIAS TRAVELS WITH THE FLAG OR NEITHER TRAVELS. `alias_required` is thrown on exactly this
+      pair, so sending the flag alone is a guaranteed refusal — which is what shipped. Sending an
+      alias without the flag would be the opposite error: a public name recorded for a record that
+      is not sealed. They are one fact and they move together.
+    */
+    ...(f.isConfidential
+      ? { isConfidential: true, ...opt("alias", f.alias), ...(f.sensitiveContext ? { sensitiveContext: true } : {}) }
+      : {}),
+    ...(f.promotionalOptIn ? { promotionalOptIn: true } : {}),
+    ...opt("referredBySource", f.referredBySource),
+    ...opt("referredByName", f.referredByName),
+    ...(f.referredByPhone.replace(/\s/g, "") === "" ? {} : { referredByPhone: f.referredByPhone.replace(/\s/g, "") }),
+    ...opt("referredBySpeciality", f.referredBySpeciality),
+    ...(t(f.guardianName) === "" || f.guardianRelationship === ""
+      ? {}
+      : {
+        guardian: {
+          name: t(f.guardianName),
+          relationship: f.guardianRelationship,
+          ...(f.guardianPhone.replace(/\s/g, "") === "" ? {} : { phone: f.guardianPhone.replace(/\s/g, "") }),
+          ...(f.guardianIdType === "" ? {} : { idType: f.guardianIdType as "aadhaar" | "pan" | "voter_id" | "other" }),
+          // last-4 only, and the server truncates whatever arrives regardless
+          ...(t(f.guardianIdNumber) === "" ? {} : { idNumberMasked: t(f.guardianIdNumber).replace(/\D/g, "").slice(-4) }),
+          /* All four ALWAYS, never a default — see the type's own comment for why. */
+          authorityMessages: f.guardianAuthorityMessages,
+          authorityBills: f.guardianAuthorityBills,
+          authorityConsents: f.guardianAuthorityConsents,
+          authorityDsr: f.guardianAuthorityRecords,
+        },
+      }),
+    /* Only coverages the clerk actually filled in — an untouched blank row is not an entitlement. */
+    ...(() => {
+      const filled = f.coverages.filter((c) =>
+        t(c.payerName) !== "" || t(c.policyNumber) !== "" || t(c.cardNumber) !== ""
+        || t(c.beneficiaryId) !== "" || t(c.employeeId) !== "" || t(c.tpaName) !== "");
+      return filled.length === 0 ? {} : {
+        coverages: filled.map((c) => ({
+          kind: c.kind,
+          verificationStatus: c.verificationStatus,
+          ...opt("payerName", c.payerName),
+          ...opt("tpaName", c.tpaName),
+          ...opt("policyNumber", c.policyNumber),
+          ...opt("cardNumber", c.cardNumber),
+          ...opt("beneficiaryId", c.beneficiaryId),
+          ...opt("employeeId", c.employeeId),
+          ...opt("planClass", c.planClass),
+          ...opt("validFrom", c.validFrom),
+          ...opt("validTo", c.validTo),
+        })),
+      };
+    })(),
+    ...(opts.acknowledgeDuplicates === true ? { acknowledgedDuplicates: true } : {}),
+  };
 }

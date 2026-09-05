@@ -99,6 +99,15 @@ export function humanDate(serviceDate: string): string {
   return month === undefined ? serviceDate : `${d}-${month}-${y}`;
 }
 
+/**
+ * Just the month, for the tile's delta line. The seat-pass ruling ("31-Aug-2026") governs dates a
+ * clerk reads as dates; a delta is read as a comparison — "Jun 132/84 → +26/+12" — and a full date
+ * inside it crowds out the numbers that are the point of the line.
+ */
+export function monthLabel(serviceDate: string): string {
+  return MONTHS[Number(serviceDate.split("-")[1]) - 1] ?? serviceDate;
+}
+
 /** HH:MM on the hospital's clock (IST, fixed +05:30), from an ISO instant. */
 export function istClock(iso: string): string {
   const d = new Date(new Date(iso).getTime() + 330 * 60_000);
@@ -231,6 +240,110 @@ const CHIPS = [
   { key: "bp_med_taken", question: "BP ki dawa li?", yes: "BP medicine taken today", no: "BP medicine not taken today" },
   { key: "just_climbed_stairs", question: "abhi seedhi chadh kar aaye?", yes: "just climbed stairs", no: "rested" },
 ] as const;
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-25 — THE THREE THINGS AN ARTBOARD TILE SAYS THAT THE SHIPPED TILE DID NOT
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * The build spec's charge against `vitals-bay-capture.tsx:474-539` was precise: "a generic bordered
+ * grid with no big value, no source pill, no delta, no ✎ and no range label". Three of those five
+ * are DERIVATIONS, not styling, and a wrong derivation looks exactly like a right one on a monitor
+ * across a bay — which is why they are pure functions with tests rather than JSX.
+ *
+ * None of them changes a single byte that reaches the server. `buildBody` is untouched.
+ */
+
+/**
+ * WHERE THE NUMBER CAME FROM. A nurse reading a chart later cannot tell a typed 68 from a monitor's
+ * 68, and the two are not equally trustworthy: a cuff that has slipped reports confidently.
+ *
+ * `RODE THE CUFF` is not decoration. An oscillometric cuff returns a pulse with the pressure — one
+ * capture, two vitals (the build spec's own words for the PULSE tile) — so a device-sourced pulse
+ * was never independently counted, and that is worth saying on the tile where somebody might
+ * otherwise read agreement between two instruments as corroboration.
+ */
+export type SourcePill = "auto" | "typed" | "counted" | "rodeCuff";
+export function sourcePillOf(k: TileKey, source: Tile["source"]): SourcePill {
+  if (source === "device") return k === "pulse" ? "rodeCuff" : "auto";
+  return source === "counted" ? "counted" : "typed";
+}
+
+/**
+ * THE BAND'S OWN LIMITS, top-right in mono. `preStage.ranges` is per-band and server-sent (the bay
+ * holds no `GET /opd/config` permission), so an infant tile shows an infant's range and the nurse
+ * never has to remember which band the patient is in — the tile says it.
+ *
+ * BP folds two wire keys into one tile, so it prints two ranges. A range with one bound prints the
+ * bound it has: `≥ 90` is the whole truth about SpO₂ and inventing an upper limit would be a lie.
+ */
+export function rangeLabelOf(k: TileKey, pre: WirePreStage | null): string | null {
+  if (pre === null) return null;
+  const one = (key: WireVitalKey): string | null => {
+    const r = pre.ranges[key];
+    if (r === undefined) return null;
+    if (r.min !== undefined && r.max !== undefined) return `${String(r.min)}–${String(r.max)}`;
+    if (r.min !== undefined) return `≥ ${String(r.min)}`;
+    if (r.max !== undefined) return `≤ ${String(r.max)}`;
+    return null;
+  };
+  if (k === "bp") {
+    const sys = one("sbp");
+    const dia = one("dbp");
+    if (sys === null && dia === null) return null;
+    return `${sys ?? "—"} / ${dia ?? "—"}`;
+  }
+  return one(k);
+}
+
+/**
+ * THE DELTA — "Jun 132/84 → +26/+12", gold when |Δsys| > 15 or |Δdia| > 10.
+ *
+ * ═══ WHY THIS IS THE MOST CLINICALLY LOAD-BEARING LINE ON THE TILE ═══
+ *
+ * A single 158/96 is a number. A 158/96 that was 132/84 in June is a TREND, and the difference
+ * between those two readings is the difference between "slightly high, common, recheck sometime"
+ * and "this person's pressure has moved 26 points since we last saw them". The bay already fetches
+ * `preStage.last` — the previous chart, in full — and the shipped tile showed none of it.
+ *
+ * The thresholds are the build spec's and they are asymmetric on purpose: systolic wanders more
+ * than diastolic across a day, a cuff and a season, so 15/10 marks the point where the movement is
+ * more likely the patient than the measurement.
+ *
+ * ═══ WHY IT RETURNS PARTS AND NOT A SENTENCE ═══
+ *
+ * The month is the only localisable fragment, and a pure function that formats it would either pin
+ * English into a Hindi desk or take `t` as an argument and stop being testable. So the caller
+ * formats the date and this returns everything else assembled.
+ */
+export type TileDelta = { serviceDate: string; from: string; delta: string; hot: boolean };
+
+const signed = (n: number): string => (n > 0 ? `+${String(n)}` : String(n));
+/* One decimal only where the vital actually has one — a temperature moves by 0.4, a weight by 1.5. */
+const round1 = (n: number): number => Math.round(n * 10) / 10;
+
+export function tileDeltaOf(k: TileKey, tile: Tile, pre: WirePreStage | null): TileDelta | null {
+  const last = pre?.last;
+  if (last === null || last === undefined) return null;
+  const op = operative(tile);
+  if (op === null) return null;
+
+  if (k === "bp") {
+    if (!Array.isArray(op) || last.sbp === null || last.dbp === null) return null;
+    const dSys = round1(op[0] - last.sbp);
+    const dDia = round1(op[1] - last.dbp);
+    return {
+      serviceDate: last.serviceDate,
+      from: `${String(last.sbp)}/${String(last.dbp)}`,
+      delta: `${signed(dSys)}/${signed(dDia)}`,
+      hot: Math.abs(dSys) > 15 || Math.abs(dDia) > 10,
+    };
+  }
+  if (Array.isArray(op)) return null;
+  const was = last[k];
+  if (was === null || was === undefined) return null;
+  return { serviceDate: last.serviceDate, from: String(was), delta: signed(round1(op - was)), hot: false };
+}
 
 export type SavedBanner = { who: string; doctorName: string; flags: WireDangerFlag[]; amended: boolean; rest?: string };
 
@@ -463,9 +576,9 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
   const showTake = (x: Take): string => (Array.isArray(x) ? `${x[0]}/${x[1]}` : String(x));
 
   return (
-    <div data-testid="capture" className="flex flex-col gap-3">
+    <div data-testid="capture" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {protocol}
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-4" data-testid="tiles">
+      <div data-testid="tiles" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(168px, 1fr))", gap: 8 }}>
         {order.map((k, idx) => {
           const tile = tiles[k];
           const op = operative(tile);
@@ -475,22 +588,39 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
           const isMissing = missing.includes(k);
           const locked = tile.carried !== null && tile.unlockReason === null;
           const serverLocked = lockedByServer.some((lk) => (lk === "sbp" || lk === "dbp" ? "bp" : lk) === k);
+          const range = rangeLabelOf(k, preStage);
+          const pill = sourcePillOf(k, tile.source);
+          const delta = tileDeltaOf(k, tile, preStage);
+          const hot = tint === "danger" || tint === "sam";
+          /* The label wears the level: dim when nothing is wrong, gold for a notice, red for a danger. */
+          const labelColour = hot ? "var(--red)" : tint !== null ? "var(--gold)" : "var(--dim)";
           return (
             <div
               key={k} data-testid={`tile-${k}`} data-tint={tint ?? ""} data-locked={locked ? "true" : "false"} data-required={required ? "true" : "false"}
-              className={`flex flex-col gap-1 rounded-lg border p-2 ${tint === "danger" || tint === "sam" ? "border-destructive" : isMissing ? "border-destructive" : "border-border"} bg-card`}
+              className="box"
+              style={{
+                display: "flex", flexDirection: "column", gap: 5, padding: "9px 10px 10px",
+                borderColor: hot || isMissing ? "var(--red-line)" : tint !== null ? "var(--gold-line)" : undefined,
+                background: hot ? "var(--red-soft)" : tint !== null ? "var(--gold-soft)" : undefined,
+              }}
             >
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span><kbd className="mr-1 rounded border px-1">{idx + 1}</kbd>{label(k)}{required ? " *" : ""}</span>
-                {notRoutine && <span data-testid={`not-routine-${k}`}>{t("vitalsBay.capture.notRoutine")}</span>}
-                {tile.source === "device" && <span>{t("vitalsBay.capture.fromDevice")}</span>}
+              {/* ROW 1 — what this is, and what the BAND says it should be. Mono, right, faint: it is a reference, not a reading. */}
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 6 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: labelColour }}>
+                  <span className="kb" style={{ marginRight: 4 }}>{idx + 1}</span>{label(k)}{required ? " *" : ""}
+                </span>
+                {range !== null && <span className="mo" data-testid={`range-${k}`} style={{ fontSize: 10, color: "var(--faint)", whiteSpace: "nowrap" }}>{range}</span>}
               </div>
+              {notRoutine && <span data-testid={`not-routine-${k}`} style={{ fontSize: 10, color: "var(--faint)" }}>{t("vitalsBay.capture.notRoutine")}</span>}
+
               {locked ? (
-                <div data-testid={`carried-${k}`} className="flex flex-col gap-1 text-sm">
-                  <span className="font-mono text-lg">{tile.carried} <span className="text-xs">{unit(k)}</span></span>
-                  <span className="text-xs text-muted-foreground">{t("vitalsBay.capture.carriedLocked")}</span>
+                <div data-testid={`carried-${k}`} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <span className="mo" style={{ fontSize: 25, fontWeight: 600, lineHeight: 1.05 }}>
+                    {tile.carried} <span style={{ fontSize: 11, fontWeight: 400, color: "var(--dim)" }}>{unit(k)}</span>
+                  </span>
+                  <span style={{ fontSize: 10, color: "var(--dim)" }}>{t("vitalsBay.capture.carriedLocked")}</span>
                   <select
-                    aria-label={t("vitalsBay.unlock.label")} data-testid={`unlock-${k}`} className="rounded border border-input bg-card px-1 py-0.5 text-xs"
+                    aria-label={t("vitalsBay.unlock.label")} data-testid={`unlock-${k}`} className="in" style={{ fontSize: 11, padding: "3px 5px" }}
                     value="" onChange={(e) => { if (e.target.value !== "") unlock(k, e.target.value as WireUnlockReason); }}
                   >
                     <option value="">{t("vitalsBay.unlock.pick")}</option>
@@ -499,20 +629,61 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
                 </div>
               ) : (
                 <>
-                  <div className="flex items-baseline gap-1 font-mono">
-                    <span data-testid={`value-${k}`} className={`text-lg ${tint === "danger" || tint === "sam" ? "font-semibold" : ""}`}>
+                  {/*
+                    THE BIG VALUE. It is the reason a nurse looks at this tile, and on the shipped
+                    screen it was `text-lg` — the same size as the label beside it. A number read
+                    across a bay, sometimes over a shoulder, is not a body-copy number.
+                  */}
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 5, minHeight: 30 }}>
+                    <span data-testid={`value-${k}`} className="mo" style={{ fontSize: 25, lineHeight: 1.05, fontWeight: hot ? 700 : 600, color: hot ? "var(--red)" : "var(--ink)" }}>
                       {op === null ? "—" : showTake(op)}
                     </span>
-                    <span className="text-xs text-muted-foreground">{unit(k)}</span>
-                    {tile.takes.length > 1 && <span data-testid={`pair-${k}`} className="text-xs text-muted-foreground">{tile.takes.map(showTake).join(" · ")}</span>}
+                    <span style={{ fontSize: 11, color: "var(--dim)" }}>{unit(k)}</span>
+                    {op !== null && (
+                      <button
+                        type="button" data-testid={`reenter-${k}`} aria-label={t("vitalsBay.capture.reenter", { tile: label(k) })}
+                        style={{ marginLeft: "auto", border: "none", background: "none", color: "var(--faint)", fontSize: 13, lineHeight: 1, padding: 2 }}
+                        onClick={() => refs.current[k]?.focus()}
+                      >✎</button>
+                    )}
                   </div>
-                  {tint !== null && <span data-testid={`tint-${k}`} className="text-xs">{t(`vitalsBay.capture.tint.${tint}`)}</span>}
-                  {tile.held.length > 0 && <span data-testid={`held-${k}`} className="text-xs text-muted-foreground">{t("vitalsBay.capture.held", { values: tile.held.join(", ") })}</span>}
-                  {tile.unlockReason !== null && <span data-testid={`unlocked-${k}`} className="text-xs text-muted-foreground">{t("vitalsBay.unlock.was", { value: preStage?.last?.[k === "bp" ? "sbp" : k] ?? "" })}</span>}
+
+                  {/* WHERE IT CAME FROM, and — for a pulse — the fact that it was never counted separately. */}
+                  {op !== null && (
+                    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4 }}>
+                      <span className="tag" data-testid={`source-${k}`} data-source={pill}>{t(`vitalsBay.capture.source.${pill}`)}</span>
+                      {tile.takes.length > 1 && <span data-testid={`pair-${k}`} className="mo" style={{ fontSize: 10, color: "var(--dim)" }}>{tile.takes.map(showTake).join(" · ")}</span>}
+                    </div>
+                  )}
+
+                  {/*
+                    THE TREND. Gold when the movement is more likely the patient than the cuff —
+                    the one line on this tile that a single reading cannot give you.
+                  */}
+                  {delta !== null && (
+                    <span
+                      data-testid={`delta-${k}`} data-hot={delta.hot ? "true" : "false"} className="mo"
+                      style={{ fontSize: 10.5, color: delta.hot ? "var(--gold)" : "var(--dim)", fontWeight: delta.hot ? 700 : 400 }}
+                    >
+                      {t("vitalsBay.capture.delta", { month: monthLabel(delta.serviceDate), from: delta.from, delta: delta.delta })}
+                    </span>
+                  )}
+
+                  {tint !== null && <span data-testid={`tint-${k}`} style={{ fontSize: 10.5, fontWeight: 600, color: hot ? "var(--red)" : "var(--gold)" }}>{t(`vitalsBay.capture.tint.${tint}`)}</span>}
+                  {tile.held.length > 0 && <span data-testid={`held-${k}`} style={{ fontSize: 10, color: "var(--dim)" }}>{t("vitalsBay.capture.held", { values: tile.held.join(", ") })}</span>}
+                  {tile.unlockReason !== null && <span data-testid={`unlocked-${k}`} style={{ fontSize: 10, color: "var(--dim)" }}>{t("vitalsBay.unlock.was", { value: preStage?.last?.[k === "bp" ? "sbp" : k] ?? "" })}</span>}
                   <input
                     ref={(el) => { refs.current[k] = el; }}
+                    /*
+                      CLOSE PASS 1 — THE ONLY UNLABELLED CONTROL IN THE WHOLE WAVE. The visible
+                      label is a `<span>` with no `htmlFor`, so a nurse on a screen reader tabbed
+                      the capture grid and heard "edit, blank" eight times — on the screen whose
+                      entire purpose is entering eight numbers, with no way to tell SpO2 from temp.
+                      The unit travels with it: "Pulse, per minute" is what the tile actually asks.
+                    */
+                    aria-label={`${label(k)} ${unit(k)}`.trim()}
                     data-testid={`input-${k}`} inputMode="decimal" autoComplete="off"
-                    className="w-full rounded border border-input bg-card px-2 py-1 font-mono text-sm"
+                    className="in mo" style={{ padding: "4px 7px", fontSize: 13 }}
                     placeholder={k === "bp" ? "158/96" : ""}
                     value={raw[k]}
                     onChange={(e) => setRaw((r) => ({ ...r, [k]: e.target.value }))}
@@ -522,55 +693,68 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
                       if (e.key.length === 1 || e.key === "Backspace") setKeys((c) => ({ ...c, typed: c.typed + 1 }));
                     }}
                   />
+                  {/*
+                    THE OWNER'S DIGNITY RULING, ON THE TILE THAT NEEDS IT. A weight is the one
+                    number at this desk that a patient can be humiliated by, and the bay is a
+                    curtained bay in a corridor, not a room.
+                  */}
+                  {k === "weightKg" && <span data-testid="weight-quiet" style={{ fontSize: 10, color: "var(--faint)" }}>{t("vitalsBay.capture.weightQuiet")}</span>}
                   {k === "rr" && rrNudge !== null && (
-                    <span data-testid="rr-nudge" className="text-xs">
+                    <span data-testid="rr-nudge" style={{ fontSize: 10.5, color: "var(--gold)" }}>
                       {rrNudge.secondsLeft === null
-                        ? <>{t("vitalsBay.capture.rrNudge", { value: rrNudge.value })} <button type="button" data-testid="rr-count" className="underline" onClick={startRrCounter}>{t("vitalsBay.capture.rrCount")}</button></>
+                        ? <>{t("vitalsBay.capture.rrNudge", { value: rrNudge.value })} <button type="button" data-testid="rr-count" className="sec" style={{ padding: "1px 6px", fontSize: 10.5 }} onClick={startRrCounter}>{t("vitalsBay.capture.rrCount")}</button></>
                         : rrNudge.secondsLeft > 0 ? t("vitalsBay.capture.rrCounting", { seconds: rrNudge.secondsLeft }) : t("vitalsBay.capture.rrCounted")}
                     </span>
                   )}
                   {lane === "serial" && (
-                    <button type="button" data-testid={`device-${k}`} className="rounded border border-border px-1 text-xs" onClick={() => { void readDevice(k); }}>
+                    <button type="button" data-testid={`device-${k}`} className="sec" style={{ padding: "2px 7px", fontSize: 10.5 }} onClick={() => { void readDevice(k); }}>
                       {t("vitalsBay.capture.readDevice")}
                     </button>
                   )}
                 </>
               )}
-              {serverLocked && <span role="alert" data-testid={`server-locked-${k}`} className="text-xs">{t("vitalsBay.unlock.serverLocked")}</span>}
+              {serverLocked && <span role="alert" data-testid={`server-locked-${k}`} style={{ fontSize: 10.5, color: "var(--red)", fontWeight: 600 }}>{t("vitalsBay.unlock.serverLocked")}</span>}
             </div>
           );
         })}
       </div>
 
       {mirror !== null && (
-        <div role="alertdialog" data-testid="mirror" data-kind={mirror.m.kind} className="flex flex-wrap items-center gap-2 rounded border border-destructive p-2 text-sm">
+        <div role="alertdialog" data-testid="mirror" data-kind={mirror.m.kind} className="box" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "9px 11px", fontSize: 12.5, borderColor: "var(--red-line)", background: "var(--red-soft)" }}>
           <span>
             {mirror.m.kind === "slipped_digit" && t("vitalsBay.gate.slippedDigit", { value: mirror.m.value, suggestion: mirror.m.suggestion ?? "" })}
             {mirror.m.kind === "shrinking_adult" && t("vitalsBay.gate.shrinkingAdult", { value: mirror.m.value, last: mirror.m.last })}
             {mirror.m.kind === "probe_error" && t("vitalsBay.gate.probeError", { value: mirror.m.value })}
           </span>
           {mirror.m.kind === "slipped_digit" && mirror.m.suggestion !== null && (
-            <button type="button" data-testid="mirror-fix" className="rounded border px-2" onClick={() => resolveMirror("fix")}>{t("vitalsBay.gate.fix", { value: mirror.m.suggestion })}</button>
+            <button type="button" data-testid="mirror-fix" className="pri" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => resolveMirror("fix")}>{t("vitalsBay.gate.fix", { value: mirror.m.suggestion })}</button>
           )}
-          <button type="button" data-testid="mirror-retake" className="rounded border px-2" onClick={() => resolveMirror("retake")}>{t("vitalsBay.gate.retake")}</button>
-          <button type="button" data-testid="mirror-confirm" className="rounded border px-2" onClick={() => resolveMirror("confirm")}>
+          <button type="button" data-testid="mirror-retake" className="sec" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => resolveMirror("retake")}>{t("vitalsBay.gate.retake")}</button>
+          <button type="button" data-testid="mirror-confirm" className="sec" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => resolveMirror("confirm")}>
             {t(mirror.m.kind === "probe_error" ? "vitalsBay.gate.confirmProbe" : "vitalsBay.gate.confirm")}
           </button>
         </div>
       )}
       {serverGates.map((g) => (
-        <div key={`${g.key}-${g.kind}`} role="alertdialog" data-testid={`server-gate-${g.key}`} className="flex flex-wrap items-center gap-2 rounded border border-destructive p-2 text-sm">
+        <div key={`${g.key}-${g.kind}`} role="alertdialog" data-testid={`server-gate-${g.key}`} className="box" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "9px 11px", fontSize: 12.5, borderColor: "var(--red-line)", background: "var(--red-soft)" }}>
           <span>{g.message}</span>
-          {g.suggestion !== undefined && <button type="button" data-testid={`server-gate-fix-${g.key}`} className="rounded border px-2" onClick={() => acceptServerGate(g, "fix")}>{t("vitalsBay.gate.fix", { value: g.suggestion })}</button>}
-          <button type="button" data-testid={`server-gate-confirm-${g.key}`} className="rounded border px-2" onClick={() => acceptServerGate(g, "confirm")}>{t("vitalsBay.gate.confirm")}</button>
+          {g.suggestion !== undefined && <button type="button" data-testid={`server-gate-fix-${g.key}`} className="pri" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => acceptServerGate(g, "fix")}>{t("vitalsBay.gate.fix", { value: g.suggestion })}</button>}
+          <button type="button" data-testid={`server-gate-confirm-${g.key}`} className="sec" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => acceptServerGate(g, "confirm")}>{t("vitalsBay.gate.confirm")}</button>
         </div>
       ))}
 
-      <div className="flex flex-wrap gap-2 text-xs" data-testid="chips">
+      {/*
+        THE CHIPS ARE THE QUESTIONS ASKED WHILE THE CUFF INFLATES, and they are written in the words
+        a nurse actually uses at this bay — "khali pet?", not "Fasting status". Three states on one
+        tap-cycle (unasked → yes → no → unasked), because a nurse's hand is on a cuff and "not asked"
+        has to stay distinguishable from "asked, and the answer was no".
+      */}
+      <div data-testid="chips" style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
         {CHIPS.map((c) => (
           <button
             key={c.key} type="button" data-testid={`chip-${c.key}`} aria-pressed={chips[c.key] === "yes"} data-answer={chips[c.key] ?? ""}
-            className={`rounded-full border px-2 py-0.5 ${chips[c.key] === "yes" ? "bg-accent" : chips[c.key] === "no" ? "line-through" : ""}`}
+            className={`pill${chips[c.key] === "yes" ? " on" : ""}`}
+            style={chips[c.key] === "no" ? { textDecoration: "line-through", color: "var(--faint)" } : undefined}
             onClick={() => setChips((p) => ({ ...p, [c.key]: p[c.key] === undefined ? "yes" : p[c.key] === "yes" ? "no" : undefined }))}
           >
             {t(`vitalsBay.chips.${c.key}`)}{chips[c.key] !== undefined ? ` · ${t(chips[c.key] === "yes" ? "vitalsBay.chips.yes" : "vitalsBay.chips.no")}` : ""}
@@ -578,17 +762,22 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
         ))}
       </div>
 
-      {missing.length > 0 && <p role="alert" data-testid="missing">{t("vitalsBay.capture.missing", { tiles: missing.map(label).join(", ") })}</p>}
-      {error !== null && <p role="alert" data-testid="capture-error">{error}</p>}
+      {missing.length > 0 && <p role="alert" data-testid="missing" style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: "var(--red)" }}>{t("vitalsBay.capture.missing", { tiles: missing.map(label).join(", ") })}</p>}
+      {error !== null && <p role="alert" data-testid="capture-error" style={{ margin: 0, fontSize: 12.5, color: "var(--red)" }}>{error}</p>}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" data-testid="save" disabled={busy} className="rounded bg-primary px-3 py-1 text-primary-foreground" onClick={() => { void save(false); }}>
+      {/*
+        THE EMERGENCY SAVE IS DELIBERATELY NOT THE PRIMARY. It skips the band's required set, so it
+        is the right button perhaps twice a month and the wrong one the rest of the time: a secondary
+        in the colour of what it costs, beside a primary that does the ordinary thing.
+      */}
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+        <button type="button" data-testid="save" disabled={busy} className="pri" onClick={() => { void save(false); }}>
           {t("vitalsBay.capture.save")}
         </button>
-        <button type="button" data-testid="save-emergency" disabled={busy} className="rounded border border-destructive px-3 py-1" onClick={() => { void save(true); }}>
+        <button type="button" data-testid="save-emergency" disabled={busy} className="sec" style={{ borderColor: "var(--red-line)", color: "var(--red)" }} onClick={() => { void save(true); }}>
           {t("vitalsBay.capture.saveNow")}
         </button>
-        <span data-testid="keys" className="ml-auto text-xs text-muted-foreground">{t("vitalsBay.capture.keys", { typed: keys.typed, device: keys.device })}</span>
+        <span data-testid="keys" className="mo" style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--faint)" }}>{t("vitalsBay.capture.keys", { typed: keys.typed, device: keys.device })}</span>
       </div>
     </div>
   );
@@ -599,15 +788,15 @@ export function SavedBannerView({ banner, onDismiss }: { banner: SavedBanner; on
   const dangers = banner.flags.filter((f) => f.severity !== "notice");
   const notices = banner.flags.filter((f) => f.severity === "notice");
   return (
-    <div role="status" data-testid="saved-banner" className="flex flex-col gap-1 rounded border border-primary bg-card p-3">
+    <div role="status" data-testid="saved-banner" className="box" style={{ display: "flex", flexDirection: "column", gap: 5, padding: "12px 14px", borderColor: "var(--green-line)", background: "var(--green-soft)" }}>
       {banner.rest !== undefined ? (
-        <p className="text-base font-semibold" data-testid="rest-banner">{t("vitalsBay.rest.sent", { who: banner.who, time: banner.rest })}</p>
+        <p data-testid="rest-banner" style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{t("vitalsBay.rest.sent", { who: banner.who, time: banner.rest })}</p>
       ) : (
-        <p className="text-base font-semibold">✓ {t(banner.amended ? "vitalsBay.saved.amended" : "vitalsBay.saved.title", { who: banner.who, doctor: banner.doctorName })}</p>
+        <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--green)" }}>✓ {t(banner.amended ? "vitalsBay.saved.amended" : "vitalsBay.saved.title", { who: banner.who, doctor: banner.doctorName })}</p>
       )}
-      {dangers.length > 0 && <p data-testid="saved-danger" className="font-semibold">{t("vitalsBay.saved.danger", { vitals: dangers.map((f) => `${f.vital} ${f.value}`).join(", ") })}</p>}
-      {notices.length > 0 && <p data-testid="saved-notice">{t("vitalsBay.saved.notice", { vitals: notices.map((f) => `${f.vital} ${f.value}`).join(", ") })}</p>}
-      <button type="button" className="self-start text-xs underline" onClick={onDismiss}>{t("vitalsBay.saved.dismiss")}</button>
+      {dangers.length > 0 && <p data-testid="saved-danger" style={{ margin: 0, fontSize: 12.5, fontWeight: 700, color: "var(--red)" }}>{t("vitalsBay.saved.danger", { vitals: dangers.map((f) => `${f.vital} ${f.value}`).join(", ") })}</p>}
+      {notices.length > 0 && <p data-testid="saved-notice" style={{ margin: 0, fontSize: 12.5, color: "var(--gold)" }}>{t("vitalsBay.saved.notice", { vitals: notices.map((f) => `${f.vital} ${f.value}`).join(", ") })}</p>}
+      <button type="button" className="sec" style={{ alignSelf: "flex-start", padding: "2px 9px", fontSize: 11 }} onClick={onDismiss}>{t("vitalsBay.saved.dismiss")}</button>
     </div>
   );
 }

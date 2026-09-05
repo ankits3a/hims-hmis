@@ -2,6 +2,8 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { opdEncounters, opdQueueEntries, opdQueueSessions, patients } from "../../kernel/db/schema";
 import { encounterFeeStatuses } from "./fee-status";
 import { recordPhiAccess } from "../../kernel/phi/audit";
+import { displayName } from "../patients";
+import { hasPermission } from "../../kernel/auth/permissions";
 import type { Db } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 
@@ -79,6 +81,8 @@ export async function collectionWorklist(
   const people = await db
     .select({
       id: patients.id, name: patients.name, uhid: patients.uhid,
+      /* `alias` travels because `displayName` needs it — a sealed row renders the alias, not the name. */
+      alias: patients.alias,
       isConfidential: patients.isConfidential,
     })
     .from(patients)
@@ -112,9 +116,40 @@ export async function collectionWorklist(
     `recordPhiAccess` never throws (its own header) and the table is pruned at
     `PHI_ACCESS_RETAIN_DAYS`, so the volume is bounded.
   */
+  /*
+    ═══ CLOSE PASS 2, CRITICAL — THE SEAL, WHICH THIS READER ANNOUNCED AND THEN BROKE ═══
+
+    `byId` selects straight from `patients`, and the row below carried `patientName: person.name` —
+    the LEGAL name — beside `isConfidential: true`. The row correctly declared the patient sealed and
+    then disclosed the exact thing the seal withholds, to every holder of `billing.invoice.read`.
+    Nobody in the model holds `patients.confidential.read`; it is granted to ZERO roles.
+
+    Not a product question: the patients module already decided how a confidential name is rendered
+    to somebody who may not see it, and this reader simply never asked it. `canSee` is resolved ONCE
+    for the actor rather than per row — it is a hospital-scope permission, and a per-row lookup would
+    be N queries for one answer.
+
+    THE PATIENT STAYS ON THE LIST. Removing them would be the wrong fix: a sealed patient must still
+    be billable, which is the whole reason this route answers for one. What changes is the name a
+    cashier reads off the screen.
+
+    And this is the road pass 1's coverages fix was written against — that finding reasoned a cashier
+    obtains a sealed id HERE. True, and incomplete: the same route was already handing over the name,
+    so gating the coverages read while this printed it was a seal with a hole one level up.
+
+    `sealed` on the audit row for the same reason it was added to reprint and coverages: it defaults
+    to false, so these disclosures were logged as ordinary reads and "who read sealed records"
+    answered no one.
+  */
+  const canSeeConfidential = actor.type === "user"
+    && await hasPermission(db, actor.id, "patients.confidential.read", "hospital");
+
   const reason = `billing collection worklist ${serviceDate}, ${String(owing.length)} rows`;
   for (const patientId of new Set(owing.map((e) => e.patientId))) {
-    await recordPhiAccess(db, { actor, patientId, surface: "billing.collection_worklist", reason });
+    await recordPhiAccess(db, {
+      actor, patientId, surface: "billing.collection_worklist", reason,
+      sealed: byId.get(patientId)?.isConfidential ?? false,
+    });
   }
 
   return owing.flatMap((e): CollectionRow[] => {
@@ -124,7 +159,7 @@ export async function collectionWorklist(
       encounterId: e.id,
       visitNo: e.visitNo,
       patientId: e.patientId,
-      patientName: person.name,
+      patientName: displayName(person, canSeeConfidential),
       uhid: person.uhid,
       isConfidential: person.isConfidential,
       tokenNo: tokenOf.get(e.id) ?? null,

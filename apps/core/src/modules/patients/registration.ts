@@ -1,4 +1,5 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
+import { recordPhiAccess } from "../../kernel/phi/audit";
 import { newId } from "@hmis/contracts";
 import {
   assuranceAfterAmendment, isAmendmentReason, mintIdentityVersion, touchesIdentity,
@@ -776,6 +777,27 @@ export async function resolvePatientId(db: Db | Tx, patientId: string): Promise<
 export type PatientSummary = {
   requestedId: string; id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean;
   /**
+   * ═══ FD-25 — A PHONE NUMBER, AND ONLY WHEN A CALLER ASKS FOR ONE AND SAYS WHY ═══
+   *
+   * OPTIONAL AND ABSENT BY DEFAULT. Every existing consumer of this payload is a display, document
+   * or search surface that has never needed contact details, and `getPatientSummaries` omits the
+   * field entirely unless `withContact` is passed — so this is not a widening of the privacy
+   * surface (§14), it is a second, narrower one beside it.
+   *
+   * It exists for exactly one screen: the appointment seat's rebooking rail, which answers *"the
+   * doctor is away — who do I have to call?"*. A rail that lists five people to ring and no numbers
+   * to ring them on is furniture.
+   *
+   * WHY NOT N× `GET /patients/:id`: that route writes a PHI-access row per call, so a rail polling
+   * five rows would write five audit rows every fifteen seconds and bury the real disclosures in
+   * its own noise. One batched read, one audit row per patient disclosed, is both cheaper and more
+   * honest about what happened.
+   *
+   * A RESTRICTED ROW NEVER CARRIES ONE. If the caller may not read the name they may not read the
+   * number — the two travel together or the seal leaks through the phone book.
+   */
+  phone?: string | null;
+  /**
    * PLAN 22c-A T4/DD4 — SUMMARIES CARRY ADMINISTRATIVE GENDER, NOT CLINICAL SEX, and the field is
    * renamed rather than re-sourced so no display surface can read the wrong one by habit. Every
    * consumer of this payload is a display, document or search surface (measured: spike S6 found no
@@ -784,7 +806,17 @@ export type PatientSummary = {
   administrativeGender: string; dob: Date | null;
 };
 
-export async function getPatientSummaries(db: Db, actor: Actor, patientIds: string[]): Promise<PatientSummary[]> {
+export async function getPatientSummaries(
+  db: Db,
+  actor: Actor,
+  patientIds: string[],
+  /**
+   * FD-25 — opt in to contact details, and say what for. The `reason` is written into the PHI
+   * access row; a disclosure whose purpose is not recorded cannot be answered for later, and the
+   * one question this log is ever asked is "why did they look".
+   */
+  opts: { withContact?: { reason: string } } = {},
+): Promise<PatientSummary[]> {
   const unique = [...new Set(patientIds)];
   if (unique.length === 0) return [];
   // ONE query for the common case; only rows that are themselves merged losers walk the chain (rare).
@@ -807,7 +839,22 @@ export async function getPatientSummaries(db: Db, actor: Actor, patientIds: stri
       requestedId, id: row.id, uhid: row.uhid,
       name: restricted ? null : row.name, alias: restricted ? row.alias : null, restricted,
       administrativeGender: row.administrativeGender, dob: row.dob,
+      /* Restricted rows carry no number: if the name is sealed the contact is sealed with it. */
+      ...(opts.withContact === undefined ? {} : { phone: restricted ? null : row.phone }),
     });
+  }
+  /*
+    ONE AUDIT ROW PER PATIENT DISCLOSED, after the loop and only for a contact read. The plain
+    summary read is a display surface and is not logged here — that has never been this function's
+    job — but handing over a phone number is a disclosure of contact data and is logged as one.
+  */
+  if (opts.withContact !== undefined) {
+    for (const summary of out) {
+      if (summary.phone === undefined || summary.phone === null) continue;
+      await recordPhiAccess(db, {
+        actor, patientId: summary.id, surface: "patient.contact", reason: opts.withContact.reason,
+      });
+    }
   }
   return out;
 }

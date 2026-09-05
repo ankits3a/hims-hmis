@@ -7,6 +7,7 @@ import {
   events,
   notifications,
   patients,
+  printJobs,
   retentionLegalHolds,
 } from "../db/schema";
 import { listEventPartitions } from "../worker/partitions";
@@ -69,6 +70,25 @@ const eventRow = (eventId: string, recordedAt: Date, patientId?: string) => ({
   module: "opd",
   payload: { eventId },
   patientId,
+});
+
+/** FD-25 — a print job, shaped for the prune's predicate: status + updatedAt and nothing else. */
+const printJobRow = (
+  id: string,
+  status: string,
+  updatedAt: Date,
+): typeof printJobs.$inferInsert => ({
+  id,
+  document: "opd_token_slip",
+  destination: "front_desk_thermal",
+  params: { encounterId: "01HRETENTIONENCOUNTER00001" },
+  dedupeKey: `p:retention:${id}`,
+  patientId: FREE_PATIENT,
+  encounterId: null,
+  requestedBy: null,
+  status,
+  createdAt: updatedAt,
+  updatedAt,
 });
 
 const notificationRow = (
@@ -179,6 +199,10 @@ describe("retentionSweep", () => {
 
       expect(result).toEqual({
         dropped: [], blocked: [], notificationsDeleted: 0,
+        // FD-25 — the print outbox's leg, added BELOW the inert gate like every other, and this
+        // line is the assertion doing its job again: the exact-shape `toEqual` is what forced this
+        // file to be edited when the leg was added, rather than the leg shipping unmentioned.
+        printJobsDeleted: 0,
         idempotencyDeleted: 0, deliveriesDeleted: 0, deadLettersDeleted: 0,
         // Plan 11h T5 — the sweep gained a search-audit leg, and this assertion is the thing that
         // proves the inert gate still covers it: `if (!enabled) return inert()` is the first
@@ -369,6 +393,67 @@ describe("retentionSweep", () => {
   // ---------------------------------------------------------------------------------------------
   // D7 — the notifications prune.
   // ---------------------------------------------------------------------------------------------
+  describe("print_jobs prune (FD-25) — the promise the schema made and the sweep did not keep", () => {
+    const printJobIds = async (): Promise<string[]> =>
+      (await db.select({ id: printJobs.id }).from(printJobs).orderBy(printJobs.id)).map((r) => r.id);
+
+    /**
+     * GLOBAL CONSTRAINT 6, APPLIED TO PAPER. A `queued` row is a document still owed to a patient
+     * and a `claimed` row may be at a printer this second; neither becomes safe to delete by
+     * getting old. An outbox that prunes its own backlog silently loses work.
+     *
+     * The terminal row of the SAME age going is what makes the two survivals mean anything: this
+     * run really did prune, and it still left these alone.
+     */
+    it("never prunes a queued or claimed job, at any age, while terminal jobs of the same age go", async () => {
+      await db.insert(printJobs).values([
+        printJobRow("01HRETENTIONPJQUEUED000001", "queued", daysBefore(2000)),
+        printJobRow("01HRETENTIONPJCLAIMED00001", "claimed", daysBefore(2000)),
+        printJobRow("01HRETENTIONPJPRINTED00001", "printed", daysBefore(2000)),
+      ]);
+
+      const result = await retentionSweep(db, { now: NOW, enabled: true, printJobRetainDays: 90 });
+
+      expect(result.printJobsDeleted).toBe(1);
+      expect(await printJobIds()).toEqual([
+        "01HRETENTIONPJCLAIMED00001", "01HRETENTIONPJQUEUED000001",
+      ]);
+    });
+
+    /**
+     * `failed` IS TERMINAL, and that is a decision rather than an oversight. Owner ruling R7 makes a
+     * print failure advisory — the screen says so and offers a reprint, and a reprint is a NEW row
+     * with a new dedupe key. A failed row nobody reprinted in ninety days is a slip nobody wanted.
+     */
+    it("prunes a failed job, because a reprint is a new row and nobody made one", async () => {
+      await db.insert(printJobs).values([printJobRow("01HRETENTIONPJFAILED000001", "failed", daysBefore(2000))]);
+      const result = await retentionSweep(db, { now: NOW, enabled: true, printJobRetainDays: 90 });
+      expect(result.printJobsDeleted).toBe(1);
+      expect(await printJobIds()).toEqual([]);
+    });
+
+    /** The boundary, both legs — the mutant that flips the comparison fails one of these. */
+    it("deletes a terminal job one day OUTSIDE the window and keeps one a day INSIDE it", async () => {
+      await db.insert(printJobs).values([
+        printJobRow("01HRETENTIONPJOUTSIDE00001", "printed", daysBefore(91)),
+        printJobRow("01HRETENTIONPJINSIDE000001", "printed", daysBefore(89)),
+      ]);
+
+      const result = await retentionSweep(db, { now: NOW, enabled: true, printJobRetainDays: 90 });
+
+      expect(result.printJobsDeleted).toBe(1);
+      expect(await printJobIds()).toEqual(["01HRETENTIONPJINSIDE000001"]);
+    });
+
+    /** The gate covers the new leg by construction; this is the line that would notice if it did not. */
+    it("deletes nothing while the mechanism is inert", async () => {
+      await db.insert(printJobs).values([printJobRow("01HRETENTIONPJINERT0000001", "printed", daysBefore(2000))]);
+      const result = await retentionSweep(db, { now: NOW, enabled: false });
+      expect(result.printJobsDeleted).toBe(0);
+      expect(await printJobIds()).toEqual(["01HRETENTIONPJINERT0000001"]);
+    });
+  });
+
   describe("notifications prune (D7)", () => {
     // V7 — GLOBAL CONSTRAINT 6. `queued` and `sending` are never pruned at any age.
     it("never prunes a queued or sending row, at any age, while terminal rows of the same age go", async () => {

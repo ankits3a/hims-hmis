@@ -31,13 +31,28 @@ import { useEffect, useRef, useState } from "react";
 export type AgentLine = { at: string; text: string; kind: "did" | "ok" | "warn" | "err" };
 
 export function AgentDock(
-  { answer, log, onAsk, placeholder, idle }: {
+  { answer, log, onAsk, placeholder, idle, action }: {
     answer: string | null;
     log: AgentLine[];
     onAsk: (question: string) => void;
     placeholder: string;
     /** What the agent says before it has been asked anything — names what it can actually see. */
     idle: string;
+    /**
+     * ═══ FD-25 — THE ONE THING THE BAR MAY OFFER TO *DO*, AND WHY IT IS ONE ═══
+     *
+     * The appointment artboard draws a mint "Draft the calls" beside a ticker reading *"Dr Rao's
+     * Monday list is 5 people. Dr Iyer has 5 free slots that morning — shall I draft the calls?"*.
+     * A bar that can only describe is a bar a clerk reads once; the value is in the offer.
+     *
+     * SINGULAR, and that is the constraint rather than an omission. This bar has no model behind it
+     * and answers only from what is on the screen; a row of actions would be a menu pretending to
+     * be an agent. One offer, on the screen's own state, that the clerk may take or ignore.
+     *
+     * It is OPTIONAL: a screen with nothing to offer renders no button rather than a disabled one,
+     * because a permanently-dead control is the keycap-that-lies rule wearing a different hat.
+     */
+    action?: { label: string; onAct: () => void; busy?: boolean };
   },
 ): React.ReactElement {
   const [draft, setDraft] = useState("");
@@ -71,7 +86,18 @@ export function AgentDock(
   }, []);
 
   return (
-    <div data-testid="agent-dock" style={{ flexShrink: 0, background: "var(--agent)", color: "var(--agent-fg)" }}>
+    <div
+      data-testid="agent-dock"
+      /*
+        STICKY, BECAUSE A DOCK BELOW THE FOLD IS NOT A FOOTER BAR.
+        The bay is a fixed frame and never scrolls, so this changes nothing there. `/registration`
+        is the opposite case and the one that needs it: a long form legitimately runs past the
+        viewport, so a dock at the end of the flow is reachable only by scrolling to the bottom of
+        the page — which is where the owner's "footer agent bar" ruling quietly dies. Sticky keeps
+        it on the bottom edge while the form scrolls underneath.
+      */
+      style={{ position: "sticky", bottom: 0, zIndex: 5, flexShrink: 0, background: "var(--agent)", color: "var(--agent-fg)" }}
+    >
       {open ? (
         <div style={{ borderBottom: "1px solid #24413631", maxHeight: 250 }}>
           <div style={{ display: "flex", gap: 26, padding: "16px 18px", maxHeight: 250 }}>
@@ -123,7 +149,24 @@ export function AgentDock(
         </span>
         <form
           style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}
-          onSubmit={(e) => { e.preventDefault(); onAsk(draft); setDraft(""); }}
+          /*
+            ═══ FD-25 — ASKING OPENS THE PANEL, BECAUSE THE ANSWER LIVES IN IT ═══
+
+            `answer` is rendered ONLY inside the pull-up (`open ? … : null`). So a clerk typed a
+            question, pressed Enter, and the screen did nothing visible: the answer existed, in
+            state, behind a toggle they had no reason to press. Found by a test asserting the dock
+            said something after a question — which it did not, on any of the three screens that
+            mount this bar.
+
+            That is precisely the failure this bar's own header warns about ("a dock that renders
+            and answers nothing is worse than none") arriving one layer in: it was not that the
+            agent had no answer, it was that asking did not show it. Two screens have shipped with
+            it since FD-23.
+
+            The panel is not force-closed on submit, only opened — a clerk who opened the log to
+            read what happened keeps it open when they ask a follow-up.
+          */
+          onSubmit={(e) => { e.preventDefault(); onAsk(draft); setDraft(""); setOpen(true); }}
         >
           <input
             ref={askRef}
@@ -138,6 +181,18 @@ export function AgentDock(
           />
           <span className="kb dk">F2</span>
         </form>
+        {action === undefined ? null : (
+          <button
+            className="agdo"
+            type="button"
+            data-testid="agent-action"
+            disabled={action.busy === true}
+            onClick={action.onAct}
+            style={{ flexShrink: 0, opacity: action.busy === true ? 0.5 : 1 }}
+          >
+            {action.label}
+          </button>
+        )}
         <button
           className="mo"
           data-testid="agent-log-toggle"

@@ -160,35 +160,50 @@ export function ProtocolPanel({ p, doctorName, rerun }: {
   if (state === "none" && p.error === null && !p.calmed && (rerun === null || rerun === undefined)) return null;
   const secs = Math.ceil(p.msLeft / 1000);
   return (
-    <div role="status" data-testid="protocol" data-state={state} className={`flex flex-col gap-1 rounded border p-3 text-sm ${state === "escalated" || state === "recheck_demanded" ? "border-destructive" : "border-border"}`}>
+    <div
+      role="status" data-testid="protocol" data-state={state} className="box"
+      /*
+        THE PANEL IS THE LOUDEST THING ON THE SCREEN WHEN IT SPEAKS, and silent otherwise. A demand
+        and an escalation wear the brick; a calm or a cancellation wears the ordinary card, because
+        "the protocol stood down" must not look like "the protocol fired".
+      */
+      style={{
+        display: "flex", flexDirection: "column", gap: 5, padding: "12px 14px", fontSize: 13,
+        ...(state === "escalated" || state === "recheck_demanded"
+          ? { borderColor: "var(--red-line)", background: "var(--red-soft)" }
+          : {}),
+      }}
+    >
       {state === "recheck_demanded" && (
-        <p className="font-semibold" data-testid="protocol-demand">{t(p.demandedKey === "bp" || p.demandedKey === null ? "vitalsBay.protocol.otherArm" : "vitalsBay.protocol.again")}</p>
+        <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "var(--red)" }} data-testid="protocol-demand">{t(p.demandedKey === "bp" || p.demandedKey === null ? "vitalsBay.protocol.otherArm" : "vitalsBay.protocol.again")}</p>
       )}
       {state === "none" && p.calmed && (
-        <p data-testid="protocol-calmed">{t("vitalsBay.protocol.calmed")}</p>
+        <p style={{ margin: 0, color: "var(--green)", fontWeight: 600 }} data-testid="protocol-calmed">{t("vitalsBay.protocol.calmed")}</p>
       )}
       {rerun !== null && rerun !== undefined && (
-        <p data-testid="protocol-rerun">
-          {t("vitalsBay.protocol.rerunAsk")} <button type="button" data-testid="protocol-rerun-go" className="underline" onClick={rerun.onRerun}>{t("vitalsBay.protocol.rerunGo")}</button>
+        <p style={{ margin: 0 }} data-testid="protocol-rerun">
+          {t("vitalsBay.protocol.rerunAsk")} <button type="button" data-testid="protocol-rerun-go" className="sec" style={{ padding: "1px 8px", fontSize: 12 }} onClick={rerun.onRerun}>{t("vitalsBay.protocol.rerunGo")}</button>
         </p>
       )}
       {state === "escalated" && (
         <>
-          <p className="font-semibold" data-testid="protocol-escalated">
+          <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "var(--red)" }} data-testid="protocol-escalated">
             {t("vitalsBay.protocol.escalated", { from: p.view?.escalatedFromClass ?? "", doctor: doctorName })}
           </p>
           {p.msLeft > 0 ? (
-            <button type="button" data-testid="protocol-cancel" disabled={p.busy} className="self-start rounded border border-destructive px-2 py-1"
+            <button
+              type="button" data-testid="protocol-cancel" disabled={p.busy} className="sec"
+              style={{ alignSelf: "flex-start", padding: "3px 10px", borderColor: "var(--red-line)", color: "var(--red)", fontWeight: 600 }}
               onClick={() => { void p.cancel(); }}>
               {t("vitalsBay.protocol.cancel")} <span data-testid="protocol-countdown">{secs}s</span>
             </button>
           ) : (
-            <p data-testid="protocol-committed">{t("vitalsBay.protocol.committed")}</p>
+            <p style={{ margin: 0, fontWeight: 600 }} data-testid="protocol-committed">{t("vitalsBay.protocol.committed")}</p>
           )}
         </>
       )}
-      {state === "cancelled" && <p data-testid="protocol-cancelled">{t("vitalsBay.protocol.cancelled", { from: p.view?.escalatedFromClass ?? "" })}</p>}
-      {p.error !== null && <p role="alert" data-testid="protocol-error">{p.error}</p>}
+      {state === "cancelled" && <p style={{ margin: 0, color: "var(--dim)" }} data-testid="protocol-cancelled">{t("vitalsBay.protocol.cancelled", { from: p.view?.escalatedFromClass ?? "" })}</p>}
+      {p.error !== null && <p role="alert" style={{ margin: 0, color: "var(--red)" }} data-testid="protocol-error">{p.error}</p>}
     </div>
   );
 }
@@ -196,9 +211,14 @@ export function ProtocolPanel({ p, doctorName, rerun }: {
 export function RestOffer({ recallAt, onRest, busy }: { recallAt: string; onRest: () => void; busy: boolean }): React.ReactElement {
   const { t } = useTranslation();
   return (
-    <div role="status" data-testid="rest-offer" className="flex flex-wrap items-center gap-2 rounded border border-border p-2 text-sm">
+    <div role="status" data-testid="rest-offer" className="box" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 9, padding: "10px 13px", fontSize: 13, borderColor: "var(--gold-line)", background: "var(--gold-soft)" }}>
       <span>{t("vitalsBay.rest.offer", { minutes: REST_MINUTES, time: recallAt })}</span>
-      <button type="button" data-testid="rest-go" disabled={busy} className="rounded border px-2 py-1" onClick={onRest}>{t("vitalsBay.rest.go")}</button>
+      {/*
+        THE VALUES WERE MISSING HERE AND THE BUTTON READ "Rest {{minutes}} min" ON A LIVE BAY.
+        `i18n-keys.test.ts` now fails on any `t()` call that passes nothing to a string with braces
+        in it — the one shape of this defect that is decidable from the source alone.
+      */}
+      <button type="button" data-testid="rest-go" disabled={busy} className="pri" style={{ padding: "3px 12px", fontSize: 12.5 }} onClick={onRest}>{t("vitalsBay.rest.go", { minutes: REST_MINUTES })}</button>
     </div>
   );
 }

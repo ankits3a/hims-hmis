@@ -241,6 +241,6 @@ describe("MaterialsGrn", () => {
     expect(screen.getByText(/19 days left/)).toBeInTheDocument();
     expect(screen.getByText(/42 on hand/)).toBeInTheDocument();
     expect(screen.getByText(/tr-1/)).toBeInTheDocument();
-    expect(screen.getByText(/short line/)).toBeInTheDocument();
+    expect(screen.getByText("tr-1 · 1 short line")).toBeInTheDocument();
   });
 });
