@@ -22,9 +22,9 @@ accurate and fast, and it corrects itself when wrong. Work with it.
 > 1. **Finish 17-E T5 — the plate map.** Its schema is written and parked; §3 tells you exactly where
 >    and what remains. This is the last CRITICAL task in the phase.
 > 2. **Then T6 (the parked inbox) and T7 (reruns + `interface_down`).** §4 of the phase doc has both.
-> 3. **Then the lab-path demo seed** (§5). The owner has said he wants to test the system on synthetic
->    data and currently **cannot open a single lab screen**. This turns four merged screens into
->    usable ones.
+> 3. **Then the lab-path demo seed** (§5). The owner wants to test on synthetic data. Accounts are a
+>    setup step he can already perform from `/admin/users` — but the bench and the chair open onto
+>    nothing, because no seed produces a collected specimen. That is the real blocker and it is ours.
 >
 > The owner approved 17-E on 2026-09-05 ("Execute 17E as necessary") and ruled that 17-M carries the
 > **CRK Medical College & Hospital** letterhead with **synthetic** partner labs and terms. Per
@@ -121,25 +121,43 @@ git cherry-pick -n beed060      # applied clean for T3 and T4; expect the same
   duplicate: both values kept, neither auto-superseded, the bench chooses which the report carries
   **and says why**. And the first writer for one of the four unwritten `analyzer` statuses.
 
-## 5. THE HIGHEST-VALUE THING AFTER THE PHASE: the owner cannot open any lab screen
+## 5. The owner cannot open a lab screen yet — but it is a SETUP STEP, not a gap
 
-**Verified, not relayed.** Nothing in the repository creates a USER. `seed-roles` mints roles and
-grants and assigns them to nobody; `seed-staff` builds users only from a roster piped over **stdin**
-and no roster ships; `seed-admin` makes an admin holding `auth.*` only. So the desk, the chair, the
-bench and verify-and-report all 403 for every account that exists.
+**Corrected 2026-09-05, after this document was first written. Verified in the tree, not relayed.**
 
-**DO NOT COMMIT A ROSTER.** `scripts/seed-staff.ts`'s own header rejects env vars (shell history, `ps`)
-and a file on the box (*"a credential roster left on a box is an artefact nobody remembers to delete"*).
-A file in the repo is **strictly worse than both** — every clone, every laptop, every CI runner, every
-backup, and in history for ever. That would reverse a documented security decision permanently.
+The first reading was that nothing in the repository creates a USER, and that a demo roster was needed.
+**That reading was wrong, and the correction matters because the "fix" it implied was dangerous.**
 
-**What this lane should build: a lab-path demo seed.** Patient → placed order → printed labels →
-collection → receipt, so the bench's scan has something to scan and the chair has a queue. Purely
-synthetic clinical data, **no credentials**. That is the second blocker and it is squarely lab's.
+**The user-administration surface already exists and ships:**
 
-**What belongs to the owner:** a roster *generator* that prints to stdout with freshly minted
-passwords, for him to pipe into `seed:staff`. That fits the stdin design instead of reversing it. Put
-it to him; do not build it unilaterally.
+- `/admin/users` — `apps/web/src/router.tsx:842`, gated on `auth.users.manage`
+- backed by `kernel/auth/users-admin.controller.ts`
+- `scripts/seed-admin.ts` installs `authManifest` and grants the `admin` role its permissions, and
+  that manifest declares **`auth.users.manage`** and **`auth.roles.manage`**
+
+So the administrator can create accounts and assign roles **from a screen**. `seed:roles` has already
+minted every lab role (`lab_reception`, `pathologist`, `lab_technician`, `phlebotomist`, and now
+`lab_bridge`). The path is: admin signs in → `/admin/users` → create a user → assign the lab roles →
+that user opens the lab screens. **No roster, no generator, no new code.**
+
+### DO NOT COMMIT A ROSTER — the reason survives the correction
+
+Even though the question is now moot, the reasoning is worth keeping, because a future session under
+time pressure will meet it again. `scripts/seed-staff.ts`'s own header rejects env vars (shell history,
+`ps` output, process dumps) *and* a file on the box (*"a credential roster left on a box is an artefact
+nobody remembers to delete"*), choosing stdin so the owner keeps the only copy. **A roster in git is
+strictly worse than both options that ruling already rejected** — every clone, every laptop, every CI
+runner, every backup, and in history for ever, where `git rm` does not remove it.
+
+### What IS still missing, and it is lab's to build
+
+**A lab-path demo seed.** The bench's scan needs a **collected, received specimen**, which needs a
+patient, a placed order and a completed collection — and no seed produces any of them. So even with an
+account, the bench and the collection chair open onto nothing.
+
+Patient → placed order → printed labels → collection → receipt. Purely synthetic **clinical** data,
+**no credentials anywhere in it**, squarely this lane's. That is the real remaining blocker between
+four merged screens and four usable ones.
 
 ## 6. Open items carried
 
