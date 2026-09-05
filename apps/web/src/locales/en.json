@@ -3407,5 +3407,69 @@
     "reading": "reading the diary…",
     "noSession": "No session that day — this doctor is not sitting, so there is nothing to book. Try another day or another doctor.",
     "dayFull": "Every slot that day is taken. The times below show who has them — try another day."
+  },
+  "billingSeat": {
+    "header": {
+      "noDrawer": "no drawer open",
+      "drawerOpen": "drawer open · {{float}} float"
+    },
+    "rail": {
+      "paying": "Paying",
+      "thisVisit": "This visit",
+      "onTheirAccount": "On their account",
+      "unpaidStamp": "UNPAID",
+      "panelStamp": "PANEL",
+      "nothingCarried": "Nothing carried forward. Dues from an earlier visit would show here and travel onto this bill."
+    },
+    "bill": {
+      "heading": "The bill",
+      "subtitle": "every figure is the server's — nothing is added up on this screen",
+      "service": "Service",
+      "gross": "Gross",
+      "benefit": "Benefit",
+      "net": "Net",
+      "sac": "SAC {{code}}",
+      "exempt": "exempt",
+      "gstNote": "GST as the tariff rules it — the server decides, not this screen"
+    },
+    "contest": {
+      "heading": "Why this price",
+      "noStacking": "Only the best single benefit applies — they do not stack. The loser is named rather than hidden, so the counter can answer “what about my camp slip?” without opening another screen."
+    },
+    "pay": {
+      "heading": "Take payment",
+      "laneHint": "the keys are the lanes — 1 cash, 2 UPI, 3 card",
+      "take": "Take {{amount}}",
+      "printsNote": "prints the receipt and stamps the token PAID",
+      "surplus": "{{amount}} more than the bill. Whatever is not handed back stays on the patient's account as an advance — say which, because the drawer is counted on it.",
+      "nothingToBill": "Add a line to bill",
+      "issueNoCollection": "Issue — nothing to collect"
+    },
+    "schemes": {
+      "heading": "Schemes",
+      "hint": "attach before you take the money",
+      "corporate": "Corporate / TPA",
+      "panelPayer": "panel payer",
+      "selfPay": "self-pay",
+      "noPanel": "No payer arrangement on file for this patient.",
+      "employee": "employee {{id}}",
+      "nothingToCollect": "nothing to collect at this counter",
+      "package": "Package",
+      "footer": "Only the best single benefit applies — they do not stack. The contest is shown on the bill so the clerk can say why."
+    },
+    "log": {
+      "lane": "{{mode}} lane · {{amount}}"
+    },
+    "agent": {
+      "placeholder": "ask about the benefit, the panel or what they owe…",
+      "idle": "I read this screen only — the priced bill the server sent back, the payer arrangement on file, and what this patient already owes. Nothing is added up here.",
+      "scope": "I answer from what is on this screen: the server's priced bill, the benefit contest, the payer arrangement and the dues. Any figure I gave you came from the server, not from arithmetic on this side.",
+      "benefit": "{{amount}} came off this bill. The winning benefit and the ones it beat are named on the bill above. — from the server's priced preview.",
+      "noBenefit": "No benefit applied to this bill. Anything the patient is holding would contest here and the winner would be named. — from the server's priced preview.",
+      "panel": "{{payer}}, {{id}}. — from the coverage registration recorded for this patient.",
+      "noPanel": "No payer arrangement is on file for this patient, so this is self-pay. — from the coverage read.",
+      "dues_one": "{{count}} unpaid bill on their account. It is listed in the rail. — from the dues poll.",
+      "dues_other": "{{count}} unpaid bills on their account. They are listed in the rail. — from the dues poll."
+    }
   }
 }

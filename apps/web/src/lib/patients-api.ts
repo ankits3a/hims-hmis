@@ -285,3 +285,34 @@ export function putPatientPhoto(patientId: string, imageBase64: string): Promise
 export function getPatientPhoto(patientId: string): Promise<{ mimeType: string; imageBase64: string }> {
   return api("GET", `/patients/${encodeURIComponent(patientId)}/photo`);
 }
+
+/* ══ FD-25 — THE PATIENT'S PAYER ARRANGEMENTS, READABLE FOR THE FIRST TIME ═══════════════════════ */
+
+/**
+ * `patient_coverages` has been WRITE-ONLY since FD-12: registration collects an entitlement at the
+ * counter, writes it in the patient's own transaction, and nothing has ever read one back. This is
+ * the read, and it is what lets the billing counter's Corporate/TPA card say "East Central Railway ·
+ * employee 41129" instead of guessing.
+ *
+ * On `patients.read` — a coverage is a fact about the PATIENT that billing consumes, not a fact
+ * about a bill — and every call that returns anything writes one `patient.coverage` PHI-access row.
+ */
+export type WireCoverage = {
+  id: string;
+  kind: "pmjay" | "insurance" | "tpa" | "corporate" | "cghs" | "esic" | "other";
+  payerName: string | null;
+  tpaName: string | null;
+  policyNumber: string | null;
+  cardNumber: string | null;
+  beneficiaryId: string | null;
+  employeeId: string | null;
+  planClass: string | null;
+  sumInsuredPaise: number | null;
+  validFrom: string | null;
+  validTo: string | null;
+  verificationStatus: "self_declared" | "card_seen" | "verified";
+};
+
+export function listCoverages(patientId: string): Promise<{ items: WireCoverage[] }> {
+  return api("GET", `/patients/${encodeURIComponent(patientId)}/coverages`);
+}

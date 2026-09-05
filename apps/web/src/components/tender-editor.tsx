@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { fmtPaise } from "../lib/format";
 import { MoneyInput } from "./money-input";
-import { Button } from "@/components/ui/button";
 import type { TenderMode, WireTender } from "../lib/billing-api";
 
 /**
@@ -50,14 +49,42 @@ function nextKey(): string {
 }
 
 export function TenderEditor({
-  payablePaise, onChange,
+  payablePaise, onChange, lane,
 }: {
   payablePaise: number;
   /** The complete tenders, in row order. Integer paise, always. */
   onChange: (tenders: WireTender[]) => void;
+  /**
+   * ═══ FD-25 — THE FAST PATH, DRIVING THIS EDITOR RATHER THAN REPLACING IT ═══
+   *
+   * The billing artboard draws THREE LANES keyed 1/2/3 — cash, UPI, card — and the amount already
+   * filled in, because the overwhelmingly common bill is one payment of the exact payable and a
+   * cashier should not assemble that by hand from an empty row.
+   *
+   * It does NOT draw a mixed-tender editor, and it would have been easy to read that as permission
+   * to delete one. That would be wrong: mixed tenders are real (₹200 cash and the rest on UPI is an
+   * ordinary Indian counter transaction), they are supported end to end, and this component's
+   * exact/short/over states are the tested guard on the arithmetic.
+   *
+   * So the lanes SEED this editor rather than bypassing it. A cashier who presses `2` gets one UPI
+   * row for the full payable and can still add a second row; a cashier who ignores the lanes gets
+   * exactly what they got before. The artboard's common case is one press, and the uncommon case
+   * did not have to be sacrificed for it.
+   *
+   * Seeded on CHANGE only, so a cashier who then edits the amount is not overwritten on the next
+   * render — the lane is an instruction, not a binding.
+   */
+  lane?: { mode: TenderMode; amountPaise: number; nonce: number } | null;
 }): React.ReactElement {
   const { t } = useTranslation();
   const [rows, setRows] = useState<Row[]>(() => [{ key: nextKey(), mode: "cash", amountPaise: undefined, refText: "" }]);
+
+  const lastLane = useRef<number | null>(null);
+  useEffect(() => {
+    if (lane === undefined || lane === null || lane.nonce === lastLane.current) return;
+    lastLane.current = lane.nonce;
+    setRows([{ key: nextKey(), mode: lane.mode, amountPaise: lane.amountPaise, refText: "" }]);
+  }, [lane]);
 
   // `onChange` is re-created by most parents on every render, so it is held in a ref rather than a
   // dependency: the emission is driven by the ROWS changing, never by the parent re-rendering.
@@ -75,28 +102,42 @@ export function TenderEditor({
   const state = sumPaise === payablePaise ? "exact" : sumPaise < payablePaise ? "short" : "over";
   const differencePaise = state === "short" ? payablePaise - sumPaise : sumPaise - payablePaise;
 
+  /*
+    ═══ FD-25 — THE ONE BLOCK OF THE OLD DESIGN LEFT IN THE MIDDLE OF THE MONEY COLUMN ═══
+
+    Found by looking at the redesigned `/billing`: everything around this had become paper-and-pine
+    and this had not, so a shadcn card with `rounded border px-2 py-1` sat between the three lanes
+    and the primary button — the most-looked-at part of the screen. Restyled onto the same
+    primitives, no behaviour touched: every testid, every handler and the exact/short/over states
+    are exactly as they were, and `billing-dues.tsx` mounts the same component unchanged.
+  */
   return (
-    <div className="space-y-3">
-      <h3 className="text-sm font-semibold">{t("billing.tender.title")}</h3>
+    <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+      <span className="tag">{t("billing.tender.title")}</span>
       {rows.map((row, index) => (
-        <div key={row.key} data-testid={`tender-row-${String(index)}`} className="space-y-2 rounded border p-2">
-          <div className="flex items-end gap-2">
-            <div className="space-y-1">
-              <label className="block text-sm font-medium" htmlFor={`tender-mode-${String(index)}`}>
+        <div
+          key={row.key}
+          data-testid={`tender-row-${String(index)}`}
+          style={{ border: "1px solid var(--line)", borderRadius: 7, padding: "11px 12px", display: "flex", flexDirection: "column", gap: 9 }}
+        >
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 9 }}>
+            <div style={{ width: 110 }}>
+              <label className="tag" htmlFor={`tender-mode-${String(index)}`} style={{ display: "block", marginBottom: 5 }}>
                 {t("billing.tender.mode")}
               </label>
               <select
                 id={`tender-mode-${String(index)}`}
+                className="in"
+                style={{ height: 36 }}
                 value={row.mode}
                 onChange={(e) => patch(row.key, { mode: e.target.value as TenderMode })}
-                className="rounded border px-2 py-1"
               >
                 {MODES.map((mode) => (
                   <option key={mode} value={mode}>{t(`billing.tender.modes.${mode}`)}</option>
                 ))}
               </select>
             </div>
-            <div className="flex-1">
+            <div style={{ flexGrow: 1, minWidth: 0 }}>
               <MoneyInput
                 id={`tender-amount-${String(index)}`}
                 label={t("billing.tender.amount")}
@@ -104,49 +145,60 @@ export function TenderEditor({
               />
             </div>
             {rows.length > 1 && (
-              <Button
+              <button
                 type="button"
-                size="sm"
-                variant="outline"
+                className="sec"
                 data-testid={`tender-remove-${String(index)}`}
+                style={{ height: 36 }}
                 onClick={() => setRows((current) => current.filter((r) => r.key !== row.key))}
               >
                 {t("billing.tender.remove")}
-              </Button>
+              </button>
             )}
           </div>
           {needsRef(row.mode) && (
-            <div className="space-y-1">
-              <label className="block text-sm font-medium" htmlFor={`tender-ref-${String(index)}`}>
+            <div>
+              <label className="tag" htmlFor={`tender-ref-${String(index)}`} style={{ display: "block", marginBottom: 5 }}>
                 {t("billing.tender.ref")}
               </label>
               <input
                 id={`tender-ref-${String(index)}`}
+                className="in mo"
                 value={row.refText}
                 onChange={(e) => patch(row.key, { refText: e.target.value })}
-                className="w-full rounded border px-2 py-1 font-mono text-sm"
               />
+              {/* A UPI or card payment with no reference cannot be reconciled at close, so the
+                  refusal is stated here rather than discovered by the person counting the drawer. */}
               {row.refText.trim() === "" && (
-                <p role="alert" className="text-sm text-red-600">{t("billing.tender.refRequired")}</p>
+                <p role="alert" style={{ margin: "5px 0 0", fontSize: 11, color: "var(--red)" }}>
+                  {t("billing.tender.refRequired")}
+                </p>
               )}
             </div>
           )}
         </div>
       ))}
 
-      <Button
+      <button
         type="button"
-        variant="outline"
-        size="sm"
+        className="sec"
+        style={{ alignSelf: "flex-start" }}
         onClick={() => setRows((current) => [...current, { key: nextKey(), mode: "cash", amountPaise: undefined, refText: "" }])}
       >
         {t("billing.tender.add")}
-      </Button>
+      </button>
 
-      <div className="flex flex-wrap items-center gap-3 border-t pt-2 text-sm">
-        <span>{t("billing.tender.payable")}: <span data-testid="tender-payable">{fmtPaise(payablePaise)}</span></span>
-        <span>{t("billing.tender.tendered")}: <span data-testid="tender-sum">{fmtPaise(sumPaise)}</span></span>
-        <span data-testid="tender-state" className={state === "short" ? "text-red-600" : "text-emerald-700"}>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 13, paddingTop: 9, borderTop: "1px solid var(--line2)", fontSize: 12 }}>
+        <span style={{ color: "var(--dim)" }}>
+          {t("billing.tender.payable")}: <span className="mo" data-testid="tender-payable" style={{ color: "var(--ink)" }}>{fmtPaise(payablePaise)}</span>
+        </span>
+        <span style={{ color: "var(--dim)" }}>
+          {t("billing.tender.tendered")}: <span className="mo" data-testid="tender-sum" style={{ color: "var(--ink)" }}>{fmtPaise(sumPaise)}</span>
+        </span>
+        <span
+          data-testid="tender-state"
+          className={state === "short" ? "pill rd" : state === "over" ? "pill gd" : "pill on"}
+        >
           {state === "exact"
             ? t("billing.tender.exact")
             : state === "short"

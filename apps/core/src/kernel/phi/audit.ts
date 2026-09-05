@@ -66,6 +66,17 @@ export type PhiSurface =
    */
   | "patient.contact"
   /**
+   * FD-25 — the patient's PAYER ARRANGEMENTS, read back for the first time since FD-12 wrote them.
+   *
+   * Its own name rather than a reuse of `patient.detail`, because the disclosure is different in
+   * kind and not only in scope: a coverage row says who somebody's employer is, which government
+   * scheme they qualify for, and what their insurer thinks they are worth. `pmjay` on a record is a
+   * statement about household income. Disclosed beside a name, that is a profile, and an enquiry
+   * asking "who read this patient's payer details" must be able to get an answer that is not buried
+   * in every ordinary record open.
+   */
+  | "patient.coverage"
+  /**
    * 17d T5 / D6 — the doctor reading UNSIGNED numbers before the pathologist has verified them
    * (design board EdgeCases #18). Its own name for exactly the reason the sentence above gives
    * about `lab.results` and `lab.report`: "the prescriber saw a provisional value at 21:40" and

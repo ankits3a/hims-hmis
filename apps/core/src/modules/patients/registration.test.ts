@@ -7,6 +7,8 @@ import { assignRole, createRole, grantPermissionToRole, syncPermissions } from "
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import { patientsManifest } from "./manifest";
 import { getPatient, getPatientSummaries, listMergedLoserIds, normaliseIdTail, registerPatient, resolvePatientId, updatePatient } from "./registration";
+import { listPatientCoverages } from "./coverages";
+import { phiAccessLog } from "../../kernel/db/schema";
 import { normaliseAbhaNumber } from "./abdm";
 import { isValidUhid } from "./uhid";
 import type { Actor } from "@hmis/contracts";
@@ -411,6 +413,62 @@ describe("Plan 07 read helpers: summaries + merged losers", () => {
       expect(policy.sumInsuredPaise).toBe(50_000_000);
       // unstated assurance is the honest default, never the flattering one
       expect(policy.verificationStatus).toBe("self_declared");
+    });
+
+    /**
+     * ═══ FD-25 — THE ROUND TRIP, WHICH DID NOT EXIST UNTIL NOW ═══
+     *
+     * The test above proved the rows are WRITTEN. Nothing proved they could be read, because
+     * nothing could: `grep -rn "patientCoverages" apps/core/src` returned the schema, the insert
+     * and that assertion. The table was write-only from the day it was added.
+     *
+     * That is the shape this lane's memory records three times — a server capability built, tested
+     * on the write side, and never wired to anything that reads it. It is the most expensive
+     * version of the shape, because the collection has already happened: a clerk asked a patient
+     * for their policy number and typed it in, and the product could not hand it back.
+     *
+     * This is the assertion that makes the write mean something. It fails against a tree with no
+     * reader, which is every tree before this one.
+     */
+    test("reads back what registration wrote — the round trip the table never had", async () => {
+      const { patient } = await withTx(db, (tx) => registerPatient(tx, clerk, {
+        ...baseInput,
+        coverages: [
+          { kind: "corporate", payerName: "East Central Railway", employeeId: "41129", verificationStatus: "card_seen" },
+        ],
+      }));
+
+      const rows = await listPatientCoverages(db, clerk, patient.id);
+
+      expect(rows).toHaveLength(1);
+      /* The artboard's "East Central Railway · employee 41129", field for field. */
+      expect(rows[0]).toMatchObject({
+        kind: "corporate", payerName: "East Central Railway", employeeId: "41129",
+        verificationStatus: "card_seen",
+      });
+    });
+
+    /**
+     * A COVERAGE READ IS A PHI READ. It says who somebody's employer is and which government scheme
+     * they qualify for; `pmjay` on a record is a statement about household income. Its own surface
+     * rather than `patient.detail`, so an enquiry asking "who read this person's payer details" is
+     * not answered out of every ordinary record open.
+     */
+    test("logs the disclosure under its own surface, and logs nothing when there is nothing to disclose", async () => {
+      const { patient: withCover } = await withTx(db, (tx) => registerPatient(tx, clerk, {
+        ...baseInput, coverages: [{ kind: "pmjay", beneficiaryId: "PMJAY-77120" }],
+      }));
+      const { patient: without } = await withTx(db, (tx) => registerPatient(tx, clerk, {
+        ...baseInput, name: "No Coverage", phone: "9100000123",
+      }));
+
+      await listPatientCoverages(db, clerk, without.id);
+      expect((await db.select().from(phiAccessLog)).filter((r) => r.surface === "patient.coverage")).toHaveLength(0);
+
+      await listPatientCoverages(db, clerk, withCover.id);
+      const logged = (await db.select().from(phiAccessLog)).filter((r) => r.surface === "patient.coverage");
+      expect(logged).toHaveLength(1);
+      expect(logged[0]!.patientId).toBe(withCover.id);
     });
 
     /*

@@ -9,6 +9,13 @@ export { getPatient, registerPatient, resolvePatientId, updatePatient } from "./
 export type { CoverageInput, GuardianInput, PatientPatch, PatientRow, RegisterPatientInput } from "./registration";
 export { getPatientSummaries, listMergedLoserIds } from "./registration"; // Plan 07 read helpers
 export type { PatientSummary } from "./registration";
+/**
+ * FD-25 — the read that makes `patient_coverages` not write-only. See the file's header for what
+ * that meant: registration has been collecting policy numbers at the counter since FD-12 and the
+ * product could not show one to anybody afterwards.
+ */
+export { listPatientCoverages } from "./coverages";
+export type { CoverageRow } from "./coverages";
 export { listAllergies } from "./allergies";
 export type { AllergyRow } from "./allergies";
 export { searchPatients, visiblePatientIds } from "./search";

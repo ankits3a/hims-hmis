@@ -152,9 +152,15 @@ const PRINT = {
 async function pickPatient(user: ReturnType<typeof userEvent.setup>): Promise<void> {
   await user.type(screen.getByLabelText("Search"), "98765");
   await user.click(await screen.findByRole("button", { name: /Asha Devi/ }));
-  // "Asha Devi" is also the picker's own result row, so the selection is asserted on the
-  // counter's OWN panel line rather than on the name alone.
-  expect(await screen.findByText(/Selected patient: Asha Devi/)).toBeInTheDocument();
+  /*
+    "Asha Devi" is also the picker's own result row, so the selection is asserted on the counter's
+    OWN rail rather than on the name alone.
+    FD-25 — by TESTID now, not by the sentence "Selected patient: …". That sentence was a developer
+    label the redesign removed: the rail's tag already says "Paying", so repeating "Selected
+    patient:" beside the name was the screen explaining itself to nobody. A testid says the same
+    thing to this test without pinning prose that a designer may legitimately change.
+  */
+  expect(await screen.findByTestId("paying-name")).toHaveTextContent("Asha Devi");
 }
 
 /** The two routes every write test needs before it can post anything. */
