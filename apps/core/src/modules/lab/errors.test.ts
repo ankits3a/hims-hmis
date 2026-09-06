@@ -106,6 +106,23 @@ const OWNED_BY: Record<LabErrorCode, string> = {
   release_approval_invalid: "reports.ts",
   /** 17-E T1 — the machine register. `instruments.ts` is the only file that names a machine. */
   unknown_instrument: "instruments.ts",
+
+  /**
+   * 17-E T7 — the rerun rule is resolved in `results.ts`, which is where the contradiction lived,
+   * and ENFORCED in `verify.ts`, which is where a number becomes reportable. So the two families
+   * are owned by two files on purpose: the write-side refusals belong to the writer, the sign-side
+   * refusals to the signer, and `result_superseded` is thrown by both (the owner is the signer,
+   * where it is the refusal that matters clinically).
+   */
+  machine_cannot_supersede: "results.ts",
+  rerun_choice_reason_required: "results.ts",
+  no_rerun_to_choose: "results.ts",
+  rerun_choice_final: "results.ts",
+  rerun_unchosen: "verify.ts",
+  result_superseded: "verify.ts",
+
+  /** The range book's door, and the only file that may refuse a band. */
+  range_overlap: "catalogue.ts",
 };
 
 describe("the lab error union (Plan 17 T2)", () => {
@@ -157,13 +174,18 @@ describe("the lab error union (Plan 17 T2)", () => {
     // fix its body.
     expect(LAB_ERROR_CODES.filter((c) => labHttpStatus(c) === 409).sort()).toEqual([
       "addon_specimen_disposed", "already_received", "already_verified", "critical_already_closed",
-      "item_not_cancellable", "item_not_resultable", "no_active_order", "report_not_amendable",
+      "item_not_cancellable", "item_not_resultable", "no_active_order",
+      /** 17-E T7 — there is nothing to choose between; the set is already signed; a newer row
+       *  replaced this one. All three are re-read-and-retry, which is what 409 means. */
+      "no_rerun_to_choose", "report_not_amendable", "rerun_choice_final", "result_superseded",
       "specimen_not_receivable",
     ]);
     // 403 is about WHO is acting — the same pair of hands twice, or a machine where a human is required.
     expect(LAB_ERROR_CODES.filter((c) => labHttpStatus(c) === 403).sort()).toEqual([
-      "absurd_override_same_actor", "impossible_override_same_actor", "permission_denied",
-      "relabel_witness_same_actor", "sod_violation", "user_actor_required",
+      "absurd_override_same_actor", "impossible_override_same_actor",
+      /** 17-E T7 — the bridge's body is well formed; superseding is not an act a machine performs. */
+      "machine_cannot_supersede",
+      "permission_denied", "relabel_witness_same_actor", "sod_violation", "user_actor_required",
     ]);
     /**
      * `report_print_blocked` IS 422 AND NOT 402, and the distinction is operational rather than
@@ -171,6 +193,31 @@ describe("the lab error union (Plan 17 T2)", () => {
      * refusing, and the money is owed to BILLING. The lab is declining to hand over a document.
      */
     expect(labHttpStatus("report_print_blocked")).toBe(422);
+    /**
+     * ═══ THE FOURTH LIST, ADDED AT 17-E T7 AND THE REASON THIS ASSERTION MOVED AT ALL ═══
+     *
+     * The 404, 409 and 403 families were pinned as whole sorted lists and 422 was pinned by ONE
+     * member — so six new codes broke two lists and slipped past the family they mostly belong to.
+     * A census that pins three of four sets is a census with a documented blind spot, and the fix
+     * is the fourth set rather than a fourth literal: `#157` — a census that pins an INSTANCE
+     * instead of the PROPERTY passes when the property breaks.
+     */
+    expect(LAB_ERROR_CODES.filter((c) => labHttpStatus(c) === 422).sort()).toEqual([
+      "absurd_value", "analyte_not_applicable", "catalogue_invalid", "collector_identity_required",
+      "consent_required", "duplicate_unacknowledged", "foetal_sex_refused",
+      "identity_recheck_required",
+      /** The range book's door: two bands over one age is a rule the screen must name. */
+      "range_overlap",
+      "relabel_witness_required", "release_approval_invalid",
+      "report_not_publishable", "report_print_blocked",
+      /** 17-E T7 — the clinical hard stop this task exists to make unskippable, and the blank
+       *  reason refused in the same family because the reason IS the record. */
+      "rerun_choice_reason_required", "rerun_unchosen",
+      "tube_mismatch",
+    ]);
+    /** Total: every code is in exactly one of the four families. */
+    expect(LAB_ERROR_CODES.filter((c) => ![403, 404, 409, 422].includes(labHttpStatus(c))))
+      .toEqual([]);
   });
 
   it("LabError carries its code, its detail and a default message", () => {

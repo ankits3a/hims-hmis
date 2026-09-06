@@ -47,6 +47,7 @@ const RUNBOOK_MODULE: Record<string, string> = {
   "lab-go-live.md": "lab",
   "pharmacy-go-live.md": "pharmacy",
   "radiation-safety-go-live.md": "radiology",
+  "radiology-go-live.md": "radiology",
   "radiology-pacs-go-live.md": "radiology",
 };
 

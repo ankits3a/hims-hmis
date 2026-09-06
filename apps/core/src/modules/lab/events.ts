@@ -153,6 +153,19 @@ export const labResultVerified = defineEvent("lab.result_verified", MODULE, z.ob
 }));
 
 /**
+ * 17-E T7 / D17 — WHICH OF AN ANALYSER'S TWO RUNS THE REPORT WILL CARRY, AND WHY.
+ *
+ * `supersededResultIds` names the rows the choice leaves behind rather than a single "other": a
+ * third transmission is a set of three, and an event that could only describe a pair would go
+ * silent on the case a busy bench actually produces. The reason travels in the event as well as on
+ * the row — an auditor reading the stream should not have to join back to learn WHY.
+ */
+export const labResultChosen = defineEvent("lab.result_chosen", MODULE, z.object({
+  resultId: id, orderItemId: id, analyteId: id, chosenBy: id, reason: z.string().min(1),
+  supersededResultIds: z.array(id), previousChoiceId: id.nullable(),
+}));
+
+/**
  * DD12 — the 15-minute clock. Emitted at ENTRY, before any verification: the clinical need is the
  * CALL, and the signature follows by 09:00 (R-014's default, adopted).
  */
@@ -233,7 +246,8 @@ export const LAB_EVENTS = [
   labOrderDesked, labAttributionUnverifiedFlagged,
   labLabelPrinted, labTubeMismatchFlagged, labSpecimenCollected, labSpecimenReceived,
   labSpecimenRejected, labSpecimenRelabelled, labRecollectionRequested,
-  labResultEntered, labResultVerified, labTubeSwapSuspected, labResultCriticalFlagged, labCriticalAcknowledged,
+  labResultEntered, labResultVerified, labResultChosen,
+  labTubeSwapSuspected, labResultCriticalFlagged, labCriticalAcknowledged,
   labResultDeltaFlagged, labReflexAdded, labSodViolationBlocked,
   labReportPublished, labReportPrintBlocked, labReportReleasedUnpaid, labReportPrinted,
   labReportAmended,

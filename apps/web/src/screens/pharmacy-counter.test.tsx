@@ -136,6 +136,38 @@ describe("PharmacyCounter (16c T3)", () => {
     expect(screen.getByTestId("label-0")).toHaveTextContent("Batch CR-EARLY · Exp 2027-01-31");
   });
   /**
+   * THE REQUIRED FIELD SAYS SO IN THE CONTROL, RATHER THAN AS "API 400" AFTER THE CLICK.
+   *
+   * `handOver` always sent `{ via, value: identityValue.trim() }` for a scheduled dispense, and the
+   * controller parses `z.string().min(1).max(12)` ONE LINE ABOVE its try/catch. So an empty box was
+   * refused by zod rather than by the pharmacy guard: the BadRequestException carries a zod issue
+   * array and no `code`, `pharmacyErrorText` has nothing to look up, and the screen fell through to
+   * `ApiError.message` — the literal string "API 400", on the Schedule H1 hand-over.
+   *
+   * The assertion that matters is the SECOND one: that no request was sent. A test that only read
+   * `toBeDisabled()` would pass against a button that merely looked disabled while still firing, and
+   * the whole defect is about what reaches the wire.
+   */
+  it("a scheduled hand-over with an empty identity box cannot be clicked, and sends nothing", async () => {
+    const current = dispense("billed", { dispenseNo: "P2608170001", orderId: "o1", invoiceId: "inv1" });
+    mockRoutes({
+      "GET /api/pharmacy/queue": { status: 200, body: { items: [{ dispenseId: "d1", status: "billed", dispenseNo: "P2608170001", scheduled: true, lineCount: 2, createdAt: "2026-08-17T04:00:00.000Z", claimedAt: null, patient: PATIENT }] } },
+      "GET /api/pharmacy/dispenses/d1": () => ({ status: 200, body: current }),
+      "POST /api/pharmacy/dispenses/d1/handover": { status: 201, body: dispense("handed_over", { dispenseNo: "P2608170001", orderId: "o1", invoiceId: "inv1", identityConfirmedVia: "token" }) },
+    });
+    renderWithProviders(<PharmacyCounter />);
+    await userEvent.click(await screen.findByText(/Sita Devi/));
+
+    const handOver = await screen.findByRole("button", { name: "Hand over" });
+    expect(handOver).toBeDisabled();
+    await userEvent.click(handOver);
+    expect(bodiesOf("POST", "/pharmacy/dispenses/d1/handover")).toEqual([]); // nothing reached the wire
+
+    // and it opens the moment the pharmacist confirms the person
+    await userEvent.type(screen.getByRole("textbox", { name: "Value" }), "14");
+    expect(handOver).toBeEnabled();
+  });
+  /**
    * ═══ 5A.3 — THE ASSEMBLY, THROUGH A FULL CYCLE, WITH TWO PATIENTS ═══
    *
    * Every test above takes ONE patient and one state, which is the shape RC-3's close warned about:
