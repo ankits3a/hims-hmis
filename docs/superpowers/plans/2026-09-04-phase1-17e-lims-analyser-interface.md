@@ -529,3 +529,157 @@ not read as a broken link.
 **Estimated cost is higher than §4's ROUTINE label.** It touches `enterResult`, which is the shared
 CRITICAL path every result in the system goes through, and it needs a migration for the choice, the
 reason and the audit row. The serial queue is contended: radiology holds a three-PR stack behind #103.
+
+### 8.8 T7a — Reruns keep both, and the bench chooses (executed 2026-09-06)
+
+**Executed as T7a. `interface_down` is split out as T7b and is not in this PR** — §4 packages them
+together and they share nothing: the rerun rule is a decision about two rows, and `interface_down` is
+an observer with a heartbeat and a worker sweep. Splitting lets the rule land on the deploy it is
+needed for without waiting for a sweep no analyser is yet connected to. DECIDED.
+
+**§4's ROUTINE label was wrong and §8.7 said so before the work started.** The final shape: three
+columns, two constraints, one partial unique index, a new service function, a guard in `verify.ts`,
+a change to the formula reader, six error codes, and a route. Migration `0079`.
+
+#### The decisions taken, as D16–D20
+
+- **D16 — the discriminator is READ FROM THE ROW, never passed by the caller.** `entry_mode` already
+  says whether a machine produced the value, and D6 makes it route-bounded. A parameter meaning "I am
+  a machine" would be the same fact asserted by its caller, and a caller that can assert it can deny
+  it. The caller-supplied `supersedesResultId` override stays open for `requestRerun`'s amendment
+  path and is refused on the interface path (`machine_cannot_supersede`), so the rule is not enforced
+  by a `??` any caller can step around.
+- **D17 — M3 IS NOT WIDENED AND NOT DELETED.** §8.7's central warning. Its fallback applies on the
+  human path exactly as before and stops at the machine's. `results.test.ts`'s M3 assertion is
+  untouched and green, and `rerun-choice.test.ts` carries its own copy so a successor who meets the
+  contradiction meets both halves at once.
+- **D18 — the guard is at VERIFY, not at the report.** `reports.ts` prints the last verified row per
+  analyte. Stopping the auto-supersession alone would have moved the silent overwrite one layer up:
+  two live values, both signable, the report carrying whichever was clicked second. Verification is
+  where a number becomes reportable, so `reports.ts` is unchanged and no shared reader is widened —
+  the shape that cost 22c-A its C1.
+- **D19 — "live" means NOT SUPERSEDED, and deliberately not "unverified".** If it meant unverified,
+  signing the chosen value would release its twin.
+- **D20 — no new permission.** `lab.results.enter`, the bench's grant: judging which of two
+  measurements of one tube is the laboratory's answer is the same class of judgement as keying the
+  number, and the second pair of hands still arrives at `verify.ts` under SoD. The census tax was
+  measured at EIGHTEEN sites for a permission that moves a role (the orchestrator's count from T6,
+  which paid 9 → 15 → 17 → 18 in waves). **None of it is owed, because the vocabulary already named
+  the act** (#139).
+
+#### Found while walking the lifecycle, and it predates 17-E
+
+**A superseded row could be verified.** A re-key supersedes the row it corrects; nothing stopped a
+pathologist signing the corrected-away row afterwards, and because the report takes the last verified
+row per analyte, doing so would print the number the bench had corrected. Not introduced by this
+phase and not by the analyser interface; it needs a machine path to be reachable, so it is not a
+production exposure. Closed here as `result_superseded` — the same guard, and splitting it would have
+shipped half a guard.
+
+#### Close review C3, one layer out
+
+C3's fix reads *"the newest row is the current value"*, which was true while every path superseded.
+After D17 it is false for a rerun set. An unresolved analyte therefore has NO current value: no
+formula over it is computed, none is signable, and the choice is the moment it acquires one — at
+which point every formula over it is recomputed as a superseding row. **Per input and not per
+panel**: a lipid profile carries four formula analytes, VLDL is `TG / 5`, and a repeated cholesterol
+must not stop every lipid profile in the laboratory.
+
+#### Evidence
+
+| | |
+|---|---|
+| `src/modules/lab/rerun-choice.test.ts` | **14/14** |
+| fail-first, rule reverted with schema/service/route left in place | **11 of 14 fail** |
+| the three that pass | `M3` (the half that must not break), `A5` (a request-shape guard), `A6` (an ABSENCE assertion — a revert pair structurally cannot prove one, recorded rather than counted) |
+| `errors.test.ts` | found a census site nobody predicted: the 404/409/403 families were pinned as whole sorted lists and **422 by ONE member**, so six new codes broke two lists loudly and slipped past the third. Fixed as the fourth SET plus a totality assertion (#157) |
+
+#### §6 — carried out of T7a, named so nobody infers it is solved
+
+- **`lab.result_chosen` is NOT in `LAB_REALTIME_NAMES`.** Its payload carries a technologist's
+  free-text reason and 17c's rule for `lab:bench` is that a payload is STRUCTURAL — no value crosses
+  it. A sentence a human typed at a bench can contain one. So a pathologist's screen does not
+  live-refresh when a choice makes a row signable; it refreshes on its next read.
+- **The choice has no web surface yet.** Reachable at `POST /lab/bench/results/choose`. Until a
+  screen exists, a rerun on a real analyser is a state only an API caller can clear — which is why
+  this must not deploy ahead of the bench screen for a laboratory that has an analyser connected. No
+  such laboratory exists today; the ordering matters when one does.
+
+### 8.9 What the launch census found beside T7, 2026-09-06 — and it changed what this phase is for
+
+A seven-dimension read-only census of the whole lab launch path, every blocking claim adversarially
+verified by an agent briefed to REFUTE it. **Of eleven claims filed BLOCKS_OPENING or BLOCKS_DEPLOY,
+the verifiers confirmed none at that level — including T7's own.** That is the right outcome and it
+is recorded rather than buried: the lab is not open, no analyser transmits, so the rerun
+contradiction is real, deployed, and currently unreachable.
+
+**What every downgrade shared is more useful than any of them individually.** Each verifier asked
+*"does this block the lab OPENING?"* and each honestly answered no. **Nobody was asked whether it
+blocks USING it.** A verification question that every finding passes is not discriminating.
+
+Asked the second way, the answer is one shape and it is this phase's real remaining debt:
+
+    lab_reference_ranges     a reader, a census row, a wiping seed — and NO WRITER
+    bench resources          a census row, a declared kind          — and NO WRITER
+    the analyte catalogue    a manage grant, a runbook section      — and NO IMPORTER (194 calls)
+    the printed report       ————                                   — NO HOSPITAL, and a LOGIN as the signature
+
+**17-E ships readers, guards and census rows for data it ships no way to put in — and the one
+document that leaves the building carries neither the hospital's identity nor the signer's.** Three
+are data that cannot get in; the fourth is identity that cannot get out. That is why every verifier
+could truthfully say the lab can open while the lab cannot be used.
+
+Three of the four are closed by this lane on 2026-09-06 (the report, the range book, and — outside
+this phase's scope but the same shape — the ingest defect below). **The catalogue importer is not**,
+and it is Track S's, in the roadmap's weeks 4–6.
+
+#### The defect the census found in already-merged, already-deployed 17-E code
+
+`attachMachineValue`'s `for` loop **never iterated**: every path through the body left the function,
+so iteration two was unreachable and the `return` after it was dead code. Only `items[0]` was ever
+tried, out of a query with **no analyte filter and no `ORDER BY`**.
+
+**61 of the 64 seeded orderables sit on a container shared with at least one other** (42 on
+serum/SST), and `specimens.ts` draws one tube per `(specimen_type, container)`. So on any multi-test
+tube **at most one orderable could ever receive a machine value**, chosen by row order — and
+`inbox.ts:181` calls the same function, so the documented recovery path re-entered the identical bug.
+For a multi-test tube that is not a defect the analyser interface has; it is the interface not
+working. Fixed outside this task, with the phase's own D4 intact: the fix NARROWS the candidates, it
+does not search harder.
+
+#### Two things about the tests themselves, which cost more than the defects did
+
+- **The fixture blinded the whole assertion book.** `test/helpers/opd.ts:43` creates every user with
+  `fullName: username`, so a report printing the login and one printing the person's name render the
+  SAME STRING in every suite that has ever run. 329 passing tests were not careless; they were
+  unable to see it by construction. `mkUser` is deliberately NOT changed here — a shared factory is
+  its own PR with its own blast radius — and the interim rule is that any test distinguishing a login
+  from a name supplies its own distinct value and asserts `not.toBe`.
+- **A mis-aimed mutation reports a clean result.** Removing T7's overlap guard by cutting to
+  `const id = newId();` matched that string at its FIRST occurrence — inside `upsertAnalyte` — so the
+  mutation mangled a neighbour, left the guard intact, and reported the guard's own test as PASSING.
+  A surviving mutant and an unapplied mutant are indistinguishable from the log. Scope the edit to
+  the function under test and **grep the mutated file to prove the mutation landed** before running.
+
+#### Still open in this phase after T7a
+
+- **T7b — `interface_down`.** Cheaper than §4 assumed and cheaper than T7's own estimate:
+  `kernel/ops/interfaces.ts` ALREADY has `recordHeartbeat`, `sweepInterfaceHeartbeats` and
+  `stale_after_ms` as the tenth worker job (Plan 11c D6). **`lab_instruments` needs no heartbeat
+  column and no new sweep** — T7b bridges the existing sweep to
+  `changeResourceStatus(…, 'interface_down')`. The #149 hazard the phase would otherwise have walked
+  into — *a status nothing sets is a silence indistinguishable from health* — is already answered
+  there, and the observer is the SERVER, which is alive when the bridge is dead.
+- **The bench's choice has no screen.** `POST /lab/bench/results/choose` ships; nothing renders a
+  rerun pair. Until it does, a rerun on a real analyser is a state only an API caller can clear.
+  **This must not reach a laboratory that has an analyser connected before the screen does** — and no
+  such laboratory exists today, which is why the ordering is recorded rather than urgent.
+- **`lab.result_chosen` is not routed in realtime**, and that is a decision: its payload carries a
+  technologist's free-text reason, and 17c's rule for `lab:bench` is that a payload is STRUCTURAL.
+- **The range book has no versioning.** `effective_from` is `notNull()` with ZERO readers and there is
+  no `effective_to`. The door added on 2026-09-06 REFUSES a future date rather than implementing a
+  reader — accepting a date the code will silently ignore is a claim the system will honour it. Giving
+  the column a reader changes how every historical result resolves and is its own phase.
+- **`assertMayManage` refuses a non-user actor as `permission_denied`**, which is the aliasing its own
+  comment argues against, while `results.ts` has carried `user_actor_required` for exactly this since
+  17b. Two doors, two vocabularies for one fact. Pinned as it behaves; changing it is shared surface.

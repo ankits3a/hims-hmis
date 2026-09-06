@@ -77,6 +77,50 @@ const heldReport = {
 beforeEach(() => { setToken("t"); });
 afterEach(() => { setToken(null); vi.unstubAllGlobals(); });
 
+/**
+ * ═══ DD11 §7 — THE MORNING QUEUE, WHICH HAD NO SCREEN AT ALL ═══
+ *
+ * The runbook's own words: *"Those rows are the morning queue. Somebody must work it, and this build
+ * ships no screen filter for it — read `lab_results` where `pathologist_review_pending` is true."*
+ * A morning round at Apollo, Fortis, Medanta or Yashoda does not begin with a DBA running psql.
+ */
+it("DD11 — a night release is listed with WHO released it alone, and the review clears it", async () => {
+  const seen = mockRoutes({
+    "GET /api/lab/verify/night-releases": { status: 200, body: [{
+      resultId: "r-night", orderItemId: "i-1", orderNo: "L2609010111",
+      patientId: "p-1", patientDisplay: "Sunita Devi",
+      analyteCode: "TSH", analyteName: "TSH", value: "9.9", unit: "uIU/mL", flag: "H",
+      releasedBy: "dr.night", releasedAt: "2026-08-30T20:04:00.000Z",
+    }] },
+    "POST /api/lab/verify/night-releases/r-night/review": { status: 201, body: { resultId: "r-night" } },
+  });
+  renderWithProviders(<LabVerify />);
+
+  await waitFor(() => expect(screen.getByTestId("night-r-night")).toBeInTheDocument());
+  const row = screen.getByTestId("night-r-night");
+  expect(row).toHaveTextContent("Sunita Devi");
+  expect(row).toHaveTextContent("TSH 9.9 uIU/mL");
+  /** WHO released it alone is the fact the review is ABOUT, so it is on the row, not behind a click. */
+  expect(row).toHaveTextContent(/released by dr\.night/);
+
+  await userEvent.click(within(row).getByRole("button", { name: "Reviewed" }));
+  await waitFor(() => expect(
+    seen.some((r) => r.method === "POST" && r.path.includes("/night-releases/r-night/review")),
+  ).toBe(true));
+});
+
+/**
+ * A heading over an empty list on every day shift is how a reviewer learns to skip the section on
+ * the morning it is NOT empty. The queue appears only when it has something in it.
+ */
+it("DD11 — with nothing released overnight the section is absent, not an empty heading", async () => {
+  mockRoutes({ "GET /api/lab/verify/night-releases": { status: 200, body: [] } });
+  renderWithProviders(<LabVerify />);
+
+  await waitFor(() => expect(screen.getByText(/Verify/i)).toBeInTheDocument());
+  expect(screen.queryByText(/awaiting the second pair of hands/i)).not.toBeInTheDocument();
+});
+
 it("orderQueue — a critical or an open call first, then STAT, then the oldest clock", () => {
   const now = new Date("2026-08-30T10:00:00Z").getTime();
   const routineOld = row({ orderItemId: "i-a", orderId: "o-a", orderNo: "L-a", tatStartedAt: "2026-08-30T06:00:00.000Z" });
