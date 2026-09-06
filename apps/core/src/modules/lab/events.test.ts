@@ -10,8 +10,8 @@ import { labManifest } from "./manifest";
  * `materials`, `membership`, `formulary` and `ot` convention, unchanged.
  */
 describe("the lab's event catalogue (Plan 17 T2)", () => {
-  it("declares twenty-four events, every one `lab.*`, in the lab's module namespace", () => {
-    expect(LAB_EVENTS).toHaveLength(24); // 17d added `tube_swap_suspected` (T1), `specimen_relabelled` (T2)
+  it("declares twenty-six events, every one `lab.*`, in the lab's module namespace", () => {
+    expect(LAB_EVENTS).toHaveLength(26); // 17d: `tube_swap_suspected`, `specimen_relabelled`. 17-E T7: `result_chosen`. DD11: `night_release_reviewed`
     for (const event of LAB_EVENTS) {
       expect([event.name, event.module]).toEqual([event.name, "lab"]);
       expect(event.name.startsWith("lab.")).toBe(true);
@@ -30,6 +30,11 @@ describe("the lab's event catalogue (Plan 17 T2)", () => {
       "lab.attribution_unverified_flagged",
       "lab.critical_acknowledged",
       "lab.label_printed",
+      /**
+       * DD11's compensating control. Night mode relaxes separation of duties; this is the record
+       * that the second pair of hands arrived in the morning, naming BOTH people.
+       */
+      "lab.night_release_reviewed",
       "lab.notifiable_flagged",
       "lab.order_desked",
       "lab.recollection_requested",
@@ -39,6 +44,13 @@ describe("the lab's event catalogue (Plan 17 T2)", () => {
       "lab.report_printed",
       "lab.report_published",
       "lab.report_released_unpaid",
+      /**
+       * 17-E T7 — which of an analyser's two runs the report carries, and why. It is NOT in
+       * `LAB_REALTIME_NAMES` and that is a decision, not an omission: the payload carries a
+       * technologist's free-text reason, and 17c's rule for `lab:bench` is that a payload is
+       * STRUCTURAL — no value crosses it. A sentence a human typed at a bench can contain one.
+       */
+      "lab.result_chosen",
       "lab.result_critical_flagged",
       "lab.result_delta_flagged",
       "lab.result_entered",

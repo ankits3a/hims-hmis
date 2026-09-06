@@ -177,7 +177,20 @@ export type WireReportSnapshot = {
   patient: { id: string; uhid: string; name: string; sex: string; dob: string | null };
   orderingClinicianId: string | null;
   panels: WireReportPanel[];
-  signatory: { userId: string; username: string; signedAt: string };
+  /**
+   * `fullName` and `registrationNo` are OPTIONAL because a published report is immutable by database
+   * trigger: reports signed before the letterhead change can never gain them, there is no backfill,
+   * and there must not be one. The print component falls back rather than rendering `undefined`.
+   */
+  signatory: {
+    userId: string;
+    username: string;
+    signedAt: string;
+    fullName?: string;
+    registrationNo?: string | null;
+  };
+  /** The hospital as it was named on the day this was signed. Optional for the same reason. */
+  letterhead?: { name: string; addressLines: string[] };
   partial: boolean;
   notes: string[];
 };
@@ -352,6 +365,24 @@ export const acknowledgeCritical = (
 /* ────────────────────────── the signature and the document ────────────────────────── */
 
 export const verifyWorklist = (): Promise<WireWorklistRow[]> => api("GET", "/lab/verify/worklist");
+
+/**
+ * DD11 §7 — the morning queue. Until now the runbook told a human to read `lab_results` where
+ * `pathologist_review_pending` is true; a morning round does not begin with psql.
+ */
+export type WireNightRelease = {
+  resultId: string; orderItemId: string; orderNo: string;
+  patientId: string; patientDisplay: string;
+  analyteCode: string; analyteName: string;
+  value: string; unit: string | null; flag: string | null;
+  releasedBy: string; releasedAt: string;
+};
+
+export const nightReleases = (): Promise<WireNightRelease[]> =>
+  api("GET", "/lab/verify/night-releases");
+
+export const reviewNightRelease = (resultId: string, note?: string): Promise<unknown> =>
+  api("POST", `/lab/verify/night-releases/${resultId}/review`, note === undefined ? {} : { note });
 
 /**
  * The orders a report can be published for. A SEPARATE queue from the verify worklist, because an
