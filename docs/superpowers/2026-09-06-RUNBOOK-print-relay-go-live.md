@@ -19,8 +19,11 @@ hmis_fd_dev=# select document, status, count(*) from print_jobs group by 1,2;
 ---------------------+--------+--------
  opd_payment_receipt | queued |      1
  opd_prescription    | queued |     10
- opd_token_slip      | queued |     10
+ opd_token_slip      | queued |     11
 ```
+
+(The eleventh token slip is a REPRINT I queued while testing — a reprint mints a new row rather than
+reviving the old one, which is what keeps "who printed this again, and when" answerable.)
 
 Every job the system has ever produced is still sitting at `queued`. That is the queue behaving
 **correctly** — the server records an intention to print and a relay inside the hospital comes and
