@@ -518,10 +518,17 @@ async function enterResultInTx(
    * ═══ CLOSE REVIEW M3 — THE SUPERSESSION CHAIN IS DERIVED, NOT REMEMBERED ═══
    *
    * `EnterResultInput` declared `supersedesResultId` and `rerunOf` and `requestRerun`'s header said
-   * they were *"set by the caller"*. **There was no such caller**: `enterResult` has one call site,
-   * the bench route, and its zod schema named neither — so zod stripped them and every re-keyed
-   * value was written with a NULL chain. An NABL auditor following `supersedes_result_id` back to
-   * the number that was wrong found nothing, on the one path that exists to answer that question.
+   * they were *"set by the caller"*. **There was no such caller**: at the time M3 was written
+   * `enterResult` had one call site, the bench route, and its zod schema named neither — so zod
+   * stripped them and every re-keyed value was written with a NULL chain. An NABL auditor following
+   * `supersedes_result_id` back to the number that was wrong found nothing, on the one path that
+   * exists to answer that question.
+   *
+   * **"ONE CALL SITE" IS NOW HISTORY AND IS MARKED AS SUCH.** 17-E T3 added the ingest
+   * (`ingest.ts`, through `attachMachineValue`), so there are TWO server call sites and the second
+   * is a machine — which is precisely what makes the paragraph below necessary. A comment that
+   * records a MOMENT reads as a statement about the present, and the next reader re-derives the
+   * wrong invariant from it; caught at T7 by the census, and corrected here rather than left to be.
    *
    * A field a caller must remember is a field a caller forgets, and 22c-A's C1 is the same shape one
    * layer out. So the chain is computed HERE, from the rows: a value keyed for an analyte that
