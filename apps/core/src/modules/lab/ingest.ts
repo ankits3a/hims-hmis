@@ -12,6 +12,7 @@ import {
 } from "./plate-maps";
 import { closeRunSheet, openRunSheetFor } from "./run-sheets";
 import { enterResult, LAB_RESULTS_INTERFACE } from "./results";
+import type { LabEntryMode } from "./results";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { PlateWellRole } from "./plate-maps";
@@ -121,6 +122,83 @@ async function resolveSample(
   return { specimenId: specimen.id };
 }
 
+/**
+ * ═══ ONE DEFINITION OF "ATTACH A MACHINE VALUE, OR SAY WHY IT DID NOT" ═══
+ *
+ * Every naming mode in this phase — barcode, typed id, run sheet, plate well — differs only in how
+ * it turns the transmission into a SPECIMEN. Once it has one, the write is identical and must stay
+ * identical: the same open-item lookup, the same `enterResult`, the same refusal handling. Four
+ * copies of this would be four places for a later task to loosen one guard on one path.
+ *
+ * **It is module-level rather than a closure because T6's INBOX is the fifth caller.** When a human
+ * names a tube for a parked result, that match must run this exact code — the board says the hand
+ * match "re-runs the same attachment path so every guard applies", and a second implementation
+ * living behind a screen is precisely how a hand match ends up softer than the machine one.
+ */
+export async function attachMachineValue(
+  db: Db,
+  actor: Actor,
+  input: {
+    instrumentId: string; specimenId: string; analyteId: string; value: string;
+    unit: string | null; remarks?: string;
+    /**
+     * ═══ WHO IS ATTACHING, AND THEREFORE UNDER WHOSE GRANT ═══
+     *
+     * `interface` (the default) is the BRIDGE posting a block it named itself, authorised by
+     * `lab.results.interface`. T6's inbox passes `manual_from_printout` instead, and that is not a
+     * workaround for a permission — it is the truthful record. The interface did NOT attach this
+     * value; it failed to name the tube, and a person read the number off a screen and decided whose
+     * it was. `entry_mode` is where that decision has to be visible: labelling it `interface` would
+     * hide the one human judgement in the whole chain, and it is the judgement most likely to be
+     * wrong. `analyzer_id` still records which machine produced the number, so nothing about the
+     * machine's authorship is lost.
+     *
+     * It also means the grant follows the act rather than being widened to fit it: a technologist
+     * writes under `lab.results.enter`, which they legitimately hold, and `lab.results.interface`
+     * stays the bridge's alone exactly as D6 requires.
+     */
+    entryMode?: LabEntryMode;
+  },
+  now: Date = new Date(),
+): Promise<{ resultId: string } | { park: ParkReason; detail?: string }> {
+  /** The open item on THIS tube for THIS analyte. An absent one is not an error, it is a park. */
+  const items = await db
+    .select({ orderItemId: labSpecimenItems.orderItemId })
+    .from(labSpecimenItems)
+    .innerJoin(orderItems, eq(orderItems.id, labSpecimenItems.orderItemId))
+    .where(and(
+      eq(labSpecimenItems.specimenId, input.specimenId),
+      eq(labSpecimenItems.active, true),
+      inArray(orderItems.status, ["in_progress"]),
+    ));
+  if (items.length === 0) return { park: "no_open_item" };
+
+  for (const item of items) {
+    try {
+      const out = await enterResult(db, actor, {
+        orderItemId: item.orderItemId,
+        analyteId: input.analyteId,
+        value: input.value,
+        unit: input.unit,
+        entryMode: input.entryMode ?? "interface",
+        analyzerId: input.instrumentId,
+        ...(input.remarks === undefined ? {} : { remarks: input.remarks }),
+      }, now);
+      return { resultId: out.resultId };
+    } catch (e) {
+      /**
+       * A guard refused. 17d T1's applicability control and the absurd envelope both need a SECOND
+       * PAIR OF HANDS, and a machine has none — so the row parks for a human rather than being
+       * entered or dropped. `enterResult` has already evented the near-miss on its own transaction,
+       * which is what makes this safe to swallow HERE and only here.
+       */
+      if (e instanceof LabError) return { park: "guard_refused", detail: e.code };
+      throw e;
+    }
+  }
+  return { park: "no_open_item" };
+}
+
 export async function ingestResults(
   db: Db,
   actor: Actor,
@@ -198,58 +276,13 @@ export async function ingestResults(
     parked.push(detail === undefined ? { position: row.position, reason } : { position: row.position, reason, detail });
   };
 
-  /**
-   * ═══ ONE DEFINITION OF "ATTACH A MACHINE VALUE, OR SAY WHY IT DID NOT" ═══
-   *
-   * Every naming mode in this phase — barcode, typed id, run sheet, plate well — differs only in how
-   * it turns the transmission into a SPECIMEN. Once it has one, the write is identical and must stay
-   * identical: the same open-item lookup, the same `enterResult`, the same refusal handling. Four
-   * copies of this would be four places for a later task to loosen one guard on one path.
-   */
-  const attachOrPark = async (
-    specimenId: string,
-    analyteId: string,
-    value: string,
-    unit: string | null,
-    remarks?: string,
-  ): Promise<{ resultId: string } | { park: ParkReason; detail?: string }> => {
-    /** The open item on THIS tube for THIS analyte. An absent one is not an error, it is a park. */
-    const items = await db
-      .select({ orderItemId: labSpecimenItems.orderItemId })
-      .from(labSpecimenItems)
-      .innerJoin(orderItems, eq(orderItems.id, labSpecimenItems.orderItemId))
-      .where(and(
-        eq(labSpecimenItems.specimenId, specimenId),
-        eq(labSpecimenItems.active, true),
-        inArray(orderItems.status, ["in_progress"]),
-      ));
-    if (items.length === 0) return { park: "no_open_item" };
-
-    for (const item of items) {
-      try {
-        const out = await enterResult(db, actor, {
-          orderItemId: item.orderItemId,
-          analyteId,
-          value,
-          unit,
-          entryMode: "interface",
-          analyzerId: input.instrumentId,
-          ...(remarks === undefined ? {} : { remarks }),
-        }, now);
-        return { resultId: out.resultId };
-      } catch (e) {
-        /**
-         * A guard refused. 17d T1's applicability control and the absurd envelope both need a
-         * SECOND PAIR OF HANDS, and a machine has none — so the row parks for a human rather than
-         * being entered or dropped. `enterResult` has already evented the near-miss on its own
-         * transaction, which is what makes this safe to swallow HERE and only here.
-         */
-        if (e instanceof LabError) return { park: "guard_refused", detail: e.code };
-        throw e;
-      }
-    }
-    return { park: "no_open_item" };
-  };
+  const attachOrPark = (
+    specimenId: string, analyteId: string, value: string, unit: string | null, remarks?: string,
+  ): Promise<{ resultId: string } | { park: ParkReason; detail?: string }> => attachMachineValue(
+    db, actor,
+    { instrumentId: input.instrumentId, specimenId, analyteId, value, unit, ...(remarks === undefined ? {} : { remarks }) },
+    now,
+  );
 
   /**
    * ═══ 17-E T5 — 96 NUMBERS AND NO IDENTITY, AND THE CONTROLS THAT CAN VOID THEM ALL ═══
