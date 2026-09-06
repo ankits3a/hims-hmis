@@ -184,3 +184,108 @@ the same commit, along with the spelled-out count in every place that states it.
 ---
 
 ## 8. CLOSE — filled at execution
+
+---
+
+## 8. CLOSE — the review, run 2026-09-06 over T1–T5 as one combination
+
+**All five tasks are merged** (#102, #105, #107, #108, #132). This is the review nobody had run: nine
+merges reviewed individually, never as a series. Method: §5A's cheap steps, plus the reachability
+scan the commissioning walk suggested, plus the asymmetry scan. **Everything below was found by
+reading and by driving a real stack; the suite was green throughout and stayed green.**
+
+`wc -c` on this document: **12,484** — well under §5A.2's ~50k-token archive threshold, so no handoff
+split was needed.
+
+### 8.1 The contract pass (§5A.1) — D1–D6, clause by clause. ALL CONFIRMED.
+
+There is no CONTRACT section in this document, so §4's decisions were read as the phase's
+commitments. Each was checked against shipped code, not against its own task's tests.
+
+| decision | verdict |
+|---|---|
+| D1 reaction is record-only, emits `imaging.contrast_reaction`, no consumer | **confirmed** — nothing writes `ot`'s incident table |
+| D2 the allergy write is in the SAME transaction | **confirmed, and stronger than the prose** — `imaging_contrast_reactions.allergy_id` is `NOT NULL`, so a reaction that wrote no allergy is a row the database cannot hold |
+| D3 severity is closed, and decides what the record REQUIRES | **confirmed** — `severe` without both `treatmentGiven` and `managingClinicianId` is refused |
+| D4 a portable study is the same study with a place | **confirmed**, and the rule is one-directional on purpose |
+| D5 the outside study is a record of a DOCUMENT | **confirmed** — no upload, provenance only |
+| D6 an outside study is never billed and logs no dose | **confirmed** — `registerOutsideStudy` never calls `recordAcquired`, so neither the dose write nor the bill decision is reachable |
+
+**D2's chain was verified end to end rather than at its endpoints**, because that is where this
+repository's phase defects live. The reaction writes `"<agent> (contrast media)"`; `isContrastAllergen`
+matches against `CONTRAST_ALLERGEN_TERMS`, whose **first entry is `"contrast"`**. So the loop holds for
+any brand, including one no term list has heard of — which is the argument `reactions.ts` makes for
+itself, and it is true.
+
+### 8.2 F1 — CRITICAL: the series shipped no user interface at all
+
+**`apps/web/src` appears in none of the five commits.** Measured across the whole series:
+
+| shipped | web callers |
+|---|---|
+| `POST` / `GET /radiology/studies/:id/contrast` (T1) | **0** |
+| `POST /radiology/studies/contrast-reactions`, `GET …/:id/contrast-reactions` (T2) | **0** |
+| `bedsideLocation` on the schedule body (T3) | **0** |
+| `POST /radiology/studies/:id/outside` (T4) | **0** |
+
+T5 is the exception and it is reachable: its two chasers raise alerts that the bell renders, because
+the bell prints a server-supplied `title` rather than a per-kind locale key.
+
+**The clinical consequence is precise.** 18a's `prior_contrast_reaction` gate reads the allergy that
+T2's route writes — §8.1 confirms that loop is correct at every link. **It cannot be entered.** A
+radiographer who watches a patient react to contrast has nowhere to record it, so the next CT's gate
+sees nothing. The loop exists at both ends and has no middle.
+
+### 8.3 F2 — MAJOR: the bedside study is unreachable twice over
+
+Beyond having no web caller, `resolveBedside` refuses any device whose `attributes.portable` is not
+`true` — and **nothing writes that attribute**: not `seed:radiology`, not any route, not any screen.
+`DEVICE_PORTABLE_ATTRIBUTE` is declared, read once, and never set. T3 cannot be exercised on any
+deployment by any supported means.
+
+### 8.4 F3 — MAJOR: three documents instructed an act with no door (**fixed, #147**)
+
+`seed-radiology.ts` claimed a hospital adds a second CT "through the resources screen"; there is
+none, and no create route. `radiology-go-live.md` §5 and `standup-check`'s `radiology_device_present`
+**fix text** repeated it — a census row whose remedy could not be performed.
+
+### 8.5 F4 — MAJOR: ten refusals named a ULID (**fixed, #145**)
+
+#138 made the AERB licence refusal name the machine. A census of `device ${` then found **eleven
+sites, of which #138 had closed one** — an instance fix where a sweep was owed, caught against this
+lane's own change from three hours earlier. Nine of the ten cost nothing (the row was already read
+or already locked). `mwl.ts`'s remaining one is a **PHI-access audit reason** and was deliberately
+left: a ULID is the correct identifier in an audit record.
+
+**The suite noticed none of it** — 33 suites passed with ten sentences rewritten, because every
+assertion checked `code` and none read the prose.
+
+### 8.6 F5 — MINOR: a correct refusal whose remedy is impossible
+
+Recording contrast on an outside study is refused *"open and clear [the contrast consent gate] before
+administering"*. Check-in on an outside study is refused `bad_transition`, so **the advice is a dead
+end**. The true reason is that the study was performed elsewhere and we administered nothing. Not
+fixed; recorded.
+
+### 8.7 The seams that came back CLEAN, which is worth recording
+
+A close review that only lists defects cannot be calibrated. Each of these was a hypothesis driven
+against a running stack and **refuted**:
+
+- **Contrast on an outside study** — blocked in both directions (consent gate absent; and
+  `registerOutsideStudy` refuses a checked-in study outright: *"an outside study is registered before
+  anything else happens to it, because nothing else is going to"*).
+- **The modality worklist** excludes outside studies — `MWL_STATUSES` cannot include `acquired`.
+- **The unread-report chaser** scopes on `imagingReports.status = 'signed'`, so it correctly chases a
+  radiologist's report on an outside film.
+- **The worklist's `Unread` tab** means `acquired | reported`, so a published study correctly leaves it.
+
+### 8.8 What the close did NOT do
+
+**No second pass.** §2.140's method briefs a fresh reviewer at the fixes, and the lane's own history
+says that pass found 15 of 16 fixes incomplete. This close had one reviewer and the fixes in §8.4 and
+§8.5 have not been re-reviewed by anybody else. **F4 is itself the evidence for why that pass
+matters** — it was an incomplete fix, found only because a census was run against it.
+
+**§5A.3 is vacuous here and that is the finding.** It asks for one assertion over the assembled
+artifact, driven through a full cycle. There is no assembly: the series wired nothing into a screen.
