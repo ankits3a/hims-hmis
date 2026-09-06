@@ -136,6 +136,17 @@ export const imagingContrastReaction = defineEvent("imaging.contrast_reaction", 
   severity: z.enum(["mild", "moderate", "severe"]), onset: z.enum(["immediate", "delayed"]),
 }));
 
+/**
+ * 18a-iii T4 / D5 — a film from another centre entered the register. 18b's D8 deferred `outside` to
+ * this phase; the event is how the rest of the hospital learns a study it can see is not one we
+ * performed. The centre's NAME travels because it is provenance rather than a finding — a reader
+ * needs to know whose machine irradiated this patient, and it is on the film's own label.
+ */
+export const imagingOutsideStudyRegistered = defineEvent("imaging.outside_study_registered", MODULE, z.object({
+  studyId: id, outsideStudyId: id, centreName: z.string().min(1), studyDate: z.string().min(1),
+  modality: z.string().min(1), arrival: z.string().min(1),
+}));
+
 /** Every event this module declares, for the catalogue parity test. */
 export const RADIOLOGY_EVENTS = [
   imagingStudyScheduled,
@@ -148,4 +159,5 @@ export const RADIOLOGY_EVENTS = [
   imagingImageViewed,
   imagingContrastAdministered,
   imagingContrastReaction,
+  imagingOutsideStudyRegistered,
 ] as const;

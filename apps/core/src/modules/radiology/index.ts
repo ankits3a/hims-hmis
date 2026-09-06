@@ -77,6 +77,8 @@ export {
   recordContrastReaction,
 } from "./reactions";
 export type { ContrastReactionRow, RecordContrastReactionInput } from "./reactions";
+export { outsideStudyFor, registerOutsideStudy } from "./outside";
+export type { OutsideStudyRow, RegisterOutsideStudyInput } from "./outside";
 export {
   authorisationOf, encounterPayer, hasBillDecision, linkInvoiceLine, openBillDecisions,
   raiseBillDecision, resolveBillDecision,
