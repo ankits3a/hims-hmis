@@ -13,13 +13,93 @@ import { BillingError, issueInvoice } from "../billing";
 import { TariffError } from "../tariff";
 import { activeReflexRules, analytesFor } from "./catalogue";
 import { LabError } from "./errors";
+import { formulaInputCodes } from "./formula";
 import { matchReflex } from "./reflex";
-import { deferNearMiss, flushNearMiss, resultContext } from "./results";
+import { currentValue, deferNearMiss, flushNearMiss, liveRowsFor, resultContext } from "./results";
 import { labReflexAdded, labResultVerified, labSodViolationBlocked } from "./events";
 import { LAB_ITEM_DEF_KEY } from "./workflow-def";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
+
+/**
+ * ═══ 17-E T7 / D18 — ONE ANSWER PER LINE, AND THE GUARD IS HERE ═══
+ *
+ * `reports.ts` prints the LAST VERIFIED ROW per analyte. That rule is correct and this task does
+ * not touch it — **because verification is where a number becomes reportable, so verification is
+ * the door.** Removing the machine's auto-supersession without a guard here would have moved the
+ * silent overwrite one layer up: two live values, both signable, and the report carrying whichever
+ * a pathologist happened to click second. Widening the report's reader instead is the shape that
+ * cost 22c-A its C1.
+ *
+ * Three refusals, and each names a different fact:
+ *
+ *   · `result_superseded` — a later row replaced this one. Nothing else in the module refused it,
+ *     and a superseded row signed after its replacement is the last verified row for the analyte,
+ *     so `reports.ts` would print the number a re-key corrected. FOUND AT T7, not planned.
+ *   · `rerun_unchosen` on the row's own analyte — the analyser ran the tube twice and nobody has
+ *     said which run the report carries.
+ *   · `rerun_unchosen` on a formula's INPUT — the derived value on the row is arithmetic over a
+ *     number the laboratory is still deciding about. Close review C3 measured what publishing one
+ *     of those costs: *cholesterol 150, LDL 426*, a pair a cardiologist acts on.
+ *
+ * **THE THIRD IS PER INPUT AND NOT PER PANEL, deliberately.** A lipid profile carries four formula
+ * analytes; VLDL is `TG / 5` and does not care that the cholesterol was repeated. A guard written
+ * over the panel would stop every lipid profile in the laboratory on any one repeated analyte,
+ * which is a refusal nobody can act on and therefore one everybody learns to route around.
+ */
+async function assertReportable(
+  tx: Tx,
+  result: typeof labResults.$inferSelect,
+  ctx: { serviceId: string; orderItemId: string },
+): Promise<void> {
+  const rows = await tx.select().from(labResults)
+    .where(eq(labResults.orderItemId, result.orderItemId))
+    .orderBy(labResults.enteredAt);
+
+  if (!liveRowsFor(rows, result.analyteId).some((r) => r.id === result.id)) {
+    throw new LabError(
+      "result_superseded",
+      `result ${result.id} was superseded by a later row for the same analyte — the laboratory's ` +
+        "answer is the row that replaced it, and signing this one would put the corrected number " +
+        "back on the report",
+    );
+  }
+
+  const own = currentValue(rows, result.analyteId);
+  if (own === undefined || own.id !== result.id) {
+    throw new LabError(
+      "rerun_unchosen",
+      `this analyte carries more than one live value — an analyser rerun keeps both, and the bench ` +
+        "chooses which the report carries, with a reason, before either can be signed",
+      { orderItemId: result.orderItemId, analyteId: result.analyteId },
+    );
+  }
+
+  /**
+   * The row's own analyte is resolved. If it is a FORMULA, every analyte its expression names must
+   * be resolved too — the arithmetic is only as decided as its least decided input.
+   */
+  const analytes = await analytesFor(tx, ctx.serviceId);
+  const mine = analytes.find((a) => a.id === result.analyteId);
+  if (!mine || mine.resultType !== "formula" || !mine.formula) return;
+
+  const byCode = new Map(analytes.map((a) => [a.code, a] as const));
+  for (const code of formulaInputCodes(mine.formula, mine.formulaGuard)) {
+    const input = byCode.get(code);
+    if (!input) continue;
+    const liveInputs = liveRowsFor(rows, input.id);
+    if (liveInputs.length > 1 && currentValue(rows, input.id) === undefined) {
+      throw new LabError(
+        "rerun_unchosen",
+        `${mine.code} is computed from ${code}, which carries more than one live value — a derived ` +
+          "number is only as decided as its inputs, and one signed over an undecided input is a " +
+          "figure nobody measured",
+        { orderItemId: result.orderItemId, analyteId: input.id, derivedAnalyteId: result.analyteId },
+      );
+    }
+  }
+}
 
 /**
  * PLAN 17b T6 / DD8, DD11 — **THE SIGNATURE**: separation of duties, the compare-and-set, the
@@ -179,6 +259,8 @@ async function verifyResultInTx(
   }
 
   const ctx = await resultContext(tx, result.orderItemId);
+
+  await assertReportable(tx, result, ctx);
 
   /* ═══ SEPARATION OF DUTIES, PER ROW (T6 A1) ═══ */
   const nightMode = isSingleOperatorNight(now);

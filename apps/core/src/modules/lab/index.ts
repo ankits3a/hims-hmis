@@ -69,10 +69,12 @@ export type { NonReturnSweepReport, SlaSweepReport } from "./sweeps";
 // (`lab.tube_swap_suspected`, `lab.sod_violation_blocked`, `lab.tube_mismatch_flagged`), and an
 // audit row appended on the transaction that is about to roll back is an audit row that never
 // existed (F20, F27, and the third time the module has met it).
-export { amendResult, enterResult, requestRerun, resultContext, LAB_RESULTS_ENTER } from "./results";
+export {
+  amendResult, chooseReportedResult, enterResult, requestRerun, resultContext, LAB_RESULTS_ENTER,
+} from "./results";
 export type {
-  AmendResultInput, EnteredResult, EnterResultInput, EnterResultOutcome, LabEntryMode,
-  RequestRerunInput,
+  AmendResultInput, ChooseReportedResultInput, EnteredResult, EnterResultInput, EnterResultOutcome,
+  LabEntryMode, RequestRerunInput,
 } from "./results";
 export {
   isSingleOperatorNight, verifyResult, LAB_REFLEX_ACTOR, LAB_RESULTS_VERIFY,
