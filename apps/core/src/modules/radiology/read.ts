@@ -6,6 +6,7 @@ import { orderItems } from "../../kernel/db/schema/orders";
 import { patients } from "../../kernel/db/schema/patients";
 import { displayName } from "../patients";
 import { RadiologyError } from "./errors";
+import { outsideStudyFor } from "./outside";
 import { mintStudyInstanceUid } from "./uid";
 import { IMAGES_READ, studyImageViews } from "./views"; // pass 2 N2 — the button follows the door's own string
 import type { ImageViewRow } from "./views";
@@ -222,6 +223,11 @@ export type StudyView = WorklistRow & {
    * trolley needs to know where, and a porter needs it before the machine moves.
    */
   bedsideLocation: string | null;
+  /**
+   * 18a-iii T4 / D5 — the provenance when the images came from another centre, null when they are
+   * ours. On the console beside the study, for the same reason it is in the report's first sentence.
+   */
+  outside: { centreName: string; studyDate: string; modality: string; externalAccessionNo: string | null; arrival: string } | null;
   acquiredAt: Date | null;
   authorisedBy: string | null;
   /** 18b T2 — null until acquisition; the console shows `mintedStudyInstanceUid` before that. */
@@ -288,6 +294,7 @@ export async function studyView(db: Db, actor: Actor, studyId: string): Promise<
     laterality: row.study.laterality,
     ionising: row.study.ionising, contrastGiven: row.study.contrastGiven,
     bedsideLocation: row.study.bedsideLocation,
+    outside: await outsideProvenance(db, studyId),
     acquiredAt: row.study.acquiredAt, authorisedBy: row.study.authorisedBy,
     studyInstanceUid: row.study.studyInstanceUid, imageSource: row.study.imageSource,
     mintedStudyInstanceUid: mintStudyInstanceUid(row.study.id),
@@ -381,5 +388,14 @@ export async function reportView(db: Db, actor: Actor, reportId: string): Promis
     patientName: displayName(
       { name: row.name, alias: row.alias, isConfidential: row.isConfidential }, clearance.canSeeConfidential,
     ),
+  };
+}
+
+/** The provenance a console renders beside an outside study, or null when the study is ours. */
+async function outsideProvenance(db: Db, studyId: string): Promise<StudyView["outside"]> {
+  const row = await outsideStudyFor(db, studyId);
+  return row === null ? null : {
+    centreName: row.centreName, studyDate: row.studyDate, modality: row.modality,
+    externalAccessionNo: row.externalAccessionNo, arrival: row.arrival,
   };
 }

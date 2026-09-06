@@ -116,6 +116,14 @@ export const RADIOLOGY_ERROR_CODES = [
   "unknown_administration",
   /** ── 18a-iii T3 — a bedside location on a machine that does not leave the department ── */
   "device_not_portable",
+  /**
+   * ── 18a-iii T4 — an outside film recorded at the acquisition console ──
+   *
+   * Its own code rather than `contrast_mismatch`'s neighbour `bad_transition`, because the recovery
+   * is a DIFFERENT DOOR rather than a different moment: the technologist is not early or late, they
+   * are at the wrong counter, and the message has to say which one.
+   */
+  "outside_study_only",
   // ── reports (T8) ──
   "second_factor_required",
   "laterality_mismatch",
@@ -181,6 +189,7 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   vial_expired: 422,
   unknown_administration: 404,
   device_not_portable: 422,
+  outside_study_only: 422,
 
   second_factor_required: 403,
   laterality_mismatch: 422,

@@ -73,6 +73,26 @@ export const imagingStudyDefinition: WorkflowDefinition = defineWorkflow({
     { from: "checked_in", to: "ready", roles: ["system"] },
     { from: "ready", to: "in_acquisition", roles: ["radiographer", "radiologist"] },
     { from: "in_acquisition", to: "acquired", roles: ["radiographer", "radiologist"] },
+    /**
+     * ═══ 18a-iii T4 / D5 — THE OUTSIDE STUDY'S ONE EDGE, AND WHY IT IS DECLARED RATHER THAN FAKED ═══
+     *
+     * A film from another centre has no check-in, no gate set, no machine and no exposure. The only
+     * route to a reportable state was `scheduled → checked_in → ready → in_acquisition → acquired`,
+     * and walking a study through four states that did not happen would put a journey in the audit
+     * log that no human performed — and, worse, would reach `recordAcquired`, which for an ionising
+     * study type DEMANDS a dose and WRITES the AERB radiation dose register. That would attribute
+     * **another hospital's exposure to our machine, in the register an inspector reads.**
+     *
+     * So the arc gains one honest edge that says what it is, rather than hiding the same act behind
+     * four fictional hops. `registerOutsideStudy` is its only caller — `outside.test.ts` pins that
+     * by grep, the `stock_ledger` append-only idiom — and that function refuses any study carrying a
+     * device, a slot or an acquisition start, writes the provenance row in the same transaction, and
+     * records no dose at all.
+     *
+     * The roles are the desk's and the radiologist's, NOT the radiographer's: registering somebody
+     * else's film is a reception act, and the technologist's permission is for the machine.
+     */
+    { from: "scheduled", to: "acquired", roles: ["radiology_receptionist", "radiologist"] },
     { from: "acquired", to: "reported", roles: ["radiologist"] },
     { from: "reported", to: "published", roles: ["radiologist", "system"] },
 
