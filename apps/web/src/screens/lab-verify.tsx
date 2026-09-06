@@ -3,8 +3,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { newIdempotencyKey } from "../lib/api";
 import {
-  amendReport, flagTone, getReport, LAB_BENCH_TOPIC, LAB_CRITICAL_TOPIC, labErrorText, openCriticals, printReport,
-  publishableOrders, publishReport, requestRerun, verifyResult, verifyWorklist,
+  amendReport, flagTone, getReport, LAB_BENCH_TOPIC, LAB_CRITICAL_TOPIC, labErrorText, nightReleases,
+  openCriticals, printReport, publishableOrders, publishReport, requestRerun, reviewNightRelease,
+  verifyResult, verifyWorklist,
 } from "../lib/lab-api";
 import { useRealtime } from "../lib/realtime";
 import { LabReportPrint } from "../components/lab-report-print";
@@ -83,6 +84,18 @@ export function LabVerify(): React.ReactElement {
   const queue = useQuery({ queryKey: ["lab", "verify"], queryFn: verifyWorklist, refetchInterval: 30_000 });
   const calls = useQuery({ queryKey: ["lab", "criticals"], queryFn: openCriticals, refetchInterval: 30_000 });
   const publishable = useQuery({ queryKey: ["lab", "publishable"], queryFn: publishableOrders, refetchInterval: 30_000 });
+  /**
+   * DD11 §7 — THE MORNING QUEUE. Night mode relaxes separation of duties and this is the
+   * compensating review. It shipped with no screen at all: the runbook's own words were *"somebody
+   * must work it, and this build ships no screen filter for it — read `lab_results` where
+   * `pathologist_review_pending` is true."*
+   */
+  const nights = useQuery({ queryKey: ["lab", "night-releases"], queryFn: nightReleases, refetchInterval: 30_000 });
+  const review = useMutation({
+    mutationFn: (resultId: string) => reviewNightRelease(resultId),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["lab", "night-releases"] }); },
+    onError: (e: unknown) => setError(labErrorText(e)),
+  });
   const refresh = (): void => { void qc.invalidateQueries({ queryKey: ["lab"] }); };
   const { connected } = useRealtime([LAB_BENCH_TOPIC, LAB_CRITICAL_TOPIC], () => refresh());
 
@@ -193,6 +206,37 @@ export function LabVerify(): React.ReactElement {
             })}
           </ul>
           <p className="text-xs text-muted-foreground">{t("lab.verify.autoVerifyNote")}</p>
+
+          {/*
+            ═══ DD11 — RELEASED OVERNIGHT, AWAITING THE SECOND PAIR OF HANDS ═══
+
+            Shown only when there is something to work, because a heading over an empty list on every
+            day shift is how a reviewer learns to skip the section on the morning it is not empty.
+
+            Each row carries WHO released it alone. That is the fact the review is about, and a queue
+            that hid it behind a click would be worked by clicking.
+          */}
+          {(nights.data ?? []).length > 0 && (
+            <section className="space-y-2 pt-2" aria-label={t("lab.verify.nightQueue")}>
+              <h2 className="text-sm font-semibold">{t("lab.verify.nightQueue")}</h2>
+              <p className="text-xs text-muted-foreground">{t("lab.verify.nightQueueHint")}</p>
+              <ul className="divide-y divide-border rounded border border-border">
+                {(nights.data ?? []).map((r) => (
+                  <li key={r.resultId} data-testid={`night-${r.resultId}`} className="flex items-center gap-2 px-2 py-1.5 text-sm">
+                    <span className="font-semibold">{r.patientDisplay}</span>
+                    <span className="text-muted-foreground">{r.analyteCode} {r.value}{r.unit !== null && ` ${r.unit}`}</span>
+                    <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                      {t("lab.verify.releasedBy", { who: r.releasedBy })}
+                    </span>
+                    <Button type="button" variant="outline" size="sm" disabled={review.isPending}
+                      onClick={() => { review.mutate(r.resultId); }}>
+                      {t("lab.verify.reviewed")}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           <h2 className="pt-2 text-sm font-semibold">{t("lab.verify.publishQueue")}</h2>
           {publishable.isError

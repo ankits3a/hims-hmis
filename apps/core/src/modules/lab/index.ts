@@ -77,7 +77,8 @@ export type {
   LabEntryMode, RequestRerunInput,
 } from "./results";
 export {
-  isSingleOperatorNight, verifyResult, LAB_REFLEX_ACTOR, LAB_RESULTS_VERIFY,
+  isSingleOperatorNight, nightReleasesAwaitingReview, reviewNightRelease, verifyResult,
+  LAB_REFLEX_ACTOR, LAB_RESULTS_VERIFY,
   NIGHT_MODE_FROM_HOUR_IST, NIGHT_MODE_TO_HOUR_IST,
 } from "./verify";
 export type { ReflexPlacement, ReflexRefusal, VerifyResultInput, VerifyResultOutcome } from "./verify";
