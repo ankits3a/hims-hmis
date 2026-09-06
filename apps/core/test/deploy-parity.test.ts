@@ -730,6 +730,59 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
       expect(r.stderr).toMatch(/HMIS_TARGET must be 'prod' or 'uat'/);
     });
 
+    it("REFUSES HMIS_DEPLOY_ALLOW_DIRTY on the prod target — the 2026-09-06 near miss", () => {
+      /**
+       * The commissioning lane ran `HMIS_TARGET=uat HMIS_DEPLOY_ALLOW_DIRTY=1 deploy.sh` from a
+       * worktree left checked out on an EARLIER branch of its own stack. That branch's copy of the
+       * script predates the target concept, so `HMIS_TARGET` was an unread environment variable:
+       * `DEPLOY_DIR` defaulted to /opt/hmis-prod and it began building `hmis-prod/server:latest`
+       * from a lane tree on its way to migrating production. Killed in step 1; nothing reached the
+       * deploy directory, the images, the database or the containers.
+       *
+       * The flag is what let it get that far — it disables BOTH refusals between a checkout and
+       * the hospital. Its own comment has always said "for a rehearsal only", and a rehearsal is
+       * UAT; the word is now enforced instead of trusted. Asked by RUNNING the script, because a
+       * refusal that only exists in the text is a refusal nobody has seen fire.
+       */
+      /**
+       * ═══ `HMIS_DEPLOY_DIR` IS POINTED AT NOTHING, AND THAT IS THE LOAD-BEARING PART ═══
+       *
+       * The first version of this leg omitted it, on the reasoning that the guard fires before the
+       * deploy-directory check so the value could not matter. It does not matter while the guard is
+       * THERE. The mutant run that removes the guard is the whole point of this leg — and without
+       * this line that run inherits `DEPLOY_DIR=/opt/hmis-prod` and deploys the hospital. It did:
+       * on 2026-09-06 the mutation run for this very assertion rebuilt production's images from a
+       * lane tree, applied 22 migrations and restarted the stack.
+       *
+       * So a test that EXECUTES this script must make the script unable to reach anything real,
+       * independently of the behaviour it is asserting. A guard is not a safety mechanism for the
+       * test that removes it.
+       */
+      const NOWHERE = "/nonexistent-deploy-dir-for-this-test";
+      const r = spawnSync("bash", [DEPLOY_SH], {
+        encoding: "utf8",
+        env: {
+          ...process.env, HMIS_DEPLOY_ALLOW_DIRTY: "1", HMIS_TARGET: "prod",
+          HMIS_DEPLOY_ROLLBACK_TO: "", HMIS_DEPLOY_DIR: NOWHERE,
+        },
+      });
+      expect(r.status).toBe(1);
+      expect(r.stderr).toMatch(/HMIS_DEPLOY_ALLOW_DIRTY=1 is refused on the PROD target/);
+      expect(r.stderr).toMatch(/Rehearse on HMIS_TARGET=uat instead/);
+
+      // …and it does NOT refuse on uat, which is the target the flag exists for. (It fails later,
+      // on the deploy directory, which is a different refusal and proves the guard let it past.)
+      const uat = spawnSync("bash", [DEPLOY_SH], {
+        encoding: "utf8",
+        env: {
+          ...process.env, HMIS_DEPLOY_ALLOW_DIRTY: "1", HMIS_TARGET: "uat",
+          HMIS_DEPLOY_DIR: NOWHERE, HMIS_DEPLOY_ROLLBACK_TO: "",
+        },
+      });
+      expect(uat.stderr).not.toMatch(/ALLOW_DIRTY=1 is refused/);
+      expect(uat.stderr).toMatch(/deploy directory .* does not exist/);
+    });
+
     it("skips the stanza, the cron and the real-hostname edge check on uat, and nothing else", () => {
       // Each of the three is production-only BY NATURE (no repository, no backup to schedule, no
       // public hostname). Everything else — build, config, migrate, seeds, gate, census, service
