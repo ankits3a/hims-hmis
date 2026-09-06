@@ -73,6 +73,11 @@ export {
 } from "./contrast";
 export type { ContrastAdministrationRow, RecordContrastInput } from "./contrast";
 export {
+  CONTRAST_ALLERGY_SUFFIX, contrastAllergySubstance, contrastReactionHistory, contrastReactionsFor,
+  recordContrastReaction,
+} from "./reactions";
+export type { ContrastReactionRow, RecordContrastReactionInput } from "./reactions";
+export {
   authorisationOf, encounterPayer, hasBillDecision, linkInvoiceLine, openBillDecisions,
   raiseBillDecision, resolveBillDecision,
 } from "./money";

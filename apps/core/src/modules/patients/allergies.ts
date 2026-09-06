@@ -17,7 +17,19 @@ export async function addAllergy(
     substance: string;
     reaction?: string;
     severity?: "mild" | "moderate" | "severe";
-    source: "registration" | "vitals" | "consult";
+    /**
+     * ═══ 18a-iii T2 — `radiology` JOINS THIS UNION, AND THE HTTP ROUTE DOES NOT ═══
+     *
+     * A contrast reaction WRITES this patient's allergy, in the same transaction as the reaction
+     * record (18a-iii D2), because a reaction invisible to the next CT's `prior_contrast_reaction`
+     * gate is the defect that whole chain exists to prevent. `radiology` is the fourth source.
+     *
+     * `patients.controller.ts` deliberately still accepts only the first three: a counter clerk
+     * posting to `/patients/:id/allergies` must not be able to CLAIM a radiology provenance for a
+     * line they typed. The fourth value is reachable only through `recordContrastReaction`, which
+     * derives the substance from the administration row rather than from anything a human typed.
+     */
+    source: "registration" | "vitals" | "consult" | "radiology";
   },
 ): Promise<{ allergyId: string }> {
   if (actor.type !== "user") throw new PatientError("user_actor_required");

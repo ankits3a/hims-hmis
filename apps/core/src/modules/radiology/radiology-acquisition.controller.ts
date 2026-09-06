@@ -1,12 +1,16 @@
 import { Body, Controller, Get, Inject, Param, Post } from "@nestjs/common";
 import { z } from "zod";
-import { CONTRAST_ROUTES } from "../../kernel/db/schema/radiology";
+import {
+  CONTRAST_REACTION_ONSETS, CONTRAST_REACTION_OUTCOMES, CONTRAST_REACTION_SEVERITIES,
+  CONTRAST_ROUTES,
+} from "../../kernel/db/schema/radiology";
 import { DB, MODULE_REGISTRY } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { abortAcquisition, recordAcquired, startAcquisition } from "./acquisition";
 import { contrastAdministrationsFor, recordContrastAdministration } from "./contrast";
+import { contrastReactionsFor, recordContrastReaction } from "./reactions";
 import { linkInvoiceLine } from "./money";
 import { idSchema, parsed, toHttp } from "./radiology-http";
 import type { Actor } from "@hmis/contracts";
@@ -73,6 +77,23 @@ const contrastBody = z.object({
   vialExpiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
   givenBy: idSchema,
   givenAt: z.string().datetime(),
+});
+
+/**
+ * 18a-iii T2 — the reaction. `treatmentGiven` and `managingClinicianId` are optional HERE and
+ * REQUIRED by the service when severity is `severe` (D3): the rule is one sentence in one place, and
+ * a zod refinement restating it would be a second copy to drift.
+ */
+const reactionBody = z.object({
+  administrationId: idSchema,
+  severity: z.enum(CONTRAST_REACTION_SEVERITIES),
+  onset: z.enum(CONTRAST_REACTION_ONSETS),
+  manifestation: z.string().min(1).max(2_000),
+  treatmentGiven: z.string().min(1).max(2_000).nullish(),
+  managingClinicianId: idSchema.nullish(),
+  outcome: z.enum(CONTRAST_REACTION_OUTCOMES).nullish(),
+  observedBy: idSchema,
+  observedAt: z.string().datetime(),
 });
 
 const abortBody = z.object({ reason: z.string().min(1).max(400) });
@@ -188,6 +209,40 @@ export class RadiologyAcquisitionController {
   async contrastRegister(@Param("studyId") studyId: string): Promise<unknown> {
     try {
       return { administrations: await contrastAdministrationsFor(this.db, studyId) };
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * 18a-iii T2 — the reaction, on `radiology.acquire` for T1's reason: the person watching the
+   * patient react is the person at the console. A reaction recorded late by a radiologist works too
+   * — `radiologist` holds the same permission — and `observedBy` is the person who SAW it, which is
+   * deliberately not the actor who typed the row.
+   */
+  @Post("contrast-reactions")
+  @RequirePermission("radiology.acquire", "hospital")
+  async reaction(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(reactionBody, body);
+    try {
+      return await withTx(this.db, (tx) => recordContrastReaction(tx, actor, {
+        administrationId: input.administrationId,
+        severity: input.severity,
+        onset: input.onset,
+        manifestation: input.manifestation,
+        treatmentGiven: input.treatmentGiven ?? null,
+        managingClinicianId: input.managingClinicianId ?? null,
+        outcome: input.outcome ?? null,
+        observedBy: input.observedBy,
+        observedAt: new Date(input.observedAt),
+      }));
+    } catch (e) { toHttp(e); }
+  }
+
+  /** The reactions on one study. The manifestation IS here — this is the clinical record, not an event. */
+  @Get(":studyId/contrast-reactions")
+  @RequirePermission("radiology.worklist.read", "hospital")
+  async reactions(@Param("studyId") studyId: string): Promise<unknown> {
+    try {
+      return { reactions: await contrastReactionsFor(this.db, studyId) };
     } catch (e) { toHttp(e); }
   }
 
