@@ -20,6 +20,7 @@ import { collectDeskProviders } from "../desk/registry";
 import { rollupAll } from "../desk/rollup";
 import { sweepInterfaceHeartbeats } from "../ops/interfaces";
 import { sweepExpiredPicks } from "../../modules/pharmacy";
+import { sweepCriticalChaser, sweepUnreadWatchman } from "../../modules/radiology";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
 
@@ -44,6 +45,12 @@ const CREATE_EVENT_PARTITIONS_IST = "00:15";
 const BATCH_EXPIRY_IST = "06:30";
 /** PLAN 17a T5 / DD20 — the lab reception's "never came back" worklist, at the start of a shift. */
 const LAB_NON_RETURN_IST = "07:00";
+/**
+ * 18a-iii T5 — 08:00 IST, an hour after the lab's non-return sweep. A duty manager reads "which
+ * reports has nobody opened" at the start of a shift, beside the other overnight worklists; the
+ * window it measures is a working day, so the hour it runs at is about who is awake to act on it.
+ */
+const RADIOLOGY_UNREAD_WATCHMAN_IST = "08:00";
 // Plan 11a D6: an hour after the new month's partitions exist and well inside the quiet window —
 // a partition DROP takes ACCESS EXCLUSIVE on `events`, which is not a lock to take during a
 // clinic. Like its neighbours it is a code constant, not a deployment knob: WHAT retention does
@@ -416,5 +423,39 @@ export function registerAllJobs(
     name: "sweepExpiredPharmacyPicks",
     every: 60_000,
     run: async (now) => { await sweepExpiredPicks(db, orderKinds, now); },
+  });
+  /**
+   * ═══ PLAN 18a-iii T5 / D7 — THE SEVENTEENTH AND EIGHTEENTH, AND THEY GIVE A PROMISE A VOICE ═══
+   *
+   * 18a shipped the critical-communication SLA as a governed tier book and made it RECORD-ONLY: the
+   * book says a red finding must reach a clinician within N minutes, and until now nothing in the
+   * building ever asked whether it had. `imaging_critical_findings`' own header left the note that
+   * the ladder chasing an unacknowledged critical at 02:00 would be 18a-iii's. These are it.
+   *
+   * **Neither has teeth.** Each writes one mark saying it escalated and emits one event; the alerts
+   * consumer turns that into a row in front of a duty manager. Nothing changes a study's status,
+   * closes a finding or marks a report read — D7 is explicit that these SLAs get a voice, and the
+   * two facts a chaser would most naturally "fix" are precisely the two whose value is that a HUMAN
+   * asserted them.
+   *
+   * EVERY MINUTE for the critical chaser, and it is `sweepExpiredPharmacyPicks`' argument verbatim:
+   * the windows it enforces are stated in MINUTES by the tier book, and a sweep coarser than the
+   * thing it measures cannot enforce it. A literal cadence rather than a `JobIntervals` key for the
+   * same reason 16c gave — widening that type stops every census literal in the suite from
+   * compiling, and neither of these has an operator knob worth that.
+   *
+   * The Watchman runs at `08:00` IST, ONCE A DAY, and the difference from its twin is the point: it
+   * measures a window of HOURS, and the person who acts on it is a duty manager starting a shift.
+   * A minute-by-minute unread sweep would produce the same alert at 03:00 to nobody.
+   */
+  scheduler.register({
+    name: "sweepCriticalChaser",
+    every: 60_000,
+    run: async (now) => { await sweepCriticalChaser(db, now); },
+  });
+  scheduler.register({
+    name: "sweepUnreadWatchman",
+    dailyIst: RADIOLOGY_UNREAD_WATCHMAN_IST,
+    run: async (now) => { await sweepUnreadWatchman(db, now); },
   });
 }
