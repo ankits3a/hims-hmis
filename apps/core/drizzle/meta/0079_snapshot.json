@@ -1,6 +1,6 @@
 {
-  "id": "7259fdfc-e868-4043-8036-3818adef5aaf",
-  "prevId": "793d3d00-7b5e-4099-8858-3e831b856eaa",
+  "id": "a573bdff-e6f3-48a1-9469-c62116c0b5d5",
+  "prevId": "ca0aa7b6-56f3-4621-a9e9-2c05d91ea107",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -21667,6 +21667,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "chased_at": {
+          "name": "chased_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -21681,6 +21687,33 @@
           "columns": [
             {
               "expression": "report_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "imaging_critical_findings_chase_idx": {
+          "name": "imaging_critical_findings_chase_idx",
+          "columns": [
+            {
+              "expression": "acknowledged_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "chased_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -22090,6 +22123,112 @@
         "imaging_outside_studies_arrival_ck": {
           "name": "imaging_outside_studies_arrival_ck",
           "value": "\"imaging_outside_studies\".\"arrival\" in ('film', 'cd', 'link', 'none')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.imaging_report_delivery": {
+      "name": "imaging_report_delivery",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "report_id": {
+          "name": "report_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "first_read_at": {
+          "name": "first_read_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "first_read_by": {
+          "name": "first_read_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "unread_chased_at": {
+          "name": "unread_chased_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "imaging_report_delivery_report_ux": {
+          "name": "imaging_report_delivery_report_ux",
+          "columns": [
+            {
+              "expression": "report_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "imaging_report_delivery_unread_idx": {
+          "name": "imaging_report_delivery_unread_idx",
+          "columns": [
+            {
+              "expression": "first_read_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "unread_chased_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "imaging_report_delivery_report_id_imaging_reports_id_fk": {
+          "name": "imaging_report_delivery_report_id_imaging_reports_id_fk",
+          "tableFrom": "imaging_report_delivery",
+          "tableTo": "imaging_reports",
+          "columnsFrom": [
+            "report_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "imaging_report_delivery_first_read_ck": {
+          "name": "imaging_report_delivery_first_read_ck",
+          "value": "(\"imaging_report_delivery\".\"first_read_by\" is null) = (\"imaging_report_delivery\".\"first_read_at\" is null)"
         }
       },
       "isRLSEnabled": false
