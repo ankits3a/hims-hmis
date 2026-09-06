@@ -173,3 +173,121 @@ it).
 - The next handoff: **11k** (the back-book and catalogue loaders, the pharmacy opening on UAT, the
   radiology census walk) — a paragraph of state, the seams, the traps, the open findings with owners.
   Under 12 KB. The successor's prompt names it first.
+
+---
+
+## 10. The edge catalogue — a second pass, 59 rows beyond the phase doc's §2b
+
+Written by the planning session (hmis-c1) against `f211075` and merged into this handoff so the
+lane has one assertion book. **§2b of the phase doc holds the 24 rows of the Indian day at the
+seats; these are the rows the box, the deploy, the doors, the roles, the drills, the 18c window and
+the census itself add.** Columns: **the day** · **what must be true** · **task** · **closes with**
+(T = a fail-first test · M = a named mutant · C = a census row · R = a runbook step · D = a
+DECIDED line in the phase doc §3). Rows marked ★ were found by measurement. A row is closed when
+its artefact exists, not when it has been read. Rows already covered by §2b (shared logins, Hindi
+seats, the printers, night mode, IST, the UAT reset, the real-patient fact) are not repeated.
+
+### A. The deploy and the box
+
+| # | the day | what must be true | task | closes with |
+|---|---|---|---|---|
+| A1 ★ | The owner runs the catch-up from a laptop on a phone hotspot; the SSH session drops at migration 12 of 22 | The runbook says `tmux new -s deploy` first (check `tmux` is installed, else `screen`). Re-running `deploy.sh` is safe: idempotent, and the watermark guard names what applied. T4 must have MEASURED whether drizzle wraps each migration or the batch in one transaction (`pg-core/dialect.js:60` is inside `session.transaction`) — the answer decides whether "re-run" or "inspect first" is the instruction. The drill rehearsal (D12) is where the answer is first seen on real data | T4, T7, T8 | T (txn shape by execution) · R |
+| A2 | The docker build starts while radiology's full-suite run holds 6 GB; the build OOM-kills jest, or jest OOM-kills the build | Every build goes through `test-lock.sh` — a build is a builder. Runbook step 0 reads `board.sh` and refuses to start under a held lock. UAT deploys are a train step, not a lane habit | T3, T7 | R · D8 |
+| A3 | `/var/lib/docker` fills with untagged layers after the fourth deploy; the fifth fails at `COPY` | Runbook pre-flight: `df -h /var/lib/docker` and `docker image prune -f` (dangling only, never `-a`); T8's SHA tags are pruned to the last three per name and the UAT tags are name-scoped so a prune cannot remove the running prod image | T3, T7, T8 | R · M (UAT prune removing a prod tag) |
+| A4 ★ | The owner deploys from `/opt/hmis` while a peer left an untracked file there | `deploy.sh` refuses (measured: dirty check, `?? docs/` exempt). Never `HMIS_DEPLOY_ALLOW_DIRTY=1` on production; `git status` is the diagnostic; find the file's owner | T7 | R |
+| A5 ★ | `/opt/hmis` is 79 commits behind or on a branch | Runbook step 0 names the SHA; `git -C /opt/hmis fetch && git checkout main && git pull --ff-only`; `git rev-parse HEAD` must equal the named SHA. `deploy.sh:59` refuses anything but `origin/main` for the build path (D13 keeps that) | T7 | R |
+| A6 | `main` is red when the tip is cut | **DECIDED: a red `main` freezes deploys as it freezes merges.** The tip is the newest green commit with no open `deploy-blocker` PR; the runbook records the CI run id beside the SHA | T7 | R · D |
+| A7 | The merge train lands a migration between the tip being named and the deploy starting | The deploy is built from the named SHA, not from `main`; a migration that lands afterwards waits for next week | T7 | R |
+| A8 ★ | UAT and prod share an image tag; a UAT build replaces the image production restarts onto at 03:00 | T3's tags are target-scoped (`hmis-uat/server:<sha>`, `:latest`); the deploy-parity UAT census greps the rendered script for `hmis-prod` and finds none | T3 | T · M |
+| A9 ★ | Port 8443 is held by `hmis-preview-caddy` | T3 stops the preview container first and says so; the AERB demo on 8444 stays until T7's 18c walk has used it, then stops; `ufw status` after | T3 | R |
+| A10 ★ | Staff open UAT on an Android phone; Chrome refuses the `tls internal` certificate | **DECIDED: UAT keeps `tls internal`**; the runbook carries the one-screen "proceed anyway" for Chrome and the Caddy root-CA import for the owner's laptop. A hostname (`uat.hmis.crkmch.com`) is a one-line owner item that removes the step; blocks nothing | T3 | R · D |
+| A11 ★ | Basic auth on UAT swallows the app's Bearer token (the preview Caddyfile records exactly this) | Basic auth only on the static SPA, never on `/api/*` — copy the preview's Caddyfile shape | T3 | T (caddyfile parity for the UAT file) |
+| A12 | A power cut takes the box down mid-`compose up`; on restart UAT races prod for memory | **DECIDED: UAT compose has no `restart: unless-stopped`**; UAT is started by hand after prod is healthy. Runbook: "after a power cut — prod first, `docker ps`, then UAT" | T3 | D · R |
+| A13 ★ | The restore-drill log is stale or red on deploy morning | Runbook step (2) reads `/opt/hmis-prod/log/restore-drill.log`'s last entry (read-only; last PASSED 2026-09-05 22:00 UTC). A failed or >8-day-old drill is the one thing the runbook refuses on; a rehearsal (`drill_rehearsed`) does not count as a drill (T8) | T7, T8 | R · M (a rehearsal counted as the weekly drill) |
+| A14 | Two deploys in one day after a hot fix | Idempotent; the watermark guard passes; the seeds report `already`; the census is read twice; the second deploy also gets a `<sha>` tag so either can be the backout | T7, T8 | R |
+| A15 ★ | The deploy seeds cursors at `max(seq)` for 18 scheduler jobs and every new consumer; the imaging critical chaser sweeps every minute from the first tick | On production with no imaging data nothing fires. Post-deploy check: `notifications` row count before and after — a burst is a cursor that was not seeded | T7 | R |
+| A16 | The owner runs the UAT command with `HMIS_TARGET` unset | Unset means prod. **DECIDED: `deploy.sh` prints a 5-second banner — target, SHA, pending count, rollback target if any — on every run, aborting on Ctrl-C**; no confirmation variable, so the UAT train stays automatable | T3 | T · D |
+
+### B. Data and the synthetic door
+
+| # | the day | what must be true | task | closes with |
+|---|---|---|---|---|
+| B1 ★ | UAT runs the production image, so `NODE_ENV=production`; both synthetic seeds refuse | The door is `HMIS_SYNTHETIC_DATA_OK=1` in `/opt/hmis-uat/.env` only; the seeds need the door AND keep their existing refusals; the prod target refuses to start with the key set | T5 | T · M (key set, prod target starts) |
+| B2 | Someone copies `/opt/hmis-uat/.env` over `/opt/hmis-prod/.env` "to fix the database URL" | B1's prod refusal; `deploy-parity` asserts `docker/prod/.env.prod.example` lacks the key; and the census's radiology rows: **any licence number containing `DEMO` on a prod target is a hard RED** | T2, T5 | T · C |
+| B3 | A UAT dump is restored into production "to get the demo catalogue" | Forbidden in the runbook; mechanically, UAT has no pgBackRest stanza and its DB name is never `hmis`; the census's `DEMO` row catches a licence; a synthetic patient is the one thing the census cannot see, so the words matter | T3, T7 | R · C |
+| B4 ★ | The golden catalogue's `services` rows collide with the one synthetic CBC service production already carries | On UAT the same seed is idempotent. On production the owner's catalogue lands through `POST /lab/catalogue/*`; census row "investigation services with no orderable" reports the orphan; the runbook says deactivate, never delete (a service may be on an invoice) | T2, T6 | C · R |
+| B5 | A provider is added to `kernel/notify` later and UAT starts sending "report ready" to demo mobiles | Today `notify` has console adapters only (§2b row 7), so nothing leaves. **DECIDED for the day a provider exists: `/opt/hmis-uat/.env` never carries a provider credential**, and `deploy-parity` pins the UAT env template against every provider key the adapters read. T6 also checks `seed-lab-demo`'s mobiles are in a non-allocated range and files a defect if not | T3, T5, T6 | T · R |
+| B6 | Chasers and sweeps on UAT page "duty managers" every minute over synthetic overdue rows | B5 makes it harmless; the alert rows still accumulate. T6 reads the alerts list once and records that they are synthetic — the volume is itself a finding for Plan 20 | T6 | R |
+| B7 ★ | `seed-lab-demo` "refuses unless asked twice" — nobody knows what the second ask is | T6 reads the script and writes the exact invocation into the lab runbook's `## Executed` section | T6 | R |
+| B8 | The UAT reset script (§2b row 23) is run with the wrong project | `uat-reset.sh` refuses unless `PROJECT` is `hmis-uat`, by name, before any `down -v` | T3 | T · M (reset with the prod project) |
+| B9 | Aadhaar-like or ABHA-like identifiers in demo data | Demo rows carry none; if the seed sets any, the value must fail the Verhoeff check. T6 verifies by reading the seed | T6 | R |
+| B10 ★ | The demo seed runs at 23:50 IST; the "day" it creates is yesterday by the time anybody looks (the lab-reports D9 straddle, already paid for once) | The `## Executed` section records the IST time; the seed is not run between 23:30 and 00:30 IST. If the seed has no injectable clock, that is a defect to file, not to work around | T6 | R |
+
+### C. People and roles
+
+| # | the day | what must be true | task | closes with |
+|---|---|---|---|---|
+| C1 ★ | Production has one administrator; the lab runbook §1.3 calls a second one a blocker | Per §0c.6 the lab opens under R-247 single-approver honesty mode; O1 stays on the IPD gate. The census row "≥ 2 users hold `admin`" is **informational** for the lab and RED for anything Class-A two-key; on UAT T6 creates `admin2` so the honesty-mode event can be seen once | T2, T6 | C |
+| C2 | A role assigned at department scope, not hospital scope; the seat 403s unreadably | The census checks hospital scope specifically; its RED text names the scope | T2 | C · M (department-scope holder reads green) |
+| C3 ★ | `seed-roles` prints NOT READY on production because nobody holds `pharmacy` or `phlebotomist` | Not fatal (measured in `deploy.sh`); the census repeats it per module with the screen to fix it; the runbook says "expected on the first deploy" | T2, T7 | R |
+| C4 | UAT credentials: the lane needs accounts, the owner needs their passwords, nothing may go in git or in a file `seed-staff` would reject | **DECIDED: UAT accounts are created at `/admin/users`; their passwords go in a root-600 file under `/opt/hmis-uat/`, as the front-desk preview already does — acceptable for a synthetic environment only, named in the runbook so it is deleted with the environment, never for production** | T6 | D · R |
+| C5 | The pathologist of record's registration number on production is a legal fact that prints on every report | The census checks non-empty (§2b row 20); the `fix` text says "from the certificate, not from memory"; on UAT the value is `DEMO-REG-…` | T2 | C |
+| C6 | Nobody holds `billing_manager` on UAT; a HELD report cannot be released and walkthrough step 5 dead-ends | The lab's G4 census rows include the roles the lab runbook names outside the lab: `billing_manager` (release), `cashier` (the walk-in's bill). T6 creates both | T2, T6 | C · R |
+| C7 | The bridge accounts (`lab_bridge`, `modality_bridge`) — should the census demand them? | Informational rows, never RED — and per §0c.2 the lab's rows gain the inverse: **RED if a `lab_instruments` row or a `lab_bridge` holder exists before 17-E T7 is in the deployed base** | T2 | C |
+
+### D. The lab on UAT — the walk-through and the drills
+
+| # | the day | what must be true | task | closes with |
+|---|---|---|---|---|
+| D1 ★ | A walk-in with no OPD visit: `openVisitInTx` needs a `LAB` department with an active doctor in it | Census rows (department + doctor of record); T6 creates them through the OPD masters screen, never by SQL | T2, T6 | C · R |
+| D2 ★ | One orderable has no price in the active tariff version; the desk refuses `tariff_item_missing` in front of a patient | Census row "every orderable priced"; **the walkthrough deliberately leaves one unpriced** to see the refusal and record its wording — the census must have predicted it | T2, T6 | C · R · M (unpriced orderable reads green) |
+| D3 | The report is HELD against an unpaid walk-in line | C6's accounts; the walkthrough performs the release and reads the approval row | T6 | R |
+| D4 | Drill A at 02:00 — the critical ladder rings everyone holding `pathologist` because there is no rota | Expected until Plan 20; the walkthrough records how many were paged (on UAT: the demo pathologist); the printed call list is the artefact (§2b row 6) | T6 | R |
+| D5 | Drill B — a rejected tube on a billed walk-in; the credit note needs billing config and `billing.credit_note.issue` | Seeds present; the grant per runbook §3.4. If the credit note is refused, G4 was incomplete — add the census row, do not grant by hand | T2, T6 | C · R |
+| D6 | The doctor's cockpit (07d) must show the signed result | The demo needs a consult under an OPD doctor; if `seed:lab-demo` makes a walk-in only, the walkthrough opens a consult by hand and records that the seed lacks it | T6 | R |
+| D7 | The cashier's drawer: the walk-in's cash needs an open drawer session (`0055`) | The walkthrough opens one as the cashier (§2b row 13). **DECIDED: a drawer session is a shift fact, not a stand-up fact — no census row** | T6 | D |
+| D8 | The five seats are walked by one person five times | Acceptable on UAT (the S-gate is about the path); on production the pilot (G6) is the department's. Say so in the `## Executed` section | T6 | R |
+| D9 | The demo patients look like duplicates of each other (a known trait of the seeded set) | The registration seat's duplicate check fires; the walkthrough records the refusal path and the merge queue (§2b row 4) rather than choosing names that dodge it | T6 | R |
+
+### E. The 18c window and radiology
+
+| # | the day | what must be true | task | closes with |
+|---|---|---|---|---|
+| E1 ★ | Production has zero registered ionising devices; the licence gate has nothing to refuse | The census reports the device count; the window step is SKIPPED and recorded as skipped. Do not declare `degraded` for nothing — every mode row is a ledger entry the owner reads | T2, T7 | C · R |
+| E2 ★ | A certificate is entered with the wrong expiry year (chaos §8); 18c's only correction is `surrender`, which is terminal | The AERB-bench walk includes a deliberate wrong year and the documented safe path (a too-short window: file the next certificate from the day after). The runbook says "read the validity twice before filing"; the surrender question stays on the owner's 18c list | T7 | R |
+| E3 | The RSO role has no holder on production; nobody can file | `seed:roles` mints it on the deploy; the census row says whom to assign; the owner assigns at `/admin/users` before the window step | T2, T7 | C · R |
+| E4 | A CT is booked into the window | Radiology is unopened on production; if a booking exists the console sees `device_not_licensed` and the window note names it. The runbook says to read the day's imaging appointments before declaring | T7 | R |
+| E5 ★ | The owner does not hold the certificates on deploy day | Devices stay refused after the window; the census shows RED on the radiology rows; it costs nothing while radiology is unopened (second reading) | T7 | R |
+| E6 ★ | The AERB bench (`hmis_aerb_demo`) is on an old migration set | Two rehearsals, two instruments (D12): the restore drill rehearses the *migrations* on production's data; the AERB bench rehearses the *18c gate walk* (refuse → file → gaps empty). The bench is migrated to the tip first and the watermark guard runs there before it runs anywhere else | T4, T7, T8 | R |
+
+### F. Money and paper, before the CA signs
+
+| # | the day | what must be true | task | closes with |
+|---|---|---|---|---|
+| F1 | Production holds dev placeholder GST and an unsigned tariff (O6); a pilot invoice prints with placeholder tax | The pilot is shadow with paper authoritative (runbook §9). The census's hospital-wide row "`validate:config` last ok" is informational and names O6; every receipt before O6 is a commissioning receipt and the cashier keeps the paper book | T2, T7 | C · R |
+| F2 | The downtime kit's serial ranges are not registered on UAT; drill C has no serial to quote | `/ops/downtime-kit` before drill C; an informational census row "kit ranges registered" | T2, T6 | C · R |
+| F3 | MRP vs tariff vs the NPPA ceiling at the pharmacy counter | Not this phase; the pharmacy seat drill (11k) meets it. Named in §6 so nobody looks for it here | — | §6 |
+
+### G. The census itself
+
+| # | the day | what must be true | task | closes with |
+|---|---|---|---|---|
+| G1 ★ | The census must run on production, and this lane may not touch `hmis-prod-*` | Runbook steps (3) and (6) are the OWNER's: `compose run --rm api node dist/scripts/standup-check.js all`, exactly as the seeds run. The lane runs it on UAT, on the drill's scratch cluster (T8) and on the test DB only | T2, T7, T8 | R |
+| G2 | A module renames a role key; the census keeps a string and reads green for a role nobody holds | Rows reference `ROLE_MODEL` keys from `seed-roles.ts`; the test asserts every key the census names exists in the model | T2 | T · M |
+| G3 | A loader throws on an empty database; the census crashes instead of reporting | Every check is wrapped; a throw is RED with the loader's own message and the `fix` text | T2 | T · M (a throwing loader aborts the run) |
+| G4 | A runbook gains a precondition and the census does not | The test pins one row set per `docs/runbooks/*-go-live.md` and counts the runbook's `## Preconditions` rows against the census's rows for that module — a mismatch fails. Blunt, cheap, and it is what makes the runbook and the script one document | T2 | T |
+| G5 | The census is green and the seat still fails | Then the runbook was incomplete: T6 files the missing row (the walkthrough is the census's test) | T6 | R |
+
+### H. The owner's day
+
+| # | the day | what must be true | task | closes with |
+|---|---|---|---|---|
+| H1 | The owner reads the runbook on a phone at 22:00 | Every step is one command and one expected line; no paragraph a thumb cannot scroll past. The mutant for a runbook is a reader | T7 | R |
+| H2 | The owner asks "is it safe to deploy?" on a Sunday with a peer's stack half-merged | The runbook's answer is a procedure (A5–A7 and the `deploy-blocker` label), not a judgement; the lane's answer is `lane-report.sh` plus a message to the orchestrator, never "yes" | T7 | R |
+| H3 | The one fact — a real patient on production — turns out to be true | Per D12 the order does not change; the announcement of the three deleted routes and the hour of the window do. The redirects (T9) make the announcement a courtesy rather than a rescue | T7, T9 | R |
+
+**Decisions this section adds, to be written as D14+ in the phase doc when the task that uses them
+runs:** A6 (a red `main` freezes deploys), A10 (`tls internal` on UAT), A12 (UAT never auto-restarts),
+A16 (the banner, no confirmation variable), B5 (no provider credential on UAT, pinned), C4 (UAT
+passwords in a root-600 file under `/opt/hmis-uat/`, never for production), D7 (a drawer session is
+not a stand-up fact).
