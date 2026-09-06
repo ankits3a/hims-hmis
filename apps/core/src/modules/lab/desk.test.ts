@@ -306,7 +306,7 @@ describe("the lab desk (17a T4)", () => {
   it("A9: two active pathologists refuse rather than let the counter pick one", async () => {
     await db.insert(opdDoctors).values({
       id: newId(), userId: fx.desk.id, departmentId: fx.labDepartmentId,
-      displayName: "Dr Second", registrationNo: "MCI/PATH/9002", active: true, createdBy: "t", updatedBy: "t",
+      displayName: "Dr Second", code: "DR-9002", registrationNo: "MCI/PATH/9002", active: true, createdBy: "t", updatedBy: "t",
     });
     await expect(openLabWalkin(db, fx.desk.actor, { patientId: fx.patientId }))
       .rejects.toMatchObject({ code: "unknown_doctor" });
@@ -510,7 +510,7 @@ describe("the reception seat (17c T1)", () => {
     const genDoctorId = newId();
     await db.insert(opdDoctors).values({
       id: genDoctorId, userId: physician.id, departmentId: genDeptId, displayName: "Dr General",
-      registrationNo: "MCI/GEN/7001", active: true, createdBy: "t", updatedBy: "t",
+      code: "DR-7001", registrationNo: "MCI/GEN/7001", active: true, createdBy: "t", updatedBy: "t",
     });
 
     await openOpdVisit(db, {

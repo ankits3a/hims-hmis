@@ -21,7 +21,7 @@ import type { WireFeeQuote } from "../../lib/billing-api";
 
 const doc = (over: Partial<WireDoctorSummary> & { id: string; departmentId: string }): WireDoctorSummary => ({
   doctor: {
-    id: over.id, userId: `u-${over.id}`, displayName: `Dr. ${over.id}`, registrationNo: null,
+    id: over.id, userId: `u-${over.id}`, displayName: `Dr. ${over.id}`, code: `DR-${over.id}`, registrationNo: null,
     departmentId: over.departmentId, specialty: null, active: over.doctor?.active ?? true,
     createdBy: "x", createdAt: "", updatedBy: "x", updatedAt: "",
   },

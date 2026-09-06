@@ -134,12 +134,18 @@ const roomPatchBody = z.object({
 const doctorCreateBody = z.object({
   username: z.string().min(1).max(100),
   displayName: z.string().min(1).max(200),
+  /* FD-29 — OPTIONAL, and omitting it is the normal path: `nextDoctorCode` mints `DR-nnnn`. It is
+     accepted so a college with its own faculty numbering can supply that instead. */
+  code: z.string().max(32).optional(),
   registrationNo: z.string().max(100).optional(),
   departmentId: z.string().min(1),
   specialty: z.string().max(200).optional(),
 });
 const doctorPatchBody = z.object({
   displayName: z.string().min(1).max(200).optional(),
+  /* NOT nullable, unlike `registrationNo` beside it: the column is NOT NULL and a doctor without
+     an id would print a blank where the prescription identifies the prescriber. */
+  code: z.string().min(1).max(32).optional(),
   registrationNo: z.string().max(100).nullable().optional(),
   departmentId: z.string().min(1).optional(),
   specialty: z.string().max(200).nullable().optional(),

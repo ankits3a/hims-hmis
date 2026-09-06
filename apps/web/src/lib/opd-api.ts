@@ -31,7 +31,9 @@ export type WireRoom = {
 };
 
 export type WireDoctor = {
-  id: string; userId: string; displayName: string; registrationNo: string | null; departmentId: string;
+  /* FD-29 — `code` is the DOCTOR ID the prescription letterhead prints. NOT NULL server-side: it is
+     minted at creation, so the screen never has to handle a doctor without one. */
+  id: string; userId: string; displayName: string; code: string; registrationNo: string | null; departmentId: string;
   specialty: string | null; active: boolean;
   createdBy: string; createdAt: string; updatedBy: string; updatedAt: string;
 };

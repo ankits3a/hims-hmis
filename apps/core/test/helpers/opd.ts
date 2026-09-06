@@ -83,15 +83,24 @@ export async function seedOpdMasters(db: Db): Promise<{ deptId: string; dept2Id:
   return { deptId, dept2Id, roomId, room2Id };
 }
 
+/**
+ * FD-29 — every fixture doctor needs a DISTINCT `code`: the column is NOT NULL and unique, and a
+ * suite that makes two doctors would otherwise fail on the index rather than on its own subject.
+ * Sequential rather than random so a failure message names something a reader can find.
+ */
+let fixtureDoctorSeq = 0;
+
 /** A doctor user + profile (+ optional weekly template). Defaults: Mon–Sat 09:00–13:00 in the given room. */
 export async function mkDoctor(
   db: Db,
-  input: { username: string; departmentId: string; roomId: string; weekdays?: number[]; start?: string; end?: string; displayName?: string },
+  input: { username: string; departmentId: string; roomId: string; weekdays?: number[]; start?: string; end?: string; displayName?: string; code?: string },
 ): Promise<{ doctorId: string; userId: string; actor: Actor; token: string }> {
   const u = await mkUser(db, input.username, ["doctor"]);
   const doctorId = newId();
+  fixtureDoctorSeq += 1;
   await db.insert(opdDoctors).values({
     id: doctorId, userId: u.id, displayName: input.displayName ?? `Dr ${input.username}`, registrationNo: "BMC/12345",
+    code: input.code ?? `DR-${String(fixtureDoctorSeq).padStart(4, "0")}`,
     departmentId: input.departmentId, createdBy: "t", updatedBy: "t",
   });
   const weekdays = input.weekdays ?? [1, 2, 3, 4, 5, 6];

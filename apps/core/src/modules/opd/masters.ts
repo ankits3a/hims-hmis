@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { opdDepartments, opdDoctors, resources, users } from "../../kernel/db/schema";
 import {
@@ -227,10 +227,59 @@ export async function listRooms(db: Db, opts: { activeOnly?: boolean } = {}): Pr
 // queries for them directly, and the controller reads through `listRooms`. An unused export on a
 // facade is a second vocabulary waiting for its first caller.
 
+/**
+ * ═══ FD-29 — THE DOCTOR ID, MINTED SO NOBODY HAS TO INVENT ONE ═══
+ *
+ * `DR-` + four digits, the form the prescription artboard has shown since 2026-08-29 and the form
+ * the owner asked for on 2026-09-06.
+ *
+ * ═══ MAX OVER EVERY ROW, ACTIVE OR NOT — AND THE LIMIT OF THAT ═══
+ *
+ * The next number is one past the highest `DR-nnnn` ON THE TABLE, which includes RETIRED doctors:
+ * `updateDoctor({ active: false })` leaves the row and its id in place, so a doctor who left the
+ * hospital keeps their number and the next arrival gets a fresh one. That matters because a
+ * prescription is paper that outlives an employment — a reissued id makes an old sheet name the
+ * wrong person, silently, for ever.
+ *
+ * A COUNT would fail that on the first retirement. MAX does not — but be honest about what MAX
+ * cannot do: it reads only rows that still exist, so HARD-DELETING the highest doctor WOULD hand
+ * their number to the next one. There is no delete route (`masters.ts` offers create, update and
+ * read, and retirement is `active: false`), which is what makes this safe rather than the query
+ * being clever. A future `deleteDoctor` would have to reserve the number, and this paragraph is the
+ * reason it cannot simply be added.
+ *
+ * It reads only codes matching the minted shape, so a hospital that overwrites some rows with its
+ * own faculty numbering (`CRK/FAC/114`) does not derail the sequence for the rest.
+ *
+ * NOT SERIALISED BY A LOCK, and that is a size judgement rather than an oversight: doctors are
+ * created by an admin a handful of times a year, and `opd_doctors_code_ux` turns the racing case
+ * into a refused insert rather than a duplicate id. A counter row would be more machinery than the
+ * contention justifies. If this ever moves to a bulk import, take the `nextDocNo` lock pattern.
+ */
+export async function nextDoctorCode(tx: Tx): Promise<string> {
+  const rows = await tx
+    .select({ highest: sql<number | null>`max(nullif(regexp_replace(${opdDoctors.code}, '^DR-0*', ''), '')::int)` })
+    .from(opdDoctors)
+    .where(sql`${opdDoctors.code} ~ '^DR-[0-9]+$'`);
+  const next = (rows[0]?.highest ?? 0) + 1;
+  if (next > 9999) {
+    throw new OpdError("doctor_code_exhausted", "the 4-digit DR- sequence is full; assign codes explicitly");
+  }
+  return `DR-${String(next).padStart(4, "0")}`;
+}
+
+/** A code an admin supplied by hand. Trimmed, non-blank, and short enough to print on a letterhead. */
+function normaliseDoctorCode(code: string): string {
+  const trimmed = code.trim();
+  if (trimmed === "") throw new OpdError("invalid_doctor_code", "a doctor id cannot be blank");
+  if (trimmed.length > 32) throw new OpdError("invalid_doctor_code", "a doctor id must be 32 characters or fewer");
+  return trimmed;
+}
+
 export async function createDoctor(
   tx: Tx,
   actor: Actor,
-  input: { username: string; displayName: string; registrationNo?: string; departmentId: string; specialty?: string },
+  input: { username: string; displayName: string; code?: string; registrationNo?: string; departmentId: string; specialty?: string },
 ): Promise<{ doctorId: string; userId: string }> {
   requireUserActor(actor);
   const userRows = await tx.select().from(users).where(eq(users.username, input.username));
@@ -249,6 +298,9 @@ export async function createDoctor(
       id,
       userId: user.id,
       displayName: input.displayName,
+      /* Supplied wins; otherwise minted. A medical college that already issues faculty numbers
+         should print ITS number, not a second one this system invented alongside it. */
+      code: input.code === undefined ? await nextDoctorCode(tx) : normaliseDoctorCode(input.code),
       registrationNo: input.registrationNo ?? null,
       departmentId: input.departmentId,
       specialty: input.specialty ?? null,
@@ -265,7 +317,7 @@ export async function updateDoctor(
   tx: Tx,
   actor: Actor,
   id: string,
-  patch: { displayName?: string; registrationNo?: string | null; departmentId?: string; specialty?: string | null; active?: boolean },
+  patch: { displayName?: string; code?: string; registrationNo?: string | null; departmentId?: string; specialty?: string | null; active?: boolean },
 ): Promise<void> {
   requireUserActor(actor);
   const existing = await tx.select().from(opdDoctors).where(eq(opdDoctors.id, id));
@@ -276,7 +328,10 @@ export async function updateDoctor(
     if (!dept) throw new OpdError("unknown_department", `department ${patch.departmentId} not found`);
     if (!dept.active) throw new OpdError("department_inactive", `department ${patch.departmentId} is inactive`);
   }
-  await tx.update(opdDoctors).set({ ...patch, updatedBy: actor.id, updatedAt: new Date() }).where(eq(opdDoctors.id, id));
+  /* NULLABLE NOWHERE: the column is NOT NULL, so a patch may CHANGE the id but never clear it —
+     a prescription printed against a doctor with no id names nobody. */
+  const code = patch.code === undefined ? {} : { code: normaliseDoctorCode(patch.code) };
+  await tx.update(opdDoctors).set({ ...patch, ...code, updatedBy: actor.id, updatedAt: new Date() }).where(eq(opdDoctors.id, id));
 }
 
 export async function listDoctors(db: Db, opts: { departmentId?: string; activeOnly?: boolean } = {}): Promise<DoctorRow[]> {

@@ -167,7 +167,7 @@ export async function seedLabDeskBase(db: Db, encounterNo = "V2608290001"): Prom
   const labDoctorId = newId();
   await db.insert(opdDoctors).values({
     id: labDoctorId, userId: pathologistUser.id, departmentId: labDepartmentId,
-    displayName: "Dr Iyer", registrationNo: "MCI/PATH/9001", active: true, createdBy: "t", updatedBy: "t",
+    displayName: "Dr Iyer", code: "DR-9001", registrationNo: "MCI/PATH/9001", active: true, createdBy: "t", updatedBy: "t",
   });
 
   const patientId = newId();

@@ -3,6 +3,10 @@ export type OpdErrorCode =
   | "unknown_department" | "department_inactive" | "duplicate_department_code"
   | "unknown_room" | "duplicate_room_code"
   | "unknown_doctor" | "doctor_inactive" | "unknown_user" | "user_already_doctor" | "doctor_department_mismatch"
+  // FD-29 — the doctor id the prescription prints. Both fall through `opdStatus` to 400, which
+  // is right for each: a blank or over-long id is a malformed request, and the exhausted case
+  // is reached only at ten thousand doctors, where the caller's answer is to supply one.
+  | "invalid_doctor_code" | "doctor_code_exhausted"
   | "not_a_doctor" | "not_your_patient"
   | "invalid_schedule" | "unknown_schedule" | "unknown_leave" | "leave_not_scheduled" | "invalid_leave_range"
   | "patient_not_found" | "duplicate_suspected" | "registration_not_permitted"

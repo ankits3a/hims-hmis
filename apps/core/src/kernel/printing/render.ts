@@ -285,6 +285,11 @@ type SlipSubject = {
   ageYears: number | null;
   /** `opd_doctors.specialty` — nullable free text; the sheet falls back to the department. */
   doctorSpecialty: string | null;
+  /**
+   * FD-29 — `opd_doctors.code`, the DOCTOR ID the A4 letterhead prints. NOT NULL on the column, so
+   * the `—` fallback below can only be reached by an encounter with no doctor at all.
+   */
+  doctorCode: string | null;
 };
 
 /** `MED-4`. The same grammar the screen uses — a token printed one way and said another sends a patient to the wrong door. */
@@ -432,7 +437,7 @@ async function subjectOf(
   */
   const doctor = await db
     .select({
-      name: opdDoctors.displayName, registrationNo: opdDoctors.registrationNo,
+      name: opdDoctors.displayName, registrationNo: opdDoctors.registrationNo, code: opdDoctors.code,
       /* FD-29 — the A4 letterhead prints a Speciality row. Nullable free text with no master
          behind it, so the sheet falls back to the department rather than printing a dash. */
       specialty: opdDoctors.specialty,
@@ -521,6 +526,7 @@ async function subjectOf(
     doctorName: doctor[0]?.name ?? "the department",
     doctorRegistrationNo: doctor[0]?.registrationNo ?? null,
     doctorSpecialty: doctor[0]?.specialty ?? null,
+    doctorCode: doctor[0]?.code ?? null,
     tokenNo: entry[0]?.tokenNo ?? null,
     roomCode: null,
     /* FD-29 — the canonical id, NOT `opd_encounters.patient_id`: see the field's own comment. */
@@ -713,12 +719,13 @@ export async function renderPaymentReceipt(
  *      out of the building names the token, the counter reads it off this sheet, and the owner
  *      raised token visibility as a defect four days ago. One row against that is a cheap trade —
  *      but it IS a departure from the design and reversing it is one line.
- *   3. **`Doctor ID: DR-0114` becomes `Doctor: <name> · Reg. <no>`.** There is no doctor code in
- *      this system — `opd_doctors` has no such column and the string occurs only in design canvases.
- *      An opaque internal code would also satisfy neither half of NMC Code of Ethics reg. 1.4.2,
- *      which wants the treating physician's NAME and council registration number on a prescription.
- *      Printing what the row actually holds recovers both, and recovers two of the four things the
- *      new design would otherwise have lost.
+ *   3. **`Doctor ID` prints, and the doctor's name and council number do NOT** — owner, 2026-09-06,
+ *      overruling this file's first answer: *"As a medical Institution with college, there's no need
+ *      of mentioning Dr. Name and their registration number. Only Dr. ID is required."* The first cut
+ *      substituted the name because `DR-0114` existed in five design canvases and in NO COLUMN;
+ *      `opd_doctors.code` was added for this (migration `0074_opd_doctor_code`, minted `DR-nnnn`,
+ *      overridable by a college that issues its own faculty numbers). See `doctorCell` for why the
+ *      regulator's requirement is met by the signature block rather than by the letterhead.
  *   4. **The QR carries the visit number, and the "password to access" line is not printed.**
  *      Owner ruling, 2026-09-06, when asked: *a real QR of the encounter, no password.* The design's
  *      8-digit access code has nothing behind it — no minting, no store, no verifier, no portal —
@@ -809,9 +816,22 @@ export async function renderPrescriptionSheet(
   const dobCell = s.dobEstimated || dobDay === null
     ? (s.ageYears === null ? "—" : `${s.dobEstimated ? "≈" : ""}${String(s.ageYears)} years`)
     : `${dobDay}${ageSuffix}`;
-  const doctorCell = s.doctorRegistrationNo === null
-    ? esc(s.doctorName)
-    : `${esc(s.doctorName)} · Reg. ${esc(s.doctorRegistrationNo)}`;
+  /*
+    OWNER, 2026-09-06: *"As a medical Institution with college, there's no need of mentioning Dr.
+    Name and their registration number. Only Dr. ID is required."*
+
+    An earlier cut of this sheet printed `Doctor: <name> · Reg. <no>` BECAUSE THE ID DID NOT EXIST —
+    `DR-0114` was in five design canvases and in no column — and dropping the name without putting
+    something in its place would have left the row empty. `opd_doctors.code` is that column now, so
+    the design's own row is what prints.
+
+    The compliance question the substitution was answering is answered by the sheet's other half:
+    the signature block asks the treating physician for their name and registration number IN THEIR
+    OWN HAND, which is what NMC Code of Ethics reg. 1.4.2 wants on a prescription and what a blank
+    pad is for. The printed sheet identifies the prescriber to the HOSPITAL; the signature
+    identifies them to the regulator.
+  */
+  const doctorCell = esc(s.doctorCode ?? "—");
 
   const css = `
     /* The geometry is the artboard's: a 794 x 1123 px page at 96 dpi is exactly A4, so the layout
@@ -922,7 +942,7 @@ export async function renderPrescriptionSheet(
           ${idRow("UHID:", `<span class="num">${esc(s.uhid)}</span>`)}
           ${idRow("Gender:", esc(genderLetter(s.gender)))}
           ${idRow("DOB:", `<span class="num">${esc(dobCell)}</span>`)}
-          ${idRow("Doctor:", doctorCell)}
+          ${idRow("Doctor ID:", `<span class="num">${doctorCell}</span>`)}
         </div>
         <div class="r">
           ${idRow("Encounter ID:", `<span class="num">${esc(s.visitNo)}</span>`)}

@@ -76,6 +76,24 @@ export const opdDoctors = pgTable(
     id: text("id").primaryKey(),
     userId: text("user_id").notNull(), // users.id — plain text (see header)
     displayName: text("display_name").notNull(), // shown on displays, slips, e-Rx
+    /**
+     * ═══ FD-29 — THE DOCTOR ID THE PRESCRIPTION PRINTS (owner, 2026-09-06) ═══
+     *
+     * *"As a medical Institution with college, there's no need of mentioning Dr. Name and their
+     * registration number. Only Dr. ID is required."* The A4 letterhead had been printing the name
+     * and the council number because THIS COLUMN DID NOT EXIST — `DR-0114` appeared in five design
+     * canvases and nowhere in the schema, and a sheet cannot print a field the system does not hold.
+     *
+     * MINTED, NOT REQUIRED OF THE ADMIN: `nextDoctorCode` assigns `DR-` + four digits at creation,
+     * so no doctor is ever without one and no clerk has to invent a numbering scheme. It is
+     * OVERRIDABLE through `updateDoctor` for a hospital that already issues faculty numbers of its
+     * own — which a medical college does. Unique, because a shared id on a prescription identifies
+     * nobody.
+     *
+     * NOT `registrationNo`, which stays: that is the NMC/state-council number, it is a different
+     * fact about a different authority, and the e-Rx still prints it.
+     */
+    code: text("code").notNull(),
     registrationNo: text("registration_no"), // NMC/state council registration — printed on the e-Rx
     departmentId: text("department_id").notNull().references(() => opdDepartments.id),
     specialty: text("specialty"),
@@ -85,7 +103,11 @@ export const opdDoctors = pgTable(
     updatedBy: text("updated_by").notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("opd_doctors_user_ux").on(t.userId), index("opd_doctors_department_idx").on(t.departmentId)],
+  (t) => [
+    uniqueIndex("opd_doctors_user_ux").on(t.userId),
+    uniqueIndex("opd_doctors_code_ux").on(t.code),
+    index("opd_doctors_department_idx").on(t.departmentId),
+  ],
 );
 
 /** Weekly availability template. Times are IST 'HH:MM'. Slots are derived, never materialised (slots.ts). */

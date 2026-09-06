@@ -380,7 +380,9 @@
       "inactive": "Deactivated and still on file: {{list}}. A deactivated master stops being offered at the counter; it is never deleted, because past visits point at it.",
       "allActive": "Everything here is active.",
       "cannot": "I cannot answer that from this screen. I can tell you about the departments, rooms and doctors on this deployment, and which are deactivated."
-    }
+    },
+    "doctorCode": "Doctor ID",
+    "doctorCodeOptional": "Doctor ID (blank to assign one)"
   },
   "opdAppt": {
     "title": "OPD appointments",

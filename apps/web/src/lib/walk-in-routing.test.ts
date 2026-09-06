@@ -19,7 +19,8 @@ function doc(over: {
 }): WireDoctorSummary {
   return {
     doctor: {
-      id: over.id, userId: `u-${over.id}`, displayName: over.name ?? `Dr ${over.id}`, registrationNo: null,
+      id: over.id, userId: `u-${over.id}`, displayName: over.name ?? `Dr ${over.id}`,
+      code: `DR-${over.id}`, registrationNo: null,
       departmentId: over.departmentId ?? GM, specialty: null, active: over.active ?? true,
       createdBy: "s", createdAt: "", updatedBy: "s", updatedAt: "",
     },

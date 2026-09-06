@@ -56,7 +56,7 @@ describe("FD-24 T3: rendering the counter's documents", () => {
     await activateOpdVisitDefinition(db);
     ({ deptId, roomId } = await seedOpdMasters(db));
     const clerk = await mkUser(db, "render-clerk", ["front_office"]);
-    const doctor = await mkDoctor(db, { username: "dr-render", departmentId: deptId, roomId, displayName: "Dr Anand Rao" });
+    const doctor = await mkDoctor(db, { username: "dr-render", departmentId: deptId, roomId, displayName: "Dr Anand Rao", code: "DR-0114" });
     const patient = await mkPatient(db, clerk.actor, { name: "Muskan Arora", sex: "female", ageYears: 28 });
     const visit = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: doctor.doctorId }, MON);
     encounterId = visit.encounter.id;
@@ -279,7 +279,7 @@ describe("FD-24 T3: rendering the counter's documents", () => {
       expect(doc!.html).toContain("Muskan Arora");
       expect(doc!.html).toContain("Signature, name &amp; registration no.");
       // The five rows the design added, each labelled as the artboard labels it.
-      for (const label of ["Name:", "UHID:", "Gender:", "DOB:", "Doctor:", "Encounter ID:", "Encounter Type:", "Visit/Admn Date:", "Department:", "Speciality:"]) {
+      for (const label of ["Name:", "UHID:", "Gender:", "DOB:", "Doctor ID:", "Encounter ID:", "Encounter Type:", "Visit/Admn Date:", "Department:", "Speciality:"]) {
         expect(doc!.html).toContain(`<span class="lb">${label}</span>`);
       }
       expect(doc!.html).toContain("Outpatient");
@@ -297,15 +297,28 @@ describe("FD-24 T3: rendering the counter's documents", () => {
     });
 
     /**
-     * DEPARTURE 3. `DR-0114` does not exist — `opd_doctors` has no code column and the string lives
-     * only in design canvases. What a prescription must legibly carry under NMC Code of Ethics reg.
-     * 1.4.2 is the physician's NAME and council registration number, and the row holds both.
+     * OWNER, 2026-09-06, overruling this sheet's first answer: *"As a medical Institution with
+     * college, there's no need of mentioning Dr. Name and their registration number. Only Dr. ID is
+     * required."*
+     *
+     * The first cut printed the name and the council number because there WAS no doctor id — the
+     * column arrived with this change. Both halves are asserted: what prints, and what must not.
+     * The council number stays in the database and on the e-Rx; it is this letterhead that drops it.
      */
-    it("prints the doctor's name and council registration, not an invented doctor code", async () => {
+    it("prints the Doctor ID alone — not the doctor's name, not the council registration", async () => {
       const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
-      expect(doc!.html).toContain("Dr Anand Rao");
-      expect(doc!.html).not.toContain("Doctor ID");
-      expect(doc!.html).not.toMatch(/DR-\d{4}/);
+      expect(doc!.html).toContain(`<span class="lb">Doctor ID:</span><span class="vl"><span class="num">DR-0114</span></span>`);
+      expect(doc!.html).not.toContain("Dr Anand Rao");
+      expect(doc!.html).not.toContain("BMC/12345");
+      expect(doc!.html).not.toContain("Reg.");
+    });
+
+    /** The row is NOT NULL, so the dash is reachable only by an encounter with no doctor at all —
+     *  which `subjectOf` already tolerates (`doctorName` falls back to "the department"). */
+    it("prints a dash rather than a blank when the encounter names no doctor", async () => {
+      await db.update(opdEncounters).set({ doctorId: null }).where(eq(opdEncounters.id, encounterId));
+      const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(`<span class="lb">Doctor ID:</span><span class="vl"><span class="num">—</span></span>`);
     });
 
     /** The visit number prints WITH its series letter. Stripping the `V` — which the design does —
