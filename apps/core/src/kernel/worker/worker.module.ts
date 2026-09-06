@@ -1,7 +1,7 @@
 import { Module, Global, Inject, OnModuleDestroy } from "@nestjs/common";
 import type { INestApplicationContext } from "@nestjs/common";
 import type { Pool } from "pg";
-import { createDb, Db } from "../db/client";
+import { createDb, DEFAULT_WORKER_POOL_MAX, Db } from "../db/client";
 import { loadConfig, AppConfig } from "../config";
 import { DB, DB_POOL, CONFIG, MODULE_REGISTRY } from "../tokens";
 import { ModuleRegistry } from "../modules/loader";
@@ -62,7 +62,9 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
     { provide: CONFIG, useFactory: (): AppConfig => loadConfig() },
     {
       provide: DB_BUNDLE,
-      useFactory: (cfg: AppConfig): DbBundle => createDb(cfg.databaseUrl),
+      // 11i T0: the worker's pool is HALF the API's (ROADMAP-v2 Q6). `DB_POOL_MAX` still wins
+      // over both when a deployment sets it.
+      useFactory: (cfg: AppConfig): DbBundle => createDb(cfg.databaseUrl, { defaultMax: DEFAULT_WORKER_POOL_MAX }),
       inject: [CONFIG],
     },
     { provide: DB, useFactory: (b: DbBundle): Db => b.db, inject: [DB_BUNDLE] },
