@@ -177,7 +177,20 @@ export type WireReportSnapshot = {
   patient: { id: string; uhid: string; name: string; sex: string; dob: string | null };
   orderingClinicianId: string | null;
   panels: WireReportPanel[];
-  signatory: { userId: string; username: string; signedAt: string };
+  /**
+   * `fullName` and `registrationNo` are OPTIONAL because a published report is immutable by database
+   * trigger: reports signed before the letterhead change can never gain them, there is no backfill,
+   * and there must not be one. The print component falls back rather than rendering `undefined`.
+   */
+  signatory: {
+    userId: string;
+    username: string;
+    signedAt: string;
+    fullName?: string;
+    registrationNo?: string | null;
+  };
+  /** The hospital as it was named on the day this was signed. Optional for the same reason. */
+  letterhead?: { name: string; addressLines: string[] };
   partial: boolean;
   notes: string[];
 };

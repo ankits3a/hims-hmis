@@ -2241,6 +2241,7 @@
       "note2": "A borderline or high value should be repeated before any change of treatment.",
       "note3": "Results are not valid for medico-legal purposes.",
       "authorisedBy": "Authorised by",
+      "registrationNo": "Reg. No.",
       "computerGenerated": "This is a computer generated report. A handwritten signature is not required."
     },
     "consult": {
