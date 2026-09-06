@@ -187,12 +187,17 @@ function RoomsTab({ items, queryClient }: { items: WireRoom[]; queryClient: Quer
 
 // ——— doctors ———
 
+/**
+ * NO `code` FIELD, DELIBERATELY. The doctor id is MINTED by the server at creation — this form
+ * shipped for four hours with a "Doctor ID (blank to assign one)" box and the owner's first
+ * question was why it was not automatic, which is the box answering for the behaviour. Adding a
+ * doctor asks for the facts a human knows; the id is not one of them, and the table below shows
+ * what was assigned. Overriding it with a college's own faculty number stays available on
+ * `PATCH /opd/doctors/:id` and wants an edit affordance of its own, not a question here.
+ */
 const doctorSchema = z.object({
   username: z.string().min(1),
   displayName: z.string().min(1),
-  /* OPTIONAL, and normally left blank: the server mints `DR-nnnn`. It is here for a college that
-     already issues faculty numbers and wants ITS number on the prescription. */
-  code: z.string(),
   registrationNo: z.string(),
   departmentId: z.string().min(1),
   specialty: z.string(),
@@ -206,7 +211,7 @@ function DoctorsTab({
   const [error, setError] = useState<string | null>(null);
   const form = useForm<DoctorValues>({
     resolver: zodResolver(doctorSchema),
-    defaultValues: { username: "", displayName: "", code: "", registrationNo: "", departmentId: "", specialty: "" },
+    defaultValues: { username: "", displayName: "", registrationNo: "", departmentId: "", specialty: "" },
   });
 
   const refresh = (): Promise<void> => queryClient.invalidateQueries({ queryKey: ["opd", "doctors"] });
@@ -217,15 +222,13 @@ function DoctorsTab({
     try {
       // The doctor profile is created BY USERNAME — the server resolves it to a Plan 02 user and
       // answers unknown_user (404) when there is none. No client-side existence check mirrors that.
-      const body: { username: string; displayName: string; departmentId: string; code?: string; registrationNo?: string; specialty?: string } = {
+      const body: { username: string; displayName: string; departmentId: string; registrationNo?: string; specialty?: string } = {
         username: v.username, displayName: v.displayName, departmentId: v.departmentId,
       };
-      // Blank means "mint one" — sending an empty string would be refused as an invalid id.
-      if (v.code.trim() !== "") body.code = v.code.trim();
       if (v.registrationNo.trim() !== "") body.registrationNo = v.registrationNo.trim();
       if (v.specialty.trim() !== "") body.specialty = v.specialty.trim();
       await api("POST", "/opd/doctors", body);
-      form.reset({ username: "", displayName: "", code: "", registrationNo: "", departmentId: "", specialty: "" });
+      form.reset({ username: "", displayName: "", registrationNo: "", departmentId: "", specialty: "" });
       await refresh();
     } catch (e) {
       setError(opdErrorMessage(e));
@@ -271,7 +274,6 @@ function DoctorsTab({
           <h2 className="tag" style={{ margin: 0 }}>{t("opdAdmin.newDoctor")}</h2>
           <TextField name="username" label={t("opdAdmin.username")} />
           <TextField name="displayName" label={t("opdAdmin.displayName")} />
-          <TextField name="code" label={t("opdAdmin.doctorCodeOptional")} />
           <TextField name="registrationNo" label={t("opdAdmin.registrationNo")} />
           <SelectField
             name="departmentId"

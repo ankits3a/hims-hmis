@@ -381,8 +381,7 @@
       "allActive": "Everything here is active.",
       "cannot": "I cannot answer that from this screen. I can tell you about the departments, rooms and doctors on this deployment, and which are deactivated."
     },
-    "doctorCode": "Doctor ID",
-    "doctorCodeOptional": "Doctor ID (blank to assign one)"
+    "doctorCode": "Doctor ID"
   },
   "opdAppt": {
     "title": "OPD appointments",
