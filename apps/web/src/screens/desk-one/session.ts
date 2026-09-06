@@ -341,6 +341,16 @@ export function useDesk(): DeskApi {
 }
 
 /**
+ * FD-27 — the same shape `usePatientInHandOptional` and `usePaletteOptional` already have, and
+ * added for the same reason: `papers.tsx` is mounted BOTH inside Desk One and inside
+ * `billing-counter.tsx`, which has no `DeskProvider` above it. A component shared across that seam
+ * must be able to ask whether it has a desk instead of throwing at the one seat that has none.
+ */
+export function useDeskOptional(): DeskApi | null {
+  return useContext(DeskContext);
+}
+
+/**
  * ═══ FD-12 — HOW OLD IS THIS PERSON, from whichever of the two boxes the clerk used ═══
  *
  * One function because the answer drives something that must not be got twice-differently: whether

@@ -1378,4 +1378,52 @@ describe("BillingCounter", () => {
     await waitFor(() => { expect(modeNow()).toBe("card"); });
   });
 
+
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-27 — THE CASHIER'S OWN DOOR TO THE PAPER
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Owner, 2026-09-06: *"A user with Billing permission don't have any way to print the OPD
+   * prescription … can he print it again?"* They could not, twice over: this seat mounts no Desk
+   * One, so the papers sheet the history rows open is unreachable here, and `cashier` held no
+   * permission that opened `GET /print/jobs` at all.
+   *
+   * The permission half is guarded in `apps/core` (`opd.paper.reprint`, and the seed census moved
+   * with it). This is the wiring half, and it is asserted HERE rather than only in `seats.test.tsx`
+   * because that suite mounts the DESK — it would stay green with this seat's button missing.
+   */
+  it("FD-27: the counter offers Their papers for the visit it is billing, and refuses to guess one", async () => {
+    mockRoutes({});
+    searchState.current = {};
+    const { unmount } = renderWithProviders(<BillingCounter />);
+    /*
+      DISABLED, NOT HIDDEN, with no encounter. A cashier hunting for the reprint button has to find
+      it and be told what it wants — not fail to find it and conclude it was never built, which is
+      the report this whole phase came from.
+    */
+    await waitFor(() => { expect(screen.getByTestId("counter-papers")).toBeDisabled(); });
+    expect(screen.queryByTestId("counter-papers-sheet")).not.toBeInTheDocument();
+    unmount();
+
+    searchState.current = { encounterId: "enc-77" };
+    mockRoutes({
+      "GET /api/print/jobs": { status: 200, body: { jobs: [
+        { id: "j-rx", document: "opd_prescription", status: "printed", attempts: 1, lastError: null, printedAt: "2026-09-01T05:00:00.000Z", createdAt: "2026-09-01T04:59:00.000Z" },
+      ] } },
+      "GET /api/billing/invoices": { status: 200, body: { items: [] } },
+    });
+    renderWithProviders(<BillingCounter />);
+    const user = userEvent.setup({ delay: null });
+    await waitFor(() => { expect(screen.getByTestId("counter-papers")).toBeEnabled(); });
+    await user.click(screen.getByTestId("counter-papers"));
+
+    const sheet = await screen.findByTestId("counter-papers-sheet");
+    expect(sheet).toHaveAttribute("role", "dialog");
+    /* The A4 sheet the owner named, offered whatever its status — not only when it FAILED. */
+    expect(await screen.findByTestId("papers-reprint-opd_prescription")).toBeInTheDocument();
+    /* And it asked about the encounter this counter is billing, not some other one. */
+    expect(callsTo("GET", "/api/print/jobs").some((c) => c.url.includes("enc-77"))).toBe(true);
+  });
+
 });

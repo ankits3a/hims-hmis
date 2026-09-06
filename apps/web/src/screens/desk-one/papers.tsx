@@ -6,7 +6,7 @@ import { InvoicePrint } from "../../components/invoice-print";
 import { SubmitButton } from "../../components/submit-button";
 import { dayMonthIst } from "../../lib/format";
 import { rs } from "./model";
-import { useDesk } from "./session";
+import { useDeskOptional } from "./session";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -44,7 +44,16 @@ import { useDesk } from "./session";
  * document carrying a patient's name.
  */
 export function PapersSheet({ encounterId, when }: { encounterId: string; when: string | null }): React.ReactElement {
-  const d = useDesk();
+  /*
+    ═══ OPTIONAL, BECAUSE THE SEAT THE OWNER NAMED DOES NOT MOUNT THE DESK ═══
+
+    `/billing` is `SeatShell` + `billing-counter.tsx` (the owner's ruling that the cashier keeps
+    every money control), so there is no `DeskProvider` above it and `useDesk()` would throw. The
+    cashier is the person who was named in *"can he print it again?"*, so a papers sheet they cannot
+    open would have answered the wrong half of the report. Everything here works without a desk; the
+    only thing a desk adds is a line in its log.
+  */
+  const d = useDeskOptional();
   const [note, setNote] = useState<string | null>(null);
 
   const jobs = useQuery({
@@ -145,7 +154,7 @@ export function PapersSheet({ encounterId, when }: { encounterId: string; when: 
                   await jobs.refetch();
                   const label = PRINT_DOCUMENT_LABEL[j.document] ?? j.document;
                   setNote(`${label} queued again — it prints at the front desk.`);
-                  d.note(`reprint queued — ${label}`, "ok");
+                  d?.note(`reprint queued — ${label}`, "ok");
                 }}
               >
                 print again

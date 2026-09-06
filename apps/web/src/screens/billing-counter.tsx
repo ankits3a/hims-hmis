@@ -6,6 +6,8 @@ import { PatientPicker } from "../components/patient-picker";
 import { SubmitButton } from "../components/submit-button";
 import type { PatientPickerHit } from "../components/patient-picker";
 import { usePatientInHandOptional } from "../lib/patient-in-hand";
+import { DeskModal } from "../components/desk-modal";
+import { PapersSheet } from "./desk-one/papers";
 import { api } from "../lib/api";
 import { InvoicePrint } from "../components/invoice-print";
 import { MoneyInput } from "../components/money-input";
@@ -155,6 +157,8 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
     "issue another bill" reset (`:575`) impossible to complete.
   */
   const adopted = useRef(false);
+  /** FD-27 — the reprint sheet, opened from the header. See `headerActions`. */
+  const [papersOpen, setPapersOpen] = useState(false);
   const [lines, setLines] = useState<CounterLine[]>([]);
   const [serviceQuery, setServiceQuery] = useState("");
   const [tenders, setTenders] = useState<WireTender[]>([]);
@@ -683,6 +687,29 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
 
   const headerActions = (
     <>
+      {/*
+        ═══ FD-27 — THE CASHIER'S OWN DOOR TO THE PAPER ═══
+
+        Owner, 2026-09-06: *"A user with Billing permission don't have any way to print the OPD
+        prescription (A4 size) … if the patient comes back saying he lost the bill … can he print it
+        again?"* This seat mounts no Desk One, so the papers sheet the history rows open is not
+        reachable here — and this is the seat the owner named. It is the SAME component, opened on
+        the encounter this counter is already billing against.
+
+        Disabled with no encounter rather than hidden: a cashier looking for the reprint button
+        needs to find it and be told what it wants, not fail to find it and conclude it was never
+        built. That is the report this whole phase came from.
+      */}
+      <button
+        type="button"
+        className="sec"
+        data-testid="counter-papers"
+        disabled={encounterId.trim() === ""}
+        title={encounterId.trim() === "" ? "Name the visit first — papers belong to a visit" : "slips and bills for this visit, and a way to print them again"}
+        onClick={() => { setPapersOpen(true); }}
+      >
+        Their papers
+      </button>
       <span className={session.data?.session == null ? "pill" : "pill on"} data-testid="drawer-pill">
         {session.data?.session == null
           ? t("billingSeat.header.noDrawer")
@@ -1382,6 +1409,25 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
           </div>
         </div>
       </div>
+
+      {/*
+        FD-27 — `DeskModal` rather than Desk One's `Sheet`: `.ovl` is a `.d1`-only selector with no
+        `.pp` twin (`desk-one.css:162`), so the desk's own overlay shell would render unpositioned
+        and unscrimmed on this screen. `DeskModal` is the `.pp` primitive and brings the dialog
+        semantics with it.
+      */}
+      <DeskModal
+        open={papersOpen}
+        onClose={() => { setPapersOpen(false); }}
+        title={`Papers for this visit`}
+        titleId="counter-papers-title"
+        testId="counter-papers-sheet"
+        width={620}
+      >
+        {papersOpen && encounterId.trim() !== "" ? (
+          <PapersSheet encounterId={encounterId.trim()} when={null} />
+        ) : null}
+      </DeskModal>
 
       <AgentDock
         answer={answer}
