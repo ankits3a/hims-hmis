@@ -1960,6 +1960,7 @@
       "portal": "Arrived on the portal · no typing needed",
       "portalHint": "Orders placed at the consult flow straight to the collection queue. They are listed here so you can answer “has my order reached?” and hand a token to a portal patient who has none.",
       "portalUnavailable": "The portal list could not be loaded.",
+      "portalNotPermitted": "The portal list is not shown at this seat — it needs the collection grant, which belongs to the phlebotomist's chair.",
       "portalEmpty": "Nothing waiting yet today.",
       "min": "min",
       "find": "Scan the token or the slip, or type the token, the UHID or the name",
@@ -2241,6 +2242,7 @@
       "note2": "A borderline or high value should be repeated before any change of treatment.",
       "note3": "Results are not valid for medico-legal purposes.",
       "authorisedBy": "Authorised by",
+      "registrationNo": "Reg. No.",
       "computerGenerated": "This is a computer generated report. A handwritten signature is not required."
     },
     "consult": {
@@ -2267,6 +2269,7 @@
       "collectedStat": "collected here",
       "register": "Published · how each one went out",
       "registerEmpty": "Nothing published yet today.",
+      "testsWithheld": "test names withheld",
       "registerUnavailable": "The register could not be loaded.",
       "colPatient": "patient · tests",
       "colDoctor": "doctor",
@@ -3418,6 +3421,7 @@
       "validTo": "Valid to",
       "validToOptional": "Valid to (leave blank for open-ended)",
       "remarks": "Remarks",
+      "noAppointment": "no AERB appointment on file",
       "notLicensable": "AERB does not licence this modality",
       "deviceBlocked": "out of service, QA failed",
       "licenceFiled": "Licence {{licenceNo}} filed.",

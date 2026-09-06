@@ -154,9 +154,31 @@ export function LabReportPrint({
         the component's own header gives about `.print-doc`: a screen must not have to remember it.
       */}
       <style>{`@media print { @page { size: A4 portrait; margin: 12mm; } .lab-report-a4 { width: auto; border: 0; padding: 0; } }`}</style>
+      {/*
+        ═══ THE HOSPITAL, FROM THE SNAPSHOT AND NOT FROM A TRANSLATION STRING ═══
+
+        This header used to be `t("lab.print.department")` alone — "Department of Laboratory
+        Medicine", identical in every hospital that ever runs this software. An Indian pathology
+        report identifies the laboratory that issued it, and the printed invoice and the e-Rx have
+        both carried `opd.letterhead` since Plan 07; the lab report was the only printed document in
+        the system that did not.
+
+        Read off `s.letterhead` and NOT from a live config call, because a report is a frozen signed
+        artefact: a rename must not rewrite a document already handed to a patient. The fallback
+        keeps a pre-change snapshot rendering exactly as it was signed — those reports are immutable
+        by trigger and cannot be backfilled.
+      */}
       <header className="flex items-start justify-between border-b-2 border-black pb-2">
         <div>
-          <h2 className="text-lg font-bold">{t("lab.print.department")}</h2>
+          {s.letterhead != null && (
+            <>
+              <h1 className="text-xl font-bold">{s.letterhead.name}</h1>
+              {s.letterhead.addressLines.map((line) => (
+                <p key={line} className="text-xs text-neutral-700">{line}</p>
+              ))}
+            </>
+          )}
+          <h2 className="mt-1 text-sm font-bold">{t("lab.print.department")}</h2>
           <p className="text-xs text-neutral-700">{t("lab.print.reportTitle")}</p>
         </div>
         <div className="text-right text-xs">
@@ -200,9 +222,29 @@ export function LabReportPrint({
       </section>
 
       <footer className="flex items-end justify-between border-t border-neutral-400 pt-2 text-xs">
+        {/*
+          ═══ A NAMED, REGISTERED PRACTITIONER — NOT A LOGIN ═══
+
+          This printed `s.signatory.username`. A username is an authentication artefact and appears
+          on no medical document anywhere; the report was signed "dr.iyer". `users.full_name` is
+          `notNull()` and `opd_doctors.registration_no` is the council number the e-Rx already
+          prints, and both were one join away for the whole of Plan 17.
+
+          It survived every test because `test/helpers/opd.ts` creates users with
+          `fullName: username`, so the two render the same string in every suite that has ever run.
+
+          The registration line appears only when there IS one: `registration_no` is nullable, and a
+          blank is what tells the person filing the report that a datum is missing. Printing the
+          username in its place would be a false claim on a legal document.
+        */}
         <div>
           <p className="text-neutral-700">{t("lab.print.authorisedBy")}</p>
-          <p className="font-bold">{s.signatory.username}</p>
+          <p className="font-bold">{s.signatory.fullName ?? s.signatory.username}</p>
+          {s.signatory.registrationNo != null && (
+            <p className="text-neutral-700">
+              {t("lab.print.registrationNo")}: {s.signatory.registrationNo}
+            </p>
+          )}
         </div>
         <p className="max-w-[300px] text-right text-neutral-700">{t("lab.print.computerGenerated")}</p>
       </footer>
