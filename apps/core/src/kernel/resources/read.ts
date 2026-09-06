@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { resourceStatusHistory, resources } from "../db/schema";
 import { MAX_RESOURCE_DEPTH } from "./kinds";
 import type { Db } from "../db/client";
@@ -164,6 +164,36 @@ export async function resourceBoard(db: Db, opts: ResourceBoardOptions): Promise
   // an always-empty `children: []` on a snapshot would invite a caller to render a TREE from a
   // query that fetched exactly one level.
   return direct.map((r) => ({
+    id: r.id, kind: r.kind, code: r.code, name: r.name, status: r.status,
+    parentId: r.parentId, siteId: r.siteId, attributes: r.attributes,
+    occupantType: r.occupantType, occupantRef: r.occupantRef, since: r.since,
+  }));
+}
+
+/**
+ * EVERY resource of one kind, WHEREVER IT SITS IN THE TREE — PHASE 11i T2.
+ *
+ * `resourceBoard` and `resourceTree` both filter to ROOTS of a kind, because both answer "what is
+ * directly under this parent" — a board is one level by construction. A readiness census asks a
+ * different question: *does this hospital have a bench at all?* A bench parented under a floor is
+ * still a bench, and a census built on `resourceBoard` would report a hospital with three nested
+ * benches as having none. Two module reads already do this select by hand (`aerb/read.ts`'s
+ * `unlicensedDevices` and `aerbPickers`, both `kind = 'device'`); this is the same read with a
+ * name, so the next caller does not write a third copy.
+ *
+ * Retired rows are excluded by default: a retired bench is not a bench the lab can run on.
+ */
+export async function listResourcesOfKind(
+  db: Db, kind: string, opts: { siteId?: string; includeRetired?: boolean } = {},
+): Promise<ResourceBoardRow[]> {
+  const rows = await db.select().from(resources)
+    .where(and(
+      eq(resources.kind, kind),
+      ...(opts.siteId === undefined ? [] : [eq(resources.siteId, opts.siteId)]),
+      ...(opts.includeRetired === true ? [] : [sql`${resources.status} <> 'retired'`]),
+    ))
+    .orderBy(asc(resources.code));
+  return rows.map((r) => ({
     id: r.id, kind: r.kind, code: r.code, name: r.name, status: r.status,
     parentId: r.parentId, siteId: r.siteId, attributes: r.attributes,
     occupantType: r.occupantType, occupantRef: r.occupantRef, since: r.since,

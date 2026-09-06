@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { eq } from "drizzle-orm";
 import { registrationConfig } from "../../kernel/db/schema";
-import type { Tx } from "../../kernel/db/client";
+import type { Db, Tx } from "../../kernel/db/client";
 
 /**
  * One error class for the whole patients module (the Plan 03/04 one-class convention).
@@ -180,6 +180,23 @@ export function formatUhid(prefix: string, n: number): string {
   }
   const body = String(n).padStart(UHID_SERIAL_DIGITS, "0");
   return `${prefix}${body}${verhoeffCheckDigit(body)}`;
+}
+
+/**
+ * IS THE `registration_config` ROW THERE — PHASE 11i T2, and READ-ONLY on purpose.
+ *
+ * `allocateUhid` below already answers this question, by throwing `registration_not_configured`
+ * with the seed command in its text. But it answers it by ALLOCATING A UHID, and a readiness
+ * census that burned a patient number every time it ran would be a census nobody could run twice.
+ * So the question gets its own read, against the same row `allocateUhid` reads, in the module that
+ * owns it — never a select from the census's own file.
+ */
+export async function registrationConfigured(exec: Db | Tx): Promise<boolean> {
+  const rows = await (exec as Db)
+    .select({ uhidPrefix: registrationConfig.uhidPrefix })
+    .from(registrationConfig)
+    .where(eq(registrationConfig.id, "main"));
+  return rows.length > 0 && rows[0]!.uhidPrefix.trim() !== "";
 }
 
 /** Allocates the next UHID on the caller's transaction. Sequence = concurrency-safe by construction. */

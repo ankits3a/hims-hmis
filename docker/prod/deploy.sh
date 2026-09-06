@@ -525,6 +525,28 @@ compose run --rm api node dist/scripts/check-config-present.js
 note "every configuration row the modules require is present"
 
 # ----------------------------------------------------------------------------------------------
+# THE READINESS CENSUS — PHASE 11i T2 / D3. IT REPORTS; IT DOES NOT DECIDE.
+# ----------------------------------------------------------------------------------------------
+# The gate above asked whether the modules can RUN. This asks whether a department can OPEN: the
+# LAB department and its pathologist of record, the four lab role keys held by four humans, every
+# orderable priced in the active tariff version, the pharmacy's stock, the AERB licences. None of
+# those is a row a deploy can write, and every one of them is a sentence out of the module's own
+# go-live runbook, printed with the screen or the command that turns it green.
+#
+# ITS EXIT CODE IS DELIBERATELY NOT THIS DEPLOY'S — the `seed-roles` rule, one level up. A verdict
+# about staffing and master data must never abort a deploy that has already migrated, and this one
+# is RED on every box until the hospital has hired the people and typed in its catalogue. Under
+# `set -e` an unwrapped non-zero here would kill every deploy from now until the laboratory opens.
+#
+# On UAT (T6) the same script IS the stand-up gate and its exit code is read as the verdict.
+if compose run --rm api node dist/scripts/standup-check.js all; then
+  note "standup:check reported every declared row ok"
+else
+  note "standup:check reported RED rows (exit $?) — that is the to-do list for the department"
+  note "  heads, not a failed deploy. Each line names the runbook step that turns it green."
+fi
+
+# ----------------------------------------------------------------------------------------------
 step "6/8 api, worker and caddy up"
 # ----------------------------------------------------------------------------------------------
 # Whole-project `up`: api, worker and caddy today (db is already up from step 3), plus whatever

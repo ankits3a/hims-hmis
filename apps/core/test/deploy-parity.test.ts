@@ -439,7 +439,10 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
     // 15 since Phase 11i T1 added `seed-lab.js` after `seed-pharmacy.js` and before `seed-roles.js`
     // — the pharmacy shape, one module over. (This file joins the Files list of the task that moves
     // the integer, which is the S11 rule the paragraph above invokes.)
-    expect(order).toHaveLength(15);
+    // 16 since Phase 11i T2 added `standup-check.js` — which is NOT a seed and is deliberately not
+    // in SEED_STEP_SCRIPTS: it runs AFTER the gate and writes nothing. It appears here only because
+    // this parser counts every `compose run --rm api node dist/scripts/*.js` line.
+    expect(order).toHaveLength(16);
     expect(order[0]).toBe("migrate.js");
     expect(order[1]).toBe("seed-cursors.js");
   });
@@ -493,6 +496,29 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
     expect(gate).toBeGreaterThanOrEqual(0);
     expect(existsSync(resolve(scriptsDir, "check-config-present.ts"))).toBe(true);
     for (const seed of SEED_STEP_SCRIPTS) expect(order.indexOf(seed)).toBeLessThan(gate);
+  });
+
+  it("runs the readiness census AFTER the gate, and does NOT obey its exit code — PHASE 11i T2", () => {
+    /**
+     * D3, and the `seed-roles` rule one level up. The census is RED on every box until the
+     * hospital has hired its people and typed in its catalogue — a permanent, correct RED. Under
+     * `set -euo pipefail` an UNWRAPPED non-zero here would kill every deploy from now until the
+     * laboratory opens, after migrations and before the containers are recreated.
+     *
+     * The order matters too: the gate REFUSES and must run first, so a box that cannot issue an
+     * invoice stops there rather than reading a census about benches.
+     */
+    const order = deploySeedOrder(deploySource);
+    const census = order.indexOf("standup-check.js");
+    const gate = order.indexOf("check-config-present.js");
+    expect(existsSync(resolve(scriptsDir, "standup-check.ts"))).toBe(true);
+    expect({ censusAt: census, gateAt: gate, gateFirst: gate >= 0 && census > gate })
+      .toEqual({ censusAt: census, gateAt: gate, gateFirst: true });
+    // Wrapped in an `if`, exactly as seed-roles is — and NOT a bare line, which is what the gate is.
+    expect(deploySource).toMatch(/if compose run --rm api node dist\/scripts\/standup-check\.js all; then/);
+    expect(deploySource).not.toMatch(/^compose run --rm api node dist\/scripts\/standup-check\.js/m);
+    // It is not a seed: it writes nothing and must not be counted among the rows the gate guards.
+    expect(SEED_STEP_SCRIPTS).not.toContain("standup-check.js");
   });
 
   it("does NOT let seed-roles' readiness verdict abort the deploy, and DOES let the gate", () => {
