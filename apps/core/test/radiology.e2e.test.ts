@@ -787,7 +787,7 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     expect(pickers.status).toBe(200);
     const picked = pickers.body as {
       devices: { resourceId: string; code: string; licensable: boolean }[];
-      users: { userId: string; fullName: string }[];
+      users: { userId: string; fullName: string; aerbRole: string | null }[];
     };
     /**
      * `licensable` is the SERVER's answer, from the same list the gap check reads. The CT is
@@ -799,5 +799,22 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     expect([ct?.licensable, usg?.licensable]).toEqual([true, false]);
     /** The RSO can be named as the RSO on a licence, so the RSO is in the staff list. */
     expect(picked.users.map((u) => u.userId)).toContain(rso.id);
+
+    /**
+     * ═══ AND THE LIST SAYS WHO IS ACTUALLY APPOINTED ═══
+     *
+     * This list fills the licence form's RSO field and it is EVERY active user in the hospital.
+     * `fileLicence` does not validate `rsoUserId` and the column is nullish, so before this a
+     * statutory AERB licence could be filed naming the cashier as the Radiological Safety Officer
+     * with nothing refusing and nothing warning. Measured on a stand-up: a licence came out naming
+     * a radiologist who held no `radiation_safety_officer` role and had no appointment row at all.
+     *
+     * Holding the ROLE and holding an APPOINTMENT are different facts — the role is an application
+     * permission, the appointment is the regulator's own reference against a named, qualified
+     * person. **`aerbRole` reports the second**, which is the one a licence is claiming. The
+     * radiographer holds neither and comes back `null`; nobody is filtered out, because
+     * `PersonForm` uses this same list to appoint the first RSO.
+     */
+    expect(picked.users.find((u) => u.userId === radiographer.id)?.aerbRole).toBeNull();
   }, 60_000);
 });
