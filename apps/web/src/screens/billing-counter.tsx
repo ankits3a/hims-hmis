@@ -5,6 +5,8 @@ import { useTranslation } from "react-i18next";
 import { PatientPicker } from "../components/patient-picker";
 import { SubmitButton } from "../components/submit-button";
 import type { PatientPickerHit } from "../components/patient-picker";
+import { usePatientInHandOptional } from "../lib/patient-in-hand";
+import { api } from "../lib/api";
 import { InvoicePrint } from "../components/invoice-print";
 import { MoneyInput } from "../components/money-input";
 import { TenderEditor } from "../components/tender-editor";
@@ -124,15 +126,35 @@ function ErrorLine({ message, testId }: { message: string | null; testId: string
   return <p role="alert" data-testid={testId} className="text-sm text-red-600">{message}</p>;
 }
 
-export function BillingCounter(): React.ReactElement {
+export function BillingCounter({ seated = false }: { seated?: boolean } = {}): React.ReactElement {
   const { t } = useTranslation();
   const search = useSearch({ strict: false }) as { encounterId?: string };
+  /*
+    ═══ FD-26 — THE PATIENT WALKS HERE FROM THE BOOKING DESK ═══
+
+    `/billing` is one of three front-desk chairs now (`screens/desk-one/seat-shell.tsx`), and a
+    clerk who moves between them must not have to search for the person standing in front of them
+    again — that is the "three route changes per patient" FD-2 measured and FD-9 deleted.
+    `PatientPicker` has ALWAYS written the id into `PatientInHand` (`patient-picker.tsx:70-72`);
+    nothing has ever read it back here, so the write was half a mechanism.
+
+    OFF BY DEFAULT, and that default is what keeps this screen's 31 money tests valid unchanged:
+    they mount `<BillingCounter />` with no provider and no carrier, and see exactly what they saw.
+    Only the seat route passes `seated`.
+  */
+  const carrier = usePatientInHandOptional();
   /* While the palette is open the screen claims no key — `counter-figures.tsx`'s rule, and it is
      general rather than about Escape. Returns null outside a provider, as this suite mounts. */
   const palette = usePaletteOptional();
 
   const [patient, setPatient] = useState<PatientPickerHit | null>(null);
   const [encounterId, setEncounterId] = useState(search.encounterId ?? "");
+  /*
+    Once per mount. A ref rather than state because after the first attempt the cashier must be able
+    to clear the patient and have them STAY cleared — a re-render that re-adopted would make the
+    "issue another bill" reset (`:575`) impossible to complete.
+  */
+  const adopted = useRef(false);
   const [lines, setLines] = useState<CounterLine[]>([]);
   const [serviceQuery, setServiceQuery] = useState("");
   const [tenders, setTenders] = useState<WireTender[]>([]);
@@ -205,6 +227,32 @@ export function BillingCounter(): React.ReactElement {
   // ——— reads ———————————————————————————————————————————————————————————————————————————————
 
   // Debounced: an encounter id typed by hand must not fire a quote per keystroke.
+  /*
+    FD-26 — adopt the carried patient, once, and only when the route asked for it. The read is the
+    same `GET /patients/:id` the rest of the app uses; a refusal (a permission this cashier does not
+    hold, or a row merged away) releases the carrier rather than retrying, so a dead id cannot sit in
+    session storage being re-tried on every screen for the rest of the shift.
+  */
+  useEffect(() => {
+    if (!seated || carrier === null || adopted.current) return;
+    adopted.current = true;
+    const held = carrier.inHand;
+    if (held === null) return;
+    void api<{ patient: { id: string; uhid: string; name: string | null; alias: string | null; administrativeGender: string; dob: string | null } }>(
+      "GET", `/patients/${encodeURIComponent(held.patientId)}`,
+    ).then(
+      (detail) => {
+        const p = detail.patient;
+        setPatient((prev) => (prev !== null ? prev : {
+          id: p.id, uhid: p.uhid, name: p.name ?? p.alias ?? p.uhid,
+          administrativeGender: p.administrativeGender, dob: p.dob,
+        }));
+        if (held.encounterId !== null) setEncounterId((prev) => (prev === "" ? held.encounterId! : prev));
+      },
+      () => { carrier.release(); },
+    );
+  }, [seated, carrier]);
+
   const debouncedEncounterId = useDebounced(encounterId.trim(), PREVIEW_DEBOUNCE_MS);
   const feeQuote = useQuery({
     queryKey: ["billing", "fee-quote", debouncedEncounterId],
@@ -633,31 +681,46 @@ export function BillingCounter(): React.ReactElement {
     }
   };
 
+  const headerActions = (
+    <>
+      <span className={session.data?.session == null ? "pill" : "pill on"} data-testid="drawer-pill">
+        {session.data?.session == null
+          ? t("billingSeat.header.noDrawer")
+          : t("billingSeat.header.drawerOpen", { float: fmtPaise(session.data.session.openingFloatPaise) })}
+      </span>
+      {/*
+        A PLAIN ANCHOR, NOT `<Link>`, and the reason is a test constraint recorded by FD-7: this
+        screen's suite renders it outside a `RouterProvider`, so a router-aware component here
+        throws. `/api/*` path separation is what makes the plain href land on the SPA, not the API.
+      */}
+      <a className="sec" style={{ textDecoration: "none" }} href="/counter/instruments">
+        {t("nav.counterInstruments")}
+      </a>
+    </>
+  );
+
   return (
     <PaperScreen testId="billing-seat">
       <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", padding: "18px 22px", gap: 14, minWidth: 0 }}>
-        <ScreenTitle
-          title={t("billing.counter.title")}
-          route="/billing"
-          actions={
-            <>
-              <span className={session.data?.session == null ? "pill" : "pill on"} data-testid="drawer-pill">
-                {session.data?.session == null
-                  ? t("billingSeat.header.noDrawer")
-                  : t("billingSeat.header.drawerOpen", { float: fmtPaise(session.data.session.openingFloatPaise) })}
-              </span>
-              {/*
-                A PLAIN ANCHOR, NOT `<Link>`, and the reason is a test constraint recorded by FD-7:
-                this screen's suite renders it outside a `RouterProvider`, so a router-aware
-                component here throws. `/api/*` path separation is what makes the plain href land on
-                the SPA rather than the API.
-              */}
-              <a className="sec" style={{ textDecoration: "none" }} href="/counter/instruments">
-                {t("nav.counterInstruments")}
-              </a>
-            </>
-          }
-        />
+        {/*
+          ═══ FD-26 — ONE HEADER, AND INSIDE A SEAT IT IS THE SEAT'S ═══
+
+          `ScreenTitle` exists because a `.pp` screen sits under the app header and needs to say
+          which screen it is. Inside a `SeatShell` there IS no app header — the frame's own 46px row
+          already reads `DESK ONE / Registration · Appointment · Billing · <clerk>` with Billing lit
+          — so drawing "Billing counter /billing" beneath it is a second title for one screen, which
+          is the two-headers defect FD-25 recorded and worked around by renaming a button.
+
+          The ACTIONS are not chrome and do not go: the drawer pill is a live money precondition and
+          the card-recognition door is reachable from nowhere else. They keep their row.
+        */}
+        {seated ? (
+          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 9 }}>
+            {headerActions}
+          </div>
+        ) : (
+          <ScreenTitle title={t("billing.counter.title")} route="/billing" actions={headerActions} />
+        )}
 
         <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
           {/* ═══ LEFT RAIL — who is paying, and what they already owe ═══ */}

@@ -22,8 +22,7 @@ import { Desk } from "./screens/desk";
 import { MyDay } from "./screens/my-day";
 import { StaffReports } from "./screens/staff-reports";
 import { DeskOne } from "./screens/desk-one/desk-one";
-import { Registration } from "./screens/registration";
-import { AppointmentSeat } from "./screens/appointment";
+import { SeatShell } from "./screens/desk-one/seat-shell";
 import { CounterFigures } from "./screens/counter-figures";
 import { PatientDetail } from "./screens/patient-detail";
 import { MergeReview } from "./screens/merge-review";
@@ -575,43 +574,60 @@ const staffReportsRoute = createRoute({
  * navigation out of it (the palette's "my figures") still works. Signing out lives in the dock.
  */
 /**
- * ═══ FD-25 — `/registration` IS BACK, AND IT IS THE OTHER HALF OF FD-9'S RULING ═══
+ * ═══ FD-26 — `/registration` IS A DESK ONE SEAT, NOT A SCREEN OF ITS OWN ═══
  *
- * The long comment below records why FD-9 deleted this route: one person served a walk-in by
- * walking between three screens, losing the patient in hand at every hop, so the three became
- * stages of one session at `/counter`. Nothing about that has been reversed — Desk One is still
- * here, still the single-seat door, and still where this design system lives.
+ * The long comment above records why FD-9 deleted this route: one person served a walk-in by walking
+ * between three screens, losing the patient in hand at every hop, so the three became stages of one
+ * session at `/counter`. FD-25 brought the route back for a hospital that staffs three chairs, and
+ * built a NEW SCREEN behind it. The owner saw the result and rejected it on 2026-09-06:
  *
- * What changed is the staffing. The hospital now runs three seats, and the FD-8 measurement records
- * both shapes as authorised: three users = three routes, one user = Desk One's stages. This route
- * serves a clerk who holds `patients.register` and NOT billing — somebody who should never be shown
- * a cash drawer, and for whom Desk One's five stages are three stages of somebody else's job.
+ *   *"just like Desk One screen which has all three screens in one URL, we need to have the same 3
+ *   screen but on different URL too… Just mimic the Desk One screen but bifurcated in three. Don't
+ *   change the UX or UI, keep as it is… the current build has made it worse."*
  *
- * IT IS NOT A SECOND NAME FOR DESK ONE, which is the defect FD-9's deletion was about. Different
- * permission, different person, different screen. `shell-nav.test.tsx` pins that a holder of both
- * grants is offered each exactly once.
+ * So the ROUTE stays and the SCREEN goes: `registration.tsx` is deleted and this path mounts
+ * `DeskOne` projected to one stage. What the copy had lost, measured against the original in a
+ * browser, is itemised in `screens/desk-one/model.ts`'s `Seat` block — the tell-apart line, the
+ * restricted pill, "this is them" on a duplicate, and a doctor dropdown inside the registration form
+ * that FD-8 had already had removed by name.
  *
- * NO `staticData.fullViewport`, DELIBERATELY, AND NOT WHAT THE BUILD PLAN PROPOSED. Desk One earns
- * the full viewport because it IS the application for the person using it — `.d1` is
- * `position: fixed; inset: 0` and the shell must not render chrome underneath it (the FD-11
- * invisible-but-tabbable defect). This screen wears `.pp` INSIDE the shell: it is one seat of three
- * and its clerk still needs the nav to reach a patient record, the appointment book and their own
- * figures. See `components/paper-screen.tsx` for the whole argument, including why the artboard's
- * own header bar is rendered as a screen title rather than as a second header.
+ * IT IS STILL NOT A SECOND NAME FOR DESK ONE, which is the defect FD-9's deletion was about.
+ * Different permission, different person, one stage instead of five. `shell-nav.test.tsx` pins that
+ * a holder of both grants is offered each exactly once and that `/counter` is not a fourth row.
+ *
+ * ═══ AND IT OWNS THE VIEWPORT NOW, WHICH REVERSES THIS ROUTE'S OWN PREVIOUS ARGUMENT ═══
+ *
+ * The paragraph that stood here said the opposite — "NO `staticData.fullViewport`, DELIBERATELY" —
+ * on the reasoning that a seat clerk is one of three and needs the nav to reach the rest of the
+ * application. That reasoning was sound and its result was not: on this deployment the nav wraps to
+ * three rows and, with the mode banner and a screen-title row, spends about 200px before the work
+ * starts, which is most of what the owner called worse. The owner was asked directly and ruled that
+ * the seats own the whole screen exactly as Desk One does.
+ *
+ * The need the old paragraph named is real and is met differently: the header's breadcrumb becomes
+ * three buttons (the seat switcher), the patient in hand travels with the clerk, F8 opens the
+ * application's own command palette over every screen and patient the person may see, and Sign out
+ * lives in the dock. See `screens/desk-one/seat-shell.tsx` and `desk-one.tsx`'s header.
  */
 const registrationRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/registration",
   /*
     `?new=true`, the same one-shot shape `counterDeskRoute` takes below and for the same caller: the
-    global F4 chord, meaning "a new patient is in front of me". This screen ALSO binds F4 locally
-    (in the capture phase, so it wins over the global handler and a clerk mid-registration is not
-    yanked to Desk One), so the search parameter is only how the key arrives from ELSEWHERE.
+    global F4 chord, meaning "a new patient is in front of me". The desk consumes it with a
+    replace-navigate against THIS route (`SEAT_ROUTE[seat]`), so a second press retriggers.
   */
   validateSearch: (search: Record<string, unknown>): { new?: boolean } => ({
     new: search.new === true || search.new === "true" ? true : undefined,
   }),
-  component: Registration,
+  /*
+    FD-26 — the seats own the viewport for the same reason `/counter` does, and the paragraph above
+    records why the opposite was tried first. `.d1` is `position: fixed; inset: 0`; without this the
+    shell renders its header and every nav link UNDERNEATH it — invisible, unclickable, and still in
+    the tab order, which is the FD-11 defect by name.
+  */
+  staticData: { fullViewport: true },
+  component: function RegistrationSeat() { return <DeskOne seat="registration" />; },
 });
 
 /**
@@ -624,15 +640,24 @@ const registrationRoute = createRoute({
  *
  * The two are not duplicates. This one is organised around ONE PATIENT — who is this, when can they
  * come, book it — and it carries the rebooking rail, which is the only surface in the product that
- * answers "the doctor is away, who do I have to call?". That rail is the reason the route exists;
- * everything else on it is available somewhere else.
+ * answers "the doctor is away, who do I have to call?".
  *
- * No `staticData.fullViewport`: one seat of three, inside the shell. See `registrationRoute` above.
+ * ═══ FD-26 — IT IS DESK ONE'S APPOINTMENT STAGE NOW, AND THAT IS THE OWNER'S "(Walkin/Future)" ═══
+ *
+ * FD-25's screen booked FUTURE slots and nothing else: the walk-in half — the complaint box, the
+ * triage-ranked department board, the wait bars, the per-doctor assign — simply was not on it, so
+ * the chair whose whole job is "who does this person see" could not answer it. The owner named both
+ * halves when asking for the seats. Desk One's stage has always had both, so the route mounts it.
+ *
+ * The rebooking rail was the one thing the deleted screen had that the stage did not, so it was
+ * PORTED rather than deleted with it — `screens/desk-one/rebooking-rail.tsx`, mounted on this seat
+ * only. `staticData.fullViewport`, like the other two: see `registrationRoute` above.
  */
 const appointmentRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/appointment",
-  component: AppointmentSeat,
+  staticData: { fullViewport: true },
+  component: function AppointmentSeat() { return <DeskOne seat="appointment" />; },
 });
 
 const counterDeskRoute = createRoute({
@@ -891,6 +916,19 @@ const opdDisplayRoute = createRoute({
   component: OpdDisplay,
 });
 
+/**
+ * ═══ FD-26 — THE CASHIER KEEPS ITS BODY AND PUTS ON DESK ONE'S FRAME (OWNER RULING) ═══
+ *
+ * The other two seats ARE Desk One, projected to one stage. This one is not, and the owner ruled it
+ * so on 2026-09-06 when the trade was put to them: Desk One's bill stage renders the fee the server
+ * quoted and takes one tender, while `billing-counter.tsx` builds lines, discounts them against an
+ * approval id, mixes and part-pays tenders, extends credit, captures PAN / Form 60, reads
+ * `patient_coverages` for the corporate card, shows package balances and prints the invoice.
+ * *"Desk One's frame, all money controls kept."*
+ *
+ * `SeatShell` is that frame and `BillingCounter` is untouched — which is the property that matters,
+ * because its 31 tests are the only instrument over money that already ships.
+ */
 const billingRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/billing",
@@ -899,7 +937,14 @@ const billingRoute = createRoute({
   validateSearch: (search: Record<string, unknown>): { encounterId?: string } => ({
     encounterId: typeof search.encounterId === "string" ? search.encounterId : undefined,
   }),
-  component: BillingCounter,
+  staticData: { fullViewport: true },
+  component: function BillingSeat() {
+    return (
+      <SeatShell seat="billing">
+        <BillingCounter seated />
+      </SeatShell>
+    );
+  },
 });
 
 // One ledger, one screen (T14): dues and advances are the same instrument, so they share a route.

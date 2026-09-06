@@ -1,9 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { ageYearsOf, bookableToday, etaClock, LANES, LANE_TEXT, rs, vitalsAhead, waitMinutes } from "./model";
+import {
+  ageYearsOf, bookableToday, etaClock, LANES, LANE_TEXT, rs, SEAT_LABEL, SEAT_ROUTE, SEAT_STEPS, SEATS,
+  vitalsAhead, waitMinutes,
+} from "./model";
 import type { Lane } from "./model";
 import { useDesk } from "./session";
 import { PhotoPanel } from "./photo";
+import { usePaletteOptional } from "../../components/command-palette";
 
 /**
  * ═══ THE OVERLAYS — five, and each one answers a question a clerk asks WITHOUT LEAVING ═══
@@ -45,6 +49,7 @@ function Sheet({ width, children }: { width: number; children: React.ReactNode }
 function Palette(): React.ReactElement {
   const d = useDesk();
   const navigate = useNavigate();
+  const hospitalMenu = usePaletteOptional();
   const { s } = d;
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
@@ -54,9 +59,18 @@ function Palette(): React.ReactElement {
     { label: "register a new patient", key: "F4", run: () => { d.patch({ overlay: null }); d.startEnrolment(); } },
   ];
   if (s.person !== null) {
-    all.push({ label: "go to the appointment stage", run: () => d.goto("appointment") });
-    all.push({ label: "go to billing", run: () => d.goto("bill") });
-    all.push({ label: "book a future appointment", run: () => { d.patch({ tab: "future", overlay: null }); d.goto("appointment"); } });
+    /*
+      FD-26 — a stage jump is only offered by a seat that HAS the stage. Offering "go to billing" on
+      the registration chair would land the clerk on `done` via `stageForSeat`, which reads as the
+      screen ignoring them. The sibling-seat rows below are the honest version of that door.
+    */
+    const has = (stage: "appointment" | "bill"): boolean =>
+      d.seat === "counter" || SEAT_STEPS[d.seat].some((x) => x.stage === stage);
+    if (has("appointment")) {
+      all.push({ label: "go to the appointment stage", run: () => d.goto("appointment") });
+      all.push({ label: "book a future appointment", run: () => { d.patch({ tab: "future", overlay: null }); d.goto("appointment"); } });
+    }
+    if (has("bill")) all.push({ label: "go to billing", run: () => d.goto("bill") });
     all.push({ label: "amend this record (audited)", run: () => d.patch({ overlay: "edit" }) });
   }
   all.push({ label: "every line in the building", key: "Q", run: () => d.patch({ overlay: "queues" }) });
@@ -73,6 +87,38 @@ function Palette(): React.ReactElement {
   });
   all.push({ label: "open a cash drawer (leaves the desk)", run: () => { d.patch({ overlay: null }); void navigate({ to: "/billing/session" }); } });
   all.push({ label: "design schema & elements", run: () => d.patch({ overlay: "schema" }) });
+
+  /*
+    ═══ FD-26 — A SEAT OWNS THE VIEWPORT, SO THE PALETTE HAS TO BE THE WAY OUT OF IT ═══
+
+    `/counter` renders no app nav and never needed one: one person, one screen, all day. The three
+    seats inherit that — `staticData.fullViewport` on all four — so the same F8 palette has to carry
+    what the nav bar used to: the sibling chairs, and the rest of the hospital.
+
+    `/counter` gets NEITHER row. It is not a seat, so "go to the booking desk" is a stage there and
+    already listed above; and its own door to the wider app has been the palette's `my figures` and
+    `cash drawer` rows since FD-9.
+  */
+  if (d.seat !== "counter") {
+    for (const other of SEATS) {
+      if (other === d.seat) continue;
+      all.push({
+        label: `go to the ${SEAT_LABEL[other].toLowerCase()} desk (the patient comes with you)`,
+        run: () => { d.patch({ overlay: null }); void navigate({ to: SEAT_ROUTE[other] as "/counter" }); },
+      });
+    }
+  }
+  /*
+    The whole hospital, by name, gated by the same `can()` the nav bar used. `Optional` because the
+    desk-one suites mount no provider; with none, the row simply is not offered rather than
+    exploding — and `/counter`'s own tests are the harness that proves that path.
+  */
+  if (hospitalMenu !== null) {
+    all.push({
+      label: "the rest of the hospital — search every screen and patient",
+      run: () => { d.patch({ overlay: null }); hospitalMenu.open(); },
+    });
+  }
 
   const acts = all.filter((a) => q === "" || a.label.toLowerCase().includes(q.toLowerCase()));
 

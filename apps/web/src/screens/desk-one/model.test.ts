@@ -2,8 +2,10 @@ import {
  describe, expect, it, vi } from "vitest";
 import {
   ageOf, ageYearsOf, billOf, bookableToday, deptQueues, firstFreeDoctor, flowOf, inHall, laneOf,
-  rs, shortestLine, shouldJoinNow, stepIndex, tokenStateOf, vitalsAhead, waitMinutes, tokenLabel,
+  rs, seatHasStage, seatStepIndex, shortestLine, shouldJoinNow, stageForSeat, stepIndex,
+  tokenStateOf, vitalsAhead, waitMinutes, tokenLabel,
 } from "./model";
+import type { Seat, Stage } from "./model";
 import type { WireDoctorSummary } from "../../lib/opd-api";
 import type { WireFeeQuote } from "../../lib/billing-api";
 
@@ -309,6 +311,94 @@ describe("small truths a counter shows a hundred times a day", () => {
     expect(stepIndex("appointment")).toBe(1);
     expect(stepIndex("bill")).toBe(2);
     expect(stepIndex("done")).toBe(3);
+  });
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-26 — THE SEAT PROJECTION
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * `/registration`, `/appointment` and `/billing` are `DeskOne` with a `seat` prop. Every stage
+ * transition in `desk-one.tsx` now runs through `stageForSeat`, which makes this the single function
+ * standing between the owner's signed-off `/counter` and three new routes.
+ *
+ * THE FIRST TEST IS THE IMPORTANT ONE and it is not about seats at all: it pins that `counter` is
+ * the IDENTITY. Every desk-one suite mounts `<DeskOne />` with no prop, so all 105 of them exercise
+ * this path and would stay green no matter what the seat arms did — including if a branch were
+ * written the wrong way round. An identity asserted directly is the guard those suites cannot be.
+ */
+const ALL_STAGES: readonly Stage[] = ["find", "register", "appointment", "bill", "done"];
+
+describe("FD-26 · stageForSeat", () => {
+  it("counter is the identity — every stage maps to itself, which is what keeps /counter unmoved", () => {
+    for (const stage of ALL_STAGES) expect(stageForSeat("counter", stage)).toBe(stage);
+  });
+
+  it("every seat keeps the two ends: find is the empty desk and done is the handover", () => {
+    for (const seat of ["registration", "appointment", "billing"] as const) {
+      expect(stageForSeat(seat, "find")).toBe("find");
+      expect(stageForSeat(seat, "done")).toBe("done");
+    }
+  });
+
+  it("a proposal PAST the seat's own stage means the seat has finished — the patient walks on", () => {
+    // `enrol` proposes `appointment`; the registration chair is done when the UHID exists.
+    expect(stageForSeat("registration", "appointment")).toBe("done");
+    expect(stageForSeat("registration", "bill")).toBe("done");
+    // `assign` proposes `bill`; the booking chair is done when the doctor is chosen.
+    expect(stageForSeat("appointment", "bill")).toBe("done");
+  });
+
+  /*
+    THE REGRESSION THIS TEST WAS WRITTEN FOR. The first version of `stageForSeat` sent every stage
+    the seat did not list to `done`, which made the BILLING chair unable to hold a patient at all:
+    `hold` proposes `appointment`, the billing seat has no appointment stage, and the cashier was
+    shown "this person is finished" the instant they were picked. A proposal BEHIND the seat's own
+    stage means "somebody is in front of me", and the honest landing is the seat's own work.
+  */
+  it("a proposal BEHIND the seat's own stage lands ON it — holding a patient is not finishing them", () => {
+    expect(stageForSeat("billing", "appointment")).toBe("bill");
+    expect(stageForSeat("billing", "register")).toBe("bill");
+    expect(stageForSeat("appointment", "register")).toBe("appointment");
+  });
+
+  it("a seat's own stage maps to itself", () => {
+    expect(stageForSeat("registration", "register")).toBe("register");
+    expect(stageForSeat("appointment", "appointment")).toBe("appointment");
+    expect(stageForSeat("billing", "bill")).toBe("bill");
+  });
+});
+
+describe("FD-26 · seatStepIndex and seatHasStage", () => {
+  it("agrees with stepIndex on the counter, so the flow strip cannot move for /counter", () => {
+    for (const stage of ALL_STAGES) expect(seatStepIndex("counter", stage)).toBe(stepIndex(stage));
+  });
+
+  it("a one-step seat is at 0 on its own stage and complete on done", () => {
+    expect(seatStepIndex("registration", "register")).toBe(0);
+    expect(seatStepIndex("registration", "done")).toBe(1);
+    expect(seatStepIndex("billing", "bill")).toBe(0);
+    expect(seatStepIndex("billing", "done")).toBe(1);
+  });
+
+  it("the counter has every stage; a seat has exactly one", () => {
+    for (const stage of ["register", "appointment", "bill"] as const) {
+      expect(seatHasStage("counter", stage)).toBe(true);
+    }
+    expect(seatHasStage("registration", "register")).toBe(true);
+    expect(seatHasStage("registration", "bill")).toBe(false);
+    // This is what sends "new walk-in" from the booking chair to `/registration` instead of
+    // opening a form the seat cannot submit.
+    expect(seatHasStage("appointment", "register")).toBe(false);
+    expect(seatHasStage("billing", "register")).toBe(false);
+  });
+
+  it("no seat's own stage is `find` or `done` — those are the ends, not work", () => {
+    for (const seat of ["registration", "appointment", "billing"] as Seat[]) {
+      expect(seatHasStage(seat, "find")).toBe(false);
+      expect(seatHasStage(seat, "done")).toBe(false);
+    }
   });
 });
 

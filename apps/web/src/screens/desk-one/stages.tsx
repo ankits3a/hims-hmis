@@ -20,6 +20,7 @@ import { dayMonthIst, monthYearIst } from "../../lib/format";
 import { SubmitButton } from "../../components/submit-button";
 import { Field, Fold, Picker, TogglePills, GRID3, GRID4 } from "../../components/desk-fields";
 import { EMPTY_COVERAGE, formNeedsGuardian, useDesk } from "./session";
+import { RebookingRail } from "./rebooking-rail";
 import type { CoverageDraft, Person } from "./session";
 
 /**
@@ -1400,6 +1401,30 @@ function FutureTab(): React.ReactElement {
         <span style={{ fontSize: 11, color: "var(--faint)" }}>asked mid-walk-in — hold the slot, then fall straight back to today</span>
       </div>
 
+      {/*
+        FD-26 — THE BOOKING CHAIR'S OWN RAIL, and the only thing FD-25's `/appointment` had that this
+        stage did not. It is here rather than on `/counter` for the reason its own file gives, and it
+        drives the controls already on this tab: a click sets the doctor and the day and marks the
+        booking as the one being moved, so the grid below is the confirmation. See `rebooking-rail.tsx`.
+      */}
+      {d.seat !== "appointment" ? null : (
+        <RebookingRail
+          onMove={(row) => {
+            setDepartmentId("");
+            setDoctorId(row.doctorId);
+            setDate(row.serviceDate);
+            /*
+              THE HELD SLOT DIES WITH THE DAY IT BELONGED TO. Every other road that moves this board
+              clears it, and this row moves the doctor AND the day in one click — a pick carried
+              across belongs to a board nobody is looking at any more.
+            */
+            setPicked(null);
+            setMoving({ id: row.id, who: row.who, was: slotClock(row.slotStart) });
+            d.note(`moving ${row.who}'s booking — pick a new time`, "warn");
+          }}
+        />
+      )}
+
       <div style={{ marginTop: 16, display: "flex", gap: 11, alignItems: "flex-end" }}>
         <div style={{ width: 200 }}>
           <div className="tag" style={{ marginBottom: 5 }}>department</div>
@@ -1581,10 +1606,18 @@ function FutureTab(): React.ReactElement {
         <div style={{ display: "flex", alignItems: "center", gap: 13, marginBottom: 10 }}>
           <span className="tag">the day's slots</span>
           <div style={{ display: "flex", gap: 11, marginLeft: "auto" }}>
-            {([["free", "var(--card)", "var(--line)"], ["taken", "var(--wash)", "var(--line)"], ["yours", "var(--green)", "var(--green)"]] as const).map(
-              ([label, bg, border]) => (
+            {/*
+              FD-26 — TAKEN IS DASHED, and that is an accessibility fix carried over from
+              `components/slot-board.tsx` rather than a preference. Free and taken differed only in
+              FILL, by one wash step: invisible on a dim counter monitor and invisible to a clerk
+              with any red-green deficiency. Dashed is a difference in SHAPE, which survives both —
+              and "a greyed slot that might be either is how a desk double-books" is this file's own
+              sentence about why the three states must look like three states.
+            */}
+            {([["free", "var(--card)", "var(--line)", "solid"], ["taken", "var(--wash)", "var(--line)", "dashed"], ["yours", "var(--green)", "var(--green)", "solid"]] as const).map(
+              ([label, bg, border, style]) => (
                 <span key={label} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: "var(--dim)" }}>
-                  <span style={{ width: 11, height: 11, borderRadius: 3, background: bg, border: `1px solid ${border}` }} />
+                  <span style={{ width: 11, height: 11, borderRadius: 3, background: bg, border: `1px ${style} ${border}` }} />
                   {label}
                 </span>
               ),
@@ -1615,7 +1648,8 @@ function FutureTab(): React.ReactElement {
                 className="mo"
                 style={{
                   height: 30, fontSize: 11.5, padding: "0 10px", borderRadius: 6,
-                  border: `1px solid ${isPicked ? "var(--green)" : "var(--line)"}`,
+                  /* Dashed for a slot nobody can take — see the legend's note above. */
+                  border: `1px ${unavailable && !isPicked ? "dashed" : "solid"} ${isPicked ? "var(--green)" : "var(--line)"}`,
                   background: isPicked ? "var(--green)" : unavailable ? "var(--wash)" : "var(--card)",
                   color: isPicked ? "#fff" : unavailable ? "var(--faint)" : "var(--ink)",
                   fontWeight: isPicked ? 700 : 400,

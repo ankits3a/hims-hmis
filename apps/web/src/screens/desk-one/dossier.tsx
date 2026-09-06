@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { patientTimeline } from "../../lib/opd-api";
 import { dayMonthIst } from "../../lib/format";
-import { ageOf, initialsOf, rs, sexLetter, STEPS, stepIndex, tokenLabel, tokenStateOf } from "./model";
+import { ageOf, initialsOf, rs, SEAT_STEPS, seatStepIndex, sexLetter, tokenLabel, tokenStateOf } from "./model";
 import { useDesk } from "./session";
 import { PhotoPanel } from "./photo";
 
@@ -121,7 +121,12 @@ export function Dossier(): React.ReactElement {
   }
 
   const p = s.person;
-  const step = stepIndex(s.stage);
+  /*
+    FD-26 — the strip draws the seat's OWN steps. On `/counter` `SEAT_STEPS.counter` IS `STEPS`, so
+    the three dots, their ids, their order and the label are exactly what shipped; a seat draws one.
+  */
+  const steps = SEAT_STEPS[d.seat];
+  const step = seatStepIndex(d.seat, s.stage);
   const token = tokenStateOf(d.lane, s.visit, d.moneyTaken);
   const memberships = (d.recognition?.memberships ?? []).filter((m) => m.usable);
   const coupons = d.recognition?.coupons ?? [];
@@ -270,7 +275,7 @@ export function Dossier(): React.ReactElement {
         line instead of nine, and the space they gave back goes to the face and the money below.
       */}
       <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 18 }} data-testid="flow-strip">
-        {STEPS.map((entry, i) => (
+        {steps.map((entry, i) => (
           <button
             key={entry.stage}
             data-testid={`flow-dot-${entry.stage}`}
@@ -294,7 +299,7 @@ export function Dossier(): React.ReactElement {
             }}
           />
         ))}
-        <span className="tag" style={{ flexShrink: 0 }}>{STEPS[step]?.label ?? ""}</span>
+        <span className="tag" style={{ flexShrink: 0 }}>{steps[step]?.label ?? "Done"}</span>
       </div>
 
       {/*

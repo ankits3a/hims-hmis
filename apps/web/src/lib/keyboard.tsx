@@ -119,6 +119,21 @@ export function KeyboardProvider({ children }: { children: React.ReactNode }): R
           this navigation is a no-op to the same route.
         */
         e.preventDefault();
+        /*
+          ═══ FD-26 — A DESK ALREADY ON SCREEN BINDS F4 ITSELF, AND MUST NOT BE TORN DOWN ═══
+
+          `/registration` is a Desk One seat again, and a registration clerk mid-enrolment pressing
+          F4 for a second walk-in must reach THAT desk's handler, not be navigated to `/counter` —
+          which would drop the form they are typing into and land them on somebody else's screen.
+          FD-25's `/registration` fought this with a capture-phase listener of its own; that screen
+          is gone, and the fix belongs at the source rather than in every screen that has to beat it.
+
+          `[data-seat]` is on the root of every Desk One mount, `/counter` included — so this also
+          removes a pointless self-navigation there. The desk's own F4 (`desk-one.tsx`) still fires:
+          it is a `window` listener registered at the desk's mount, and this early return only stops
+          the NAVIGATION, never the key.
+        */
+        if (document.querySelector("[data-seat]") !== null) return;
         void navigate({ to: "/counter", search: { new: true } });
       } else if (e.key === "F7") {
         /**

@@ -1,8 +1,9 @@
 import { useTranslation } from "react-i18next";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../lib/auth";
+import { usePatientInHandOptional } from "../../lib/patient-in-hand";
 import { newIdempotencyKey, api } from "../../lib/api";
 import {
   getOpdConfig, putCounterFlow, listDepartments, listQueueSummary, opdErrorMessage,
@@ -15,9 +16,10 @@ import { fetchRecognition } from "../../lib/membership-api";
 import { fetchDesk } from "../../lib/desk-api";
 import {
   billOf, deptQueues, firstFreeDoctor, inHall, invoiceLinesOf, istClock, istDateLabel,
-  laneOf, flowOf, LANE_TEXT, logged, rs, shortestLine, shouldJoinNow, waitMinutes,
+  laneOf, flowOf, LANE_TEXT, logged, rs, SEAT_LABEL, SEAT_ROUTE, SEATS, shortestLine, shouldJoinNow,
+  seatHasStage, stageForSeat, waitMinutes,
 } from "./model";
-import type { Lane, LogLine } from "./model";
+import type { Lane, LogLine, Seat } from "./model";
 import { DeskProvider, emptySession, EMPTY_FORM, registerBodyOf } from "./session";
 import type { DeskApi, Person, Session } from "./session";
 import { Dossier } from "./dossier";
@@ -84,7 +86,16 @@ const DAY_STAT_LABELS: Record<string, string> = {
  */
 const TRIAGE_DEBOUNCE_MS = 400;
 
-export function DeskOne(): React.ReactElement {
+/**
+ * ═══ FD-26 — ONE COMPONENT, FOUR DOORS ═══
+ *
+ * `seat` defaults to `"counter"` and every branch below is written `seat === "counter" ? <what
+ * shipped> : <the seat's>`, never the other way round. That ordering is the guard, not a style:
+ * it means the whole of `/counter` is still reachable by reading the true arm, and a revert pair on
+ * any seat branch leaves the ten desk-one suites green. See `model.ts`'s `Seat` block for why the
+ * three seats are a projection of this screen rather than three more screens.
+ */
+export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.ReactElement {
   /*
     FD-11 — `useTranslation()` here is the SUBSCRIPTION, not a convenience. Reading
     `i18next.language` in the render body without it stamps the right value on first mount and then
@@ -98,6 +109,20 @@ export function DeskOne(): React.ReactElement {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { new?: boolean };
+  /*
+    ═══ FD-26 — THE PATIENT WALKS FROM CHAIR TO CHAIR, AND THE `Optional` IS LOAD-BEARING ═══
+
+    Three seats mean three routes, and a route change tears this component down. Without a carrier
+    the clerk at the booking desk would have to search for the person the registration clerk just
+    registered — the exact "three route changes per patient" FD-2 measured and FD-9 deleted, coming
+    back in through the door the owner opened. `PatientInHand` is that carrier and it already exists:
+    ids only, never a name (a cached name survives a merge and the record does not), in
+    `sessionStorage` so it survives a refresh and not a shift change.
+
+    `Optional` because the ten desk-one suites mount this component without the provider. A desk
+    with no carrier keeps every behaviour it had — it simply does not hand off.
+  */
+  const carrier = usePatientInHandOptional();
   const [s, setS] = useState<Session>(emptySession);
   const [clock, setClock] = useState(() => istClock());
   const serviceDate = todayIst();
@@ -130,7 +155,22 @@ export function DeskOne(): React.ReactElement {
     queryFn: () => listQueueSummary(serviceDate),
     refetchInterval: 20_000,
   });
-  const cash = useQuery({ queryKey: ["d1", "cash-session"], queryFn: fetchCurrentSession });
+  /*
+    ═══ FD-26 — THE MONEY READS BELONG TO THE SEATS THAT TAKE MONEY ═══
+
+    A registration clerk holds `patients.register` and nothing billing. Firing the drawer, the dues
+    and the recognition reads on their screen buys three 403s per patient, a red console and a
+    header pill that has to say something about a drawer they cannot open. This is the one thing
+    FD-25's separate screens genuinely bought by being separate, and it is kept.
+
+    `/counter` is unaffected: `seat === "counter"` satisfies every clause.
+   */
+  const takesMoney = seat === "counter" || seat === "billing";
+  const cash = useQuery({
+    queryKey: ["d1", "cash-session"],
+    queryFn: fetchCurrentSession,
+    enabled: takesMoney,
+  });
   const day = useQuery({ queryKey: ["d1", "my-desk", serviceDate], queryFn: () => fetchDesk() });
 
   const encounterId = s.visit?.encounterId ?? null;
@@ -150,14 +190,14 @@ export function DeskOne(): React.ReactElement {
   const dues = useQuery({
     queryKey: ["d1", "dues", s.person?.id ?? null],
     queryFn: () => listDues(s.person!.id),
-    enabled: s.person !== null,
+    enabled: s.person !== null && takesMoney,
     staleTime: 30_000,
   });
 
   const recognition = useQuery({
     queryKey: ["d1", "recognition", s.person?.id ?? null],
     queryFn: () => fetchRecognition({ patientId: s.person!.id }),
-    enabled: s.person !== null && can("membership.instrument.recognise"),
+    enabled: s.person !== null && takesMoney && can("membership.instrument.recognise"),
     retry: false,
   });
 
@@ -233,7 +273,7 @@ export function DeskOne(): React.ReactElement {
       enrolling: false,
       duplicates: null,
       query: "",
-      stage: "appointment",
+      stage: stageForSeat(seat, "appointment"),
       /*
         ═══ FD-15 — THE FACE BELONGS TO THE PERSON, AND IT IS CLEARED BEFORE IT IS LOADED ═══
 
@@ -297,7 +337,7 @@ export function DeskOne(): React.ReactElement {
         /* no photo on file is the common case, not an error worth a line in the log */
       }
     })();
-  }, []);
+  }, [seat]);
 
   /**
    * ═══ FD-14 — THE FACE: HELD WHILE ENROLLING, UPLOADED THE MOMENT THERE IS SOMEBODY TO ATTACH IT TO ═══
@@ -326,27 +366,111 @@ export function DeskOne(): React.ReactElement {
     })();
   }, [s.person]);
 
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-26 — THE HANDOFF: THE PERSON SURVIVES THE WALK BETWEEN CHAIRS
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Two halves, both dead on `/counter` — where one clerk does all three stages in one mount and
+   * there is no walk to survive.
+   *
+   * MIRROR: whoever is in hand goes into `PatientInHand` as an ID. Not a name: a cached name
+   * outlives a merge and the record does not, and a stale label is exactly how a wrong-patient
+   * event becomes invisible (`lib/patient-in-hand.tsx`'s own ruling, inherited rather than
+   * re-argued).
+   *
+   * RESTORE: on arrival, an id in the carrier and an empty desk means the clerk walked here holding
+   * somebody. Read the row and seat them. It fires ONCE per mount — `restored` is a ref, not state,
+   * so re-renders cannot re-trigger it — because after the first attempt `clearDesk` (Esc) must be
+   * able to empty the desk and have it STAY empty. Without that latch Escape would be undone by the
+   * next render and the desk could not be cleared at all.
+   */
+  const restored = useRef(false);
+  useEffect(() => {
+    if (seat === "counter" || carrier === null) return;
+    if (s.person === null) return;
+    if (carrier.inHand?.patientId === s.person.id) return;
+    carrier.takePatient(s.person.id);
+  }, [seat, carrier, s.person]);
+
+  useEffect(() => {
+    if (seat === "counter" || carrier === null) return;
+    if (restored.current) return;
+    restored.current = true;
+    const held = carrier.inHand;
+    if (held === null) return;
+    void api<{ patient: {
+      id: string; uhid: string; name: string | null; alias: string | null;
+      administrativeGender: string; dob: string | null; phone: string | null; addressLine: string | null;
+    } }>("GET", `/patients/${encodeURIComponent(held.patientId)}`).then(
+      (detail) => {
+        const p = detail.patient;
+        setS((prev) => (prev.person !== null || prev.enrolling ? prev : {
+          ...prev,
+          person: {
+            id: p.id,
+            uhid: p.uhid,
+            /* A sealed row hands over its alias and no name; the desk shows what it was allowed. */
+            name: p.name ?? p.alias ?? p.uhid,
+            phone: p.phone,
+            gender: p.administrativeGender,
+            dob: p.dob,
+            hasAddress: (p.addressLine ?? "").trim() !== "",
+            justRegistered: false,
+          },
+          stage: stageForSeat(seat, "appointment"),
+          startedAt: Date.now(),
+          log: logged(prev.log, `${p.name ?? p.uhid} walked here from the last desk — still in hand`),
+        }));
+      },
+      /*
+        A REFUSED READ RELEASES THE CARRIER RATHER THAN RETRYING. The likely cause is a permission
+        this seat does not hold or a row that has been merged away; either way an id that cannot be
+        read is an id that must not sit in storage waiting to be re-tried on every seat the clerk
+        opens for the rest of the shift.
+      */
+      () => { carrier.release(); },
+    );
+  }, [seat, carrier]);
+
   const startEnrolment = useCallback(() => {
+    /*
+      ═══ FD-26 — "NEW WALK-IN" ON A CHAIR THAT DOES NOT REGISTER IS A WALK, NOT A REFUSAL ═══
+
+      The booking clerk and the cashier both meet people who are not on file. Their seats have no
+      register stage, so opening the enrolment form here would either show a form the seat cannot
+      submit or — via `stageForSeat` — silently land them somewhere they did not ask for. Sending
+      them to the chair that DOES register, with the form already up, is the honest answer, and
+      `?new=true` is the one-shot the registration seat already knows how to consume.
+    */
+    if (!seatHasStage(seat, "register")) {
+      void navigate({ to: "/registration", search: { new: true }, replace: false });
+      return;
+    }
     setS((prev) => ({
       ...prev,
-      enrolling: true, person: null, duplicates: null, stage: "register",
+      enrolling: true, person: null, duplicates: null, stage: stageForSeat(seat, "register"),
       // FD-15 — the previous patient's face must not follow the clerk into a new registration
       photo: null,
       form: { ...EMPTY_FORM, name: prev.query.replace(/\d/g, "").trim(), phone: /^\d{6,}$/.test(prev.query.replace(/\s/g, "")) ? prev.query.replace(/\s/g, "") : "" },
       startedAt: Date.now(),
     }));
-  }, []);
+  }, [seat, navigate]);
 
   /*
     F4 FROM ANYWHERE IN THE APP LANDS HERE WITH THE FORM UP, and the flag is consumed once: a
     replace-navigate clears it, so a second F4 retriggers rather than being swallowed by a URL that
-    still says `new=true`. (`/registration` used the same one-shot discipline before it was deleted.)
+    still says `new=true`.
+
+    FD-26 — the flag is consumed against THIS seat's route, not `/counter`: `/registration` takes the
+    same parameter, and replacing it with `/counter` would teleport a registration clerk to a
+    different chair the instant they pressed the key that means "a new patient is in front of me".
   */
   useEffect(() => {
     if (search.new !== true) return;
     startEnrolment();
-    void navigate({ to: "/counter", search: {}, replace: true });
-  }, [search.new, startEnrolment, navigate]);
+    void navigate({ to: SEAT_ROUTE[seat] as "/counter", search: {}, replace: true });
+  }, [search.new, startEnrolment, navigate, seat]);
 
   /**
    * ═══ REGISTRATION ENDS AT THE UHID ═══
@@ -379,7 +503,7 @@ export function DeskOne(): React.ReactElement {
         busy: null,
         duplicates: null,
         enrolling: false,
-        stage: "appointment",
+        stage: stageForSeat(seat, "appointment"),
         /*
           READ BACK, never reconstructed from the form. The server derived a dob from `ageYears`
           (`registration.ts:87`) and normalised the phone; taking its answer means the dossier shows
@@ -433,7 +557,7 @@ export function DeskOne(): React.ReactElement {
         log: logged(prev.log, `registration REFUSED — ${opdErrorMessage(e)}`, "err"),
       }));
     }
-  }, [s.form, s.photo, patch, qc]);
+  }, [s.form, s.photo, patch, qc, seat]);
 
   /**
    * §FD-8 — the complaint, in the patient's own words, ranked SERVER-SIDE. The gateway credential
@@ -534,7 +658,7 @@ export function DeskOne(): React.ReactElement {
       setS((prev) => ({
         ...prev,
         busy: null,
-        stage: "bill",
+        stage: stageForSeat(seat, "bill"),
         visit: {
           encounterId: res.encounter.id,
           patientId: res.patientId,
@@ -567,7 +691,7 @@ export function DeskOne(): React.ReactElement {
         log: logged(prev.log, `assignment REFUSED — ${opdErrorMessage(e)}`, "err"),
       }));
     }
-  }, [s.person, s.attributionCode, queues, summaries.data, lane, patch, qc]);
+  }, [s.person, s.attributionCode, queues, summaries.data, lane, patch, qc, seat]);
 
   /**
    * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -626,7 +750,7 @@ export function DeskOne(): React.ReactElement {
         tender: null,
         armedTender: null,
         tenderRef: "",
-        stage: "appointment",
+        stage: stageForSeat(seat, "appointment"),
         log: logged(prev.log, `seating withdrawn — ${visit.doctorName}'s token cancelled on the board; pick again`, "warn"),
       }));
       void qc.invalidateQueries({ queryKey: ["d1", "summary"] });
@@ -636,7 +760,7 @@ export function DeskOne(): React.ReactElement {
         log: logged(prev.log, `could not withdraw the seating — ${opdErrorMessage(e)}`, "err"),
       }));
     }
-  }, [s.visit, s.issued, patch, qc]);
+  }, [s.visit, s.issued, patch, qc, seat]);
 
   /**
    * FD-18 — THE BILLING OVERRIDE, AS A CORRECTION. Owner ruling 2026-09-04, choosing between three
@@ -668,10 +792,10 @@ export function DeskOne(): React.ReactElement {
 
   const unassign = useCallback(() => {
     setS((prev) => ({
-      ...prev, visit: null, issued: null, tender: null, stage: "appointment",
+      ...prev, visit: null, issued: null, tender: null, stage: stageForSeat(seat, "appointment"),
       log: logged(prev.log, "assignment withdrawn at the desk — pick again", "warn"),
     }));
-  }, []);
+  }, [seat]);
 
   /** A slot on a later day. It is held BESIDE today's session and never replaces it. */
   const holdFutureSlot = useCallback(async (
@@ -888,6 +1012,13 @@ export function DeskOne(): React.ReactElement {
   }, [navigate]);
 
   const clearDesk = useCallback(() => {
+    /*
+      FD-26 — "nothing carries to the next person" has to mean the CARRIER too. Leaving the id in
+      `sessionStorage` would have the next seat this clerk opens re-take a patient they just
+      released, which is the wrong-patient shape this whole mechanism exists to avoid.
+      `/counter` never writes the carrier, so releasing there is a no-op it already tolerates.
+    */
+    if (seat !== "counter") carrier?.release();
     setS((prev) => {
       if (prev.person === null && !prev.enrolling) return { ...prev, overlay: null, query: "" };
       return {
@@ -897,11 +1028,14 @@ export function DeskOne(): React.ReactElement {
         drawer: prev.drawer,
       };
     });
-  }, []);
+  }, [seat, carrier]);
 
   const goto = useCallback((stage: Session["stage"]) => {
-    setS((prev) => (prev.person === null && stage !== "find" ? prev : { ...prev, stage, overlay: null }));
-  }, []);
+    /* FD-26 — a seat cannot be sent to a stage it does not have; `stageForSeat` lands it on `done`. */
+    setS((prev) => (prev.person === null && stage !== "find"
+      ? prev
+      : { ...prev, stage: stageForSeat(seat, stage), overlay: null }));
+  }, [seat]);
 
   /**
    * ═══ THE DOCK'S ASK BOX ANSWERS FROM THE LIVE BOARD, AND SAYS SO ═══
@@ -1043,7 +1177,7 @@ export function DeskOne(): React.ReactElement {
   }, [s.overlay, s.stage, s.issued, bill.free, bill.totalPaise, cash.data, clearDesk, startEnrolment, settle]);
 
   const desk: DeskApi = {
-    s, patch, lane,
+    s, patch, seat, lane,
     departments: departments.data?.items ?? [],
     summaries: summaries.data?.items ?? [],
     queues,
@@ -1085,7 +1219,18 @@ export function DeskOne(): React.ReactElement {
         draw it falls back per-character to whatever the machine happens to have, which is a
         different face on every terminal in the hospital.
       */}
-      <div className="d1" data-lang={i18n.language.startsWith("hi") ? "hi" : "en"} data-testid="desk-one">
+      {/*
+        FD-26 — `data-seat` is the mount's identity and one other thing reads it: `lib/keyboard.tsx`'s
+        global F4, which must NOT navigate to `/counter` when a desk is already on screen. The
+        `data-testid` stays `desk-one` on every seat, deliberately: ten suites and the Devanagari
+        scope test key off it, and a seat IS Desk One.
+      */}
+      <div
+        className="d1"
+        data-lang={i18n.language.startsWith("hi") ? "hi" : "en"}
+        data-seat={seat}
+        data-testid="desk-one"
+      >
         <div className="frame">
           {/* ══════════ header ══════════ */}
           {/*
@@ -1100,10 +1245,44 @@ export function DeskOne(): React.ReactElement {
               <span className="mo" style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: ".08em" }}>DESK ONE</span>
             </div>
             <span style={{ color: "var(--line)" }}>/</span>
-            <span style={{ fontSize: 12.5, color: "var(--dim)" }}>
-              Registration · Appointment · Billing ·{" "}
-              <strong style={{ color: "var(--ink)", fontWeight: 600 }}>{desk.clerkName}</strong>
-            </span>
+            {/*
+              ═══ FD-26 — THE BREADCRUMB BECOMES THE SEATS' NAVIGATION, IN THE SAME 12.5px ROW ═══
+
+              `/counter` keeps the sentence it has always had: one person does all three, so naming
+              them is a description, not a menu. On a seat the same three words become the doors —
+              same row, same position, same type scale — because a full-viewport screen has to say
+              how you leave it, and the app nav is deliberately not rendered above a `.d1` mount.
+
+              The patient in hand travels with the clerk (see `PatientInHand` below), so moving from
+              the registration chair to the booking chair is a click and not a re-search.
+            */}
+            {seat === "counter" ? (
+              <span style={{ fontSize: 12.5, color: "var(--dim)" }}>
+                Registration · Appointment · Billing ·{" "}
+                <strong style={{ color: "var(--ink)", fontWeight: 600 }}>{desk.clerkName}</strong>
+              </span>
+            ) : (
+              <span style={{ fontSize: 12.5, color: "var(--dim)", display: "flex", alignItems: "center", gap: 6 }}>
+                {SEATS.map((other, i) => (
+                  <Fragment key={other}>
+                    {i > 0 ? <span style={{ color: "var(--line)" }}>·</span> : null}
+                    <button
+                      data-testid={`seat-to-${other}`}
+                      className={other === seat ? "pill on" : "pill"}
+                      style={{ height: 21 }}
+                      aria-current={other === seat ? "page" : undefined}
+                      onClick={() => {
+                        if (other !== seat) void navigate({ to: SEAT_ROUTE[other] as "/counter" });
+                      }}
+                    >
+                      {SEAT_LABEL[other]}
+                    </button>
+                  </Fragment>
+                ))}
+                <span style={{ color: "var(--line)" }}>·</span>
+                <strong style={{ color: "var(--ink)", fontWeight: 600 }}>{desk.clerkName}</strong>
+              </span>
+            )}
             {/*
               THE DRAWER IS A LIVE PRECONDITION, WORN IN THE HEADER. `POST /receipts` refuses cash
               with no open session, so the pill is the reason the CASH key is dark at the bill stage.

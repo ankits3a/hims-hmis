@@ -3,7 +3,7 @@ import type { WirePatientHit, WireRegisterBody } from "../../lib/patients-api";
 import type { WireDepartment, WireDoctorSummary, WireSlot } from "../../lib/opd-api";
 import type { WireFeeQuote, WireIssueInvoiceResult, TenderMode } from "../../lib/billing-api";
 import type { WireRecognition } from "../../lib/membership-api";
-import type { BillLine, DeptQueue, Lane, LogLine, Stage } from "./model";
+import type { BillLine, DeptQueue, Lane, LogLine, Seat, Stage } from "./model";
 
 /**
  * ═══ THE PERSON IN HAND ═══
@@ -245,6 +245,12 @@ export function emptySession(): Session {
 export type DeskApi = {
   s: Session;
   patch: (next: Partial<Session>) => void;
+  /**
+   * FD-26 — WHICH CHAIR THIS MOUNT IS. Not session state: the session is what the clerk is doing,
+   * the seat is who they are. It never changes for the life of a mount, and `"counter"` — the
+   * default everywhere — is the identity that keeps Desk One what it was.
+   */
+  seat: Seat;
   lane: Lane;
   /** Server reads the whole screen shares. Undefined while loading, never invented. */
   departments: WireDepartment[];
