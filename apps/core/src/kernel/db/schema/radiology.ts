@@ -768,3 +768,70 @@ export const imagingContrastReactions = pgTable(
     ),
   ],
 );
+
+/**
+ * ═══ PLAN 18a-iii T4 / D5 — `imaging_outside_studies`: A RECORD OF A DOCUMENT, NOT AN IMAGE STORE ═══
+ *
+ * 18b shipped `IMAGE_SOURCES` with `outside` in it and **nothing behind the value** — its D8 defers
+ * the register here by name. This is that register, and D5 fixes its shape: a study performed
+ * somewhere else enters as PROVENANCE — the centre, their date, the modality, their accession if the
+ * paperwork carries one, and how the images physically arrived — so that a radiologist reporting on
+ * it and a clinician reading that report can both see, without asking anybody, that it was not ours.
+ *
+ * **No file upload in this phase.** The DPDP question and the storage tiering belong with 18b-ii, and
+ * a half-built upload is worse than a citation: a link that resolves for six months and then does
+ * not is a report referring to evidence nobody can produce.
+ *
+ * ═══ WHY THE ROW HANGS OFF A STUDY RATHER THAN STANDING ALONE ═══
+ *
+ * Because the point of the register is that our radiologist REPORTS on it, and a report in this
+ * module is written about an `imaging_studies` row. A free-standing provenance table would need a
+ * second reporting path, a second worklist and a second way to be billed — D4's argument against a
+ * `portable_studies` table, applied to the other end of the module.
+ *
+ * `study_id` is UNIQUE: one study is one outside examination. Two films from two centres are two
+ * referrals, two studies and two rows, because a radiologist signs one report per study and a reader
+ * must never have to work out which of two provenances a paragraph refers to.
+ *
+ * ═══ AND THE ROW IS THE PROOF THAT NO DOSE WAS LOGGED ═══
+ *
+ * `registerOutsideStudy` is the ONLY path that reaches `acquired` without an acquisition, and it
+ * writes this row in the same transaction. So "an `acquired` study with no dose register entry" is
+ * not an anomaly to investigate — it is an outside study, and this table says which centre irradiated
+ * the patient instead of us.
+ */
+export const IMAGE_ARRIVALS = ["film", "cd", "link", "none"] as const;
+export type ImageArrival = (typeof IMAGE_ARRIVALS)[number];
+
+export const imagingOutsideStudies = pgTable(
+  "imaging_outside_studies",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    studyId: text("study_id").notNull().references(() => imagingStudies.id),
+    /** Free text: the other hospital's name as it appears on the film or the envelope. */
+    centreName: text("centre_name").notNull(),
+    /** THEIR date, not ours. A date on a label, never an instant — it is often all the film carries. */
+    studyDate: date("study_date").notNull(),
+    modality: text("modality").notNull(),
+    /** Their accession or film number, when the paperwork has one. Usually it does not. */
+    externalAccessionNo: text("external_accession_no"),
+    /** How the images physically arrived. `none` is a REPORT with no images, which is a real case. */
+    arrival: text("arrival").notNull(),
+    notes: text("notes"),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("imaging_outside_studies_study_ux").on(t.studyId),
+    index("imaging_outside_studies_centre_idx").on(t.centreName, t.studyDate),
+    check("imaging_outside_studies_arrival_ck", inList(t.arrival, IMAGE_ARRIVALS)),
+    /**
+     * **No CHECK on `modality`, and that is deliberate.** `IMAGING_MODALITIES` lives in
+     * `modules/radiology/kinds.ts` — a MODULE file — and this is the kernel schema surface. Inlining
+     * the five words here would be a second copy of a vocabulary with one owner, and §2.54's rule is
+     * that if a fact must be written twice, something must fail when the copies diverge. Nothing
+     * would. `registerOutsideStudy` validates against the owning constant instead, which is also
+     * where `imaging_studies` gets its modality answered from (the study TYPE, never a column).
+     */
+  ],
+);

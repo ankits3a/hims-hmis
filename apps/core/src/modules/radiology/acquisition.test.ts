@@ -520,7 +520,13 @@ describe("acquisition: the patient is on the table (18a T7)", () => {
     await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
     await start(study.studyId);
     const paper = new Date(NOW.getTime() - 4 * 3_600_000);
-    await acquired(study.studyId, { imageSource: "outside", acquiredAt: paper });
+    /**
+     * 18a-iii T4 — this was `imageSource: "outside"`, incidentally: the subject of this test is
+     * E11's DERIVED `lateEntry`, and the source was never what it asserted. `outside` is now refused
+     * at this console (a film from another centre logs no dose against our machine), so the fixture
+     * uses the source that matches what the test is actually about — a backfilled scan of ours.
+     */
+    await acquired(study.studyId, { imageSource: "no_pacs_images", acquiredAt: paper });
 
     const [row] = await db.select().from(imagingStudies).where(eq(imagingStudies.id, study.studyId));
     expect([row!.acquiredAt?.toISOString(), row!.lateEntry]).toEqual([paper.toISOString(), true]);
