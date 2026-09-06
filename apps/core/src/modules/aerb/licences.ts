@@ -362,11 +362,36 @@ export async function assertDeviceLicensed(
 ): Promise<{ licenceId: string; licenceNo: string }> {
   const licence = await activeLicenceFor(exec, deviceResourceId, onDate);
   if (!licence) {
+    /**
+     * ═══ THE MACHINE IS NAMED THE WAY THE PERSON READING THIS KNOWS IT ═══
+     *
+     * This sentence used to open `device 01M1VRJ4QVQWNA2V3X8YYK62MF carries no active AERB
+     * licence…`, and it is the message that STOPS the imaging department. A radiographer meets it
+     * standing at a console in X-ray room 1; nothing on that screen maps the ULID back to the
+     * room, so the one thing they must tell the RSO — WHICH MACHINE — was the one thing the
+     * refusal did not say. Seen in a browser during the go-live rehearsal, not in a test.
+     *
+     * The lookup is on the REFUSAL PATH ONLY, so a licensed scan still costs one query. The ULID
+     * stays in `detail`, where a machine reads it; it has no business in the prose.
+     *
+     * It also names the remedy. A hard stop that does not say who can lift it sends the
+     * technologist to whoever is nearest rather than to the radiation safety officer.
+     *
+     * **The code helps a Hindi reader too, which is why it is the fix rather than a translation.**
+     * This message is English on a screen that is otherwise fully translated — a real gap, tracked
+     * separately — but `XR-1` reads identically in both scripts, and a ULID reads as noise in
+     * either. Naming the machine is worth more to that radiographer than translating the sentence
+     * around the ULID would have been.
+     */
+    const rows = await (exec as Db).select({ code: resources.code, name: resources.name })
+      .from(resources).where(eq(resources.id, deviceResourceId));
+    const machine = rows[0] ? `${rows[0].code} (${rows[0].name})` : `device ${deviceResourceId}`;
     throw new AerbError(
       "device_not_licensed",
-      `device ${deviceResourceId} carries no active AERB licence covering ${onDate} — equipment that `
-      + "emits ionising radiation may not be operated without one",
-      { deviceResourceId, onDate },
+      `${machine} carries no active AERB licence covering ${onDate} — equipment that `
+      + "emits ionising radiation may not be operated without one. The radiation safety officer "
+      + "files the certificate under Radiation safety → Licences.",
+      { deviceResourceId, onDate, code: rows[0]?.code ?? null, name: rows[0]?.name ?? null },
     );
   }
   return { licenceId: licence.id, licenceNo: licence.licenceNo };
