@@ -5,6 +5,7 @@
 **Lane:** the pharmacy lane's worktree, branch `lane/commissioning-11i` cut fresh from `origin/main` — this lane becomes the commissioning lane (roadmap §0b.2), and the lane that builds UAT is the lane that runs it. The LIMS lane takes 17-E T7 in parallel. **One task = one PR**: commit by pathspec, push, `gh pr create`; CI is the gate; locally only the touched suites, always through `test-lock.sh`. Docker builds go through the same mutex — a build is a builder.
 
 **Status: AUTHORED 2026-09-06; REVISED the same day by a second session (execution order D11, the lane, the restore drill in T7); NOT APPROVED, NOT STARTED.** Proposed by `2026-09-06-ROADMAP-v2.md` §7 as the first phase of the commissioning track. **Author it; do not execute it** was the brief's instruction to the session that wrote this.
+**Execution handoff + edge catalogue (assertion book for every task):** `../2026-09-06-HANDOFF-commissioning-lane-11i.md`.
 
 ## 1. Why this phase
 
