@@ -195,7 +195,12 @@ describe("FD-24 T2: the print relay's routes", () => {
     for (const m of ALL_MANIFESTS) registry.install(m);
     await syncPermissions(db, registry);
     await createRole(db, "front_desk_reprint", "Front desk (reprint)");
+    /* FD-27 narrowed these routes off `opd.visits.open` onto `opd.paper.reprint` and left this
+       fixture behind, so four rows here have been 403 since that commit. Both are granted because
+       a real `front_office` user holds both — a fixture that models a person `seed-roles` never
+       produces is its own defect (FD-28 trap 6). */
     await grantPermissionToRole(db, registry, "front_desk_reprint", "opd.visits.open");
+    await grantPermissionToRole(db, registry, "front_desk_reprint", "opd.paper.reprint");
     const desk = await mkUser(db, `desk-${String(Date.now())}`, ["front_desk_reprint"]);
 
     await request(app.getHttpServer())
@@ -242,7 +247,12 @@ describe("FD-24 T2: the print relay's routes", () => {
     for (const m of ALL_MANIFESTS) registry.install(m);
     await syncPermissions(db, registry);
     await createRole(db, "desk_no_confidential", "Front desk without confidential read");
+    /* FD-27 narrowed these routes off `opd.visits.open` onto `opd.paper.reprint` and left this
+       fixture behind, so four rows here have been 403 since that commit. Both are granted because
+       a real `front_office` user holds both — a fixture that models a person `seed-roles` never
+       produces is its own defect (FD-28 trap 6). */
     await grantPermissionToRole(db, registry, "desk_no_confidential", "opd.visits.open");
+    await grantPermissionToRole(db, registry, "desk_no_confidential", "opd.paper.reprint");
     const desk = await mkUser(db, `nosee-${String(Date.now())}`, ["desk_no_confidential"]);
 
     const before = (await db.select().from(printJobs)).length;
@@ -283,7 +293,11 @@ describe("FD-24 T2: the print relay's routes", () => {
     for (const m of ALL_MANIFESTS) registry.install(m);
     await syncPermissions(db, registry);
     await createRole(db, "desk_may_see", "Front desk with confidential read");
-    for (const p of ["opd.visits.open", "patients.confidential.read"]) {
+    /* FD-27 narrowed these routes off `opd.visits.open` onto `opd.paper.reprint` and left this
+       fixture behind, so four rows here have been 403 since that commit. Both are granted because
+       a real `front_office` user holds both — a fixture that models a person `seed-roles` never
+       produces is its own defect (FD-28 trap 6). */
+    for (const p of ["opd.visits.open", "opd.paper.reprint", "patients.confidential.read"]) {
       await grantPermissionToRole(db, registry, "desk_may_see", p);
     }
     const mrd = await mkUser(db, `maysee-${String(Date.now())}`, ["desk_may_see"]);
@@ -361,7 +375,12 @@ describe("FD-24 T2: the print relay's routes", () => {
     for (const m of ALL_MANIFESTS) registry.install(m);
     await syncPermissions(db, registry);
     await createRole(db, "front_desk_print", "Front desk (print status)");
+    /* FD-27 narrowed these routes off `opd.visits.open` onto `opd.paper.reprint` and left this
+       fixture behind, so four rows here have been 403 since that commit. Both are granted because
+       a real `front_office` user holds both — a fixture that models a person `seed-roles` never
+       produces is its own defect (FD-28 trap 6). */
     await grantPermissionToRole(db, registry, "front_desk_print", "opd.visits.open");
+    await grantPermissionToRole(db, registry, "front_desk_print", "opd.paper.reprint");
     const clerk = await mkUser(db, `desk-${String(Date.now())}`, ["front_desk_print"]);
 
     const listed = await request(app.getHttpServer())

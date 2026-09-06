@@ -309,8 +309,10 @@ export class PrintingController {
    * the patient. This is the read the screen polls to say so.
    *
    * It is scoped to ONE ENCOUNTER, deliberately: this is the desk asking about the patient in front
-   * of it, not a queue browser. `opd.visits.open` is the permission because opening the visit is
-   * what queued the paper — anyone who may create the slip may see whether it printed.
+   * of it, not a queue browser. The permission WAS `opd.visits.open` — "anyone who may create the
+   * slip may see whether it printed" — and FD-27 narrowed it to `opd.paper.reprint`; the argument
+   * is in `modules/opd/manifest.ts`. This sentence said the old thing for four commits after the
+   * decorator below said the new one.
    */
   @Get("jobs")
   /* FD-27 — narrowed off `opd.visits.open`; the whole argument is in `modules/opd/manifest.ts`. */
