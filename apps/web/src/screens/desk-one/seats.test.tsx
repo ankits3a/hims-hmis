@@ -275,3 +275,108 @@ describe("FD-26 · the booking chair keeps what only it could do", () => {
     expect(screen.queryByTestId("rebooking-rail")).not.toBeInTheDocument();
   });
 });
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-27 — "I LOST MY BILL AND MY PRESCRIPTION". Owner, 2026-09-06.
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Before this, the answer was no — measured, not assumed. The only reprint control in the whole
+ * application lived inside `StageDone` and rendered ONLY for a job the server had recorded as
+ * FAILED, so a slip that printed perfectly and was then lost on the bus had no control at all. It
+ * also required `s.visit`, which only `walkIn()` sets, so it was gone the moment the desk cleared.
+ *
+ * These tests are the door, and the FIRST one is the one that matters: the history strip was
+ * already holding the `encounterId` of every past visit and spending it on a React key.
+ */
+describe("FD-27 · the papers a patient lost", () => {
+  const HISTORY = {
+    items: [{
+      encounterId: "e-old", serviceDate: "2026-09-01", departmentName: "Cardiology",
+      doctorName: "Dr Anil Desai", status: "completed",
+    }],
+  };
+  const JOBS = {
+    jobs: [
+      { id: "j-tok", document: "opd_token_slip", status: "printed", attempts: 1, lastError: null, printedAt: "2026-09-01T05:00:00.000Z", createdAt: "2026-09-01T04:59:00.000Z" },
+      { id: "j-rx", document: "opd_prescription", status: "printed", attempts: 1, lastError: null, printedAt: "2026-09-01T05:00:00.000Z", createdAt: "2026-09-01T04:59:00.000Z" },
+    ],
+  };
+
+  async function openPapers(): Promise<ReturnType<typeof userEvent.setup>> {
+    await go("/counter");
+    await waitFor(() => expect(screen.getByTestId("desk-one")).toBeInTheDocument());
+    const user = userEvent.setup({ delay: null });
+    await hold(user);
+    await waitFor(() => expect(screen.getAllByTestId("history-row").length).toBeGreaterThan(0), { timeout: 3000 });
+    await user.click(screen.getAllByTestId("history-row")[0]!);
+    await waitFor(() => expect(screen.getByTestId("papers-sheet")).toBeInTheDocument(), { timeout: 3000 });
+    return user;
+  }
+
+  it("a PAST visit's row opens its papers — the encounterId it was holding is now a door", async () => {
+    mount("/counter", {
+      "GET /api/opd/patients/p-1/timeline": HISTORY,
+      "GET /api/print/jobs": JOBS,
+      "GET /api/billing/invoices": { items: [] },
+    });
+    await openPapers();
+    /*
+      A SLIP THAT PRINTED CORRECTLY STILL OFFERS A REPRINT, and that is the whole inversion. The
+      patient in front of the clerk did not lose their paper because the printer failed.
+    */
+    expect(screen.getByTestId("papers-job-opd_token_slip")).toHaveTextContent("printed");
+    expect(screen.getByTestId("papers-reprint-opd_token_slip")).toBeInTheDocument();
+    expect(screen.getByTestId("papers-reprint-opd_prescription")).toBeInTheDocument();
+  });
+
+  it("pressing print again asks the server for a NEW job, so who reprinted it stays answerable", async () => {
+    const posted: unknown[] = [];
+    mount("/counter", {
+      "GET /api/opd/patients/p-1/timeline": HISTORY,
+      "GET /api/print/jobs": JOBS,
+      "GET /api/billing/invoices": { items: [] },
+      "POST /api/print/reprint": (init?: RequestInit) => {
+        posted.push(JSON.parse(String(init?.body ?? "{}")));
+        return { id: "j-new" };
+      },
+    });
+    const user = await openPapers();
+    await user.click(screen.getByTestId("papers-reprint-opd_token_slip"));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    /* The job id of the row pressed — not the document name, and not the newest job blindly. */
+    expect(posted[0]).toEqual({ jobId: "j-tok" });
+    expect(await screen.findByTestId("papers-note")).toHaveTextContent("token slip");
+  });
+
+  it("the bills raised for that visit are listed and openable as the printed document", async () => {
+    mount("/counter", {
+      "GET /api/opd/patients/p-1/timeline": HISTORY,
+      "GET /api/print/jobs": { jobs: [] },
+      "GET /api/billing/invoices": {
+        items: [{
+          id: "inv-1", invoiceNo: "INV/26-27/000042", patientId: "p-1", encounterId: "e-old",
+          tariffVersionId: "t1", intendedPayer: "self", buyerGstin: null, buyerLegalName: null,
+          grossPaise: 50000, discountPaise: 0, taxableBasePaise: 50000, cgstPaise: 0, sgstPaise: 0,
+          rawTotalPaise: 50000, roundingPaise: 0, netPayablePaise: 50000,
+          creditExtended: false, creditReason: null, creditApprovalId: null,
+          issuedBy: "u1", issuedAt: "2026-09-01T05:00:00.000Z", serviceDay: "2026-09-01", seq: 42,
+        }],
+      },
+    });
+    await openPapers();
+    expect(screen.getByTestId("papers-invoice-INV/26-27/000042")).toHaveTextContent("₹500");
+    expect(screen.getByTestId("papers-show-INV/26-27/000042")).toBeInTheDocument();
+  });
+
+  it("a visit that queued nothing says so, rather than rendering an empty box a clerk reads as broken", async () => {
+    mount("/counter", {
+      "GET /api/opd/patients/p-1/timeline": HISTORY,
+      "GET /api/print/jobs": { jobs: [] },
+      "GET /api/billing/invoices": { items: [] },
+    });
+    await openPapers();
+    expect(screen.getByTestId("papers-no-jobs")).toBeInTheDocument();
+    expect(screen.getByTestId("papers-no-bills")).toBeInTheDocument();
+  });
+});

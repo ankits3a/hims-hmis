@@ -313,7 +313,8 @@ export class PrintingController {
    * what queued the paper — anyone who may create the slip may see whether it printed.
    */
   @Get("jobs")
-  @RequirePermission("opd.visits.open", "hospital")
+  /* FD-27 — narrowed off `opd.visits.open`; the whole argument is in `modules/opd/manifest.ts`. */
+  @RequirePermission("opd.paper.reprint", "hospital")
   async jobsFor(@CurrentActor() actor: Actor, @Query("encounterId") encounterId: string): Promise<{
     jobs: { id: string; document: string; status: string; attempts: number; lastError: string | null; printedAt: string | null; createdAt: string }[];
   }> {
@@ -391,7 +392,8 @@ export class PrintingController {
    * why a reprint after a name correction hands over the CORRECTED name.
    */
   @Post("reprint")
-  @RequirePermission("opd.visits.open", "hospital")
+  /* FD-27 — narrowed off `opd.visits.open`; the whole argument is in `modules/opd/manifest.ts`. */
+  @RequirePermission("opd.paper.reprint", "hospital")
   async reprint(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ id: string | null }> {
     const { jobId, reason } = reprintBody.parse(body);
     const rows = await this.db.select().from(printJobs).where(eq(printJobs.id, jobId));

@@ -1123,7 +1123,14 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
         return;
       }
       if (e.key === "Escape") {
-        setS((prev) => (prev.overlay !== null ? { ...prev, overlay: null } : prev));
+        /*
+          FD-27 — `papersFor` is cleared with the sheet. It names an encounter from the patient's
+          HISTORY, so leaving it set would have the next open of the papers sheet — from the palette,
+          for the visit in hand — silently show the previous patient's old visit instead. A stale
+          identifier that outlives its screen is the wrong-patient shape, on a surface whose whole
+          job is handing over documents with somebody's name on them.
+        */
+        setS((prev) => (prev.overlay !== null ? { ...prev, overlay: null, papersFor: null } : prev));
         if (s.overlay === null) clearDesk();
         return;
       }

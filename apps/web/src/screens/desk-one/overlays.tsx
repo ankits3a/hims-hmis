@@ -7,6 +7,7 @@ import {
 import type { Lane } from "./model";
 import { useDesk } from "./session";
 import { PhotoPanel } from "./photo";
+import { PapersSheet } from "./papers";
 import { usePaletteOptional } from "../../components/command-palette";
 
 /**
@@ -26,13 +27,42 @@ export function Overlays(): React.ReactElement | null {
     case "queues": return <QueuesOverlay />;
     case "edit": return <EditOverlay />;
     case "schema": return <SchemaOverlay />;
+    case "papers": return <PapersOverlay />;
   }
+}
+
+/**
+ * FD-27 — the papers sheet, wrapped in the same `Sheet` every other overlay uses.
+ *
+ * `papersFor` names the encounter; null means the visit in hand. If neither exists there is nothing
+ * to show, and the honest thing is to say so rather than render an empty sheet a clerk will read as
+ * a failure — the common case is a clerk who opened it before picking anybody.
+ */
+function PapersOverlay(): React.ReactElement {
+  const d = useDesk();
+  const chosen = d.s.papersFor ?? (d.s.visit === null ? null : { encounterId: d.s.visit.encounterId, when: null });
+  return (
+    <Sheet width={620}>
+      {chosen === null ? (
+        <div style={{ padding: "18px 20px" }} data-testid="papers-empty">
+          <div style={{ fontSize: 15, fontWeight: 600 }}>No visit in hand</div>
+          <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--dim)", lineHeight: "17px" }}>
+            Papers belong to a visit. Pick the patient, then open a row of their history — every past
+            visit carries its own slips and bills, and each one can be handed over again.
+          </p>
+        </div>
+      ) : (
+        <PapersSheet encounterId={chosen.encounterId} when={chosen.when} />
+      )}
+    </Sheet>
+  );
 }
 
 function Sheet({ width, children }: { width: number; children: React.ReactNode }): React.ReactElement {
   const d = useDesk();
   return (
-    <div className="ovl" onClick={(e) => { if (e.target === e.currentTarget) d.patch({ overlay: null }); }}>
+    /* FD-27 — `papersFor` dies with the sheet. See the Escape handler in `desk-one.tsx` for why. */
+    <div className="ovl" onClick={(e) => { if (e.target === e.currentTarget) d.patch({ overlay: null, papersFor: null }); }}>
       <div
         className="box"
         style={{ width, maxHeight: "80vh", overflowY: "auto", boxShadow: "0 24px 70px rgba(19,36,32,.35)" }}
@@ -72,6 +102,15 @@ function Palette(): React.ReactElement {
     }
     if (has("bill")) all.push({ label: "go to billing", run: () => d.goto("bill") });
     all.push({ label: "amend this record (audited)", run: () => d.patch({ overlay: "edit" }) });
+    /*
+      FD-27 — the reprint door, reachable by NAME rather than only by clicking a history row. "They
+      lost the bill" is a sentence a clerk says before they think about which visit it was, and the
+      palette is where this desk turns a sentence into a screen.
+    */
+    all.push({
+      label: "their papers — reprint a slip or a bill",
+      run: () => d.patch({ overlay: "papers", papersFor: null }),
+    });
   }
   all.push({ label: "every line in the building", key: "Q", run: () => d.patch({ overlay: "queues" }) });
   all.push({ label: `counter lane — ${d.canSetFlow ? "change it" : "who set it"}`, run: () => d.patch({ overlay: "flow" }) });
@@ -123,7 +162,8 @@ function Palette(): React.ReactElement {
   const acts = all.filter((a) => q === "" || a.label.toLowerCase().includes(q.toLowerCase()));
 
   return (
-    <div className="ovl" onClick={(e) => { if (e.target === e.currentTarget) d.patch({ overlay: null }); }}>
+    /* FD-27 — `papersFor` dies with the sheet. See the Escape handler in `desk-one.tsx` for why. */
+    <div className="ovl" onClick={(e) => { if (e.target === e.currentTarget) d.patch({ overlay: null, papersFor: null }); }}>
       <div className="box" style={{ width: 540, overflow: "hidden", boxShadow: "0 24px 70px rgba(19,36,32,.35)" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 15px", borderBottom: "1px solid var(--line)" }}>
           <span className="mo" style={{ color: "var(--faint)" }}>›</span>

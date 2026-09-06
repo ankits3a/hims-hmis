@@ -45,6 +45,27 @@ export const opdManifest: ModuleManifest = {
      * chain where the bay needs the last one. Held by `vitals_desk`, `nurse` and `doctor`.
      */
     "opd.vitals.history.read",
+    /**
+     * ═══ FD-27 — REPRINTING A DOCUMENT IS ITS OWN AUTHORITY, AND THIS IS THE FRESH ANSWER ═══
+     *
+     * `GET /print/jobs` and `POST /print/reprint` were guarded on `opd.visits.open`, borrowed
+     * because `/counter` was their only caller and `front_office` holds it. FD-25's close pass then
+     * REMOVED `opd.visits.open` from `cashier` — two reviewers found that it also opens
+     * `POST /opd/visits/:id/reclassify`, so one actor could lower a consult fee and then collect
+     * it — and closed with: *"If the print rail ever reaches this seat, the grant is a fresh
+     * question with a fresh answer."*
+     *
+     * The owner reached it on 2026-09-06: *"A user with Billing permission don't have any way to
+     * print the OPD prescription."* They are right, and the reason is that string. This is the
+     * fresh answer: a permission that authorises re-queueing a document that has ALREADY been
+     * produced for a visit, and nothing else. It opens no write on the visit, cannot reclassify a
+     * fee, and cannot open or abandon anything — so the cashier can hand a patient their paper
+     * again without the seat that takes the money also being able to change what it costs.
+     *
+     * It is not a PHI widening either: the renderer resolves the patient at render time and records
+     * the access against the requester, and every holder below already carries `patients.read`.
+     */
+    "opd.paper.reprint",
     "opd.queue.read", "opd.queue.operate", "opd.queue.transfer",
     "opd.consult", "opd.prescriptions.verify", "opd.display.read",
   ],

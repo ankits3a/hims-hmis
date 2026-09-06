@@ -51,7 +51,11 @@ export type FutureHold = {
   slotStart: string;
 };
 
-export type Overlay = "palette" | "flow" | "queues" | "edit" | "schema" | null;
+/**
+ * FD-27 — `papers` joins the five. It is the "I lost my bill" surface: the print jobs and the bills
+ * raised for ONE encounter, with a way to hand each of them over again. See `papers.tsx`.
+ */
+export type Overlay = "palette" | "flow" | "queues" | "edit" | "schema" | "papers" | null;
 
 /**
  * FD-12 — one entitlement the patient produced at the desk. Kept as STRINGS like the rest of this
@@ -218,6 +222,13 @@ export type Session = {
   busy: string | null;
   error: string | null;
   overlay: Overlay;
+  /**
+   * FD-27 — WHICH ENCOUNTER the papers sheet is showing. A separate field rather than a variant of
+   * `overlay` because it outlives the sheet being closed and reopened, and because the sheet is
+   * opened from a HISTORY row — a visit that is not the one in hand, and therefore not derivable
+   * from `s.visit`. Null means "the visit in hand", which is what the dock's own entry opens.
+   */
+  papersFor: { encounterId: string; when: string | null } | null;
   drawer: boolean;
   answer: string | null;
   /** Wall-clock ms the person arrived at the desk — the "2 min at desk" figure on the done stage. */
@@ -230,7 +241,7 @@ export function emptySession(): Session {
     photo: null,
     complaint: "", triage: null, triageBusy: false, tab: "now", visit: null, future: null,
     coupons: [], attributionCode: "", issued: null, tender: null, armedTender: null, tenderRef: "", takenPaise: 0,
-    log: [], busy: null, error: null, overlay: null, drawer: false, answer: null, startedAt: null,
+    log: [], busy: null, error: null, overlay: null, papersFor: null, drawer: false, answer: null, startedAt: null,
   };
 }
 

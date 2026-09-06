@@ -303,6 +303,21 @@ export function fetchInvoicePrint(invoiceId: string): Promise<WireInvoicePrint> 
   return api("GET", `/billing/invoices/${encodeURIComponent(invoiceId)}/print`);
 }
 
+/**
+ * ═══ FD-27 — THE INVOICE LIST, WHICH HAS EXISTED AND HAD NO CALLER ═══
+ *
+ * `GET /billing/invoices` has been on the server, permissioned and query-shaped, since Plan 08, and
+ * nothing in this application has ever called it. That is why a patient who lost their bill could
+ * not be helped: the screen that issued it holds the invoice in local state and there was no second
+ * road to it. This is that road, and `desk-one/papers.tsx` is its caller.
+ */
+export function listInvoicesFor(q: { patientId?: string; encounterId?: string }): Promise<{ items: WireInvoice[] }> {
+  const params = new URLSearchParams();
+  if (q.patientId !== undefined) params.set("patientId", q.patientId);
+  if (q.encounterId !== undefined) params.set("encounterId", q.encounterId);
+  return api("GET", `/billing/invoices?${params.toString()}`);
+}
+
 export function listDues(patientId: string): Promise<{ items: WireDueRow[] }> {
   return api("GET", `/billing/patients/${encodeURIComponent(patientId)}/dues`);
 }

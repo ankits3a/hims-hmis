@@ -90,6 +90,14 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "opd.appointments.manage",
       "opd.visits.read",
       "opd.visits.open",
+      /*
+        FD-27 — HELD EXPLICITLY, NOT INHERITED. `GET /print/jobs` and `POST /print/reprint` used to
+        ride `opd.visits.open`, which this role happens to hold; narrowing them onto their own string
+        would have SILENTLY taken the counter's reprint rail away if this line were not added in the
+        same commit. A permission that changes hands is a permission that has to be re-granted, and
+        the seat that hands a patient their token slip is this one.
+      */
+      "opd.paper.reprint",
       "opd.queue.read",
       // Owner ruling 7 — without these the desk cannot register a patient and the OPD flow this
       // plan exists to enable dies at step one.
@@ -435,6 +443,22 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * print rail ever reaches this seat, the grant is a fresh question with a fresh answer.*/
       "tariff.read",
       "patients.read",
+      /**
+       * ═══ FD-27 — THE PRINT RAIL REACHED THIS SEAT, AND THIS IS THAT FRESH ANSWER ═══
+       *
+       * Owner, 2026-09-06: *"A user with Billing permission don't have any way to print the OPD
+       * prescription (A4 size) … if the patient comes back saying he lost the bill and OPD
+       * prescription page … can he print it again?"* They are right, and the block above is exactly
+       * why: the cashier could not call `GET /print/jobs` or `POST /print/reprint` at all.
+       *
+       * The answer is NOT to give back `opd.visits.open`. Everything the reviewers said about it is
+       * still true — it still opens `POST /opd/visits/:id/reclassify`, and one actor lowering a
+       * consult fee and then collecting it is still the hole it was. `opd.paper.reprint` is a new,
+       * narrower string that authorises re-queueing a document ALREADY produced for a visit and
+       * nothing else: no open, no abandon, no re-enter, no reclassify. The SoD argument survives
+       * intact and the patient gets their paper back.
+       */
+      "opd.paper.reprint",
     ],
   },
   {

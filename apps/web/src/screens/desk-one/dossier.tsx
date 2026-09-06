@@ -32,6 +32,7 @@ import { PhotoPanel } from "./photo";
  */
 function History({ patientId }: { patientId: string }): React.ReactElement | null {
   const { t } = useTranslation();
+  const d = useDesk();
   const history = useQuery({
     queryKey: ["d1", "timeline", patientId],
     queryFn: () => patientTimeline(patientId),
@@ -53,10 +54,29 @@ function History({ patientId }: { patientId: string }): React.ReactElement | nul
       ) : (
         <div data-testid="history-list" style={{ marginTop: 7 }}>
           {items.map((h) => (
-            <div
+            /*
+              ═══ FD-27 — THE ROW WAS ALREADY HOLDING THE ANSWER AND SPENDING IT ON A REACT KEY ═══
+
+              Owner, 2026-09-06: *"how is the user finding the old ticket/token and OPD prescription
+              page? If he can find it, can he print it again?"* Until now: they could not. This strip
+              was read-only text, and `h.encounterId` — the one identifier every reprint route in the
+              product is keyed by — went into `key=` and nowhere else.
+
+              A button rather than a link: it opens a layer over the desk and never navigates, which
+              is the rule the whole overlay mechanism exists for. The person in hand is not dropped
+              to look up their own past visit.
+            */
+            <button
               key={h.encounterId}
+              type="button"
               data-testid="history-row"
-              style={{ display: "flex", gap: 8, alignItems: "baseline", padding: "6px 0", borderBottom: "1px solid var(--line2)" }}
+              title="open this visit's papers — slips and bills, and a way to print them again"
+              onClick={() => d.patch({ overlay: "papers", papersFor: { encounterId: h.encounterId, when: h.serviceDate } })}
+              style={{
+                display: "flex", gap: 8, alignItems: "baseline", padding: "6px 0", width: "100%",
+                borderBottom: "1px solid var(--line2)", background: "none", border: 0,
+                borderRadius: 0, cursor: "pointer", textAlign: "left",
+              }}
             >
               <span className="mo" style={{ fontSize: 10.5, color: "var(--dim)", width: 62, flexShrink: 0 }}>
                 {dayMonthIst(h.serviceDate)}
@@ -71,7 +91,7 @@ function History({ patientId }: { patientId: string }): React.ReactElement | nul
               >
                 {t(`registrationCounter.history.state.${h.status}`, { defaultValue: h.status })}
               </span>
-            </div>
+            </button>
           ))}
         </div>
       )}
