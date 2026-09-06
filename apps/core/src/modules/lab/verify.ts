@@ -2,7 +2,8 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import {
-  invoiceLines, labItems, labResults, labSpecimenItems, orderItems, workflowInstances,
+  invoiceLines, labAnalytes, labItems, labResults, labSpecimenItems, orderItems, orders,
+  workflowInstances,
 } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { appendEvent } from "../../kernel/events/append";
@@ -14,9 +15,14 @@ import { TariffError } from "../tariff";
 import { activeReflexRules, analytesFor } from "./catalogue";
 import { LabError } from "./errors";
 import { formulaInputCodes } from "./formula";
+import { getEncounter } from "../opd";
+import { resolvePatientId } from "../patients";
+import { canonicalNames } from "./criticals";
 import { matchReflex } from "./reflex";
 import { currentValue, deferNearMiss, flushNearMiss, liveRowsFor, resultContext } from "./results";
-import { labReflexAdded, labResultVerified, labSodViolationBlocked } from "./events";
+import {
+  labNightReleaseReviewed, labReflexAdded, labResultVerified, labSodViolationBlocked,
+} from "./events";
 import { LAB_ITEM_DEF_KEY } from "./workflow-def";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -189,6 +195,197 @@ export type VerifyResultOutcome = {
   /** T6 A3 — `completed` fires exactly when the LAST analyte of the item is signed. */
   itemCompleted: boolean;
 };
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * DD11 — THE MORNING AFTER: THE SECOND PAIR OF HANDS, ARRIVING LATE
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Night mode is a RELAXATION of separation of duties, not an exemption from it. Between 21:00 and
+ * 07:00 IST the solo pathologist on duty may sign what they keyed, the row carries
+ * `pathologist_review_pending`, and the printed report says PROVISIONAL.
+ *
+ * **A relaxation with no compensating review is an absent control**, and until now that is what this
+ * was: the flag was written, carried into three view models and onto the page, and NO QUERY ANYWHERE
+ * SELECTED ON IT. `docs/runbooks/lab-go-live.md` §7 says so plainly — *"Those rows are the morning
+ * queue. Somebody must work it, and this build ships no screen filter for it — read `lab_results`
+ * where `pathologist_review_pending` is true."* A morning round does not begin with a DBA running
+ * psql, and NABL 15189 asks who reviewed the results released in the authorised signatory's absence.
+ *
+ * ═══ WHY THERE IS NO MIGRATION AND NO NEW TABLE ═══
+ *
+ * `lab_results_forbid_verified_mutation` (0046) excludes exactly one column from the immutability
+ * check — this one — and the comment above it says why: the carve-out *"is what stops 'the reviewer
+ * needs one column' becoming 'the trigger was dropped'"*. **The schema anticipated this act.** So
+ * clearing the flag is the state change the trigger was written to permit, and nothing else on the
+ * row may move: a signed value is corrected with a superseding row, and reviewing is not correcting.
+ *
+ * WHO reviewed it goes in the EVENT, because the flag is a STATE and the question is about the past.
+ * A boolean cannot answer "who signed this off on Tuesday morning"; the audit spine can.
+ */
+export type NightReleaseRow = {
+  resultId: string;
+  orderItemId: string;
+  orderNo: string;
+  patientId: string;
+  patientDisplay: string;
+  analyteCode: string;
+  analyteName: string;
+  value: string;
+  unit: string | null;
+  flag: string | null;
+  /** WHO released it alone — the fact the review is about, so it is on the row and not a click away. */
+  releasedBy: string;
+  releasedAt: string;
+};
+
+export async function nightReleasesAwaitingReview(db: Db, actor: Actor): Promise<NightReleaseRow[]> {
+  if (actor.type !== "user") {
+    throw new LabError("user_actor_required", `a ${actor.type} actor may not read the morning queue`);
+  }
+  if (!(await hasPermission(db, actor.id, LAB_RESULTS_VERIFY, "hospital"))) {
+    throw new LabError("permission_denied", `reading the night-release queue requires ${LAB_RESULTS_VERIFY}`);
+  }
+
+  const rows = await db
+    .select({
+      result: labResults,
+      analyteCode: labAnalytes.code,
+      analyteName: labAnalytes.nameEn,
+      orderNo: orders.orderNo,
+      patientIdRaw: orders.patientId,
+    })
+    .from(labResults)
+    .innerJoin(labAnalytes, eq(labAnalytes.id, labResults.analyteId))
+    .innerJoin(orderItems, eq(orderItems.id, labResults.orderItemId))
+    .innerJoin(orders, eq(orders.id, orderItems.orderId))
+    .where(eq(labResults.pathologistReviewPending, true))
+    /** OLDEST FIRST: the oldest release is the one whose report has been out longest. */
+    .orderBy(labResults.verifiedAt);
+  if (rows.length === 0) return [];
+
+  /**
+   * The CANONICAL patient decides the name (E4 / close review pass 2 F8): a person registered twice
+   * and merged carries `is_confidential` on the SURVIVING record, so joining on the raw `orders`
+   * patient id would render a sealed patient's legal name on this list.
+   */
+  const canSeeConfidential = await hasPermission(db, actor.id, "patients.confidential.read", "hospital");
+  const names = await canonicalNames(db, rows.map((r) => r.patientIdRaw), canSeeConfidential);
+
+  return rows.map((r) => ({
+    resultId: r.result.id,
+    orderItemId: r.result.orderItemId,
+    orderNo: r.orderNo,
+    patientId: names.get(r.patientIdRaw)?.id ?? r.patientIdRaw,
+    patientDisplay: names.get(r.patientIdRaw)?.display ?? "\u2014",
+    analyteCode: r.analyteCode,
+    analyteName: r.analyteName,
+    value: r.result.valueNumeric ?? r.result.valueText ?? r.result.valueCoded ?? "",
+    unit: r.result.unit,
+    flag: r.result.flag,
+    releasedBy: r.result.verifiedBy ?? r.result.enteredById,
+    releasedAt: (r.result.verifiedAt ?? r.result.enteredAt).toISOString(),
+  }));
+}
+
+export type ReviewNightReleaseInput = { resultId: string; note?: string };
+
+export async function reviewNightRelease(
+  db: Db,
+  actor: Actor,
+  input: ReviewNightReleaseInput,
+  now: Date = new Date(),
+): Promise<{ resultId: string; reviewedBy: string }> {
+  if (actor.type !== "user") {
+    throw new LabError(
+      "user_actor_required",
+      `a ${actor.type} actor may not review a night release — the whole act is a second PERSON`,
+    );
+  }
+  if (!(await hasPermission(db, actor.id, LAB_RESULTS_VERIFY, "hospital"))) {
+    throw new LabError("permission_denied", `reviewing a night release requires ${LAB_RESULTS_VERIFY}`);
+  }
+
+  return await withTx(db, async (tx) => {
+    const [result] = await tx.select().from(labResults).where(eq(labResults.id, input.resultId));
+    if (!result) throw new LabError("unknown_result", `no lab result ${input.resultId}`);
+    if (!result.pathologistReviewPending) {
+      throw new LabError(
+        "review_not_pending",
+        `result ${input.resultId} is not awaiting a morning review — it was either signed by a ` +
+          "second pair of hands at the time, or it has already been reviewed",
+      );
+    }
+
+    /**
+     * ═══ THE WHOLE POINT ═══
+     *
+     * Night mode BORROWED the second pair of hands and this is that pair arriving. If the person who
+     * released it alone may also review it alone, nothing has been reviewed and the flag has been
+     * cleared by the same signature that raised it. Refused as what it IS rather than with a new
+     * word for the same fact.
+     */
+    const releasedBy = result.verifiedBy ?? result.enteredById;
+    if (releasedBy === actor.id) {
+      throw new LabError(
+        "sod_violation",
+        `result ${input.resultId} was released under night mode by this same user — the morning ` +
+          "review IS the second pair of hands, and it cannot be the first pair a second time",
+        { releasedBy },
+      );
+    }
+
+    /**
+     * ═══ NOT `resultContext`, AND THE REFUSAL IT GAVE IS THE ARGUMENT ═══
+     *
+     * `resultContext` is the ENTRY precondition — *"a result may only be keyed against an item whose
+     * specimen reached the bench"* — and it refuses a `completed` item. By the time a result has been
+     * verified its item IS completed, so every post-verification act needs its own read: `amendResult`
+     * does exactly this a few hundred lines away, resolving the visit through `getEncounter` because
+     * every `encounter_id` column holds a ULID and `orders.encounter_no` is the human-facing `V…`.
+     *
+     * **Reviewing is not keying**, and reusing the write precondition to fetch three ids would have
+     * made the morning queue unworkable for the only rows that can be in it.
+     */
+    const [ctxRow] = await tx
+      .select({
+        orderId: orders.id,
+        encounterNo: orders.encounterNo,
+        patientIdRaw: orders.patientId,
+      })
+      .from(orderItems)
+      .innerJoin(orders, eq(orders.id, orderItems.orderId))
+      .where(eq(orderItems.id, result.orderItemId));
+    if (!ctxRow) throw new LabError("unknown_item", `no lab order item ${result.orderItemId}`);
+    const patientId = (await resolvePatientId(tx, ctxRow.patientIdRaw)) ?? ctxRow.patientIdRaw;
+    const encounterId = (await getEncounter(tx, ctxRow.encounterNo))?.id ?? ctxRow.encounterNo;
+
+    /**
+     * ONE COLUMN, and the trigger is what makes that a fact rather than a promise:
+     * `lab_results_forbid_verified_mutation` refuses this UPDATE if it touches anything else.
+     */
+    await tx.update(labResults)
+      .set({ pathologistReviewPending: false })
+      .where(and(eq(labResults.id, input.resultId), eq(labResults.pathologistReviewPending, true)));
+
+    await appendEvent(tx, labNightReleaseReviewed.make({
+      actor,
+      patientId,
+      encounterId,
+      correlationId: ctxRow.orderId,
+      payload: {
+        resultId: input.resultId,
+        orderItemId: result.orderItemId,
+        analyteId: result.analyteId,
+        reviewedBy: actor.id,
+        releasedBy,
+        note: input.note ?? null,
+        reviewedAt: now.toISOString(),
+      },
+    }));
+
+    return { resultId: input.resultId, reviewedBy: actor.id };
+  });
+}
 
 /**
  * SIGN ONE RESULT.
