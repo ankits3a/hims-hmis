@@ -176,7 +176,7 @@ it).
 
 ---
 
-## 10. The edge catalogue — a second pass, 59 rows beyond the phase doc's §2b
+## 10. The edge catalogue — a second and a third pass, 76 rows beyond the phase doc's §2b
 
 Written by the planning session (hmis-c1) against `f211075` and merged into this handoff so the
 lane has one assertion book. **§2b of the phase doc holds the 24 rows of the Indian day at the
@@ -285,6 +285,40 @@ seats, the printers, night mode, IST, the UAT reset, the real-patient fact) are 
 | H1 | The owner reads the runbook on a phone at 22:00 | Every step is one command and one expected line; no paragraph a thumb cannot scroll past. The mutant for a runbook is a reader | T7 | R |
 | H2 | The owner asks "is it safe to deploy?" on a Sunday with a peer's stack half-merged | The runbook's answer is a procedure (A5–A7 and the `deploy-blocker` label), not a judgement; the lane's answer is `lane-report.sh` plus a message to the orchestrator, never "yes" | T7 | R |
 | H3 | The one fact — a real patient on production — turns out to be true | Per D12 the order does not change; the announcement of the three deleted routes and the hour of the window do. The redirects (T9) make the announcement a courtesy rather than a rescue | T7, T9 | R |
+
+### I. Third pass — rows the first two catalogues lack (hmis-c7, the owner's planning session)
+
+Seventeen rows from a 43-row pass, kept only where §2b and A–H have no artefact. Same columns.
+
+| # | the day | what must be true | task | closes with |
+|---|---|---|---|---|
+| I1 ★ | **The census writes.** A row check routed through a read function that emits an audit event; the owner's "read-only" run on production leaves rows behind | A test runs `standup:check all` and asserts the audit and event tables' row counts are unchanged | T2 | T · M (a check through a writing reader) |
+| I2 | A deactivated or locked account holding `admin` is counted as the second administrator | Role rows count **active** users only; the `fix` text says "a different person, not a second login" | T2 | C · M (a deactivated admin reads green) |
+| I3 | A tariff version flagged active with an effective date next month; "priced" reads green today | "Priced" is evaluated against the version effective **now, in IST** | T2 | C · M (future-dated version counts) |
+| I4 | An orderable priced at ₹0 — the same defect as no price, and it walks past "every orderable priced" | ₹0 is RED; a free test is a row with a reason, never a zero | T2 | C · M (₹0 reads green) |
+| I5 | Potassium 6.8 at 02:00 and no critical limit on file — the ladder never fires and nobody knows it did not | Critical limits exist for a minimum set (K, Na, glucose, Hb, platelets, WBC, INR, troponin, Ca) or the row is RED | T2 | C · M (no limits reads green) |
+| I6 ★ | A partner-billed walk-in (a TPA or corporate panel from `partners`, deployed): the invoice must go to the partner and the patient pays nothing at the desk | One walk-through case; the receipt and the partner receivable both read | T6 | R |
+| I7 | The pilot's "seven empty harvest days" is met by a Sunday and two holidays with no orders at all | Runbook §9 counts only days with ≥ 20 orders as evidence; corrected in T6's PR | T6 | R |
+| I8 | Drill C: a collection done on paper during the outage is backfilled with the backfill time, and the TAT lies | The backfill carries the real collection time; the walk-through reads it back | T6 | R |
+| I9 | A test the lab does not perform is ordered — send-out to a reference laboratory is **not built** | Recorded as a GAP with the paper path; 17-family work, not this phase's; the fix list carries it | T6 | R |
+| I10 | `seed:lab` re-activates a definition a `user` actor deactivated on purpose | The seed reports `inactive_by_choice` and leaves it; only a never-activated definition is activated | T1 | T · M (re-activation) |
+| I11 | `seed:lab` on a database where a migration failed midway and the lab tables are absent | Exits non-zero naming the table; never `alreadyActive` by catching the error | T1 | T · M |
+| I12 | The journal has fewer entries than the database has applied (a checkout behind the database) | The watermark guard refuses, naming both counts; an empty table (fresh UAT) passes | T4 | T · M |
+| I13 ★ | **UAT mounts production's `pgbackrest.conf`** (the db image bakes pgBackRest in and reads config from the deploy directory) and archives UAT's WAL into production's repository under the same stanza | T3 mounts UAT's own file with archiving off (`archive_mode=off`, or `archive_command='/bin/true'` if the image forces the mode); B3's "no stanza" is asserted by a test, not assumed | T3 | T · M (prod conf mounted on UAT) |
+| I14 ★ | The backout (D13) assumes old code tolerates the new schema — false for a NOT NULL column without a default on a table the old code inserts into | The runbook lists the result of grepping `0056`–`0077` for exactly that; step (9) says whether the backout is clean | T7, T8 | R |
+| I15 | A role key renamed or removed between `c11833d` and the tip strands its holders after the deploy | The runbook diffs `seed-roles.ts`'s keys between the two commits and lists any drift with the users affected (measured tonight: none found, but the grep pattern may not match the file — measure again) | T7 | R |
+| I16 | Someone adds a "force everyone to log in again" step after the deploy | Not needed: permissions are read per request (`hasPermission(db, …)`), sessions survive. Stated so nobody adds it | T7 | R |
+| I17 ★ | The drill rehearsal (D12) migrates the restored copy and stops; the seeds, the config gate and the census are first run on production itself | After the migrate, the same run executes the seeds, `check-config-present` and `standup:check all` on the restored copy; its census output is the runbook's "before" list, and a gate refusal on a new required config row shows there | T8, T7 | R · T |
+
+**Carried to 11k, with its spec kept here so it is not lost — the catalogue loader** (§2b rows 2
+and 8 send it there): `load:lab-catalogue` takes CSV files the owner exports from Excel (analytes,
+orderables, panels, reference ranges, critical limits, prices), **dry-run by default** with one line
+per rejected row; `--commit` writes through the module's own catalogue functions, idempotent on
+`code`; refuses an unknown unit (a fixed list — `mg/dL` and `mmol/L` are never coerced), a range
+without a source, low ≥ high, a panel naming an unknown member, a duplicate code, a missing column;
+never invents a row; prices land GST-exempt with SAC 9993 without asking. Mutants: a unit typo
+coerced, a sourceless range accepted, a second `--commit` doubling rows, `--commit` as default, a
+price row at 18 %.
 
 **Decisions this section adds, to be written as D14+ in the phase doc when the task that uses them
 runs:** A6 (a red `main` freezes deploys), A10 (`tls internal` on UAT), A12 (UAT never auto-restarts),
