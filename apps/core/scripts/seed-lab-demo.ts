@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { createDb, withTx } from "../src/kernel/db/client";
+import { assertSyntheticDataAllowed } from "./synthetic-door";
 import { requireEnv } from "../src/kernel/config";
 import { collectOrderKinds } from "../src/kernel/orders/kinds";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
@@ -286,9 +287,24 @@ export async function seedLabDemo(db: Db): Promise<SeedLabDemoReport> {
  * exercised by launching a subprocess is a guard that gets verified by hand once and then rots.
  */
 export function assertDemoDataAllowed(
-  env: { NODE_ENV?: string | undefined; ALLOW_DEMO_DATA?: string | undefined }, dbName: string,
+  env: {
+    NODE_ENV?: string | undefined;
+    ALLOW_DEMO_DATA?: string | undefined;
+    HMIS_SYNTHETIC_DATA_OK?: string | undefined;
+  },
+  dbName: string,
 ): void {
-  if (env.NODE_ENV === "production") {
+  /**
+   * 11i T5 / D5 — THE DOOR IS READ FIRST, and `NODE_ENV` is now read THROUGH it.
+   *
+   * UAT runs the PRODUCTION IMAGE and therefore carries `NODE_ENV=production`; if it did not, it
+   * would be rehearsing a different build. So the `NODE_ENV` refusal below can no longer stand
+   * alone — it would refuse the one machine this script now has to run on — and it is not weakened
+   * either: it still refuses, unless the environment carries a key production's own environment
+   * file never declares and `deploy.sh`'s prod target refuses to start with.
+   */
+  assertSyntheticDataAllowed("seed:lab-demo", env);
+  if (env.NODE_ENV === "production" && env.HMIS_SYNTHETIC_DATA_OK !== "1") {
     throw new Error("seed:lab-demo refuses to run with NODE_ENV=production — it creates synthetic patients");
   }
   if (env.ALLOW_DEMO_DATA !== "yes") {
@@ -315,7 +331,14 @@ async function main(): Promise<void> {
   }
 }
 
-if (process.argv[1]?.endsWith("seed-lab-demo.ts")) {
+/**
+ * 11i T5 — `require.main === module`, the house convention, and it is a FIX rather than a tidy-up.
+ * The guard used to be `process.argv[1]?.endsWith("seed-lab-demo.ts")`, so the COMPILED script —
+ * `node dist/scripts/seed-lab-demo.js`, which is how every deploy and `uat-reset.sh` run it —
+ * loaded, defined its exports and exited 0 having written nothing. A seed that reports success and
+ * seeds nothing is worse than one that fails.
+ */
+if (require.main === module) {
   main().catch((e: unknown) => {
     process.stderr.write(`${e instanceof Error ? e.message : String(e)}\n`);
     process.exit(1);

@@ -218,6 +218,32 @@ ENV_MODE="$(stat -c '%a' "$ENV_FILE")"
 [ "$ENV_MODE" = "600" ] || die "$ENV_FILE is mode $ENV_MODE; GC2 wants 600. Run: chmod 600 $ENV_FILE"
 note "deploy directory $DEPLOY_DIR, environment file present and 600"
 
+# ════════════════════════════════════════════════════════════════════════════════════════════════
+# PHASE 11i T5 / D5 — THE PRODUCTION TARGET REFUSES TO RUN WITH THE SYNTHETIC-DATA DOOR OPEN.
+#
+# `HMIS_SYNTHETIC_DATA_OK=1` is what lets `seed:lab-catalogue`, `seed:lab-demo` and
+# `seed:aerb-demo` write invented reference ranges, synthetic patients and DEMO certificates. It
+# belongs in /opt/hmis-uat/.env and in no other .env on this host. If it is ever in production's —
+# copied from UAT's, or inherited from a shell — then the next person who runs a seed by hand on
+# production gets no refusal at all, and a synthetic patient is referenced by orders, invoices and
+# results within the hour and cannot be deleted.
+#
+# So the deploy refuses BEFORE it builds anything, and it names the file to edit. The check reads
+# both the deploy directory's env file and this process's environment: the first is how it would
+# be inherited by every container, the second is how a hand would carry it in.
+# ════════════════════════════════════════════════════════════════════════════════════════════════
+if [ "$TARGET" = "prod" ]; then
+  if grep -q '^HMIS_SYNTHETIC_DATA_OK=' "$ENV_FILE" 2>/dev/null; then
+    die "$ENV_FILE declares HMIS_SYNTHETIC_DATA_OK. That key is the synthetic-data door (11i D5)
+    and it must exist in NO production environment file. Remove the line, then re-run.
+    It belongs in /opt/hmis-uat/.env and nowhere else."
+  fi
+  [ -z "${HMIS_SYNTHETIC_DATA_OK:-}" ] || die "HMIS_SYNTHETIC_DATA_OK is set in this shell.
+    Refusing to deploy production from an environment that carries the synthetic-data door.
+    Open a clean shell (or: unset HMIS_SYNTHETIC_DATA_OK) and re-run."
+  note "synthetic-data door is closed on this target"
+fi
+
 if [ "$TARGET" = "uat" ]; then
   # 11i T3 — UAT HAS NO BACKUP REPOSITORY AND NO ALERT SINK, and neither is an omission.
   # It holds nothing worth restoring (that is the whole point of it), and an alert path pointing
