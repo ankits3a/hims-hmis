@@ -125,7 +125,7 @@ describe("the Hindi locale covers the English one, namespace by namespace", () =
 
   it.each(NAMESPACES)("%s — every English key has a Hindi one", (ns) => {
     const e = en[ns] as Record<string, string>;
-    const h = (hi as Record<string, Record<string, string>>)[ns] ?? {};
+    const h = (hi as unknown as Record<string, Record<string, string>>)[ns] ?? {};
     const missing = Object.keys(e).filter((k) => typeof h[k] !== "string" || h[k] === "");
     expect(missing, `these ${ns} refusals reach a Hindi-speaking user in English:\n${missing.join("\n")}\n`).toEqual([]);
   });
@@ -135,7 +135,7 @@ describe("the Hindi locale covers the English one, namespace by namespace", () =
    * keys, and a screen's labels going untranslated is the same failure one layer out.
    */
   it("and every top-level namespace exists in Hindi", () => {
-    const missing = Object.keys(en).filter((k) => !(k in (hi as Record<string, unknown>)));
+    const missing = Object.keys(en).filter((k) => !(k in (hi as unknown as Record<string, unknown>)));
     expect(missing, `these namespaces are missing from hi.json:\n${missing.join("\n")}\n`).toEqual([]);
   });
 });
