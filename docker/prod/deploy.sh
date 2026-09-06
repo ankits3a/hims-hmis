@@ -44,12 +44,27 @@ SRC_DIR="$REPO_DIR/docker/prod"
 DEPLOY_DIR="${HMIS_DEPLOY_DIR:-/opt/hmis-prod}"
 PROJECT="hmis-prod"
 
+# PHASE 11i T8 / D13 — THE WAY BACK.
+#
+# `HMIS_DEPLOY_ROLLBACK_TO=<short-sha>` retags `:latest` from images that are already on the daemon
+# and restarts. It BUILDS NOTHING and MIGRATES NOTHING: the supported backout is the OLD CODE ON
+# THE NEW SCHEMA, which additive migrations permit by rule (CLAUDE.md), and re-running a migrator
+# on the way back is the one thing that could make a bad deploy unrecoverable. Until this existed
+# there was no backout at all — the three images were tagged `:latest` only, so a build overwrote
+# the previous one, and the refusal below made a rebuild from the deployed base impossible by
+# construction. That is why PR #73 exists as a branch that can never merge.
+ROLLBACK_TO="${HMIS_DEPLOY_ROLLBACK_TO:-}"
+
 # 2026-09-02: THE IMAGES ARE BUILT FROM THIS CHECKOUT, so the checkout must be exactly the commit
 # CI gated. Two refusals: a dirty tree (a peer lane's uncommitted file would ship inside the
 # image — it happened: 09a's "deploy" carried 16a) and a HEAD that is not origin/main (never
 # gated, or stale). `docs/` is exempt from the dirty check because design and plan drafts live
 # there and never reach an image. HMIS_DEPLOY_ALLOW_DIRTY=1 overrides for a rehearsal only.
-if [ "${HMIS_DEPLOY_ALLOW_DIRTY:-0}" != "1" ]; then
+#
+# 11i T8: the refusal is on the BUILD PATH, and the rollback path never builds. Demanding
+# `HEAD == origin/main` to go BACK to an older image would be demanding the checkout be the very
+# tip you are rolling away from — the refusal that made the backout impossible in the first place.
+if [ -z "$ROLLBACK_TO" ] && [ "${HMIS_DEPLOY_ALLOW_DIRTY:-0}" != "1" ]; then
   dirty="$(git -C "$REPO_DIR" status --porcelain | grep -vE '^\?\? docs/' || true)"
   if [ -n "$dirty" ]; then
     echo "deploy.sh: working tree is dirty — commit, stash by path, or HMIS_DEPLOY_ALLOW_DIRTY=1 for a rehearsal:" >&2
@@ -63,6 +78,15 @@ fi
 SERVER_IMAGE="hmis-prod/server:latest"
 WEB_IMAGE="hmis-prod/web:latest"
 DB_IMAGE="hmis-prod/db:latest"
+# 11i T8 / D13. Every build also lands under the short SHA it was built from, so the image that
+# was serving before this deploy is still on the daemon under a name, and `HMIS_DEPLOY_ROLLBACK_TO`
+# can name it. `:latest` alone means the previous image is overwritten at build time and there is
+# nothing to go back to.
+IMAGE_REPOS="hmis-prod/server hmis-prod/web hmis-prod/db"
+GIT_SHA="$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+# How many SHA-tagged images to keep per repository. Three is two rollbacks deep plus the current
+# one; the images are ~1 GB each and this box has 15 GB.
+SHA_TAGS_KEPT="${HMIS_SHA_TAGS_KEPT:-3}"
 DB_HEALTH_TIMEOUT="${HMIS_DB_HEALTH_TIMEOUT:-180}"
 # D8. The stanza name is also written into the db service's archive_command in the compose file
 # and into the [hmis] section of pgbackrest.conf; changing it means changing all three.
@@ -91,6 +115,21 @@ compose() {
   docker compose -p "$PROJECT" \
     -f "$DEPLOY_DIR/docker-compose.prod.yml" \
     --project-directory "$DEPLOY_DIR" "$@"
+}
+
+# 11i T8 — keep the last $SHA_TAGS_KEPT SHA-tagged images per repository. `docker images` lists
+# newest first, so "everything after the first N" is the tail. `:latest` is never in the list and
+# an image still referenced by a running container refuses to be removed, which is correct.
+prune_sha_tags() {
+  local repo tag
+  for repo in $IMAGE_REPOS; do
+    docker images --format '{{.Repository}}:{{.Tag}}' "$repo" 2>/dev/null \
+      | grep -v ':latest$' | tail -n "+$((SHA_TAGS_KEPT + 1))" \
+      | while read -r tag; do
+          [ -n "$tag" ] || continue
+          docker rmi "$tag" >/dev/null 2>&1 && note "pruned $tag" || true
+        done
+  done
 }
 
 # Something is listening on port $1, on any interface.
@@ -177,6 +216,23 @@ for port in 80 443; do
   fi
 done
 
+if [ -n "$ROLLBACK_TO" ]; then
+# ----------------------------------------------------------------------------------------------
+step "1/8 ROLLBACK — retagging :latest from $ROLLBACK_TO. Nothing is built and nothing is migrated"
+# ----------------------------------------------------------------------------------------------
+# REFUSE BY NAME rather than fail inside compose. A `:latest` retagged from an image that is not
+# on the daemon leaves the stack pointing at nothing, and the first symptom would be a container
+# that will not start — at the exact moment somebody is rolling back because production is broken.
+for repo in $IMAGE_REPOS; do
+  docker image inspect "$repo:$ROLLBACK_TO" >/dev/null 2>&1 \
+    || die "no image $repo:$ROLLBACK_TO on this host. Available:
+$(docker images --format '      {{.Repository}}:{{.Tag}}' "$repo" 2>/dev/null | grep -v ':latest$' || echo '      (none)')"
+done
+for repo in $IMAGE_REPOS; do
+  docker tag "$repo:$ROLLBACK_TO" "$repo:latest"
+  note "$repo:latest now points at $ROLLBACK_TO"
+done
+else
 # ----------------------------------------------------------------------------------------------
 step "1/8 building images from the checkout ($REPO_DIR)"
 # ----------------------------------------------------------------------------------------------
@@ -186,10 +242,53 @@ docker build --tag "$WEB_IMAGE" --target web "$REPO_DIR"
 # server's own container and a sidecar therefore cannot archive at all.
 docker build --tag "$DB_IMAGE" --file "$SRC_DIR/db.Dockerfile" "$REPO_DIR"
 note "built $SERVER_IMAGE, $WEB_IMAGE and $DB_IMAGE"
+# 11i T8 / D13 — the same three images under the SHA they were built from, so this deploy leaves
+# behind the thing the next one can go back to.
+docker tag "$SERVER_IMAGE" "hmis-prod/server:$GIT_SHA"
+docker tag "$WEB_IMAGE" "hmis-prod/web:$GIT_SHA"
+docker tag "$DB_IMAGE" "hmis-prod/db:$GIT_SHA"
+note "tagged hmis-prod/{server,web,db}:$GIT_SHA — roll back with HMIS_DEPLOY_ROLLBACK_TO=$GIT_SHA"
+prune_sha_tags
+fi
 
 # ----------------------------------------------------------------------------------------------
 step "2/8 copying configs into $DEPLOY_DIR"
 # ----------------------------------------------------------------------------------------------
+# ═══ 11i T8 / D13 — SNAPSHOT WHAT IS THERE BEFORE OVERWRITING IT ═══
+#
+# A retag without the configs is HALF A ROLLBACK. The images carry the application; the deploy
+# directory carries the compose file, the edge config and the prometheus rules — and this block is
+# about to overwrite all three with the candidate's. Rolling the images back to yesterday while
+# the Caddyfile, the compose file and the alert rules stay on today's is a state that never ran
+# anywhere and was never tested. So the outgoing set is copied aside first, and the rollback path
+# below puts it back beside the images.
+#
+# It is a plain `cp -a` of what is on disk, taken BEFORE the installs, and it is deliberately not
+# a git checkout of anything: what production was serving is what is in the deploy directory, and
+# that is the only thing whose restoration is a real backout.
+if [ -z "$ROLLBACK_TO" ] && [ -f "$DEPLOY_DIR/docker-compose.prod.yml" ]; then
+  rm -rf "$DEPLOY_DIR/previous"
+  install -d -m 0750 "$DEPLOY_DIR/previous"
+  cp -a "$DEPLOY_DIR/docker-compose.prod.yml" "$DEPLOY_DIR/previous/docker-compose.prod.yml"
+  [ -d "$DEPLOY_DIR/caddy" ] && cp -a "$DEPLOY_DIR/caddy" "$DEPLOY_DIR/previous/caddy"
+  [ -d "$DEPLOY_DIR/prometheus" ] && cp -a "$DEPLOY_DIR/prometheus" "$DEPLOY_DIR/previous/prometheus"
+  note "snapshotted the outgoing compose file, caddy/ and prometheus/ into $DEPLOY_DIR/previous"
+fi
+
+if [ -n "$ROLLBACK_TO" ]; then
+  # THE CONFIGS GO BACK WITH THE IMAGES. A missing snapshot is not fatal — the images are the
+  # larger half and a first rollback on a directory that predates this change has none — but it
+  # is said out loud, because a partial backout that reported success would be the worse failure.
+  if [ -d "$DEPLOY_DIR/previous" ]; then
+    cp -a "$DEPLOY_DIR/previous/docker-compose.prod.yml" "$DEPLOY_DIR/docker-compose.prod.yml"
+    [ -d "$DEPLOY_DIR/previous/caddy" ] && cp -a "$DEPLOY_DIR/previous/caddy/." "$DEPLOY_DIR/caddy/"
+    [ -d "$DEPLOY_DIR/previous/prometheus" ] && cp -a "$DEPLOY_DIR/previous/prometheus/." "$DEPLOY_DIR/prometheus/"
+    note "restored the previous compose file, caddy/ and prometheus/ from $DEPLOY_DIR/previous"
+  else
+    note "WARNING: $DEPLOY_DIR/previous does not exist — the IMAGES are rolled back and the"
+    note "  configs on disk are the ones the failed deploy installed. Check them by hand."
+  fi
+else
 install -m 0644 "$SRC_DIR/docker-compose.prod.yml" "$DEPLOY_DIR/docker-compose.prod.yml"
 # The Caddyfile goes into a DIRECTORY that the caddy service mounts whole. A single-file bind
 # mount would pin the container to this file's inode, and install(1) replaces the inode — the
@@ -240,6 +339,7 @@ note "docker-compose.prod.yml, caddy/Caddyfile, pgbackrest/pgbackrest.conf, dril
 # from what the block above actually put on disk, the same principle the backup credentials below
 # are written to, so the census cannot disagree with the deploy.
 note "prometheus/$(cd "$DEPLOY_DIR/prometheus" && echo *.yml | tr ' ' ',' ), postgres-exporter/queries.yml, grafana/provisioning/**"
+fi
 
 # --- the backup credentials, derived rather than duplicated --------------------------------------
 # GC2: the five owner-supplied values live in $R2_ENV and ONLY there. They are translated here into
@@ -377,10 +477,31 @@ step "4/8 pgBackRest stanza and archiving check (D8)"
 # and confirms the segment actually arrived in the repository, so a deploy cannot report success
 # over a backup fabric that is quietly archiving into the void. It is also the first thing that
 # would notice a credential rotation nobody carried into $R2_ENV.
+if [ -n "$ROLLBACK_TO" ]; then
+  # 11i T8: the stanza is a property of the REPOSITORY, not of the image, and a rollback changes
+  # neither. Re-running `check` here would force a WAL switch during an incident for no verdict
+  # anybody is waiting on.
+  note "rollback — the pgBackRest stanza is unchanged by a retag; skipped"
+else
 compose exec -T --user postgres db pgbackrest --stanza="$STANZA" stanza-create
 compose exec -T --user postgres db pgbackrest --stanza="$STANZA" check
 note "stanza $STANZA created/valid and WAL archiving verified end to end"
+fi
 
+if [ -n "$ROLLBACK_TO" ]; then
+# ----------------------------------------------------------------------------------------------
+step "5/8 ROLLBACK — NO MIGRATION, NO SEED, NO GATE (D13)"
+# ----------------------------------------------------------------------------------------------
+# THIS IS THE POINT OF THE WHOLE PATH. The supported backout is OLD CODE ON THE NEW SCHEMA, which
+# additive migrations permit by rule; running the outgoing image's migrator against the new schema
+# would at best do nothing and at worst be the moment a bad deploy became unrecoverable. The seeds
+# and the gate are skipped for the same reason: they establish rows for the code that is going
+# away, and the gate would be asking the OLD image's questions of the NEW schema.
+#
+# What a rollback cannot undo is any row the new code wrote while it was serving. The catch-up
+# runbook names that window and the tables it could have touched; nothing here can.
+note "rollback — the schema stays where it is; only the images and configs go back"
+else
 # ----------------------------------------------------------------------------------------------
 step "5/8 migrations, run from inside the image (D2)"
 # ----------------------------------------------------------------------------------------------
@@ -546,6 +667,8 @@ else
   note "  heads, not a failed deploy. Each line names the runbook step that turns it green."
 fi
 
+fi
+
 # ----------------------------------------------------------------------------------------------
 step "6/8 api, worker and caddy up"
 # ----------------------------------------------------------------------------------------------
@@ -688,6 +811,11 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # THE WEEKLY RESTORE DRILL, 22:00 UTC Saturday = 03:30 IST Sunday — an hour after Saturday night's
 # full, so there is always a fresh one to restore. It restores for real (GC7).
+#
+# 11i T8: this hour is OUTSIDE the lanes' test mutex by design — production must not depend on lane
+# tooling to take its own backup. The consequence belongs to whoever is deploying: a UAT deploy or a
+# rehearsal run inside 22:00-23:00 UTC Saturday competes with the real drill for this box's memory
+# and its docker daemon. Avoid that hour; the catch-up runbook says so where the owner will read it.
 0 22 * * 6 root $DEPLOY_DIR/drill/restore-drill.sh >> $DEPLOY_DIR/log/restore-drill.log 2>&1
 EOF
 )
