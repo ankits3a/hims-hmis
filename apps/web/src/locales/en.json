@@ -3418,6 +3418,7 @@
       "validTo": "Valid to",
       "validToOptional": "Valid to (leave blank for open-ended)",
       "remarks": "Remarks",
+      "noAppointment": "no AERB appointment on file",
       "notLicensable": "AERB does not licence this modality",
       "deviceBlocked": "out of service, QA failed",
       "licenceFiled": "Licence {{licenceNo}} filed.",

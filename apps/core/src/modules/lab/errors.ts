@@ -100,6 +100,19 @@ export const LAB_ERROR_CODES = [
   "release_approval_invalid",
   // ── 17-E T1 — the instruments on the bench ──
   "unknown_instrument",
+  /**
+   * ── 17-E T7 — a machine never supersedes; a human always does ──
+   *
+   * Six refusals and not one shared code, because `assert the CODE` (#140) is worth nothing when
+   * one code means six things: a screen that must tell a technician *why* it will not sign a number
+   * cannot read the sentence, and a test asserting a shared code passes on the wrong refusal.
+   */
+  "machine_cannot_supersede",
+  "rerun_unchosen",
+  "rerun_choice_reason_required",
+  "no_rerun_to_choose",
+  "rerun_choice_final",
+  "result_superseded",
 ] as const;
 
 export type LabErrorCode = (typeof LAB_ERROR_CODES)[number];
@@ -181,6 +194,24 @@ const STATUS: Record<LabErrorCode, number> = {
 
   /** 404 — the named machine is not registered. A bridge posting for one is a configuration fact. */
   unknown_instrument: 404,
+
+  /**
+   * ═══ 17-E T7 ═══
+   *
+   * · **403** with `sod_violation` and the two override refusals: `machine_cannot_supersede` is
+   *   about WHO is acting. The bridge's body is well formed; the act is not one a machine performs.
+   * · **422** for the two clinical hard stops. `rerun_unchosen` is the refusal this task exists to
+   *   make unskippable and the screen's job is to name the rule, which a 4xx body does; a blank
+   *   reason is refused in the same family because the reason IS the record.
+   * · **409** for the three state conflicts, and each one's correct client response is to re-read:
+   *   there is nothing to choose between, the set is already signed, or a newer row replaced this.
+   */
+  machine_cannot_supersede: 403,
+  rerun_unchosen: 422,
+  rerun_choice_reason_required: 422,
+  no_rerun_to_choose: 409,
+  rerun_choice_final: 409,
+  result_superseded: 409,
 };
 
 export function labHttpStatus(code: LabErrorCode): number {

@@ -3418,6 +3418,7 @@
       "validTo": "वैध, इस तिथि तक",
       "validToOptional": "वैध, इस तिथि तक (अवधि निर्धारित न हो तो खाली छोड़ें)",
       "remarks": "टिप्पणी",
+      "noAppointment": "एईआरबी नियुक्ति दर्ज नहीं",
       "notLicensable": "इस पद्धति का AERB लाइसेंस नहीं होता",
       "deviceBlocked": "सेवा से बाहर, QA विफल",
       "licenceFiled": "लाइसेंस {{licenceNo}} दर्ज हो गया।",
