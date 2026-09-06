@@ -235,6 +235,20 @@ export async function analytesFor(exec: Db | Tx, serviceId: string): Promise<(ty
   return rows.map((r) => r.analyte);
 }
 
+/**
+ * EVERY orderable in the catalogue — PHASE 11i T2.
+ *
+ * The census has to ask two questions the desk never asks: "is the catalogue empty?" and "is every
+ * orderable priced in the active tariff version?". Both are questions about the WHOLE catalogue,
+ * and `getOrderable` answers only about one service. This is the module's own read, so a caller
+ * outside the module still goes through the seam rather than selecting from `lab_orderables` —
+ * `kernel/ops/validate.ts:20`'s rule: a check that builds its own view eventually validates
+ * something the engine will never see.
+ */
+export async function listOrderables(exec: Db | Tx): Promise<(typeof labOrderables.$inferSelect)[]> {
+  return (exec as Db).select().from(labOrderables).orderBy(labOrderables.code);
+}
+
 /** One orderable, or `unknown_orderable`. The desk's lookup, and the refusal 17b's entry reuses. */
 export async function getOrderable(
   exec: Db | Tx,

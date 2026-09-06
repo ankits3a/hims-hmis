@@ -20,7 +20,8 @@ export * from "./events";
 // result row snapshots, `evaluateFormula` is what a formula analyte computes with, and
 // `matchReflex` decides that a rule FIRES while 17b's caller decides that it may be acted on.
 export {
-  analytesFor, activeReflexRules, getOrderable, rangesFor, upsertAnalyte, upsertOrderable,
+  analytesFor, activeReflexRules, getOrderable, listOrderables, rangesFor, upsertAnalyte,
+  upsertOrderable,
 } from "./catalogue";
 export type { AnalyteInput, OrderableInput } from "./catalogue";
 export { ageInDaysIst, flagFor, resolveRange } from "./ranges";

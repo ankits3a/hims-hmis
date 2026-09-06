@@ -44,6 +44,6 @@ export { displayName, displayNameFor, displayNameForRelease } from "./display-na
 export type { NameablePatient } from "./display-name";
 export { verifyQrScan } from "./qr";
 export type { QrVerifyResult } from "./qr";
-export { isValidUhid, PatientError } from "./uhid";
+export { isValidUhid, registrationConfigured, PatientError } from "./uhid";
 export type { PatientErrorCode } from "./uhid";
 export * from "./events";
