@@ -113,6 +113,8 @@ export const LAB_ERROR_CODES = [
   "no_rerun_to_choose",
   "rerun_choice_final",
   "result_superseded",
+  /** ── the range book's door (the writer that `lab_reference_ranges` never had) ── */
+  "range_overlap",
 ] as const;
 
 export type LabErrorCode = (typeof LAB_ERROR_CODES)[number];
@@ -212,6 +214,13 @@ const STATUS: Record<LabErrorCode, number> = {
   no_rerun_to_choose: 409,
   rerun_choice_final: 409,
   result_superseded: 409,
+
+  /**
+   * 422 with the other clinical hard stops. Two bands over one age is not a malformed request — the
+   * body is well formed and the book it would create is one whose answer depends on row order, which
+   * is a rule the screen must name.
+   */
+  range_overlap: 422,
 };
 
 export function labHttpStatus(code: LabErrorCode): number {

@@ -120,6 +120,9 @@ const OWNED_BY: Record<LabErrorCode, string> = {
   rerun_choice_final: "results.ts",
   rerun_unchosen: "verify.ts",
   result_superseded: "verify.ts",
+
+  /** The range book's door, and the only file that may refuse a band. */
+  range_overlap: "catalogue.ts",
 };
 
 describe("the lab error union (Plan 17 T2)", () => {
@@ -202,7 +205,10 @@ describe("the lab error union (Plan 17 T2)", () => {
     expect(LAB_ERROR_CODES.filter((c) => labHttpStatus(c) === 422).sort()).toEqual([
       "absurd_value", "analyte_not_applicable", "catalogue_invalid", "collector_identity_required",
       "consent_required", "duplicate_unacknowledged", "foetal_sex_refused",
-      "identity_recheck_required", "relabel_witness_required", "release_approval_invalid",
+      "identity_recheck_required",
+      /** The range book's door: two bands over one age is a rule the screen must name. */
+      "range_overlap",
+      "relabel_witness_required", "release_approval_invalid",
       "report_not_publishable", "report_print_blocked",
       /** 17-E T7 — the clinical hard stop this task exists to make unskippable, and the blank
        *  reason refused in the same family because the reason IS the record. */
