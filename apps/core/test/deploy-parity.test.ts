@@ -1,5 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
+import { backupDrillRehearsed } from "../src/kernel/retention/events";
 
 /**
  * Plan 11d / D8 — `deploy.sh`'s two hand-maintained lists become ONE tested invariant.
@@ -44,6 +46,7 @@ import { resolve } from "node:path";
  */
 const REPO_ROOT = resolve(__dirname, "..", "..", "..");
 const DEPLOY_SH = resolve(REPO_ROOT, "docker", "prod", "deploy.sh");
+const DRILL_SH = resolve(REPO_ROOT, "docker", "prod", "drill", "restore-drill.sh");
 const COMPOSE_YML = resolve(REPO_ROOT, "docker", "prod", "docker-compose.prod.yml");
 const PROMETHEUS_DIR = resolve(REPO_ROOT, "docker", "prod", "prometheus");
 const PROMETHEUS_YML = resolve(PROMETHEUS_DIR, "prometheus.yml");
@@ -106,13 +109,24 @@ function commandLines(block: string): string[] {
  * rendering block, or by anything else. `$DEPLOY_DIR/docker-compose.prod.yml` (a file at the top
  * level) and `$DEPLOY_DIR/log` (a directory nothing is written into) are correctly excluded: both
  * lack the second path segment that makes a directory a CONFIG directory.
+ *
+ * PHASE 11i T8 — ONE NAMED EXCEPTION, and it is named rather than absorbed into the integer.
+ * `$DEPLOY_DIR/previous` is where step 2 SNAPSHOTS the outgoing compose file, `caddy/` and
+ * `prometheus/` before overwriting them, so the rollback path can put the configs back beside the
+ * images. It matches the shape of a config directory and is definitionally not one: no service
+ * mounts it, and nothing in it is ever read by a running container. Bumping the census to eight
+ * would have made "populated config directory" mean two different things in the same test; this
+ * keeps the census's meaning and states the exception. The snapshot itself is pinned by the T8
+ * block further down.
  */
+const NOT_A_CONFIG_DIR = ["previous"];
+
 function populatedConfigDirs(block: string): string[] {
   const dirs = new Set<string>();
   for (const line of commandLines(block)) {
     for (const match of line.matchAll(/\$DEPLOY_DIR\/([A-Za-z0-9._-]+)\/[A-Za-z0-9._-]/g)) {
       const dir = match[1];
-      if (dir !== undefined) dirs.add(dir);
+      if (dir !== undefined && !NOT_A_CONFIG_DIR.includes(dir)) dirs.add(dir);
     }
   }
   if (dirs.size === 0) {
@@ -519,6 +533,127 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
     expect(deploySource).not.toMatch(/^compose run --rm api node dist\/scripts\/standup-check\.js/m);
     // It is not a seed: it writes nothing and must not be counted among the rows the gate guards.
     expect(SEED_STEP_SCRIPTS).not.toContain("standup-check.js");
+  });
+
+  /**
+   * ═══ PHASE 11i T8 — THE BACKOUT, AND THE DRILL AS THE MIGRATION REHEARSAL (D12, D13) ═══
+   *
+   * Everything below reads the SHIPPED BYTES of two shell scripts, for the reason the seed census
+   * above does: the failure is a sequence between programs, and `deploy.sh` is the one artefact in
+   * this repository where a mistake reaches production directly rather than through a merge and a
+   * train. Running it to find out is not an option; reading what it says is.
+   */
+  describe("the backout path and the drill's rehearsal mode (11i T8)", () => {
+    const drillSource = readFileSync(DRILL_SH, "utf8");
+
+    /** Everything between `if [ -n "$ROLLBACK_TO" ]; then` and its matching `else`/`fi`. */
+    function rollbackBranches(source: string): string {
+      const out: string[] = [];
+      const lines = source.split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        if (!/^if \[ -n "\$ROLLBACK_TO" \]; then$/.test(lines[i]!)) continue;
+        let depth = 1;
+        const body: string[] = [];
+        for (let j = i + 1; j < lines.length && depth > 0; j++) {
+          const line = lines[j]!;
+          if (/^\s*if /.test(line)) depth++;
+          if (/^\s*fi\s*$/.test(line)) { depth--; if (depth === 0) break; }
+          if (depth === 1 && /^else$/.test(line)) break; // the else half is the BUILD path
+          body.push(line);
+        }
+        out.push(body.join("\n"));
+      }
+      if (out.length === 0) throw new Error("deploy.sh: no `if [ -n \"$ROLLBACK_TO\" ]` branch — this parser is stale");
+      return out.join("\n");
+    }
+
+    it("the rollback path BUILDS NOTHING and MIGRATES NOTHING — D13", () => {
+      const rollback = rollbackBranches(deploySource);
+      expect(rollback.length).toBeGreaterThan(200); // non-vacuous: the branches were actually read
+      // A comment may SAY "migrate"; a command line may not BE one.
+      const commands = rollback.split("\n").map((l) => l.trim()).filter((l) => l !== "" && !l.startsWith("#"));
+      expect(commands.filter((l) => l.includes("docker build"))).toEqual([]);
+      expect(commands.filter((l) => /migrate\.js|db:migrate/.test(l))).toEqual([]);
+      expect(commands.filter((l) => /check-config-present\.js|seed-[a-z-]+\.js/.test(l))).toEqual([]);
+      // and it DOES retag, which is the whole of what it may do to the images
+      expect(rollback).toMatch(/docker tag "\$repo:\$ROLLBACK_TO" "\$repo:latest"/);
+    });
+
+    it("refuses BY NAME when the image it would retag is not on the host", () => {
+      // A `:latest` retagged from nothing leaves the stack pointing at nothing, and the first
+      // symptom is a container that will not start — while somebody is rolling back an outage.
+      expect(deploySource).toMatch(/docker image inspect "\$repo:\$ROLLBACK_TO" >\/dev\/null 2>&1[\s\S]{0,80}\|\| die/);
+    });
+
+    it("tags every image with the SHA it was built from, beside :latest", () => {
+      expect(deploySource).toMatch(/IMAGE_REPOS="hmis-prod\/server hmis-prod\/web hmis-prod\/db"/);
+      for (const name of ["server", "web", "db"]) {
+        expect(deploySource).toContain(`docker tag "$${name.toUpperCase()}_IMAGE" "hmis-prod/${name}:$GIT_SHA"`);
+      }
+      expect(deploySource).toMatch(/GIT_SHA="\$\(git -C "\$REPO_DIR" rev-parse --short HEAD/);
+      expect(deploySource).toMatch(/prune_sha_tags/);
+    });
+
+    it("snapshots the outgoing configs BEFORE the installs overwrite them", () => {
+      // A retag without the configs is half a rollback: yesterday's images beside today's
+      // Caddyfile, compose file and alert rules is a state that never ran anywhere.
+      const snapshotAt = deploySource.indexOf('cp -a "$DEPLOY_DIR/docker-compose.prod.yml" "$DEPLOY_DIR/previous/docker-compose.prod.yml"');
+      const firstInstallAt = deploySource.indexOf('install -m 0644 "$SRC_DIR/docker-compose.prod.yml"');
+      expect(snapshotAt).toBeGreaterThan(0);
+      expect(firstInstallAt).toBeGreaterThan(0);
+      expect({ snapshotAt, firstInstallAt, snapshotFirst: snapshotAt < firstInstallAt })
+        .toEqual({ snapshotAt, firstInstallAt, snapshotFirst: true });
+      expect(rollbackBranches(deploySource)).toMatch(/cp -a "\$DEPLOY_DIR\/previous\/docker-compose\.prod\.yml"/);
+    });
+
+    it("the drill's REHEARSAL seed list is the DEPLOY'S list, in the deploy's order", () => {
+      // A second hand-maintained copy of a seed census is the exact shape that goes stale in
+      // silence — this census exists because that happened twice already.
+      const match = /REHEARSAL_SEEDS="([^"]+)"/.exec(drillSource);
+      if (match === null) throw new Error("restore-drill.sh: no REHEARSAL_SEEDS — this parser is stale");
+      const rehearsed = match[1]!.trim().split(/\s+/);
+      expect(rehearsed[0]).toBe("seed-cursors.js"); // the deploy runs it first, before any config seed
+      // seed-roles is run separately because its verdict is printed and not obeyed, exactly as in
+      // deploy.sh — so the two lists agree once it is put back on the end.
+      expect([...rehearsed.slice(1), "seed-roles.js"]).toEqual([...SEED_STEP_SCRIPTS]);
+      expect(drillSource).toMatch(/node dist\/scripts\/seed-roles\.js \|\| note/);
+      expect(drillSource).toMatch(/node dist\/scripts\/check-config-present\.js/);
+      expect(drillSource).toMatch(/node dist\/scripts\/standup-check\.js all/);
+    });
+
+    it("the rehearsal asserts migration count by EQUALITY, read out of the candidate image", () => {
+      // `>=` is right for a weekly drill (did the restore regress?) and wrong for a rehearsal: a
+      // half-applied journal — one migration refused, the rest skipped by the watermark — passes
+      // `>=` against the live census and would report PASS.
+      expect(drillSource).toMatch(/CANDIDATE_MIGRATIONS="\$\(docker run --rm "\$SERVER_IMAGE"/);
+      expect(drillSource).toMatch(/_journal\.json"\)\.entries\.length/);
+      expect(drillSource).toMatch(/\[ "\$RESTORED_MIGRATIONS" = "\$CANDIDATE_MIGRATIONS" \][\s\S]{0,40}\|\| die/);
+      // and the weekly drill's own `>=` assertions are untouched
+      expect(drillSource).toMatch(/\[ "\$RESTORED_EVENTS" -ge "\$CENSUS_EVENTS" \]/);
+      expect(drillSource).toMatch(/\[ "\$RESTORED_MIGRATIONS" -ge "\$CENSUS_MIGRATIONS" \]/);
+    });
+
+    it("a rehearsal appends backup.drill_rehearsed and NEVER drill_passed", () => {
+      // The prometheus rule that watches for a MISSED weekly drill counts `drill_passed`; a
+      // rehearsal appending it would let a genuinely missed backup drill hide behind somebody's
+      // deploy preparation, and a failed rehearsal would page as a failed backup.
+      expect(backupDrillRehearsed.name).toBe("backup.drill_rehearsed");
+      expect(drillSource).toMatch(/catalog\.backupDrillRehearsed/);
+      expect(drillSource).toMatch(/const rehearsal = process\.env\.HMIS_DRILL_REHEARSAL_MODE === "1";/);
+      // the ternary must be REACHED before the pass/fail one, not beside it
+      const rehearsedAt = drillSource.indexOf("catalog.backupDrillRehearsed");
+      const passedAt = drillSource.indexOf("catalog.backupDrillPassed");
+      expect({ rehearsedAt, passedAt, rehearsalFirst: rehearsedAt < passedAt })
+        .toEqual({ rehearsedAt, passedAt, rehearsalFirst: true });
+    });
+
+    it("both scripts still parse", () => {
+      // The cheapest possible guard on the file whose failure mode is the owner's live box.
+      for (const script of [DEPLOY_SH, DRILL_SH]) {
+        const r = spawnSync("bash", ["-n", script], { encoding: "utf8" });
+        expect({ script, status: r.status, stderr: r.stderr }).toEqual({ script, status: 0, stderr: "" });
+      }
+    });
   });
 
   it("does NOT let seed-roles' readiness verdict abort the deploy, and DOES let the gate", () => {
