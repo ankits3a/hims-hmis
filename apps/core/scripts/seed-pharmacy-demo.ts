@@ -329,7 +329,10 @@ async function ensureGrn(
   const expiryAt = shiftMonths(challanAt, challan.expiryMonthsAhead + challan.monthsAgo);
   const challanDate = istDay(challanAt);
   const expiryDate = istDay(expiryAt);
-  const tag = challan.no.replace(/[^0-9]/g, "").slice(-6);
+  /* The batch number carries its challan's digits WHOLE — `DEMO/2026/001` → `CROC500-2026001`. An
+     earlier version sliced the last six and produced `026001`, which is the one thing a batch number
+     must not be: untraceable to the delivery that brought it. Caught by the end-to-end test. */
+  const tag = challan.no.replace(/[^0-9]/g, "");
 
   const lines = MEDICINES.map((med) => {
     const itemId = items.get(med.code);
