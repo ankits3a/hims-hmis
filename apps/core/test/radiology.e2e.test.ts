@@ -595,6 +595,20 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     /** The USG is not licensable and the CT is licensed, so nothing is unaccounted for. */
     expect((gaps.body as { rows: unknown[] }).rows).toEqual([]);
 
+    /**
+     * ═══ THE SAME CHECK THE RUNBOOK ACTUALLY TELLS A HUMAN TO MAKE ═══
+     *
+     * `radiation-safety-go-live.md` §0 gates the deploy on `GET /aerb/licences/gaps` coming back
+     * empty, and names it WITHOUT a date. That bare call returned
+     * `400 expected string, received undefined`: `onDate` was declared optional and parsed as
+     * required. The line above never caught it because it always sent `?onDate=`, and the screen
+     * never caught it because it always sends one too — so the one form nothing exercised was the
+     * one form the documentation published. It defaults to the server's IST day now.
+     */
+    const bare = await get("/aerb/licences/gaps", rso.token);
+    expect(bare.status).toBe(200);
+    expect((bare.body as { rows: unknown[] }).rows).toEqual([]);
+
     /** ── 2. THE QA LOCKOUT. A failure stops the machine — through the resource registry. ── */
     const failed = await post("/aerb/qa", rso.token, {
       deviceResourceId: devices.ct, qaType: "AERB annual QA", result: "fail",

@@ -488,6 +488,20 @@ export const labResults = pgTable(
     pathologistReviewPending: boolean("pathologist_review_pending").notNull().default(false),
     rerunOf: text("rerun_of"),
     supersedesResultId: text("supersedes_result_id"),
+    /**
+     * ═══ 17-E T7 / D17 — THE BENCH'S CHOICE, WHEN A MACHINE RAN THE SAME TUBE TWICE ═══
+     *
+     * A human re-key supersedes the row it replaces (close review M3) and needs no choice: one live
+     * value, and the chain is the auditor's path. **An analyser re-running does not supersede**
+     * (D9), so an analyte can carry two live values that are both legitimate measurements — and
+     * which of them the report prints is a judgement, made by a person, with a reason.
+     *
+     * The three columns move together or not at all, and the reason may not be blank: a choice
+     * recorded without one is the auto-supersession this task exists to remove, wearing a name.
+     */
+    reportedChoiceAt: timestamp("reported_choice_at", { withTimezone: true }),
+    reportedChoiceBy: text("reported_choice_by"),
+    reportedChoiceReason: text("reported_choice_reason"),
     remarks: text("remarks"),
   },
   (t) => [
@@ -523,6 +537,31 @@ export const labResults = pgTable(
       "lab_results_verified_status_ck",
       sql`(${t.verificationStatus} = 'unverified') = (${t.verifiedBy} is null)`,
     ),
+    /**
+     * 17-E T7 — the choice is a TRIPLE. Two of the three would let a row say it was chosen without
+     * saying by whom, or why; the biconditional is the same shape as the verification pair above.
+     */
+    check(
+      "lab_results_reported_choice_ck",
+      sql`(${t.reportedChoiceAt} is null) = (${t.reportedChoiceBy} is null)
+        and (${t.reportedChoiceAt} is null) = (${t.reportedChoiceReason} is null)`,
+    ),
+    /** A blank reason is no reason. The service trims; this is the floor under it. */
+    check(
+      "lab_results_reported_choice_reason_ck",
+      sql`${t.reportedChoiceReason} is null or length(btrim(${t.reportedChoiceReason})) > 0`,
+    ),
+    /**
+     * ═══ ONE CHOSEN VALUE PER ANALYTE PER ITEM, ENFORCED BY THE DATABASE ═══
+     *
+     * The service moves the choice inside one transaction, so two chosen rows should be
+     * unreachable. This index is what makes that a fact rather than a promise: a set with two
+     * chosen values is a report with two answers for one line, and the renderer would pick by
+     * accident of ordering.
+     */
+    uniqueIndex("lab_results_one_choice_idx")
+      .on(t.orderItemId, t.analyteId)
+      .where(sql`${t.reportedChoiceAt} is not null`),
   ],
 );
 
