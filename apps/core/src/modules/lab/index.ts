@@ -9,6 +9,10 @@
 export { labManifest } from "./manifest";
 export { LabModule } from "./lab.module";
 export { LAB_RESOURCE_KINDS } from "./kinds";
+// ── PLAN 17-E T7b — the analyser's bridge: the kernel's two liveness edges, projected onto the machine ──
+// `worker.module.ts` imports BOTH of these; the manifest declares the subscription and the worker
+// supplies the handler, and `buildSubscriptionBus` makes shipping one without the other a boot error.
+export { LAB_INTERFACE_ACTOR, LAB_INTERFACE_CONSUMER, labInterfaceConsumer } from "./interface-status";
 export { LabError, labHttpStatus, LAB_ERROR_CODES } from "./errors";
 export type { LabErrorCode } from "./errors";
 export {

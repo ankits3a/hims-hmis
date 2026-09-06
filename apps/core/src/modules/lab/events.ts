@@ -5,7 +5,13 @@ import { defineEvent } from "@hmis/contracts";
  * PLAN 17 T2 / DD18 — the lab's event surface. `entity.verb_past`, module carried separately (the
  * `opd`, `materials`, `membership`, `formulary` and `ot` grammar, unchanged).
  *
- * ═══ `subscriptions: []` — THIS MODULE CONSUMES NOTHING, AND THAT IS A DECISION ═══
+ * ═══ THE LAB CONSUMES NOTHING **ABOUT A PATIENT**, AND THAT IS THE DECISION ═══
+ *
+ * NARROWED AT 17-E T7b. Until this task the sentence here read *"this module consumes nothing"*, and
+ * the manifest's `subscriptions: []` was its evidence. The manifest now carries two subscriptions, so
+ * the general claim is retired and the specific one it was always arguing is stated instead —
+ * a header that keeps asserting an emptiness the file beside it has filled is how a comment becomes
+ * a lie (#160: written diagnoses record a MOMENT, not a state).
  *
  * The one subscription a reader will look for is `patient.merged`, which the OT and materials both
  * take. The lab does not need it: **every table in T1 keys by `order_item_id`, `specimen_id` or
@@ -14,6 +20,12 @@ import { defineEvent } from "@hmis/contracts";
  * merge path moves `orders.patient_id` and the tube belongs to the order group. A consumer here
  * would be a second answer to a question the envelope already answers, which is the shape §2.54
  * exists to stop.
+ *
+ * **`interface.down` / `interface.restored` are the exception because they are the opposite case**:
+ * the kernel's heartbeat sweep is the ONLY answer to "is this bridge alive", the lab is the only
+ * module that knows an `interfaces` row is an analyser's, and no other component projects that fact
+ * onto the machine's status — so consuming them adds the missing answer instead of a second one
+ * (17-E T7b, `interface-status.ts`).
  *
  * `lab.notifiable_flagged` is emitted and consumed by NOBODY in this phase — 28a subscribes to it
  * when the notifiable-disease register exists. An event with no consumer is not a defect; a

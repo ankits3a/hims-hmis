@@ -69,15 +69,28 @@ describe("the lab's event catalogue (Plan 17 T2)", () => {
   });
 
   /**
-   * THE MANIFEST CONSUMES NOTHING, AND `buildSubscriptionBus` IS WHY THAT MATTERS. A declared
-   * subscription with no handler is a BOOT ERROR by design, so an empty array here is the honest
-   * state of a module whose only cross-module inputs are function calls.
+   * ═══ 17-E T7b — THIS ASSERTION WAS `toEqual([])` AND THE CHANGE IS THE POINT ═══
+   *
+   * `buildSubscriptionBus` makes a declared subscription with no handler a BOOT ERROR, so the array
+   * pinned here is load-bearing rather than descriptive. It is now pinned BY NAME and not by count:
+   * a census that says "two" passes when a task subscribes to the wrong event.
+   *
+   * BOTH ENTRIES NAME THE SAME CONSUMER, and that is the loader's own shape — `SubscriptionBus.on`
+   * accumulates event names under one consumer key, so ONE handler and ONE `event_cursors` row serve
+   * both liveness edges. Two consumers would give the down edge and the up edge separate cursors,
+   * and a restore could then be delivered before the outage it ends.
    *
    * `lab.notifiable_flagged` is EMITTED and consumed by nobody: 28a subscribes when the
    * notifiable-disease register exists. An event with no consumer is not a defect.
    */
-  it("declares no subscription, so no handler can be missing", () => {
-    expect(labManifest.subscriptions).toEqual([]);
+  it("declares exactly the two liveness edges, both to one consumer", () => {
+    expect(labManifest.subscriptions).toEqual([
+      { event: "interface.down", consumer: "lab.interface_status" },
+      { event: "interface.restored", consumer: "lab.interface_status" },
+    ]);
+    /** Every subscribed name is the KERNEL's — the lab subscribes to none of its own. */
+    const own = new Set(LAB_EVENTS.map((e) => e.name));
+    expect(labManifest.subscriptions.filter((s) => own.has(s.event))).toEqual([]);
   });
 
   /** The payloads a downstream plan is written against — validated by `make`, not by inspection. */
