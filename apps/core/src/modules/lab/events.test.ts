@@ -10,8 +10,8 @@ import { labManifest } from "./manifest";
  * `materials`, `membership`, `formulary` and `ot` convention, unchanged.
  */
 describe("the lab's event catalogue (Plan 17 T2)", () => {
-  it("declares twenty-five events, every one `lab.*`, in the lab's module namespace", () => {
-    expect(LAB_EVENTS).toHaveLength(25); // 17d: `tube_swap_suspected`, `specimen_relabelled`. 17-E T7: `result_chosen`
+  it("declares twenty-six events, every one `lab.*`, in the lab's module namespace", () => {
+    expect(LAB_EVENTS).toHaveLength(26); // 17d: `tube_swap_suspected`, `specimen_relabelled`. 17-E T7: `result_chosen`. DD11: `night_release_reviewed`
     for (const event of LAB_EVENTS) {
       expect([event.name, event.module]).toEqual([event.name, "lab"]);
       expect(event.name.startsWith("lab.")).toBe(true);
@@ -30,6 +30,11 @@ describe("the lab's event catalogue (Plan 17 T2)", () => {
       "lab.attribution_unverified_flagged",
       "lab.critical_acknowledged",
       "lab.label_printed",
+      /**
+       * DD11's compensating control. Night mode relaxes separation of duties; this is the record
+       * that the second pair of hands arrived in the morning, naming BOTH people.
+       */
+      "lab.night_release_reviewed",
       "lab.notifiable_flagged",
       "lab.order_desked",
       "lab.recollection_requested",

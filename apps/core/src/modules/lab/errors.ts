@@ -124,6 +124,8 @@ export const LAB_ERROR_CODES = [
    * module's own vocabulary, and it is the sixth `unknown_*`.
    */
   "unknown_interface",
+  /** ── DD11's morning review of a night release ── */
+  "review_not_pending",
 ] as const;
 
 export type LabErrorCode = (typeof LAB_ERROR_CODES)[number];
@@ -233,6 +235,12 @@ const STATUS: Record<LabErrorCode, number> = {
 
   /** 404 with the other five: the named row does not exist. A missing device is not a bad request. */
   unknown_interface: 404,
+  /**
+   * 409 with the other state conflicts: the row is not in the state this act moves it out of —
+   * either it never needed a morning review, or somebody has already given it one. The caller's
+   * correct response is to re-read the queue, which is what 409 means.
+   */
+  review_not_pending: 409,
 };
 
 export function labHttpStatus(code: LabErrorCode): number {

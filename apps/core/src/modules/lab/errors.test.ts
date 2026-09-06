@@ -126,6 +126,8 @@ const OWNED_BY: Record<LabErrorCode, string> = {
 
   /** 17-E T7b — linking a machine to its bridge is an estate act, in the estate's own file. */
   unknown_interface: "instruments.ts",
+  /** DD11's morning review lives with the signature it completes. */
+  review_not_pending: "verify.ts",
 };
 
 describe("the lab error union (Plan 17 T2)", () => {
@@ -184,7 +186,7 @@ describe("the lab error union (Plan 17 T2)", () => {
       /** 17-E T7 — there is nothing to choose between; the set is already signed; a newer row
        *  replaced this one. All three are re-read-and-retry, which is what 409 means. */
       "no_rerun_to_choose", "report_not_amendable", "rerun_choice_final", "result_superseded",
-      "specimen_not_receivable",
+      "review_not_pending", "specimen_not_receivable",
     ]);
     // 403 is about WHO is acting — the same pair of hands twice, or a machine where a human is required.
     expect(LAB_ERROR_CODES.filter((c) => labHttpStatus(c) === 403).sort()).toEqual([
