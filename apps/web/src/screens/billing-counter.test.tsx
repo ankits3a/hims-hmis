@@ -768,6 +768,21 @@ describe("BillingCounter", () => {
 
     await user.click(screen.getByRole("button", { name: "Print invoice" }));
     expect(printSpy).toHaveBeenCalledTimes(1);
+
+    /*
+      ═══ FD-28 — THE BILL IS NOT THE ONLY PAPER THE PATIENT LEAVES WITH ═══
+
+      Owner, 2026-09-06: *"when the billing is done a invoice appears on the screen with 'print
+      invoice' text below. But what about OPD prescription print?"* Right, and the gap was
+      structural: this screen knew about exactly ONE document — the invoice it had just rendered
+      from its own state — while the prescription sheet, the token slip and the payment receipt are
+      all queued by the server against the same encounter, and nothing here had ever looked at them.
+    */
+    await user.click(screen.getByTestId("issued-papers"));
+    const sheet = await screen.findByTestId("issued-papers-sheet");
+    expect(sheet).toHaveAttribute("role", "dialog");
+    /* Asked about the visit this invoice belongs to, not some other one. */
+    expect(callsTo("GET", "/api/print/jobs").some((c) => c.url.includes("enc-1"))).toBe(true);
   });
 
   /* ══════════════════════════════════════════════════════════════════════════════════════════
