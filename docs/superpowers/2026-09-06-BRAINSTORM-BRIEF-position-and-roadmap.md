@@ -93,9 +93,9 @@ These are the ones where a wrong answer costs months. Everything else in §4 is 
    absorbs. Nothing built since 2 September is in anyone's hands. If the binding constraint has
    moved from engineering to commissioning, the roadmap should say so and re-shape around it.
 
-3. **What is the deployment strategy from here?** Nineteen migrations and two entire modules is now
-   one large, risky step, and it grows riskier weekly. Batch, or continuous, or module-at-a-time
-   behind a flag — pick one and say why.
+3. **What is the deployment strategy from here?** Twenty migrations, seventy-six commits and two
+   entire modules is now one large, risky step, and it grows riskier weekly. Batch, or continuous,
+   or module-at-a-time behind a flag — pick one and say why.
 
 4. **Which Track C substrate comes first?** Roster (plan 20) unblocks the most: it is an IPD gate
    condition and mini-OT already needs on-call resolution. Argue it or argue against it.
@@ -147,8 +147,13 @@ the closest to house style. **Author it. Do not execute it.**
 
 Offered so you have somewhere to push, not as false modesty. The report's author flagged these:
 
-- **Production was never queried.** Every claim about what production can do is inferred from code
-  at the commit identified as its deployed base. That identification came from another session.
+- **Production was never queried.** Every claim about what production *can do* is still inferred
+  from code at the commit identified as its deployed base. **The identification itself is no longer
+  single-sourced:** on 6 September the pharmacy lane corroborated it with a different instrument —
+  the production server image was built `2026-09-02T13:19:17Z`, twenty minutes after `c11833d`
+  landed at `12:59:56Z`, and `/opt/hmis-prod`'s compose and Caddy config were written at 13:19.
+  That agrees with the orchestrator's separate reading of the migration journal (56 applied). Two
+  instruments, one answer. What remains uninspected is the running database's *contents*.
 - **Module status outside the lab is a code-presence check**, not a functional assessment. OPD,
   billing, OT and materials were never exercised.
 - **The "commissioning is the constraint" thesis is a judgement, not a measurement.** It fits the
