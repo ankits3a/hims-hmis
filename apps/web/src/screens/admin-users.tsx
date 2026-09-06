@@ -8,6 +8,7 @@ import { FormKit, TextField } from "../components/form-kit";
 import { PaperScreen, ScreenTitle } from "../components/paper-screen";
 import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
+import { DeskModal } from "../components/desk-modal";
 import { SubmitButton } from "../components/submit-button";
 import {
   adminErrorCode, adminErrorMessage, assignRole, createUser, deactivateUser, listRoles, listUsers,
@@ -79,7 +80,24 @@ const createSchema = z.object({
 });
 type CreateValues = z.infer<typeof createSchema>;
 
-/** One prompt-and-submit action, kept out of the row so the row stays readable. */
+/**
+ * One prompt-and-submit action, kept out of the row so the row stays readable.
+ *
+ * ═══ IT IS A MODAL NOW, AND THAT IS A DEFECT REPORT, NOT A PREFERENCE ═══
+ *
+ * "Kept out of the row" was rendered literally: the panel was a flat sibling of the table, mounted
+ * ABOVE it, above the create form and above two banners. So on a real roster the box opened
+ * somewhere the operator was not looking. Measured on this deployment's own `/admin/users` with a
+ * browser: clicking "Reset password" on the last of sixteen rows mounted the panel at
+ * `getBoundingClientRect().top === -1401` — fourteen hundred pixels above the viewport, focus left
+ * on the button, nothing on screen changed. The screen looked broken because it WAS: the whole
+ * affordance was off-stage.
+ *
+ * `DeskModal` answers it in the viewport's centre and brings, for free, everything §6 of this file
+ * never had — `role="dialog"`, `aria-modal`, `aria-labelledby`, Escape to dismiss, focus moved into
+ * the field on open and returned to the opener on close. It stays a CHILD of `PaperScreen` rather
+ * than portalling to `document.body`, which is what keeps `.pp .box` / `.pp .pri` cascading onto it.
+ */
 type PendingReset = { user: WireAdminUser; kind: "password" | "pin" };
 
 export function AdminUsers(): React.ReactElement {
@@ -144,25 +162,54 @@ export function AdminUsers(): React.ReactElement {
     return adminErrorMessage(e);
   };
 
-  const run = async (fn: () => Promise<unknown>, done: string): Promise<void> => {
+  /** Answers whether the write LANDED, because `submitReset` must not close a refused dialog. */
+  const run = async (fn: () => Promise<unknown>, done: string): Promise<boolean> => {
     setRowError(null);
     setNotice(null);
     try {
       await fn();
       setNotice(done);
       await refresh();
+      return true;
     } catch (e) {
       setRowError(refusal(e));
+      return false;
     }
   };
 
+  /**
+   * A REFUSAL KEEPS THE DIALOG OPEN, and that is the other half of moving the box into view.
+   *
+   * `setPending(null)` used to run unconditionally, so a password the server refused — under length,
+   * equal to the username, any of `password-policy.ts`'s rules — closed the dialog, discarded what
+   * had been typed, and printed the reason on a paragraph the operator had just been scrolled away
+   * from. Putting the box where the eye is and then tearing it down at the one moment it has
+   * something to say would have fixed the reported half and left the half that matters.
+   */
   const submitReset = async (): Promise<void> => {
     if (pending === null) return;
     const { user, kind } = pending;
-    await run(
+    const landed = await run(
       () => (kind === "password" ? resetPassword(user.id, resetValue) : resetPin(user.id, resetValue)),
       t(kind === "password" ? "adminUsers.passwordReset" : "adminUsers.pinReset", { username: user.username }),
     );
+    if (!landed) return;
+    setPending(null);
+    setResetValue("");
+  };
+
+  /**
+   * Opening and closing both wipe the previous outcome, so the dialog never inherits somebody
+   * else's refusal — `rowError` is screen-wide state and the dialog renders it while it is open.
+   */
+  const openReset = (user: WireAdminUser, kind: PendingReset["kind"]): void => {
+    setRowError(null);
+    setNotice(null);
+    setResetValue("");
+    setPending({ user, kind });
+  };
+  const closeReset = (): void => {
+    setRowError(null);
     setPending(null);
     setResetValue("");
   };
@@ -254,46 +301,107 @@ export function AdminUsers(): React.ReactElement {
         </FormProvider>
       </section>
 
-      {notice !== null && (
-        <p role="status" data-testid="admin-notice" style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: "var(--green)" }}>{notice}</p>
-      )}
-      {rowError !== null && (
-        <p role="alert" data-testid="admin-row-error" style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: "var(--red)" }}>{rowError}</p>
+      {/*
+        ═══ THE OUTCOME FOLLOWS THE EYE TOO ═══
+
+        These two lines had the reset panel's disease in miniature. Every write on this screen —
+        reset, deactivate, reactivate, assign, revoke — is fired from a row, and every one of them
+        answered in a paragraph pinned to the TOP of a page that is taller than the viewport. Sixteen
+        demo accounts already overflow it; a real deployment's roster is not close. So the operator
+        clicked Deactivate on the last row and, as far as they could see, nothing happened.
+
+        Fixed to the bottom edge, above the dock, they are seen wherever the roster has been
+        scrolled to. The ROLES are unchanged and are the reason this is not merely decoration:
+        `status` for an outcome that completed, `alert` for a refusal that needs reading now.
+        `pointerEvents: none` on the rail so a toast can never swallow a click meant for a row;
+        the ribbons themselves take pointer events back for selectable text.
+      */}
+      {(notice !== null || (rowError !== null && pending === null)) && (
+        <div style={{
+          position: "fixed", left: 0, right: 0, bottom: 60, zIndex: 55, display: "flex",
+          flexDirection: "column", alignItems: "center", gap: 6, padding: "0 16px", pointerEvents: "none",
+        }}>
+          {notice !== null && (
+            <p role="status" data-testid="admin-notice" className="box"
+              style={{
+                margin: 0, padding: "9px 14px", fontSize: 12.5, fontWeight: 600, color: "var(--green)",
+                borderColor: "var(--green)", background: "var(--paper)", pointerEvents: "auto",
+                boxShadow: "0 10px 30px rgba(19,36,32,.18)",
+              }}>
+              {notice}
+            </p>
+          )}
+          {/*
+            A REFUSAL RENDERS IN EXACTLY ONE PLACE. While the dialog is open it belongs INSIDE it,
+            beside the field that caused it; with the dialog closed it belongs on the rail. Rendering
+            both would put two live regions carrying one sentence on the page, and a screen reader
+            would read the refusal twice.
+          */}
+          {rowError !== null && pending === null && (
+            <p role="alert" data-testid="admin-row-error" className="box"
+              style={{
+                margin: 0, padding: "9px 14px", fontSize: 12.5, fontWeight: 600, color: "var(--red)",
+                borderColor: "var(--red)", background: "var(--paper)", pointerEvents: "auto",
+                boxShadow: "0 10px 30px rgba(19,36,32,.18)",
+              }}>
+              {rowError}
+            </p>
+          )}
+        </div>
       )}
 
-      {pending !== null && (
-        <section className="box" data-testid="admin-reset-panel"
-          style={{ display: "flex", flexDirection: "column", gap: 8, padding: "15px 17px", borderColor: "var(--gold-line)", background: "var(--gold-soft)" }}>
-          <h2 style={{ margin: 0, fontSize: 13.5, fontWeight: 700 }}>
-            {t(pending.kind === "password" ? "adminUsers.resetPasswordFor" : "adminUsers.resetPinFor", {
-              username: pending.user.username,
-            })}
-          </h2>
-          <p style={{ margin: 0, fontSize: 11.5, color: "var(--dim)" }}>
-            {t(pending.kind === "password" ? "adminUsers.resetPasswordWhy" : "adminUsers.resetPinWhy")}
-          </p>
-          <label className="tag" style={{ display: "block" }} htmlFor="reset-value">
-            {t(pending.kind === "password" ? "adminUsers.password" : "adminUsers.pin")}
-          </label>
-          <input
-            id="reset-value"
-            type="password"
-            className="in mo" style={{ width: 260, height: 34, fontSize: 13 }}
-            value={resetValue}
-            onChange={(e) => setResetValue(e.target.value)}
-          />
-          <div style={{ display: "flex", gap: 8 }}>
-            <SubmitButton plain type="button" className="pri" onClick={submitReset}>{t("adminUsers.confirmReset")}</SubmitButton>
-            <button
-              type="button"
-              className="sec"
-              onClick={() => { setPending(null); setResetValue(""); }}
-            >
-              {t("adminUsers.cancel")}
-            </button>
+      <DeskModal
+        open={pending !== null}
+        onClose={closeReset}
+        titleId="admin-reset-title"
+        testId="admin-reset-panel"
+        width={480}
+        title={pending === null ? "" : t(
+          pending.kind === "password" ? "adminUsers.resetPasswordFor" : "adminUsers.resetPinFor",
+          { username: pending.user.username },
+        )}
+      >
+        {pending !== null && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <p style={{ margin: 0, fontSize: 11.5, color: "var(--dim)" }}>
+              {t(pending.kind === "password" ? "adminUsers.resetPasswordWhy" : "adminUsers.resetPinWhy")}
+            </p>
+            <label className="tag" style={{ display: "block" }} htmlFor="reset-value">
+              {t(pending.kind === "password" ? "adminUsers.password" : "adminUsers.pin")}
+            </label>
+            <input
+              id="reset-value"
+              type="password"
+              /*
+                A fresh secret, never the operator's own. Without this a browser offers to fill the
+                ADMINISTRATOR's saved password into the box that sets somebody else's.
+              */
+              autoComplete="new-password"
+              className="in mo" style={{ width: "100%", height: 34, fontSize: 13 }}
+              value={resetValue}
+              onChange={(e) => setResetValue(e.target.value)}
+              /* Enter is what a person types after a password. Escape is `DeskModal`'s. */
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void submitReset(); } }}
+            />
+            {rowError !== null && (
+              <p role="alert" data-testid="admin-row-error"
+                style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: "var(--red)" }}>
+                {rowError}
+              </p>
+            )}
+            <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
+              <SubmitButton plain type="button" className="pri" onClick={submitReset}>{t("adminUsers.confirmReset")}</SubmitButton>
+              <button
+                type="button"
+                className="sec"
+                onClick={closeReset}
+              >
+                {t("adminUsers.cancel")}
+              </button>
+            </div>
           </div>
-        </section>
-      )}
+        )}
+      </DeskModal>
 
       <section style={{ display: "flex", flexDirection: "column", gap: 9 }}>
         <h2 className="tag" style={{ margin: 0 }}>{t("adminUsers.listTitle")}</h2>
@@ -356,10 +464,10 @@ export function AdminUsers(): React.ReactElement {
                               className="sec"
                               aria-label={t("adminUsers.revokeRoleFor", { roleKey: r.roleKey, username: u.username })}
                               style={{ padding: "0 6px", height: 19, fontSize: 10 }}
-                              onClick={() => run(
+                              onClick={async () => { await run(
                                 () => revokeRole(u.id, r.assignmentId),
                                 t("adminUsers.roleRevoked", { roleKey: r.roleKey, username: u.username }),
-                              )}
+                              ); }}
                             >
                               {t("adminUsers.revokeRole")}
                             </SubmitButton>
@@ -412,13 +520,13 @@ export function AdminUsers(): React.ReactElement {
                             className="sec grn"
                             style={{ alignSelf: "flex-start", padding: "0 10px", height: 26, fontSize: 11 }}
                             disabled={chosen === ""}
-                            onClick={() => run(
+                            onClick={async () => { await run(
                               async () => {
                                 await assignRole(u.id, { roleKey: chosen, scopeType: scope as "hospital" });
                                 setPicked((p) => ({ ...p, [u.id]: "" }));
                               },
                               t("adminUsers.roleAssigned", { roleKey: chosen, username: u.username }),
-                            )}
+                            ); }}
                           >
                             {t("adminUsers.assignRole")}
                           </SubmitButton>
@@ -431,14 +539,14 @@ export function AdminUsers(): React.ReactElement {
                     <button
                       type="button"
                       className="sec" style={{ padding: "0 8px", height: 24, fontSize: 10.5 }}
-                      onClick={() => { setPending({ user: u, kind: "password" }); setResetValue(""); }}
+                      onClick={() => openReset(u, "password")}
                     >
                       {t("adminUsers.resetPassword")}
                     </button>
                     <button
                       type="button"
                       className="sec" style={{ padding: "0 8px", height: 24, fontSize: 10.5 }}
-                      onClick={() => { setPending({ user: u, kind: "pin" }); setResetValue(""); }}
+                      onClick={() => openReset(u, "pin")}
                     >
                       {t("adminUsers.resetPin")}
                     </button>
@@ -448,10 +556,10 @@ export function AdminUsers(): React.ReactElement {
                         type="button"
                         className="sec"
                         style={{ padding: "0 8px", height: 24, fontSize: 10.5 }}
-                        onClick={() => run(
+                        onClick={async () => { await run(
                           () => deactivateUser(u.id),
                           t("adminUsers.deactivated", { username: u.username }),
-                        )}
+                        ); }}
                       >
                         {t("adminUsers.deactivate")}
                       </SubmitButton>
@@ -461,10 +569,10 @@ export function AdminUsers(): React.ReactElement {
                         type="button"
                         className="sec"
                         style={{ padding: "0 8px", height: 24, fontSize: 10.5 }}
-                        onClick={() => run(
+                        onClick={async () => { await run(
                           () => reactivateUser(u.id),
                           t("adminUsers.reactivated", { username: u.username }),
-                        )}
+                        ); }}
                       >
                         {t("adminUsers.reactivate")}
                       </SubmitButton>
