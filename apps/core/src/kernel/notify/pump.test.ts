@@ -78,7 +78,7 @@ describe("runNotifyPump — the send path (Plan 10 T4: D2/D3/D4/D6/D7)", () => {
       },
     ]);
     await db.insert(users).values({
-      id: USER_OWNER, username: "t4owner", fullName: "T4 Owner", passwordHash: "x", phone: PHONE_OWNER,
+      id: USER_OWNER, username: "t4owner", fullName: "T4 Owner", staffCode: "EMP-0001", passwordHash: "x", phone: PHONE_OWNER,
     });
   });
 

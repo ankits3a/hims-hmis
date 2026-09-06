@@ -33,7 +33,7 @@ describe("enqueueNotification / expireByRef — the outbox's only writer (Plan 1
       phone: "9876500001", createdBy: "u1", updatedBy: "u1",
     });
     await db.insert(users).values({
-      id: USER_A, username: "t4enq", fullName: "T4 Enqueue", passwordHash: "x", phone: "9876500002",
+      id: USER_A, username: "t4enq", fullName: "T4 Enqueue", staffCode: "EMP-0001", passwordHash: "x", phone: "9876500002",
     });
   });
 

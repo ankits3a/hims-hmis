@@ -1247,7 +1247,8 @@
       "inert_other": "{{count}} role assignments are scoped below hospital. Every route in this system requires a hospital scope, so those rows grant their holder nothing — the screen marks each one.",
       "noInert": "No inert role assignments — every holding is hospital-scoped.",
       "cannot": "I cannot answer that from this screen. I can tell you about the accounts listed here, the roles they hold, how many full administrators there are, and which assignments are inert."
-    }
+    },
+    "staffCode": "Staff ID"
   },
   "counterInstruments": {
     "title": "Card recognition",

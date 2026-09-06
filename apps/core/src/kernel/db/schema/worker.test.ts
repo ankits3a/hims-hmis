@@ -74,7 +74,7 @@ describe("worker tables", () => {
   // order — the first writes, the second reads back after beforeEach has truncated.
   it("writes one row into each of migration 0014's four tables", async () => {
     await db.insert(users).values({
-      id: PROBE_USER, username: "truncate-probe", fullName: "Truncate Probe", passwordHash: "x",
+      id: PROBE_USER, username: "truncate-probe", fullName: "Truncate Probe", staffCode: "EMP-0001", passwordHash: "x",
     });
     await db.insert(schedulerHeartbeats).values({ job: "runDailyClose", lastStartedAt: new Date() });
     await db.insert(eventDeliveries).values({ consumer: "kernel.alerts", seq: 11, status: "done" });

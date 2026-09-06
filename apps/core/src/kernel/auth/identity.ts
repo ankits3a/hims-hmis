@@ -70,19 +70,47 @@ export function argon2Options(env: NodeJS.ProcessEnv = process.env): argon2.Opti
  * constructor would be a floor that fixtures route around, which is the shape of a rule nobody
  * can measure.
  */
+/**
+ * ═══ THE STAFF ID, MINTED SO NO EMPLOYEE IS WITHOUT ONE ═══
+ *
+ * `EMP-` + four digits. MAX over the minted shape, never COUNT: a user is DEACTIVATED rather than
+ * deleted (`users.active`), so a departed employee keeps their number and the next hire gets a
+ * fresh one — an ID card, an attendance row or a signed form carrying a reissued number names the
+ * wrong person. It reads only `EMP-nnnn`, so a hospital's own HR numbering sitting in the same
+ * column does not derail the sequence.
+ *
+ * Same shape as `nextDoctorCode`, deliberately, and not shared with it: that one lives in the OPD
+ * module and this one in the kernel, and a kernel that imported a module to number its own rows
+ * would be the wrong dependency for the sake of eight lines.
+ */
+export async function nextStaffCode(db: Db): Promise<string> {
+  const rows = await db
+    .select({ highest: sql<number | null>`max(nullif(regexp_replace(${users.staffCode}, '^EMP-0*', ''), '')::int)` })
+    .from(users)
+    .where(sql`${users.staffCode} ~ '^EMP-[0-9]+$'`);
+  const next = (rows[0]?.highest ?? 0) + 1;
+  if (next > 9999) throw new Error("the 4-digit EMP- sequence is full; assign staff ids explicitly");
+  return `EMP-${String(next).padStart(4, "0")}`;
+}
+
 export async function createUser(
   db: Db,
   input: {
     username: string; fullName: string; password: string; pin?: string; mustChangePassword?: boolean;
+    /** A hospital's own HR number. Omitted is the normal path — one is minted. */
+    staffCode?: string;
   },
 ): Promise<{ id: string }> {
   const id = newId();
+  const staffCode = input.staffCode === undefined ? await nextStaffCode(db) : input.staffCode.trim();
+  if (staffCode === "") throw new Error("a staff id cannot be blank");
   const passwordHash = await argon2.hash(input.password, argon2Options());
   const pinHash = input.pin === undefined ? null : await argon2.hash(input.pin, argon2Options());
   await db.insert(users).values({
     id,
     username: input.username,
     fullName: input.fullName,
+    staffCode,
     passwordHash,
     pinHash,
     mustChangePassword: input.mustChangePassword ?? false,

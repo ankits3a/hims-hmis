@@ -414,7 +414,7 @@ export function AdminUsers(): React.ReactElement {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
             <thead>
               <tr>
-                {[t("adminUsers.username"), t("adminUsers.fullName"), t("adminUsers.status"), t("adminUsers.roles"), t("adminUsers.actions")].map((h) => (
+                {[t("adminUsers.staffCode"), t("adminUsers.username"), t("adminUsers.fullName"), t("adminUsers.status"), t("adminUsers.roles"), t("adminUsers.actions")].map((h) => (
                   <th key={h} className="tag" style={{ textAlign: "left", padding: "10px 14px 7px 0", borderBottom: "1px solid var(--line)" }}>{h}</th>
                 ))}
               </tr>
@@ -422,6 +422,7 @@ export function AdminUsers(): React.ReactElement {
             <tbody>
               {rows.map((u) => (
                 <tr key={u.id} style={{ verticalAlign: "top" }} data-testid={`admin-user-${u.username}`}>
+                  <td className="mo" data-testid={`admin-staff-code-${u.username}`} style={{ padding: "9px 14px 9px 0", borderBottom: "1px solid var(--line)" }}>{u.staffCode}</td>
                   <td className="mo" style={{ padding: "9px 14px 9px 0", borderBottom: "1px solid var(--line)", fontWeight: 600 }}>{u.username}</td>
                   <td style={{ padding: "9px 14px 9px 0", borderBottom: "1px solid var(--line)" }}>{u.fullName}</td>
                   <td data-testid={`admin-status-${u.username}`} style={{ padding: "9px 14px 9px 0", borderBottom: "1px solid var(--line)", color: u.active ? "var(--ink)" : "var(--dim)" }}>

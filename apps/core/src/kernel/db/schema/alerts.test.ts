@@ -18,8 +18,8 @@ describe("alerts table", () => {
   beforeEach(async () => {
     await truncateAll(db);
     await db.insert(users).values([
-      { id: USER_A, username: "asha", fullName: "Asha K", passwordHash: "x" },
-      { id: USER_B, username: "bala", fullName: "Bala R", passwordHash: "x" },
+      { id: USER_A, username: "asha", fullName: "Asha K", staffCode: "EMP-0001", passwordHash: "x" },
+      { id: USER_B, username: "bala", fullName: "Bala R", staffCode: "EMP-0002", passwordHash: "x" },
     ]);
   });
   afterAll(async () => { await teardown(); });

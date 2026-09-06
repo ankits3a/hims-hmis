@@ -106,11 +106,16 @@ describe("OPD queue and visit-type performance budgets (CI-gated — §15)", () 
       from generate_series(1, ${sql.raw(String(DEPARTMENTS))}) gs
     `);
     await db.execute(sql`
-      insert into opd_doctors (id, user_id, display_name, registration_no, department_id, created_by, updated_by)
+      insert into opd_doctors (id, user_id, display_name, code, registration_no, department_id, created_by, updated_by)
       select
         'PERFDOC' || lpad(gs::text, 5, '0'),
         'PERFUSER' || lpad(gs::text, 5, '0'),
         'Dr Perf ' || lpad(gs::text, 5, '0'),
+        -- FD-29: opd_doctors.code is NOT NULL and unique. This bulk seed is RAW SQL, so the
+        -- compiler could not point at it the way it did at the nine builder-based inserts — the
+        -- suite went red on the constraint instead. A future NOT NULL column must be added here
+        -- by hand, because nothing will tell you.
+        'DR-P' || lpad(gs::text, 5, '0'),
         'BMC/' || gs::text,
         'PERFDEPT' || lpad((((gs - 1) % ${sql.raw(String(DEPARTMENTS))}) + 1)::text, 4, '0'),
         'perf-seed', 'perf-seed'
