@@ -85,9 +85,39 @@ export type WirePricedDraft = {
 };
 
 /** D8's fee branch. `free: true` IS the revisit branch — a null service, not a missing mapping. */
+/**
+ * FD-28 — WHO IS BEING BILLED AND WHICH TOKEN THEY ARE HOLDING.
+ *
+ * The counter is normally entered as `/billing?encounterId=…` from the OPD desk, and every box in
+ * its left rail used to be gated on a PICKED patient — so arriving by the front door left the rail
+ * blank. These two ride the quote because the quote is already the billing-scoped read of a visit,
+ * already guarded on `billing.invoice.read`, and already loads the encounter: a cashier holds no
+ * `opd.visits.read` and deliberately must not (see the route's comment).
+ */
+export type WireQuotePatient = {
+  id: string; uhid: string;
+  /** The RELEASE name — a sealed record hands over its alias here exactly as it does on paper. */
+  name: string | null;
+  alias: string | null;
+  restricted: boolean;
+  administrativeGender: string;
+  dob: string | null;
+  phone?: string | null;
+};
+
+export type WireQuoteVisit = {
+  visitNo: string; serviceDate: string; status: string;
+  /** Null on a deferred visit that has not joined the queue — there is genuinely no token yet. */
+  tokenNo: number | null;
+  /** The department's code — the token reads by department ("MED-4"), on the owner's ruling. */
+  departmentCode: string | null;
+};
+
 export type WireFeeQuote = {
   encounterId: string; visitType: string; free: boolean;
   feeServiceId: string | null; draft: WirePricedDraft | null;
+  patient?: WireQuotePatient | null;
+  visit?: WireQuoteVisit | null;
   /**
    * RC-1 T5 / D8 shipped this on the server's `FeeQuote` and it never reached this type, so the
    * seat that is meant to print "review visit — free till <date> (<doctor>)" could not see the
@@ -316,6 +346,30 @@ export function listInvoicesFor(q: { patientId?: string; encounterId?: string })
   if (q.patientId !== undefined) params.set("patientId", q.patientId);
   if (q.encounterId !== undefined) params.set("encounterId", q.encounterId);
   return api("GET", `/billing/invoices?${params.toString()}`);
+}
+
+/**
+ * ═══ FD-28 — BOTH SIDES OF THE LEDGER, WHICH IS WHAT "ON THEIR ACCOUNT" ALWAYS MEANT ═══
+ *
+ * Owner, 2026-09-06: *"'On their Account' section in the left panel, looks like it is not fetching
+ * all the related information."*
+ *
+ * `listDues` returns the rows and nothing else, so the billing rail printed each bill's outstanding
+ * and never a total — and never the ADVANCE, money the patient has already deposited, which is the
+ * one figure that changes what a cashier asks for. `GET /billing/patients/:id/balance` has returned
+ * all three since Plan 08 on the same `billing.invoice.read` permission, and `/billing/dues` has
+ * been its only caller. Dues and advances are ONE mechanism (owner ruling 2026-08-18) and reading
+ * only half of it is what made the box look broken.
+ */
+export type WirePatientBalance = {
+  patientId: string;
+  advancePaise: number;
+  outstandingPaise: number;
+  dues: WireDueRow[];
+};
+
+export function fetchPatientBalance(patientId: string): Promise<WirePatientBalance> {
+  return api("GET", `/billing/patients/${encodeURIComponent(patientId)}/balance`);
 }
 
 export function listDues(patientId: string): Promise<{ items: WireDueRow[] }> {

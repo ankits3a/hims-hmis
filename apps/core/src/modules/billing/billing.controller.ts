@@ -11,6 +11,7 @@ import { hmacSign } from "../../kernel/crypto";
 import { receipts, refundVouchers } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { getPatientSummaries, PatientError } from "../patients";
+import { counterState, getEncounter } from "../opd";
 import { loadOpdConfig, OpdError } from "../opd";
 import { DISCOUNT_CATEGORIES, TariffError, tariffHttpStatus } from "../tariff";
 import { feeQuote } from "./charge-rules";
@@ -106,6 +107,21 @@ import type { MismatchRow, UploadSettlementResult } from "./recon";
 import type { CashierSessionRow } from "./sessions";
 import type { Settlement } from "./settlement";
 import type { PatientSummary } from "../patients";
+
+/**
+ * FD-28 — the visit facts the billing counter reads and nothing else. Deliberately NOT the encounter
+ * row: that carries the diagnosis and the ICD-10 code, which are a doctor's business and not a
+ * cashier's, and shipping the whole row would be the widening this route exists to avoid.
+ */
+type VisitFacts = {
+  visitNo: string;
+  serviceDate: string;
+  status: string;
+  /** The number the patient is holding on their slip. Null on a deferred visit that has not joined. */
+  tokenNo: number | null;
+  /** The department's code, so the counter spells the token exactly as the patient's slip does. */
+  departmentCode: string | null;
+};
 import type { OpdConfig } from "../opd";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
@@ -603,18 +619,73 @@ export class BillingController {
    * each trimmed, capped in count and length, empties dropped.
    */
   @RequirePermission("billing.invoice.read", "hospital")
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-28 — THE QUOTE CARRIES WHO AND WHICH TOKEN, BECAUSE THE COUNTER IS ENTERED BY ENCOUNTER
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Owner, 2026-09-06: *"At /billing, left panel is failing to show patient picture thumbnail,
+   * neither the age, gender and phone number … there's no way a billing user would know, against
+   * which token number the billing needs to be done."*
+   *
+   * The cause is one fact with several symptoms. `/billing?encounterId=…` is the hand-off from the
+   * OPD desk and is how this counter is normally reached, but every box in its left rail is gated on
+   * a PICKED patient — so arriving by the front door left the rail blank: no name, no age, no dues,
+   * no token. The screen already knew the visit and could not say whose it was.
+   *
+   * ═══ WHY THE ANSWER IS THIS ROUTE AND NOT `GET /opd/visits/:id` ═══
+   *
+   * A cashier does NOT hold `opd.visits.read` and must not: FD-25's close pass removed the OPD
+   * strings from that role because `opd.visits.open` also opens `reclassify`, which changes the
+   * consult fee band — one actor could lower a fee and then collect it. This route is already the
+   * billing-scoped read of a visit, already guarded on `billing.invoice.read`, and already loads the
+   * encounter. So the two facts the counter is missing ride the answer it already asks for, and no
+   * permission moves.
+   *
+   * The PATIENT comes from `getPatientSummaries`, the same helper the printed invoice uses — so a
+   * sealed record shows its alias here exactly as it does on paper, the §14 rule is asked in the one
+   * place that owns it, and the disclosure is logged with a stated reason. This route never reads a
+   * name off `patients` directly; doing that is how the print renderer once leaked one.
+   *
+   * The TOKEN comes from `counterState`, which is PHI-free by construction and is the same
+   * projection the hall board reads — so the counter and the board cannot disagree about a number
+   * the patient is holding on a slip.
+   */
   @Get("visits/:encounterId/fee-quote")
   async feeQuoteRoute(
+    @CurrentActor() actor: Actor,
     @Param("encounterId") encounterId: string,
     @Query("coupon") coupon?: string | string[],
     // `string | string[]`, matching the schema: Nest hands back an array for a repeated parameter,
     // and an annotation narrower than the parser invites someone to "simplify" the union back out.
     @Query("referral") referral?: string | string[],
-  ): Promise<FeeQuote> {
+  ): Promise<FeeQuote & { patient: PatientSummary | null; visit: VisitFacts | null }> {
     const couponCodes = parsed(feeQuoteCouponsQuery, coupon);
     const attributionCode = parsed(feeQuoteReferralQuery, referral);
     try {
-      return await feeQuote(this.db, encounterId, new Date(), { couponCodes, attributionCode });
+      const quote = await feeQuote(this.db, encounterId, new Date(), { couponCodes, attributionCode });
+      const encounter = await getEncounter(this.db, encounterId);
+      /*
+        `withContact` is an OPT-IN that writes its reason into the PHI access row. The counter needs
+        the number to telephone a patient whose bill is queried, and a disclosure whose purpose is
+        not recorded cannot be answered for later.
+      */
+      const [patient] = encounter === null ? [] : await getPatientSummaries(
+        this.db, actor, [encounter.patientId],
+        { withContact: { reason: "billing counter — the person being billed" } },
+      );
+      const state = await counterState(this.db, encounterId);
+      return {
+        ...quote,
+        patient: patient ?? null,
+        visit: encounter === null ? null : {
+          visitNo: encounter.visitNo,
+          serviceDate: encounter.serviceDate,
+          status: encounter.status,
+          tokenNo: state?.tokenNo ?? null,
+          departmentCode: state?.departmentCode ?? null,
+        },
+      };
     } catch (e) {
       toHttp(e);
     }

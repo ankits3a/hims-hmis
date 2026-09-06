@@ -259,6 +259,13 @@ describe("RC-1 T3 — fee status projection and the board flip", () => {
     expect(await counterState(db, opened.encounter.id)).toEqual({
       encounterId: opened.encounter.id, status: "registered", serviceDate: opened.encounter.serviceDate,
       feeStatus: "unsettled", everJoined: false, tokenNo: null,
+      /*
+        FD-28 — the department's CODE joined this projection so the BILLING counter can spell a token
+        the way the patient's slip spells it ("MED-2"). The cashier holds no `opd.masters.read` and
+        so cannot list departments; resolving it here is what lets the counter and the hall board
+        agree about a number the patient is holding. `seedOpdMasters` seeds this department as MED.
+      */
+      departmentCode: "MED",
     });
     const issued = await payFee(patient.id, opened.encounter.id, "fs-d18");
     expect(await counterState(db, opened.encounter.id)).toMatchObject({ feeStatus: "settled", everJoined: true, tokenNo: 1 });

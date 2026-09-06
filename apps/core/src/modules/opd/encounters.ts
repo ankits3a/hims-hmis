@@ -875,6 +875,13 @@ export type CounterState = {
   everJoined: boolean;
   /** The latest entry's token, whatever its state — the number the clerk reads out. */
   tokenNo: number | null;
+  /**
+   * FD-28 — the department's CODE, because a token reads by department ("MED-4", "PED-1") on the
+   * owner's ruling and `tokenLabel` needs it to spell one. It is resolved HERE rather than by the
+   * caller so that the billing counter — whose cashier holds no `opd.masters.read` and therefore
+   * cannot list departments — can still print the same label the patient's slip carries.
+   */
+  departmentCode: string | null;
 };
 
 /**
@@ -905,9 +912,14 @@ export async function counterState(db: Db, encounterId: string): Promise<Counter
   const entries = await db.select({ tokenNo: opdQueueEntries.tokenNo, seq: opdQueueEntries.seq })
     .from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, encounterId)).orderBy(desc(opdQueueEntries.seq)).limit(1);
   const feeStatus = (await encounterFeeStatuses(db, [encounter])).get(encounter.id) ?? null;
+  const dept = encounter.departmentId === null ? [] : await db
+    .select({ code: opdDepartments.code })
+    .from(opdDepartments)
+    .where(eq(opdDepartments.id, encounter.departmentId));
   return {
     encounterId, status: encounter.status, serviceDate: encounter.serviceDate, feeStatus,
     everJoined: entries.length > 0, tokenNo: entries[0]?.tokenNo ?? null,
+    departmentCode: dept[0]?.code ?? null,
   };
 }
 

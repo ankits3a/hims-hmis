@@ -8,13 +8,15 @@ import type { PatientPickerHit } from "../components/patient-picker";
 import { usePatientInHandOptional } from "../lib/patient-in-hand";
 import { DeskModal } from "../components/desk-modal";
 import { PapersSheet } from "./desk-one/papers";
+import { ageOf, initialsOf, sexLetter, tokenLabel } from "./desk-one/model";
+import { getPatientPhoto } from "../lib/patients-api";
 import { api } from "../lib/api";
 import { InvoicePrint } from "../components/invoice-print";
 import { MoneyInput } from "../components/money-input";
 import { TenderEditor } from "../components/tender-editor";
 import { fmtPaise, useDebounced } from "../lib/format";
 import {
-  billingErrorCode, billingErrorMessage, fetchFeeQuote, fetchInvoicePrint, issueInvoice, listDues,
+  billingErrorCode, billingErrorMessage, fetchFeeQuote, fetchInvoicePrint, issueInvoice,
   listServices, previewInvoice,
 } from "../lib/billing-api";
 import type {
@@ -26,7 +28,8 @@ import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
 import { listCoverages } from "../lib/patients-api";
 import type { WireCoverage } from "../lib/patients-api";
-import { fetchCurrentSession } from "../lib/billing-api";
+import { fetchCurrentSession, fetchPatientBalance } from "../lib/billing-api";
+import type { WireDueRow } from "../lib/billing-api";
 import type { TenderMode } from "../lib/billing-api";
 
 /**
@@ -264,11 +267,24 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
     enabled: debouncedEncounterId !== "",
   });
 
+  /*
+    FD-28 — the dues read follows whoever the rail resolved. Derived HERE, beside the quote it reads
+    from, rather than from `shown` below: `shown` is declared after the quote's other consumers and a
+    hook cannot be moved after them without changing hook order.
+  */
+  const duesPatientId = patient?.id ?? feeQuote.data?.patient?.id ?? null;
+
   /** THE screen's one polling read (K39). Dues move while the cashier is on another patient. */
+  /*
+    FD-28 — keyed on the RESOLVED person, not the picked one. Entered by `?encounterId=` nobody is
+    picked, so this read never fired and the rail said "pick a patient before issuing a bill" beside
+    a bill it was already pricing. `shownId` is declared above the quote's own consumers for that
+    reason; see `shown`.
+  */
   const dues = useQuery({
-    queryKey: ["billing", "dues", patient?.id ?? ""],
-    queryFn: () => listDues(patient?.id ?? ""),
-    enabled: patient !== null,
+    queryKey: ["billing", "balance", duesPatientId ?? ""],
+    queryFn: () => fetchPatientBalance(duesPatientId!),
+    enabled: duesPatientId !== null,
     refetchInterval: POLL_MS,
   });
 
@@ -378,6 +394,49 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
   // The fee line is SEEDED from the quote, once, and stays editable afterwards — a cashier who
   // removed it has removed it on purpose (a revisit carries no fee line at all, D8).
   const quote = feeQuote.data;
+
+  /*
+    ═══ FD-28 — WHO THE RAIL IS ABOUT, and the picked patient is only one of the two roads to it ═══
+
+    `/billing?encounterId=…` is the OPD desk's hand-off and the way this counter is normally reached.
+    On that road nobody is PICKED, so every box keyed on `patient` rendered "pick a patient first"
+    beside a bill it was already pricing. The quote now names the person (see the route's comment),
+    so the rail reads whichever road the cashier arrived by.
+
+    The picked patient WINS: a cashier who deliberately searched for somebody is making a statement,
+    and a stale `?encounterId=` in the URL must not overrule it.
+  */
+  /*
+    `administrativeGender` and `dob` are typed as present on both sources and are OPTIONAL here on
+    purpose: a `PatientPickerHit` is built from a search row, and a row that reaches this screen
+    without a sex crashed the whole counter on `sexLetter(undefined)` — measured, in this file's own
+    suite. A cashier losing the entire billing screen because a record has no sex recorded is a far
+    worse failure than the identity line being one letter short, so the absence is rendered, not
+    thrown on.
+  */
+  const shown: {
+    id: string; uhid: string; name: string | null;
+    administrativeGender?: string | null; dob?: string | null; phone?: string | null;
+  } | null = patient ?? quote?.patient ?? null;
+
+  /*
+    THE FACE, read back rather than assumed. `hasPhoto` on a search hit is a snapshot from the moment
+    the row was searched; a photo taken at registration two minutes ago would be missed. A 404 is the
+    ordinary answer for a patient with no photo and is swallowed, exactly as Desk One swallows it.
+  */
+  const [photo, setPhoto] = useState<string | null>(null);
+  const shownId = shown?.id ?? null;
+  useEffect(() => {
+    setPhoto(null);
+    if (shownId === null) return;
+    let live = true;
+    void getPatientPhoto(shownId).then(
+      (p) => { if (live) setPhoto(`data:${p.mimeType};base64,${p.imageBase64}`); },
+      () => { /* no photo on file is the common case, not an error worth showing a cashier */ },
+    );
+    return () => { live = false; };
+  }, [shownId]);
+
   useEffect(() => {
     if (quote === undefined) return;
     if (slipSeededFor === quote.encounterId) return;
@@ -589,6 +648,11 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
   // ——— the printed invoice REPLACES the counter (exactly one `.print-doc` is ever mounted) ———
 
   if (issued !== null) {
+    /*
+      Still populated: `setIssued` does not clear the field, and the reset below only runs when the
+      cashier asks for the NEXT bill. So the visit this invoice belongs to is still named here.
+    */
+    const issuedEncounterId = encounterId.trim();
     return (
       <PaperScreen testId="billing-issued">
         <div style={{ flexGrow: 1, padding: "20px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
@@ -614,6 +678,44 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
             ))}
           </div>
           {print.data !== undefined && <InvoicePrint data={print.data} />}
+          {/*
+            ═══ FD-28 — THE BILL IS NOT THE ONLY PAPER THE PATIENT LEAVES WITH ═══
+
+            Owner, 2026-09-06: *"when the billing is done a invoice appears on the screen with 'print
+            invoice' text below. But what about OPD prescription print?"*
+
+            Right, and the gap was structural rather than a missing button: this screen knew about
+            exactly one document — the invoice it had just rendered from its own state. The
+            prescription sheet, the token slip and the payment receipt are all queued against the
+            same ENCOUNTER by the server, and nothing here had ever looked at them.
+
+            The papers sheet is where they live (FD-27), so this opens that rather than growing a
+            second list beside it. Shown only when the bill belongs to a visit: a counter sale has no
+            encounter and therefore no slips.
+          */}
+          {issuedEncounterId !== "" && (
+            <button
+              className="sec no-print"
+              type="button"
+              data-testid="issued-papers"
+              style={{ alignSelf: "flex-start" }}
+              onClick={() => { setPapersOpen(true); }}
+            >
+              {t("billingSeat.rail.papersForVisit")}
+            </button>
+          )}
+          <DeskModal
+            open={papersOpen}
+            onClose={() => { setPapersOpen(false); }}
+            title={t("billingSeat.rail.papersForVisit")}
+            titleId="issued-papers-title"
+            testId="issued-papers-sheet"
+            width={620}
+          >
+            {papersOpen && issuedEncounterId !== "" ? (
+              <PapersSheet encounterId={issuedEncounterId} when={null} />
+            ) : null}
+          </DeskModal>
           <button
             className="sec no-print"
             type="button"
@@ -679,7 +781,7 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
         ? t("billingSeat.agent.noPanel")
         : t("billingSeat.agent.panel", { payer: panel.payerName ?? "—", id: panel.employeeId ?? panel.beneficiaryId ?? "—" }));
     } else if (q.includes("owe") || q.includes("due") || q.includes("outstanding")) {
-      setAnswer(t("billingSeat.agent.dues", { count: (dues.data?.items ?? []).length }));
+      setAnswer(t("billingSeat.agent.dues", { count: (dues.data?.dues ?? []).length }));
     } else {
       setAnswer(t("billingSeat.agent.scope"));
     }
@@ -754,7 +856,7 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
           <div style={{ width: 290, flexShrink: 0, display: "flex", flexDirection: "column", gap: 13 }}>
             <div className="box" style={{ padding: 14 }}>
               <span className="tag">{t("billingSeat.rail.paying")}</span>
-              {patient === null ? (
+              {shown === null ? (
                 <div style={{ marginTop: 9 }}>
                   <p style={{ margin: "0 0 9px", color: "var(--faint)", fontSize: 12.5 }}>
                     {t("billing.counter.pickPatientFirst")}
@@ -762,9 +864,41 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
                   <PatientPicker autoFocus onPick={setPatient} />
                 </div>
               ) : (
-                <div data-testid="paying-name" style={{ marginTop: 9, display: "flex", flexDirection: "column", gap: 3 }}>
-                  <span style={{ fontSize: 16, fontWeight: 600, lineHeight: "20px" }}>{patient.name ?? "—"}</span>
-                  <span className="mo" style={{ fontSize: 12.5, color: "var(--dim)" }}>{patient.uhid}</span>
+                /*
+                  ═══ FD-28 — THE PERSON, AS THE REST OF THE APPLICATION DRAWS THEM ═══
+
+                  Owner, 2026-09-06: *"left panel is failing to show patient picture thumbnail,
+                  neither the age, gender and phone number. Copy that feature from other pages."*
+
+                  It showed a name and a UHID. Age and sex were on `PatientPickerHit` all along and
+                  simply were not rendered; the phone and the face were never fetched. The shape is
+                  the dossier's — a 44px square, then name, then the mono identity line — because a
+                  cashier and a registration clerk looking at the same person across two screens
+                  should not have to re-learn where to look.
+                */
+                <div data-testid="paying-name" style={{ marginTop: 9, display: "flex", gap: 11, alignItems: "flex-start" }}>
+                  <div style={{
+                    width: 44, height: 44, borderRadius: 6, background: "var(--wash)", flexShrink: 0,
+                    display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
+                    border: "1px solid var(--line)",
+                  }}>
+                    {photo === null ? (
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "var(--dim)" }}>{initialsOf(shown.name ?? "")}</span>
+                    ) : (
+                      <img data-testid="paying-photo" src={photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    )}
+                  </div>
+                  <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+                    <span style={{ fontSize: 15.5, fontWeight: 600, lineHeight: "19px" }}>{shown.name ?? "—"}</span>
+                    <span className="mo" style={{ fontSize: 11.5, color: "var(--dim)" }} data-testid="paying-identity">
+                      {ageOf(shown.dob ?? null) === "" ? "" : `${ageOf(shown.dob ?? null)} `}
+                      {shown.administrativeGender == null ? "" : sexLetter(shown.administrativeGender)}
+                      {" · "}{shown.uhid}
+                    </span>
+                    <span className="mo" style={{ fontSize: 11.5, color: shown.phone == null ? "var(--faint)" : "var(--dim)" }} data-testid="paying-phone">
+                      {shown.phone ?? t("billingSeat.rail.noPhone")}
+                    </span>
+                  </div>
                 </div>
               )}
               {/*
@@ -809,7 +943,33 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
                         something is owed — and ₹0, the same mark Desk One draws for a free visit,
                         when the server's own figure says nothing is.
                       */}
-                      <div style={{ marginTop: 9, display: "flex", gap: 7, alignItems: "center" }}>
+                      {/*
+                        ═══ FD-28 — THE TOKEN NUMBER, WHICH THE STAMP HAS ALWAYS IMPLIED AND NEVER SAID ═══
+
+                        Owner, 2026-09-06: *"there's no way a billing user would know, against which
+                        token number the billing needs to be done as the user can't see it first
+                        hand in the panel."*
+
+                        A `token-stamp` reading UNPAID has been in this rail since FD-25 — with no
+                        token beside it. The patient is holding a slip that says PED-1 and the
+                        cashier had nothing on screen to match it against, so the only way to be sure
+                        they were billing the right visit was to read out an encounter id.
+
+                        `tokenLabel` is Desk One's, so the counter and the slip spell it the same
+                        way — the owner's ruling that a token reads by DEPARTMENT ("MED-4"), not by
+                        doctor. A deferred visit genuinely has no token yet and says so rather than
+                        printing a dash a cashier would read as a data error.
+                      */}
+                      <div style={{ marginTop: 9, display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+                        {quote.visit == null ? null : quote.visit.tokenNo === null ? (
+                          <span data-testid="visit-token-none" style={{ fontSize: 11, color: "var(--faint)" }}>
+                            {t("billingSeat.rail.noToken")}
+                          </span>
+                        ) : (
+                          <span className="mo" data-testid="visit-token" style={{ fontSize: 17, fontWeight: 700, letterSpacing: ".02em" }}>
+                            {tokenLabel(quote.visit.departmentCode, quote.visit.tokenNo)}
+                          </span>
+                        )}
                         {collectablePaise === 0 ? (
                           <span className="stamp pd" data-testid="token-stamp">{fmtPaise(0)}</span>
                         ) : (
@@ -819,6 +979,11 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
                           <span className="stamp pd" data-testid="payer-stamp">{t("billingSeat.rail.panelStamp")}</span>
                         )}
                       </div>
+                      {quote.visit == null ? null : (
+                        <div className="mo" data-testid="visit-no" style={{ marginTop: 5, fontSize: 10.5, color: "var(--faint)" }}>
+                          {quote.visit.visitNo} · {quote.visit.serviceDate}
+                        </div>
+                      )}
                     </div>
                 </>
               )}
@@ -827,10 +992,57 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
             <div className="box" style={{ padding: 14 }}>
               <span className="tag">{t("billingSeat.rail.onTheirAccount")}</span>
               <div data-testid="dues-sidebar" style={{ marginTop: 9, display: "flex", flexDirection: "column", gap: 5 }}>
-                {patient === null && (
+                {duesPatientId === null && (
                   <p style={{ margin: 0, fontSize: 12, color: "var(--faint)" }}>{t("billing.counter.pickPatientFirst")}</p>
                 )}
-                {patient !== null && (dues.data?.items ?? []).length === 0 && (
+                {/*
+                  ═══ FD-28 — THE TOTAL, WHICH THIS BOX FETCHED AND NEVER ADDED UP ═══
+
+                  Owner, 2026-09-06: *"'On their Account' section in the left panel, looks like it is
+                  not fetching all the related information."*
+
+                  It was fetching every row and rendering each one's outstanding — and never the sum,
+                  which is the only figure a cashier says out loud before quoting today's. The
+                  dossier has led with the total since FD-14; this rail listed the parts and left the
+                  arithmetic to the person at the counter.
+
+                  Summed from the server's own per-row figures and nothing else. Each row is already
+                  floored at zero server-side, so one over-collected bill cannot mask another's dues.
+                */}
+                {duesPatientId !== null && (dues.data?.dues ?? []).length > 0 && (
+                  <>
+                    {/*
+                      THE SERVER'S TOTAL, not a client sum over the rows. `patientBalance` floors
+                      each bill at zero before adding, so one over-collected invoice cannot mask
+                      another's dues — arithmetic this screen has no business repeating, and the
+                      thesis it prints two boxes below: "every figure is the server's".
+                    */}
+                    <span className="mo" data-testid="dues-total" style={{ fontSize: 19, fontWeight: 600 }}>
+                      {fmtPaise(dues.data?.outstandingPaise ?? 0)}
+                    </span>
+                    <span style={{ fontSize: 11.5, color: "var(--dim)" }}>
+                      {t("billingSeat.rail.totalOutstanding", { count: (dues.data?.dues ?? []).length })}
+                    </span>
+                  </>
+                )}
+                {/*
+                  ═══ THE ADVANCE, WHICH THIS RAIL HAS NEVER SHOWN AND IS THE HALF THAT CHANGES WHAT
+                      THE CASHIER SAYS ═══
+
+                  Dues and advances are ONE mechanism (owner ruling 2026-08-18) — the same receipt
+                  row pays a bill or banks a deposit. Reading only the dues half is what made this
+                  box look like it was "not fetching all the related information": a patient with
+                  ₹2,000 on deposit was asked for the full amount at the window.
+                */}
+                {(dues.data?.advancePaise ?? 0) > 0 && (
+                  <div data-testid="advance-held" style={{ marginTop: 7, paddingTop: 7, borderTop: "1px solid var(--line2)" }}>
+                    <span className="mo" style={{ fontSize: 14, fontWeight: 600, color: "var(--green)" }}>
+                      {fmtPaise(dues.data?.advancePaise ?? 0)}
+                    </span>
+                    <span style={{ fontSize: 11.5, color: "var(--dim)" }}> {t("billingSeat.rail.advanceHeld")}</span>
+                  </div>
+                )}
+                {duesPatientId !== null && (dues.data?.dues ?? []).length === 0 && (
                   <>
                     <span className="mo" style={{ fontSize: 19, fontWeight: 600 }}>{fmtPaise(0)}</span>
                     <span style={{ fontSize: 11.5, color: "var(--dim)" }}>{t("billing.counter.noDues")}</span>
@@ -839,10 +1051,15 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
                     </p>
                   </>
                 )}
-                {(dues.data?.items ?? []).map((due) => (
+                {(dues.data?.dues ?? []).map((due: WireDueRow) => (
                   <div key={due.invoiceId} data-testid={`dues-row-${due.invoiceId}`} style={{ display: "flex", alignItems: "baseline", gap: 8, fontSize: 12 }}>
                     <span className="mo" style={{ color: "var(--dim)" }}>{due.invoiceNo}</span>
                     <span style={{ color: "var(--faint)", fontSize: 11 }}>{due.serviceDay}</span>
+                    {due.creditExtended && (
+                      /* The wire has carried this since Plan 08 and the rail never showed it. A bill
+                         standing on CREDIT is a different conversation from one simply unpaid. */
+                      <span className="pill gd" style={{ height: 18 }} data-testid={`dues-credit-${due.invoiceId}`}>credit</span>
+                    )}
                     <span className="mo" style={{ marginLeft: "auto", fontWeight: 600 }}>{fmtPaise(due.outstandingPaise)}</span>
                   </div>
                 ))}

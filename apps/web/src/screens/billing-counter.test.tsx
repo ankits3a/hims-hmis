@@ -132,8 +132,17 @@ const SERVICES = {
   ],
 };
 
+/**
+ * FD-28 — the rail reads `GET /billing/patients/:id/balance`, not `/dues`. Dues and advances are ONE
+ * mechanism (owner ruling 2026-08-18) and the rail was reading half of it: it summed nothing and
+ * never showed money the patient had already deposited. The route change is why the polling test
+ * below names `/balance`; the PROPERTY it guards — a second GET on the interval — is unchanged.
+ */
 const DUES = {
-  items: [
+  patientId: "p-1",
+  advancePaise: 20000,
+  outstandingPaise: 45000,
+  dues: [
     {
       invoiceId: "inv-9", invoiceNo: "INV/26-27/000009", patientId: "p-1", uhid: "HMS0000001234",
       name: "Asha Devi", alias: null, restricted: false, serviceDay: "2026-08-14",
@@ -211,7 +220,8 @@ const BASE_ROUTES: Record<string, Handler> = {
   "GET /api/patients/search": { status: 200, body: { items: [SEARCH_HIT] } },
   "GET /api/billing/visits/enc-1/fee-quote": { status: 200, body: QUOTE_NEW },
   "POST /api/billing/invoices/preview": { status: 200, body: FEE_DRAFT },
-  "GET /api/billing/patients/p-1/dues": { status: 200, body: { items: [] } },
+  /* FD-28 — the rail reads the BALANCE (rows + both totals), not `/dues`. */
+  "GET /api/billing/patients/p-1/balance": { status: 200, body: { patientId: "p-1", advancePaise: 0, outstandingPaise: 0, dues: [] } },
 };
 
 describe("BillingCounter", () => {
@@ -534,7 +544,7 @@ describe("BillingCounter", () => {
         status: 200,
         body: { ok: true, patient: { id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", sex: "female", dob: null } },
       },
-      "GET /api/billing/patients/p-1/dues": { status: 200, body: DUES },
+      "GET /api/billing/patients/p-1/balance": { status: 200, body: DUES },
     });
 
     // waitFor cannot drive vitest's fake clock (it gates on a global `jest`) — hand-flush instead.
@@ -555,17 +565,17 @@ describe("BillingCounter", () => {
     await flush();
     await flush();
 
-    expect(callsTo("GET", "/api/billing/patients/p-1/dues")).toHaveLength(1);
+    expect(callsTo("GET", "/api/billing/patients/p-1/balance")).toHaveLength(1);
     expect(screen.getByTestId("dues-row-inv-9")).toHaveTextContent("₹450.00");
 
     // NEGATIVE CONTROL: well inside the window, nothing refetches — so the second GET below is the
     // interval firing and not a re-render, a remount or a query invalidation.
     await flush(14_000);
-    expect(callsTo("GET", "/api/billing/patients/p-1/dues")).toHaveLength(1);
+    expect(callsTo("GET", "/api/billing/patients/p-1/balance")).toHaveLength(1);
 
     await flush(1_500);
     await flush();
-    expect(callsTo("GET", "/api/billing/patients/p-1/dues").length).toBeGreaterThan(1);
+    expect(callsTo("GET", "/api/billing/patients/p-1/balance").length).toBeGreaterThan(1);
   });
 
   it("K38: the invoice POST carries INTEGER PAISE throughout, and a 400 pan_required reveals the PAN / Form 60 fields for the retry", async () => {
@@ -1424,6 +1434,108 @@ describe("BillingCounter", () => {
     expect(await screen.findByTestId("papers-reprint-opd_prescription")).toBeInTheDocument();
     /* And it asked about the encounter this counter is billing, not some other one. */
     expect(callsTo("GET", "/api/print/jobs").some((c) => c.url.includes("enc-77"))).toBe(true);
+  });
+
+
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-28 — THE LEFT RAIL, ENTERED THE WAY THIS COUNTER IS ACTUALLY ENTERED
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Owner, 2026-09-06: *"At /billing, left panel is failing to show patient picture thumbnail,
+   * neither the age, gender and phone number … there's no way a billing user would know, against
+   * which token number the billing needs to be done."*
+   *
+   * One cause, several symptoms. `/billing?encounterId=…` is the OPD desk's hand-off and the road
+   * this screen is normally reached by, and EVERY box in the rail was gated on a PICKED patient — so
+   * arriving by the front door left it blank beside a bill the screen was already pricing. The quote
+   * now names the person and the token (`billing.controller.ts`'s fee-quote route), and the rail
+   * reads whichever road the cashier arrived by.
+   *
+   * The fixture below therefore picks NOBODY. That is the whole test: every assertion is about what
+   * an un-picked counter can say.
+   */
+  it("FD-28: entered by encounterId with nobody picked, the rail still names the person, their age, sex and phone, and the token", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "GET /api/billing/visits/enc-1/fee-quote": {
+        status: 200,
+        body: {
+          ...QUOTE_NEW,
+          patient: {
+            id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", alias: null, restricted: false,
+            administrativeGender: "female", dob: "1975-04-02", phone: "9835041772",
+          },
+          visit: { visitNo: "V2609060003", serviceDate: "2026-09-06", status: "registered", tokenNo: 2, departmentCode: "MED" },
+        },
+      },
+    });
+    renderWithProviders(<BillingCounter />);
+
+    await waitFor(() => { expect(screen.getByTestId("paying-name")).toHaveTextContent("Asha Devi"); });
+    expect(screen.getByTestId("paying-identity")).toHaveTextContent("HMS0000001234");
+    /* Age and sex were on the wire all along and simply were not drawn. */
+    expect(screen.getByTestId("paying-identity")).toHaveTextContent("F");
+    expect(screen.getByTestId("paying-phone")).toHaveTextContent("9835041772");
+    /*
+      THE TOKEN, SPELLED THE WAY THE PATIENT'S SLIP SPELLS IT. `tokenLabel` is Desk One's, and the
+      owner's ruling is that a token reads by DEPARTMENT — "MED-2", never by doctor. A counter and a
+      slip that disagreed about the number would be worse than no number at all.
+    */
+    expect(screen.getByTestId("visit-token")).toHaveTextContent("MED-2");
+    expect(screen.getByTestId("visit-no")).toHaveTextContent("V2609060003");
+  });
+
+  it("FD-28: a deferred visit has no token yet and says so, rather than printing a dash", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "GET /api/billing/visits/enc-1/fee-quote": {
+        status: 200,
+        body: {
+          ...QUOTE_NEW,
+          patient: { id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", alias: null, restricted: false, administrativeGender: "female", dob: null, phone: null },
+          visit: { visitNo: "V1", serviceDate: "2026-09-06", status: "registered", tokenNo: null, departmentCode: "MED" },
+        },
+      },
+    });
+    renderWithProviders(<BillingCounter />);
+    await waitFor(() => { expect(screen.getByTestId("visit-token-none")).toBeInTheDocument(); });
+    expect(screen.queryByTestId("visit-token")).not.toBeInTheDocument();
+  });
+
+  /**
+   * Owner: *"'On their Account' section in the left panel, looks like it is not fetching all the
+   * related information."* It was reading `/dues` — the rows only — so it printed each bill's
+   * outstanding, summed nothing, and never showed the ADVANCE. Dues and advances are ONE mechanism
+   * (owner ruling 2026-08-18); `/balance` returns both sides and both totals on the same permission.
+   */
+  it("FD-28: the account box shows the SERVER's total, the advance held, and the credit flag", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "GET /api/billing/visits/enc-1/fee-quote": {
+        status: 200,
+        body: {
+          ...QUOTE_NEW,
+          patient: { id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", alias: null, restricted: false, administrativeGender: "female", dob: null, phone: null },
+          visit: null,
+        },
+      },
+      "GET /api/billing/patients/p-1/balance": { status: 200, body: DUES },
+    });
+    renderWithProviders(<BillingCounter />);
+
+    /*
+      45000, the SERVER's `outstandingPaise` — not a client sum over the rows. `patientBalance`
+      floors each bill at zero before adding, so one over-collected invoice cannot mask another's
+      dues, and this screen's own thesis is that every figure on it is the server's.
+    */
+    await waitFor(() => { expect(screen.getByTestId("dues-total")).toHaveTextContent("₹450.00"); });
+    expect(screen.getByTestId("advance-held")).toHaveTextContent("₹200.00");
+    /* The wire has carried `creditExtended` since Plan 08 and the rail never drew it. */
+    expect(screen.getByTestId("dues-credit-inv-9")).toBeInTheDocument();
   });
 
 });
