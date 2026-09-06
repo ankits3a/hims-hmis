@@ -219,7 +219,7 @@ or touch `hmis-prod-*`.
 
 ### T7 — ROUTINE · The catch-up deploy runbook for production
 `docs/runbooks/catch-up-deploy-2026-09.md`, the ordered acts for the owner, each with its check:
-(1) the owner's applied-count query, expected 56, watermark `0055`; (2) `HMIS_TARGET=uat` deploy
+(0) **the tip**: the deploy is cut from a `main` tip that includes 18a-iii T4 (#108 — until it merges, `recordAcquired` writes an AERB dose row for an outside study on an ionising type) and every close-review fix the lanes have flagged as "must not deploy without"; the runbook names the SHA; (1) the owner's applied-count query, expected 56, watermark `0055`; (2) `HMIS_TARGET=uat` deploy
 rehearsed and green — T6's dated section is the evidence; (3) `standup:check all` on production
 **before** (read-only, through `compose run --rm api`, exactly as the seeds run) — the RED rows are
 the to-do list, not blockers; (4) the **18c window**: declare `degraded` from `/ops/mode` with a
