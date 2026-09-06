@@ -1,10 +1,10 @@
 # Phase 11i — The stand-up path: UAT, the readiness census, and the laboratory opening first
 
-**Lane: LIGHT** (8 tasks, no new module, **no migration** — EXECUTE-METHOD-V3 §2).
-**Stop-loss: 2,320,000** = main-session `8 × 200,000` + task-subagent `0` (§2.143a) + review `240,000 × (1 + 2.0)` (§2.145, the repair term).
-**Lane:** the pharmacy lane's worktree, branch `lane/commissioning-11i` cut fresh from `origin/main` — this lane becomes the commissioning lane (roadmap §0b.2), and the lane that builds UAT is the lane that runs it. The LIMS lane takes 17-E T7 in parallel. **One task = one PR**: commit by pathspec, push, `gh pr create`; CI is the gate; locally only the touched suites, always through `test-lock.sh`. Docker builds go through the same mutex — a build is a builder.
+**Lane: LIGHT** (9 tasks + the 11j pool PR, no new module, **no migration** — EXECUTE-METHOD-V3 §2).
+**Stop-loss: 2,520,000** = main-session `9 × 200,000` + task-subagent `0` (§2.143a) + review `240,000 × (1 + 2.0)` (§2.145, the repair term).
+**Lane:** `tools/lane.sh new commissioning` (its own worktree and test DBs), task branches stacked from `origin/main` — this lane becomes the commissioning lane (roadmap §0b.2), and the lane that builds UAT is the lane that runs it. The LIMS lane takes 17-E T7 in parallel. **One task = one PR**: commit by pathspec, push, `gh pr create`; CI is the gate; locally only the touched suites, always through `test-lock.sh`. Docker builds go through the same mutex — a build is a builder.
 
-**Status: AUTHORED 2026-09-06; REVISED the same day by a second session (execution order D11, the lane, the restore drill in T7); THIRD READING the same evening by a Fable session against `f211075` (D12 — the rehearsal on the restored copy; D13 — the backout; T8; §2 rows 10, 11, 14, 17 re-measured); NOT APPROVED, NOT STARTED.** Proposed by `2026-09-06-ROADMAP-v2.md` §7 as the first phase of the commissioning track. **Author it; do not execute it** was the brief's instruction to the session that wrote this.
+**Status: AUTHORED 2026-09-06; REVISED the same day by a second session (execution order D11, the lane, the restore drill in T7); THIRD READING the same evening by a Fable session against `f211075` (D12 — the rehearsal on the restored copy; D13 — the backout; T8; §2 rows 10, 11, 14, 17 re-measured); **§2b (the Indian day, 24 rows) and T9 added the same evening on the owner's instruction to prepare the lane for execution. EXECUTION AUTHORISED BY THE OWNER IN HIS OWN SESSION 2026-09-06 (handoff: `2026-09-06-HANDOFF-commissioning-lane-11i.md`); the production deploy in T7 remains his hand. NOT STARTED.** Proposed by `2026-09-06-ROADMAP-v2.md` §7 as the first phase of the commissioning track. **Author it; do not execute it** was the brief's instruction to the session that wrote this.
 
 ## 1. Why this phase
 
@@ -76,6 +76,47 @@ Three measured facts that shape the design and would otherwise be guessed:
   `NODE_ENV=production`, which is exactly the value the two synthetic seeds refuse. So the door
   cannot be `NODE_ENV`; it has to be a fact about the environment that production's env file never
   carries (D5).
+
+
+## 2b. The Indian day the stand-up path must survive — 24 rows, each with its artefact
+
+Measured against `f211075` on 2026-09-06. The third column says what the code models **today**;
+the fourth is what this phase does about it, and where. A row the schema does not hold is answered
+by the census's third verdict, **NOT MODELLED**, which prints the runbook section a human performs
+instead — never silently green. `deploy-parity`'s shape applies: every NOT MODELLED row must name a
+runbook section that exists, and the test pins it.
+
+| # | the day | modelled today | 11i answer | task |
+|---|---|---|---|---|
+| 1 | A patient with one name, no surname; a name as spoken vs as on the ID; no mobile; one family mobile shared by five UHIDs | FD-25's registration (`0067`, 13 demographic columns) — accepts it or not, **untested by any census** | T6's seat-1 walk-through registers **three** patients on UAT: single-name, no-mobile, family-shared mobile; a refusal is a defect logged against FD-25, never worked around | T6 |
+| 2 | The back-book: the hospital's existing paper patients arriving with an old file number | `patients.legacy_uhid` (D-43) exists | the runbook's §2 gains one line: the desk keys the paper number into the legacy field; the bulk loader for the back-book is **11k**, not this phase | T6 (runbook) |
+| 3 | `0057` moves the UHID sequence to 11001 behind a guard on the sequence's current value — the first patient after the deploy gets a number from a different series | data-dependent migration | the rehearsal on the restored copy shows which branch runs (D12); the runbook announces the new series to the desk | T7 (2a), (5) |
+| 4 | Duplicates minted during the paper-parallel pilot | `patient_merge` approval type, registered by `seed-patients` since 2026-08-26 | census G2 row: `patient_merge` registered; the runbook's §9 harvest gains "merges per day" | T2, T6 |
+| 5 | A lab walk-in with an outside doctor's slip, or a self-request with no slip at all (routine in India) | the `V` visit under the pathologist of record (DD15 / S2) | census G3 row: `LAB` department active with a doctor of record whose `registration_no` is set | T2 |
+| 6 | A potassium of 6.8 at 02:00 — whom does the bench ring? | `lab_critical_calls` records the call; **`opd_doctors` has no phone column** — the number is not in the system | census prints **NOT MODELLED → runbook §10 drill A**: a printed call list at the bench, refreshed weekly, is the artefact; the census does not pretend | T2, T6 |
+| 7 | "Report is ready" on WhatsApp / SMS — the notice every Indian lab is asked for | `kernel/notify` has **console adapters only**; no provider, no TRAI DLT sender-id and template registration, no WABA template — all owner acts | census **NOT MODELLED → runbook §11**: no patient message leaves the building; T6 asserts the notice row is *queued and not sent* | T2, T6 |
+| 8 | NABL asks where every reference range came from | the catalogue loader carries `source` per band (runbook §4.3) | census G3 row: every active analyte's bands carry a non-empty `source`, read through the catalogue loader | T2 |
+| 9 | Lab services are GST-exempt; pharmacy items are not; the seeded slabs are `DEV PLACEHOLDER` until a CA signs | `seed-tariff` exempt categories with placeholders; `validate:config` is the CA gate (O6) | census G3 row: every lab orderable's tariff item sits in an **exempt** category; G7 is delegated to `validate:config`, never re-implemented | T2 |
+| 10 | Going live in September: the invoice and receipt series are mid-financial-year | `nextDocNo` with IST FY roll (`series.test.ts`) — modelled | runbook step (6): the next invoice number read before and after the deploy, unchanged | T7 |
+| 11 | A relative pays ₹2,10,000 in cash for a package | §269ST as CA-gated data (`billing/cash-law.ts`) — modelled | census G2 row: the cash-law config row present | T2 |
+| 12 | DPDP: consent at the desk; a minor with a guardian | promotional consent + guardian `consent_note` at registration — modelled | T6 seat 1 registers one minor with a guardian; the consent text on the screen is the hospital's, read aloud once | T6 |
+| 13 | The lab counter takes money: a cashier session must be open; the drawer closes at night | drawer sessions (`0055`), `cashier` role | census G4 row: `cashier` held; runbook §11 step 1 gains "open the session first" | T2, T6 |
+| 14 | Label printer, A4 report printer, the receipt printer — three devices at three seats | `print_jobs` (`0069`) for server-side printing (ruled 2026-09-04); label printing is browser-driven today; **no destination registry** | census **NOT MODELLED → runbook §6**: one test print per device per seat recorded in T6's `## Executed` | T2, T6 |
+| 15 | The label printer dies mid-morning | downtime kit (`label_source = 'downtime_kit'`), drill C | T6 runs drill C as written | T6 |
+| 16 | The hospital's internet drops for fifteen minutes with a patient at the desk (the server is remote) | 11c's downtime kit and mode; nothing rehearses it at a seat | **drill D** added to the runbook: pull the desk PC's network mid-registration, wait, reconnect, finish — record what the screen did | T6 |
+| 17 | Clocks: containers in UTC, the hospital in IST, the D9 flake at midnight | `Asia/Kolkata` in six kernel/module files — modelled | census G1 row: the API's reported IST offset is +05:30; T3 gives UAT the same `TZ` as production | T2, T3 |
+| 18 | Drill A needs night mode (21:00–07:00 IST) | derived from the IST clock, no per-deployment switch (runbook §7) | **DECIDED: no fake clock.** T6 runs drill A after 21:00 IST or records it as *not performed*, dated | T6 |
+| 19 | Four role keys, four humans — not one login passed around | DD11 refuses a self-verify; nothing detects shared logins | runbook §0 gains the sentence; T6 creates four accounts at `/admin/users` on UAT | T6 |
+| 20 | The pathologist's NMC number prints on every report; the RSO's AERB approval; the pharmacist's council number | `opd_doctors.registration_no`; `aerb_persons`; the pharmacist's number **not modelled** | census G3 rows for the first two; the third is NOT MODELLED → pharmacy runbook §1.4 | T2 |
+| 21 | Staff who read Hindi better than English | `hi.json` exists for the shell and the front desk | T6 runs one seat in Hindi and records any untranslated string as a defect | T6 |
+| 22 | A receptionist registers a real patient on UAT because both tabs look the same | nothing distinguishes the two | T3: `HMIS_ENVIRONMENT_LABEL=UAT` in the API env, exposed on the existing public config endpoint, rendered by the shell as a fixed coloured banner and a different favicon; production's env never sets it; `deploy-parity` pins the absence | T3 |
+| 23 | UAT is seen by trainees, vendors, the owner's phone — it must never hold a real person | D1/D5; the drill's restore is destroyed on every exit path | **DECIDED: UAT never restores a production backup** (DPDP); a `uat-reset.sh` drops and re-seeds UAT so each training day starts clean | T3 |
+| 24 | Deploy day: bookmarks on the desk PCs point at `/counter/seat`; the SPA is cached | no redirects on `main` | T9: the three deleted paths redirect to their successors for one release; runbook step (5) says "hard refresh, then check the bookmark lands" | T9, T7 |
+
+Three things the table does not do: it does not add a migration (no row needs one); it does not
+model the notification provider, the doctor's phone or the printer registry — each is named as a
+human artefact until the phase that owns it (22, 20, the printing phase); and it does not build
+the back-book or catalogue loaders (11k).
 
 ## 3. Design decisions — DECIDED; none is money, procurement or law
 
@@ -188,9 +229,12 @@ scope; ≥1 `resources` row of a lab bench kind; **the second administrator exis
 active; `pharmacy` role held; ≥1 item; ≥1 batch with stock. **Radiology rows**: `study_types` active;
 ≥1 device; **when the `aerb` module is present, `unlicensedDevices` empty** (the 18c §0 condition,
 read through the module's own read function). **Front desk rows**: `registration_config`,
-`opd_config`, ≥1 active doctor in ≥1 department, `cashier` and `front_office` held. Every check goes
+`opd_config`, ≥1 active doctor in ≥1 department, `cashier` and `front_office` held. **§2b rows 4–9, 11, 13, 17, 20 join the table** (the cash-law row, `patient_merge`, the doctor of record's
+`registration_no`, band sources, exempt tariff category, `cashier` held, the IST offset, the RSO). Every check goes
 through a module `index.ts` export or a kernel loader — never a raw select. Output: one line per
-row, `ok`/`RED` + `fix`; exit code = any RED. `deploy.sh` runs `standup:check all` after the gate,
+row, `ok`/`RED`/`NOT MODELLED` + `fix`; exit code = any RED. **A NOT MODELLED row carries the runbook
+section a human performs** (§2b rows 6, 7, 14, 20) and the test pins that the section exists in the
+named runbook; a fact the schema does not hold is never printed green. `deploy.sh` runs `standup:check all` after the gate,
 prints, does not obey (D3). A test pins that every module with a `docs/runbooks/*-go-live.md` has a
 row set, and drives a fresh test DB through: everything RED with a `fix` → after the seeds, exactly
 the G2 rows green and nothing else. **Mutants:** an unpriced orderable reads green; a role held only
@@ -207,11 +251,18 @@ exporters, host ports `8443` only. `/opt/hmis-uat/` with its own `.env` (T5's do
 the owner or the lane — the script refuses without it, as it does for prod. **Retire
 `hmis-preview` and `hmis-aerb-demo`** in the same PR's runbook note (after T7's rehearsal has used the AERB bench — D11) (their Caddy containers stop;
 their directories stay until the owner deletes them; `preview.sh` is deleted from the tree if it is
-in it — it is not, it lives in `/opt/hmis-preview`). `deploy-parity.test.ts` learns the target: the
+in it — it is not, it lives in `/opt/hmis-preview`). **The environment banner** (§2b row 22): `HMIS_ENVIRONMENT_LABEL` read by the API and returned on
+the existing public config route; the web shell renders a fixed banner and swaps the favicon when it
+is set; `docker-compose.uat.yml` sets `TZ` identically to production (§2b row 17). **`uat-reset.sh`**
+(§2b row 23): drops the UAT database, re-runs the migrate + seed half of the deploy and the two
+synthetic seeds behind the door — refuses when `PROJECT` is `hmis-prod`. **UAT never restores a
+production backup**, and `deploy-parity` pins that the UAT compose mounts no pgBackRest volume.
+`deploy-parity.test.ts` learns the target: the
 prod census unchanged; a UAT census asserting that with `HMIS_TARGET=uat` the script's effective
 text references **no** `hmis-prod` project, image, directory or cron path (the caddyfile-parity
 shape: grep the rendered script). **Mutants:** UAT writing `/etc/cron.d/hmis-prod-backup`; UAT
-building `hmis-prod/server:latest`; UAT's compose sharing prod's network or volume names; the prod
+building `hmis-prod/server:latest`; the banner rendered with the label unset; `uat-reset.sh` running
+with `PROJECT=hmis-prod`; UAT's compose sharing prod's network or volume names; the prod
 target reading `HMIS_SYNTHETIC_DATA_OK` without refusing.
 
 ### T4 — ROUTINE · The migration watermark guard
@@ -243,7 +294,11 @@ lab` (read every RED) → `seed:lab-catalogue` → the four role holders created
 UAT (real screen, transcript kept, no roster in git) → `LAB` department + pathologist of record
 through the OPD masters screen → `seed:lab-demo` → `standup:check lab` **green** → the runbook's §11
 walk-through at all five seats in a real browser (the playwright recipe in memory), then drills A,
-B and C. Each step's output goes into a new dated `## Executed on UAT — 2026-09-…` section of
+B, C and **D** (§2b row 16). **The walk-through carries §2b's people**: three registrations (single
+name, no mobile, a family-shared mobile), one minor with a guardian and the consent read aloud, one
+seat run in Hindi, one test print per device per seat, the report-ready notice found *queued and
+not sent*, and four accounts for four humans (§2b rows 1, 12, 14, 19, 21, 7). Drill A runs after
+21:00 IST or is recorded as not performed (§2b row 18). Each step's output goes into a new dated `## Executed on UAT — 2026-09-…` section of
 `lab-go-live.md`, and the runbook's known defects are corrected in the same PR (D10): the status
 line, §1.1's migration number, §5 rewritten as "done by `seed:lab` on every deploy; verify with
 `standup:check lab`", the duplicate §11 renumbered. **The mutant is the runbook itself:** a step that
@@ -253,7 +308,10 @@ or touch `hmis-prod-*`.
 
 ### T7 — ROUTINE · The catch-up deploy runbook for production — written in week 1, run by the owner (D11)
 `docs/runbooks/catch-up-deploy-2026-09.md`, the ordered acts for the owner, each with its check:
-(0) **the tip**: the deploy is cut from a `main` tip that includes 18a-iii T4 (#108, **merged 2026-09-06 06:35 UTC as `0077`** — so any tip at or after `f211075` satisfies this; until it merged, `recordAcquired` wrote an AERB dose row for an outside study on an ionising type) and every close-review fix the lanes have flagged as "must not deploy without" (the third reading's census of those is roadmap §0c); the runbook names the SHA, and the rule that generalises it — a lane that finds a must-not-deploy-without puts a `deploy-blocker` label on the fixing PR; no deploy takes a tip while one is open (roadmap §0 row 10); (1) the owner's applied-count query, expected 56, watermark `0055`; (2) the most recent weekly
+(0) **the tip**: the deploy is cut from a `main` tip that includes 18a-iii T4 (#108, **merged 2026-09-06 06:35 UTC as `0077`** — so any tip at or after `f211075` satisfies this; until it merged, `recordAcquired` wrote an AERB dose row for an outside study on an ionising type) and every close-review fix the lanes have flagged as "must not deploy without" (the third reading's census of those is roadmap §0c); the runbook names the SHA, and the rule that generalises it — a lane that finds a must-not-deploy-without puts a `deploy-blocker` label on the fixing PR; no deploy takes a tip while one is open (roadmap §0 row 10); (0c) **the env diff**: the keys in `docker/prod/.env.prod.example` at the tip against the deployed
+base, printed — none today (`f211075` vs `c11833d`), and the step exists so that the first tip
+that adds one is not the first deploy that forgets it; (0d) `gh label create deploy-blocker` if it
+does not exist (measured absent 2026-09-06); (1) the owner's applied-count query, expected 56, watermark `0055`; (2) the most recent weekly
 restore-drill log read and its date recorded (`/opt/hmis-prod/log/restore-drill.log`, 11c D11;
 last PASSED 2026-09-05 22:00 UTC, 498 events, 56 migrations) — a deploy onto a database whose
 backups have not been proven to restore is the one thing this runbook refuses; **(2a) the migration
@@ -277,8 +335,11 @@ note naming radiology, deploy, then file every ionising machine's licence from t
 one hour, and the window is the ledger's own record; if the owner does not yet hold the
 certificates, the ionising devices stay refused after the window and that is recorded as a RED
 census row, not a blocker, because radiology is not open; (5) the three deleted routes announced to
-anyone who bookmarked them; (6) `standup:check all` **after** — the lab's G2 rows must have gone
-green by the deploy alone; (7) close PR #73 as superseded; (8) the post-deploy edge gate the script
+anyone who bookmarked them, with T9's redirects in the tip and "hard refresh, then follow the
+bookmark" as the check (§2b row 24), and the new UHID series announced to the desk (§2b row 3);
+(6) `standup:check all` **after** — the lab's G2 rows must have gone
+green by the deploy alone; the `gst_config` row count and `updated_at` unchanged (a seed must never
+touch a CA-signed row); the next invoice number unchanged (§2b row 10); (7) close PR #73 as superseded; (8) the post-deploy edge gate the script
 already runs; (9) **the backout, written as a command and an expected line even if never run**:
 `HMIS_DEPLOY_ROLLBACK_TO=c11833d bash docker/prod/deploy.sh` retags and restarts without building
 or migrating; the edge gate runs again; what it cannot undo is any row the new code wrote inside the
@@ -298,11 +359,25 @@ a rehearsal as one and a failed rehearsal never pages as a failed backup. `deplo
 image `<name>:<short-sha>` beside `:latest`, and `HMIS_DEPLOY_ROLLBACK_TO=<sha>` skips steps 1, 4 and
 5 entirely, retags `:latest` from `<sha>`, restarts api/worker/caddy and runs the step-8 edge gate.
 The drill is rehearsed the way it was built to be (`HMIS_DRILL_REPO_PATH` at a scratch prefix, a
-throwaway stanza) — never against the production repository from a lane. `deploy-parity.test.ts`
+throwaway stanza) — never against the production repository from a lane. Before overwriting the deploy directory's configs (step 2), `deploy.sh` copies the previous
+`docker-compose.prod.yml`, `caddy/Caddyfile` and `prometheus/` into `<deploy_dir>/previous/`, and
+the rollback path restores them with the images — a retag with the new Caddyfile is half a
+rollback. SHA-tagged images are pruned to the last three per name. The drill's Saturday hour is
+outside the lanes' test mutex by design (production must not depend on lane tooling); the UAT
+deploy avoids 22:00–23:00 UTC Saturday and the runbook says so. `deploy-parity.test.ts`
 pins: the rollback path contains no `docker build` and no `migrate`; the tag list; the new event
-kind registered. **Mutants:** the rehearsal asserting `>=` (a half-applied journal passes); the
+kind registered; the config snapshot taken before the copy. **Mutants:** the rehearsal asserting `>=` (a half-applied journal passes); the
 rehearsal appending `drill_passed`; the rollback path reaching `migrate`; a `:latest` retag without
 the `<sha>` image existing (must refuse by name, not fail inside compose).
+
+### T9 — ROUTINE · The three deleted paths redirect for one release (§2b row 24)
+`apps/web/src/router.tsx` (a shared file — coordinate, smallest possible diff): `/counter/seat` and
+`/counter/seat/figures` redirect to `/counter` and `/counter/figures`; `/opd/vitals/bay` to
+`/opd/vitals`. Each is a `redirect` in a `beforeLoad`, no screen, no locale key. The router test
+asserts each old path lands on its successor with the query string preserved; `caddyfile-parity`'s
+pinned route count is read before and after and the commit message states both numbers. Removed in
+the release after the lab's G6 closes. **Mutants:** a redirect that drops the query string; an old
+path that renders a blank screen instead of redirecting.
 
 ## 5. Verify
 
@@ -310,7 +385,8 @@ the `<sha>` image existing (must refuse by name, not fail inside compose).
 pnpm typecheck && pnpm lint
 /opt/hmis-lanes/.orchestrator/bin/test-lock.sh run pharmacy \
   pnpm --filter @hmis/core exec jest -w 2 test/deploy-parity.test.ts test/seed-roles.test.ts \
-    test/standup-check.test.ts test/migrate-watermark.test.ts src/modules/lab/definitions
+    test/standup-check.test.ts test/migrate-watermark.test.ts test/caddyfile-parity.test.ts src/modules/lab/definitions
+pnpm --filter @hmis/web exec vitest run src/router
 /opt/hmis-lanes/.orchestrator/bin/test-lock.sh run pharmacy \
   bash -c 'HMIS_DEPLOY_DIR=/opt/hmis-uat HMIS_DRILL_STANZA=rehearsal HMIS_DRILL_REPO_PATH=/hmis-rehearsal \
            HMIS_DRILL_SERVER_IMAGE=hmis-uat/server:latest HMIS_DRILL_REHEARSAL=1 bash docker/prod/drill/restore-drill.sh'
@@ -332,6 +408,12 @@ performed is a green test that was never run.
   and land as their own one-file PR before this phase starts, because UAT under a docker build and
   four lanes is exactly where an unbounded `connect()` hang would first be seen and misread.
 - **Retrofitting 18c to deploy-dark.** D4's exception; its guard is kept as designed.
+- **The back-book and catalogue loaders** (§2b rows 2, 8): **11k**, the commissioning lane's next
+  phase — per-file scripts for the owner's spreadsheets with a row-by-row rejection report and a
+  dry run, never a generic import surface.
+- **A notification provider, DLT registration, WABA templates, a doctor phone book, a printer
+  registry** (§2b rows 6, 7, 14): named as human artefacts in the runbooks until Plans 22, 20 and
+  the printing phase own them.
 - **A UAT on a second server.** D1; the owner's money. Everything here is target-parameterised so
   that a second box is a `DEPLOY_DIR` and an IP, not a rewrite.
 - **The lab's real catalogue, the LAB department on production, the four humans, the second
