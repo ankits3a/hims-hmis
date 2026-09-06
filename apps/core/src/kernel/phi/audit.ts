@@ -77,6 +77,15 @@ export type PhiSurface =
    */
   | "print.claim" | "print.reprint"
   /**
+   * FD-28 — the same document, rendered to a SCREEN so it can be saved as a PDF. Its own name, on
+   * the same reasoning that separates `print.reprint` from `print.claim`: producing a patient's
+   * prescription on a monitor is the same disclosure as producing it on paper, and an enquiry asking
+   * "who saw this" must be able to tell the two apart — a saved PDF can be forwarded, and a sheet of
+   * paper is handed over once. Added because the relay is not installed anywhere yet, so a screen is
+   * currently the only way a patient gets their document at all.
+   */
+  | "print.view"
+  /**
    * FD-25 — A PHONE NUMBER HANDED TO A CLERK WHO HAS TO RING SOMEBODY.
    *
    * The appointment seat's rebooking rail answers "the doctor is away — who do I have to call?",

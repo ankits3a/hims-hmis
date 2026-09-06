@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { listPrintJobs, printSummary, reprintJob, PRINT_DOCUMENT_LABEL } from "../../lib/print-api";
+import {
+  fetchPrintDocument, listPrintJobs, openDocumentForPrinting, printSummary, reprintJob,
+  PRINT_DOCUMENT_LABEL,
+} from "../../lib/print-api";
 import { fetchInvoicePrint, listInvoicesFor } from "../../lib/billing-api";
 import { InvoicePrint } from "../../components/invoice-print";
 import { SubmitButton } from "../../components/submit-button";
@@ -143,6 +146,39 @@ export function PapersSheet({ encounterId, when }: { encounterId: string; when: 
               >
                 {j.status}
               </span>
+              {/*
+                ═══ FD-28 — TWO OUTLETS FOR ONE DOCUMENT, AND TODAY ONLY ONE OF THEM WORKS ═══
+
+                Owner, 2026-09-06: *"enable and add the feature of browser based printing as a 'Save
+                as pdf' as direct printing isn't available because the machine isn't available."*
+
+                "Print again" queues the job for a relay that is installed NOWHERE — every job this
+                system has produced is still sitting at `queued`. "Save as PDF" opens the identical
+                server-rendered document in a window and raises the browser's print dialog, where
+                Save-as-PDF is a destination. Same renderer, so the file and the future paper cannot
+                differ; and it is listed FIRST because it is the one that produces something today.
+              */}
+              <SubmitButton
+                plain
+                type="button"
+                className="sec"
+                data-testid={`papers-pdf-${j.document}`}
+                style={{ height: 24, flexShrink: 0 }}
+                onClick={async () => {
+                  const label = PRINT_DOCUMENT_LABEL[j.document] ?? j.document;
+                  const doc = await fetchPrintDocument(j.id);
+                  if (doc === null) { setNote(`This ${label} is no longer available to open.`); return; }
+                  if (!openDocumentForPrinting(doc)) {
+                    /* A blocked pop-up is silent; a button that does nothing must say why. */
+                    setNote("The browser blocked the document window — allow pop-ups for this site and try again.");
+                    return;
+                  }
+                  setNote(`${label} opened — choose “Save as PDF” in the print dialog.`);
+                  d?.note(`${label} opened on screen`, "ok");
+                }}
+              >
+                save as PDF
+              </SubmitButton>
               <SubmitButton
                 plain
                 type="button"

@@ -46,6 +46,58 @@ export function reprintJob(jobId: string): Promise<{ id: string | null }> {
   return api("POST", "/print/reprint", { jobId });
 }
 
+/**
+ * ═══ FD-28 — THE SAME DOCUMENT, ON A SCREEN, SO IT CAN BE SAVED AS A PDF ═══
+ *
+ * Owner, 2026-09-06: *"enable and add the feature of browser based printing as a 'Save as pdf' as
+ * direct printing isn't available because the machine isn't available."*
+ *
+ * `GET /print/jobs/:id/document` returns exactly what `POST /print/claim` hands the relay — the same
+ * `renderDocument` output, from the same template. So the PDF a clerk saves today and the paper that
+ * comes off the thermal head once the relay is installed are ONE document, not two implementations
+ * drifting apart. It carries the reprint route's own permission and its §14 gate, because producing
+ * a patient's prescription on a monitor is the same disclosure as producing it on paper.
+ */
+export type WireRenderedDocument = {
+  html: string;
+  title: string;
+  page: { widthMm: number; heightMm: number | null };
+};
+
+export function fetchPrintDocument(jobId: string): Promise<WireRenderedDocument | null> {
+  return api("GET", `/print/jobs/${encodeURIComponent(jobId)}/document`);
+}
+
+/**
+ * Open a rendered document in its own window and raise the print dialog, where the browser's own
+ * "Save as PDF" destination lives.
+ *
+ * ═══ A SEPARATE WINDOW, NOT THIS ONE ═══
+ *
+ * `styles.css`'s `.print-doc` isolation prints exactly one element of the CURRENT page and hides
+ * everything else — which is right for a React document rendered inside a screen, and wrong here
+ * twice over: the server's HTML is a whole document with its own `@page` size (72 mm continuous for
+ * a slip, A4 for a prescription sheet), and injecting it into this page would fight both the app's
+ * stylesheet and any `.print-doc` already mounted. A fresh window has no stylesheet of ours in it,
+ * so the document prints as the printer would render it.
+ *
+ * Returns false when the browser refused the window — a pop-up blocker is the ordinary cause and the
+ * caller must say so rather than leaving a button that silently does nothing.
+ */
+export function openDocumentForPrinting(doc: WireRenderedDocument): boolean {
+  const w = window.open("", "_blank", "width=820,height=900");
+  if (w === null) return false;
+  w.document.write(doc.html);
+  w.document.close();
+  /*
+    `onload` before `print()`: a thermal slip is one page of inline CSS and prints fine either way,
+    but the A4 prescription sheet carries a letterhead and calling `print()` against a document the
+    browser has not finished laying out is how a half-drawn page reaches paper.
+  */
+  w.onload = () => { w.focus(); w.print(); };
+  return true;
+}
+
 /** The clerk-facing name of each document. The wire keys are the server's; these are the counter's. */
 export const PRINT_DOCUMENT_LABEL: Record<string, string> = {
   opd_token_slip: "token slip",

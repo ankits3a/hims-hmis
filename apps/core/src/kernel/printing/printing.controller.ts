@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Inject, Post, Query } from "@nestjs/common";
+import { Body, Controller, ForbiddenException, Get, Inject, Param, Post, Query } from "@nestjs/common";
 import { z } from "zod";
 import { DB } from "../tokens";
 import { CurrentActor, RequirePermission } from "../auth/decorators";
@@ -476,6 +476,76 @@ export class PrintingController {
       });
     }
     return { id };
+  }
+
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-28 — THE SAME DOCUMENT, TO A SCREEN, BECAUSE THERE IS NO PRINTER YET
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Owner, 2026-09-06: *"enable and add the feature of browser based printing as a 'Save as pdf' as
+   * direct printing isn't available because the machine isn't available."*
+   *
+   * That is the honest state: the relay is written and installed nowhere, so every job this system
+   * has ever produced is still sitting at `queued` and no patient has been handed a slip. A hospital
+   * cannot wait for a printer purchase to give somebody their prescription sheet.
+   *
+   * ═══ THE SAME RENDERER, NOT A SECOND ONE — WHICH IS THE WHOLE DESIGN ═══
+   *
+   * `renderDocument` is exactly what `POST /print/claim` hands the relay. Serving it here means the
+   * PDF a clerk saves today and the paper that comes off the thermal head next month are the SAME
+   * DOCUMENT, byte for byte, from one template. The tempting alternative — re-implementing each slip
+   * as a React component for the browser — is two renderers for one piece of paper, and they drift:
+   * the first correction to a fee line, a letterhead or the Devanagari block lands in one of them.
+   *
+   * ═══ IT IS A READ OF A DOCUMENT ABOUT A PATIENT, SO IT CARRIES THE REPRINT ROUTE'S OWN GATE ═══
+   *
+   * Same permission (`opd.paper.reprint`), same `getPatient` §14 decision, same indistinguishable
+   * `null` for sealed-and-absent, same PHI row — because producing the document on a SCREEN is the
+   * same disclosure as producing it on PAPER. A route that rendered a confidential patient's slip
+   * to anyone who could guess a job id would be the FD-25 hole reopened through a different door.
+   *
+   * The surface is logged as `print.view` rather than `print.reprint`: an enquiry asking "who saw
+   * this patient's prescription" should be able to tell a saved PDF from a second sheet of paper.
+   */
+  @Get("jobs/:id/document")
+  @RequirePermission("opd.paper.reprint", "hospital")
+  async renderForScreen(
+    @CurrentActor() actor: Actor,
+    @Param("id") jobId: string,
+  ): Promise<{ html: string; title: string; page: { widthMm: number; heightMm: number | null } } | null> {
+    const rows = await this.db.select().from(printJobs).where(eq(printJobs.id, jobId));
+    const original = rows[0];
+    if (original === undefined) return null;
+
+    const visible = original.patientId === null
+      ? null
+      : await getPatient(this.db, actor, original.patientId);
+    if (original.patientId !== null && visible === null) return null;
+
+    const rendered = await renderDocument(
+      this.db,
+      original.document as Parameters<typeof renderDocument>[1],
+      original.params as Record<string, unknown>,
+      new Date(),
+      actor,
+    );
+    if (rendered === null) return null;
+
+    if (original.patientId !== null && visible !== null) {
+      await recordPhiAccess(this.db, {
+        actor,
+        patientId: visible.patient.id,
+        surface: "print.view",
+        encounterId: original.encounterId,
+        sealed: visible.patient.isConfidential,
+        reason: [
+          `viewed ${original.document} on screen (job ${original.id})`,
+          visible.breakGlass === null ? null : `break-glass ${visible.breakGlass.id}: ${visible.breakGlass.reason}`,
+        ].filter((x) => x !== null).join(" · "),
+      });
+    }
+    return { html: rendered.html, title: rendered.title, page: rendered.page };
   }
 
   /**
