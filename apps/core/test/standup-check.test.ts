@@ -100,6 +100,27 @@ describe("standup:check — the readiness census (11i T2)", () => {
     expect(withoutRows).toEqual([]);
   });
 
+  it("no go-live runbook numbers two sections the same — 11i T6 / D10", () => {
+    /**
+     * `lab-go-live.md` carried TWO sections numbered 11 — "What this build does NOT do" and "The
+     * five seats" — and 11i §2b row 7 cited "§11" without being able to say which. A citation that
+     * can mean two things is worse than none: the reader who follows it lands somewhere plausible
+     * and stops looking.
+     *
+     * D10 renumbered the walk-through to 13. This leg is why it stays renumbered, and it reads
+     * every go-live runbook rather than the one that had the defect — the deploy-parity lesson
+     * about pinning the property instead of the instance, applied here.
+     */
+    const runbooks = readdirSync(RUNBOOK_DIR).filter((f) => f.endsWith("-go-live.md"));
+    for (const file of runbooks) {
+      const numbers = [...readFileSync(resolve(RUNBOOK_DIR, file), "utf8").matchAll(/^## (\d+)\. /gm)]
+        .map((m) => m[1]!);
+      const duplicated = numbers.filter((n, i) => numbers.indexOf(n) !== i);
+      expect({ file, duplicated }).toEqual({ file, duplicated: [] });
+      expect(numbers.length).toBeGreaterThan(3); // non-vacuous: the headings were actually read
+    }
+  });
+
   it("every NOT MODELLED row names a runbook SECTION THAT EXISTS", () => {
     const notModelled = Object.values(STANDUP_ROWS).flat().filter(isNotModelled);
     expect(notModelled.length).toBeGreaterThan(0); // the third verdict is used, not merely declared

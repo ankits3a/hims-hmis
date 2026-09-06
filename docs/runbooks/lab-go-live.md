@@ -1,8 +1,17 @@
 # Laboratory go-live runbook — Plan 17 (17a + 17b)
 
-**Status: the module is CODE-COMPLETE and NOT DEPLOYED.** Nothing in this file has been run against
-production. It is the ordered list of acts that turn a shipped module into a laboratory, and every
-step names who performs it and what proves it worked.
+**Status, corrected 2026-09-06 (11i T6 / D10): THE MODULE IS DEPLOYED AND THE LABORATORY IS NOT
+OPEN.** Those are different sentences and the difference is the whole of this file. `lab_*` has been
+on production since migration `0046`; five controllers serve; four screens are in the nav. What has
+never happened is any of the acts below — so a clerk who reaches `/lab/desk` today gets a working
+screen and an empty catalogue, and until 11i T1 they would have got `no_active_definition` on the
+first order they placed.
+
+The old line here read *"CODE-COMPLETE and NOT DEPLOYED"*, which was true when it was written and
+became false at the deploy that carried `0046`. A status line records a MOMENT; this one is dated.
+
+It is the ordered list of acts that turn a shipped module into a laboratory, and every step names
+who performs it and what proves it worked.
 
 **Read [`../superpowers/plans/reports/2026-08-30-plan-17-gate-report.md`](../superpowers/plans/reports/2026-08-30-plan-17-gate-report.md)
 first.** It says what is proven by execution, what is proven by reading, and what is not proven at
@@ -24,13 +33,19 @@ granted fifteen permissions. **It was found by `lab.e2e.test.ts` and by nothing 
 
 The four role keys are `lab_reception`, `lab_technician`, `phlebotomist`, `pathologist`.
 
+**AND THEY ARE FOUR HUMANS, NOT ONE LOGIN PASSED AROUND** (11i §2b row 19). DD11 refuses a
+self-verify by comparing the person who keyed a result with the person signing it — so a bench that
+shares one account has a control the system believes in and nobody exercises. Nothing in the build
+can detect a shared login; this sentence is the only place it is refused, which is why it is here
+rather than assumed.
+
 ---
 
 ## 1. Preconditions
 
 | # | precondition | how to check |
 |---|---|---|
-| 1.1 | Production is at migration `0048` or later — `0046` is the lab's thirteen tables | `docker exec hmis-prod-db-1 psql -U hmis -d hmis -c "select count(*) from drizzle.__drizzle_migrations"` |
+| 1.1 | Production carries the lab's tables. `0046` is the thirteen of them; the catch-up deploy of September 2026 takes production from **56** applied migrations to **78** (`docs/runbooks/catch-up-deploy-2026-09.md`). Read the count, never remember it | `docker exec hmis-prod-db-1 psql -U hmis -d hmis -qAt -c "select count(*) from drizzle.__drizzle_migrations"` |
 | 1.2 | `hmis-prod` is serving and the SPA loads | the smoke check the deploy runbook already carries |
 | 1.3 | A SECOND administrator exists | production has had exactly one full admin since commissioning; the laboratory adds four roles and a signing act, and one pair of hands cannot hold all of it |
 | 1.4 | The owner has the catalogue spreadsheet ready | §4 — nothing below can be tested without real orderables |
@@ -56,6 +71,12 @@ an active doctor in it. **Neither exists in production today** — spike S5 meas
 
 > **The registration number is a legal fact, not a display string.** It is what makes a laboratory
 > report a document a court will read. Get it from the certificate, not from memory.
+
+**The back-book** (11i §2b row 2). The hospital's existing paper patients arrive at the desk with an
+old file number. Key it into the patient's **legacy UHID** field (`patients.legacy_uhid`, D-43) at
+registration, so the paper file and the new record can be reconciled later by somebody who was not
+there. The bulk loader for the back-book is a later phase (11k) — until it exists, this is one field
+typed by the person holding the file.
 
 ---
 
@@ -133,18 +154,32 @@ system places and the patient pays for.
 
 ## 5. The workflow definitions and the approval type
 
-1. Run `activateLabDefinitions` — it drafts and activates `lab_item` and `lab_specimen`, both
-   change-class **C** (a departmental operating flow, activated by the lab's own head rather than
-   by the owner-plus-MS two-key an OPD visit needs).
-2. Run `registerLabApprovalTypes` — it registers `lab_release_unpaid` (approver `billing_manager`,
-   urgency `urgent`, **no act-first**, 60-minute SLA) and drafts its `approval_lab_release_unpaid`
-   definition. **It is idempotent**: a second run neither drafts a redundant version nor throws.
-3. Confirm both: a `startInstance` against `lab_item` throws `no_active_definition` when step 1 has
-   not run, and `requestApproval` throws `unknown_type` when step 2 has not. Both are the honest
-   failure and both have reached production before in other modules — `patient_merge` was
-   unregistered from Plan 05 until 2026-08-26 and every merge request threw the whole time.
+**NOTHING TO DO HERE ANY MORE. THE DEPLOY DOES IT** — 11i T1, and this section is the correction
+D10 names.
 
-**The activation is the owner's §10.4 act.** It is not a deploy step.
+`seed:lab` runs on every deploy, after `seed-pharmacy` and before `seed-roles`, and it:
+
+1. activates `lab_item` and `lab_specimen`, both change-class **C** — a departmental operating flow,
+   which is precisely why a deploy may establish it. Class A and B definitions are never established
+   by a deploy (11i D2; `seed-ot`'s DD6 is the boundary);
+2. registers `lab_release_unpaid` (approver `billing_manager`, urgency `urgent`, **no act-first**,
+   60-minute SLA) and drafts its `approval_lab_release_unpaid` definition.
+
+It is idempotent: a second run neither drafts a redundant version nor throws.
+
+**Verify it, do not perform it:**
+
+    standup:check lab
+
+Expect `ok` on `lab_definitions_active` and `lab_approval_type_registered`. The deploy's
+configuration gate (`check-config-present`) also refuses outright if either definition is inactive,
+so a deploy that reached the end established them.
+
+> **What this section said before, and why it was wrong.** It read *"the activation is the owner's
+> §10.4 act. It is not a deploy step."* That predates Plan 11g / DD2 reaching the lab — *the deploy
+> establishes the rows its own modules throw without* — and the cost of the old sentence is
+> measurable: the lab was deployed on production from `0046` and could not take a single order,
+> because `activateLabDefinitions` had exactly one caller in the tree and it was a test helper.
 
 ---
 
@@ -155,6 +190,16 @@ resolves. Create one `resources` row per real bench — haematology, biochemistr
 `bench_key` on each orderable to match. **Nothing enforces the pairing**, so a typo produces a
 worklist that silently omits a bench. Check by reading `GET /lab/bench/worklist` once per bench with
 a live order on it.
+
+**THE PRINTERS, AND THERE IS NO REGISTRY OF THEM** (11i §2b row 14). Three devices sit at three
+seats: the label printer at collection, the A4 report printer at the report centre, the receipt
+printer at the counter. `print_jobs` exists (server-side printing, ruled 2026-09-04) and label
+printing is browser-driven; **no table names a destination**, so the census reports this row as
+`NOT MODELLED` and points here rather than pretending.
+
+The artefact is a record, not a row: **one test print per device per seat**, written into the
+`## Executed on UAT` section below with the date and the person who watched it come out. A seat
+whose printer was never proved is a seat that discovers it with a patient waiting.
 
 ---
 
@@ -213,6 +258,7 @@ existing process and this one, and the paper record remains authoritative until 
 | every open `lab_critical_calls` row at 07:00 | calls that did not close on a read-back overnight |
 | `absurd_overridden_by` on any result | who vouched for a value outside the envelope |
 | every orderable that met `tariff_item_missing` | the catalogue's own gaps, found at a counter |
+| **merges per day** (`patient_merge` approvals raised) | 11i §2b row 4 — a paper-parallel pilot MINTS duplicates: the same person walks in twice and the desk, unsure, registers again. The approval type is registered by the deploy; the count is what says whether the desk needs a better search or the pilot needs a rule |
 
 **Close the window only when the last three are empty for a full week.**
 
@@ -221,6 +267,16 @@ existing process and this one, and the paper record remains authoritative until 
 ## 10. Drills — run these before the pilot, not during it
 
 ### Drill A — a critical value at 02:00 with no pathologist logged in (02 F1 / E34)
+
+> **RUN IT AFTER 21:00 IST, OR RECORD IT AS NOT PERFORMED, DATED** (11i §2b row 18, DECIDED). Night
+> mode is derived from the IST clock (§7) and there is no per-deployment switch to fake it. A drill
+> "performed" at 14:00 by pretending is a drill nobody ran; the honest entry in the section below is
+> *not performed on <date>, no night window available*, and it stays on the list.
+>
+> **And the number the bench rings is not in the system** (§2b row 6). `lab_critical_calls` records
+> the call; `opd_doctors` has no phone column and `kernel/notify` has console adapters only. The
+> artefact is a **printed call list at the bench, refreshed weekly**, and this drill is where it is
+> checked: the person doing step 4 must be able to reach a clinician from paper on the bench.
 
 1. Order a potassium, draw it, receive it.
 2. As the technologist, key **6.8**.
@@ -248,6 +304,21 @@ existing process and this one, and the paper record remains authoritative until 
 4. **Expected:** the tube carries `label_source = 'downtime_kit'` and its serial, and the chain
    proceeds unchanged.
 5. **What this proves:** a laboratory that stops when a printer stops is a laboratory on paper.
+
+### Drill D — the hospital's internet drops for fifteen minutes with a patient at the desk
+
+New in 11i (§2b row 16). The server is remote; the desk PCs reach it over the hospital's link, and
+that link goes down. Nothing in this build has ever been watched through that, and the downtime kit
+(§8) answers the LABEL printer failing, which is a different failure.
+
+1. Start a registration at the front desk, with a real person in front of you.
+2. **Pull the desk PC's network cable** (or drop its wi-fi) mid-form.
+3. Wait fifteen minutes. Try to continue. **Record exactly what the screen did** — did it say
+   anything, did it keep the fields, did it offer anything to write down.
+4. Reconnect. Finish the registration. **Record whether the work survived.**
+5. **What this proves, or fails to prove:** whether a fifteen-minute outage costs the desk one
+   patient's typing or a morning's. Whatever it does is the answer; if it is bad, that is a defect
+   logged against the front desk, not something to work around at the counter.
 
 ---
 
@@ -283,10 +354,34 @@ migration:
    patient may hold.
 3. The catalogue, the definitions and the approval type are data and stay.
 
-## 11. The five seats — a walk-through drill (Plan 17c)
+## 13. The five seats — a walk-through drill (Plan 17c)
 
-Run this once with a real person at each seat before the pilot window (§9), on one patient, in
-this order. It is `test/lab.e2e.test.ts`'s "17c T6" walk done by hand; every step has a route
+> **This section was numbered 11 and so was "What this build does NOT do".** Two sections with one
+> number is a runbook that cannot be cited: 11i §2b row 7 pointed at "§11" and could have meant
+> either. Renumbered to 13 by 11i T6 / D10; nothing in it changed.
+
+Run this once with a real person at each seat before the pilot window (§9), on one patient — **and
+on the four more that 11i §2b names below** — in this order.
+
+**BEFORE STEP 1: OPEN THE CASHIER SESSION** (§2b row 13). The lab counter takes money, and
+`recordReceipt` refuses without an open drawer session. A walk-through that skips this discovers it
+at the first patient who pays cash.
+
+**THE PEOPLE THIS WALK MUST CARRY**, beyond the one patient the original drill named — each is a
+row of 11i §2b and each is a real Indian day, not an edge case:
+
+| # | who | why the walk must include them |
+|---|---|---|
+| 1 | a patient with **one name and no surname** | §2b row 1. The desk accepts it or it does not, and no census has ever asked |
+| 2 | a patient with **no mobile number** | §2b row 1. Half a walk-in queue has none |
+| 3 | a **family sharing one mobile** across UHIDs | §2b row 1. Five records, one number, and the search must not merge them |
+| 4 | a **minor with a guardian**, consent read aloud once | §2b row 12. DPDP: the consent text on the screen is the hospital's, and somebody has to hear it said |
+| 5 | **one seat run in Hindi** | §2b row 21. `hi.json` covers the shell and the front desk; every untranslated string you meet is a defect to log, not to shrug at |
+
+A refusal on any of rows 1–3 is a **defect logged against registration (FD-25)**, never something to
+work around by inventing a surname or a phone number.
+
+ It is `test/lab.e2e.test.ts`'s "17c T6" walk done by hand; every step has a route
 behind it that the walk exercises, so a step that fails here is a configuration fault, not code.
 
 1. **Reception (`/lab/reports` is NOT this seat — `/lab/desk` is).** Scan the front-desk token or
@@ -316,5 +411,78 @@ behind it that the walk exercises, so a step that fails here is a configuration 
    granted id. Record the collector's name and relation. **Print & hand over.**
 
 Expected at the end: one delivery row, one `phi_access_log` row per counter read, the ready notice
-in `notifications` (it will NOT be sent until the WhatsApp template is approved — §0's owner action),
-and the doctor's screen showing every result from the moment of signature.
+in `notifications`, and the doctor's screen showing every result from the moment of signature.
+
+**AND THE NOTICE MUST BE FOUND QUEUED AND NOT SENT** (11i §2b row 7) — asserted, not assumed.
+`kernel/notify` has console adapters only: there is no provider, no TRAI DLT sender-id or template
+registration, and no approved WhatsApp template. **No patient message leaves this building.** Read
+the `notifications` row and confirm its state is queued; if anything says it was delivered, that is
+a finding and the pilot does not start until it is understood. The census reports this row as
+`NOT MODELLED` and points here.
+
+---
+
+## 14. Executed on UAT — **NOT YET RUN**
+
+**This section is the phase's gate.** 11i closes when this is performed and dated, not when a test
+suite is green: everything above is a claim about what would happen, and only this is a record of
+what did. Written empty on 2026-09-06 by 11i T6; fill it in as you go, and leave the rows you could
+not do as *not performed*, dated, with the reason. **A step performed and not recorded is a step
+nobody can check.**
+
+### 14.0 Standing UAT up first
+
+UAT is the same build as production, in its own compose project, on this box (11i T3). It needs
+`/opt/hmis-uat/` with its own `.env` carrying the usual keys plus three of its own:
+
+    HMIS_UAT_SITE=<this box's IP>
+    HMIS_UAT_BASIC_AUTH_HASH=<docker run --rm caddy:2-alpine caddy hash-password --plaintext '…'>
+    HMIS_SYNTHETIC_DATA_OK=1
+    HMIS_ENVIRONMENT_LABEL=UAT
+
+Then, through the test mutex (a docker build is a builder, and this box runs other people's suites):
+
+    /opt/hmis-lanes/.orchestrator/bin/test-lock.sh run commissioning \
+      bash -c 'HMIS_TARGET=uat bash /opt/hmis/docker/prod/deploy.sh'
+
+**Expected:** `8/8`, and the edge gate answering `https://<ip>:8443/api/health` with JSON and
+`/admin/users` with a 401 behind basic auth. **Avoid 22:00–23:00 UTC on a Saturday** — production's
+weekly restore drill owns that hour and the two compete for this box.
+
+`8443` is held by the front-desk preview stack until somebody stops it (`docker stop
+hmis-preview-caddy`). The AERB demo bench on `:8444` must **stay** until the catch-up deploy's step
+2c has used it.
+
+### 14.1 The rows to fill
+
+| # | act | what you saw | when |
+|---|---|---|---|
+| 1 | `HMIS_TARGET=uat deploy.sh` → 8/8 and the edge gate | | |
+| 2 | the environment banner is on the LOGIN screen, and the tab icon changed | | |
+| 3 | `standup:check lab` — every RED row, copied | | |
+| 4 | `seed:lab-catalogue` (behind the synthetic-data door) | | |
+| 5 | four accounts created at `/admin/users`, on the real screen — `lab_reception`, `phlebotomist`, `lab_technician`, `pathologist`, at HOSPITAL scope, **four humans** (§0) | | |
+| 6 | a SECOND administrator (§1.3) | | |
+| 7 | `LAB` department + pathologist of record with a real `registration_no` (§2) | | |
+| 8 | `seed:lab-demo` (both doors) | | |
+| 9 | `standup:check lab` — **green** | | |
+| 10 | §13 walk-through, seat 1: **three registrations** — one name only, no mobile, a family-shared mobile (§2b row 1) | | |
+| 11 | §13 walk-through, seat 1: **a minor with a guardian**, consent read aloud (§2b row 12) | | |
+| 12 | §13 walk-through: **one seat run in Hindi**, every untranslated string logged (§2b row 21) | | |
+| 13 | §13 walk-through, seats 2–5, on one patient, end to end | | |
+| 14 | the ready notice found **queued and NOT sent** (§2b row 7) | | |
+| 15 | **one test print per device per seat** — label, A4, receipt (§6, §2b row 14) | | |
+| 16 | drill A, after 21:00 IST — or *not performed*, dated (§2b row 18) | | |
+| 17 | drill B | | |
+| 18 | drill C | | |
+| 19 | **drill D** — the network pulled mid-registration (§2b row 16) | | |
+| 20 | the cashier session opened before seat 1 (§2b row 13) | | |
+
+### 14.2 Defects found
+
+A step that could not be performed as written is a **defect**, recorded here and fixed in the
+runbook or in the code — never narrated around. List them with the row number they came from.
+
+| row | what could not be done as written | where it was fixed |
+|---|---|---|
+| | | |
