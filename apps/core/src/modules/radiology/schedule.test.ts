@@ -110,6 +110,33 @@ describe("imaging scheduling (18a T4)", () => {
       .rejects.toMatchObject({ code: "slot_taken" });
   });
 
+  /**
+   * ═══ THE REFUSAL NAMES THE MACHINE, NOT ITS ULID ═══
+   *
+   * Every sentence in this file's refusals used to open `device 01M1VRJ4QVQ…`. A receptionist reads
+   * them at a counter and cannot map a ULID to a room, and "which machine" is the only thing they
+   * need in order to act. **Ten such sentences were swept and not one test noticed** — the suite
+   * asserted `code` and never the prose, which is exactly how the original defect survived. These
+   * pin the three a human meets most.
+   */
+  it("names the machine by code, not by ULID, in the clash / status / modality refusals", async () => {
+    const first = await newStudy("MRI-BRAIN");
+    await schedule(first.studyId, "mri", new Date("2026-08-31T10:00:00.000Z"));
+    const second = await newStudy("MRI-BRAIN");
+    await expect(schedule(second.studyId, "mri", new Date("2026-08-31T10:15:00.000Z")))
+      .rejects.toMatchObject({ message: expect.stringContaining("DEV-MRI (mri machine)") });
+    /** The opaque id must be GONE from the prose, not merely accompanied by the code. */
+    await expect(schedule(second.studyId, "mri", new Date("2026-08-31T10:15:00.000Z")))
+      .rejects.toMatchObject({ message: expect.not.stringContaining(fx.devices.mri!) });
+
+    const wrong = await newStudy("MRI-BRAIN");
+    await expect(schedule(wrong.studyId, "xray", new Date("2026-08-31T14:00:00.000Z")))
+      .rejects.toMatchObject({
+        code: "modality_mismatch",
+        message: expect.stringContaining("DEV-XRAY (xray machine)"),
+      });
+  });
+
   /** The boundary is HALF-OPEN: a study starting exactly when another ends is not a clash. */
   it("F55: a study starting exactly when the previous one ends is ACCEPTED", async () => {
     const first = await newStudy("MRI-BRAIN");
