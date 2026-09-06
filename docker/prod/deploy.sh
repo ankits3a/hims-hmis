@@ -89,21 +89,39 @@ esac
 # ════════════════════════════════════════════════════════════════════════════════════════════════
 # PHASE 11i T3 — `HMIS_DEPLOY_ALLOW_DIRTY=1` IS FOR A REHEARSAL, AND A REHEARSAL IS NOT PRODUCTION.
 #
-# ═══ THIS GUARD EXISTS BECAUSE OF A NEAR MISS, 2026-09-06, AND THE SEQUENCE IS WORTH KEEPING ═══
+# ═══ THIS GUARD EXISTS BECAUSE A DEPLOY HAPPENED THAT NOBODY DECIDED — 2026-09-06 ═══
 #
-# The commissioning lane meant to stand UAT up from its own branch — which it has to, because the
-# `uat` target and the synthetic-data door had not merged yet — and ran:
+# TWO EVENTS, and the second one COMPLETED. An earlier version of this comment described only the
+# first and said "nothing reached the deploy directory, the images, the database or the containers".
+# That was true of the first event and false of the day, and a reader would have taken it as a
+# statement about production. It is corrected here rather than deleted.
+#
+# EVENT ONE — the near miss. The commissioning lane meant to stand UAT up from its own branch —
+# which it has to, because the `uat` target and the synthetic-data door had not merged yet — and ran
 #
 #     HMIS_TARGET=uat HMIS_DEPLOY_ALLOW_DIRTY=1 bash docker/prod/deploy.sh
 #
-# from a worktree that had been left checked out on an EARLIER branch in the same stack. That
-# branch's copy of this script predates the target concept, so `HMIS_TARGET` was an environment
-# variable nothing read: `DEPLOY_DIR` defaulted to /opt/hmis-prod, `PROJECT` to hmis-prod, and it
-# began building `hmis-prod/server:latest` from a lane checkout on its way to migrating and
-# restarting PRODUCTION. It was killed during step 1 and nothing reached the deploy directory, the
-# images, the database or the containers — but the only reason it got that far is that
-# `HMIS_DEPLOY_ALLOW_DIRTY=1` had disabled BOTH refusals standing between a lane tree and the
-# hospital: the dirty-tree check and `HEAD == origin/main`.
+# from a worktree left checked out on an EARLIER branch in the same stack. That branch's copy of
+# this script predates the target concept, so `HMIS_TARGET` was an environment variable nothing
+# read: `DEPLOY_DIR` defaulted to /opt/hmis-prod. Killed during step 1; production verified
+# untouched at that point.
+#
+# EVENT TWO — the fix for event one deployed production. The leg added to `deploy-parity.test.ts`
+# proves this refusal fires BY EXECUTING THIS SCRIPT. The mutation run that DELETES the refusal
+# therefore ran a `deploy.sh` with nothing left to stop it, and that leg did not set
+# `HMIS_DEPLOY_DIR` — on the reasoning that the guard fires before the deploy-directory check, so
+# the value could not matter. It cannot matter WHILE THE GUARD IS THERE. Measured afterwards:
+#
+#     hmis-prod/{server,web}:399f92c   built 12:35:00 and 12:35:04 from a LANE tree
+#     hmis-prod-api-1                  StartedAt 12:35:42 on that image
+#     migrations                       56 -> 78, the whole pending journal
+#     8 of 9 containers                restarted; db and node-exporter untouched
+#
+# Production came up healthy and is serving. It is running a commit that is not on `main`, and the
+# image it replaced is gone from the daemon, so this one deploy has no image-level rollback.
+#
+# WHAT LET BOTH HAPPEN is the same thing: `HMIS_DEPLOY_ALLOW_DIRTY=1` disabled BOTH refusals
+# standing between a lane tree and the hospital — the dirty-tree check and `HEAD == origin/main`.
 #
 # ═══ WHAT THE GUARD IS, AND WHY IT IS NOT MERELY A RULE ═══
 #
