@@ -114,6 +114,8 @@ export const RADIOLOGY_ERROR_CODES = [
   "vial_expired",
   /** ── 18a-iii T2 — a reaction is a reaction TO a dose, and the dose must exist ── */
   "unknown_administration",
+  /** ── 18a-iii T3 — a bedside location on a machine that does not leave the department ── */
+  "device_not_portable",
   // ── reports (T8) ──
   "second_factor_required",
   "laterality_mismatch",
@@ -178,6 +180,7 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   machine_draft_not_signable: 422,
   vial_expired: 422,
   unknown_administration: 404,
+  device_not_portable: 422,
 
   second_factor_required: 403,
   laterality_mismatch: 422,

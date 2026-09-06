@@ -14,7 +14,7 @@ export { RadiologyError, RADIOLOGY_ERROR_CODES, radiologyHttpStatus } from "./er
 export type { RadiologyErrorCode } from "./errors";
 export {
   RADIOLOGY_RESOURCE_KINDS, SCHEDULABLE_DEVICE_STATUSES, DEVICE_MODALITY_ATTRIBUTE,
-  IMAGING_MODALITIES,
+  DEVICE_PORTABLE_ATTRIBUTE, IMAGING_MODALITIES,
 } from "./kinds";
 export type { ImagingModality } from "./kinds";
 export {
