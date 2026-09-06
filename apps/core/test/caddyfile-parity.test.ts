@@ -380,7 +380,21 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // the run reported `Received length: 50` against `expect(49)`. The series total is what the
     // build plan predicted, but it arrived in TWO steps and neither step was the sum — which is the
     // whole reason this pin is measured rather than computed.
-    expect(routes).toHaveLength(50);
+    // PHASE 11i T9 — 50 -> 53, and every one of the three is a REDIRECT with no screen.
+    // `/counter/seat`, `/counter/seat/figures` and `/opd/vitals/bay` are what PRODUCTION has been
+    // serving since 2 September; the catch-up deploy deletes all three in one step and the desk
+    // PCs have them bookmarked. They forward, with the query string, for one release — removed
+    // after the laboratory's G6 closes.
+    //
+    // THEY BELONG IN THIS CENSUS AND THE COUNT MOVING IS CORRECT, which is worth stating because
+    // it is easy to argue the other way. This leg asks ONE question: does any path the browser
+    // requests fall inside a Caddy-proxied prefix? A redirect SOURCE is such a path — the browser
+    // asks for it, Caddy must serve the SPA for it, and the redirect happens in the client
+    // afterwards. A redirect TARGET is the thing the parser's docstring excludes, and for the
+    // opposite reason: it is always itself a declared route and would be counted twice.
+    // MEASURED and WATCHED FAILING: the run that added the three reported `Received length: 53`
+    // against the pinned 50.
+    expect(routes).toHaveLength(53);
     expect(routes).toContain("/radiology/radiation-safety");
     /*
       FD-9 recorded the deletion of both as negative assertions. FD-25 reverses ONE of them.
@@ -407,9 +421,26 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     expect(routes).toContain("/counter");
     expect(routes).toContain("/lab/reports");
     expect(routes).toContain("/counter/figures");
-    expect(routes).not.toContain("/counter/seat");
+    /*
+      PHASE 11i T9 — TWO OF THIS FILE'S NEGATIVE ASSERTIONS ARE FLIPPED, AND WHAT THEY WERE
+      PROTECTING IS NOT WHAT THEY SAID.
+
+      FD-2 and FD-5 wrote `not.toContain` here to record that two SCREENS were deleted rather than
+      aliased: a second door to one job is what put the owner on the wrong counter and had them
+      report the right screen as broken. That ruling is intact. What returns is not a door — no
+      component, no nav row, no manifest entry, no locale key, nothing in the application links to
+      it, and the only way to arrive is to already know the path.
+
+      The distinction an absence assertion in THIS file cannot express is exactly that one: this
+      census reads paths, and a path is all a forwarding address has in common with a screen. The
+      assertion that a redirect renders NO screen and carries its query string lives where it can
+      be made by execution — `apps/web/src/router-redirects.test.ts` — and the two facts together
+      are what the deletion was for.
+    */
+    expect(routes).toContain("/counter/seat");
+    expect(routes).toContain("/counter/seat/figures");
     expect(routes).toContain("/opd/vitals");
-    expect(routes).not.toContain("/opd/vitals/bay");
+    expect(routes).toContain("/opd/vitals/bay");
     expect(routes).toContain("/radiology/reception");
     expect(routes).toContain("/radiology/worklist");
     // The three parameterised ones too: a parameterised path is still a SPA path, and if
