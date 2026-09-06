@@ -47,6 +47,9 @@ import { backupDrillRehearsed } from "../src/kernel/retention/events";
 const REPO_ROOT = resolve(__dirname, "..", "..", "..");
 const DEPLOY_SH = resolve(REPO_ROOT, "docker", "prod", "deploy.sh");
 const DRILL_SH = resolve(REPO_ROOT, "docker", "prod", "drill", "restore-drill.sh");
+const UAT_COMPOSE = resolve(REPO_ROOT, "docker", "prod", "docker-compose.uat.yml");
+const UAT_RESET_SH = resolve(REPO_ROOT, "docker", "prod", "uat-reset.sh");
+const ENV_EXAMPLE = resolve(REPO_ROOT, "docker", "prod", ".env.prod.example");
 const COMPOSE_YML = resolve(REPO_ROOT, "docker", "prod", "docker-compose.prod.yml");
 const PROMETHEUS_DIR = resolve(REPO_ROOT, "docker", "prod", "prometheus");
 const PROMETHEUS_YML = resolve(PROMETHEUS_DIR, "prometheus.yml");
@@ -586,9 +589,12 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
     });
 
     it("tags every image with the SHA it was built from, beside :latest", () => {
-      expect(deploySource).toMatch(/IMAGE_REPOS="hmis-prod\/server hmis-prod\/web hmis-prod\/db"/);
+      expect(deploySource).toMatch(/IMAGE_REPOS="\$IMAGE_NS\/server \$IMAGE_NS\/web \$IMAGE_NS\/db"/);
+      // `$IMAGE_NS`, not the literal `hmis-prod`: 11i T3 gave the script a second target, and a
+      // SHA tag hard-coded to production's namespace would have put UAT's images there — measured,
+      // by this leg failing when the target landed.
       for (const name of ["server", "web", "db"]) {
-        expect(deploySource).toContain(`docker tag "$${name.toUpperCase()}_IMAGE" "hmis-prod/${name}:$GIT_SHA"`);
+        expect(deploySource).toContain(`docker tag "$${name.toUpperCase()}_IMAGE" "$IMAGE_NS/${name}:$GIT_SHA"`);
       }
       expect(deploySource).toMatch(/GIT_SHA="\$\(git -C "\$REPO_DIR" rev-parse --short HEAD/);
       expect(deploySource).toMatch(/prune_sha_tags/);
@@ -650,6 +656,212 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
     it("both scripts still parse", () => {
       // The cheapest possible guard on the file whose failure mode is the owner's live box.
       for (const script of [DEPLOY_SH, DRILL_SH]) {
+        const r = spawnSync("bash", ["-n", script], { encoding: "utf8" });
+        expect({ script, status: r.status, stderr: r.stderr }).toEqual({ script, status: 0, stderr: "" });
+      }
+    });
+  });
+
+  /**
+   * ═══ PHASE 11i T3 — UAT IS A TARGET OF THIS SCRIPT, NOT A SECOND SCRIPT ═══
+   *
+   * The danger is not that UAT breaks; it is that UAT reaches production. One host, two stacks,
+   * one script — so every leg below asks the same question from a different side: **with
+   * `HMIS_TARGET=uat`, does anything still say `hmis-prod`?**
+   */
+  describe("the UAT target (11i T3)", () => {
+    /**
+     * The overlay's YAML with its COMMENTS STRIPPED. This file explains at length why it takes
+     * 8443 instead of 80/443 and why the db moves off 5434 — and an assertion that "5434 does not
+     * appear" would fail on the sentence saying so. `i18n-keys.test.ts` and `vitals-bay.test.tsx`
+     * both hit the same false positive; the fix is the same one: read the directives, not the prose.
+     */
+    const uatCompose = readFileSync(UAT_COMPOSE, "utf8").split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
+    const uatComposeWithProse = readFileSync(UAT_COMPOSE, "utf8");
+
+    /**
+     * The script's OWN target block, extracted from the shipped bytes and evaluated — the
+     * caddyfile-parity shape. Reading the text would tell us the words are there; running it
+     * tells us what they resolve to, which is the only thing a mistake here would be about.
+     */
+    function resolveTarget(target: string): Record<string, string> {
+      const block = /TARGET="\$\{HMIS_TARGET:-prod\}"\ncase "\$TARGET" in\n[\s\S]*?\nesac\n/.exec(deploySource);
+      if (block === null) throw new Error("deploy.sh: no `case \"$TARGET\"` block — this parser is stale");
+      const cronLine = /CRON_FILE="\$\{HMIS_CRON_FILE:-[^"]*\}"/.exec(deploySource);
+      if (cronLine === null) throw new Error("deploy.sh: no CRON_FILE line — this parser is stale");
+      const script = [
+        "set -euo pipefail",
+        block[0],
+        cronLine[0],
+        'SERVER_IMAGE="$IMAGE_NS/server:latest"',
+        'IMAGE_REPOS="$IMAGE_NS/server $IMAGE_NS/web $IMAGE_NS/db"',
+        'printf "%s\\n%s\\n%s\\n%s\\n%s\\n" "$PROJECT" "$IMAGE_NS" "$DEPLOY_DIR" "$CRON_FILE" "$SERVER_IMAGE"',
+      ].join("\n");
+      const r = spawnSync("bash", ["-c", script], { encoding: "utf8", env: { ...process.env, HMIS_TARGET: target, HMIS_DEPLOY_DIR: "", HMIS_CRON_FILE: "" } });
+      expect({ target, status: r.status, stderr: r.stderr }).toEqual({ target, status: 0, stderr: "" });
+      const [project, ns, dir, cron, image] = r.stdout.trim().split("\n");
+      return { project: project!, ns: ns!, dir: dir!, cron: cron!, image: image! };
+    }
+
+    it("resolves production's names when the target is unset — the default is not a new thing", () => {
+      const prod = resolveTarget("");
+      expect(prod).toEqual({
+        project: "hmis-prod", ns: "hmis-prod", dir: "/opt/hmis-prod",
+        cron: "/etc/cron.d/hmis-prod-backup", image: "hmis-prod/server:latest",
+      });
+    });
+
+    it("says `hmis-prod` NOWHERE when the target is uat — project, image, directory or cron", () => {
+      const uat = resolveTarget("uat");
+      expect(uat).toEqual({
+        project: "hmis-uat", ns: "hmis-uat", dir: "/opt/hmis-uat",
+        cron: "/etc/cron.d/hmis-uat-backup", image: "hmis-uat/server:latest",
+      });
+      // The property, stated once over all four, so a fifth value added later is covered too.
+      expect(Object.values(uat).filter((v) => v.includes("hmis-prod"))).toEqual([]);
+    });
+
+    it("refuses a target it does not know, rather than deploying production by default", () => {
+      const block = /TARGET="\$\{HMIS_TARGET:-prod\}"\ncase "\$TARGET" in\n[\s\S]*?\nesac\n/.exec(deploySource)!;
+      const r = spawnSync("bash", ["-c", `set -euo pipefail\n${block[0]}`], {
+        encoding: "utf8", env: { ...process.env, HMIS_TARGET: "staging" },
+      });
+      expect(r.status).not.toBe(0);
+      expect(r.stderr).toMatch(/HMIS_TARGET must be 'prod' or 'uat'/);
+    });
+
+    it("REFUSES HMIS_DEPLOY_ALLOW_DIRTY on the prod target — the 2026-09-06 near miss", () => {
+      /**
+       * The commissioning lane ran `HMIS_TARGET=uat HMIS_DEPLOY_ALLOW_DIRTY=1 deploy.sh` from a
+       * worktree left checked out on an EARLIER branch of its own stack. That branch's copy of the
+       * script predates the target concept, so `HMIS_TARGET` was an unread environment variable:
+       * `DEPLOY_DIR` defaulted to /opt/hmis-prod and it began building `hmis-prod/server:latest`
+       * from a lane tree on its way to migrating production. Killed in step 1; nothing reached the
+       * deploy directory, the images, the database or the containers.
+       *
+       * The flag is what let it get that far — it disables BOTH refusals between a checkout and
+       * the hospital. Its own comment has always said "for a rehearsal only", and a rehearsal is
+       * UAT; the word is now enforced instead of trusted. Asked by RUNNING the script, because a
+       * refusal that only exists in the text is a refusal nobody has seen fire.
+       */
+      /**
+       * ═══ `HMIS_DEPLOY_DIR` IS POINTED AT NOTHING, AND THAT IS THE LOAD-BEARING PART ═══
+       *
+       * The first version of this leg omitted it, on the reasoning that the guard fires before the
+       * deploy-directory check so the value could not matter. It does not matter while the guard is
+       * THERE. The mutant run that removes the guard is the whole point of this leg — and without
+       * this line that run inherits `DEPLOY_DIR=/opt/hmis-prod` and deploys the hospital. It did:
+       * on 2026-09-06 the mutation run for this very assertion rebuilt production's images from a
+       * lane tree, applied 22 migrations and restarted the stack.
+       *
+       * So a test that EXECUTES this script must make the script unable to reach anything real,
+       * independently of the behaviour it is asserting. A guard is not a safety mechanism for the
+       * test that removes it.
+       */
+      const NOWHERE = "/nonexistent-deploy-dir-for-this-test";
+      const r = spawnSync("bash", [DEPLOY_SH], {
+        encoding: "utf8",
+        env: {
+          ...process.env, HMIS_DEPLOY_ALLOW_DIRTY: "1", HMIS_TARGET: "prod",
+          HMIS_DEPLOY_ROLLBACK_TO: "", HMIS_DEPLOY_DIR: NOWHERE,
+        },
+      });
+      expect(r.status).toBe(1);
+      expect(r.stderr).toMatch(/HMIS_DEPLOY_ALLOW_DIRTY=1 is refused on the PROD target/);
+      expect(r.stderr).toMatch(/Rehearse on HMIS_TARGET=uat instead/);
+
+      // …and it does NOT refuse on uat, which is the target the flag exists for. (It fails later,
+      // on the deploy directory, which is a different refusal and proves the guard let it past.)
+      const uat = spawnSync("bash", [DEPLOY_SH], {
+        encoding: "utf8",
+        env: {
+          ...process.env, HMIS_DEPLOY_ALLOW_DIRTY: "1", HMIS_TARGET: "uat",
+          HMIS_DEPLOY_DIR: NOWHERE, HMIS_DEPLOY_ROLLBACK_TO: "",
+        },
+      });
+      expect(uat.stderr).not.toMatch(/ALLOW_DIRTY=1 is refused/);
+      expect(uat.stderr).toMatch(/deploy directory .* does not exist/);
+    });
+
+    it("skips the stanza, the cron and the real-hostname edge check on uat, and nothing else", () => {
+      // Each of the three is production-only BY NATURE (no repository, no backup to schedule, no
+      // public hostname). Everything else — build, config, migrate, seeds, gate, census, service
+      // census, restarts — must be the same code, or the rehearsal proves nothing about the deploy.
+      expect(deploySource).toMatch(/if \[ "\$TARGET" = "uat" \]; then\n {2}# 11i T3 \/ D1 — UAT has no backup repository/);
+      expect(deploySource).toMatch(/note "target uat — no backup or restore-drill cron installed"/);
+      expect(deploySource).toMatch(/SITE_BASE="https:\/\/\$UAT_SITE:8443"/);
+      // and the migrate/seed/gate block is NOT behind a target branch
+      expect(deploySource).not.toMatch(/if \[ "\$TARGET" = "uat" \]; then[\s\S]{0,200}migrate\.js/);
+    });
+
+    it("the UAT overlay runs FOUR services and profiles the five it does not", () => {
+      for (const svc of ["node-exporter", "postgres-exporter", "prometheus", "grafana", "alertmanager"]) {
+        expect(uatCompose).toMatch(new RegExp(`${svc}:\\n +profiles: \\["monitoring"\\]`));
+      }
+      // An override cannot DELETE a service, and `scale: 0` would still leave it in
+      // `compose config --services` — which is what step 6b enumerates.
+      expect(uatCompose).not.toMatch(/scale:\s*0/);
+      expect(uatComposeWithProse).toContain("PHASE 11i T3"); // the stripped read is not vacuous
+    });
+
+    it("UAT shares no volume, no network and no port with production", () => {
+      // Compose namespaces volumes and networks by project, so the ONLY ways to reach across are
+      // an `external: true` volume or a `name:` that pins one. Neither may appear.
+      expect(uatCompose).not.toMatch(/external:\s*true/);
+      expect(uatCompose).not.toMatch(/^\s+name:\s/m);
+      // The two ports production holds, replaced rather than merged — compose APPENDS port lists.
+      expect(uatCompose).toMatch(/ports: !override \["8443:443"\]/);
+      expect(uatCompose).toMatch(/ports: !override \["127\.0\.0\.1:5435:5432"\]/);
+      expect(uatCompose).not.toMatch(/"80:80"|"443:443"|5434/);
+    });
+
+    it("UAT's database archives nothing and mounts no pgBackRest anything — §2b row 23", () => {
+      // UAT NEVER RESTORES A PRODUCTION BACKUP (D1): a training box holding a real patient is a
+      // DPDP incident wearing a training label. It follows that it has no repository at all —
+      // and an `archive_command` pointing at a stanza that does not exist fills pg_wal until the
+      // disk does, silently.
+      expect(uatCompose).toMatch(/command: !override \["postgres"\]/);
+      expect(uatCompose).toMatch(/env_file: !reset null/);
+      expect(uatCompose).toMatch(/volumes: !override\n\s+- hmis_prod_pgdata:/);
+      expect(uatCompose).not.toMatch(/pgbackrest/);
+    });
+
+    it("the production environment template carries neither the banner key nor the synthetic door", () => {
+      // §2b row 22 and D5. Both are things only a NON-production deployment can turn on, which is
+      // the only direction that fails safe: production does not switch the banner off, it never
+      // had it.
+      const example = readFileSync(ENV_EXAMPLE, "utf8");
+      expect(example).not.toMatch(/HMIS_ENVIRONMENT_LABEL/);
+      expect(example).not.toMatch(/HMIS_SYNTHETIC_DATA_OK/);
+    });
+
+    it("uat-reset.sh REFUSES production, and it is asked rather than read", () => {
+      const r = spawnSync("bash", [UAT_RESET_SH], {
+        encoding: "utf8",
+        env: { ...process.env, HMIS_UAT_PROJECT: "hmis-prod", HMIS_TARGET: "uat", HMIS_DEPLOY_DIR: "/opt/hmis-uat" },
+      });
+      expect(r.status).not.toBe(0);
+      expect(r.stderr).toMatch(/DROPS A DATABASE and will not run/);
+      // and the deploy directory is checked too, independently of the project name
+      const byDir = spawnSync("bash", [UAT_RESET_SH], {
+        encoding: "utf8",
+        env: { ...process.env, HMIS_UAT_PROJECT: "hmis-uat", HMIS_TARGET: "uat", HMIS_DEPLOY_DIR: "/opt/hmis-prod" },
+      });
+      expect(byDir.status).not.toBe(0);
+      expect(byDir.stderr).toMatch(/that is production's/);
+    });
+
+    it("uat-reset.sh runs the DEPLOY'S seed list, in the deploy's order", () => {
+      const source = readFileSync(UAT_RESET_SH, "utf8");
+      const match = /for seed in ([\s\S]*?); do/.exec(source);
+      if (match === null) throw new Error("uat-reset.sh: no seed loop — this parser is stale");
+      const seeds = match[1]!.replace(/\\\n/g, " ").trim().split(/\s+/);
+      expect(seeds[0]).toBe("seed-cursors.js");
+      expect([...seeds.slice(1), "seed-roles.js"]).toEqual([...SEED_STEP_SCRIPTS]);
+    });
+
+    it("both new scripts parse", () => {
+      for (const script of [UAT_RESET_SH]) {
         const r = spawnSync("bash", ["-n", script], { encoding: "utf8" });
         expect({ script, status: r.status, stderr: r.stderr }).toEqual({ script, status: 0, stderr: "" });
       }

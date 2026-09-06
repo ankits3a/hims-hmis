@@ -60,6 +60,21 @@ const configSchema = z.object({
   WORKER_NOTIFY_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
   NOTIFY_PROVIDER: notifyProviderSchema.default("console"),
   /*
+   * PHASE 11i T3 (§2b row 22) — WHICH BOX AM I LOOKING AT.
+   *
+   * UAT runs the PRODUCTION image against a different database, on the same host, behind a Caddy
+   * that serves the same SPA. Two browser tabs, identical in every pixel, one of which must never
+   * hold a real person. A receptionist being trained on UAT who registers the patient standing in
+   * front of them has created a record in the wrong hospital, and nothing on either screen would
+   * have told them.
+   *
+   * Optional and EMPTY BY DEFAULT: production's environment file never sets it and
+   * `deploy-parity.test.ts` asserts the production template does not carry the key. So the banner
+   * is not something production turns off — it is something only a non-production deployment can
+   * turn ON, which is the only direction that fails safe.
+   */
+  HMIS_ENVIRONMENT_LABEL: z.string().trim().max(24).default(""),
+  /*
    * FD-8 — the triage advisor's gateway. ALL OPTIONAL and unset by default: with no key the desk
    * routes on its own keyword table and never makes a network call, which is the shipped behaviour
    * and the one every existing test sees. `TRIAGE_API_KEY` is a SECRET and belongs in `.env`
@@ -243,6 +258,8 @@ export type AppConfig = {
   workerDailyTickMs: number;
   workerNotifyIntervalMs: number;
   notifyProvider: NotifyProvider;
+  /** 11i T3 — "UAT", "TRAINING", …; `null` on production, where the key is never set. */
+  environmentLabel: string | null;
   /** FD-8 — the triage advisor. `baseUrl`/`apiKey` null ⇒ the desk uses its own keyword table only. */
   triage: { baseUrl: string | null; apiKey: string | null; model: string; timeoutMs: number };
   notifyStuckAfterMs: number;
@@ -293,6 +310,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     breakGlassTtlMinutes: parsed.BREAK_GLASS_TTL_MINUTES,
     tempRoleMaxTtlMinutes: parsed.TEMP_ROLE_MAX_TTL_MINUTES,
     workerStaleAfterMs: parsed.WORKER_STALE_AFTER_MS,
+    environmentLabel: parsed.HMIS_ENVIRONMENT_LABEL === "" ? null : parsed.HMIS_ENVIRONMENT_LABEL,
     workerDispatchIntervalMs: parsed.WORKER_DISPATCH_INTERVAL_MS,
     workerTimersIntervalMs: parsed.WORKER_TIMERS_INTERVAL_MS,
     workerTempRolesIntervalMs: parsed.WORKER_TEMP_ROLES_INTERVAL_MS,

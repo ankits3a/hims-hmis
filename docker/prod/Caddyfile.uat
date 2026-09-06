@@ -1,0 +1,63 @@
+# PHASE 11i T3 — THE UAT EDGE.
+#
+# Production's Caddyfile terminates TLS on the real hostname over ACME and serves the site to
+# anybody. This one answers on THIS BOX'S IP over a certificate the box signed for itself, on
+# 8443, behind basic auth — because UAT is the owner's bench and a trainee's, not a public site,
+# and because 80 and 443 belong to production.
+#
+# `{$HMIS_UAT_SITE}` and `{$HMIS_UAT_BASIC_AUTH_HASH}` are expanded by Caddy from the container's
+# environment at load time, so **no credential and no address is committed to git**. Both come out
+# of `/opt/hmis-uat/.env`, which deploy.sh's pre-flight refuses to continue without. Mint a hash
+# with:  docker run --rm caddy:2-alpine caddy hash-password --plaintext '<password>'
+{
+	admin off
+	auto_https disable_redirects
+	# The same reasoning as production's: the compose file publishes TCP only, so advertising
+	# HTTP/3 would be a promise nothing can keep.
+	servers {
+		protocols h1 h2
+	}
+}
+
+https://{$HMIS_UAT_SITE}:8443 {
+	tls internal
+	encode zstd gzip
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# NO Strict-Transport-Security. UAT answers on an IP with a self-signed certificate; an
+		# HSTS header from here would pin a browser to HTTPS for this host for a year, which is a
+		# durable inconvenience bought for a training box.
+		-Server
+	}
+
+	# The parity line, identical to production's — see docker/prod/Caddyfile for why it is ONE
+	# prefix and why `caddyfile-parity.test.ts` pins it.
+	@api path /api*
+
+	# ═══ BASIC AUTH COVERS THE SITE AND NEVER THE API — MEASURED ON THE PREVIEW STACK ═══
+	#
+	# When the preview wrapped `/api*` too, signing in was IMPOSSIBLE: the app sends
+	# `Authorization: Bearer <token>` and Caddy demanded `Authorization: Basic <creds>` on the same
+	# request. There is one Authorization header, so whichever arrived lost — the browser answered
+	# the challenge with Basic, the Bearer token was dropped, and `/api/auth/me` came back 401 for
+	# ever. Found with a real browser, not reasoned about.
+	#
+	# The API is not left open by this: every route behind it carries its own @RequirePermission,
+	# and `/auth/login` wants real credentials. Basic auth keeps casual traffic off the static
+	# site, which is exactly where it now sits.
+	handle @api {
+		uri strip_prefix /api
+		reverse_proxy api:3000
+	}
+
+	handle {
+		basic_auth {
+			uat {$HMIS_UAT_BASIC_AUTH_HASH}
+		}
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
