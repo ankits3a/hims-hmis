@@ -97,7 +97,7 @@ const T6_DEF = {
  * operator sets), so a literal somewhere did stop compiling — just not this file, which passes the
  * whole `AppConfig`. This list remains the only guard here.
  */
-const THE_SIXTEEN = [
+const THE_EIGHTEEN = [
   "runDispatchCycle",
   "runDueTimers",
   "sweepExpiredTempRoles",
@@ -145,11 +145,31 @@ const THE_SIXTEEN = [
    * **AND THE COUNT IN THE PARAGRAPH ABOVE IS WRONG: THERE ARE FIVE CENSUSES, NOT FOUR.** Every
    * comment in this codebase that names the tax says "jobs.ts, both censuses, alerts.yml, and that
    * number" — four places. Registering this job turned FIVE tests red: `jobs.test.ts` (count and a
-   * last-position pin), `scheduler.test.ts` (`THE_SIXTEEN` and its spy list), `alerts-parity.test.ts`
+   * last-position pin), `scheduler.test.ts` (`THE_EIGHTEEN` and its spy list), `alerts-parity.test.ts`
    * (the sorted names AND a separate `toHaveLength`), `alerts.yml` itself, and THIS file. The
    * prediction has been repeated by four plans and has been undercounting itself the whole time.
+   *
+   * **AND FIVE WAS ALSO WRONG: THERE ARE SEVEN.** 18a-iii T5 registered two jobs and turned SEVEN
+   * sites red — the five above plus `jobs.test.ts`'s own count and `alerts/consumer.test.ts`'s two
+   * subscription censuses. The paragraph above corrected four to five and was itself short by two.
+   *
+   * The reason this file is the one that keeps being missed is stated in its own comment above and
+   * was still not enough: **a `toHaveLength` grep cannot find a census expressed as a NAMED ARRAY.**
+   * T5 grepped for the count, found the two files that carry one, added `scheduler.test.ts` by name
+   * because it knew about it — and ran a targeted sweep naming ONE file from `test/` rather than the
+   * directory. The seventh site is in `test/` and is not that file. **When a change moves a census,
+   * run the whole `test/` directory: the census you know about is by definition the one that does
+   * not surprise you.**
    */
   "sweepExpiredPharmacyPicks",
+  /**
+   * PLAN 18a-iii T5 / D7 — the SEVENTEENTH and EIGHTEENTH, registered last, which is where
+   * `jobs.ts` puts them. `sweepCriticalChaser` is `every(60_000)`; `sweepUnreadWatchman` is
+   * `dailyIst("08:00")`. Both take literal cadences and widened no `JobIntervals` literal, so once
+   * again the named-array censuses are the only guards that see them.
+   */
+  "sweepCriticalChaser",
+  "sweepUnreadWatchman",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;
@@ -359,7 +379,12 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
       expect(pairs).toEqual([
         // Plan 11c T1: `ops.mode_changed` is the alerts consumer's THIRD subscription (D4). The
         // array is `.sort()`ed above, so it lands after `notification.failed`.
-        ["kernel.alerts", ["escalation.triggered", "notification.failed", "ops.mode_changed"]],
+        // 18a-iii T5 / D7: the radiology chasers are the alerts consumer's FOURTH and FIFTH
+        // subscriptions. `.sort()` above puts them first — `imaging.` precedes `escalation.`.
+        ["kernel.alerts", [
+          "escalation.triggered", "imaging.critical_overdue", "imaging.report_unread",
+          "notification.failed", "ops.mode_changed",
+        ].sort()],
         [
           "kernel.notify",
           [
@@ -460,7 +485,7 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
     }
   });
 
-  it("(a) boots the worker context, and its Scheduler names EXACTLY the sixteen jobs", async () => {
+  it("(a) boots the worker context, and its Scheduler names EXACTLY the eighteen jobs", async () => {
     const ctx = await NestFactory.createApplicationContext(WorkerModule, { logger: false });
     try {
       const workerDb = ctx.get<Db>(DB);
@@ -477,9 +502,9 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
       // the same value `worker.ts` passes. `registerAllJobs` reads no environment of its own.
       registerAllJobs(scheduler, workerDb, registry, workerConsumers(workerDb), config);
 
-      // THE CENSUS. `toEqual` on the whole array is the point: it is exactly these sixteen, in
+      // THE CENSUS. `toEqual` on the whole array is the point: it is exactly these eighteen, in
       // registration order — not "at least", not "these among others".
-      expect(scheduler.jobs()).toEqual(THE_SIXTEEN);
+      expect(scheduler.jobs()).toEqual(THE_EIGHTEEN);
       // The scheduler was never started, so nothing was scheduled and nothing needs stopping.
       expect(scheduler.leakedErrors()).toEqual([]);
     } finally {

@@ -147,6 +147,27 @@ export const imagingOutsideStudyRegistered = defineEvent("imaging.outside_study_
   modality: z.string().min(1), arrival: z.string().min(1),
 }));
 
+/**
+ * ═══ 18a-iii T5 / D7 — THE TWO CHASERS' VOICES ═══
+ *
+ * Each is emitted once per row, by a worker sweep, when a promise the department made to itself has
+ * gone past its window. **Neither changes anything**: the alerts consumer turns them into a row in
+ * front of a human, and the human decides.
+ *
+ * The payloads carry ids, a tier and a NUMBER OF MINUTES OR HOURS. They carry no finding, no
+ * impression and no name — this module's rule, and here it is doubly load-bearing: the alerts
+ * consumer builds its title and body exclusively from structural payload fields **because an alert
+ * is fanned straight to a browser**, and its own header says so in as many words.
+ */
+export const imagingCriticalOverdue = defineEvent("imaging.critical_overdue", MODULE, z.object({
+  criticalId: id, reportId: id, studyId: id,
+  category: z.enum(["red", "orange", "yellow"]), overdueMin: z.number().int().positive(),
+}));
+
+export const imagingReportUnread = defineEvent("imaging.report_unread", MODULE, z.object({
+  reportId: id, studyId: id, unreadHours: z.number().int().nonnegative(),
+}));
+
 /** Every event this module declares, for the catalogue parity test. */
 export const RADIOLOGY_EVENTS = [
   imagingStudyScheduled,
@@ -160,4 +181,6 @@ export const RADIOLOGY_EVENTS = [
   imagingContrastAdministered,
   imagingContrastReaction,
   imagingOutsideStudyRegistered,
+  imagingCriticalOverdue,
+  imagingReportUnread,
 ] as const;
