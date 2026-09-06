@@ -8,6 +8,7 @@ import type { Lane } from "./model";
 import { useDesk } from "./session";
 import { PhotoPanel } from "./photo";
 import { PapersSheet } from "./papers";
+import { HistorySheet } from "./history-sheet";
 import { usePaletteOptional } from "../../components/command-palette";
 
 /**
@@ -28,7 +29,28 @@ export function Overlays(): React.ReactElement | null {
     case "edit": return <EditOverlay />;
     case "schema": return <SchemaOverlay />;
     case "papers": return <PapersOverlay />;
+    case "history": return <HistoryOverlay />;
   }
+}
+
+/** FD-28 — the whole visit history, one layer over the desk. See `history-sheet.tsx`. */
+function HistoryOverlay(): React.ReactElement {
+  const d = useDesk();
+  const p = d.s.person;
+  return (
+    <Sheet width={720}>
+      {p === null ? (
+        <div style={{ padding: "18px 20px" }} data-testid="history-empty">
+          <div style={{ fontSize: 15, fontWeight: 600 }}>Nobody in hand</div>
+          <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--dim)" }}>
+            A history belongs to a person. Pick the patient first.
+          </p>
+        </div>
+      ) : (
+        <HistorySheet patientId={p.id} name={p.name} />
+      )}
+    </Sheet>
+  );
 }
 
 /**

@@ -2737,6 +2737,12 @@
       }
     },
     "history": {
+      "fullCount": "{{count}} विज़िट दर्ज",
+      "fullCount_other": "{{count}} विज़िट दर्ज",
+      "rxLines": "{{count}} दवा",
+      "rxLines_other": "{{count}} दवाएँ",
+      "rowOpensPapers": "पर्ची, प्रिस्क्रिप्शन शीट या बिल दोबारा छापने के लिए कोई विज़िट खोलें।",
+      "seeMore": "और देखें",
       "title": "इनका इतिहास",
       "reading": "फ़ाइल पढ़ी जा रही है…",
       "first": "पहली विज़िट — आज से पहले कुछ दर्ज नहीं है।",
@@ -3599,6 +3605,14 @@
       "drawerOpen": "दराज़ खुली · {{float}} फ़्लोट"
     },
     "rail": {
+      "papersForVisit": "इस विज़िट के काग़ज़",
+      "advanceHeld": "जमा है, अभी आवंटित नहीं",
+      "noPhone": "फ़ाइल में नंबर नहीं",
+      "token": "टोकन",
+      "noToken": "अभी टोकन नहीं — विज़िट क़तार में नहीं जुड़ी",
+      "seeFullHistory": "और देखें",
+      "totalOutstanding": "{{count}} पुराने बिल का बकाया",
+      "totalOutstanding_other": "{{count}} पुराने बिलों का बकाया",
       "paying": "भुगतान कर रहे हैं",
       "thisVisit": "यह विज़िट",
       "onTheirAccount": "इनके खाते पर",

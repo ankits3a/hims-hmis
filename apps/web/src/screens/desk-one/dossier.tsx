@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { useAuth } from "../../lib/auth";
 import { useQuery } from "@tanstack/react-query";
 import { patientTimeline } from "../../lib/opd-api";
 import { dayMonthIst } from "../../lib/format";
@@ -30,16 +31,32 @@ import { PhotoPanel } from "./photo";
  * been here, and when" question a counter asks; a scrolling clinical record is a different screen
  * with a different permission.
  */
+/** The rail shows three. The owner's number, and the rest is behind `See more`. */
+const HISTORY_ROWS = 3;
+
 function History({ patientId }: { patientId: string }): React.ReactElement | null {
   const { t } = useTranslation();
   const d = useDesk();
+  const { can } = useAuth();
   const history = useQuery({
     queryKey: ["d1", "timeline", patientId],
     queryFn: () => patientTimeline(patientId),
     staleTime: 60_000,
     retry: false,
   });
-  const items = (history.data?.items ?? []).slice(0, 5);
+  /*
+    ═══ FD-28 — THREE, AND A DOOR TO THE REST ═══
+
+    Owner, 2026-09-06: *"Show maximum 3 history followed by a 'See More' link/button … Only if the
+    registration user has permission to see the full history."*
+
+    The cut was five and the server has always sent up to FIFTY (`patientTimeline`'s own default),
+    so everything past the fifth visit was fetched, paid for and thrown away in this one line. Three
+    now, and the rest is one click into `HistorySheet` — which reuses this exact query key, so it
+    costs no second request.
+  */
+  const all = history.data?.items ?? [];
+  const items = all.slice(0, HISTORY_ROWS);
 
   return (
     <>
@@ -93,6 +110,28 @@ function History({ patientId }: { patientId: string }): React.ReactElement | nul
               </span>
             </button>
           ))}
+          {/*
+            ═══ GATED ON THE ROUTE'S OWN STRING, AND OFFERED ONLY WHEN THERE IS MORE ═══
+
+            `GET /opd/patients/:id/timeline` is `opd.visits.read`. `front_office` holds it — the
+            registration and booking chairs the owner asked about — and `cashier` deliberately does
+            not. Asking `can()` here rather than inside the sheet means a clerk who could not open it
+            is never offered it: a button that answers 403 is worse than no button at all.
+
+            And it appears only when the rail is actually hiding something. "See more" over a
+            complete list is a promise the screen cannot keep.
+          */}
+          {all.length > HISTORY_ROWS && can("opd.visits.read") && (
+            <button
+              type="button"
+              data-testid="history-see-more"
+              className="sec"
+              style={{ marginTop: 8, height: 24, fontSize: 11, width: "100%" }}
+              onClick={() => d.patch({ overlay: "history" })}
+            >
+              {t("registrationCounter.history.seeMore")} · {all.length}
+            </button>
+          )}
         </div>
       )}
     </>

@@ -41,7 +41,15 @@ function mount(at: string, extra: Record<string, unknown> = {}): void {
     "GET /api/auth/me": {
       actor: { type: "user", id: "u1" },
       permissions: {
-        hospital: ["opd.visits.open", "patients.register", "opd.appointments.manage", "billing.invoice.issue"],
+        /*
+          FD-28 — `opd.visits.read` added: it is what `GET /opd/patients/:id/timeline` requires and
+          what `front_office` actually holds, so a fixture without it was modelling a clerk who does
+          not exist. The seat WITHOUT it is asserted deliberately, in its own test below.
+        */
+        hospital: [
+          "opd.visits.open", "opd.visits.read", "patients.register",
+          "opd.appointments.manage", "billing.invoice.issue",
+        ],
         scoped: { department: {}, floor: {} },
       },
     },
@@ -378,5 +386,76 @@ describe("FD-27 · the papers a patient lost", () => {
     await openPapers();
     expect(screen.getByTestId("papers-no-jobs")).toBeInTheDocument();
     expect(screen.getByTestId("papers-no-bills")).toBeInTheDocument();
+  });
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-28 — THREE VISITS, AND A DOOR TO THE REST. Owner, 2026-09-06.
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * *"the user can't see full history of the patient … Show maximum 3 history followed by a 'See More'
+ * link/button … Only if the registration user has permission to see the full history."*
+ *
+ * The server has always sent up to FIFTY visits; the rail cut them to five with one client-side
+ * `.slice`. So nothing was fetched that was not already paid for — everything past the fifth was
+ * simply discarded on arrival.
+ */
+describe("FD-28 · the history rail", () => {
+  const FIVE = {
+    items: Array.from({ length: 5 }, (_, i) => ({
+      encounterId: `e-${String(i)}`, serviceDate: `2026-09-0${String(i + 1)}`,
+      departmentName: "Cardiology", doctorName: "Dr Anil Desai", status: "completed",
+      prescriptionLineCount: 0,
+    })),
+  };
+
+  async function holdWithHistory(perms?: string[]): Promise<ReturnType<typeof userEvent.setup>> {
+    mount("/registration", {
+      "GET /api/opd/patients/p-1/timeline": FIVE,
+      ...(perms === undefined ? {} : {
+        "GET /api/auth/me": {
+          actor: { type: "user", id: "u1" },
+          permissions: { hospital: perms, scoped: { department: {}, floor: {} } },
+        },
+      }),
+    });
+    await go("/registration");
+    await waitFor(() => expect(screen.getByTestId("desk-one")).toBeInTheDocument());
+    const user = userEvent.setup({ delay: null });
+    await hold(user);
+    await waitFor(() => expect(screen.getAllByTestId("history-row").length).toBeGreaterThan(0), { timeout: 3000 });
+    return user;
+  }
+
+  it("shows three, not five, and says how many there are behind the button", async () => {
+    await holdWithHistory();
+    expect(screen.getAllByTestId("history-row")).toHaveLength(3);
+    expect(screen.getByTestId("history-see-more")).toHaveTextContent("5");
+  });
+
+  it("See more opens the whole history without leaving the desk — the patient stays in the column", async () => {
+    const user = await holdWithHistory();
+    await user.click(screen.getByTestId("history-see-more"));
+    await waitFor(() => expect(screen.getByTestId("history-sheet")).toBeInTheDocument());
+    expect(screen.getAllByTestId("history-full-row")).toHaveLength(5);
+    /*
+      THE DESK IS STILL UNDERNEATH. The owner asked for "a full page"; on this screen a page means a
+      NAVIGATION, and a navigation drops the person in hand — the defect FD-9 deleted three routes to
+      fix. The dossier is still mounted behind the sheet, which is what makes this an overlay.
+    */
+    expect(screen.getByTestId("desk-one")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/registration");
+  });
+
+  /*
+    THE PERMISSION GATE THE OWNER ASKED FOR, asserted from the side that can go wrong silently. The
+    timeline route is `opd.visits.read`; a clerk without it must never be OFFERED the button, because
+    a button that answers 403 is worse than no button.
+  */
+  it("a clerk without opd.visits.read is not offered the button at all", async () => {
+    await holdWithHistory(["patients.register", "opd.appointments.manage", "billing.invoice.issue"]);
+    expect(screen.getAllByTestId("history-row").length).toBeGreaterThan(0);
+    expect(screen.queryByTestId("history-see-more")).not.toBeInTheDocument();
   });
 });

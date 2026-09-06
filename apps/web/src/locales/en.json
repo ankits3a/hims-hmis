@@ -2737,6 +2737,12 @@
       }
     },
     "history": {
+      "fullCount": "{{count}} visit on file",
+      "fullCount_other": "{{count}} visits on file",
+      "rxLines": "{{count}} medicine",
+      "rxLines_other": "{{count}} medicines",
+      "rowOpensPapers": "Open a visit to reprint its slip, its prescription sheet or its bill.",
+      "seeMore": "See more",
       "title": "their history",
       "reading": "reading their file…",
       "first": "First visit — nothing on file before today.",
@@ -3599,6 +3605,14 @@
       "drawerOpen": "drawer open · {{float}} float"
     },
     "rail": {
+      "papersForVisit": "Their papers for this visit",
+      "advanceHeld": "on deposit, not yet allocated",
+      "noPhone": "no number on file",
+      "token": "Token",
+      "noToken": "no token yet — the visit has not joined a queue",
+      "seeFullHistory": "See more",
+      "totalOutstanding": "outstanding across {{count}} earlier bill",
+      "totalOutstanding_other": "outstanding across {{count}} earlier bills",
       "paying": "Paying",
       "thisVisit": "This visit",
       "onTheirAccount": "On their account",

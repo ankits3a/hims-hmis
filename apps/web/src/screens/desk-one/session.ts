@@ -55,7 +55,7 @@ export type FutureHold = {
  * FD-27 — `papers` joins the five. It is the "I lost my bill" surface: the print jobs and the bills
  * raised for ONE encounter, with a way to hand each of them over again. See `papers.tsx`.
  */
-export type Overlay = "palette" | "flow" | "queues" | "edit" | "schema" | "papers" | null;
+export type Overlay = "palette" | "flow" | "queues" | "edit" | "schema" | "papers" | "history" | null;
 
 /**
  * FD-12 — one entitlement the patient produced at the desk. Kept as STRINGS like the rest of this
