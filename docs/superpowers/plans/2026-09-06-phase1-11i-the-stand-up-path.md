@@ -1,10 +1,10 @@
 # Phase 11i — The stand-up path: UAT, the readiness census, and the laboratory opening first
 
-**Lane: LIGHT** (7 tasks, no new module, **no migration** — EXECUTE-METHOD-V3 §2).
-**Stop-loss: 2,120,000** = main-session `7 × 200,000` + task-subagent `0` (§2.143a) + review `240,000 × (1 + 2.0)` (§2.145, the repair term).
+**Lane: LIGHT** (8 tasks, no new module, **no migration** — EXECUTE-METHOD-V3 §2).
+**Stop-loss: 2,320,000** = main-session `8 × 200,000` + task-subagent `0` (§2.143a) + review `240,000 × (1 + 2.0)` (§2.145, the repair term).
 **Lane:** the pharmacy lane's worktree, branch `lane/commissioning-11i` cut fresh from `origin/main` — this lane becomes the commissioning lane (roadmap §0b.2), and the lane that builds UAT is the lane that runs it. The LIMS lane takes 17-E T7 in parallel. **One task = one PR**: commit by pathspec, push, `gh pr create`; CI is the gate; locally only the touched suites, always through `test-lock.sh`. Docker builds go through the same mutex — a build is a builder.
 
-**Status: AUTHORED 2026-09-06; REVISED the same day by a second session (execution order D11, the lane, the restore drill in T7); NOT APPROVED, NOT STARTED.** Proposed by `2026-09-06-ROADMAP-v2.md` §7 as the first phase of the commissioning track. **Author it; do not execute it** was the brief's instruction to the session that wrote this.
+**Status: AUTHORED 2026-09-06; REVISED the same day by a second session (execution order D11, the lane, the restore drill in T7); THIRD READING the same evening by a Fable session against `f211075` (D12 — the rehearsal on the restored copy; D13 — the backout; T8; §2 rows 10, 11, 14, 17 re-measured); NOT APPROVED, NOT STARTED.** Proposed by `2026-09-06-ROADMAP-v2.md` §7 as the first phase of the commissioning track. **Author it; do not execute it** was the brief's instruction to the session that wrote this.
 
 ## 1. Why this phase
 
@@ -40,7 +40,7 @@ against UAT and the three drills passed; the lab runbook carries a dated `## Exe
 catch-up deploy runbook exists with the 18c window in it; and §6 records what was deliberately not
 built.
 
-## 2. Ground truth — measured 2026-09-06 at `origin/main` `3b35179`, re-measured at `78f5947` (deployed base `c11833d`)
+## 2. Ground truth — measured 2026-09-06 at `origin/main` `3b35179`, re-measured at `78f5947`, third reading at `f211075` (deployed base `c11833d`)
 
 | # | what the stand-up needs | what exists today | where | 11i |
 |---|---|---|---|---|
@@ -53,13 +53,14 @@ built.
 | 7 | the golden catalogue on a non-production box | `seed-lab-catalogue.ts` refuses when `DATABASE_URL` contains `:5434` **or** `NODE_ENV === "production"`. The production image sets `NODE_ENV=production`; so does UAT if it runs the same image | `scripts/seed-lab-catalogue.ts:170` | **T5** |
 | 8 | a lab day on a non-production box | `seed-lab-demo.ts` refuses `NODE_ENV=production`, "refuses to run without being asked twice", finds its actors by role and mints no credentials, writes through the real paths. Merged as #104. **Not in `SEED_STEP_SCRIPTS`, deliberately** | `scripts/seed-lab-demo.ts:284–306` | **T5, T6** |
 | 9 | a second environment from the same deploy | `deploy.sh`: `DEPLOY_DIR` is env-overridable (`HMIS_DEPLOY_DIR`), but `PROJECT="hmis-prod"`, the three image tags, the cron file and the edge gate's hostname are fixed. Steps 4 (pgBackRest stanza), 7 (backup cron) and 8 (edge gate on the real hostname) are production-only by nature | `deploy.sh:44–72, 380–420, 645, 714` | **T3** |
-| 10 | what runs on the box today | `hmis-prod-*` (9 containers, db limit 4 GB), `hmis-preview-caddy` (`:8443`, API from `/opt/hmis`'s build on `:3000`), `hmis-aerb-demo-caddy` (`:8444`, API `:3020`, DB `hmis_aerb_demo`), `hmis-db-1` (the lanes' Postgres). **15 GB total; 9.3 GB used with 5 GB of swap at the first reading, 7 GB used / 7 GB available at the second** — a moment either way; the demos retire regardless. A weekly `restore-drill.sh` host cron and its watcher rule are installed by `deploy.sh` step 7 (11c D11); its log has never been read by a runbook | `docker ps`, `free -h`, `board.sh`, `deploy.sh:637` | **T3 replaces the two demos; T7 reads the drill log** |
-| 11 | the migrator's skip rule | drizzle-orm 0.40.1 applies entries whose folder millis are **greater than** the single latest `created_at`; `hash` is written and never read. `main`'s journal is strictly monotonic (77 entries, checked twice); production's watermark is `0055`'s `when = 1788351286473` | `scripts/migrate.ts`; `drizzle/meta/_journal.json` | **T4** |
+| 10 | what runs on the box today | `hmis-prod-*` (9 containers, db limit 4 GB), `hmis-preview-caddy` (`:8443`, API from `/opt/hmis`'s build on `:3000`), `hmis-aerb-demo-caddy` (`:8444`, API `:3020`, DB `hmis_aerb_demo`), `hmis-db-1` (the lanes' Postgres). **15 GB total; 9.3 GB used with 5 GB of swap at the first reading, 7 GB used / 7 GB available at the second** — a moment either way; the demos retire regardless. A weekly `restore-drill.sh` host cron and its watcher rule are installed by `deploy.sh` step 7 (11c D11); its log had never been read by a runbook. **Third reading read it** (`/opt/hmis-prod/log/restore-drill.log`, a host file): the drill ran 2026-09-05 22:00 UTC and **PASSED** — full backup 33 s, restore 3 s, 498 events and 56 migrations restored and read back out of the scratch cluster. Its step 5 runs **the application's migrator from `hmis-prod/server:latest`** against the restored copy, and its two count assertions are `>=` (`restore-drill.sh:340,342`), so a candidate image that applies the pending journal passes them as the script stands. The image is a single env override (`HMIS_DRILL_SERVER_IMAGE`, line 49) | `docker ps`, `free -h`, `board.sh`, `deploy.sh:637`, `restore-drill.sh:49,317–343` | **T3 replaces the two demos; T7 reads the drill log; T8 makes the drill the rehearsal (D12)** |
+| 11 | the migrator's skip rule | drizzle-orm 0.40.1 applies entries whose folder millis are **greater than** the single latest `created_at`; `hash` is written and never read. `main`'s journal is strictly monotonic (78 entries at `f211075`, checked three times); production's watermark is `0055`'s `when = 1788351286473`; 22 pending (`0056`–`0077`) | `scripts/migrate.ts`; `drizzle/meta/_journal.json` | **T4** |
 | 12 | the lab runbook | 320 lines, in the deployed base. §0 role keys · §1 preconditions (1.3: a second administrator) · §2 `LAB` department + pathologist of record · §3 grants · §4 catalogue via `POST /lab/catalogue/*`, every orderable priced · §5 definitions + approval type · §9 pilot harvest · §10 drills A–C · §11 five-seat walk-through. **Status line says NOT DEPLOYED; the lab is deployed since `0046`.** Two sections are numbered 11 | `docs/runbooks/lab-go-live.md` | **T6 executes and corrects it** |
 | 13 | the other three runbooks | pharmacy (119 lines; `seed-pharmacy` already establishes G2), radiation safety (303; **§0: ionising acquisition refuses `device_not_licensed` from the moment `0060`–`0065` land, and T6's filing screen ships in the same deploy**), PACS (140; bridge account + AE titles). None in the deployed base | `docs/runbooks/*` | **T2 reads them; T7 sequences 18c** |
-| 14 | what production changes on the catch-up | +`pharmacy`, +`aerb` (never deployed); +6 routes (`/appointment`, `/counter/figures`, `/lab/reports`, `/pharmacy/counter`, `/pharmacy/items`, `/radiology/radiation-safety`); **−3 routes production serves today** (`/counter/seat`, `/counter/seat/figures`, `/opd/vitals/bay`); 21 migrations (`0056`–`0076`) | `git show c11833d:apps/web/src/router.tsx` vs `origin/main` | **T7** |
+| 14 | what production changes on the catch-up | +`pharmacy`, +`aerb` (never deployed); +6 routes (`/appointment`, `/counter/figures`, `/lab/reports`, `/pharmacy/counter`, `/pharmacy/items`, `/radiology/radiation-safety`); **−3 routes production serves today** (`/counter/seat`, `/counter/seat/figures`, `/opd/vitals/bay` — the last is a rename to `/opd/vitals`, so the diff is +7/−3); 22 migrations (`0056`–`0077`, `0077` being #108's outside-study register, merged 06:35 UTC); 79 commits | `git show c11833d:apps/web/src/router.tsx` vs `origin/main` | **T7** |
 | 15 | the operating mode | `OPERATING_MODES = commissioning · ramp · normal · degraded · downtime`; `commissioning` is initial-only; the exit needs `validate:config` ok within 24 h (CA signature + active tariff). **No module reads the mode** — `getOperatingMode` has no caller outside `kernel/ops` | `kernel/ops/mode.ts:114`, `scripts/validate-config.ts` | **D7 — "open" is not the mode** |
 | 16 | the pool | `new Pool({ connectionString: url })` — no `max`, no `connectionTimeoutMillis` | `kernel/db/client.ts:9` | **not this phase** — 11j step 1–2, one PR, decided in the roadmap Q6 |
+| 17 | a way back from a bad deploy | **none.** `deploy.sh` tags the three images `:latest` only (`deploy.sh:63–65,183–187`) and **refuses to build unless `HEAD` equals `origin/main`** (`deploy.sh:59`). So the previous image is overwritten at build time, and a rebuild from the deployed base is refused by the script itself — which is why PR #73 exists as a branch that can never merge. Migrations are additive (CLAUDE.md), so old code on the new schema is the supported backout — but nothing can run it | `docker/prod/deploy.sh` | **T8 (D13)** |
 
 Three measured facts that shape the design and would otherwise be guessed:
 
@@ -127,14 +128,39 @@ Three measured facts that shape the design and would otherwise be guessed:
 - **D10 — The lab's runbook is CORRECTED in place, not rewritten.** Its status line, its §1.1
   migration number, its §5 (now a deploy step), its duplicate §11, and the new dated `## Executed`
   section. The drills and the walk-through are right and are what T6 runs.
-- **D11 — EXECUTION ORDER: T1, T4, T2 and 11j's two pool values land first; T7's runbook is written
-  and its 18c rehearsal performed on the existing AERB bench; the owner deploys production; only
-  then T3, T5, T6.** Production has never left `commissioning`, no department has opened on it, and
+- **D11 — EXECUTION ORDER: T1, T4, T2, T8 and 11j's two pool values land first; T7's runbook is written,
+  its 18c rehearsal performed on the existing AERB bench and its migration rehearsal performed on the
+  restore drill (D12); the owner deploys production; only then T3, T5, T6.** Production has never left `commissioning`, no department has opened on it, and
   the batch's one behaviour-changing step (18c's licence gate) already has a bench on `:8444`. UAT
   is for the pilots (G5), not a gate on a deploy into an empty hospital, and every week it gates
   adds two or three migrations to the batch (roadmap §0b.1). The one fact that reverses this — a real
-  patient on production — is the owner's to state; then T3/T5/T6 precede the deploy as the first
-  draft had it.
+  patient on production — is the owner's to state; under D12 it changes the *announcement and the window*, not the order —
+  the rehearsal runs against production's own data either way.
+- **D12 — THE MIGRATION REHEARSAL IS THE RESTORE DRILL POINTED AT THE CANDIDATE IMAGE, not UAT and
+  not a synthetic database.** The drill (§2 #10) already restores last night's production backup into
+  a scratch container, boots a second postmaster on it, runs the application's migrator from a named
+  server image, reads the census back out of the restored data, and destroys the container on every
+  exit path. With `HMIS_DRILL_SERVER_IMAGE` set to an image built from the catch-up tip, that is the
+  22 pending migrations applied to a faithful copy of production — real data shape, real watermark,
+  real journal, real image — in minutes, with nothing touched that production serves. UAT rehearses
+  *people* (G5); the drill rehearses *the migration*. The first draft wanted UAT for this and the
+  second dropped it; both missed that the rehearsal was installed on 2 September. Three things the
+  drill does not do today and T8 adds: run the seeds and `check-config-present` after the migrator
+  (a deploy is migrations *and* the rows its modules throw without); assert the restored migration
+  count **equal** to the candidate's journal length (the `>=` that lets a rehearsal pass also lets a
+  half-applied one pass); and label or withhold the `backup.drill_passed` event it appends to the
+  LIVE event log (`restore-drill.sh:135`, the T5 seam) so a rehearsal never reads as a drill on the
+  dashboard. The drill takes a real incremental backup first (its step 2); that is a feature.
+- **D13 — A DEPLOY WITHOUT A BACKOUT IS NOT A DEPLOY RUNBOOK.** `deploy.sh` also tags each image
+  with the short SHA it was built from (`hmis-prod/server:<sha>` beside `:latest`), and gains a
+  `HMIS_DEPLOY_ROLLBACK_TO=<sha>` path that retags and restarts api/worker/caddy from an existing
+  image **without building and without migrating**. The backout for the catch-up deploy is therefore
+  the image built from `c11833d`, running on the migrated schema, which additive migrations permit
+  by rule. The one thing a backout cannot undo is data written by the new code in the window — the
+  runbook says so and names the window (T7 step 4). `deploy.sh:59`'s `HEAD == origin/main` refusal
+  stays for the *build* path; the rollback path never builds. Before the catch-up deploy, T8 tags the
+  currently running images `<c11833d>` by hand (a `docker tag` of what is already on the daemon), so
+  the first deploy under this rule already has somewhere to go back to.
 
 ## 4. Tasks — one PR each, fail-first, rail + consumer together
 
@@ -227,10 +253,21 @@ or touch `hmis-prod-*`.
 
 ### T7 — ROUTINE · The catch-up deploy runbook for production — written in week 1, run by the owner (D11)
 `docs/runbooks/catch-up-deploy-2026-09.md`, the ordered acts for the owner, each with its check:
-(0) **the tip**: the deploy is cut from a `main` tip that includes 18a-iii T4 (#108 — until it merges, `recordAcquired` writes an AERB dose row for an outside study on an ionising type) and every close-review fix the lanes have flagged as "must not deploy without"; the runbook names the SHA, and the rule that generalises it — a lane that finds a must-not-deploy-without puts a `deploy-blocker` label on the fixing PR; no deploy takes a tip while one is open (roadmap §0 row 10); (1) the owner's applied-count query, expected 56, watermark `0055`; (2) the most recent weekly
-restore-drill log read and its date recorded (`/opt/hmis-prod/drill/`, 11c D11) — a deploy onto a
-database whose backups have not been proven to restore is the one thing this runbook refuses;
-(2b) 18c's §0 rehearsal on the AERB demo bench that exists (`/opt/hmis-aerb-demo`): migrate without a
+(0) **the tip**: the deploy is cut from a `main` tip that includes 18a-iii T4 (#108, **merged 2026-09-06 06:35 UTC as `0077`** — so any tip at or after `f211075` satisfies this; until it merged, `recordAcquired` wrote an AERB dose row for an outside study on an ionising type) and every close-review fix the lanes have flagged as "must not deploy without" (the third reading's census of those is roadmap §0c); the runbook names the SHA, and the rule that generalises it — a lane that finds a must-not-deploy-without puts a `deploy-blocker` label on the fixing PR; no deploy takes a tip while one is open (roadmap §0 row 10); (1) the owner's applied-count query, expected 56, watermark `0055`; (2) the most recent weekly
+restore-drill log read and its date recorded (`/opt/hmis-prod/log/restore-drill.log`, 11c D11;
+last PASSED 2026-09-05 22:00 UTC, 498 events, 56 migrations) — a deploy onto a database whose
+backups have not been proven to restore is the one thing this runbook refuses; **(2a) the migration
+rehearsal (D12, T8)**: build the candidate images from the named SHA into `hmis-prod/server:<sha>`
+(the build half of `deploy.sh`, no migrate, no restart), then run the drill with
+`HMIS_DRILL_SERVER_IMAGE=hmis-prod/server:<sha> HMIS_DRILL_REHEARSAL=1` — expected transcript:
+`migrations applied`, restored migrations **= 78** (the candidate's journal length, not `>= 56`), the
+seeds and `check-config-present` green against the restored copy, `standup:check all` printed from
+the restored copy (its RED rows are a preview of step 3), the scratch container destroyed; a
+rehearsal that fails stops the runbook here and the failing migration is the lane's to fix on
+`main`, never by hand on production; **(2b) the backout tag**: `docker tag hmis-prod/server:latest
+hmis-prod/server:c11833d` (and web, db) before anything is rebuilt, and the runbook records that
+`HMIS_DEPLOY_ROLLBACK_TO=c11833d` is the way back — old code on the new schema, additive by rule;
+(2c) 18c's §0 rehearsal on the AERB demo bench that exists (`/opt/hmis-aerb-demo`): migrate without a
 licence, start a CT, read `device_not_licensed`, run `file-demo.sh`, watch `GET /aerb/licences/gaps`
 empty — recorded, not narrated; (3) `standup:check all` on production
 **before** (read-only, through `compose run --rm api`, exactly as the seeds run) — the RED rows are
@@ -242,9 +279,30 @@ certificates, the ionising devices stay refused after the window and that is rec
 census row, not a blocker, because radiology is not open; (5) the three deleted routes announced to
 anyone who bookmarked them; (6) `standup:check all` **after** — the lab's G2 rows must have gone
 green by the deploy alone; (7) close PR #73 as superseded; (8) the post-deploy edge gate the script
-already runs. **Mutants** (for a runbook, the mutant is a reader): a step whose check the owner
+already runs; (9) **the backout, written as a command and an expected line even if never run**:
+`HMIS_DEPLOY_ROLLBACK_TO=c11833d bash docker/prod/deploy.sh` retags and restarts without building
+or migrating; the edge gate runs again; what it cannot undo is any row the new code wrote inside the
+window, and the runbook says which tables those could be (the 18c licence rows filed in step 4, any
+`print_jobs`, any pharmacy row — none of which exist until a human acts). **Mutants** (for a runbook, the mutant is a reader): a step whose check the owner
 cannot perform from his own session; a step that requires a lane to hold a production credential;
 a step written as "should" rather than as a command and an expected line.
+
+### T8 — ROUTINE · The rehearsal mode of the restore drill, and the backout tag (D12, D13)
+`docker/prod/drill/restore-drill.sh` gains `HMIS_DRILL_REHEARSAL=1`: after the migrator (step 5) it
+runs the same seed list and `check-config-present` that `deploy.sh` step 5 runs, from the same image,
+against the scratch cluster, then `standup:check all` (T2) and prints it; step 6's migration assertion
+becomes **equality** with the candidate image's journal length (read from the image, not typed); the
+T5-seam event is appended as `backup.drill_rehearsed` — a new kind beside `drill_passed`/`drill_failed`
+in `kernel/retention/events.ts`, so the Grafana rule that watches for a missed drill does not count
+a rehearsal as one and a failed rehearsal never pages as a failed backup. `deploy.sh` tags every
+image `<name>:<short-sha>` beside `:latest`, and `HMIS_DEPLOY_ROLLBACK_TO=<sha>` skips steps 1, 4 and
+5 entirely, retags `:latest` from `<sha>`, restarts api/worker/caddy and runs the step-8 edge gate.
+The drill is rehearsed the way it was built to be (`HMIS_DRILL_REPO_PATH` at a scratch prefix, a
+throwaway stanza) — never against the production repository from a lane. `deploy-parity.test.ts`
+pins: the rollback path contains no `docker build` and no `migrate`; the tag list; the new event
+kind registered. **Mutants:** the rehearsal asserting `>=` (a half-applied journal passes); the
+rehearsal appending `drill_passed`; the rollback path reaching `migrate`; a `:latest` retag without
+the `<sha>` image existing (must refuse by name, not fail inside compose).
 
 ## 5. Verify
 
@@ -253,6 +311,9 @@ pnpm typecheck && pnpm lint
 /opt/hmis-lanes/.orchestrator/bin/test-lock.sh run pharmacy \
   pnpm --filter @hmis/core exec jest -w 2 test/deploy-parity.test.ts test/seed-roles.test.ts \
     test/standup-check.test.ts test/migrate-watermark.test.ts src/modules/lab/definitions
+/opt/hmis-lanes/.orchestrator/bin/test-lock.sh run pharmacy \
+  bash -c 'HMIS_DEPLOY_DIR=/opt/hmis-uat HMIS_DRILL_STANZA=rehearsal HMIS_DRILL_REPO_PATH=/hmis-rehearsal \
+           HMIS_DRILL_SERVER_IMAGE=hmis-uat/server:latest HMIS_DRILL_REHEARSAL=1 bash docker/prod/drill/restore-drill.sh'
 /opt/hmis-lanes/.orchestrator/bin/test-lock.sh run pharmacy \
   bash -c 'HMIS_TARGET=uat HMIS_DEPLOY_DIR=/opt/hmis-uat bash docker/prod/deploy.sh'
 ```
@@ -286,8 +347,13 @@ performed is a green test that was never run.
 
 ## 7. Owner rulings
 
-**None are needed to execute 11i.** **One fact, not a ruling, sets the order (D11):** whether any
-real patient exists on production. Assumed not; if yes, T3/T5/T6 precede the deploy. D1 (UAT on this box), D2 (Class C by deploy), D4 (deploy-dark),
+**None are needed to execute 11i.** **One fact, not a ruling, used to set the order (D11) and now sets
+the announcement (D12):** whether any real patient exists on production. The evidence the third
+reading could read without touching a container — 498 events in production's entire event log at
+2026-09-05 22:00 UTC, restored and counted by the drill — says a hospital that has not registered
+anyone in earnest; the owner's one-line confirmation is still asked for. If real patients exist, the
+rehearsal (2a) is the same, the three deleted front-desk routes are announced to the people who use
+them, and the window is declared at a quiet hour; the order does not change. D1 (UAT on this box), D2 (Class C by deploy), D4 (deploy-dark),
 D5 (the door), D8 (cadence) are standard-hospital operability calls, marked DECIDED per CLAUDE.md.
 
 **One money item shapes D1 without blocking it:** a second server (roadmap §6.1). If the owner
