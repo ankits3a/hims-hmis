@@ -5,6 +5,7 @@ import {
   labAnalytes, labOrderableAnalytes, labOrderables, labReferenceRanges, labReflexRules,
 } from "../../kernel/db/schema";
 import { assertFormulaParses } from "./formula";
+import { isFutureIstDay } from "./ranges";
 import { LabError } from "./errors";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -365,7 +366,7 @@ export async function putReferenceRange(
   if (input.source.trim() === "") {
     throw new LabError("catalogue_invalid", `${analyte.code}: a reference range names its source`);
   }
-  if (input.effectiveFrom > istDayString(now)) {
+  if (isFutureIstDay(input.effectiveFrom, now)) {
     throw new LabError(
       "catalogue_invalid",
       `${analyte.code}: a range effective ${input.effectiveFrom} is in the future, and nothing in ` +
@@ -412,10 +413,6 @@ export async function putReferenceRange(
   return id;
 }
 
-/** The IST calendar day of an instant, as `YYYY-MM-DD` — the form `effective_from` is stored in. */
-function istDayString(at: Date): string {
-  return new Date(at.getTime() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
-}
 
 /** The ACTIVE reflex rules for one analyte. 17b calls it inside the verifying transaction (DD8). */
 export async function activeReflexRules(
