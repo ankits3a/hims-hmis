@@ -3060,7 +3060,8 @@
     "fefo_override_unavailable": "That batch cannot cover this quantity at this store.",
     "invoice_not_settled": "This dispense carries no settled invoice yet — it cannot be handed over until billing is done.",
     "identity_mismatch": "Those four digits do not end the phone number on the record.",
-    "batch_expired": "That batch has expired and cannot be dispensed. Choose another batch."
+    "batch_expired": "That batch has expired and cannot be dispensed. Choose another batch.",
+    "batch_expired_before_collection": "This batch was in date when it was picked and expired before the patient collected it, so it cannot be handed over. Quarantine the strip, then send the patient to the billing desk — the bill is already paid and needs a credit note."
   },
   "pharmacyCounter": {
     "title": "Dispense counter",
@@ -3417,6 +3418,7 @@
       "validTo": "Valid to",
       "validToOptional": "Valid to (leave blank for open-ended)",
       "remarks": "Remarks",
+      "noAppointment": "no AERB appointment on file",
       "notLicensable": "AERB does not licence this modality",
       "deviceBlocked": "out of service, QA failed",
       "licenceFiled": "Licence {{licenceNo}} filed.",
