@@ -66,6 +66,34 @@ const MODALITY_MACHINES: { modality: (typeof IMAGING_MODALITIES)[number]; code: 
 /** The actor a seed runs as. Named so an audit row says which script wrote the row. */
 const SEEDER: Actor = { type: "system", id: "seed:radiology" };
 
+/**
+ * ═══ THE ONE ACT IN THIS SCRIPT THAT A SYSTEM ACTOR MAY NOT PERFORM ═══
+ *
+ * `registerRadiologyApprovalTypes` activates a workflow definition and then registers the approval
+ * type, and BOTH kernel calls refuse anything but a user: `activateDefinition` throws
+ * `actor_not_user`, and `registerApprovalType` throws `user_actor_required` — *"only user actors may
+ * register approval types (agents are the Plan 12 seam)"*. Two independent guards saying the same
+ * thing is a decision, not an oversight, so this runs the act as a user rather than widening either.
+ *
+ * **This script passed `SEEDER` here, so `pnpm seed:radiology` died `actor_not_user` on the first
+ * approval type of every FRESH deployment** — and was invisible on every database that already had
+ * its types, because the loop body is skipped for a registered typeKey. The department could not be
+ * stood up at all on a new stack; the function's own docstring has required a user actor since 18a
+ * T4, and this was its only caller and the only one that ignored it.
+ *
+ * `SEED_ACTOR_ID` is `seed:lab-catalogue`'s idiom. Point it at the administrator performing the
+ * go-live and the audit row names them. The fallback is deliberately the SCRIPT's name rather than
+ * a borrowed administrator: an activation row reading `seed:radiology` says a seed did this and
+ * implicates no human, which is the same provenance argument that leaves `approval_id` NULL below.
+ *
+ * It is a FUNCTION, not a `const`, because a module-level `process.env` read is frozen at import —
+ * so `SEED_ACTOR_ID` would be silently ignored by anything that imported this file before setting
+ * it, which is every test and every future programmatic caller.
+ */
+export function registrarFromEnv(env: NodeJS.ProcessEnv = process.env): Actor {
+  return { type: "user", id: env.SEED_ACTOR_ID ?? "seed:radiology" };
+}
+
 async function ensureService(db: Db, code: string, name: string): Promise<string> {
   const existing = await db.select({ id: services.id }).from(services).where(eq(services.code, code));
   if (existing[0]) return existing[0].id;
@@ -92,14 +120,15 @@ async function ensureDevice(
   return { resourceId, created: true };
 }
 
-export async function seedRadiology(db: Db): Promise<{
+export async function seedRadiology(db: Db, registrar: Actor): Promise<{
   services: number;
   devicesCreated: number;
   definitionId: string;
   version: number;
 }> {
-  /** The approval TYPE must exist before a publish can be requested against it. */
-  await registerRadiologyApprovalTypes(db, SEEDER);
+  /** The approval TYPE must exist before a publish can be requested against it. `REGISTRAR`, not
+   * `SEEDER`: the kernel refuses a system actor here twice over. See the constant. */
+  await registerRadiologyApprovalTypes(db, registrar);
 
   const serviceIdByCode = new Map<string, string>();
   for (const seed of STUDY_TYPE_SEEDS) {
@@ -136,7 +165,7 @@ export async function seedRadiology(db: Db): Promise<{
 
 async function main(): Promise<void> {
   const db = createDb(requireEnv("DATABASE_URL")).db;
-  const result = await seedRadiology(db);
+  const result = await seedRadiology(db, registrarFromEnv());
   console.log(
     `seed:radiology — ${String(result.services)} services ensured, `
     + `${String(result.devicesCreated)} device(s) created, `
