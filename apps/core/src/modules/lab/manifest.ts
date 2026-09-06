@@ -87,6 +87,14 @@ export const labManifest: ModuleManifest = {
     "lab.instruments.read",
     /** 17-E T3 — the bridge POSTS what the machine measured. Separate from the human entry grant. */
     "lab.results.interface",
+    /**
+     * 17-E T6 — working the interface INBOX: naming the tube a parked result belongs to, or
+     * discarding it with a reason. Separate from `lab.instruments.manage` because deciding which
+     * patient a stray number belongs to is a bench act, and registering machines is an estate one;
+     * and separate from `lab.results.interface`, which is the BRIDGE's, so a machine account can
+     * never resolve the rows its own transmission parked.
+     */
+    "lab.instruments.operate",
   ],
   subscriptions: [],
   orderKinds: [

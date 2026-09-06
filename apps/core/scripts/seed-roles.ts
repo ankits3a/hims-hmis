@@ -992,6 +992,12 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "lab_technician",
     permissions: [
+      /**
+       * 17-E T6 — the interface INBOX is the bench's seat. Naming which patient a stray analyser
+       * number belongs to is the same judgement as keying the number in the first place, so it sits
+       * beside `lab.results.enter` and not with the lab head's machine estate.
+       */
+      "lab.instruments.operate",
       "lab.catalogue.read",
       "lab.worklist.read",
       "lab.accession.operate",
