@@ -61,7 +61,24 @@ export type ScheduleResult = {
   accessionNo: string;
 };
 
-type DeviceRow = { id: string; status: string; attributes: Record<string, unknown> };
+type DeviceRow = { id: string; status: string; code: string; name: string; attributes: Record<string, unknown> };
+
+/**
+ * ═══ A REFUSAL NAMES THE MACHINE THE WAY THE PERSON READING IT KNOWS IT ═══
+ *
+ * Every sentence below used to open `device 01M1VRJ4QVQWNA2V3X8YYK62MF …`. A receptionist reads
+ * these at a counter and a technologist reads them at a console; neither has any way to map a ULID
+ * to a room, and "which machine" is the only thing they need in order to act. The id stays in
+ * `detail`, where a client reads it.
+ *
+ * This is the sweep for the fix that landed as an INSTANCE in `aerb/licences.ts`
+ * (`assertDeviceLicensed`). A census of `device ${` across radiology and aerb found ELEVEN sites and
+ * that fix closed one — the same "a fix aimed at an instance closes the instance" shape the close
+ * review's second pass exists to catch, caught here against my own change.
+ */
+function machineLabel(device: { code: string; name: string }): string {
+  return `${device.code} (${device.name})`;
+}
 
 /**
  * A2 + A3 — the device must be a `device`, bookable, and of the study type's modality.
@@ -76,7 +93,10 @@ async function assertDeviceBookable(
   modality: string,
 ): Promise<DeviceRow> {
   const rows = await (exec as Db)
-    .select({ id: resources.id, status: resources.status, attributes: resources.attributes, kind: resources.kind })
+    .select({
+      id: resources.id, status: resources.status, code: resources.code, name: resources.name,
+      attributes: resources.attributes, kind: resources.kind,
+    })
     .from(resources)
     .where(eq(resources.id, deviceResourceId));
   const device = rows[0];
@@ -96,7 +116,7 @@ async function assertDeviceBookable(
      */
     throw new RadiologyError(
       "device_unavailable",
-      `device ${deviceResourceId} is ${device.status} and cannot take bookings`,
+      `${machineLabel(device)} is ${device.status} and cannot take bookings`,
       { deviceResourceId, status: device.status },
     );
   }
@@ -104,11 +124,14 @@ async function assertDeviceBookable(
   if (deviceModality !== modality) {
     throw new RadiologyError(
       "modality_mismatch",
-      `device ${deviceResourceId} is a ${String(deviceModality)} machine and this study is ${modality}`,
+      `${machineLabel(device)} is a ${String(deviceModality)} machine and this study is ${modality}`,
       { deviceResourceId, deviceModality, studyModality: modality },
     );
   }
-  return { id: device.id, status: device.status, attributes: device.attributes };
+  return {
+    id: device.id, status: device.status, code: device.code, name: device.name,
+    attributes: device.attributes,
+  };
 }
 
 /** Postgres' unique-violation SQLSTATE. A slot collision is this and nothing else. */
@@ -158,8 +181,14 @@ async function assertSlotFree(
   durationMin: number,
   studyId: string,
 ): Promise<void> {
-  /** The lock. Every booking for this machine queues behind it, so the read below is stable. */
-  await (tx as unknown as Db).select({ id: resources.id })
+  /**
+   * The lock. Every booking for this machine queues behind it, so the read below is stable.
+   *
+   * It also carries the machine's CODE and NAME, so the clash refusal below can name the room
+   * rather than a ULID. That costs nothing: this row is read and locked either way.
+   */
+  const locked = await (tx as unknown as Db)
+    .select({ id: resources.id, code: resources.code, name: resources.name })
     .from(resources).where(eq(resources.id, deviceResourceId)).for("update");
 
   const start = scheduledAt;
@@ -182,7 +211,7 @@ async function assertSlotFree(
   if (clash[0]) {
     throw new RadiologyError(
       "slot_taken",
-      `device ${deviceResourceId} is busy with ${clash[0].accessionNo} from `
+      `${locked[0] ? machineLabel(locked[0]) : `device ${deviceResourceId}`} is busy with ${clash[0].accessionNo} from `
       + `${clash[0].scheduledAt?.toISOString() ?? "?"} for ${String(clash[0].durationMin)} minutes — `
       + `this ${String(durationMin)}-minute study overlaps it`,
       {
@@ -230,7 +259,7 @@ function resolveBedside(
   if (effective !== null && device.attributes[DEVICE_PORTABLE_ATTRIBUTE] !== true) {
     throw new RadiologyError(
       "device_not_portable",
-      `device ${device.id} is not a portable unit and cannot be taken to a bedside — book a `
+      `${machineLabel(device)} is not a portable unit and cannot be taken to a bedside — book a `
       + "portable machine, or clear the bedside location and bring the patient to the department",
       { deviceResourceId: device.id, bedsideLocation: effective },
     );
@@ -270,7 +299,7 @@ export async function scheduleStudy(
     if (isSlotCollision(e)) {
       throw new RadiologyError(
         "slot_taken",
-        `device ${input.deviceResourceId} already has a live booking at that time`,
+        `${machineLabel(device)} already has a live booking at that time`,
         { deviceResourceId: input.deviceResourceId, scheduledAt: input.scheduledAt.toISOString() },
       );
     }
@@ -359,7 +388,7 @@ export async function rescheduleStudy(
     if (isSlotCollision(e)) {
       throw new RadiologyError(
         "slot_taken",
-        `device ${input.deviceResourceId} already has a live booking at that time`,
+        `${machineLabel(device)} already has a live booking at that time`,
         { deviceResourceId: input.deviceResourceId, scheduledAt: input.scheduledAt.toISOString() },
       );
     }
