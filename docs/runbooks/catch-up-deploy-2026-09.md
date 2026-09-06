@@ -379,3 +379,26 @@ Fill this in as you go. A step performed and not recorded is a step nobody can c
 | (7) #73 closed | | |
 | (8) edge gate | | |
 | (9) rollback needed? | | |
+
+---
+
+## 12. After the deploy: the two demo stacks retire — and not before
+
+**Added by 11i T3. Do this only once step 2c has been performed**, because step 2c is what the AERB
+bench exists for. Retiring it first would destroy the instrument this runbook sends you to.
+
+This box has 15 GB and now carries three stacks beside production. UAT replaces both ad-hoc ones:
+
+    docker stop hmis-preview-caddy      # the front-desk preview on :8443 — UAT takes that port
+    docker stop hmis-aerb-demo-caddy    # the 18c bench, AFTER step 2c has used it
+
+**Expected:** `:8443` free, so `HMIS_TARGET=uat bash docker/prod/deploy.sh` can take it.
+
+**The directories stay.** `/opt/hmis-preview` and `/opt/hmis-aerb-demo` hold the demo passwords and
+a `demo.env`; they are yours to delete when you are sure you want to, and no script here removes
+them. `preview.sh` is not in this repository — it lives in `/opt/hmis-preview` — so nothing in the
+tree needs deleting either.
+
+**What UAT gives you that they did not:** the production image, the production deploy path, a
+database that is reset to a clean training day with one command (`/opt/hmis-uat/uat-reset.sh`), and
+a banner on every screen saying which box you are looking at.
