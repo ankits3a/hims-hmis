@@ -15,7 +15,7 @@ import {
 } from "../src/modules/lab";
 import { OPD_PHARMACY_STORE_CODE, PHARMACY_DEF_KEYS } from "../src/modules/pharmacy";
 import { balances, findStoreByCode, listItems } from "../src/modules/materials";
-import { activeStudyTypes } from "../src/modules/radiology";
+import { IMAGING_GATE_DEF_KEY, IMAGING_STUDY_DEF_KEY, activeStudyTypes } from "../src/modules/radiology";
 import { appointments, unlicensedDevices } from "../src/modules/aerb";
 import type { Db } from "../src/kernel/db/client";
 
@@ -359,6 +359,35 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
   ],
 
   radiology: [
+    {
+      /**
+       * **G3 and not G2, and the classification IS the finding.** G2 is what a deploy establishes;
+       * the lab's and the pharmacy's equivalents sit there because a seed activates them. These
+       * are change-class **A**, so activating one takes three distinct humans — no deploy can write
+       * them, which is the definition of G3.
+       */
+      gate: "G3", code: "radiology_definitions_active",
+      /**
+       * MEASURED 2026-09-06 by standing the department up on an empty database: `imaging_study` and
+       * `imaging_gate` are activated by **no seed and no script** — `RADIOLOGY_WORKFLOW_DEFINITIONS`
+       * is referenced by the e2e test and the test helper and by nothing else. Without them a placed
+       * order produces no study, and **there is no refusal to read**, because the failure is in
+       * `handleOrderPlaced` inside the worker: the route returns 201 and the reception screen stays
+       * empty. That silence is why this row is worth more than the others in the set.
+       *
+       * The `fix` is a runbook section rather than a command, and that is deliberate — these are
+       * change-class **A**, so activating them needs three distinct humans (a drafter, two approvers,
+       * and an activator who is not the drafter). A census can say the definitions are missing; it
+       * must not pretend a script can supply them.
+       */
+      check: async (db) => {
+        for (const key of [IMAGING_STUDY_DEF_KEY, IMAGING_GATE_DEF_KEY]) {
+          if ((await withTx(db, (tx) => getActiveDefinition(tx, key))) === null) return false;
+        }
+        return true;
+      },
+      fix: "radiology-go-live.md §3: three named humans — a drafter, owner + medical superintendent approving, and an activator who is not the drafter",
+    },
     {
       gate: "G2", code: "radiology_study_types_active",
       // MEASURED 2026-09-06 and REPORTED rather than fixed here: `seed-radiology.js` exists, is in
