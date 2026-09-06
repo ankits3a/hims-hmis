@@ -227,7 +227,7 @@ or touch `hmis-prod-*`.
 
 ### T7 — ROUTINE · The catch-up deploy runbook for production — written in week 1, run by the owner (D11)
 `docs/runbooks/catch-up-deploy-2026-09.md`, the ordered acts for the owner, each with its check:
-(0) **the tip**: the deploy is cut from a `main` tip that includes 18a-iii T4 (#108 — until it merges, `recordAcquired` writes an AERB dose row for an outside study on an ionising type) and every close-review fix the lanes have flagged as "must not deploy without"; the runbook names the SHA; (1) the owner's applied-count query, expected 56, watermark `0055`; (2) the most recent weekly
+(0) **the tip**: the deploy is cut from a `main` tip that includes 18a-iii T4 (#108 — until it merges, `recordAcquired` writes an AERB dose row for an outside study on an ionising type) and every close-review fix the lanes have flagged as "must not deploy without"; the runbook names the SHA, and the rule that generalises it — a lane that finds a must-not-deploy-without puts a `deploy-blocker` label on the fixing PR; no deploy takes a tip while one is open (roadmap §0 row 10); (1) the owner's applied-count query, expected 56, watermark `0055`; (2) the most recent weekly
 restore-drill log read and its date recorded (`/opt/hmis-prod/drill/`, 11c D11) — a deploy onto a
 database whose backups have not been proven to restore is the one thing this runbook refuses;
 (2b) 18c's §0 rehearsal on the AERB demo bench that exists (`/opt/hmis-aerb-demo`): migrate without a
