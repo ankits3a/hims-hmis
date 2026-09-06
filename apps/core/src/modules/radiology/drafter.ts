@@ -72,8 +72,23 @@ function techniqueOf(f: DrafterFacts): string {
   const parts = [f.studyType.name === "" ? word : `${word}: ${f.studyType.name}`];
   if (f.laterality !== "na") parts.push(`(${f.laterality})`);
   if (f.contrastGiven) {
+    /**
+     * ═══ 18a-iii T1/T2 — THE NULL-VOLUME LEG NO LONGER CLAIMS A ROUTE ═══
+     *
+     * It used to read *"with intravenous {agent}."* whenever the volume was absent. 18a-iii makes
+     * an ORAL-only study a first-class thing to record — and `summariseContrast` deliberately gives
+     * such a study an agent and a NULL volume, because the study's volume column is the
+     * INTRAVASCULAR volume and a litre of dilute barium is not a dose. So the old sentence would
+     * have drafted *"Barium sulphate, intravenously"* into a signed report on a barium swallow.
+     *
+     * The non-null leg keeps the word, and it is now TRUE by construction rather than by luck: a
+     * volume reaches this column only from an intravenous or intra-arterial administration.
+     * (**Residue, named rather than fixed:** an intra-arterial study still drafts "intravenously".
+     * DSA reporting has its own template and no seat drives it yet; when one does, the route belongs
+     * on `DrafterFacts` and this branch goes away.)
+     */
     const agent = f.contrastAgent ?? "contrast";
-    parts.push(f.contrastVolumeMl === null ? `with intravenous ${agent}.` : `with ${f.contrastVolumeMl} ml ${agent} intravenously.`);
+    parts.push(f.contrastVolumeMl === null ? `with ${agent}.` : `with ${f.contrastVolumeMl} ml ${agent} intravenously.`);
   } else if (f.studyType.contrast_option !== "none") {
     parts.push("without contrast.");
   } else {

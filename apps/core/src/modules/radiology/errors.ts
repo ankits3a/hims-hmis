@@ -112,6 +112,8 @@ export const RADIOLOGY_ERROR_CODES = [
    * a correctly ordered CT would go looking for the wrong problem.
    */
   "vial_expired",
+  /** ── 18a-iii T2 — a reaction is a reaction TO a dose, and the dose must exist ── */
+  "unknown_administration",
   // ── reports (T8) ──
   "second_factor_required",
   "laterality_mismatch",
@@ -175,6 +177,7 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   invalid_date: 422,
   machine_draft_not_signable: 422,
   vial_expired: 422,
+  unknown_administration: 404,
 
   second_factor_required: 403,
   laterality_mismatch: 422,
