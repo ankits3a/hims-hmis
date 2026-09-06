@@ -402,3 +402,130 @@ suites are what proved the collapse did not change their behaviour.
 **Evidence:** 34 suites / 296 tests exit 0 (`src/modules/lab` + `test/lab.e2e.test.ts`), typecheck 0,
 lint 0 (2 pre-existing warnings in files this task does not touch). Migration serial 0073 verified
 free against `origin/main` and every remote branch at push time.
+
+### 8.6 T6 — The inbox: results waiting for a patient (executed 2026-09-05)
+
+No migration. `lab_parked_results` already carries `status`, `resolved_by`, `resolved_at` and
+`discard_reason` — T3 built the table with this seat in mind, and T6 is its reader and its two
+writers. New permission `lab.instruments.operate`, granted to `lab_technician`.
+
+- **The hand match imports the machine's own attachment path.** `attachMachineValue` was lifted out
+  of `ingestResults` to module level so the inbox is its FIFTH caller rather than a second
+  implementation. The board says the hand match "re-runs the same attachment path so every guard
+  applies", and a screen with its own quieter path is how an inbox becomes the softest door in the
+  building — the one somebody reaches for precisely when a result is already confusing.
+- **A refusal leaves the row PARKED**, never closed. The human has learned something and the row must
+  stay in front of them; closing it on a write that did not happen is the defect M1 tests for.
+- **A discard is a record**: `status = 'discarded'` with a reason the service refuses to leave blank
+  and the database refuses to leave null. The raw payload stays readable afterwards.
+- **`rejectedPlates` is here because D13 obliged it.** A controls-failed plate parks nothing, so the
+  inbox will never list one; without this read the rejection would be invisible to the person whose
+  job it is to act on it.
+
+**D16 — THE HAND MATCH IS `manual_from_printout`, NOT `interface`, AND THAT IS NOT A WORKAROUND.**
+
+`enterResult` authorises an `interface` write with `lab.results.interface`, which is the BRIDGE's
+grant and deliberately disjoint from the technologist's (D6) — so the match failed
+`permission_denied` the first time it ran. **The one-line repair was to grant `lab_technician` that
+permission, and it would have dismantled the separation T3 exists to create in order to make a test
+pass.** The vocabulary already held the answer: `manual_from_printout` already ships and T7's own
+spec names it as the interface-down fallback.
+
+It is also the truthful record. The interface did NOT attach this value — it failed to name the
+tube, which is why the row was in the inbox — and a person read the number off a screen and decided
+whose it was. `entry_mode` is where that decision has to be visible: labelling it `interface` would
+hide **the single human judgement in the chain, and it is the judgement most likely to be wrong.**
+`analyzer_id` still records the machine, so nothing about its authorship is lost, and the grant
+follows the act instead of being widened to fit it.
+
+**D17 — THE SEAT IS TOLD WHICH CONTROL REFUSED.** The ingest collapses every refusal to
+`guard_refused` because it only needs to know a human must look. A person standing at this screen
+needs to know whether the analyte is not on this tube's order, the value is outside the absurd
+envelope, or it is impossible for this patient — three different next actions. The underlying code is
+surfaced verbatim.
+
+**MUTANTS — five applied, five killed.**
+
+| mutant | result |
+|---|---|
+| the row is CLOSED even though the write was refused | KILLED — 1 failed / 7 passed |
+| a discard with an EMPTY reason | KILLED — 1 failed / 7 passed |
+| a tube received on ANOTHER DAY carries the result | KILLED — 1 failed / 7 passed |
+| the operate permission is not checked | KILLED — 1 failed / 7 passed |
+| a controls-failed plate parks its patient wells (D13 defeated) | KILLED — 1 failed / 7 passed |
+
+**A TEST OF THIS TASK'S OWN PASSED VACUOUSLY, AND IT IS THE FK LESSON AGAIN.** `MUTANT: a match the
+guards refuse` asserted `rejects.toThrow(LabError)` — so `permission_denied` satisfied it, and it
+reported the applicability guard working when that guard had never been reached. **An error-CLASS
+assertion is satisfied by every error of that class, including the ones meaning the test never got
+where it was going.** It now names the code. And chasing what the code actually IS produced D17: a
+test that could not tell two failures apart was hiding a screen that could not either.
+
+**THE CENSUS TAX WAS EIGHTEEN SITES, NOT §7's NINE — and the eighteenth is the one worth the note.**
+`seed-roles.test.ts` was fully GREEN at seventeen. The eighteenth was in `manifest.test.ts`, a file
+the census suite never loads, and only the broader lab run found it. **A targeted sweep is itself a
+selection and cannot find a coupling it does not include.** The seventeenth is the positional
+grant-count array's SECOND copy, which the file's own comment says every permission moves twice and
+no grep finds. The nine was honestly measured at T1, which granted to a role already present in every
+derived list; this grant also moves four INDEPENDENT derived readers. **The tax is a property of
+which readers a grant happens to move, and it is knowable only by moving it.**
+
+**Evidence:** 36 suites / 320 tests exit 0 (`src/modules/lab` + `test/lab.e2e.test.ts` +
+`test/seed-roles.test.ts`), typecheck 0.
+
+
+### 8.7 T7 — NOT STARTED, and it is not ROUTINE. D9 is already violated by merged code.
+
+**Measured 2026-09-05 with a throwaway probe, not inferred from reading.** Two transmissions from one
+instrument carrying the same analyte for the same tube — a rerun by D9's own definition — produce:
+
+    rows: 2   [ {v: 5.0000, supersedes: null,    rerunOf: null},
+                {v: 9.9000, supersedes: <first>, rerunOf: <first>} ]
+
+**Both rows live, so D9's first half already holds. But the second value AUTO-SUPERSEDES the first,
+with no human choice and no reason — which is the exact thing D9 forbids** and the first mutant T7
+names. It is live in merged code today, on every machine path T3, T4 and T5 ship.
+
+**The line is `results.ts`'s `supersedesResultId: input.supersedesResultId ?? priorForAnalyte?.id ?? null`,
+and it is there ON PURPOSE.** Close review M3 introduced it to fix a real defect: the chain was NULL
+for every re-keyed value because `EnterResultInput` declared fields no caller set, so *"an NABL auditor
+following `supersedes_result_id` back to the number that was wrong found nothing, on the one path that
+exists to answer that question."* Its comment reads *"a value keyed for an analyte that already carries
+one supersedes it, which is exactly what a rerun is."*
+
+**So T7 is not a gap to fill, it is a CONTRADICTION to resolve, and both sides are right about their
+own case.** A human re-keying at the bench IS a supersession — a typo corrected, and M3's chain is how
+the auditor finds it. An analyser re-running a sample is NOT — both values are legitimate measurements
+of the same tube, and D9's reason is that *"auto-choosing the later value is how a bad second run
+silently overwrites a good first one."*
+
+The distinction is available in the row itself: `entry_mode` and `analyzer_id` already say whether a
+machine produced the value, and `rerunOf` is already populated. **What T7 must not do is widen or
+delete M3's rule to make the machine case work** — that is D16's shape one layer out, and it would
+re-open the audit hole M3 closed. It needs a rule that separates the two cases explicitly, plus the
+bench's choice, its reason, and its audit row.
+
+**IT IS NOT LIVE IN PRODUCTION, AND THAT CHANGES *WHEN* THE OWNER DECIDES, NOT WHETHER.** Raised by
+the orchestrator and verified here rather than relayed. At `c11833d` — the commit it identifies as the
+deployed base; this lane did not independently confirm which commit production runs —
+
+    results.ts's supersede rule        PRESENT (7 references)
+    lab/ingest.ts                      ABSENT
+    lab/instruments.ts                 ABSENT
+    lab/plate-maps.ts                  ABSENT
+    anything writing entryMode "interface"   NONE
+
+**The rule is deployed; the only caller that makes it wrong is not.** So production today sees human
+re-keys only, which is the case M3 is right about. It becomes wrong the moment 17-E's machine paths
+deploy, and T1–T4 are merged and sitting in the migration backlog. **So this is a decision to take
+BEFORE the next deploy, not a defect to fix after one.** Stated precisely because inferring a live
+production exposure from individually-true facts is how this project once escalated a fabricated
+patient-safety emergency.
+
+**Also unbuilt: `interface_down`.** The first of `kinds.ts`'s four unwritten `analyzer` statuses to get
+a writer, with the mutant "written on a machine that is merely idle" — an idle analyser at 3 a.m. must
+not read as a broken link.
+
+**Estimated cost is higher than §4's ROUTINE label.** It touches `enterResult`, which is the shared
+CRITICAL path every result in the system goes through, and it needs a migration for the choice, the
+reason and the audit row. The serial queue is contended: radiology holds a three-PR stack behind #103.

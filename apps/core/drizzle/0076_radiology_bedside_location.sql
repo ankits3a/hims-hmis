@@ -1,0 +1,1 @@
+ALTER TABLE "imaging_studies" ADD COLUMN "bedside_location" text;
