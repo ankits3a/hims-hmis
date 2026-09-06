@@ -372,6 +372,13 @@ const SEED_STEP_SCRIPTS = [
   // materials module's own seed must have run first.
   "seed-ot.js",
   "seed-pharmacy.js", // PLAN 16c T5
+  // PHASE 11i T1 — the laboratory's two Class-C definitions and its `lab_release_unpaid`
+  // approval type. It joins for the reason `seed-patients` and `seed-materials` did, in its
+  // sharpest form yet: the lab has been DEPLOYED since migration 0046 and could not take an
+  // order the whole time, because `activateLabDefinitions` had one caller in the tree and it
+  // was `test/helpers/lab.ts`. A module that ships, migrates, serves routes and throws
+  // `no_active_definition` on first use is what this census exists to make impossible.
+  "seed-lab.js",
   "seed-roles.js",
 ] as const;
 
@@ -429,7 +436,10 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
     // creates that store through `materials.createStore`, so the materials seed must run first.
     // 14 since Plan 16c T5 added `seed-pharmacy.js` after `seed-ot.js` (the `PHARM-OPD` store is a
     // materials store too, so the materials seed still runs first).
-    expect(order).toHaveLength(14);
+    // 15 since Phase 11i T1 added `seed-lab.js` after `seed-pharmacy.js` and before `seed-roles.js`
+    // — the pharmacy shape, one module over. (This file joins the Files list of the task that moves
+    // the integer, which is the S11 rule the paragraph above invokes.)
+    expect(order).toHaveLength(15);
     expect(order[0]).toBe("migrate.js");
     expect(order[1]).toBe("seed-cursors.js");
   });
@@ -446,7 +456,27 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
       .toEqual({ seedOpsAt: ops, seedRolesAt: roles, opsFirst: true });
   });
 
-  it("runs every one of the ten configuration seeds, and each one exists in scripts/", () => {
+  it("runs seed-roles LAST of the configuration seeds — PHASE 11i T1", () => {
+    /**
+     * The leg above pins ONE pair (`seed-ops` before `seed-roles`) because that pair is the one
+     * that broke. This pins the PROPERTY the pair is an instance of, and it was added because 11i
+     * T1's own mutant survived: `seed-lab.js` moved to after `seed-roles.js` and every existing
+     * assertion here stayed green — the census counted 15, found each file, and saw all 15 run
+     * before the gate.
+     *
+     * `seed-roles`' verdict is a census over the grants and role holders THE OTHER SEEDS WRITE.
+     * A seed that runs after it is a seed whose grants its verdict cannot see, so the deploy
+     * prints NOT READY about a box that is in fact ready — and a verdict that cries wolf is a
+     * verdict nobody reads, which is the whole value of running it at all (`deploy.sh`:497).
+     */
+    const order = deploySeedOrder(deploySource);
+    const rolesAt = order.indexOf("seed-roles.js");
+    expect(rolesAt).toBeGreaterThanOrEqual(0);
+    const after = SEED_STEP_SCRIPTS.filter((n) => n !== "seed-roles.js" && order.indexOf(n) > rolesAt);
+    expect({ seedRolesAt: rolesAt, seedsRunningAfterIt: after }).toEqual({ seedRolesAt: rolesAt, seedsRunningAfterIt: [] });
+  });
+
+  it("runs every one of the configuration seeds, and each one exists in scripts/", () => {
     const order = deploySeedOrder(deploySource);
     expect(SEED_STEP_SCRIPTS.filter((name) => !order.includes(name))).toEqual([]);
     // A seed named here but deleted from the tree would make the deploy die at a `node` that

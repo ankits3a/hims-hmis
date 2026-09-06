@@ -481,6 +481,14 @@ compose run --rm api node dist/scripts/seed-ot.js
 # definition. Without the store every claim refuses `store_missing`; without the definition the
 # claim's `startInstance` throws. Idempotent; runs before `seed-roles` for the same reason as the rest.
 compose run --rm api node dist/scripts/seed-pharmacy.js
+# PHASE 11i T1 — the laboratory's two workflow definitions (`lab_item`, `lab_specimen`, both Class
+# C) and its `lab_release_unpaid` approval type. The lab has been DEPLOYED since migration 0046 and
+# unable to take a single order the whole time: `activateLabDefinitions` had exactly one caller in
+# the tree and it was a test helper, so `startInstance` threw `no_active_definition` on every order
+# and `requestApproval` threw `unknown_type` on every unpaid release. The runbook's "not a deploy
+# step" predates Plan 11g / DD2 reaching the lab and is superseded by it. Idempotent; it establishes
+# no catalogue, no user and no CA-signed row.
+compose run --rm api node dist/scripts/seed-lab.js
 
 # `seed-roles` IS RUN, AND ITS EXIT STATUS IS DELIBERATELY NOT THIS DEPLOY'S.
 #

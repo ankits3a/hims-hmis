@@ -1,10 +1,13 @@
 import { createDb, withTx } from "../src/kernel/db/client";
 import { requireEnv } from "../src/kernel/config";
 import { getApprovalType } from "../src/kernel/approvals/types";
+import { getActiveDefinition } from "../src/kernel/workflow/definitions";
 import { loadBillingConfig } from "../src/modules/billing/config";
 import { BILLING_APPROVAL_TYPES } from "../src/modules/billing/approval-types";
 import { getGstSettings, listGstCategories } from "../src/modules/tariff/gst-config";
 import { TARIFF_APPROVAL_TYPES } from "../src/modules/tariff/approval-types";
+import { LAB_APPROVAL_TYPES } from "../src/modules/lab/approval-types";
+import { LAB_DEF_KEYS } from "../src/modules/lab/definitions";
 import type { Db } from "../src/kernel/db/client";
 
 /**
@@ -83,7 +86,10 @@ export async function checkConfigPresent(db: Db): Promise<{ ok: boolean; problem
   // 4. Every approval type the shipped modules gate on. `requestApproval` throws `unknown_type`
   //    for a key no row carries, so an unregistered type is a route that cannot complete — which
   //    is what `tariff_revision` was until this phase (report D7, gap 2).
-  for (const spec of [...BILLING_APPROVAL_TYPES, ...TARIFF_APPROVAL_TYPES]) {
+  // 11i T1: `LAB_APPROVAL_TYPES` joins the same loop rather than getting a check of its own —
+  // `lab_release_unpaid` is registered by `seed:lab`, and an unregistered one makes every
+  // release-before-payment request throw `unknown_type` at a counter with a patient in front of it.
+  for (const spec of [...BILLING_APPROVAL_TYPES, ...TARIFF_APPROVAL_TYPES, ...LAB_APPROVAL_TYPES]) {
     const row = await withTx(db, (tx) => getApprovalType(tx, spec.typeKey));
     if (row === null) {
       problems.push({
@@ -91,6 +97,29 @@ export async function checkConfigPresent(db: Db): Promise<{ ok: boolean; problem
         detail:
           `approval type "${spec.typeKey}" is registered by no row — ` +
           "run: pnpm --filter @hmis/core seed:billing and seed:tariff",
+      });
+    }
+  }
+
+  // 5. The laboratory's two workflow definitions, ACTIVE — PHASE 11i T1.
+  //
+  //    This is the only row here that is not about a configuration TABLE, and it is here for the
+  //    reason the other four are: `startInstance` throws `no_active_definition` for a key with no
+  //    active row, so a lab whose definitions were never activated is a lab that refuses every
+  //    order — which is exactly what production has done since migration 0046, silently, because
+  //    `activateLabDefinitions`' only caller in the tree was a test helper.
+  //
+  //    It reads through `getActiveDefinition`, the engine's OWN loader, and not a select of its
+  //    own: `kernel/ops/validate.ts:20`'s recorded lesson is that a gate which builds its own view
+  //    of the configuration eventually validates something the engine will never see.
+  for (const key of LAB_DEF_KEYS) {
+    const active = await withTx(db, (tx) => getActiveDefinition(tx, key));
+    if (active === null) {
+      problems.push({
+        code: "lab_definition_inactive",
+        detail:
+          `workflow definition "${key}" has no ACTIVE row — every lab order would throw ` +
+          "`no_active_definition`. Run: pnpm --filter @hmis/core seed:lab",
       });
     }
   }

@@ -1,3 +1,4 @@
+import { inArray } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "./helpers/db";
 import { checkConfigPresent } from "../scripts/check-config-present";
 import { seedTariffConfig } from "../scripts/seed-tariff";
@@ -6,9 +7,11 @@ import { registerBillingApprovalTypes } from "../src/modules/billing/approval-ty
 import { createService } from "../src/modules/tariff/services";
 import { getGstSettings } from "../src/modules/tariff/gst-config";
 import { seedSodPairs } from "../src/kernel/auth/sod";
+import { ensureLabStandUp } from "../scripts/seed-lab";
+import { LAB_DEF_KEYS } from "../src/modules/lab/definitions";
 import { runConfigValidation } from "../src/kernel/ops/validate";
 import { withTx } from "../src/kernel/db/client";
-import { billingConfig, roles, tariffVersions } from "../src/kernel/db/schema";
+import { billingConfig, roles, tariffVersions, workflowDefinitions } from "../src/kernel/db/schema";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../src/kernel/db/client";
 
@@ -49,6 +52,9 @@ async function seedEverything(db: Db): Promise<void> {
   await registerBillingApprovalTypes(db, ACTOR);
   await seedTariffConfig(db);
   await registerTariffApprovalTypes(db, ACTOR);
+  // 11i T1: the gate now asks the laboratory's question too, so the fully-seeded control has to
+  // run the seed that answers it — `seed:lab` — exactly as the deploy does.
+  await ensureLabStandUp(db, ACTOR);
 }
 
 describe("check:config-present (Plan 11g / DD2)", () => {
@@ -67,8 +73,13 @@ describe("check:config-present (Plan 11g / DD2)", () => {
     expect(codes).toContain("billing_config_missing");
     expect(codes).toContain("gst_settings_missing");
     expect(codes).toContain("gst_config_empty");
-    // Five billing types + tariff_revision, every one unregistered on an empty database.
-    expect(codes.filter((c) => c === "approval_type_unregistered")).toHaveLength(6);
+    // Five billing types + tariff_revision + lab_release_unpaid (11i T1), every one unregistered
+    // on an empty database.
+    expect(codes.filter((c) => c === "approval_type_unregistered")).toHaveLength(7);
+    // 11i T1 — the row that would have caught production: the lab is deployed and BOTH of its
+    // definitions are inactive, so every order throws `no_active_definition`.
+    expect(codes.filter((c) => c === "lab_definition_inactive")).toHaveLength(LAB_DEF_KEYS.length);
+    expect(problems.find((p) => p.code === "lab_definition_inactive")?.detail).toContain("seed:lab");
 
     // The refusal carries the ENGINE'S OWN error text, seed command included — that is the point
     // of reading through `loadBillingConfig` rather than a SELECT of this script's own.
@@ -97,6 +108,20 @@ describe("check:config-present (Plan 11g / DD2)", () => {
     expect(goLive.ok).toBe(false);
 
     expect((await checkConfigPresent(db)).ok).toBe(true);
+  });
+
+  it("11i T1 — REFUSES a database where every other row is present but the lab was never stood up", async () => {
+    await seedEverything(db);
+    expect((await checkConfigPresent(db)).ok).toBe(true);
+
+    // Production's exact shape since migration 0046: the module deployed, its routes served, its
+    // two definitions never activated because the only caller was a test helper. Nothing else is
+    // wrong — which is precisely why no other check on this box ever noticed.
+    await db.delete(workflowDefinitions).where(inArray(workflowDefinitions.defKey, [...LAB_DEF_KEYS]));
+
+    const { ok, problems } = await checkConfigPresent(db);
+    expect(ok).toBe(false);
+    expect(problems.map((p) => p.code)).toEqual(LAB_DEF_KEYS.map(() => "lab_definition_inactive"));
   });
 
   it("catches the single-row deletion the seeds cannot see — a hand-deleted billing_config", async () => {
