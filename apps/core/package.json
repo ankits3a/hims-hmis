@@ -29,6 +29,7 @@
     "seed:lab": "tsx scripts/seed-lab.ts",
     "standup:check": "tsx scripts/standup-check.ts",
     "seed:radiology": "tsx scripts/seed-radiology.ts",
+    "seed:lab-catalogue": "tsx scripts/seed-lab-catalogue.ts",
     "seed:lab-demo": "tsx scripts/seed-lab-demo.ts",
     "import:holder-book": "tsx scripts/import-holder-book.ts",
     "seed:ops": "tsx scripts/seed-ops.ts",
