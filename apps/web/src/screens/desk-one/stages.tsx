@@ -2564,6 +2564,25 @@ function StageDone(): React.ReactElement {
 
       <div style={{ display: "flex", gap: 10, marginTop: 20, paddingTop: 13, borderTop: "1px solid var(--line)" }}>
         <button className="pri" onClick={d.clearDesk}>next patient <span className="kb dk">Esc</span></button>
+        {/*
+          ═══ FD-27 — A DOOR TO THE PAPER, ON THE STAGE WHERE THE PAPER IS HANDED OVER ═══
+
+          Owner, 2026-09-06: *"A user with appointment priviledge don't have a way to print the
+          token."* They were right, and `PrintStatus` above is why: it reports, and it offers an
+          action ONLY when a job has FAILED. Everything else — a slip that jammed after printing, a
+          patient who wants a second copy, a clerk who is not sure it came out — had no control.
+          This is not a second print mechanism; it opens the same papers sheet the history rows do,
+          for the visit in hand.
+        */}
+        {v === null ? null : (
+          <button
+            className="sec"
+            data-testid="done-papers"
+            onClick={() => d.patch({ overlay: "papers", papersFor: null })}
+          >
+            print the paper again
+          </button>
+        )}
         <span style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--faint)", alignSelf: "center" }}>
           Esc scrubs the desk — nothing bleeds into the next person
         </span>
