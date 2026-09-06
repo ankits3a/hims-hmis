@@ -186,6 +186,12 @@ describe("kernel alerts consumer", () => {
       // Plan 11c D4: the THIRD subscription on the SAME consumer. A mode change that touches
       // downtime or degraded becomes a row in front of every owner.
       { event: "ops.mode_changed", consumer: ALERTS_CONSUMER },
+      // PLAN 18a-iii T5 / D7: the FOURTH and FIFTH, both radiology chasers, both on this SAME
+      // consumer for the reason the first three are — the alerts table has exactly one writer in
+      // the tree (`insert(alerts)` appears once, in `consumer.ts`), so a module that wants a row in
+      // front of a human declares a subscription rather than writing one.
+      { event: "imaging.critical_overdue", consumer: ALERTS_CONSUMER },
+      { event: "imaging.report_unread", consumer: ALERTS_CONSUMER },
     ]);
 
     const registry = new ModuleRegistry();
@@ -196,6 +202,12 @@ describe("kernel alerts consumer", () => {
     expect(registry.subscriptionsFor("notification.failed")).toEqual([
       { consumer: ALERTS_CONSUMER, moduleKey: "alerts" },
     ]);
+    expect(registry.subscriptionsFor("imaging.critical_overdue")).toEqual([
+      { consumer: ALERTS_CONSUMER, moduleKey: "alerts" },
+    ]);
+    expect(registry.subscriptionsFor("imaging.report_unread")).toEqual([
+      { consumer: ALERTS_CONSUMER, moduleKey: "alerts" },
+    ]);
     expect(registry.subscriptionsFor("ops.mode_changed")).toEqual([
       { consumer: ALERTS_CONSUMER, moduleKey: "alerts" },
     ]);
@@ -204,7 +216,11 @@ describe("kernel alerts consumer", () => {
     expect(bus.consumers().map((c) => ({ consumer: c.consumer, events: c.events }))).toEqual([
       {
         consumer: ALERTS_CONSUMER,
-        events: ["escalation.triggered", "notification.failed", "ops.mode_changed"],
+        events: [
+          "escalation.triggered", "notification.failed", "ops.mode_changed",
+          // 18a-iii T5 — the two radiology chasers, on the same consumer.
+          "imaging.critical_overdue", "imaging.report_unread",
+        ],
       },
     ]);
 

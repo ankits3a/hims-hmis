@@ -2,8 +2,8 @@ import { and, eq, inArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import {
-  labAnalytes, labInstruments, labParkedResults, labSpecimenItems, labSpecimens, labTransmissions,
-  orderItems,
+  labAnalytes, labInstruments, labOrderableAnalytes, labParkedResults, labSpecimenItems,
+  labSpecimens, labTransmissions, orderItems,
 } from "../../kernel/db/schema";
 import { LabError } from "./errors";
 import { instrumentCodeMap } from "./instruments";
@@ -161,18 +161,75 @@ export async function attachMachineValue(
   },
   now: Date = new Date(),
 ): Promise<{ resultId: string } | { park: ParkReason; detail?: string }> {
-  /** The open item on THIS tube for THIS analyte. An absent one is not an error, it is a park. */
+  /**
+   * ═══ THE OPEN ITEMS ON THIS TUBE THAT ACTUALLY REPORT THIS ANALYTE ═══
+   *
+   * **The analyte filter is the fix, and its absence was the defect.** `specimens.ts` draws ONE tube
+   * per `(specimen_type, container)` across the whole order group, so an outpatient billed for LFT
+   * and RFT together gives one serum SST tube carrying two order items — the ordinary Indian OPD
+   * morning, not a corner case. This query used to ask only *"what is open on this tube"*, which for
+   * a transaminase includes the renal panel that does not report one.
+   *
+   * `lab_orderable_analytes` already answers *"which of these tests reports a transaminase"*. It is
+   * the catalogue's own statement, it is the same table `analytesFor` reads inside `enterResult` to
+   * refuse a foreign analyte, and asking it HERE turns a refusal-by-guard into a candidate list.
+   *
+   * The `ORDER BY` is not decoration. Without it this set is unordered, and everything below depends
+   * on which row comes first.
+   */
   const items = await db
     .select({ orderItemId: labSpecimenItems.orderItemId })
     .from(labSpecimenItems)
     .innerJoin(orderItems, eq(orderItems.id, labSpecimenItems.orderItemId))
+    .innerJoin(labOrderableAnalytes, and(
+      eq(labOrderableAnalytes.serviceId, orderItems.serviceId),
+      eq(labOrderableAnalytes.analyteId, input.analyteId),
+    ))
     .where(and(
       eq(labSpecimenItems.specimenId, input.specimenId),
       eq(labSpecimenItems.active, true),
       inArray(orderItems.status, ["in_progress"]),
-    ));
-  if (items.length === 0) return { park: "no_open_item" };
+    ))
+    .orderBy(orderItems.id);
 
+  /**
+   * ═══ TWO WAYS TO HAVE NO CANDIDATE, AND THE SEAT NEEDS THEM APART ═══
+   *
+   * The ingest itself does not care: both park, and both mean a human must look. **The INBOX does.**
+   * `matchParkedResult` surfaces the underlying code to the person standing at the screen precisely
+   * because *"the analyte is not on this tube's order"* and *"nothing on this tube is open"* send
+   * them to different next actions — and before the analyte filter existed, the first arrived as
+   * `unknown_analyte` from `enterResult` by accident of trying the wrong item.
+   *
+   * So the filter keeps the distinction it would otherwise have collapsed, at the cost of one cheap
+   * count. The park REASON stays `no_open_item` for both — it is true of both, and widening the
+   * `lab_parked_results` CHECK would be a migration to say something the detail already says.
+   */
+  if (items.length === 0) {
+    const [open] = await db
+      .select({ orderItemId: labSpecimenItems.orderItemId })
+      .from(labSpecimenItems)
+      .innerJoin(orderItems, eq(orderItems.id, labSpecimenItems.orderItemId))
+      .where(and(
+        eq(labSpecimenItems.specimenId, input.specimenId),
+        eq(labSpecimenItems.active, true),
+        inArray(orderItems.status, ["in_progress"]),
+      ))
+      .limit(1);
+    return open === undefined
+      ? { park: "no_open_item" }
+      : { park: "no_open_item", detail: "unknown_analyte" };
+  }
+
+  /**
+   * ═══ AND THE LOOP NOW ITERATES, WHICH IT DID NOT ═══
+   *
+   * Every path through the old body left the function — success returned, a `LabError` returned a
+   * park, anything else threw — so **iteration two was unreachable and the `return` after the loop
+   * was dead code.** Only `items[0]` was ever tried. A reader saw a loop and assumed a fallback
+   * existed; there was none, and the code said otherwise in the most convincing way available.
+   */
+  let refusal: LabError | null = null;
   for (const item of items) {
     try {
       const out = await enterResult(db, actor, {
@@ -191,12 +248,17 @@ export async function attachMachineValue(
        * PAIR OF HANDS, and a machine has none — so the row parks for a human rather than being
        * entered or dropped. `enterResult` has already evented the near-miss on its own transaction,
        * which is what makes this safe to swallow HERE and only here.
+       *
+       * **The LAST refusal is the one reported, not the first**, and with the analyte filter in
+       * place every candidate is an item that genuinely reports this analyte — so every refusal is
+       * about the value or the patient, never about the test being foreign. The old `unknown_analyte`
+       * park, which said "a guard refused" about a question no guard had been asked, cannot arise.
        */
-      if (e instanceof LabError) return { park: "guard_refused", detail: e.code };
+      if (e instanceof LabError) { refusal = e; continue; }
       throw e;
     }
   }
-  return { park: "no_open_item" };
+  return { park: "guard_refused", detail: refusal?.code };
 }
 
 export async function ingestResults(
