@@ -169,6 +169,21 @@ export const labResultChosen = defineEvent("lab.result_chosen", MODULE, z.object
  * DD12 — the 15-minute clock. Emitted at ENTRY, before any verification: the clinical need is the
  * CALL, and the signature follows by 09:00 (R-014's default, adopted).
  */
+/**
+ * DD11 / §7 — THE MORNING AFTER. Night mode borrowed the second pair of hands; this is that pair
+ * arriving, and it is the compensating control that makes the relaxation a relaxation rather than an
+ * absent control.
+ *
+ * **Both people are named, because a review is a relationship between two of them** — "who signed
+ * this off" is only half the question NABL asks, and `releasedBy` is the half a boolean on the row
+ * could never have answered once it was cleared. The note is nullable: a concurrence IS the record,
+ * and demanding an essay on every one is how a queue gets worked by typing a full stop.
+ */
+export const labNightReleaseReviewed = defineEvent("lab.night_release_reviewed", MODULE, z.object({
+  resultId: id, orderItemId: id, analyteId: id,
+  reviewedBy: id, releasedBy: id, note: z.string().nullable(), reviewedAt: z.string(),
+}));
+
 export const labResultCriticalFlagged = defineEvent("lab.result_critical_flagged", MODULE, z.object({
   resultId: id, callId: id, orderItemId: id, analyteId: id, patientId: id,
   value: z.string().min(1), band: z.enum(["low", "high"]),
@@ -246,7 +261,7 @@ export const LAB_EVENTS = [
   labOrderDesked, labAttributionUnverifiedFlagged,
   labLabelPrinted, labTubeMismatchFlagged, labSpecimenCollected, labSpecimenReceived,
   labSpecimenRejected, labSpecimenRelabelled, labRecollectionRequested,
-  labResultEntered, labResultVerified, labResultChosen,
+  labResultEntered, labResultVerified, labResultChosen, labNightReleaseReviewed,
   labTubeSwapSuspected, labResultCriticalFlagged, labCriticalAcknowledged,
   labResultDeltaFlagged, labReflexAdded, labSodViolationBlocked,
   labReportPublished, labReportPrintBlocked, labReportReleasedUnpaid, labReportPrinted,
