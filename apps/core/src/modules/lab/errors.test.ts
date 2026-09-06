@@ -106,6 +106,20 @@ const OWNED_BY: Record<LabErrorCode, string> = {
   release_approval_invalid: "reports.ts",
   /** 17-E T1 — the machine register. `instruments.ts` is the only file that names a machine. */
   unknown_instrument: "instruments.ts",
+
+  /**
+   * 17-E T7 — the rerun rule is resolved in `results.ts`, which is where the contradiction lived,
+   * and ENFORCED in `verify.ts`, which is where a number becomes reportable. So the two families
+   * are owned by two files on purpose: the write-side refusals belong to the writer, the sign-side
+   * refusals to the signer, and `result_superseded` is thrown by both (the owner is the signer,
+   * where it is the refusal that matters clinically).
+   */
+  machine_cannot_supersede: "results.ts",
+  rerun_choice_reason_required: "results.ts",
+  no_rerun_to_choose: "results.ts",
+  rerun_choice_final: "results.ts",
+  rerun_unchosen: "verify.ts",
+  result_superseded: "verify.ts",
 };
 
 describe("the lab error union (Plan 17 T2)", () => {
