@@ -1,13 +1,17 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import {
-  opdDepartments, opdDoctors, opdEncounters, opdQueueEntries, patients,
+  opdDepartments, opdDoctors, opdEncounters, opdQueueEntries, opdVitals, patients, users,
 } from "../db/schema";
 import { encounterFeeStatuses } from "../../modules/billing/fee-status";
 import { LAB_DEPARTMENT_CODE } from "../../modules/opd/encounters";
 /* FD-25 §14 — the ONE place a confidential patient's name is decided. See `subjectOf`.
    `resolvePatientId` is the OTHER half of that decision: it names WHOSE record this is after a
    merge, and the rule cannot be asked without that. See `canonicalPersonOf`. */
-import { displayName, displayNameForRelease, resolvePatientId } from "../../modules/patients";
+import { displayName, displayNameForRelease, listAllergies, resolvePatientId } from "../../modules/patients";
+/* FD-29 — the crest as a data URI and a real QR encoder, both self-contained: `RenderedDocument`
+   promises HTML with no external fetch, and the relay may be printing with the uplink down. */
+import { CREST_PNG_DATA_URI } from "./crest";
+import { qrSvg } from "./qr";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
 
@@ -149,11 +153,95 @@ function barField(payload: string): string {
   return `<div class="code"><div>${bars.join("")}</div><div class="digits mo">${esc(payload)}</div></div>`;
 }
 
+/**
+ * ═══ EVERY FIELD HERE IS PRE-ESCAPED AND INTERPOLATED RAW ═══
+ *
+ * `name` and `nameTitleCase` carry `&amp;` as an ENTITY, so putting them through `esc()` prints the
+ * literal `&amp;` on the paper. That is a trap the next reader will step in exactly once; it is
+ * written down here rather than discovered on a printed sheet.
+ */
 const HOSPITAL = {
   name: "CRK MEDICAL COLLEGE &amp; HOSPITAL",
+  /**
+   * The SAME establishment, title-cased, for the prescription letterhead's footer.
+   *
+   * NOT a unification of the line above, and deliberately so: the thermal slips print the name in
+   * caps, and a SECOND, unescaped copy of the same string lives at `modules/opd/config.ts` behind
+   * seven tests across four modules. Folding three spellings into one is a cross-module change with
+   * its own review — it is not something a layout change may quietly do on the way past.
+   */
+  nameTitleCase: "CRK Medical College &amp; Hospital",
   address: "Chaurasia Chowk, Hajipur — 844101, Bihar",
   contact: "Hotline +91 77648 88189 · Emergency 1068",
+  /* FD-29 — split out of `contact` for the prescription footer, which labels them separately. */
+  hotline: "+91 77648 88189",
+  emergency: "1068",
+  email: "info@crkmch.com",
+  website: "www.crkmch.com",
 };
+
+/**
+ * ═══ THE HOSPITAL'S CLOCK, ONE MECHANISM, IN THE ONE SPELLING THIS FILE ALREADY USED ═══
+ *
+ * `Intl` with the IANA zone rather than the `5.5 * 60 * 60 * 1000` the twelve sites in
+ * `test/ist-clock-parity.test.ts` carry — this file was already on the `Asia/Kolkata` side of that
+ * line (`ageYearsIST` below is the original) and adding a fourteenth numeric copy to render a date
+ * on a letterhead would be a worse answer than reusing the one already here.
+ *
+ * A DATE COLUMN IS NOT AN INSTANT and the two must not share a path. `opd_encounters.service_date`
+ * is already an IST calendar day; pushing it through a zone would move it. `formatCalendarDay`
+ * therefore does no arithmetic at all, and only `formatIstDay`/`formatIstTime` — which take a real
+ * instant, like the moment a sheet is printed — go through the zone.
+ */
+const IST_DAY = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit",
+});
+const IST_TIME = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+});
+const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
+/** `2026-08-29` → `29-Aug-2026`, the form the letterhead prints everywhere. */
+function dayFromIso(iso: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+  const abbr = MONTH_ABBR[Number(iso.slice(5, 7)) - 1];
+  return abbr === undefined ? null : `${iso.slice(8, 10)}-${abbr}-${iso.slice(0, 4)}`;
+}
+
+/**
+ * A DATE column — `service_date`, `dob` — which is already a calendar day and must not be shifted.
+ * Drizzle hands back a `Date` or the ISO string depending on the column's declared mode, so both
+ * are taken rather than one assumed (the same care `ageYearsIST` takes, for the same reason).
+ */
+function formatCalendarDay(value: string | Date | null): string | null {
+  if (value === null || value === "") return null;
+  return dayFromIso(value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10));
+}
+
+/** An INSTANT, on the hospital's clock. */
+function formatIstDay(at: Date): string {
+  return dayFromIso(IST_DAY.format(at)) ?? IST_DAY.format(at);
+}
+
+/** An INSTANT as `HH:MM`, on the hospital's clock. */
+function formatIstTime(at: Date): string {
+  return IST_TIME.format(at);
+}
+
+/**
+ * `F` / `M` / `O` — and `—` for `unknown`, which is the whole reason this is not inlined.
+ *
+ * `administrativeGender` is a four-value column and `unknown` is one of the four. Folding it into
+ * `O` prints a clinical fact the record does not hold: "other" is an answer, "not recorded" is not.
+ * The compact `ageSexOf` on the thermal slips keeps its old three-way fold — a 72 mm token slip has
+ * no room for the distinction and nobody prescribes off one.
+ */
+function genderLetter(gender: string | null): string {
+  const g = (gender ?? "").toLowerCase();
+  if (g.startsWith("f")) return "F";
+  if (g.startsWith("m")) return "M";
+  return g.startsWith("o") ? "O" : "—";
+}
 
 function thermalPage(title: string, body: string): RenderedDocument {
   return {
@@ -176,6 +264,27 @@ type SlipSubject = {
   visitType: string;
   departmentName: string; departmentCode: string; doctorName: string; doctorRegistrationNo: string | null;
   tokenNo: number | null; roomCode: string | null;
+  /**
+   * ═══ FD-29 — WHAT THE A4 LETTERHEAD NEEDS AND A 72 mm SLIP DOES NOT ═══
+   *
+   * The prescription's identity band is five rows deep on each side, where the thermal slips carry
+   * a compacted `ageSex`. These fields are the difference. THREE OF THEM WERE ALREADY SELECTED by
+   * `subjectOf` and thrown away on the way out — `dob`, `gender` and the canonical `patientId` — so
+   * carrying them costs no query at all.
+   *
+   * `patientId` is the CANONICAL id, resolved through `canonicalPersonOf`, and the allergy and
+   * carried-height reads key on it. Keying them on `opd_encounters.patient_id` instead would read
+   * the frozen duplicate after a merge — the exact bug the §14 comment above this type exists to
+   * describe, one level down, on clinical data rather than on a name.
+   */
+  patientId: string;
+  dob: string | Date | null;
+  /** True when the date of birth was derived from an entered age, so the DAY is not a fact. */
+  dobEstimated: boolean;
+  gender: string;
+  ageYears: number | null;
+  /** `opd_doctors.specialty` — nullable free text; the sheet falls back to the department. */
+  doctorSpecialty: string | null;
 };
 
 /** `MED-4`. The same grammar the screen uses — a token printed one way and said another sends a patient to the wrong door. */
@@ -184,22 +293,33 @@ function tokenLabel(code: string, tokenNo: number | null): string {
   return code.trim() === "" ? String(tokenNo) : `${code.trim().toUpperCase()}-${String(tokenNo)}`;
 }
 
-function ageSexOf(dob: string | Date | null, gender: string | null, on: Date): string {
-  const letter = (gender ?? "").toLowerCase().startsWith("f") ? "F"
-    : (gender ?? "").toLowerCase().startsWith("m") ? "M" : "O";
-  if (dob === null || dob === "") return letter;
+/**
+ * Whole years on the hospital's calendar, or `null` when the record has no date of birth.
+ *
+ * Extracted from `ageSexOf` — it was the only IST rule in this file and now has two callers, and a
+ * second copy is how the token slip and the prescription start disagreeing about whether a patient
+ * is eighteen. The carried-height rule turns on exactly that boundary.
+ */
+function ageYearsIST(dob: string | Date | null, on: Date): number | null {
+  if (dob === null || dob === "") return null;
   // `patients.dob` is a real date column, so drizzle may hand back a Date or the ISO string,
   // depending on the mode the column was declared with. Take both rather than assume one.
   const iso = dob instanceof Date ? dob.toISOString() : String(dob);
   const born = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
-  if (Number.isNaN(born.getTime())) return letter;
+  if (Number.isNaN(born.getTime())) return null;
   // IST, like every other date in this system — a birthday at 02:00 IST is still a birthday.
-  const p = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" })
-    .format(on).split("-").map(Number);
+  const p = IST_DAY.format(on).split("-").map(Number);
   let years = p[0]! - born.getUTCFullYear();
   const bm = born.getUTCMonth() + 1;
   if (p[1]! < bm || (p[1] === bm && p[2]! < born.getUTCDate())) years -= 1;
-  return `${String(Math.max(0, years))} y / ${letter}`;
+  return Math.max(0, years);
+}
+
+function ageSexOf(dob: string | Date | null, gender: string | null, on: Date): string {
+  const letter = (gender ?? "").toLowerCase().startsWith("f") ? "F"
+    : (gender ?? "").toLowerCase().startsWith("m") ? "M" : "O";
+  const years = ageYearsIST(dob, on);
+  return years === null ? letter : `${String(years)} y / ${letter}`;
 }
 
 /**
@@ -236,7 +356,7 @@ function ageSexOf(dob: string | Date | null, gender: string | null, on: Date): s
  */
 type SlipPerson = {
   id: string; name: string; alias: string | null; isConfidential: boolean;
-  uhid: string; dob: Date | null; gender: string;
+  uhid: string; dob: Date | null; gender: string; dobEstimated: boolean;
 };
 
 async function canonicalPersonOf(db: Db, patientId: string): Promise<SlipPerson | null> {
@@ -247,6 +367,7 @@ async function canonicalPersonOf(db: Db, patientId: string): Promise<SlipPerson 
       id: patients.id, name: patients.name, alias: patients.alias,
       isConfidential: patients.isConfidential, uhid: patients.uhid,
       dob: patients.dob, gender: patients.administrativeGender,
+      dobEstimated: patients.dobEstimated,
     })
     .from(patients)
     .where(eq(patients.id, canonicalId));
@@ -290,6 +411,8 @@ async function subjectOf(
       uhid: patients.uhid,
       dob: patients.dob,
       gender: patients.administrativeGender,
+      /* FD-29 — the prescription prints the DAY, so it must know whether the day is a fact. */
+      dobEstimated: patients.dobEstimated,
       departmentName: opdDepartments.name,
       departmentCode: opdDepartments.code,
     })
@@ -308,7 +431,12 @@ async function subjectOf(
     `queue.ts` reads `displayName` for the board; a slip and a board must not disagree about a name.
   */
   const doctor = await db
-    .select({ name: opdDoctors.displayName, registrationNo: opdDoctors.registrationNo })
+    .select({
+      name: opdDoctors.displayName, registrationNo: opdDoctors.registrationNo,
+      /* FD-29 — the A4 letterhead prints a Speciality row. Nullable free text with no master
+         behind it, so the sheet falls back to the department rather than printing a dash. */
+      specialty: opdDoctors.specialty,
+    })
     .from(opdEncounters)
     .innerJoin(opdDoctors, eq(opdDoctors.id, opdEncounters.doctorId))
     .where(eq(opdEncounters.id, encounterId));
@@ -375,6 +503,7 @@ async function subjectOf(
     : {
       id: row.patientId, name: row.patientName, alias: row.alias,
       isConfidential: row.isConfidential, uhid: row.uhid, dob: row.dob, gender: row.gender,
+      dobEstimated: row.dobEstimated,
     };
   if (person === null) return null;
 
@@ -391,8 +520,15 @@ async function subjectOf(
     departmentCode: row.departmentCode,
     doctorName: doctor[0]?.name ?? "the department",
     doctorRegistrationNo: doctor[0]?.registrationNo ?? null,
+    doctorSpecialty: doctor[0]?.specialty ?? null,
     tokenNo: entry[0]?.tokenNo ?? null,
     roomCode: null,
+    /* FD-29 — the canonical id, NOT `opd_encounters.patient_id`: see the field's own comment. */
+    patientId: person.id,
+    dob: person.dob,
+    dobEstimated: person.dobEstimated,
+    gender: person.gender,
+    ageYears: ageYearsIST(person.dob, now),
   };
 }
 
@@ -550,12 +686,58 @@ export async function renderPaymentReceipt(
 }
 
 /**
- * ═══ THE PRESCRIPTION SHEET — `RxPageBlank.dc.html`, A4 LASER, FRONT DESK (R2) ═══
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * THE PRESCRIPTION SHEET — `RxPageBlank.dc.html`, A4 LASER, FRONT DESK (R2)
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
  *
- * It prints BLANK below the header. That is the design and it is deliberate: the physician writes
- * on it. What the sheet supplies is the identity band that stops a page being matched to the wrong
- * person, the allergy band, and — owner ruling R5 — **the vitals strip, still blank, kept for manual
+ * It prints BLANK below the vitals strip. That is the design and it is deliberate: the physician
+ * writes on it. What the sheet supplies is the identity band that stops a page being matched to the
+ * wrong person, the allergy band, and — owner ruling R5 — **the vitals strip, kept for manual
  * writing even though the vitals desk now prints its own slip.** The two overlap on purpose.
+ *
+ * ═══ FD-29, OWNER 2026-09-06: *"the prescription design needs to be changed"* ═══
+ *
+ * The owner sent the A4 sheet exported from this repo's OWN artboard and the crest as a separate
+ * file. What that revealed is that the renderer had never matched the artboard it names: no crest,
+ * no date of birth, no encounter identifiers, a placeholder allergy line that asserted nothing had
+ * been checked even when three allergies were on file, and the hospital's name across the top in a
+ * green that appears nowhere in the design. This rewrite is the artboard, with four departures,
+ * every one of them written down here rather than left for a reader to find:
+ *
+ *   1. **THE ARTBOARD IN GIT IS STALE — the exported PDF is newer and wins.** It puts the ALLERGY
+ *      band ABOVE the vitals strip (the artboard's own comments say allergy comes first while its
+ *      markup puts it second, which is what a moved block leaves behind), and it adds the
+ *      carried-height caption under the strip. Both are followed here; `render.test.ts` pins the
+ *      order, because the artboard AND the shipped renderer were both wrong about it.
+ *   2. **The token stays, as a sixth row.** The design drops it. Nothing else the patient carries
+ *      out of the building names the token, the counter reads it off this sheet, and the owner
+ *      raised token visibility as a defect four days ago. One row against that is a cheap trade —
+ *      but it IS a departure from the design and reversing it is one line.
+ *   3. **`Doctor ID: DR-0114` becomes `Doctor: <name> · Reg. <no>`.** There is no doctor code in
+ *      this system — `opd_doctors` has no such column and the string occurs only in design canvases.
+ *      An opaque internal code would also satisfy neither half of NMC Code of Ethics reg. 1.4.2,
+ *      which wants the treating physician's NAME and council registration number on a prescription.
+ *      Printing what the row actually holds recovers both, and recovers two of the four things the
+ *      new design would otherwise have lost.
+ *   4. **The QR carries the visit number, and the "password to access" line is not printed.**
+ *      Owner ruling, 2026-09-06, when asked: *a real QR of the encounter, no password.* The design's
+ *      8-digit access code has nothing behind it — no minting, no store, no verifier, no portal —
+ *      and a code on paper that either unlocks nothing or unlocks something is a decision, not a
+ *      footer line. The QR itself is REAL (`qr.ts`, pinned against an independent encoder and read
+ *      back by an independent decoder); the artboard's hand-drawn 9 × 9 grid of `<div>`s is a
+ *      picture of a QR and `barField`'s comment already rules against shipping one of those.
+ *
+ * ═══ AND ONE THING THAT IS NOT A DEPARTURE, BUT IS A DECISION ═══
+ *
+ * A §14 SEALED PATIENT GETS THE FULL SHEET EXCEPT THE NAME. Date of birth, gender, the allergy band
+ * and the carried height all print. That is this subsystem's existing rule, not a new one:
+ * `getPatientSummaries` emits `dob` and `administrativeGender` beside a nulled name and
+ * `registration.test.ts` pins it with the words "uhid/administrative gender/dob **always**"; the
+ * only non-name identifier withheld anywhere in this tree is the UHID on the AERB dose register,
+ * for a reason specific to the UHID. It is worth knowing that `preStage` pulls the other way —
+ * `sealed ? [] : …`, "Sealed: no history at all" — because the BAY's concern is a clerk browsing
+ * cross-visit history, where this sheet is the patient's own document, already carrying their UHID.
+ * An allergen withheld from a prescription is a safety defect. Recorded so it reads as decided.
  */
 export async function renderPrescriptionSheet(
   db: Db,
@@ -569,62 +751,245 @@ export async function renderPrescriptionSheet(
   const s = await subjectOf(db, encounterId, now, requester);
   if (s === null) return null;
 
+  /*
+    ═══ THE THREE READS THIS DOCUMENT MAKES AND THE OTHER TWO DO NOT ═══
+
+    They live here rather than in `subjectOf` on purpose. `subjectOf` runs for every token slip —
+    that is the counter's hot path, one per registration, all day — and neither the token slip nor
+    the payment receipt has an allergy band, a vitals strip or a printed-by line. Three queries
+    moved up into the shared resolver would be three queries added to the busiest document in the
+    building to serve the rarest.
+  */
+
+  /*
+    ACTIVE ONLY, and this is the safety-critical line on the page. `listAllergies` returns EVERY
+    row newest-first, `entered_in_error` included — the table is append-only (E-8) and a correction
+    is a status, not a delete. The two shipped callers (`opd/prescriptions.ts`,
+    `radiology/gates.ts`) both filter exactly this way. Dropping the filter prints an allergen the
+    hospital has formally retracted onto the sheet a pharmacist dispenses from.
+  */
+  const allergies = (await listAllergies(db, s.patientId)).filter((a) => a.status === "active");
+
+  /*
+    ONLY HEIGHT CARRIES, AND ONLY FOR AN ADULT — the bay's rule (`opd/prestage.ts`), applied to the
+    paper so the two cannot disagree. A weight carried forward is the entire point of the weighing
+    scale and a child's height changing IS the clinical finding, so the other five slots print
+    blank even when the last chart holds them.
+
+    The date shown is the ENCOUNTER's `service_date`, not `opd_vitals.recorded_at`: a service date
+    is already an IST calendar day and needs no timezone arithmetic, and the two genuinely differ
+    for a chart recorded after midnight. Same query shape as `preStage`, for the same reason.
+  */
+  const carried = s.ageYears !== null && s.ageYears >= 18
+    ? await db
+      .select({ heightCm: opdVitals.heightCm, serviceDate: opdEncounters.serviceDate })
+      .from(opdVitals)
+      .innerJoin(opdEncounters, eq(opdEncounters.id, opdVitals.encounterId))
+      .where(and(eq(opdVitals.patientId, s.patientId), eq(opdVitals.status, "active")))
+      .orderBy(desc(opdVitals.recordedAt))
+      .limit(1)
+    : [];
+  const carriedHeight = carried[0]?.heightCm ?? null;
+  const carriedOn = carriedHeight === null ? null : formatCalendarDay(carried[0]?.serviceDate ?? null);
+
+  /*
+    WHO ASKED, as a LOGIN NAME. `users.username` and not `full_name`, and the inversion of the rule
+    twenty lines up is deliberate: a DOCTOR's name belongs on a slip and this file records what it
+    cost to print `dr-render` there once. "Printed by" is the opposite question — it identifies the
+    operator for an audit, and the operator is a login. A system, agent or unknown actor prints no
+    "by" clause at all rather than a ULID nobody can look up.
+  */
+  const operator = requester !== null && requester.type === "user"
+    ? (await db.select({ username: users.username }).from(users).where(eq(users.id, requester.id)))[0]?.username ?? null
+    : null;
+
+  const dobDay = formatCalendarDay(s.dob);
+  const ageSuffix = s.ageYears === null ? "" : ` (${s.dobEstimated ? "≈" : ""}${String(s.ageYears)} years)`;
+  /* An ESTIMATED date of birth is an entered age wearing a date's clothes — print the age alone. */
+  const dobCell = s.dobEstimated || dobDay === null
+    ? (s.ageYears === null ? "—" : `${s.dobEstimated ? "≈" : ""}${String(s.ageYears)} years`)
+    : `${dobDay}${ageSuffix}`;
+  const doctorCell = s.doctorRegistrationNo === null
+    ? esc(s.doctorName)
+    : `${esc(s.doctorName)} · Reg. ${esc(s.doctorRegistrationNo)}`;
+
   const css = `
-    @page { size: A4 portrait; margin: 12mm 14mm; }
+    /* The geometry is the artboard's: a 794 x 1123 px page at 96 dpi is exactly A4, so the layout
+       is authored in the integer pixels it was drawn in and the SHEET is stated in millimetres.
+       296.8mm rather than 297: a full-height box at margin 0 rounds into a phantom second page. */
+    @page { size: A4 portrait; margin: 0; }
     * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; }
-    body { font-family: "IBM Plex Sans", "Noto Sans", "Noto Sans Devanagari", sans-serif; font-size: 10pt; color: #111; }
-    .crest { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #14532d; padding-bottom: 4mm; }
-    .crest .nm { font-size: 15pt; font-weight: 700; color: #14532d; letter-spacing: .01em; }
-    .crest .ad { font-size: 8.5pt; color: #444; margin-top: 1mm; }
-    .crest .dept { text-align: right; font-size: 10pt; font-weight: 600; }
-    .band { display: flex; gap: 6mm; margin-top: 4mm; font-size: 9pt; }
-    .band .col { flex: 1; }
-    .band .r { display: flex; gap: 2mm; padding: .7mm 0; }
-    .band .k { color: #666; min-width: 26mm; }
-    .band .v { font-weight: 600; }
-    .vitals { margin-top: 4mm; border: 1px solid #cbd5d1; border-radius: 2mm; padding: 2.5mm 3mm; }
-    .vitals .t { font-size: 7.5pt; letter-spacing: .14em; text-transform: uppercase; color: #14532d; font-weight: 700; }
-    .vitals .g { display: flex; gap: 4mm; margin-top: 1.5mm; font-size: 9pt; color: #555; }
-    .vitals .g span { flex: 1; border-bottom: 1px dotted #94a3a0; padding-bottom: 3mm; }
-    .allergy { margin-top: 3mm; border: 1.2px solid #b91c1c; border-radius: 2mm; padding: 2mm 3mm; color: #b91c1c; font-size: 9pt; }
-    .allergy .t { font-weight: 700; letter-spacing: .1em; font-size: 7.5pt; text-transform: uppercase; }
-    .rx { margin-top: 5mm; min-height: 150mm; }
-    .rx .sym { font-size: 20pt; color: #14532d; font-weight: 700; }
-    .sign { margin-top: 6mm; border-top: 1px solid #999; width: 70mm; margin-left: auto; padding-top: 1.5mm; font-size: 8pt; color: #555; text-align: center; }
-    .foot { margin-top: 6mm; border-top: 1px solid #cbd5d1; padding-top: 2mm; font-size: 7.5pt; color: #666; display: flex; justify-content: space-between; gap: 4mm; }
-    .mo { font-family: "IBM Plex Mono", monospace; }
+    html, body { margin: 0; padding: 0; background: #fff; }
+    body {
+      font-family: "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+      font-size: 13px; line-height: 17px; color: #000;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    /* The Devanagari stack names the two faces a WINDOWS front desk has, because the Save-as-PDF
+       path writes this HTML into a blank popup with none of the app's own fonts behind it. The
+       relay installs fonts-noto-devanagari; a clerk's PC installs neither. Without these two the
+       allergy band's Hindi word prints as boxes on the browser path only. */
+    .hi { font-family: "Noto Sans Devanagari", "Nirmala UI", Mangal, sans-serif; }
+    .num { font-variant-numeric: tabular-nums; }
+    .lb { color: #333; font-weight: 400; }
+    .vl { color: #000; font-weight: 700; }
+    .sheet { width: 210mm; height: 296.8mm; padding: 26px 30px 20px; display: flex; flex-direction: column; overflow: hidden; }
+    .hd { display: flex; gap: 20px; flex-shrink: 0; }
+    .hd .crest { width: 150px; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-start; }
+    .hd .crest img { width: 78px; height: auto; display: block; }
+    .hd .dept { font-size: 12px; font-weight: 700; color: #55064f; margin-top: 5px; line-height: 14px; }
+    .hd .l { width: 298px; display: flex; flex-direction: column; gap: 1px; }
+    .hd .r { flex-grow: 1; display: flex; flex-direction: column; gap: 1px; }
+    .hd .row { display: flex; align-items: baseline; gap: 5px; min-height: 19px; }
+    .hd .r .row { justify-content: flex-end; }
+    .rule { height: 1px; background: #000; }
+    .thin { height: 1px; background: #9a9a9a; }
+    .body { flex-grow: 1; padding-top: 12px; display: flex; flex-direction: column; min-height: 0; }
+    .alg { display: flex; align-items: center; gap: 9px; border: 1px solid #d92230; padding: 5px 11px; flex-shrink: 0; }
+    .alg .t { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; color: #d92230; text-transform: uppercase; }
+    .alg .bar { width: 1px; height: 12px; background: #d92230; }
+    .alg .sub { font-size: 13.5px; font-weight: 700; color: #d92230; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .alg .note { font-size: 11.5px; color: #333; white-space: nowrap; }
+    .alg .hi { font-size: 11px; font-weight: 600; color: #d92230; }
+    /* NO KNOWN ALLERGIES is the same band in grey. It must still be a BAND: a red frame that simply
+       vanishes is indistinguishable from one that failed to render, and "nothing recorded" is a
+       clinical statement a prescriber acts on. */
+    .alg.none, .alg.none .t, .alg.none .sub, .alg.none .hi { border-color: #9a9a9a; color: #333; }
+    .alg.none .bar { background: #9a9a9a; }
+    .vit { border-top: 1px solid #9a9a9a; border-bottom: 1px solid #9a9a9a; padding: 7px 0; margin-top: 11px; flex-shrink: 0; }
+    .vit .g { display: flex; align-items: baseline; gap: 0; }
+    .vit .lab { font-size: 11px; color: #333; width: 52px; flex-shrink: 0; }
+    .vit .slots { display: flex; gap: 12px; flex-grow: 1; }
+    .vit .s { display: flex; align-items: baseline; gap: 4px; flex-grow: 1; }
+    .vit .ht { display: flex; align-items: baseline; gap: 4px; width: 86px; }
+    /* Scoped to the STRIP, not to the slot class, so the Ht slot gets them too. It is a .ht not a
+       .s because it is fixed-width, and while these three were written ".vit .s .led" an
+       uncarried height printed "Ht    cm" with no dotted line for the nurse to write on. */
+    .vit .k { font-size: 10.5px; color: #666; }
+    .vit .led { flex-grow: 1; border-bottom: 1px dotted #999; height: 13px; }
+    .vit .u { font-size: 9.5px; color: #999; }
+    .vit .cap { font-size: 9.5px; color: #777; margin-top: 4px; line-height: 17px; }
+    .sig { display: flex; justify-content: flex-end; flex-shrink: 0; }
+    .sig .b { width: 280px; }
+    .sig .c { font-size: 9.5px; color: #8a8a8a; margin-top: 4px; text-align: right; letter-spacing: .02em; }
+    .ft { flex-shrink: 0; padding-top: 12px; }
+    .ft .dis { font-size: 10.5px; padding: 4px 0 5px; }
+    .ft .grid { display: flex; gap: 14px; padding-top: 6px; }
+    .ft .cols { flex-grow: 1; display: flex; flex-direction: column; gap: 3px; }
+    .ft .line { display: flex; gap: 22px; }
+    .ft .line > div, .ft .addr { font-size: 11.5px; white-space: nowrap; }
+    /* The one spacer, used by the allergy band and by both footer rows. Scoped to .ft it left
+       एलर्जी floating mid-band, which is the sort of thing only a rendered page shows you. */
+    .sp { flex-grow: 1; }
+    .ft .site { font-weight: 700; color: #d92230; }
+    .ft .qr { width: 62px; height: 62px; flex-shrink: 0; }
+    .ft .qr svg { display: block; }
+    .ft .by { display: flex; align-items: baseline; padding-top: 4px; font-size: 10.5px; color: #333; }
   `;
+
+  const idRow = (label: string, value: string): string =>
+    `<div class="row"><span class="lb">${esc(label)}</span><span class="vl">${value}</span></div>`;
+  const slot = (key: string, unit: string): string =>
+    `<div class="s"><span class="k">${key}</span><span class="led"></span><span class="u">${unit}</span></div>`;
+
+  /* Every active allergen is named. Truncating to the first would hide the one that matters, so the
+     substance slot carries them all and the note says how many rows are behind the newest one. */
+  const newest = allergies[0];
+  const substances = allergies.map((a) => a.substance.toUpperCase()).join(", ");
+  const reaction = newest === undefined || newest.reaction === null || newest.reaction.trim() === ""
+    ? ""
+    : `${esc(newest.reaction)}, `;
+  const more = allergies.length > 1 ? ` · +${String(allergies.length - 1)} more on file` : "";
+  const allergyBand = newest === undefined
+    ? `<div class="alg none"><span class="t">Allergy</span><span class="bar"></span>`
+      + `<span class="sub">NO KNOWN ALLERGIES</span>`
+      + `<span class="note">— none recorded against this patient</span>`
+      + `<div class="sp"></div><span class="hi">कोई ज्ञात एलर्जी नहीं</span></div>`
+    : `<div class="alg"><span class="t">Allergy</span><span class="bar"></span>`
+      + `<span class="sub">${esc(substances)}</span>`
+      + `<span class="note">— ${reaction}recorded ${esc(formatCalendarDay(newest.recordedAt) ?? "—")}${more}</span>`
+      + `<div class="sp"></div><span class="hi">एलर्जी</span></div>`;
+
   const body = `
-    <div class="crest">
-      <div>
-        <div class="nm">${HOSPITAL.name}</div>
-        <div class="ad">${HOSPITAL.address}<br>${HOSPITAL.contact}</div>
+    <div class="sheet">
+      <div class="hd">
+        <div class="crest">
+          <img src="${CREST_PNG_DATA_URI}" alt="${HOSPITAL.nameTitleCase}">
+          <div class="dept">${esc(s.departmentName)}</div>
+        </div>
+        <div class="l">
+          ${idRow("Name:", esc(s.patientName))}
+          ${idRow("UHID:", `<span class="num">${esc(s.uhid)}</span>`)}
+          ${idRow("Gender:", esc(genderLetter(s.gender)))}
+          ${idRow("DOB:", `<span class="num">${esc(dobCell)}</span>`)}
+          ${idRow("Doctor:", doctorCell)}
+        </div>
+        <div class="r">
+          ${idRow("Encounter ID:", `<span class="num">${esc(s.visitNo)}</span>`)}
+          ${idRow("Encounter Type:", "Outpatient")}
+          ${idRow("Visit/Admn Date:", `<span class="num">${esc(formatCalendarDay(s.serviceDate) ?? s.serviceDate)}</span>`)}
+          ${idRow("Department:", esc(s.departmentName))}
+          ${idRow("Speciality:", esc(s.doctorSpecialty ?? s.departmentName))}
+          ${idRow("Token:", `<span class="num">${esc(tokenLabel(s.departmentCode, s.tokenNo))}</span>`)}
+        </div>
       </div>
-      <div class="dept">${esc(s.departmentName)}<div style="font-weight:400;font-size:8.5pt;color:#555">${esc(s.doctorName)}</div></div>
-    </div>
-    <div class="band">
-      <div class="col">
-        <div class="r"><span class="k">Name</span><span class="v">${esc(s.patientName)}</span></div>
-        <div class="r"><span class="k">UHID</span><span class="v mo">${esc(s.uhid)}</span></div>
-        <div class="r"><span class="k">Age / Sex</span><span class="v">${esc(s.ageSex)}</span></div>
+      <div class="rule" style="margin-top:10px;flex-shrink:0"></div>
+      <div class="body">
+        ${allergyBand}
+        <div class="vit">
+          <div class="g">
+            <span class="lab">Vitals</span>
+            <div class="slots">
+              ${slot("BP", "mmHg")}${slot("Pulse", "/min")}${slot("Temp", "°C")}
+              ${slot("SpO₂", "%")}${slot("Wt", "kg")}
+              <div class="ht"><span class="k">Ht</span>${
+                carriedHeight === null
+                  ? `<span class="led"></span><span class="u">cm</span>`
+                  : `<span class="num vl">${esc(String(carriedHeight))} cm</span>`
+              }</div>
+            </div>
+          </div>
+          ${carriedOn === null ? "" : `<div class="cap">Height carried forward from ${esc(carriedOn)} · the rest are filled at the vitals desk</div>`}
+        </div>
+        <div style="flex-grow:1"></div>
+        <div class="sig">
+          <div class="b">
+            <div class="thin"></div>
+            <div class="c">Signature, name &amp; registration no. of the treating physician</div>
+          </div>
+        </div>
       </div>
-      <div class="col">
-        <div class="r"><span class="k">Visit</span><span class="v mo">${esc(s.visitNo)}</span></div>
-        <div class="r"><span class="k">Token</span><span class="v mo">${esc(tokenLabel(s.departmentCode, s.tokenNo))}</span></div>
-        <div class="r"><span class="k">Date</span><span class="v">${esc(s.serviceDate)}</span></div>
+      <div class="ft">
+        <div class="rule"></div>
+        <div class="dis">Letterhead is computer generated. The clinical entries above are written and signed by the treating physician.</div>
+        <div class="thin"></div>
+        <div class="grid">
+          <div class="cols">
+            <div class="addr"><span class="lb">Address:</span> <span class="vl">${HOSPITAL.nameTitleCase},</span> ${HOSPITAL.address}</div>
+            <div class="line">
+              <div><span class="lb">24×7 Hotline:</span> <span class="vl num">${HOSPITAL.hotline}</span></div>
+              <div><span class="lb">Emergency:</span> <span class="vl num">${HOSPITAL.emergency}</span></div>
+              <div class="sp"></div>
+              <div><span class="lb">Scan to enter the visit number</span></div>
+            </div>
+            <div class="line">
+              <div><span class="lb">Email:</span> <span class="vl">${HOSPITAL.email}</span></div>
+              <div><span class="site">${HOSPITAL.website}</span></div>
+              <div class="sp"></div>
+              <div><span class="lb num">${esc(s.visitNo)}</span></div>
+            </div>
+          </div>
+          <div class="qr">${qrSvg(s.visitNo, 62)}</div>
+        </div>
+        <div class="thin" style="margin-top:6px"></div>
+        <div class="by">
+          <span class="num">${operator === null
+            ? `Printed on ${esc(formatIstDay(now))} at ${esc(formatIstTime(now))}`
+            : `Printed by <strong>${esc(operator)}</strong> on ${esc(formatIstDay(now))} at ${esc(formatIstTime(now))}`}</span>
+          <div class="sp"></div>
+          <span class="num">Page 1 of 1</span>
+        </div>
       </div>
-    </div>
-    <div class="vitals">
-      <div class="t">Vitals</div>
-      <div class="g"><span>BP mmHg</span><span>Pulse /min</span><span>Temp °C</span><span>SpO₂ %</span><span>Wt kg</span><span>Ht cm</span></div>
-    </div>
-    <div class="allergy"><span class="t">Allergy</span> — to be confirmed with the patient · एलर्जी</div>
-    <div class="rx"><span class="sym">℞</span></div>
-    <div class="sign">${s.doctorRegistrationNo === null ? "" : `<div style="font-weight:600;color:#111">Reg. no. ${esc(s.doctorRegistrationNo)}</div>`}Signature, name &amp; registration no. of the treating physician</div>
-    <div class="foot">
-      <span>Letterhead is computer generated. The clinical entries above are written and signed by the treating physician.</span>
-      <span class="mo">${esc(s.visitNo)}</span>
     </div>
   `;
   return {

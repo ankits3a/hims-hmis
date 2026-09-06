@@ -5,9 +5,17 @@ import {
 import { openVisit } from "../../modules/opd/encounters";
 import { issuePaidInvoice, mkCashier, openSessionFor, seedBillingBase } from "../../../test/helpers/billing";
 import { renderDocument, renderPaymentReceipt, renderPrescriptionSheet, renderTokenSlip } from "./render";
+/* FD-29 — the redesigned sheet reads allergies and a carried height, and inlines a crest and a QR.
+   The two WRITERS are deep-imported rather than added to the patients barrel: `patients` is
+   imported by nearly every module, and a fixture's convenience is not a reason to widen its public
+   surface. `render.ts` deep-imports `modules/opd/encounters` for the same reason, and the
+   module-boundary lint rule is scoped to `apps/core/src/modules/**`, which this file is not in. */
+import { addAllergy, markAllergyEnteredInError } from "../../modules/patients/allergies";
+import { CREST_PNG_DATA_URI } from "./crest";
+import { qrSvg } from "./qr";
 import { eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
-import { breakGlassGrants, opdDepartments, opdEncounters, patients, phiAccessLog, printJobs } from "../db/schema";
+import { breakGlassGrants, opdDepartments, opdEncounters, opdVitals, patientAllergies, patients, phiAccessLog, printJobs, users } from "../db/schema";
 /* FD-25 §14 — the fixtures the confidentiality rows need: the grant, the queue row, and the one
    production caller that has to thread the requester through. */
 import { grantPermissionToRole, syncPermissions } from "../auth/permissions";
@@ -177,7 +185,57 @@ describe("FD-24 T3: rendering the counter's documents", () => {
     });
   });
 
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-29 — THE REDESIGNED SHEET (owner, 2026-09-06: *"the prescription design needs to be changed"*)
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * The owner sent the A4 export of this repo's own `RxPageBlank.dc.html` and the crest as a
+   * separate file. The renderer had never matched that artboard. These rows pin what the new sheet
+   * says, and three of them pin things that were wrong in BOTH the artboard and the shipped code —
+   * see `renderPrescriptionSheet`'s header for the four deliberate departures from the design.
+   */
   describe("the prescription sheet — A4 laser, at the FRONT DESK (R2)", () => {
+    /** A prior visit with a charted height, on a day deliberately unlike the day it was charted. */
+    async function priorChart(
+      over: { heightCm?: number | null; weightKg?: number | null; sbp?: number | null; pulse?: number | null } = {},
+    ): Promise<void> {
+      const clerk = await mkUser(db, `hx-clerk-${String(Math.floor(Math.random() * 1e9))}`, ["front_office"]);
+      const rows = await db.select({ patientId: opdEncounters.patientId, doctorId: opdEncounters.doctorId })
+        .from(opdEncounters).where(eq(opdEncounters.id, encounterId));
+      const prior = await openVisit(
+        db, clerk.actor,
+        { patientId: rows[0]!.patientId, departmentId: deptId, doctorId: rows[0]!.doctorId! },
+        new Date("2026-06-14T04:00:00.000Z"),
+      );
+      await db.insert(opdVitals).values({
+        id: newId(),
+        encounterId: prior.encounter.id,
+        patientId: rows[0]!.patientId,
+        heightCm: over.heightCm === undefined ? 163 : over.heightCm,
+        weightKg: over.weightKg ?? null,
+        sbp: over.sbp ?? null,
+        pulse: over.pulse ?? null,
+        band: "adult",
+        dangerFlags: [],
+        recordedBy: clerk.actor.id,
+        /* NOT the same calendar day as the encounter's `service_date`. That is the point: the
+           caption must name the day of CARE, and a fixture where the two agree would let a
+           renderer reading `recorded_at` pass. */
+        recordedAt: new Date("2026-06-15T20:30:00.000Z"),
+      });
+    }
+
+    /**
+     * JUST THE VITALS STRIP. The crest inlines 22,456 base64 characters and the QR emits a hundred
+     * integer coordinates, so a whole-document `not.toContain("74")` asserts nothing about the
+     * strip and fails on the picture — measured, not guessed: it is what turned this row red first.
+     */
+    function vitalsStrip(html: string): string {
+      const from = html.indexOf('<div class="vit">');
+      return html.slice(from, html.indexOf('<div style="flex-grow:1">', from));
+    }
+
     it("is an A4 page, not the application's global A5", async () => {
       const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
       expect(doc!.html).toContain("@page { size: A4 portrait");
@@ -191,25 +249,319 @@ describe("FD-24 T3: rendering the counter's documents", () => {
      * ═══ OWNER RULING R5, AND IT IS THE ONE A LATER READER WILL WANT TO "TIDY UP" ═══
      *
      * The vitals desk now prints its own thermal slip (R3), so this strip looks redundant. The owner
-     * ruled it STAYS: *"keep the vitals strip on A4 to write manually if needed."* It prints BLANK —
-     * the physician writes on it. A future task that deletes it is undoing a ruling, not cleaning up.
+     * ruled it STAYS: *"keep the vitals strip on A4 to write manually if needed."* FD-29 restyled it
+     * — label, dotted leader and unit are now three spans, not one run of text — and the ruling is
+     * about the STRIP, not its markup. A future task that deletes it is undoing a ruling.
      */
-    it("keeps the blank vitals strip the owner ruled to keep", async () => {
+    it("keeps the vitals strip the owner ruled to keep, with all six fields", async () => {
       const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
-      expect(doc!.html).toContain("Vitals");
-      for (const field of ["BP mmHg", "Pulse /min", "Temp °C", "SpO₂ %", "Wt kg", "Ht cm"]) {
-        expect(doc!.html).toContain(field);
+      expect(doc!.html).toContain(">Vitals<");
+      for (const field of ["BP", "Pulse", "Temp", "SpO₂", "Wt", "Ht"]) {
+        expect(doc!.html).toContain(`<span class="k">${field}</span>`);
       }
-      // BLANK — a value here would mean the sheet had been pre-filled, which is not what it is for
-      expect(doc!.html).not.toMatch(/BP mmHg[^<]*\d/);
+      for (const unit of ["mmHg", "/min", "°C", "%", "kg"]) {
+        expect(doc!.html).toContain(`<span class="u">${unit}</span>`);
+      }
+    });
+
+    /** `SpO₂` carries U+2082. The sample PDF cannot prove it — its only font is WinAnsi Helvetica,
+     *  which cannot encode the character at all — so the evidence is the artboard, and this row is
+     *  what stops a reader "fixing" it to `SpO2` on the strength of a text extraction. */
+    it("spells SpO₂ with the subscript, which no text layer of the sample PDF can show", () => {
+      expect("SpO₂").toContain("₂");
+      return renderPrescriptionSheet(db, { encounterId }, MON).then((doc) => {
+        expect(doc!.html).toContain("SpO₂");
+      });
     });
 
     it("carries the identity band that stops a page being matched to the wrong person", async () => {
       const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
       expect(doc!.html).toContain("Muskan Arora");
-      expect(doc!.html).toContain("MED-1");
       expect(doc!.html).toContain("Signature, name &amp; registration no.");
-      expect(doc!.html).toContain("℞");
+      // The five rows the design added, each labelled as the artboard labels it.
+      for (const label of ["Name:", "UHID:", "Gender:", "DOB:", "Doctor:", "Encounter ID:", "Encounter Type:", "Visit/Admn Date:", "Department:", "Speciality:"]) {
+        expect(doc!.html).toContain(`<span class="lb">${label}</span>`);
+      }
+      expect(doc!.html).toContain("Outpatient");
+    });
+
+    /**
+     * DEPARTURE 2. The design drops the token and this keeps it. Nothing else the patient carries
+     * names the token, the counter reads it off this sheet, and the owner reported token visibility
+     * as a defect on 2026-09-06. If a later task removes it, it is answering that report again.
+     */
+    it("keeps the token, which the design drops and the counter needs", async () => {
+      const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(`<span class="lb">Token:</span>`);
+      expect(doc!.html).toContain("MED-1");
+    });
+
+    /**
+     * DEPARTURE 3. `DR-0114` does not exist — `opd_doctors` has no code column and the string lives
+     * only in design canvases. What a prescription must legibly carry under NMC Code of Ethics reg.
+     * 1.4.2 is the physician's NAME and council registration number, and the row holds both.
+     */
+    it("prints the doctor's name and council registration, not an invented doctor code", async () => {
+      const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain("Dr Anand Rao");
+      expect(doc!.html).not.toContain("Doctor ID");
+      expect(doc!.html).not.toMatch(/DR-\d{4}/);
+    });
+
+    /** The visit number prints WITH its series letter. Stripping the `V` — which the design does —
+     *  would put a number on the paper that no lookup in this system resolves. */
+    it("prints the encounter id as the visit number the database actually holds", async () => {
+      const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      const rows = await db.select({ visitNo: opdEncounters.visitNo }).from(opdEncounters).where(eq(opdEncounters.id, encounterId));
+      expect(rows[0]!.visitNo).toMatch(/^V\d{10}$/);
+      /* THE ROW, not the document. The visit number also reaches the footer caption and the QR, so
+         a whole-document `toContain` stayed green while the header printed the number without its
+         series letter — which is the one place a clerk reads it off to type it back in. */
+      expect(doc!.html).toContain(`<span class="lb">Encounter ID:</span><span class="vl"><span class="num">${rows[0]!.visitNo}</span></span>`);
+    });
+
+    it("prints dates as 29-Aug-2026, on the hospital's calendar and not the server's", async () => {
+      // 20:00 UTC on the 16th is already the 17th in IST. The SERVICE DATE is a date column and
+      // must not move at all; the PRINTED-AT stamp is an instant and must be read in IST.
+      const doc = await renderPrescriptionSheet(db, { encounterId }, new Date("2026-08-16T20:00:00.000Z"));
+      expect(doc!.html).toContain("17-Aug-2026");
+      expect(doc!.html).toContain("at 01:30");
+      expect(doc!.html).not.toContain("2026-08-17");
+    });
+
+    describe("the allergy band", () => {
+      it("names every active allergen, with the newest one's reaction and date", async () => {
+        const clerk = await mkUser(db, "alg-clerk", ["front_office"]);
+        const rows = await db.select({ patientId: opdEncounters.patientId }).from(opdEncounters).where(eq(opdEncounters.id, encounterId));
+        const older = await withTx(db, (tx) =>
+          addAllergy(tx, clerk.actor, rows[0]!.patientId, { substance: "Penicillin", source: "registration" }));
+        const newer = await withTx(db, (tx) =>
+          addAllergy(tx, clerk.actor, rows[0]!.patientId, { substance: "Sulfa drugs", reaction: "rash", source: "registration" }));
+        /* `recorded_at` defaults to `now()`, which in Postgres is TRANSACTION start — two rows
+           written in one transaction tie, and "newest first" then has no answer. Stamped here so
+           the order under test is the order the fixture states. */
+        await db.update(patientAllergies).set({ recordedAt: new Date("2024-01-09T06:00:00.000Z") }).where(eq(patientAllergies.id, older.allergyId));
+        await db.update(patientAllergies).set({ recordedAt: new Date("2024-03-11T06:00:00.000Z") }).where(eq(patientAllergies.id, newer.allergyId));
+        const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+        expect(doc!.html).toContain("SULFA DRUGS, PENICILLIN");
+        expect(doc!.html).toContain("rash, recorded 11-Mar-2024");
+        expect(doc!.html).toContain("+1 more on file");
+        expect(doc!.html).toContain("एलर्जी");
+        /* Red, not the grey no-allergy band — asserted on the MARKUP. The bare phrase also occurs
+           in the stylesheet's own comment, which makes `not.toContain("NO KNOWN ALLERGIES")` pass
+           for a document that prints it and `toContain` pass for one that does not. */
+        expect(doc!.html).not.toContain('<span class="sub">NO KNOWN ALLERGIES</span>');
+        expect(doc!.html).not.toContain('class="alg none"');
+      });
+
+      /**
+       * ═══ THE SAFETY-CRITICAL ROW ON THIS PAGE ═══
+       *
+       * `listAllergies` returns every row INCLUDING `entered_in_error`, because the table is
+       * append-only and a correction is a status rather than a delete. Drop the caller's filter and
+       * an allergen the hospital has formally retracted prints on the sheet a pharmacist dispenses
+       * from. That mutation turns this row red and nothing else in the repository notices.
+       */
+      it("does not print an allergen that was entered in error", async () => {
+        const clerk = await mkUser(db, "alg-fix-clerk", ["front_office"]);
+        const rows = await db.select({ patientId: opdEncounters.patientId }).from(opdEncounters).where(eq(opdEncounters.id, encounterId));
+        const added = await withTx(db, (tx) =>
+          addAllergy(tx, clerk.actor, rows[0]!.patientId, { substance: "Sulfa drugs", reaction: "rash", source: "registration" }));
+        await withTx(db, (tx) =>
+          markAllergyEnteredInError(tx, clerk.actor, added.allergyId, "recorded against the wrong patient"));
+        const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+        expect(doc!.html).not.toContain("SULFA DRUGS");
+        expect(doc!.html).toContain('<span class="sub">NO KNOWN ALLERGIES</span>');
+      });
+
+      /** A band that VANISHES when nothing is on file is indistinguishable from one that failed to
+       *  render. The negative statement is the ward standard and the placeholder it replaces —
+       *  "to be confirmed with the patient" — asserted nothing had been checked even when three
+       *  allergies were on file. */
+      it("states no known allergies rather than disappearing, and drops the red", async () => {
+        const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+        expect(doc!.html).toContain('<span class="sub">NO KNOWN ALLERGIES</span>');
+        expect(doc!.html).toContain('class="alg none"');
+        expect(doc!.html).not.toContain("to be confirmed with the patient");
+      });
+    });
+
+    describe("the vitals strip's one filled slot", () => {
+      it("carries the height forward and names the day of CARE it was measured on", async () => {
+        await priorChart();
+        const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+        expect(doc!.html).toContain("163 cm");
+        expect(doc!.html).toContain("Height carried forward from 14-Jun-2026");
+        // The chart was RECORDED on the 15th (20:30 UTC → the 16th in IST). Neither may appear.
+        expect(doc!.html).not.toContain("15-Jun-2026");
+        expect(doc!.html).not.toContain("16-Jun-2026");
+      });
+
+      /**
+       * ONLY HEIGHT CARRIES — the bay's rule (`opd/prestage.ts`: *"a weight carried forward is the
+       * entire point of the weighing scale"*). This is the re-aim of the old
+       * `not.toMatch(/BP mmHg[^<]*\d/)`, which went VACUOUS the moment the label and unit stopped
+       * being one run of text, and which pinned the rendering rather than the decision.
+       */
+      it("leaves the other five blank even when the last chart holds them", async () => {
+        await priorChart({ weightKg: 61.5, sbp: 128, pulse: 74 });
+        const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+        const strip = vitalsStrip(doc!.html);
+        expect(strip).toContain("163 cm");
+        for (const carried of ["61.5", "128", "74"]) expect(strip).not.toContain(carried);
+      });
+
+      it("prints a blank Ht slot and NO caption when the last chart has no height", async () => {
+        await priorChart({ heightCm: null, weightKg: 61.5 });
+        const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+        const strip = vitalsStrip(doc!.html);
+        expect(strip).not.toContain("Height carried forward");
+        expect(strip).not.toContain("null cm");
+        expect(strip).toContain(`<span class="u">cm</span>`);
+      });
+
+      it("carries nothing for a child, because a child's height changing IS the finding", async () => {
+        const clerk = await mkUser(db, "paed-clerk", ["front_office"]);
+        const doctor = await mkDoctor(db, { username: "dr-paed", departmentId: deptId, roomId, displayName: "Dr Anand Rao" });
+        /* A minor's registration must carry a guardian (D-31, DPDP §9) — the product rule, met
+           rather than worked around. The DOB is STATED so "is nine" is a fact of the fixture and
+           not of the day the suite runs. */
+        const child = await mkPatient(db, clerk.actor, {
+          name: "Aarav Kumar", sex: "male", ageYears: undefined, dob: new Date("2017-04-05T00:00:00.000Z"),
+          guardian: { name: "Sunita Kumar", relationship: "mother", phone: "9876500011" },
+        });
+        const past = await openVisit(db, clerk.actor, { patientId: child.id, departmentId: deptId, doctorId: doctor.doctorId }, new Date("2026-06-14T04:00:00.000Z"));
+        await db.insert(opdVitals).values({
+          id: newId(), encounterId: past.encounter.id, patientId: child.id, heightCm: 132,
+          band: "child_6_12", dangerFlags: [], recordedBy: clerk.actor.id, recordedAt: new Date("2026-06-14T05:00:00.000Z"),
+        });
+        const today = await openVisit(db, clerk.actor, { patientId: child.id, departmentId: deptId, doctorId: doctor.doctorId }, MON);
+        const doc = await renderPrescriptionSheet(db, { encounterId: today.encounter.id }, MON);
+        expect(vitalsStrip(doc!.html)).not.toContain("132 cm");
+        expect(doc!.html).not.toContain("Height carried forward");
+      });
+    });
+
+    describe("the footer", () => {
+      it("carries a REAL scannable QR of the visit number, and no access password", async () => {
+        const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+        const rows = await db.select({ visitNo: opdEncounters.visitNo }).from(opdEncounters).where(eq(opdEncounters.id, encounterId));
+        // The same encoder the conformance suite pins against an independent implementation.
+        expect(doc!.html).toContain(qrSvg(rows[0]!.visitNo, 62));
+        // Owner ruling 2026-09-06: no password line. It unlocked nothing and promised a portal.
+        expect(doc!.html).not.toContain("Password to access");
+        expect(doc!.html).not.toContain("raise the orders");
+      });
+
+      it("inlines the crest and reaches for nothing over the network", async () => {
+        const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+        expect(doc!.html).toContain(`src="${CREST_PNG_DATA_URI}"`);
+        expect(doc!.html).not.toContain("crk-logo");
+        expect(doc!.html).not.toContain("fonts.googleapis");
+        // The SVG namespace is an identifier, not an address; nothing else may look like a URL.
+        expect(doc!.html.replace(/xmlns="http:\/\/www\.w3\.org\/2000\/svg"/g, "")).not.toMatch(/https?:\/\//);
+      });
+
+      it("moves the hospital's own details into the footer, where the design puts them", async () => {
+        const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+        expect(doc!.html).toContain("CRK Medical College &amp; Hospital,");
+        expect(doc!.html).toContain("Chaurasia Chowk, Hajipur");
+        expect(doc!.html).toContain("+91 77648 88189");
+        expect(doc!.html).toContain("info@crkmch.com");
+        expect(doc!.html).toContain("www.crkmch.com");
+        // Not double-escaped: the constant already holds the entity.
+        expect(doc!.html).not.toContain("&amp;amp;");
+      });
+
+      /**
+       * `users.username`, and the INVERSION of the doctor rule twenty lines up in `render.ts` is the
+       * point: a doctor's name belongs on a slip, an operator's login belongs in an audit line.
+       */
+      it("names the requester by login, and says nothing about who when there is no user", async () => {
+        const clerk = await mkUser(db, "print-op", ["front_office"]);
+        /* `mkUser` sets `full_name` TO the username, so a fixture that leaves it alone cannot tell
+           the two columns apart — a mutant swapping one for the other survived until this line. */
+        await db.update(users).set({ fullName: "Anshuman Prasad" }).where(eq(users.id, clerk.id));
+        const named = await renderPrescriptionSheet(db, { encounterId }, MON, clerk.actor);
+        expect(named!.html).toContain("Printed by <strong>print-op</strong> on 17-Aug-2026");
+        expect(named!.html).not.toContain("Anshuman Prasad");
+        expect(named!.html).not.toContain(clerk.actor.id);
+
+        const anonymous = await renderPrescriptionSheet(db, { encounterId }, MON, null);
+        expect(anonymous!.html).toContain("Printed on 17-Aug-2026");
+        expect(anonymous!.html).not.toContain("Printed by");
+      });
+
+      /**
+       * `Counter 3` is NOT printed and cannot be. There is no counter, desk or workstation column in
+       * this system; the nearest thing is `auth_sessions.terminal_id`, which no decorator exposes
+       * and which `apps/web` never sends, so it is NULL for every production session. A fabricated
+       * counter number on paper handed to a patient is worse than no counter number.
+       */
+      it("does not invent a counter number", async () => {
+        const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+        expect(doc!.html).not.toMatch(/Counter \d/);
+      });
+
+      /**
+       * "Page 1 of 1" is TRUE BY CONSTRUCTION, not by a page counter: the sheet is a fixed-height
+       * box that hides its overflow, so the document is exactly one page. MEASURED, and it is why
+       * the counter is not used — Chromium renders `@bottom-right { content: counter(pages) }`
+       * only when the page has a non-zero margin, and this page's margin is zero so the design's
+       * footer can reach the paper's edge. These two declarations are what make the sentence true.
+       */
+      it("is a single page by construction, which is what makes `Page 1 of 1` honest", async () => {
+        const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+        expect(doc!.html).toContain("Page 1 of 1");
+        expect(doc!.html).toContain("height: 296.8mm");
+        expect(doc!.html).toContain("overflow: hidden");
+      });
+    });
+
+    /**
+     * DEPARTURE 1 — the artboard in git and the shipped renderer BOTH put the vitals strip first,
+     * and the newer PDF export puts the ALLERGY band first. The artboard's own comments say allergy
+     * comes first while its markup says otherwise, which is what a block moved after the comments
+     * were written leaves behind. A reader "restoring" the artboard order turns this red.
+     */
+    it("puts the allergy band ABOVE the vitals strip, as the newer export does", async () => {
+      const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html.indexOf('class="alg')).toBeGreaterThan(0);
+      expect(doc!.html.indexOf('class="alg')).toBeLessThan(doc!.html.indexOf(">Vitals<"));
+    });
+
+    /**
+     * §14 — the sheet withholds the NAME and nothing else. `getPatientSummaries` emits `dob` and
+     * `administrativeGender` beside a nulled name and `registration.test.ts` pins it in the words
+     * "uhid/administrative gender/dob **always**". Withholding either here would be inventing a
+     * rule rather than applying one; printing the legal name would break the one that exists.
+     */
+    it("prints a sealed patient's date of birth and gender beside the alias", async () => {
+      const clerk = await mkUser(db, "rx-seal-clerk", ["front_office"]);
+      const doctor = await mkDoctor(db, { username: "dr-rx-seal", departmentId: deptId, roomId, displayName: "Dr Anand Rao" });
+      const patient = await mkPatient(db, clerk.actor, {
+        name: "Ravi Shankar Menon", sex: "male", ageYears: undefined, dob: new Date("1985-03-12T00:00:00.000Z"),
+        isConfidential: true, alias: "Patient A",
+      });
+      const visit = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: doctor.doctorId }, MON);
+      const doc = await renderPrescriptionSheet(db, { encounterId: visit.encounter.id }, MON, clerk.actor);
+      expect(doc!.html).toContain("Patient A");
+      expect(doc!.html).not.toContain("Ravi Shankar Menon");
+      expect(doc!.html).toContain(`<span class="vl">M</span>`);
+      // A REAL date of birth prints the day and the age; an age entered at the counter would not.
+      expect(doc!.html).toContain("12-Mar-1985 (41 years)");
+    });
+
+    /** `unknown` is one of the four values `administrative_gender` holds, and it is not `other`.
+     *  Printing `O` for it would put a clinical fact on paper that the record does not hold. */
+    it("prints a dash for an unrecorded gender rather than folding it into `O`", async () => {
+      const clerk = await mkUser(db, "unk-clerk", ["front_office"]);
+      const doctor = await mkDoctor(db, { username: "dr-unk", departmentId: deptId, roomId, displayName: "Dr Anand Rao" });
+      const patient = await mkPatient(db, clerk.actor, { name: "Unknown Person", sex: "unknown", ageYears: 30 });
+      const visit = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: doctor.doctorId }, MON);
+      const doc = await renderPrescriptionSheet(db, { encounterId: visit.encounter.id }, MON);
+      expect(doc!.html).toContain(`<span class="vl">—</span>`);
+      expect(doc!.html).not.toContain(`<span class="vl">O</span>`);
     });
   });
 
