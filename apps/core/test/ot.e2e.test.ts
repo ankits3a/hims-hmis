@@ -297,6 +297,24 @@ describe("the mini-OT over HTTP (Plan 15 T8)", () => {
       .send({ listDate: "2026-09-02", theatreResourceId: f.theatreId }).expect(201);
     expect((published.body as { readyCaseIds: string[] }).readyCaseIds).toEqual([caseId]);
 
+    /**
+     * ═══ THE SEAM, POSTED THE WAY THE COCKPIT POSTS IT ═══
+     *
+     * `resequenceList` in `apps/web/src/lib/ot-api.ts` sent `{ order, reason }` and this route reads
+     * `caseIdsInOrder` and declared no `reason`. **This route had no end-to-end test at all**, which
+     * is how two ends of one seam disagreed in a deployed module without a suite noticing: every
+     * unit test called `resequence()` directly with the server's own field names, so the wire
+     * between them was exercised by nothing.
+     *
+     * Sent here as the client sends it, `reason` included, so the two ends cannot drift apart again
+     * without this failing.
+     */
+    await request(server()).post("/ot/lists/resequence").set(...auth(coordinator.token))
+      .send({
+        listDate: "2026-09-02", theatreResourceId: f.theatreId,
+        caseIdsInOrder: [caseId], reason: "surgeon delayed in OPD",
+      }).expect(201);
+
     // ── HOLDING: the wristband ──
     const card = await otPatientCard(db, patientId);
     const verified = await request(server()).post(`/ot/cockpit/${caseId}/verify-holding`)
