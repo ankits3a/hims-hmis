@@ -34,7 +34,8 @@ export { OtModule, intendedPayerFor, registerOtEncounterResolver } from "./ot.mo
 
 // ── T3 — governed definition data, the deposit, booking, and the two workflow definitions ──
 export {
-  CRITERIA_SEED_BODY, DEPOSIT_POLICY_SEED_BODY, OT_DEFINITION_SEEDS, PACU_THRESHOLDS_SEED_BODY,
+  CRITERIA_SEED_BODY, DEPOSIT_POLICY_SEED_BODY, OT_DEFINITION_KIND_VALUES, OT_DEFINITION_SEEDS,
+  PACU_THRESHOLDS_SEED_BODY,
   PROCEDURE_CLASS_VALUES, activeDefinition, activeDefinitionRow, criteriaBodySchema, criteriaFor,
   depositPolicyBodySchema, draftDefinition, pacuThresholdsBodySchema, parseDefinitionBody,
   privilegesBodySchema, publishDefinition, requestDefinitionPublish,
