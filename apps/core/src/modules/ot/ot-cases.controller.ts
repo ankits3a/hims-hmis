@@ -76,7 +76,23 @@ const overrideBody = z.object({
 });
 const waiveBody = z.object({ reason: z.string().min(1).max(500) });
 const publishBody = z.object({ listDate: dateStr, theatreResourceId: idSchema });
-const resequenceBody = publishBody.extend({ caseIdsInOrder: z.array(idSchema).min(1).max(50) });
+/**
+ * ═══ A SEAM DRAWN FROM BOTH ENDS ═══
+ *
+ * The cockpit posted `{ listDate, theatreResourceId, order, reason }` and this schema read
+ * `caseIdsInOrder` and declared no `reason`. **Neither end was wrong about what it meant and they
+ * could not talk**: `order` failed validation outright, and `reason` — which zod strips rather than
+ * refuses — vanished silently even once the array was named correctly.
+ *
+ * The SERVER's name wins for the array, because `resequence` validates against it (every case named,
+ * no duplicates, the whole list) and the audit story is built on it. The CLIENT wins on `reason`
+ * existing at all: it had always sent one, and `list.resequenced` is the thing that needed somewhere
+ * to put it. Optional, because the route has been callable without one since Plan 15.
+ */
+const resequenceBody = publishBody.extend({
+  caseIdsInOrder: z.array(idSchema).min(1).max(50),
+  reason: z.string().min(1).max(500).optional(),
+});
 
 @Controller("ot")
 export class OtCasesController {
