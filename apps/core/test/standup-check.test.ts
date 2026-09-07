@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { setupTestDb, truncateAll } from "./helpers/db";
-import { ensureRole, mkUser, seedOpdBase, seedOpdMasters } from "./helpers/opd";
+import { activateOpdVisitDefinition, ensureRole, mkUser, seedOpdBase, seedOpdMasters } from "./helpers/opd";
 import { seedSodPairs } from "../src/kernel/auth/sod";
 import { createUser } from "../src/kernel/auth/identity";
 import { assignRole } from "../src/kernel/auth/permissions";
@@ -45,6 +45,13 @@ const RUNBOOK_DIR = resolve(REPO_ROOT, "docs", "runbooks");
  */
 const RUNBOOK_MODULE: Record<string, string> = {
   "lab-go-live.md": "lab",
+  /**
+   * 11i / §OPD-UNSEEDED — the sixth runbook, and the FIRST one written for a module that was
+   * already live. Its module key is `front-desk` and not `opd`: that is the census's own name for
+   * the row set (`STANDUP_ROWS["front-desk"]`), and inventing a second key here would give the
+   * counter two identities in one census.
+   */
+  "opd-go-live.md": "front-desk",
   "pharmacy-go-live.md": "pharmacy",
   "radiation-safety-go-live.md": "radiology",
   "radiology-go-live.md": "radiology",
@@ -101,6 +108,35 @@ describe("standup:check — the readiness census (11i T2)", () => {
     expect(withoutRows).toEqual([]);
   });
 
+  /**
+   * ═══ THE OTHER DIRECTION, AND IT IS THE ONE THAT LET §OPD-UNSEEDED THROUGH ═══
+   *
+   * The test above walks the RUNBOOK FILES and asks each for a row set. Its population is therefore
+   * whatever is on disk in `docs/runbooks/` — so **a census module with no runbook is not in the
+   * population at all**, and nothing above can notice that it is short a row. `front-desk` had no
+   * runbook and no `opd_visit` check for the entire life of the census, while `lab`, `pharmacy` and
+   * `radiology` each had their definition checked.
+   *
+   * That is this file's own header lesson turned on the file: *"a census that names four of five
+   * departments is not a census."* The guard counted the four it could see. **Fixing only the OPD
+   * row would leave the next department in exactly the same hole** (#161 — a sweep is itself an
+   * instance: define the class by its property, not by a string), so the population is now the
+   * CENSUS's modules and the runbooks are checked against them.
+   *
+   * `hospital` is the one exemption and it is declared, not inferred: its own comment says it is
+   * *"not a department: the rows every department's opening rests on"*, so it has no go-live day of
+   * its own to write a runbook for.
+   */
+  it("and EVERY census module has a runbook — the direction that would have caught the missing OPD rows", () => {
+    const runbooks = readdirSync(RUNBOOK_DIR).filter((f) => f.endsWith("-go-live.md"));
+    const modulesWithRunbook = new Set(runbooks.map((f) => RUNBOOK_MODULE[f]).filter((m) => m !== undefined));
+    const NOT_A_DEPARTMENT = ["hospital"];
+    const censusModules = Object.keys(STANDUP_ROWS).filter((m) => !NOT_A_DEPARTMENT.includes(m));
+    expect(censusModules.length).toBeGreaterThan(0); // non-vacuous
+    const withoutRunbook = censusModules.filter((m) => !modulesWithRunbook.has(m));
+    expect(withoutRunbook).toEqual([]);
+  });
+
   it("every NOT MODELLED row names a runbook SECTION THAT EXISTS", () => {
     const notModelled = Object.values(STANDUP_ROWS).flat().filter(isNotModelled);
     expect(notModelled.length).toBeGreaterThan(0); // the third verdict is used, not merely declared
@@ -154,6 +190,36 @@ describe("standup:check — the readiness census (11i T2)", () => {
      */
     const g2Red = results.filter((r) => r.gate === "G2" && r.verdict !== "ok").map((r) => `${r.module}.${r.code}`);
     expect(g2Red).toEqual(["radiology.radiology_study_types_active"]);
+  });
+
+  /**
+   * ═══ §OPD-UNSEEDED — THE ROW WITHOUT WHICH NOT ONE PATIENT CAN BE REGISTERED ═══
+   *
+   * `encounters.ts` calls `startInstance(tx, OPD_VISIT_DEF_KEY, …)` on EVERY encounter open, and
+   * `startInstance` throws `no_active_definition` for a key with no active row. So a deployment
+   * whose `opd_visit` was never activated cannot open a visit at all — and **nothing outside the
+   * test tree had ever activated one**: `activateOpdVisitDefinition` lives in `test/helpers/opd.ts`
+   * and is called by forty test files and by no line of `src/` or `scripts/`.
+   *
+   * IT IS G3 AND NOT G2, AND THE GATE FOLLOWS THE CHANGE CLASS. `opd_visit` is **Class A** —
+   * `CHANGE_CLASS_POLICY.A` demands `owner` + `medical_superintendent` approvals, a drafter who is
+   * not the activator (the `workflow_drafter_activator` SoD pair), and therefore FOUR humans. A
+   * deploy cannot establish that and must not try: `lab` and `pharmacy` are Class C and their seeds
+   * activate them (G2), `radiology` is Class A and is G3, and this row joins radiology's side.
+   * **A seed that activated a Class A definition would collapse a two-key clinical-safety approval
+   * into an automated call** — which is why the answer here is a runbook and a check, not a line in
+   * `seed-opd.ts`.
+   */
+  it("§OPD-UNSEEDED: opd_visit is RED after every deploy seed, and green only after the Class A ceremony", async () => {
+    await deployG2State(db);
+
+    /** No deploy, and no seed, activates it. THIS is the state a fresh environment stands up in. */
+    expect(verdictOf(await runCensus(db, "front-desk"), "front-desk", "opd_visit_definition_active")).toBe("RED");
+
+    /** The ceremony the runbook describes: drafter, owner + MS approvals, a distinct activator. */
+    await activateOpdVisitDefinition(db);
+
+    expect(verdictOf(await runCensus(db, "front-desk"), "front-desk", "opd_visit_definition_active")).toBe("ok");
   });
 
   it("an UNPRICED orderable reads RED — the runbook's §4.5 warning, made a check", async () => {
