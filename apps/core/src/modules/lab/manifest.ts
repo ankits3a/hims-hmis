@@ -1,3 +1,5 @@
+import { interfaceDown, interfaceRestored } from "../../kernel/ops/events";
+import { LAB_INTERFACE_CONSUMER } from "./interface-status";
 import { LAB_RESOURCE_KINDS } from "./kinds";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
@@ -46,7 +48,19 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  * that uses it is held by `billing_manager` (DD6, `approval-types.ts`). A permission the module
  * declares and no lab role holds is the honest shape for a control another office exercises.
  *
- * ═══ `subscriptions: []` — see `events.ts` for why the lab consumes nothing ═══
+ * ═══ TWO SUBSCRIPTIONS, AND THEY LANDED WITH THE HANDLER — 17-E T7b (the `partnersManifest` RULE) ═══
+ *
+ * `buildSubscriptionBus` makes a declared subscription with no handler a BOOT ERROR by design
+ * (§2.54's own specimen). So `interface.down` and `interface.restored` -> `lab.interface_status`
+ * arrive HERE **with** `labInterfaceConsumer`, **with** the worker's `workerConsumers` entry and
+ * **with** the cursor census in `seed-cursors.test.ts`, in ONE commit. **No commit has ever existed
+ * in which this array names a consumer nothing implements**, which is the property the rule is about
+ * rather than the ordering.
+ *
+ * BOTH NAMES ARE THE KERNEL's and every registered printer and scanner in the hospital raises them,
+ * so the handler resolves `lab_instruments.interface_id` first and returns on a device that is not an
+ * analyser's bridge. See `events.ts` for what the lab still consumes nothing of, and why these two
+ * are the opposite case rather than an exception to it.
  *
  * ═══ INSTALLED IN **BOTH** PROCESSES, SO `manifests.test.ts` LEG 3 STAYS AT SIX ═══
  *
@@ -96,7 +110,10 @@ export const labManifest: ModuleManifest = {
      */
     "lab.instruments.operate",
   ],
-  subscriptions: [],
+  subscriptions: [
+    { event: interfaceDown.name, consumer: LAB_INTERFACE_CONSUMER },
+    { event: interfaceRestored.name, consumer: LAB_INTERFACE_CONSUMER },
+  ],
   orderKinds: [
     {
       kind: "lab",

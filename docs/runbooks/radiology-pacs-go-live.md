@@ -40,11 +40,28 @@ configured AE title (the string the vendor engineer typed into the console — c
 printable ASCII characters, no backslash). The export ENFORCES that shape: a device whose title
 fails it is absent from the worklist and named in the response's `malformedAeTitle` list, so an
 empty console with `withheld: 0` and a non-empty `malformedAeTitle` is a typo, not a booking gap.
-Registry screen → the device → attributes, keeping `modality` beside it:
+The attribute looks like this, `modality` kept beside it:
 
 ```json
 { "modality": "ct", "aeTitle": "CT1" }
 ```
+
+> ## ⚠ THERE IS NO REGISTRY SCREEN, AND NOTHING WRITES `aeTitle` AT ALL
+>
+> This section said *"Registry screen → the device → attributes"*. Measured 2026-09-07: the kernel
+> exposes `/resources/board`, `/resources/tree` and `/resources/:id/history` — all GET — and no
+> create or update route. **`aeTitle` is read in exactly one place (`mwl.ts:203`) and written in
+> none**: no seed, no route, no screen, anywhere in the workspace.
+>
+> **So `GET /radiology/mwl` returns an empty row set on every deployment, permanently.** `mwl.ts:204`
+> skips any device whose `aeTitle` is missing, and none ever has one — which means **step 11's proof
+> below can never pass**, and an operator following it will read the empty console as a booking
+> problem. It is not one.
+>
+> 18b's own plan foresaw this and closed the spike the other way: *"if not, T1 adds
+> `POST /radiology/devices/:id/ae-title`"*. That route was not built. **Until it is, the modality
+> worklist is inert** — the export, its AE-title validation and its `malformedAeTitle` list are all
+> correct and all unreachable. See `radiology-go-live.md` §5 for the same gap on the machine itself.
 
 A device without an AE title is simply absent from the export. **A PCPNDT machine is offered
 Form F studies only while it is on an active §19 registration** — enter the machine under the

@@ -115,6 +115,15 @@ export const LAB_ERROR_CODES = [
   "result_superseded",
   /** ── the range book's door (the writer that `lab_reference_ranges` never had) ── */
   "range_overlap",
+  /**
+   * ── 17-E T7b — the analyser's bridge, and the row a link must point AT ──
+   *
+   * `lab_instruments.interface_id` carries a foreign key, so the database already refuses an id that
+   * names no device — but as a raw Postgres error, which the controller maps to a 500. An
+   * administrator who mistypes an id is told the server broke. This is the same refusal said in the
+   * module's own vocabulary, and it is the sixth `unknown_*`.
+   */
+  "unknown_interface",
   /** ── DD11's morning review of a night release ── */
   "review_not_pending",
 ] as const;
@@ -223,6 +232,9 @@ const STATUS: Record<LabErrorCode, number> = {
    * is a rule the screen must name.
    */
   range_overlap: 422,
+
+  /** 404 with the other five: the named row does not exist. A missing device is not a bad request. */
+  unknown_interface: 404,
   /**
    * 409 with the other state conflicts: the row is not in the state this act moves it out of —
    * either it never needed a morning review, or somebody has already given it one. The caller's

@@ -5,6 +5,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { invoiceLines, invoices } from "./billing";
 import { orderItems, orders } from "./orders";
+import { interfaces } from "./ops";
 import { patients } from "./patients";
 import { resources } from "./resources";
 import { services } from "./tariff";
@@ -732,6 +733,19 @@ export const labInstruments = pgTable(
     sampleIdMode: text("sample_id_mode").notNull(),
     /** Free text, for a human reading the register. Nothing branches on it — see the header. */
     connection: text("connection"),
+    /**
+     * 17-E T7b — the `interfaces` row this machine's BRIDGE heartbeats on (Plan 11c D6).
+     *
+     * **NULLABLE, and that is Q5's rule at the instrument level.** *"`interface_down` is written only
+     * by the bridge's own heartbeat lapse, never by idleness"* — and an analyser with no registered
+     * bridge is not a broken link, it is a machine nobody has connected yet, which is the state every
+     * instrument is in the day it is entered in the register. NOT NULL would have forced a fake
+     * interface row per instrument and then downed every one of them on the first sweep.
+     *
+     * It is NOT `connection`, whose own comment two lines up says nothing branches on it. Making a
+     * free-text field branch is the silent overloading this schema avoids everywhere else.
+     */
+    interfaceId: text("interface_id").references(() => interfaces.id),
     active: boolean("active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     createdBy: text("created_by").notNull(),
@@ -739,6 +753,12 @@ export const labInstruments = pgTable(
     updatedBy: text("updated_by").notNull(),
   },
   (t) => [
+    /**
+     * ONE INSTRUMENT PER BRIDGE. Two analysers pointing at one `interfaces` row would both go
+     * `interface_down` on one lapse and both come back on one heartbeat, which is a lie about
+     * whichever of them was actually still connected.
+     */
+    uniqueIndex("lab_instruments_interface_ux").on(t.interfaceId).where(sql`${t.interfaceId} is not null`),
     /**
      * TWO instrument rows against one machine would give it two code maps and two sample-id modes,
      * and an ingest resolving through "the" instrument would pick by row order. The machine is the
