@@ -100,11 +100,32 @@ async function assertDeviceBookable(
     .from(resources)
     .where(eq(resources.id, deviceResourceId));
   const device = rows[0];
-  if (!device || device.kind !== "device") {
+  /**
+   * ═══ THE PATTERN WAS THE LIMIT, NOT THE SCOPE (close review, second pass) ═══
+   *
+   * This line said `resource ${deviceResourceId} is not an imaging device` and the sweep that
+   * rewrote the two refusals below it walked straight past — because it grepped `device ${` and
+   * this line says `resource ${`. **Thirteen lines apart, in the same function.** The SELECT above
+   * had already been widened to fetch `code` and `name` for those two, so the material was sitting
+   * in scope, unused.
+   *
+   * Two messages rather than one, because the two branches are different facts: a row that is not
+   * there at all, and a row that is there and is a bed, a theatre or a bench. **The second is the
+   * one a receptionist actually hits** — pasting the wrong resource id into the device box — and it
+   * is the one that can name what they picked.
+   */
+  if (!device) {
     throw new RadiologyError(
       "device_unavailable",
-      `resource ${deviceResourceId} is not an imaging device`,
+      `no resource ${deviceResourceId} exists`,
       { deviceResourceId },
+    );
+  }
+  if (device.kind !== "device") {
+    throw new RadiologyError(
+      "device_unavailable",
+      `${machineLabel(device)} is a ${device.kind}, not an imaging device`,
+      { deviceResourceId, kind: device.kind },
     );
   }
   if (!SCHEDULABLE_DEVICE_STATUSES.includes(device.status)) {

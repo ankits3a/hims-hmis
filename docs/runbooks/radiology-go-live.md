@@ -58,8 +58,8 @@ cat roster.json | pnpm seed:staff
 
 `seed:radiology` creates the twenty study types' tariff **service rows with no prices** (a phase that
 invented prices would be inventing money) and five `device` resources — one X-ray, one ultrasound,
-one CT, one MRI, one mammography unit. **A hospital with two CTs adds the second through the
-resources screen**; the seed does not guess at an inventory.
+one CT, one MRI, one mammography unit. The seed does not guess at an inventory, and **a hospital
+with two CTs adds the second through this script — there is no resources screen. See §5.**
 
 It also self-publishes the `study_types` book, leaving `approval_id` NULL as the provenance — the
 owner's 2026-08-31 ruling. Every LATER version goes through the medical superintendent's approval on
