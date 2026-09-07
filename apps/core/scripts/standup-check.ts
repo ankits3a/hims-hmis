@@ -400,7 +400,9 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
     {
       gate: "G3", code: "radiology_device_present",
       check: async (db) => (await listResourcesOfKind(db, "device")).length > 0,
-      fix: "create one `resources` row of kind `device` per machine, with its `modality` attribute",
+      // CORRECTED 2026-09-06: this named an act with no door. There is no resources screen and no
+      // create route; `seed:radiology` is the only writer of an imaging device.
+      fix: "radiology-go-live.md §5: add the machine to MODALITY_MACHINES and re-run seed:radiology — there is no resources screen",
     },
     {
       gate: "G3", code: "radiology_devices_licensed",
