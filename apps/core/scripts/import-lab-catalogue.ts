@@ -247,7 +247,7 @@ export async function planCatalogue(db: Db, files: ParsedFile[]): Promise<Import
     existingAnalytes.has(code.toLowerCase()) || arriving.has(code.toLowerCase());
 
   const existingOrderables = new Set(
-    (await listOrderables(db, { activeOnly: false })).map((o) => o.code.toLowerCase()),
+    (await listOrderables(db)).map((o) => o.code.toLowerCase()),
   );
 
   for (const f of files) {
