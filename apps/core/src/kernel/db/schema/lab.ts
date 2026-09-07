@@ -724,6 +724,52 @@ export const labSlaBreaches = pgTable(
  * problem (D1: the bridge is out of this repository), and a column the server branches on would be
  * a lie about where that decision is made.
  */
+/**
+ * ═══ WHICH FILE PRODUCED THIS CATALOGUE — the provenance `import-item-master` shipped without ═══
+ *
+ * `import:lab-catalogue` takes the owner's own spreadsheets. Six months later the question is *"where
+ * did this reference range come from"*, and `lab_reference_ranges.source` answers it clinically (the
+ * kit insert, the textbook) while nothing answered it operationally: **which file, sent when, loaded
+ * by whom.** The first loader recorded neither, and the design note names that as its open defect.
+ *
+ * `holder_book_imports` (Plan 09 T5) is the precedent and this mirrors it deliberately, including
+ * what it does NOT do: **per IMPORT, never per row.** A column on `lab_analytes`,
+ * `lab_orderables` and `lab_reference_ranges` would be three migrations, three joins and a
+ * per-row fact nobody asks for; what an operator actually asks is "was the March range book
+ * loaded, and by whom", which one row answers.
+ *
+ * `file_hash` makes a re-send visible: the same bytes arriving twice is the ordinary case when a
+ * transfer is retried, and it should read as the same import rather than as a second one.
+ * `imported_by` is a NAME in plain text, never a foreign key — note §6, inherited from
+ * `seed-staff`: an operator is identified without the script authenticating one.
+ *
+ * ROW COUNTS ARE PER KIND because the three files are separate and any subset may be sent; a single
+ * `rows_accepted` would make "the range book went in" and "the test list went in" indistinguishable.
+ */
+export const labCatalogueImports = pgTable(
+  "lab_catalogue_imports",
+  {
+    id: text("id").primaryKey(),
+    /** The three file names as given, joined — an audit reads what the operator actually ran. */
+    fileNames: text("file_names").notNull(),
+    fileHash: text("file_hash").notNull(),
+    analytesWritten: integer("analytes_written").notNull().default(0),
+    orderablesWritten: integer("orderables_written").notNull().default(0),
+    rangesWritten: integer("ranges_written").notNull().default(0),
+    importedBy: text("imported_by").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [
+    /**
+     * The same bytes are the same import. A retried transfer must not read as a second load, and an
+     * operator re-running the identical file should be told so rather than silently duplicating a
+     * record of work that happened once.
+     */
+    uniqueIndex("lab_catalogue_imports_hash_ux").on(t.fileHash),
+  ],
+);
+
 export const labInstruments = pgTable(
   "lab_instruments",
   {
