@@ -11,8 +11,9 @@ export { PcpndtError, PCPNDT_ERROR_CODES, pcpndtHttpStatus } from "./errors";
 export type { PcpndtErrorCode } from "./errors";
 export { PcpndtModule } from "./pcpndt.module";
 export {
-  activeRegistrationFor, addMachine, addPerson, createRegistration, deactivateMachine,
-  deactivatePerson, deactivateRegistration, registeredPersons,
+  activeRegistrationFor, activeRegistrations, addMachine, addPerson, createRegistration,
+  deactivateMachine, deactivatePerson, deactivateRegistration, registeredMachines,
+  registeredPersons,
 } from "./registrations";
 export type { RegisteredMachineRow, RegisteredPersonRow, RegistrationRow } from "./registrations";
 export {

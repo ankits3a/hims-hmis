@@ -16,8 +16,10 @@ import { ensurePharmacyCounter } from "../scripts/seed-pharmacy";
 import { ensureLabStandUp } from "../scripts/seed-lab";
 import { ensureOtUnit } from "../scripts/seed-ot";
 import { seedOtBase } from "./helpers/ot";
+import { setupPcpndtFixture } from "./helpers/pcpndt";
 import { registerOtApprovalTypes } from "../src/modules/ot";
 import { STANDUP_ROWS, anyRed, censusLines, isNotModelled, runCensus } from "../scripts/standup-check";
+import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../src/kernel/db/client";
 import type { RowResult } from "../scripts/standup-check";
@@ -42,6 +44,83 @@ const REPO_ROOT = resolve(__dirname, "..", "..", "..");
 const RUNBOOK_DIR = resolve(REPO_ROOT, "docs", "runbooks");
 
 /**
+ * ═══ WHICH MANIFESTS ARE DEPARTMENTS — DECLARED, NEVER INFERRED ═══
+ *
+ * The completeness guards below walked the runbook files, and then (from §OPD-UNSEEDED) the census's
+ * own modules. **Neither population is "the modules that exist."** The OT was missing from both at
+ * once and was invisible to both walks until somebody added both halves by hand — so the guard could
+ * not have found the next OT either.
+ *
+ * The population is now `ALL_MANIFESTS`, the tree's one answer to "which modules exist" (Plan 11d
+ * D2). Every manifest must appear in exactly ONE of the two maps below, and the assertion that says
+ * so is what makes a new module a deliberate decision instead of a silent omission.
+ *
+ * **THE CLASSIFICATION IS NOT DERIVED, AND THAT IS DELIBERATE.** It was measured for a signal first
+ * and there is none: `billing` declares four menu entries and owes no runbook, `pcpndt` declares
+ * none and is a statutory register; `orderKinds` and `resourceKinds` cut across both sides. A
+ * convention over names or menu counts would silently reclassify a module the day it gained a
+ * screen. So it is a table, one line each, in the `ist-clock-parity` idiom — the point is that
+ * adding a module makes you write a line here and say which it is.
+ */
+const DEPARTMENTS: Record<string, string> = {
+  /** manifest key -> the census module key. They differ once, and the census's name wins. */
+  opd: "front-desk",
+  lab: "lab",
+  pharmacy: "pharmacy",
+  radiology: "radiology",
+  ot: "ot",
+  /**
+   * RULED A DEPARTMENT 2026-09-07. It meets every test the other five did — master data no deploy
+   * supplies, human acts no seed may perform — and it was the only one where **nothing anywhere
+   * checked that any of it existed**: a hospital could scan patients holding no register at all.
+   * `aerb` was ruled the other way in the same pass and stays below: its acts (`radiology_devices_licensed`,
+   * `radiology_rso_appointed`) are already checked under `radiology`, because AERB is a statutory
+   * layer over one department rather than a department with its own seats.
+   */
+  pcpndt: "pcpndt",
+};
+
+/**
+ * NOT A DEPARTMENT — no go-live day of its own, so no runbook and no row set.
+ *
+ * ═══ THREE ARE AN OPEN QUESTION AND ARE RECORDED, NOT DECIDED ═══
+ *
+ * Five were open on 2026-09-07 and two were ruled the same day: **`pcpndt` IS a department** (it is
+ * in `DEPARTMENTS` above) and **`aerb` is not** (see its line below). The remaining three —
+ * `billing`, `materials`, `membership` — each hold master data no deploy can supply, which is the
+ * property that made the departments.
+ * **Whether they owe a go-live runbook is a scope call with real cost** — moving one to
+ * `DEPARTMENTS` turns this suite red until somebody writes both halves — and it belongs to the
+ * board, not to the lane that happened to be here. **This map records today's answer (they are
+ * not), so nothing changes silently, and the question is written where the next person to touch
+ * this file will read it.**
+ */
+const NOT_DEPARTMENTS: Record<string, string> = {
+  // ── kernel machinery: no clinical day, nothing to commission ──
+  auth: "kernel — identity and sessions",
+  workflow: "kernel — the definition engine departments are commissioned THROUGH",
+  approvals: "kernel — the approval engine",
+  alerts: "kernel — alert routing",
+  ops: "kernel — operating mode, interfaces, downtime kits",
+  resources: "kernel — the registry the departments' theatres and benches live in",
+  orders: "kernel — the order envelope; claimed by lab and radiology, owned by neither",
+  desk: "cross-cutting — the front-desk shell; its commissioning IS `front-desk`'s",
+  notify: "worker-only, and not in ALL_MANIFESTS at all — listed so its absence is not a puzzle",
+
+  // ── cross-cutting hospital data, exercised by every department ──
+  patients: "cross-cutting — `registration_config` is a `hospital` row and is checked there",
+  tariff: "cross-cutting — priced per department; each department's rows check its own prices",
+  formulary: "cross-cutting reference data — `seed:formulary` supplies it; nothing human is owed",
+  partners: "cross-cutting — the partner book is the owner's file, not a department's stand-up",
+
+  // ── OPEN QUESTION: master data no deploy can supply, but no runbook today ──
+  billing: "OPEN — `billing_config` is checked under `hospital`; a cashier's go-live may still be one",
+  materials: "OPEN — vendors, items and opening stock are master data no seed supplies",
+  membership: "OPEN — the holder book is loaded from the owner's own files (Plan 09 DD3)",
+  aerb: "RULED not a department 2026-09-07 — a statutory layer OVER radiology; `radiology_devices_licensed` and `radiology_rso_appointed` already check its acts, and a row set of its own would demand a second check of the same certificates",
+};
+
+/**
  * WHICH MODULE EACH RUNBOOK BELONGS TO. Declared rather than derived from the filename, because
  * two of the four runbooks are radiology's. A new runbook whose module is not named here fails the
  * first test below — which is the point: the map is the thing a new department has to edit.
@@ -60,6 +139,7 @@ const RUNBOOK_MODULE: Record<string, string> = {
    * AND no row set, so it was invisible to both directions of the completeness guard at once.
    */
   "ot-go-live.md": "ot",
+  "pcpndt-go-live.md": "pcpndt",
   "pharmacy-go-live.md": "pharmacy",
   "radiation-safety-go-live.md": "radiology",
   "radiology-go-live.md": "radiology",
@@ -149,11 +229,66 @@ describe("standup:check — the readiness census (11i T2)", () => {
   it("and EVERY census module has a runbook — the direction that would have caught the missing OPD rows", () => {
     const runbooks = readdirSync(RUNBOOK_DIR).filter((f) => f.endsWith("-go-live.md"));
     const modulesWithRunbook = new Set(runbooks.map((f) => RUNBOOK_MODULE[f]).filter((m) => m !== undefined));
+    /** `hospital` has no manifest: it is the census's own name for the rows every department rests on. */
     const NOT_A_DEPARTMENT = ["hospital"];
     const censusModules = Object.keys(STANDUP_ROWS).filter((m) => !NOT_A_DEPARTMENT.includes(m));
     expect(censusModules.length).toBeGreaterThan(0); // non-vacuous
     const withoutRunbook = censusModules.filter((m) => !modulesWithRunbook.has(m));
     expect(withoutRunbook).toEqual([]);
+  });
+
+  /**
+   * ═══ THE POPULATION IS NOW `ALL_MANIFESTS`, THE ONLY ONE THAT CANNOT MISS A MODULE ═══
+   *
+   * The two guards above walk the runbook FILES and the census's own MODULES. **Neither is "the
+   * modules that exist"**, so a department shipping with neither half is invisible to both: the OT
+   * was exactly that, and became findable only because somebody added a runbook and a row set by
+   * hand. **A guard that can only find what has already been half-found cannot find the next one.**
+   *
+   * `ALL_MANIFESTS` is the tree's one answer to which modules exist (Plan 11d D2), and a manifest
+   * installed by `app.module.ts` and missing from it already fails the build — so it is the one
+   * population that cannot silently omit a module.
+   *
+   * **THIS TEST MAKES CLASSIFICATION COMPULSORY AND MAKES NO CLASSIFICATION ITSELF.** A new manifest
+   * fails here until somebody writes it into `DEPARTMENTS` or `NOT_DEPARTMENTS`; which one is a
+   * judgement, and the maps carry it in prose, one line per module. Five are marked OPEN there —
+   * recorded as today's answer rather than settled by this lane.
+   */
+  it("every manifest is classified as a department or not — the population is ALL_MANIFESTS, not what the census already knows", () => {
+    const manifestKeys = ALL_MANIFESTS.map((m) => m.key).sort();
+    expect(manifestKeys.length).toBeGreaterThanOrEqual(20); // non-vacuous: the list was really read
+
+    const classified: Record<string, string> = { ...DEPARTMENTS, ...NOT_DEPARTMENTS };
+    /** Unclassified = a module nobody decided about. This is the assertion the OT needed. */
+    expect(manifestKeys.filter((k) => classified[k] === undefined)).toEqual([]);
+
+    /** Nothing on BOTH sides, which would make the question look answered twice. */
+    expect(Object.keys(DEPARTMENTS).filter((k) => NOT_DEPARTMENTS[k] !== undefined)).toEqual([]);
+
+    /**
+     * Every classified key is a real manifest — except `notify`, which is worker-only and
+     * deliberately absent from `ALL_MANIFESTS`. It is listed in the map so its absence reads as a
+     * decision rather than an oversight, the same reason `manifests.ts` names it.
+     */
+    const WORKER_ONLY = ["notify"];
+    expect(Object.keys(classified).filter((k) => !manifestKeys.includes(k) && !WORKER_ONLY.includes(k)))
+      .toEqual([]);
+  });
+
+  /**
+   * The payoff: a module the maps call a DEPARTMENT owes both halves, and the failure names which.
+   * This is what would have caught the OT the day its manifest landed rather than a phase later.
+   */
+  it("every declared DEPARTMENT has both halves — a row set and a runbook", () => {
+    const runbooks = readdirSync(RUNBOOK_DIR).filter((f) => f.endsWith("-go-live.md"));
+    const withRunbook = new Set(runbooks.map((f) => RUNBOOK_MODULE[f]).filter((m) => m !== undefined));
+    const missing = Object.entries(DEPARTMENTS).flatMap(([manifestKey, censusKey]) => {
+      const out: string[] = [];
+      if ((STANDUP_ROWS[censusKey] ?? []).length === 0) out.push(`${manifestKey}: no row set "${censusKey}"`);
+      if (!withRunbook.has(censusKey)) out.push(`${manifestKey}: no go-live runbook`);
+      return out;
+    });
+    expect(missing).toEqual([]);
   });
 
   it("every NOT MODELLED row names a runbook SECTION THAT EXISTS", () => {
@@ -276,6 +411,40 @@ describe("standup:check — the readiness census (11i T2)", () => {
     const afterCeremony = await runCensus(db, "ot");
     expect(verdictOf(afterCeremony, "ot", "ot_workflow_definitions_active")).toBe("ok");
     expect(verdictOf(afterCeremony, "ot", "ot_definitions_published")).toBe("ok");
+  });
+
+  /**
+   * ═══ §PCPNDT — THE REGISTER NOTHING CHECKED, AND THE STATUTE BEHIND IT ═══
+   *
+   * `pcpndt` has NO seed and therefore NO G2 row: every act is a person's, with a legal obligation.
+   * Before this row set, a hospital could deploy, scan patients and hold **no register at all** with
+   * nothing going red — the module was in nobody's population, which is exactly what the
+   * `ALL_MANIFESTS` guard above now prevents.
+   *
+   * The fixture performs the real ceremony §2-§4 of the runbook describes — premises, machine,
+   * person — so this measures the runbook rather than restating the check.
+   */
+  it("§PCPNDT: the register is RED after every deploy seed, and green only after the premises, machine and person are registered", async () => {
+    await deployG2State(db);
+
+    /** No seed exists, so the deploy leaves the whole register empty. */
+    const afterDeploy = await runCensus(db, "pcpndt");
+    expect(verdictOf(afterDeploy, "pcpndt", "pcpndt_registration_active")).toBe("RED");
+    expect(verdictOf(afterDeploy, "pcpndt", "pcpndt_machine_registered")).toBe("RED");
+    expect(verdictOf(afterDeploy, "pcpndt", "pcpndt_person_registered")).toBe("RED");
+    /** And the wall is never green: no column holds it (§6). */
+    expect(verdictOf(afterDeploy, "pcpndt", "pcpndt_certificate_displayed")).toBe("NOT MODELLED");
+
+    await truncateAll(db);
+    await setupPcpndtFixture(db);
+
+    const afterRegistering = await runCensus(db, "pcpndt");
+    expect(verdictOf(afterRegistering, "pcpndt", "pcpndt_registration_active")).toBe("ok");
+    expect(verdictOf(afterRegistering, "pcpndt", "pcpndt_machine_registered")).toBe("ok");
+    expect(verdictOf(afterRegistering, "pcpndt", "pcpndt_person_registered")).toBe("ok");
+    expect(verdictOf(afterRegistering, "pcpndt", "pcpndt_incharge_held")).toBe("ok");
+    /** Still not green, and it never can be — that is what the third verdict is for. */
+    expect(verdictOf(afterRegistering, "pcpndt", "pcpndt_certificate_displayed")).toBe("NOT MODELLED");
   });
   it("an UNPRICED orderable reads RED — the runbook's §4.5 warning, made a check", async () => {
     await deployG2State(db);
