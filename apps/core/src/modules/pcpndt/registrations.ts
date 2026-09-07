@@ -283,7 +283,6 @@ export type RegisterBookEntry = {
   machines: RegisteredMachineRow[];
   persons: RegisteredPersonRow[];
 };
-
 export async function activeRegistrations(
   exec: Db | Tx, onDate: string,
 ): Promise<RegistrationRow[]> {
@@ -342,7 +341,6 @@ export async function readRegister(exec: Db | Tx): Promise<RegisterBookEntry[]> 
   }
   return out;
 }
-
 /** Every ACTIVE machine on the register, for the same reason as `activeRegistrations` above. */
 export async function registeredMachines(
   exec: Db | Tx, registrationId: string,
