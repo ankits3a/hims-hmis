@@ -48,8 +48,20 @@ import type { StudyType } from "../src/modules/radiology";
  *
  * The owner's standing rule permits assuming standard machinery. So: one X-ray, one ultrasound, one
  * CT, one MRI and one mammography unit, each a `device` resource carrying its `modality` attribute —
- * which is what `scheduleStudy` matches a study type against. A hospital with two CTs adds the
- * second through the resources screen; this script does not guess at an inventory.
+ * which is what `scheduleStudy` matches a study type against.
+ *
+ * ═══ HOW A HOSPITAL ADDS A SECOND CT, CORRECTED 2026-09-06 ═══
+ *
+ * This said *"a hospital with two CTs adds the second through the resources screen"*. **There is no
+ * resources screen, and no route behind one:** the kernel exposes `/resources/board`,
+ * `/resources/tree` and `/resources/:id/history`, all GET, and `createResource` is reached only
+ * through `materials/stores.ts`, `opd/masters.ts`, `lab/instruments.ts` and two seeds. The
+ * laboratory has an instruments door; radiology has none.
+ *
+ * So **this script is the only writer of an imaging device**, and a second CT is added by adding it
+ * to `MODALITY_MACHINES` and re-running — which is safe, because every step is find-or-create. That
+ * is a deployment act rather than a hospital one, and it is a real gap rather than a preference;
+ * it is recorded in `docs/runbooks/radiology-go-live.md` §5 as such.
  *
  * **Idempotent**: every step is find-or-create, so a re-run after a partial failure completes rather
  * than duplicating. `seed:roles`' own posture.

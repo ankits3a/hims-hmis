@@ -105,6 +105,29 @@ The previous version of this table was headed "(chief pharmacist)". **Three of i
 | 5b | **QC** the lines (`grn.qc`) | **`storekeeper`** | `/materials/grn` | lines accepted, or rejected with a reason |
 | 5c | **Post** it into `PHARM-OPD` with batch, expiry and the printed MRP per pack | **`storekeeper`** | `/materials/grn` | census row **`pharmacy_batch_in_stock`**; the counter shows "N available" |
 
+> **2.5 CHECK THE PER-TABLET PRICE BEFORE YOU POST, BECAUSE NOTHING ELSE WILL.** The counter bills
+> per BASE unit — per tablet — and the GRN takes the MRP per PACK. QC divides one by the other, and
+> **its only upper bound is a government ceiling that most items do not have** (`qc.ts` rule 7 fires
+> only where `ceiling_paise` is on file, and nothing seeds one). Rule 6 catches an MRP *below* cost;
+> there is no symmetric rule above it.
+>
+> **The error that costs a patient real money is entering the STRIP price against the TABLET unit.**
+> ₹120 a strip of ten is ₹12.00 a tablet. Type `120` with the MRP unit set to `tablet` and every
+> patient is billed **ten times** the right price — it passes QC, it posts, and the first person who
+> notices is at the counter with a bill.
+>
+> So before posting, do the division yourself and say it out loud:
+>
+> ```
+>   MRP per pack ÷ units per pack = the price ONE tablet will be billed at
+>   ₹120.00 ÷ 10 = ₹12.00        <- is that what the strip's printed MRP implies?
+> ```
+>
+> **And when the counter refuses `price_unknown` or QC says `mrp_unconvertible`, you are being asked
+> to hand-divide** — ₹85 on a strip of 12 has no whole-paisa answer. Enter the per-tablet figure you
+> chose and multiply it back before you accept it: ₹7.08 × 12 = ₹84.96, ₹7.09 × 12 = ₹85.08. Neither
+> is ₹85, and which one the hospital sells at is a decision, not a rounding.
+
 **2.2 THE GST SLAB IS SET BY NO SCREEN, AND A NULL SLAB IS SILENTLY EXEMPT.** `/materials/items`
 collects neither `gst_rate_bps` nor HSN — 207 lines, zero occurrences of either. `createItem` writes
 `gstRateBps: null`, and `gstCategoryFor`'s `?? 0` maps null to the `pharmacy_exempt` category. The
@@ -252,6 +275,7 @@ is a GATE: the phase is not complete until every row carries a date and an initi
 | 12 | sale items registered (§2.3) | | | |
 | 13 | NPPA ceilings recorded where they apply (§2.4) | | | |
 | 14 | GRN captured / QC'd / posted (§2.5a–c) | | | |
+| 14b | **per-tablet price checked by hand before posting (§2.5)** — record the figure | | | |
 | 15 | drill 1–4: scan, take, decline, verify | | | |
 | 16 | drill 5: FEFO pick **and the expired-batch proof** | | | |
 | 17 | drill 5: the SOS line's blank quantity met and typed | | | |

@@ -367,6 +367,24 @@ export const acknowledgeCritical = (
 export const verifyWorklist = (): Promise<WireWorklistRow[]> => api("GET", "/lab/verify/worklist");
 
 /**
+ * DD11 §7 — the morning queue. Until now the runbook told a human to read `lab_results` where
+ * `pathologist_review_pending` is true; a morning round does not begin with psql.
+ */
+export type WireNightRelease = {
+  resultId: string; orderItemId: string; orderNo: string;
+  patientId: string; patientDisplay: string;
+  analyteCode: string; analyteName: string;
+  value: string; unit: string | null; flag: string | null;
+  releasedBy: string; releasedAt: string;
+};
+
+export const nightReleases = (): Promise<WireNightRelease[]> =>
+  api("GET", "/lab/verify/night-releases");
+
+export const reviewNightRelease = (resultId: string, note?: string): Promise<unknown> =>
+  api("POST", `/lab/verify/night-releases/${resultId}/review`, note === undefined ? {} : { note });
+
+/**
  * The orders a report can be published for. A SEPARATE queue from the verify worklist, because an
  * item leaves that worklist at the exact moment it becomes publishable (close review, web C3).
  */
