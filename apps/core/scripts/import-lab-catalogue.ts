@@ -4,8 +4,7 @@ import { basename } from "node:path";
 import { createDb, withTx } from "../src/kernel/db/client";
 import { requireEnv } from "../src/kernel/config";
 import {
-  analytesFor, getOrderable, listOrderables, putReferenceRange, rangesFor, upsertAnalyte,
-  upsertOrderable,
+  listOrderables, putReferenceRange, upsertAnalyte, upsertOrderable,
 } from "../src/modules/lab";
 import { eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
