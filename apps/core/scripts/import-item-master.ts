@@ -9,6 +9,13 @@ import type { Db, Tx } from "../src/kernel/db/client";
 /**
  * `pnpm --filter @hmis/core import:item-master -- --file ./items.csv [--apply]`
  *
+ * ═══ WRITING ANOTHER LOADER? READ THE DESIGN NOTE FIRST ═══
+ *
+ * `docs/superpowers/specs/2026-09-07-spreadsheet-loader-design.md` — the shape this file follows and
+ * the four defects it shipped with. **Copying this file without reading that inherits them**, and one
+ * of the four is still open (it records no provenance: nothing here says which file produced which
+ * row, though `import-holder-book` keeps exactly that).
+ *
  * ═══ WHY THIS EXISTS ═══
  *
  * `pharmacy-go-live.md` §2 is the chief pharmacist's week: every medicine the counter sells needs a
