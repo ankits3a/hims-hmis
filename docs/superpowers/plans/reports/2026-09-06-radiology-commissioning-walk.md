@@ -173,12 +173,31 @@ gap block and the refusal stay demonstrable.
 
 ## 7. CORRECTION — the walk's API was a day-old build, and what that changes
 
-**Added the same evening, after the error was found.** The stack this walk drove was built with
-`pnpm build` **at the repo root, where there is no `build` script**. It exited **254**
+**Added the same evening, after the error was found; §7.1 sharpens it the next day.** The stack this
+walk drove was built with `pnpm build` **at the repo root**, which exited **254**
 (`ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL Command "build" not found`); the failure was printed and then
 not read, because a background task reported "exit code 0" and that was the number believed. The API
-served `dist` from the previous day. The real command is
-`pnpm --filter @hmis/core exec tsc -p tsconfig.build.json`.
+served `dist` from the previous day. The command that always works is
+`pnpm --filter @hmis/core build`.
+
+### 7.1 — the failure is CWD-DEPENDENT, which is worse than a wrong command
+
+**Measured by the LIMS lane in both directories, and it corrects this section's first telling.**
+
+```
+from apps/core      pnpm build  ->  EXIT 0    (resolves to @hmis/core's tsc -p tsconfig.build.json)
+from the repo root  pnpm build  ->  EXIT 254
+```
+
+**So the stand-up recipes are not wrong.** They `cd apps/core` several lines above the build step, and
+a reader following one top-to-bottom in a single shell gets a working build. **The command is
+cwd-dependent, and that is the worse failure** — it works when you follow the recipe and fails
+silently when you excerpt the one line you needed, or when an intervening step moved you.
+
+It also changes the search. *"Why did radiology use the wrong command"* has no answer, because it did
+not; **"what moved their cwd, or did they paste one line"** is a different question with a findable
+one. `pnpm --filter @hmis/core build` is the right thing to record because **correct-from-anywhere is
+a stronger property than correct-in-context, and a recipe is read by people who excerpt it.**
 
 **What it does not change, re-measured rather than argued.** Every finding above was confirmed from
 source by jest, and both API-level ones were re-run against a correctly built current API:
