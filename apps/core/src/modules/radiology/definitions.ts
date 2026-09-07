@@ -366,6 +366,39 @@ export async function activateSeededDefinition(
     }
     parseDefinitionBody(draft.kind as ImagingDefinitionKind, draft.body);
 
+    /**
+     * ═══ A SEEDED ACTIVATION MAY NOT OUTRANK A GOVERNED ONE ═══
+     *
+     * The supersede below is what makes this function useful, and it is how `seed:radiology` came to
+     * revert the medical superintendent's approved book: a re-run drafted a fresh version from the
+     * hardcoded seeds, superseded the approved one, and activated with `approval_id` NULL. That was
+     * fixed at the call site, and this function had exactly one caller, so the exposure closed.
+     * **But the invariant then lived in one caller's early return and a comment**, and the next
+     * caller would have reintroduced it with nothing to stop them. The guard belongs where the act
+     * happens — the same lesson as a merge freeze held in somebody's memory.
+     *
+     * **It is narrow on purpose.** Seed-over-seed superseding stays legal — replacing one
+     * un-approved book with another is exactly what a stand-up does, and a test pins it. This keys
+     * on `approval_id`, the one distinction that is never a judgement call: a row a human approved
+     * may not be retired by a script that approves itself. NULL is already this module's provenance
+     * marker for "seeded, not approved" (the owner's 2026-08-31 ruling), so the guard reads a fact
+     * that ruling created rather than inventing a second one.
+     */
+    const active = await tx
+      .select({ version: imagingDefinitions.version, approvalId: imagingDefinitions.approvalId })
+      .from(imagingDefinitions)
+      .where(and(eq(imagingDefinitions.kind, draft.kind), eq(imagingDefinitions.status, "active")));
+    const governed = active.find((r) => r.approvalId !== null);
+    if (governed) {
+      throw new RadiologyError(
+        "definition_not_active",
+        `${draft.kind} v${String(governed.version)} was published through the approval route and a `
+        + "seeded activation may not supersede it — change the book at the publish route, which "
+        + "needs the medical superintendent's approval",
+        { kind: draft.kind, activeVersion: governed.version },
+      );
+    }
+
     const superseded = await tx
       .update(imagingDefinitions)
       .set({ status: "superseded" })

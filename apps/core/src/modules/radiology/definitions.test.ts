@@ -210,6 +210,40 @@ describe("imaging definitions (18a T4 / DD13)", () => {
     expect(rows.filter((r) => r.status === "active")).toHaveLength(1);
   });
 
+  /**
+   * ═══ A SEEDED ACTIVATION MAY NOT OUTRANK A GOVERNED ONE ═══
+   *
+   * The case above pins that seed-over-seed superseding is LEGAL, and it must stay so — replacing an
+   * un-approved book with another un-approved book is what a stand-up does. This is the other side:
+   * a seeded activation must never supersede a version the medical superintendent APPROVED.
+   *
+   * `seed:radiology` was the only caller and it reverted exactly that (fixed at the call site), but
+   * the invariant then lived in one caller's early return and a comment. **The next caller would
+   * have reintroduced it with nothing to stop them** — the same shape as a merge freeze held in
+   * somebody's memory. The guard belongs where the act happens, and it is narrow on purpose: it
+   * keys on `approval_id`, so it refuses only the thing that is never right.
+   */
+  it("REFUSES to supersede a governed version, while seed-over-seed stays legal", async () => {
+    const first = await withTx(db, (tx) =>
+      draftDefinition(tx, drafter, { kind: "study_types", body: TWO_TYPES }));
+    await activateSeededDefinition(db, drafter, first.definitionId);
+
+    /** The superintendent publishes v2 through the governed route. */
+    const v2 = await draftAndRequest("study_types", bodyWith(
+      studyTypeRow({ code: "CT-HEAD", service_id: "01SERVICECCCCCCCCCCCCCCCCC", modality: "ct", body_part: "head", ionising: true }),
+    ));
+    await approveRequest(db, ms, { approvalId: v2.approvalId, note: "ok" });
+    await publishDefinition(db, ms, { definitionId: v2.definitionId, approvalId: v2.approvalId });
+
+    const v3 = await withTx(db, (tx) => draftDefinition(tx, drafter, { kind: "study_types", body: TWO_TYPES }));
+    await expect(activateSeededDefinition(db, drafter, v3.definitionId))
+      .rejects.toMatchObject({ code: "definition_not_active" });
+
+    /** And the approved book is still the active one, untouched. */
+    const still = (await activeDefinitionRow(db, "study_types"))!;
+    expect([still.version, still.approvalId]).toEqual([2, v2.approvalId]);
+  });
+
   /* ═══════════════════════ THE BODY'S OWN INVARIANTS ═══════════════════════ */
 
   /**
