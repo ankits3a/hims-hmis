@@ -4,6 +4,8 @@ import { seedSodPairs } from "../src/kernel/auth/sod";
 import { getApprovalType } from "../src/kernel/approvals/types";
 import { withTx } from "../src/kernel/db/client";
 import { imagingDefinitions, resources } from "../src/kernel/db/schema";
+import { eq } from "drizzle-orm";
+import { newId } from "@hmis/contracts";
 import { IMAGING_DEFINITION_PUBLISH_APPROVAL_TYPE } from "../src/modules/radiology";
 import { registrarFromEnv, seedRadiology } from "../scripts/seed-radiology";
 import type { Actor } from "@hmis/contracts";
@@ -78,6 +80,59 @@ describe("seed:radiology — the department can be stood up on a fresh deploymen
 
     const devices = await db.select({ code: resources.code }).from(resources);
     expect(devices).toHaveLength(5);
+
+    /**
+     * ═══ THE ASSERTION WHOSE ABSENCE LET THE DEFECT LIVE ═══
+     *
+     * This case was written to prove the re-run is safe and it counted devices and services and
+     * **never counted the definitions** — so `draftDefinition` inserting `max(version)+1` on every
+     * single run, unconditionally, went unmeasured by the one test whose subject was idempotence.
+     */
+    const defs = await db.select().from(imagingDefinitions);
+    expect(defs).toHaveLength(1);
+    expect(defs[0]).toMatchObject({ version: 1, status: "active" });
+  });
+
+  /**
+   * ═══ A SEED MAY NOT REVERT THE MEDICAL SUPERINTENDENT ═══
+   *
+   * `radiology-go-live.md` §5 tells an administrator to add a machine to `MODALITY_MACHINES` and
+   * re-run this script. A hospital months into service has a `study_types` book its superintendent
+   * published through the governed route — v2, with an approval id. The re-run drafted v3 from the
+   * twenty hardcoded seeds, SUPERSEDED the approved v2, and activated v3 with `approval_id` NULL.
+   *
+   * **Three things went at once:** every governed change to the book, the `ionising` flags the AERB
+   * gate is keyed on, and the provenance the owner's 2026-08-31 ruling exists to preserve —
+   * *"any row a reader finds active with no approval id was seeded, not approved."*
+   *
+   * Adding a machine does not need the book re-drafted at all: a machine is a `resources` row and
+   * the book is study types. So the seed leaves an active book alone, whatever wrote it.
+   */
+  it("leaves a GOVERNED study-type book alone on a re-run, and says so", async () => {
+    await seedRadiology(db, admin);
+    const seeded = await db.select().from(imagingDefinitions);
+
+    /** The superintendent publishes v2 through the governed route: an approval id, not a seed. */
+    const governedId = newId();
+    /** Supersede FIRST: `imaging_definitions_one_active_ux` allows exactly one active row per kind,
+     *  which is the invariant the defect was violating from the other direction. */
+    await db.update(imagingDefinitions).set({ status: "superseded" })
+      .where(eq(imagingDefinitions.id, seeded[0]!.id));
+    await db.insert(imagingDefinitions).values({
+      id: governedId, kind: "study_types", version: 2,
+      body: seeded[0]!.body as object, status: "active",
+      draftedBy: admin.id, publishedBy: admin.id, publishedAt: new Date(),
+      approvalId: "01APPROVALGOVERNED00000001",
+    });
+
+    await seedRadiology(db, admin);
+
+    const after = await db.select().from(imagingDefinitions);
+    const active = after.filter((d) => d.status === "active");
+    expect(active).toHaveLength(1);
+    expect(active[0]).toMatchObject({ id: governedId, version: 2, approvalId: "01APPROVALGOVERNED00000001" });
+    /** And no draft v3 left lying about either — the redundant version its own docstring warns of. */
+    expect(after).toHaveLength(2);
   });
 
   /**

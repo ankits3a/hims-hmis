@@ -6,7 +6,7 @@ import { createService } from "../src/modules/tariff";
 import { resources, services } from "../src/kernel/db/schema";
 import {
   IMAGING_MODALITIES, RADIOLOGY_RESOURCE_KINDS, STUDY_TYPE_SEEDS, activateSeededDefinition,
-  draftDefinition, registerRadiologyApprovalTypes,
+  activeDefinitionRow, draftDefinition, registerRadiologyApprovalTypes,
 } from "../src/modules/radiology";
 import type { Actor } from "@hmis/contracts";
 import type { StudyType } from "../src/modules/radiology";
@@ -48,8 +48,20 @@ import type { StudyType } from "../src/modules/radiology";
  *
  * The owner's standing rule permits assuming standard machinery. So: one X-ray, one ultrasound, one
  * CT, one MRI and one mammography unit, each a `device` resource carrying its `modality` attribute —
- * which is what `scheduleStudy` matches a study type against. A hospital with two CTs adds the
- * second through the resources screen; this script does not guess at an inventory.
+ * which is what `scheduleStudy` matches a study type against.
+ *
+ * ═══ HOW A HOSPITAL ADDS A SECOND CT, CORRECTED 2026-09-06 ═══
+ *
+ * This said *"a hospital with two CTs adds the second through the resources screen"*. **There is no
+ * resources screen, and no route behind one:** the kernel exposes `/resources/board`,
+ * `/resources/tree` and `/resources/:id/history`, all GET, and `createResource` is reached only
+ * through `materials/stores.ts`, `opd/masters.ts`, `lab/instruments.ts` and two seeds. The
+ * laboratory has an instruments door; radiology has none.
+ *
+ * So **this script is the only writer of an imaging device**, and a second CT is added by adding it
+ * to `MODALITY_MACHINES` and re-running — which is safe, because every step is find-or-create. That
+ * is a deployment act rather than a hospital one, and it is a real gap rather than a preference;
+ * it is recorded in `docs/runbooks/radiology-go-live.md` §5 as such.
  *
  * **Idempotent**: every step is find-or-create, so a re-run after a partial failure completes rather
  * than duplicating. `seed:roles`' own posture.
@@ -125,6 +137,8 @@ export async function seedRadiology(db: Db, registrar: Actor): Promise<{
   devicesCreated: number;
   definitionId: string;
   version: number;
+  /** True when an active book already existed and was NOT touched — see the block below. */
+  definitionLeftAlone: boolean;
 }> {
   /** The approval TYPE must exist before a publish can be requested against it. `REGISTRAR`, not
    * `SEEDER`: the kernel refuses a system actor here twice over. See the constant. */
@@ -151,6 +165,40 @@ export async function seedRadiology(db: Db, registrar: Actor): Promise<{
     service_id: serviceIdByCode.get(service_code)!,
   }));
 
+  /**
+   * ═══ A SEED MAY NOT REVERT THE MEDICAL SUPERINTENDENT ═══
+   *
+   * These two lines used to run UNCONDITIONALLY, and neither is find-or-create: `draftDefinition`
+   * reads `max(version)` and always inserts `version + 1`, and `activateSeededDefinition`
+   * supersedes whatever row is active before activating the new one with `approval_id` NULL.
+   *
+   * **So a re-run reverted the book.** A hospital months into service, whose superintendent had
+   * published `study_types` v2 through the governed route, buys a second CT and follows the
+   * runbook: add the machine to `MODALITY_MACHINES`, re-run. The re-run drafted v3 from the twenty
+   * hardcoded seeds below, superseded the approved v2, and activated v3 unapproved. Three things
+   * went at once — every governed change to the book, the `ionising` flags the AERB gate is keyed
+   * on, and the provenance the owner's 2026-08-31 ruling exists to preserve: *"any row a reader
+   * finds active with no approval id was seeded, not approved."*
+   *
+   * **Adding a machine does not need the book re-drafted at all.** A machine is a `resources` row;
+   * the book is study types. They are separate objects and only one of them is governed.
+   *
+   * So an ACTIVE book is left alone, whatever wrote it — seeded or approved. The seed cannot tell
+   * "the seeds changed" from "months of governance", and only one of those two mistakes destroys
+   * evidence. Changing the book is the publish route's job, and the caller is told so rather than
+   * left to infer it from a version number that did not move.
+   */
+  const active = await withTx(db, (tx) => activeDefinitionRow(tx, "study_types"));
+  if (active) {
+    return {
+      services: serviceIdByCode.size,
+      devicesCreated,
+      definitionId: active.id,
+      version: active.version,
+      definitionLeftAlone: true,
+    };
+  }
+
   const drafted = await withTx(db, (tx) =>
     draftDefinition(tx, SEEDER, { kind: "study_types", body: { types } }));
   await activateSeededDefinition(db, SEEDER, drafted.definitionId);
@@ -160,6 +208,7 @@ export async function seedRadiology(db: Db, registrar: Actor): Promise<{
     devicesCreated,
     definitionId: drafted.definitionId,
     version: drafted.version,
+    definitionLeftAlone: false,
   };
 }
 
@@ -171,6 +220,16 @@ async function main(): Promise<void> {
     + `${String(result.devicesCreated)} device(s) created, `
     + `study_types v${String(result.version)} ACTIVE as ${result.definitionId}.`,
   );
+  if (result.definitionLeftAlone) {
+    console.log(
+      `The study_types book was ALREADY ACTIVE at v${String(result.version)} and has been left `
+      + "untouched. A machine is a resources row; the book is study types, and only the book is "
+      + "governed — so adding a machine never re-drafts it. To CHANGE the book, use the publish "
+      + "route (POST /radiology/definitions/draft then /publish), which needs the medical "
+      + "superintendent's approval. This script will not supersede a version it did not write.",
+    );
+    return;
+  }
   console.log(
     "Activated by the seed (owner ruling 2026-08-31), so `approval_id` is NULL on that row — "
     + "which is how a seeded activation stays distinguishable from a governed one. Every LATER "

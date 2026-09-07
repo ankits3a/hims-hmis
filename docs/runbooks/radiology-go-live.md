@@ -58,8 +58,8 @@ cat roster.json | pnpm seed:staff
 
 `seed:radiology` creates the twenty study types' tariff **service rows with no prices** (a phase that
 invented prices would be inventing money) and five `device` resources — one X-ray, one ultrasound,
-one CT, one MRI, one mammography unit. **A hospital with two CTs adds the second through the
-resources screen**; the seed does not guess at an inventory.
+one CT, one MRI, one mammography unit. The seed does not guess at an inventory, and **a hospital
+with two CTs adds the second through this script — there is no resources screen. See §5.**
 
 It also self-publishes the `study_types` book, leaving `approval_id` NULL as the provenance — the
 owner's 2026-08-31 ruling. Every LATER version goes through the medical superintendent's approval on
@@ -127,19 +127,39 @@ radiologist is the second clinical opinion on a gate the technologist raised.
 ## 5. The machines
 
 Each `device` resource carries a `modality` attribute, and `scheduleStudy` matches a study type
-against it. Set the AE title too if the machine will read the modality worklist — see the PACS
-runbook.
+against it. **The AE title a modality worklist needs cannot be set at all** — nothing in the
+workspace writes `attributes.aeTitle`, so `GET /radiology/mwl` is permanently empty; the PACS
+runbook's §2 carries the measurement. This sentence used to say "set the AE title too", seven lines
+above the paragraph below declaring there is no door for a machine.
 
 **The device registry row is what an AERB licence points at.** A machine that does not exist as a
-resource cannot be licensed, and therefore cannot be used for an ionising examination. Create the
-machines before you enter the certificates.
+resource cannot be licensed, and therefore cannot be used for an ionising examination. The machines
+must exist before you enter the certificates.
+
+**THERE IS NO RESOURCES SCREEN, and this section said otherwise until it was measured.** The kernel
+exposes `/resources/board`, `/resources/tree` and `/resources/:id/history` — all GET — and no create
+or update route at all. `createResource` is reached only through `materials/stores.ts`,
+`opd/masters.ts`, `lab/instruments.ts` and two seed scripts. **The laboratory has a door for its
+instruments; radiology has none for its machines.**
+
+So `seed:radiology` is the only writer of an imaging device, and the honest instruction is:
+
+> A hospital with two CTs, a second DR unit or a C-arm adds it to `MODALITY_MACHINES` in
+> `apps/core/scripts/seed-radiology.ts` and re-runs `pnpm seed:radiology`. Every step is
+> find-or-create, so a re-run adds the new machine and touches nothing else.
+
+**That is a deployment act, not a hospital one**, and it is a gap rather than a design: a hospital
+cannot commission a machine on a Sunday without an engineer. It is recorded here so nobody looks for
+a screen, and it is the same shape as §0 — a capability whose door was never built.
 
 ---
 
 ## 6. The tariff and the GST category
 
 `seed:radiology` creates the service rows and sets **no prices**. Enter the rate list through the
-tariff screens: draft a version, set a price per imaging service, submit, approve, activate.
+tariff routes: draft a version, set a price per imaging service, submit, approve, activate.
+**Not "the tariff screens"** — `tariff/manifest.ts` is `menu: []` with the comment *"no UI this
+plan"*. The routes and the grants are real and the ceremony works; the screen is Plan 08's.
 
 **The `investigation` GST category must exist**, or pricing refuses `gst_config_missing`. Every
 imaging service is that category — and so is every laboratory service, so **this is one ruling for

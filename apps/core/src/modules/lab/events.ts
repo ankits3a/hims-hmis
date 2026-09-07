@@ -221,6 +221,25 @@ export const labReflexAdded = defineEvent("lab.reflex_added", MODULE, z.object({
  * DD11 — the SoD refusal, EVENTED. A refusal nobody can count is a control nobody can audit, and
  * NABL asks how often the single-operator path was used.
  */
+/**
+ * §9.2 F44, OWED SINCE 17b AND PAID HERE. A reflex rule that FIRES but cannot place — the reflexed
+ * test has no price in the active tariff version, or the line trips a credit cap — is rolled back
+ * with its savepoint, and the verification stands (close review M1: money must never hold a clinical
+ * fact). The refusal was RETURNED and shown on the screen, and that is all: *"how often does a
+ * reflex fail to place"* was unanswerable, and the runbook's pilot harvest counted it by hand.
+ *
+ * `verify.ts` names this event by name in its own comment as the thing it could not emit while
+ * `LAB_EVENTS` was frozen for Plan 17. **A rule that fires and silently does not order a test is a
+ * missed test on a real patient**; the count is what tells a hospital its tariff has a hole in it.
+ *
+ * Emitted on the VERIFYING transaction, not inside the savepoint that rolled back — the boundary is
+ * one-way by construction, so this commits with the signature that caused it and dies with it.
+ */
+export const labReflexRefused = defineEvent("lab.reflex_refused", MODULE, z.object({
+  orderItemId: id, analyteId: id, ruleId: id, addedServiceId: id,
+  code: z.string().min(1), reason: z.string(),
+}));
+
 export const labSodViolationBlocked = defineEvent("lab.sod_violation_blocked", MODULE, z.object({
   resultId: id, orderItemId: id, actorId: id, enteredById: id,
 }));
@@ -275,7 +294,7 @@ export const LAB_EVENTS = [
   labSpecimenRejected, labSpecimenRelabelled, labRecollectionRequested,
   labResultEntered, labResultVerified, labResultChosen, labNightReleaseReviewed,
   labTubeSwapSuspected, labResultCriticalFlagged, labCriticalAcknowledged,
-  labResultDeltaFlagged, labReflexAdded, labSodViolationBlocked,
+  labResultDeltaFlagged, labReflexAdded, labReflexRefused, labSodViolationBlocked,
   labReportPublished, labReportPrintBlocked, labReportReleasedUnpaid, labReportPrinted,
   labReportAmended,
   labSlaBreached, labNotifiableFlagged,
