@@ -546,9 +546,23 @@ export async function convertToAdmission(
 }
 
 /**
- * N9 — the patient walked out. A terminal with the bill issued as-is and a recall task; the cause
- * recorded is whether an escort had been verified at discharge, because "she left with nobody" and
- * "she left with the man who brought her" are different incidents.
+ * N9 — the patient walked out. A terminal state with the bill issued as-is; the cause recorded is
+ * whether an escort had been verified at discharge, because "she left with nobody" and "she left
+ * with the man who brought her" are different incidents.
+ *
+ * ═══ THIS SAID "AND A RECALL TASK", AND NOTHING HERE MAKES ONE ═══
+ *
+ * Corrected 2026-09-07 after the sentence was read as a specification. It was not one: **no document
+ * asks for a recall task on a day-care abscond.** Plan 15's DD2 lists `absconded` as a status and
+ * says nothing more; the spec's E8 (*"security + recovery register"*) is the IPD/ER machinery, a
+ * different department with a different register. **And there is no task primitive anywhere in the
+ * kernel to create one with** — building it would be inventing a subsystem, not closing a gap.
+ *
+ * So the promise had exactly one source: this comment. **A comment promising a behaviour is evidence
+ * about its author's intention, not about the system**, and the honest repair is to describe what
+ * the code does and let a plan ask for the rest. What this function DOES do is transition the case
+ * to `absconded`, release the bay, close the encounter, and write an `ot_incidents` row carrying the
+ * escort fact — which is the recall register's input on the day somebody builds one.
  */
 export async function markAbsconded(
   db: Db, actor: Actor, input: { encounterId: string; caseId: string; noticedAt?: Date },

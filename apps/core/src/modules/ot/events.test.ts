@@ -28,8 +28,11 @@ describe("the OT event catalogue (Plan 15 T2 / DD13)", () => {
     expect(OT_EVENTS.map((e) => e.name)).not.toContain("material.consumed");
   });
 
-  it("declares twenty-one events, all module `ot`, all `entity.verb_past`", () => {
-    expect(OT_EVENTS).toHaveLength(21);
+  /** Twenty-two since `list.resequenced` joined: the spec's OT catalogue named it and the module
+   *  declared nothing, so a re-sequence left no trace. The number is hand-written on purpose — a
+   *  twenty-third event cannot join `OT_EVENTS` without somebody stating that it should. */
+  it("declares twenty-two events, all module `ot`, all `entity.verb_past`", () => {
+    expect(OT_EVENTS).toHaveLength(22);
     for (const event of OT_EVENTS) {
       expect({ name: event.name, module: event.module }).toEqual({ name: event.name, module: "ot" });
       // `defineEvent` throws on a malformed name at import time, so reaching this line already

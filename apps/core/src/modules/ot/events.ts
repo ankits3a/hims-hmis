@@ -120,6 +120,25 @@ export const listPublished = defineEvent("list.published", MODULE, z.object({
   version: z.number().int().positive(), caseCount: z.number().int(),
 }));
 
+/**
+ * The order changed after the sheet was printed. **The architecture spec's OT catalogue named
+ * `ot_list.resequenced` and this module declared nothing**, so a re-sequence moved every case on the
+ * list and left no trace: the printed sheet in a nurse's hand could disagree with the screen, and
+ * the log did not say the order had ever changed. NPO, the wards and the porters re-time off this.
+ *
+ * `caseIdsInOrder` is the WHOLE list, because that is what `resequence` refuses to accept a subset
+ * of — a consumer re-timing a ward round needs the new order, not a diff it has to reconstruct.
+ *
+ * **There is no `version` here on purpose.** `resequence`'s docstring makes the call: the order
+ * within a published list is operational, and versioning every swap would make the printed sheet's
+ * version number meaningless. The event is the trace; the version is the sheet's identity.
+ */
+export const listResequenced = defineEvent("list.resequenced", MODULE, z.object({
+  listDate: z.string().min(1), theatreResourceId: id,
+  caseIdsInOrder: z.array(id).min(1),
+  reason: z.string().min(1).nullable(),
+}));
+
 /** F1 — a scheduler job at slot+15 and slot+30. The no-show cancel at +60 is a `case.cancelled`. */
 export const surgeonLateFlagged = defineEvent("surgeon.late_flagged", MODULE, z.object({
   caseId: id, surgeonId: id, minutesLate: z.number().int().positive(),
@@ -217,7 +236,7 @@ export const materialCeilingDiverged = defineEvent("material.ceiling_diverged", 
 export const OT_EVENTS = [
   daycareBooked, daycareCheckedIn, escortVerified, daycareDischargeReady, daycareDischarged,
   daycareConvertedToAdmission, daycareAbsconded, caseCancelled, payerClassChanged,
-  listPublished, surgeonLateFlagged, anaesthetistSubstituted,
+  listPublished, listResequenced, surgeonLateFlagged, anaesthetistSubstituted,
   timeoutHalted, countMismatch, gateOverridden, incidentReported, deathOnTableRecorded,
   lateEntryFlagged,
   implantExplanted, procedureConverted, materialCeilingDiverged,
