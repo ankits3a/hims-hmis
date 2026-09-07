@@ -18,7 +18,9 @@ import type { StudyType } from "../src/modules/radiology";
  * ═══ WHAT IT DOES, AND THE ONE THING IT DELIBERATELY DOES NOT ═══
  *
  * It creates the tariff services the twenty study types bind to, the five `device` resources the
- * scheduler books onto, and it drafts AND ACTIVATES the `study_types` definition.
+ * scheduler books onto, and — **only when no book is active yet** — it drafts and activates the
+ * `study_types` definition. On every later run it leaves the active book untouched and says so; see
+ * the block above that check for why a re-run must never supersede one.
  *
  * ═══ IT SELF-PUBLISHES — OWNER RULING, 2026-08-31 ═══
  *
@@ -28,14 +30,21 @@ import type { StudyType } from "../src/modules/radiology";
  * second-administrator shortfall as Plan 17b, and that is too high a price for a seed step.
  *
  * The activation is honest rather than a rubber stamp. `activateSeededDefinition` re-parses the body
- * (a bad book is still refused), supersedes any previous active version in the same transaction, and
- * **leaves `approval_id` NULL** — so a seeded activation stays distinguishable from a governed one
- * for ever. It does NOT mint a second system actor to approve itself, which is the form that would
- * have destroyed the audit answer.
+ * (a bad book is still refused) and **leaves `approval_id` NULL** — so a seeded activation stays
+ * distinguishable from a governed one for ever. It does NOT mint a second system actor to approve
+ * itself, which is the form that would have destroyed the audit answer.
  *
- * **The governed path is untouched.** `radiology-definitions.controller.ts`'s publish route still
- * requires a granted MS approval, and it is still the only way a HUMAN changes the book. Every
- * version after this first one goes through it.
+ * **This paragraph used to add "supersedes any previous active version in the same transaction",
+ * and that sentence is why the defect below read as intended.** It describes what
+ * `activateSeededDefinition` DOES — accurately — but stated here it read as something this SEED
+ * does, so a re-run replacing an approved book looked like the design rather than the bug it was.
+ * The function still supersedes; this script no longer calls it when a book is active, which is the
+ * only reason that behaviour is safe to have.
+ *
+ * **The governed path is untouched, and now it is also the ONLY path.**
+ * `radiology-definitions.controller.ts`'s publish route requires a granted MS approval, and it is
+ * the only way the book changes after the first run — including when the person changing it is an
+ * administrator re-running this script to add a machine.
  *
  * ═══ PRICES ARE NOT INVENTED ═══
  *
