@@ -1,3 +1,4 @@
+import { newId } from "@hmis/contracts";
 import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { placeAndCreateStudy, setupRadiologyFixture, startStudyOnMachine } from "../../../test/helpers/radiology";
@@ -174,11 +175,34 @@ describe("imaging scheduling (18a T4)", () => {
     expect(ok.deviceResourceId).toBe(fx.devices.mri);
   });
 
-  it("A3: a resource that is not a `device` at all is refused", async () => {
+  /**
+   * ═══ TWO BRANCHES, AND ONLY ONE OF THEM WAS EVER TESTED ═══
+   *
+   * This case passed a NONEXISTENT id, so it exercised the missing-row branch and asserted a
+   * sentence the OTHER branch produced. The wrong-KIND branch — a receptionist pasting a bed's or a
+   * bench's resource id into the device box — had no test at all, and it is the one that actually
+   * happens. It is also the one that can name what they picked, because the row is right there.
+   */
+  it("A3: a resource id that exists but is not a device NAMES what it actually is", async () => {
+    const study = await newStudy("USG-ABDO");
+    const bedId = newId();
+    await db.insert(resources).values({
+      id: bedId, kind: "bed", code: "BED-12", name: "Ward B bed 12", status: "available",
+      attributes: {}, createdBy: "t", updatedBy: "t",
+    });
+    await expect(withTx(db, (tx) => scheduleStudy(tx, fx.radiographer, {
+      studyId: study.studyId, deviceResourceId: bedId, scheduledAt: SLOT,
+    }))).rejects.toMatchObject({
+      code: "device_unavailable",
+      message: expect.stringContaining("BED-12 (Ward B bed 12) is a bed, not an imaging device"),
+    });
+  });
+
+  it("A3: a resource id that exists at all is refused as absent, not as the wrong kind", async () => {
     const study = await newStudy("USG-ABDO");
     await expect(withTx(db, (tx) => scheduleStudy(tx, fx.radiographer, {
       studyId: study.studyId, deviceResourceId: "01NOTADEVICE00000000000001", scheduledAt: SLOT,
-    }))).rejects.toThrow(/is not an imaging device/);
+    }))).rejects.toThrow(/no resource 01NOTADEVICE00000000000001 exists/);
   });
 
   /* ═══════════════════════════ A3 — THE WALK-IN AUTO-SLOT ═══════════════════════════ */
