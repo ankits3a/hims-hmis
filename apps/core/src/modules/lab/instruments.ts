@@ -3,7 +3,7 @@ import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
 import {
-  labAnalytes, labInstrumentCodes, labInstruments, labOrderableAnalytes, labSpecimenItems,
+  interfaces, labAnalytes, labInstrumentCodes, labInstruments, labOrderableAnalytes, labSpecimenItems,
   labSpecimens, orderItems, resources,
 } from "../../kernel/db/schema";
 import { createResource } from "../../kernel/resources/registry";
@@ -140,6 +140,53 @@ export async function mapInstrumentCode(
         target: [labInstrumentCodes.instrumentId, labInstrumentCodes.instrumentCode],
         set: { analyteId: input.analyteId, unit: input.unit ?? null, factor: input.factor ?? "1" },
       });
+  });
+}
+
+/**
+ * ═══ 17-E T7b — POINT A MACHINE AT THE `interfaces` ROW ITS BRIDGE HEARTBEATS ON ═══
+ *
+ * Q5 rules that `interface_down` is written *"only by the bridge's own heartbeat lapse, never by
+ * idleness"*, and `kernel/ops/interfaces.ts` has emitted both liveness edges since Plan 11c. What was
+ * missing was the JOIN: no row said which registered device belongs to which analyser, so
+ * `interface.down` had nowhere to land. This writes that row, and it is the whole of the link.
+ *
+ * ═══ IT IS AN ESTATE ACT, ON `lab.instruments.manage`, AND THE BRIDGE CANNOT PERFORM IT ═══
+ *
+ * `assertMayManage` refuses a non-`user` actor before it looks at any grant. A machine account that
+ * could re-point its own interface row could take another analyser's outage onto itself, or move its
+ * own off — which is the same reasoning that keeps the code map administrative (see the header).
+ *
+ * ═══ IT IS ALSO THE UNLINK, AND `null` IS A REAL ARGUMENT ═══
+ *
+ * A bridge is decommissioned or re-cabled to a different machine, and the register has to be able to
+ * say so. Unlinking leaves `resources.status` exactly as it stands — clearing it would either invent
+ * a recovery the engineer never made or erase an outage that is real, which is the reasoning
+ * `deactivateInterface` already applies to the interface row itself.
+ */
+export async function linkInstrumentInterface(
+  db: Db,
+  actor: Actor,
+  input: { instrumentId: string; interfaceId: string | null },
+  now: Date = new Date(),
+): Promise<void> {
+  await assertMayManage(db, actor);
+  await withTx(db, async (tx) => {
+    const [instrument] = await tx.select().from(labInstruments).where(eq(labInstruments.id, input.instrumentId));
+    if (!instrument) throw new LabError("unknown_instrument", `no laboratory instrument ${input.instrumentId}`);
+    /**
+     * CHECKED HERE RATHER THAN LEFT TO THE FOREIGN KEY. `lab_instruments_interface_id_fkey` would
+     * refuse the same row, but as a raw Postgres error the controller maps to a 500 — "the server
+     * broke" told to an administrator who mistyped an id. A domain refusal names the missing row.
+     */
+    if (input.interfaceId !== null) {
+      const [iface] = await tx.select({ id: interfaces.id }).from(interfaces).where(eq(interfaces.id, input.interfaceId));
+      if (!iface) throw new LabError("unknown_interface", `no registered interface ${input.interfaceId}`);
+    }
+    await tx
+      .update(labInstruments)
+      .set({ interfaceId: input.interfaceId, updatedBy: actor.id, updatedAt: now })
+      .where(eq(labInstruments.id, input.instrumentId));
   });
 }
 

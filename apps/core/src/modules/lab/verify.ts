@@ -21,7 +21,8 @@ import { canonicalNames } from "./criticals";
 import { matchReflex } from "./reflex";
 import { currentValue, deferNearMiss, flushNearMiss, liveRowsFor, resultContext } from "./results";
 import {
-  labNightReleaseReviewed, labReflexAdded, labResultVerified, labSodViolationBlocked,
+  labNightReleaseReviewed, labReflexAdded, labReflexRefused, labResultVerified,
+  labSodViolationBlocked,
 } from "./events";
 import { LAB_ITEM_DEF_KEY } from "./workflow-def";
 import type { Actor } from "@hmis/contracts";
@@ -747,6 +748,33 @@ async function placeReflexOrders(
         ruleId: match.ruleId, addedServiceId: match.addsServiceId,
         code: e.code, reason: e.message,
       });
+      /**
+       * ═══ §9.2 F44 — THE DURABLE RECORD, OWED SINCE 17b AND PAID HERE ═══
+       *
+       * The paragraph below is the one this closes, and it was right about everything except how
+       * long it would take. `LAB_EVENTS` was frozen for Plan 17; it is not frozen now, and
+       * `lab.reflex_refused` is declared with the name that comment chose.
+       *
+       * **Appended on the VERIFYING transaction, deliberately not inside the savepoint that has just
+       * rolled back.** The boundary is one-way by construction (M1): the verify may kill the reflex,
+       * the reflex may not kill the verify. So this record commits with the signature that caused it
+       * — and if the verification later throws, the record goes with it, which is correct, because a
+       * verification that did not happen refused no reflex.
+       */
+      await appendEvent(tx, labReflexRefused.make({
+        actor,
+        patientId: ctx.patientId,
+        encounterId: ctx.encounterId,
+        correlationId: ctx.orderId,
+        payload: {
+          orderItemId: ctx.orderItemId,
+          analyteId: match.analyteId,
+          ruleId: match.ruleId,
+          addedServiceId: match.addsServiceId,
+          code: e.code,
+          reason: e.message,
+        },
+      }));
       /**
        * ═══ CLOSE REVIEW PASS 2, F6 — A REFUSAL NOBODY IS TOLD ABOUT IS NOT A CONTROL ═══
        *
