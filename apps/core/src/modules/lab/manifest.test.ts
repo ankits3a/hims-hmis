@@ -59,13 +59,21 @@ describe("the lab manifest (Plan 17 T2)", () => {
   });
 
   /**
-   * `subscriptions: []` IS A DECISION, NOT AN OMISSION — see `events.ts`. The one a reader looks
-   * for is `patient.merged`, which the OT and materials both take; the lab's tables key by
-   * `order_item_id`, `specimen_id` and `result_id`, and the one `patient_id` it holds follows the
-   * envelope's own re-link. A consumer here would be a second answer to one question.
+   * ═══ 17-E T7b — THE LAB CONSUMES NOTHING **ABOUT A PATIENT**, WHICH IS THE DECISION ═══
+   *
+   * The one a reader looks for is still `patient.merged`, which the OT and materials both take; the
+   * lab's tables key by `order_item_id`, `specimen_id` and `result_id`, and the one `patient_id` it
+   * holds follows the envelope's own re-link. A consumer there would be a second answer to one
+   * question. The two it DOES take are the opposite case — the kernel's heartbeat sweep is the only
+   * answer to "is this bridge alive" and nothing else projects it onto the machine.
+   *
+   * PINNED BY NAME in `events.test.ts`; pinned here as a COUNT and an owner, because what this test
+   * is about is the manifest's shape rather than the lab's event surface.
    */
-  it("consumes nothing, and every menu entry is gated on a permission it declares", () => {
-    expect(labManifest.subscriptions).toEqual([]);
+  it("consumes the two kernel liveness edges and nothing else, and every menu entry is gated on a permission it declares", () => {
+    expect(labManifest.subscriptions.map((s) => s.consumer)).toEqual([
+      "lab.interface_status", "lab.interface_status",
+    ]);
     expect(labManifest.menu.map((m) => m.path)).toEqual([
       "/lab/desk", "/lab/collection", "/lab/bench", "/lab/verify",
       "/lab/reports", // PLAN 17c T5 — the report centre, on the counter's `lab.reports.print`
