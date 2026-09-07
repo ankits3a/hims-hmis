@@ -127,8 +127,10 @@ radiologist is the second clinical opinion on a gate the technologist raised.
 ## 5. The machines
 
 Each `device` resource carries a `modality` attribute, and `scheduleStudy` matches a study type
-against it. Set the AE title too if the machine will read the modality worklist — see the PACS
-runbook.
+against it. **The AE title a modality worklist needs cannot be set at all** — nothing in the
+workspace writes `attributes.aeTitle`, so `GET /radiology/mwl` is permanently empty; the PACS
+runbook's §2 carries the measurement. This sentence used to say "set the AE title too", seven lines
+above the paragraph below declaring there is no door for a machine.
 
 **The device registry row is what an AERB licence points at.** A machine that does not exist as a
 resource cannot be licensed, and therefore cannot be used for an ionising examination. The machines
@@ -155,7 +157,9 @@ a screen, and it is the same shape as §0 — a capability whose door was never 
 ## 6. The tariff and the GST category
 
 `seed:radiology` creates the service rows and sets **no prices**. Enter the rate list through the
-tariff screens: draft a version, set a price per imaging service, submit, approve, activate.
+tariff routes: draft a version, set a price per imaging service, submit, approve, activate.
+**Not "the tariff screens"** — `tariff/manifest.ts` is `menu: []` with the comment *"no UI this
+plan"*. The routes and the grants are real and the ceremony works; the screen is Plan 08's.
 
 **The `investigation` GST category must exist**, or pricing refuses `gst_config_missing`. Every
 imaging service is that category — and so is every laboratory service, so **this is one ruling for

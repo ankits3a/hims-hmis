@@ -488,7 +488,6 @@ describe("standup:check — the readiness census (11i T2)", () => {
     expect(verdictOf(await runCensus(db, "hospital"), "hospital", "formulary_interactions_loaded"))
       .toBe("RED");
   });
-
   it("an UNPRICED orderable reads RED — the runbook's §4.5 warning, made a check", async () => {
     await deployG2State(db);
     const { serviceId } = await withTx(db, (tx) =>
