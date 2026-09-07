@@ -119,3 +119,32 @@ const drillPayload = z.object({
 
 export const backupDrillPassed = defineEvent("backup.drill_passed", BACKUP, drillPayload);
 export const backupDrillFailed = defineEvent("backup.drill_failed", BACKUP, drillPayload);
+
+/**
+ * PHASE 11i T8 / D12 — A REHEARSAL IS NOT A DRILL, AND THE DASHBOARD MUST NOT COUNT IT AS ONE.
+ *
+ * `restore-drill.sh` run with `HMIS_DRILL_REHEARSAL=1` does everything the weekly drill does and
+ * then some — it points the migrator at a CANDIDATE image and applies the pending journal to a
+ * faithful copy of production, which is the migration rehearsal the catch-up deploy runbook
+ * requires. It appends here instead of to `drill_passed`/`drill_failed` for two reasons, and both
+ * are about the alert rule rather than about tidiness:
+ *
+ *   - the Grafana/prometheus rule that watches for a MISSED weekly drill counts `drill_passed`,
+ *     so a rehearsal appending that kind would let a genuinely missed backup drill hide behind
+ *     somebody's deploy preparation;
+ *   - a FAILED rehearsal is a bad candidate image, not a bad backup, and paging the owner with
+ *     "the restore drill failed" for it would be the wrong sentence at 22:00 on a Saturday.
+ *
+ * The payload is the drill's plus `outcome`, because a single kind now carries both results. It
+ * EXTENDS rather than modifies `drillPayload`, so the two events above — and every row already
+ * written under them — are untouched.
+ */
+export const backupDrillRehearsed = defineEvent(
+  "backup.drill_rehearsed",
+  BACKUP,
+  drillPayload.extend({
+    outcome: z.enum(["passed", "failed"]),
+    /** The image the migrator was run FROM: the whole point of a rehearsal is which tip it proves. */
+    candidateImage: z.string().min(1).nullable(),
+  }),
+);
