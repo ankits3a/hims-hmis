@@ -14,6 +14,10 @@ import {
   LAB_DEF_KEYS, RELEASE_UNPAID_APPROVAL_TYPE, analytesFor, listOrderables, rangesFor,
 } from "../src/modules/lab";
 import { OPD_PHARMACY_STORE_CODE, PHARMACY_DEF_KEYS } from "../src/modules/pharmacy";
+import {
+  DAYCARE_CASE_DEF_KEY, DEFINITION_PUBLISH_APPROVAL_TYPE, DEPOSIT_EXCEPTION_APPROVAL_TYPE,
+  OT_DEFINITION_KIND_VALUES, OT_GATE_DEF_KEY, activeDefinitionRow,
+} from "../src/modules/ot";
 import { balances, findStoreByCode, listItems } from "../src/modules/materials";
 import { IMAGING_GATE_DEF_KEY, IMAGING_STUDY_DEF_KEY, activeStudyTypes } from "../src/modules/radiology";
 import { appointments, unlicensedDevices } from "../src/modules/aerb";
@@ -385,6 +389,86 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       runbook: { file: PHARMACY_RUNBOOK, section: "## 1. Preconditions (owner / administrator)" },
       fix: "§1: the pharmacist's state council registration number is NOT modelled anywhere in the schema. Keep the certificate in the counter's file; the census cannot check it.",
     } as NotModelledRow,
+  ],
+
+  /**
+   * ═══ THE OT, ADDED 2026-09-07 — the module `seed-ot.ts` already named a runbook for ═══
+   *
+   * The census had no `ot` row set at all, so `standup:check` could not report the department in any
+   * state. That is the same blind spot §OPD-UNSEEDED had, one module over, and it is why the
+   * completeness guard's population had to become the census's own modules rather than the runbook
+   * files on disk — a module absent from BOTH is invisible to a check that walks either one.
+   *
+   * `seed-ot.ts` is the most honest seed in the tree: it drafts the three definitions, refuses to
+   * activate anything, and says so on stdout. What it could not do is tell anyone LATER, which is
+   * what these rows are for.
+   */
+  ot: [
+    {
+      gate: "G2", code: "ot_approval_types_registered",
+      // `seed:ot` registers both, and `deploy.sh` runs `seed-ot.js` — so this IS a deploy fact.
+      check: async (db) => {
+        for (const t of [DEFINITION_PUBLISH_APPROVAL_TYPE, DEPOSIT_EXCEPTION_APPROVAL_TYPE]) {
+          /**
+           * `!== null`, and the first draft of this line said `=== undefined`. `getApprovalType`
+           * returns `ApprovalTypeRow | null`, so that comparison was NEVER true and the row read
+           * **green over an empty table** — a check that verifies nothing, which is worse than no
+           * check. The fresh-database assertion caught it; the two rows above already had it right.
+           */
+          if ((await withTx(db, (tx) => getApprovalType(tx, t))) === null) return false;
+        }
+        return true;
+      },
+      fix: "run: pnpm --filter @hmis/core seed:ot — registers ot_definition_publish and ot_deposit_exception",
+    },
+    {
+      gate: "G2", code: "ot_theatre_present",
+      // `ensureOtUnit` creates the theatre and its recovery bays; without a theatre nothing can be
+      // scheduled, and `assignResource` has nothing to hold.
+      check: async (db) => (await listResourcesOfKind(db, "theatre")).length > 0,
+      fix: "run: pnpm --filter @hmis/core seed:ot — creates the day-care theatre and its recovery bays",
+    },
+    {
+      /**
+       * ═══ THE TWO CLASS A DEFINITIONS, AND NO SEED MAY CLOSE THIS ROW ═══
+       *
+       * `daycare_case` and `ot_gate` are `changeClass: "A"` — owner + medical_superintendent, and a
+       * drafter who is not the activator. **Nothing in the tree drafts them**: unlike the three
+       * `ot_definitions` below, which `seed:ot` drafts and leaves inactive, these two have no seed
+       * at all and the whole ceremony belongs to the runbook. Radiology's identical pair is G3 for
+       * the same reason and this row is modelled on it.
+       */
+      gate: "G3", code: "ot_workflow_definitions_active",
+      check: async (db) => {
+        for (const key of [DAYCARE_CASE_DEF_KEY, OT_GATE_DEF_KEY]) {
+          if ((await withTx(db, (tx) => getActiveDefinition(tx, key))) === null) return false;
+        }
+        return true;
+      },
+      fix: "ot-go-live.md §2: draft, two-key approve and activate `daycare_case` and `ot_gate`. Class A — no seed can do this, and `owner` is the ONLY role holding workflow.definitions.activate",
+    },
+    {
+      /**
+       * The module's OWN definitions — a different table and a different governance from the two
+       * above. `seed:ot` drafts three of the four and publishes none; **`privileges` it does not
+       * even draft**, because which surgeon may perform which procedure is this hospital's fact and
+       * no seed can guess it. A published `privileges` is what `ot_gate` checks a surgeon against.
+       */
+      gate: "G3", code: "ot_definitions_published",
+      check: async (db) => {
+        for (const kind of OT_DEFINITION_KIND_VALUES) {
+          // `undefined` IS this loader's empty (it returns `rows[0]`), unlike `getApprovalType`
+          // above, which returns `null`. Checked, not assumed — the two differ in the same file.
+          if ((await activeDefinitionRow(db, kind)) === undefined) return false;
+        }
+        return true;
+      },
+      fix: "ot-go-live.md §3-§4: the medical superintendent publishes criteria, deposit_policy and pacu_thresholds (seeded as DRAFTS), and drafts AND publishes `privileges`, which no seed writes",
+    },
+    { gate: "G4", code: "ot_surgeon_held", check: heldAtHospitalScope("surgeon"),
+      fix: "assign `surgeon` at hospital scope at /admin/users — no case can be booked without one" },
+    { gate: "G4", code: "ot_anaesthetist_held", check: heldAtHospitalScope("anaesthetist"),
+      fix: "assign `anaesthetist` at hospital scope at /admin/users — the anaesthesia gate has no holder without it" },
   ],
 
   radiology: [
