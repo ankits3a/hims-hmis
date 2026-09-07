@@ -12,7 +12,57 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ════════════════════════════════════════════════════════════════════════════════════════════════
+  # EVERY JOB DECLARES `timeout-minutes`, BECAUSE THE DEFAULT IS SIX HOURS.
+  #
+  # 2026-09-07, 02:56 — two twin runs on one commit, same shard, same tree. The `pull_request` twin's
+  # `core (2)` went GREEN in 9m44s. The `push` twin's `core (2)` WEDGED: 22+ minutes with no step
+  # progress. With no bound declared, GitHub's default of 360 minutes applies, so that job would have
+  # held its PR — and the four PRs stacked behind it — until roughly 08:56. It was cleared only
+  # because somebody happened to be looking at that PR at 03:19. A control that needs a person
+  # watching is not a control.
+  #
+  # ═══ THE NUMBERS ARE MEASURED, NOT CHOSEN ═══
+  #
+  # 151 job runs sampled across the last 40 workflow runs, taking each job's own execution window
+  # (`started_at` → `completed_at`, which is exactly what `timeout-minutes` bounds — queueing sits
+  # outside it, so a busy morning does not eat the budget):
+  #
+  #     job          n    p50   p90   MAX(success)
+  #     static      39      1     1      1
+  #     web         38      2     2      2
+  #     core (1)    29      9    12     17
+  #     core (2)    28     11    13     19
+  #
+  # The slowest job that has ever SUCCEEDED is 19 minutes. The only 30-minute job in the sample is
+  # the starved `core (1)` that failed on its own with 100% hook timeouts and zero assertion output —
+  # not a slow success, and killing it sooner costs nothing.
+  #
+  # ═══ WHY 30 AND NOT 25 ═══
+  #
+  # The two errors are not symmetric. A bound that is too TIGHT turns a healthy slow run RED, and it
+  # does so in a way that reads as a real failure — the worst outcome available, because it
+  # manufactures the very flake this is meant to bound. A bound that is too LOOSE merely lets a hang
+  # waste more time before dying, and any value far below 360 already fixes that. So the headroom
+  # goes on the side that cannot mislead: 30 is 1.6x the observed maximum and ~2.3x p90. 25 would be
+  # 1.3x — thinner than it sounds for a number nobody revisits.
+  #
+  # `static` and `web` get 10 rather than 30 because their maxima are 1 and 2 minutes. One shared
+  # bound would leave a wedged `web` job hanging for half an hour to protect a budget it uses a
+  # fifteenth of. A bound belongs near the job it bounds.
+  #
+  # ═══ WHAT THIS DOES NOT FIX ═══
+  #
+  # A timed-out job does not pass, so the PR still needs a new commit for a green check: this turns a
+  # six-hour block into a thirty-minute one, it does not make the twin-run problem go away. The twins
+  # are the deeper defect — this file fires on both `push` and `pull_request` while `concurrency`
+  # keys on `github.ref`, and those events produce different refs (`refs/heads/…` vs `refs/pull/…`),
+  # so the two runs sit in different groups and NEITHER CAN EVER CANCEL THE OTHER. Every PR rolls the
+  # dice twice and either roll blocks the merge. Changing the trigger is a separate decision and the
+  # owner's, because these four job names are the required status checks in branch protection.
+  # ════════════════════════════════════════════════════════════════════════════════════════════════
   static:
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -52,6 +102,8 @@ jobs:
           RELAY_CHROMIUM: /nonexistent-chromium-ci-forces-the-skip
 
   core:
+    # 30: 1.6x the slowest SUCCESSFUL shard ever observed (19 min), ~2.3x p90. See the block above.
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -81,6 +133,8 @@ jobs:
       - run: pnpm --filter @hmis/core exec jest -w 2 --shard=${{ matrix.shard }}/2
 
   web:
+    # 10: this job's observed maximum is 2 minutes. See the block above `static`.
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
