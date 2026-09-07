@@ -277,6 +277,13 @@ export async function activeRegistrationFor(
  * `onDate` is a parameter rather than a wall-clock read, the house rule this module already follows
  * everywhere (F52: the statutory date is the server's, never the caller's — and never a hidden one).
  */
+/** One registration and everything registered under it — withdrawn rows included (see `readRegister`). */
+export type RegisterBookEntry = {
+  registration: RegistrationRow;
+  machines: RegisteredMachineRow[];
+  persons: RegisteredPersonRow[];
+};
+
 export async function activeRegistrations(
   exec: Db | Tx, onDate: string,
 ): Promise<RegistrationRow[]> {
@@ -287,6 +294,53 @@ export async function activeRegistrations(
       sql`${pcpndtRegistrations.validFrom} <= ${onDate}`,
       sql`${pcpndtRegistrations.validTo} >= ${onDate}`,
     ));
+}
+
+/**
+ * ═══ THE REGISTER, READ BACK — the door `pcpndt.registrations.read` never had ═══
+ *
+ * The permission has been declared since 18a T6 and granted to `radiologist` and `pcpndt_incharge`,
+ * and until now it **guarded nothing**: it appeared in the manifest and in no route. So the register
+ * a human is told to populate could be written through the API and never read back through one.
+ *
+ * ═══ THIS IS NOT THE "NO LIST" RULE, AND THE DISTINCTION IS THE WHOLE REASON IT IS SAFE ═══
+ *
+ * `read.ts` refuses to list Form F rows, and `manifest.ts` gives the reason: *"a list of Form F rows
+ * is a list of pregnant women by name, and the one thing this register must not become is a
+ * searchable surface."* **That rule is about PATIENTS.** These rows are premises, equipment and
+ * staff — a certificate number, a machine's serial, a doctor's registration — with no patient
+ * identity anywhere in them, which is exactly why `pcpndt.registrations.read` is a SEPARATE grant
+ * from `pcpndt.form_f.read` and is held by different people. No PHI surface is touched and none is
+ * logged, because none is read.
+ *
+ * ═══ IT RETURNS THE WHOLE BOOK, WITHDRAWN ROWS INCLUDED, AND THAT IS DELIBERATE ═══
+ *
+ * `active` is a withdrawal flag rather than a delete — the schema says so in as many words: *"a
+ * machine sold last year still has its serial series and its forms."* A reader that showed only
+ * live rows would answer "which machines are registered today" and silently lose the register's
+ * other half, which is the historical record an inspection actually asks for. **The flags and the
+ * validity dates are returned so the caller can decide; hiding rows is the lossy default.**
+ *
+ * One query per registration for machines and one for persons. A hospital holds one registration,
+ * or a few if it has satellite premises, so the N+1 is bounded by the certificate count and the
+ * alternative — two joins and a regroup in JS — would be less readable for no measurable gain.
+ */
+export async function readRegister(exec: Db | Tx): Promise<RegisterBookEntry[]> {
+  const registrations = await (exec as Db).select().from(pcpndtRegistrations)
+    .orderBy(pcpndtRegistrations.validFrom, pcpndtRegistrations.registrationNo);
+  const out: RegisterBookEntry[] = [];
+  for (const registration of registrations) {
+    out.push({
+      registration,
+      machines: await (exec as Db).select().from(pcpndtRegisteredMachines)
+        .where(eq(pcpndtRegisteredMachines.registrationId, registration.id))
+        .orderBy(pcpndtRegisteredMachines.serial),
+      persons: await (exec as Db).select().from(pcpndtRegisteredPersons)
+        .where(eq(pcpndtRegisteredPersons.registrationId, registration.id))
+        .orderBy(pcpndtRegisteredPersons.id),
+    });
+  }
+  return out;
 }
 
 /** Every ACTIVE machine on the register, for the same reason as `activeRegistrations` above. */

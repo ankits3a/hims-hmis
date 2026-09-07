@@ -8,18 +8,31 @@ import {
 } from "./registrations";
 import { openFormF, recordFormF, verifyFormF } from "./form-f";
 import { formFForStudy } from "./read";
+import { readRegister } from "./registrations";
 import { parsed, toHttp } from "./pcpndt-http";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
 /**
- * PLAN 18a T6 — **THE REGISTER OVER HTTP, AND THERE IS NO LIST ROUTE.**
+ * PLAN 18a T6 — **THE REGISTER OVER HTTP, AND THERE IS NO LIST OF FORM F ROWS.**
  *
- * `GET /pcpndt/studies/:studyId/form-f` is the only read, and it takes a STUDY. `manifest.ts` gives
- * the reason and it is the sharpest sentence in this module: *"a list of Form F rows is a list of
- * pregnant women by name, and the one thing this register must not become is a searchable
- * surface."* The inspection persona that legitimately needs the register as a book is 18a-ii's,
- * with its own permission and its own certified print.
+ * NARROWED 2026-09-07. This header read *"there is NO LIST ROUTE"* and said `form-f` was *"the only
+ * read"*. `GET /pcpndt/registrations` makes both sentences false, so they are corrected rather than
+ * left to rot — a header asserting an absence the file beside it has filled is how a comment becomes
+ * a lie. **The rule they were protecting is untouched**, and stating it precisely is what shows the
+ * new route does not breach it.
+ *
+ * `GET /pcpndt/studies/:studyId/form-f` takes a STUDY and there is still no list of forms.
+ * `manifest.ts` gives the reason and it is the sharpest sentence in this module: *"a list of Form F
+ * rows is a list of pregnant women by name, and the one thing this register must not become is a
+ * searchable surface."* The inspection persona that legitimately needs the FORMS as a book is
+ * 18a-ii's, with its own permission and its own certified print.
+ *
+ * **`GET /pcpndt/registrations` lists something else entirely**: premises, machines and doctors —
+ * a certificate number, a serial, a qualification. No patient identity appears in any of those
+ * tables, which is precisely why `pcpndt.registrations.read` is a separate grant held by different
+ * people. It closes a permission that was declared, granted to two roles, and guarded NOTHING: the
+ * five writes below could populate a register nothing could read back.
  *
  * ═══ THE THREE PERMISSIONS ARE THREE DIFFERENT PEOPLE (DD14) ═══
  *
@@ -189,12 +202,43 @@ export class PcpndtController {
     } catch (e) { toHttp(e); }
   }
 
-  /** THE ONLY READ. By STUDY, never a list — see the class header. */
+  /**
+   * THE ONLY READ **OF A FORM F**. By STUDY, never a list — see the class header.
+   *
+   * Narrowed when `GET /pcpndt/registrations` landed below: this comment said "THE ONLY READ", and
+   * a second reader made that false. The rule it was protecting is unchanged and is about PATIENTS
+   * — a list of Form F rows is a list of pregnant women by name. The register of premises, machines
+   * and people carries no patient identity and is a different grant.
+   */
   @Get("studies/:studyId/form-f")
   @RequirePermission("pcpndt.form_f.read", "hospital")
   async read(@CurrentActor() actor: Actor, @Param("studyId") studyId: string): Promise<unknown> {
     try {
       return { form: await formFForStudy(this.db, actor, studyId) };
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * ═══ THE REGISTER, READ BACK — closing a grant that had no door ═══
+   *
+   * `pcpndt.registrations.read` has been declared since 18a T6 and granted to `radiologist` and
+   * `pcpndt_incharge`, and it **guarded nothing**: it appeared in the manifest and in no route. The
+   * five `@Post`s above write the register and until now nothing could read it back, so a hospital
+   * following `pcpndt-go-live.md` §2-§4 had no way to confirm what it had entered.
+   *
+   * **This is not the "no list" rule being relaxed.** That rule is about Form F rows, because a list
+   * of them is a list of pregnant women by name. These rows are a certificate number, machines and
+   * doctors — no patient identity, a separate permission, different holders, and no PHI surface to
+   * log. The distinction is why the two grants were split in the first place.
+   *
+   * Withdrawn machines and lapsed registrations are INCLUDED: `active` is a withdrawal flag, not a
+   * delete, and the historical book is what an inspection asks for. See `readRegister`.
+   */
+  @Get("registrations")
+  @RequirePermission("pcpndt.registrations.read", "hospital")
+  async register(): Promise<unknown> {
+    try {
+      return { registrations: await readRegister(this.db) };
     } catch (e) { toHttp(e); }
   }
 }
