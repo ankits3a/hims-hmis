@@ -123,6 +123,9 @@ const OWNED_BY: Record<LabErrorCode, string> = {
 
   /** The range book's door, and the only file that may refuse a band. */
   range_overlap: "catalogue.ts",
+
+  /** 17-E T7b — linking a machine to its bridge is an estate act, in the estate's own file. */
+  unknown_interface: "instruments.ts",
   /** DD11's morning review lives with the signature it completes. */
   review_not_pending: "verify.ts",
 };
@@ -169,7 +172,10 @@ describe("the lab error union (Plan 17 T2)", () => {
 
   it("the statuses say what they mean: 404 unknown, 409 race, 403 authority, 422 clinical stop", () => {
     expect(LAB_ERROR_CODES.filter((c) => labHttpStatus(c) === 404).sort()).toEqual([
-      "unknown_analyte", "unknown_instrument", "unknown_item", "unknown_orderable", "unknown_report",
+      "unknown_analyte", "unknown_instrument",
+      /** 17-E T7b — the bridge's device row, refused in the module's vocabulary and not as an FK. */
+      "unknown_interface",
+      "unknown_item", "unknown_orderable", "unknown_report",
       "unknown_result", "unknown_service", "unknown_specimen",
     ]);
     // A compare-and-set loser is a CONFLICT: the caller's correct response is to re-read, not to

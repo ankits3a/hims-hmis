@@ -446,7 +446,6 @@ describe("standup:check — the readiness census (11i T2)", () => {
     /** Still not green, and it never can be — that is what the third verdict is for. */
     expect(verdictOf(afterRegistering, "pcpndt", "pcpndt_certificate_displayed")).toBe("NOT MODELLED");
   });
-
   it("an UNPRICED orderable reads RED — the runbook's §4.5 warning, made a check", async () => {
     await deployG2State(db);
     const { serviceId } = await withTx(db, (tx) =>
