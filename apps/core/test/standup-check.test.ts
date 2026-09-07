@@ -277,7 +277,6 @@ describe("standup:check — the readiness census (11i T2)", () => {
     expect(verdictOf(afterCeremony, "ot", "ot_workflow_definitions_active")).toBe("ok");
     expect(verdictOf(afterCeremony, "ot", "ot_definitions_published")).toBe("ok");
   });
-
   it("an UNPRICED orderable reads RED — the runbook's §4.5 warning, made a check", async () => {
     await deployG2State(db);
     const { serviceId } = await withTx(db, (tx) =>

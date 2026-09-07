@@ -395,6 +395,22 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
             "patient.registered",
           ],
         ],
+        /**
+         * PLAN 17-E T7b — THE EIGHTH WIRE, and the first the LAB has ever had. `.sort()` above puts
+         * it here, between `kernel.notify` and `materials.consumption`.
+         *
+         * ONE CONSUMER, BOTH EDGES — which is why this pair reads as one entry with two events
+         * rather than two entries. `SubscriptionBus.on` accumulates event names under a consumer
+         * key, so both liveness edges share one handler and one `event_cursors` row; two consumers
+         * would give the down edge and the up edge separate cursors, and a restore could then be
+         * delivered before the outage it ends.
+         *
+         * **THIS FILE IS NOT IN 17-E T7b's FILES LIST**, and finding it was luck rather than method:
+         * grepping for the other consumers' NAME CONSTANTS returns nothing here, because this test
+         * builds the pairs from the registry instead of importing them (#158 — an empty grep is
+         * evidence about the search). The suite is what named it.
+         */
+        ["lab.interface_status", ["interface.down", "interface.restored"]],
         // PLAN 14 T7 / DD13 — THE FOURTH WIRE, and the first one that subscribes to an event NOTHING
         // IN THIS BUILD PUBLISHES YET. `consignment.deployed` is DEFINED by `modules/materials`
         // (the frozen interface Plan 15 imports) and EMITTED by Plan 15's mini-OT scan-on-use.
