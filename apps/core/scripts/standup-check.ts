@@ -6,7 +6,7 @@ import { usersHoldingRoleAtScope } from "../src/kernel/workflow/roles";
 import { loadBillingConfig } from "../src/modules/billing/config";
 import { getGstSettings, listGstCategories } from "../src/modules/tariff/gst-config";
 import { listPriceList, listServices } from "../src/modules/tariff/services";
-import { LAB_DEPARTMENT_CODE, loadOpdConfig } from "../src/modules/opd";
+import { LAB_DEPARTMENT_CODE, OPD_VISIT_DEF_KEY, loadOpdConfig } from "../src/modules/opd";
 import { listDepartments, listDoctors } from "../src/modules/opd/masters";
 import { listResourcesOfKind } from "../src/kernel/resources/read";
 import { registrationConfigured } from "../src/modules/patients";
@@ -183,6 +183,35 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       gate: "G2", code: "opd_config_present",
       check: async (db) => { await loadOpdConfig(db); return true; },
       fix: "run: pnpm --filter @hmis/core seed:opd",
+    },
+    {
+      gate: "G3", code: "opd_visit_definition_active",
+      /**
+       * ═══ THE ROW WITHOUT WHICH NOT ONE PATIENT CAN BE REGISTERED ═══
+       *
+       * `encounters.ts` calls `startInstance(tx, OPD_VISIT_DEF_KEY, …)` on EVERY encounter open, and
+       * `startInstance` throws `no_active_definition` for a key with no active row. **A deployment
+       * whose `opd_visit` was never activated cannot open a visit at all** — the front desk stops on
+       * the first walk-in of the first morning, and the refusal names a workflow key rather than
+       * anything a receptionist can act on.
+       *
+       * IT WAS MISSING FOR THE WHOLE LIFE OF THIS CENSUS. `lab_definitions_active`,
+       * `pharmacy_definition_active` and `radiology_definitions_active` were all here; **the one
+       * definition all three of them depend on was not**, because `front-desk` had no go-live
+       * runbook and the completeness test's population is the runbook files on disk. The census
+       * could not be short a department it could not see.
+       *
+       * G3, NOT G2, AND THE GATE FOLLOWS THE CHANGE CLASS. `opd_visit` is **Class A** —
+       * `CHANGE_CLASS_POLICY.A` requires `owner` + `medical_superintendent` approvals and a drafter
+       * who is not the activator, so the ceremony takes FOUR humans. The lab's and the pharmacy's
+       * definitions are Class C, which is why their seeds may activate them and why their rows are
+       * G2; radiology's are Class A and its row is G3, and this one joins radiology's side.
+       * **No seed may close this row.** A seed that activated a Class A definition would collapse a
+       * two-key clinical-safety approval into an automated call, which is why §OPD-UNSEEDED is
+       * answered with a runbook and this check rather than with a line in `seed-opd.ts`.
+       */
+      check: async (db) => (await withTx(db, (tx) => getActiveDefinition(tx, OPD_VISIT_DEF_KEY))) !== null,
+      fix: "opd-go-live.md §2: activate `opd_visit` — `opd_admin` POSTs GET /opd/definition's JSON to /workflow/definitions, medical_superintendent and owner each POST .../approve, then owner POSTs .../activate. No seed can do this: it is Class A, and `owner` is the ONLY role holding workflow.definitions.activate",
     },
     {
       gate: "G3", code: "active_doctor_in_a_department",
