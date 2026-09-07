@@ -592,7 +592,6 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       fix: "hang the registration certificate where patients can see it, and keep the Form F register available for inspection",
     } as NotModelledRow,
   ],
-
   radiology: [
     {
       /**
