@@ -230,6 +230,24 @@ export async function applyItemMaster(
   let created = 0;
   let updated = 0;
 
+  /**
+   * ═══ ONE TRANSACTION FOR THE WHOLE FILE, AND THE FIRST VERSION GOT THIS WRONG ═══
+   *
+   * This function's own header promises "the whole file is applied or none of it", and the plan's
+   * `refusals` check enforces that for a file we KNOW is bad. It did not enforce it for a file that
+   * turns out bad while being written: the loop opened a `withTx` PER ROW, so a failure at row 200
+   * of 400 left rows 1–199 committed — the exact half-applied item master the header calls the
+   * worst outcome available, produced by the code that warns about it.
+   *
+   * A plan is a judgement about a database that can change between planning and applying: a code
+   * created by somebody else in that window turns a `create` into a duplicate-key throw. So the
+   * guarantee has to come from the transaction, not from the plan being careful.
+   *
+   * The whole file is one `withTx`. Item masters are hundreds of rows, not millions, and this is an
+   * operator command run at commissioning — the transaction is short-lived and nothing else is
+   * writing the item master while somebody is importing it.
+   */
+  return withTx(db, async (tx: Tx) => {
   for (const planned of plan.rows) {
     const row = byLine.get(planned.line);
     if (row === undefined) continue;
@@ -238,24 +256,26 @@ export async function applyItemMaster(
     if (planned.verdict === "create") {
       const packUom = row.cells.pack_uom ?? "";
       const mult = num(row.cells.pack_multiplier);
-      await withTx(db, (tx: Tx) => registerItem(tx, actor, {
+      await registerItem(tx, actor, {
         code: planned.code, name: row.cells.name ?? "", class: "drug",
         baseUom: row.cells.base_uom ?? "", batchTracked: true,
         formularyMedicineId: planned.medicineId ?? null,
         hsnCode: (row.cells.hsn_code ?? "") === "" ? null : row.cells.hsn_code,
-        /* undefined, not null — `registerItem` distinguishes "not supplied" from "explicitly none",
-           and a blank cell means the operator's file said nothing about the slab. */
+        /* NULL, and null is the whole point: `gstCategoryFor` maps it to `pharmacy_exempt`, which
+           bills the patient exactly the printed MRP. (An earlier comment here said "undefined, not
+           null" while the code wrote null — the code was right and the comment was describing a
+           distinction this column does not make.) */
         gstRateBps: num(row.cells.gst_rate_bps) ?? null,
         shelfLifeDays: num(row.cells.shelf_life_days) ?? null,
         uoms: packUom !== "" && mult !== undefined
           ? [{ uom: packUom, toBaseMultiplier: mult, isPurchaseUom: true, isIssueUom: true }]
           : [],
-      }));
+      });
       created += 1;
     } else if (planned.verdict === "update") {
       const itemId = planned.itemId;
       if (itemId === undefined) continue;
-      await withTx(db, async (tx: Tx) => {
+      {
         await updateItem(tx, actor, itemId, {
           ...(planned.changes.includes("name") ? { name: row.cells.name } : {}),
           ...(planned.changes.includes("hsnCode") ? { hsnCode: row.cells.hsn_code } : {}),
@@ -271,11 +291,12 @@ export async function applyItemMaster(
             await addItemUom(tx, actor, itemId, { uom: packUom, toBaseMultiplier: mult });
           }
         }
-      });
+      }
       updated += 1;
     }
   }
   return { created, updated };
+  });
 }
 
 function parseArgs(argv: string[]): { file: string; apply: boolean; actor: string } {
