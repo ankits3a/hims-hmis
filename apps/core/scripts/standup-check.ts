@@ -14,9 +14,19 @@ import {
   LAB_DEF_KEYS, RELEASE_UNPAID_APPROVAL_TYPE, analytesFor, listOrderables, rangesFor,
 } from "../src/modules/lab";
 import { OPD_PHARMACY_STORE_CODE, PHARMACY_DEF_KEYS } from "../src/modules/pharmacy";
+import {
+  DAYCARE_CASE_DEF_KEY, DEFINITION_PUBLISH_APPROVAL_TYPE, DEPOSIT_EXCEPTION_APPROVAL_TYPE,
+  OT_DEFINITION_KIND_VALUES, OT_GATE_DEF_KEY, activeDefinitionRow,
+} from "../src/modules/ot";
 import { balances, findStoreByCode, listItems } from "../src/modules/materials";
 import { IMAGING_GATE_DEF_KEY, IMAGING_STUDY_DEF_KEY, activeStudyTypes } from "../src/modules/radiology";
 import { appointments, unlicensedDevices } from "../src/modules/aerb";
+import {
+  activeRegistrations, registeredMachines, registeredPersons,
+} from "../src/modules/pcpndt";
+import { istDayString } from "../src/kernel/approvals/cumulative";
+import { listInteractions, listSalts } from "../src/modules/formulary";
+import { SEED_CENSUS } from "./seed-formulary-interactions";
 import type { Db } from "../src/kernel/db/client";
 
 /**
@@ -168,6 +178,52 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       gate: "G2", code: "registration_config_present",
       check: (db) => registrationConfigured(db),
       fix: "run: UHID_PREFIX=<PREFIX> pnpm --filter @hmis/core seed:registration",
+    },
+    {
+      gate: "G2", code: "formulary_interactions_loaded",
+      /**
+       * ═══ AN INTERACTION CHECKER WITH AN EMPTY BOOK ANSWERS "NO INTERACTIONS" TO EVERYTHING ═══
+       *
+       * 16a is deployed and `opd/rx-checks.ts` runs on every prescription. With no pairs,
+       * `listInteractionsAmong` returns an empty array and the prescriber is told nothing —
+       * **indistinguishable, on screen, from a checker that ran and found the combination safe.**
+       * That is the whole reason this row exists: the failure is silent and reassuring.
+       *
+       * IT IS A `hospital` ROW BECAUSE IT IS A UNIVERSAL FACT, and the consumer decides that. The
+       * book is read by `opd/rx-checks.ts` and `opd/prescriptions.ts` — **prescribing, not
+       * dispensing** — so it is not the pharmacy's, and every hospital that writes a prescription
+       * needs it. It joins `billing_config_present` and `gst_settings_present` rather than a
+       * department's set, and `formulary` stays a non-department in the classification map.
+       *
+       * IT IS G2: `deploy.sh:588` runs `seed-formulary-interactions.js`, so this is established by
+       * the deploy. Class C reference data — no human act is owed, which is what separates it from
+       * the five modules whose Class A ceremonies stranded them earlier.
+       *
+       * ═══ THE PREDICATE IS THE SEED'S OWN CENSUS, NOT `> 0` ═══
+       *
+       * `SEED_CENSUS` is exported by the seed and its comment says what it is: *"the census this
+       * seed is expected to produce on an empty formulary."* A `> 0` row would go green on ONE pair
+       * and certify "somebody ran the seed" while claiming to certify "the interaction book is
+       * loaded" — a row that measures something other than what it reports (#175). Reading the
+       * seed's own constant also means adding a pair moves this expectation with it: no number is
+       * written here to go stale.
+       *
+       * `>=` and not `===`: a hospital may add pairs of its own, and equality would go RED on
+       * correct curation. It still catches the cases that matter — never run, partially failed, or
+       * seeded rows deleted.
+       *
+       * **WHAT THIS ROW DOES NOT CERTIFY, disclosed rather than implied.** The chain is
+       * medicine -> `formulary_medicine_salts` -> salt -> pair. This seed creates SALTS and PAIRS
+       * only; it creates no medicines and no medicine-to-salt mapping. So a hospital can be green
+       * here and still fire no interaction, because its own item master is not mapped to moieties.
+       * That is the pharmacy item master's path and its own gap; this row is honest about covering
+       * the book and not the mapping.
+       */
+      check: async (db) => (
+        (await listSalts(db, { activeOnly: true })).length >= SEED_CENSUS.salts
+        && (await listInteractions(db)).length >= SEED_CENSUS.pairs
+      ),
+      fix: "run: pnpm --filter @hmis/core seed:formulary — an empty interaction book answers \"no interactions\" to every prescription",
     },
     {
       gate: "G4", code: "second_administrator",
@@ -387,6 +443,155 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
     } as NotModelledRow,
   ],
 
+  /**
+   * ═══ THE OT, ADDED 2026-09-07 — the module `seed-ot.ts` already named a runbook for ═══
+   *
+   * The census had no `ot` row set at all, so `standup:check` could not report the department in any
+   * state. That is the same blind spot §OPD-UNSEEDED had, one module over, and it is why the
+   * completeness guard's population had to become the census's own modules rather than the runbook
+   * files on disk — a module absent from BOTH is invisible to a check that walks either one.
+   *
+   * `seed-ot.ts` is the most honest seed in the tree: it drafts the three definitions, refuses to
+   * activate anything, and says so on stdout. What it could not do is tell anyone LATER, which is
+   * what these rows are for.
+   */
+  ot: [
+    {
+      gate: "G2", code: "ot_approval_types_registered",
+      // `seed:ot` registers both, and `deploy.sh` runs `seed-ot.js` — so this IS a deploy fact.
+      check: async (db) => {
+        for (const t of [DEFINITION_PUBLISH_APPROVAL_TYPE, DEPOSIT_EXCEPTION_APPROVAL_TYPE]) {
+          /**
+           * `!== null`, and the first draft of this line said `=== undefined`. `getApprovalType`
+           * returns `ApprovalTypeRow | null`, so that comparison was NEVER true and the row read
+           * **green over an empty table** — a check that verifies nothing, which is worse than no
+           * check. The fresh-database assertion caught it; the two rows above already had it right.
+           */
+          if ((await withTx(db, (tx) => getApprovalType(tx, t))) === null) return false;
+        }
+        return true;
+      },
+      fix: "run: pnpm --filter @hmis/core seed:ot — registers ot_definition_publish and ot_deposit_exception",
+    },
+    {
+      gate: "G2", code: "ot_theatre_present",
+      // `ensureOtUnit` creates the theatre and its recovery bays; without a theatre nothing can be
+      // scheduled, and `assignResource` has nothing to hold.
+      check: async (db) => (await listResourcesOfKind(db, "theatre")).length > 0,
+      fix: "run: pnpm --filter @hmis/core seed:ot — creates the day-care theatre and its recovery bays",
+    },
+    {
+      /**
+       * ═══ THE TWO CLASS A DEFINITIONS, AND NO SEED MAY CLOSE THIS ROW ═══
+       *
+       * `daycare_case` and `ot_gate` are `changeClass: "A"` — owner + medical_superintendent, and a
+       * drafter who is not the activator. **Nothing in the tree drafts them**: unlike the three
+       * `ot_definitions` below, which `seed:ot` drafts and leaves inactive, these two have no seed
+       * at all and the whole ceremony belongs to the runbook. Radiology's identical pair is G3 for
+       * the same reason and this row is modelled on it.
+       */
+      gate: "G3", code: "ot_workflow_definitions_active",
+      check: async (db) => {
+        for (const key of [DAYCARE_CASE_DEF_KEY, OT_GATE_DEF_KEY]) {
+          if ((await withTx(db, (tx) => getActiveDefinition(tx, key))) === null) return false;
+        }
+        return true;
+      },
+      fix: "ot-go-live.md §2: draft, two-key approve and activate `daycare_case` and `ot_gate`. Class A — no seed can do this, and `owner` is the ONLY role holding workflow.definitions.activate",
+    },
+    {
+      /**
+       * The module's OWN definitions — a different table and a different governance from the two
+       * above. `seed:ot` drafts three of the four and publishes none; **`privileges` it does not
+       * even draft**, because which surgeon may perform which procedure is this hospital's fact and
+       * no seed can guess it. A published `privileges` is what `ot_gate` checks a surgeon against.
+       */
+      gate: "G3", code: "ot_definitions_published",
+      check: async (db) => {
+        for (const kind of OT_DEFINITION_KIND_VALUES) {
+          // `undefined` IS this loader's empty (it returns `rows[0]`), unlike `getApprovalType`
+          // above, which returns `null`. Checked, not assumed — the two differ in the same file.
+          if ((await activeDefinitionRow(db, kind)) === undefined) return false;
+        }
+        return true;
+      },
+      fix: "ot-go-live.md §3-§4: the medical superintendent publishes criteria, deposit_policy and pacu_thresholds (seeded as DRAFTS), and drafts AND publishes `privileges`, which no seed writes",
+    },
+    { gate: "G4", code: "ot_surgeon_held", check: heldAtHospitalScope("surgeon"),
+      fix: "assign `surgeon` at hospital scope at /admin/users — no case can be booked without one" },
+    { gate: "G4", code: "ot_anaesthetist_held", check: heldAtHospitalScope("anaesthetist"),
+      fix: "assign `anaesthetist` at hospital scope at /admin/users — the anaesthesia gate has no holder without it" },
+  ],
+
+  /**
+   * ═══ THE PCPNDT REGISTER — a department by every test that made the other five (2026-09-07) ═══
+   *
+   * Master data no deploy can supply (`pcpndt_registrations` and its machines and persons), human
+   * acts no seed may perform (`form-f.ts`: *"a Form F is signed by a person — a system actor cannot
+   * write or verify one"*), **and until this row set nothing anywhere checked that any of it
+   * existed.** A hospital could stand this system up, scan patients, and hold no register at all
+   * with no row going red.
+   *
+   * THERE IS NO `seed-pcpndt.ts`, SO NOTHING HERE IS G2. Every row below is an act by a person with
+   * a legal obligation — the registration certificate, the Form B machine list, the list of doctors
+   * who may scan. That is the whole shape of this module and `registrations.ts`'s own header calls
+   * it *"the posture": this file seeds nothing.*
+   *
+   * THE STATUTE DOES NOT CHANGE THE ENGINEERING, BUT IT CHANGES WHAT SILENCE COSTS. The PCPNDT Act
+   * governs sex determination and the register is the legal artefact; a missing row here is not an
+   * inconvenience at the counter.
+   */
+  pcpndt: [
+    {
+      gate: "G3", code: "pcpndt_registration_active",
+      /**
+       * The premises certificate, valid TODAY. `validTo` is checked because a lapsed registration is
+       * exactly the state O-7's hard block exists for, and a census that reported "a registration
+       * exists" while it expired last month would be the report that let the scan happen.
+       */
+      check: async (db) => (await activeRegistrations(db, istDayString(new Date()))).length > 0,
+      fix: "pcpndt-go-live.md §2: POST /pcpndt/registrations with the premises registration number and its validity window — the certificate's own dates, never today's",
+    },
+    {
+      gate: "G3", code: "pcpndt_machine_registered",
+      /** Form B's list. `assertMachineRegistered` refuses acquisition without it, per machine. */
+      check: async (db) => {
+        for (const r of await activeRegistrations(db, istDayString(new Date()))) {
+          if ((await registeredMachines(db, r.id)).length > 0) return true;
+        }
+        return false;
+      },
+      fix: "pcpndt-go-live.md §3: POST /pcpndt/registrations/:id/machines for EVERY ultrasound machine on the Form B declaration — an unregistered machine refuses at acquisition",
+    },
+    {
+      gate: "G4", code: "pcpndt_person_registered",
+      /**
+       * E1's decisive edge case as a row: the 02:00 suspected ectopic with the sonologist at home.
+       * **The doctor who scans is a registered person or the scan does not happen**, so the answer
+       * is to register every doctor who may ever scan rather than to build a bypass.
+       */
+      check: async (db) => {
+        for (const r of await activeRegistrations(db, istDayString(new Date()))) {
+          if ((await registeredPersons(db, r.id)).length > 0) return true;
+        }
+        return false;
+      },
+      fix: "pcpndt-go-live.md §4: POST /pcpndt/registrations/:id/persons for every doctor who may ever acquire a covered scan, including the ones who only cover nights",
+    },
+    { gate: "G4", code: "pcpndt_incharge_held", check: heldAtHospitalScope("pcpndt_incharge"),
+      fix: "assign `pcpndt_incharge` at hospital scope at /admin/users — nobody can verify a Form F without it" },
+    {
+      gate: "G3", code: "pcpndt_certificate_displayed",
+      /**
+       * THE THIRD VERDICT, and this is what it is for. The Act requires the registration certificate
+       * to be DISPLAYED at the premises; no column holds that fact and no query can answer it.
+       * Reporting it green would certify a legal display nobody made; reporting it RED would be a
+       * permanent red that trains its reader to ignore reds.
+       */
+      runbook: { file: "docs/runbooks/pcpndt-go-live.md", section: "## 6. The wall" },
+      fix: "hang the registration certificate where patients can see it, and keep the Form F register available for inspection",
+    } as NotModelledRow,
+  ],
   radiology: [
     {
       /**
