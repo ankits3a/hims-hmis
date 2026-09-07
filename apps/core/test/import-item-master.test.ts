@@ -1,7 +1,9 @@
 import { setupTestDb, truncateAll } from "./helpers/db";
 import { seedPharmacyBase } from "./helpers/pharmacy";
 import { applyItemMaster, parseItemMaster, planItemMaster } from "../scripts/import-item-master";
-import { getItem, listItems } from "../src/modules/materials";
+import { getItem, listItems, registerItem } from "../src/modules/materials";
+import { listMedicines } from "../src/modules/formulary";
+import { withTx } from "../src/kernel/db/client";
 import type { PharmacyFixture } from "./helpers/pharmacy";
 import type { Db } from "../src/kernel/db/client";
 
@@ -136,6 +138,48 @@ describe("import:item-master — the hospital's own file, never invented rows", 
       expect(plan.refusals).toBe(1);
       await expect(applyItemMaster(db, actor, parsed, plan)).rejects.toThrow(/refusing to apply/);
       expect((await listItems(db, { class: "drug" })).some((i) => i.code === "GOOD1")).toBe(false);
+    });
+
+    /**
+     * THE PROMISE THE FIRST VERSION MADE AND DID NOT KEEP.
+     *
+     * The header says "the whole file is applied or none of it", and the `refusals` check enforced
+     * that for a file already KNOWN to be bad. It did not enforce it for a file that goes bad while
+     * being written: `applyItemMaster` opened a transaction PER ROW, so a failure partway left every
+     * earlier row committed — the exact half-applied item master the header calls the worst outcome.
+     *
+     * WHY THIS FIXTURE DISCRIMINATES. A plan is a judgement about a database that can CHANGE between
+     * planning and applying, so the failure is induced the way it would really happen: plan two
+     * creates, then let somebody else create the second code in the window before applying. Row 1
+     * writes, row 2 throws `duplicate_code`. Under the per-row version row 1 survives and this fails;
+     * under one transaction the throw rolls it back.
+     *
+     * Asserting only that apply REJECTS would pass against both versions — it is the state of GOOD1
+     * afterwards that tells them apart.
+     */
+    it("a failure partway through rolls back the rows already written — the whole file or none of it", async () => {
+      const csv =
+        "code,name,base_uom,medicine_brand\n" +
+        "GOOD1,Good One,tablet,Calpol 500\n" +
+        "RACE1,Race One,tablet,Calpol 500\n";
+      const parsed = parseItemMaster(csv);
+      const plan = await planItemMaster(db, parsed);
+      expect(plan.creates).toBe(2);
+      expect(plan.refusals).toBe(0);
+
+      /* somebody else takes RACE1 between the plan and the apply */
+      const medicineId = (await listMedicines(db)).find((m) => m.brandName === "Calpol 500")!.id;
+      await withTx(db, (tx) => registerItem(tx, actor, {
+        code: "RACE1", name: "Taken First", class: "drug", baseUom: "tablet",
+        batchTracked: true, formularyMedicineId: medicineId,
+      }));
+
+      await expect(applyItemMaster(db, actor, parsed, plan)).rejects.toThrow();
+
+      /* GOOD1 must NOT be on the shelf: it was written and then rolled back with the failure. */
+      const codes = (await listItems(db, { class: "drug" })).map((i) => i.code);
+      expect(codes).not.toContain("GOOD1");
+      expect(codes).toContain("RACE1");
     });
 
     it("updates only the columns the file actually carries, and leaves the rest alone", async () => {
