@@ -25,6 +25,8 @@ import {
   activeRegistrations, registeredMachines, registeredPersons,
 } from "../src/modules/pcpndt";
 import { istDayString } from "../src/kernel/approvals/cumulative";
+import { listInteractions, listSalts } from "../src/modules/formulary";
+import { SEED_CENSUS } from "./seed-formulary-interactions";
 import type { Db } from "../src/kernel/db/client";
 
 /**
@@ -176,6 +178,52 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       gate: "G2", code: "registration_config_present",
       check: (db) => registrationConfigured(db),
       fix: "run: UHID_PREFIX=<PREFIX> pnpm --filter @hmis/core seed:registration",
+    },
+    {
+      gate: "G2", code: "formulary_interactions_loaded",
+      /**
+       * ═══ AN INTERACTION CHECKER WITH AN EMPTY BOOK ANSWERS "NO INTERACTIONS" TO EVERYTHING ═══
+       *
+       * 16a is deployed and `opd/rx-checks.ts` runs on every prescription. With no pairs,
+       * `listInteractionsAmong` returns an empty array and the prescriber is told nothing —
+       * **indistinguishable, on screen, from a checker that ran and found the combination safe.**
+       * That is the whole reason this row exists: the failure is silent and reassuring.
+       *
+       * IT IS A `hospital` ROW BECAUSE IT IS A UNIVERSAL FACT, and the consumer decides that. The
+       * book is read by `opd/rx-checks.ts` and `opd/prescriptions.ts` — **prescribing, not
+       * dispensing** — so it is not the pharmacy's, and every hospital that writes a prescription
+       * needs it. It joins `billing_config_present` and `gst_settings_present` rather than a
+       * department's set, and `formulary` stays a non-department in the classification map.
+       *
+       * IT IS G2: `deploy.sh:588` runs `seed-formulary-interactions.js`, so this is established by
+       * the deploy. Class C reference data — no human act is owed, which is what separates it from
+       * the five modules whose Class A ceremonies stranded them earlier.
+       *
+       * ═══ THE PREDICATE IS THE SEED'S OWN CENSUS, NOT `> 0` ═══
+       *
+       * `SEED_CENSUS` is exported by the seed and its comment says what it is: *"the census this
+       * seed is expected to produce on an empty formulary."* A `> 0` row would go green on ONE pair
+       * and certify "somebody ran the seed" while claiming to certify "the interaction book is
+       * loaded" — a row that measures something other than what it reports (#175). Reading the
+       * seed's own constant also means adding a pair moves this expectation with it: no number is
+       * written here to go stale.
+       *
+       * `>=` and not `===`: a hospital may add pairs of its own, and equality would go RED on
+       * correct curation. It still catches the cases that matter — never run, partially failed, or
+       * seeded rows deleted.
+       *
+       * **WHAT THIS ROW DOES NOT CERTIFY, disclosed rather than implied.** The chain is
+       * medicine -> `formulary_medicine_salts` -> salt -> pair. This seed creates SALTS and PAIRS
+       * only; it creates no medicines and no medicine-to-salt mapping. So a hospital can be green
+       * here and still fire no interaction, because its own item master is not mapped to moieties.
+       * That is the pharmacy item master's path and its own gap; this row is honest about covering
+       * the book and not the mapping.
+       */
+      check: async (db) => (
+        (await listSalts(db, { activeOnly: true })).length >= SEED_CENSUS.salts
+        && (await listInteractions(db)).length >= SEED_CENSUS.pairs
+      ),
+      fix: "run: pnpm --filter @hmis/core seed:formulary — an empty interaction book answers \"no interactions\" to every prescription",
     },
     {
       gate: "G4", code: "second_administrator",

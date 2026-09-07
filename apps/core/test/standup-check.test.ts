@@ -1,3 +1,4 @@
+import { inArray } from "drizzle-orm";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { setupTestDb, truncateAll } from "./helpers/db";
@@ -6,7 +7,10 @@ import { seedSodPairs } from "../src/kernel/auth/sod";
 import { createUser } from "../src/kernel/auth/identity";
 import { assignRole } from "../src/kernel/auth/permissions";
 import { withTx } from "../src/kernel/db/client";
-import { billingConfig, labOrderables, opdDepartments, opdDoctors, resources, services } from "../src/kernel/db/schema";
+import {
+  billingConfig, formularyInteractions, labOrderables, opdDepartments, opdDoctors, resources,
+  services,
+} from "../src/kernel/db/schema";
 import { registerBillingApprovalTypes } from "../src/modules/billing/approval-types";
 import { registerPatientApprovalTypes } from "../src/modules/patients/approval-types";
 import { registerTariffApprovalTypes } from "../src/modules/tariff/approval-types";
@@ -14,6 +18,7 @@ import { createService } from "../src/modules/tariff/services";
 import { seedTariffConfig } from "../scripts/seed-tariff";
 import { ensurePharmacyCounter } from "../scripts/seed-pharmacy";
 import { ensureLabStandUp } from "../scripts/seed-lab";
+import { seedFormularyInteractions } from "../scripts/seed-formulary-interactions";
 import { ensureOtUnit } from "../scripts/seed-ot";
 import { seedOtBase } from "./helpers/ot";
 import { setupPcpndtFixture } from "./helpers/pcpndt";
@@ -183,6 +188,12 @@ async function deployG2State(db: Db): Promise<void> {
    * It deliberately does NOT publish or activate anything: `seed-ot.ts` does not either, which is
    * what keeps the two G3 rows RED here and is the whole point of `ot-go-live.md`.
    */
+  /**
+   * `deploy.sh:588` runs `seed-formulary-interactions.js`, so the interaction book is a deploy fact
+   * and `formulary_interactions_loaded` is G2. Same reason as the OT calls below: this helper is a
+   * hand-built mirror of that script, and a mirror that drifts reports ITS OWN gap as the deploy's.
+   */
+  await seedFormularyInteractions(db);
   await registerOtApprovalTypes(db, ACTOR);
   await ensureOtUnit(db, ACTOR);
 }
@@ -445,6 +456,37 @@ describe("standup:check — the readiness census (11i T2)", () => {
     expect(verdictOf(afterRegistering, "pcpndt", "pcpndt_incharge_held")).toBe("ok");
     /** Still not green, and it never can be — that is what the third verdict is for. */
     expect(verdictOf(afterRegistering, "pcpndt", "pcpndt_certificate_displayed")).toBe("NOT MODELLED");
+  });
+
+  /**
+   * ═══ THE INTERACTION BOOK, AND WHY THE PREDICATE IS THE SEED'S CENSUS RATHER THAN `> 0` ═══
+   *
+   * The fresh-database assertion above already proves this row is RED on an empty table — if it were
+   * green there, that test's `expect(green).toEqual(["hospital.ist_offset_is_0530"])` would fail.
+   * **That covers "never green when it should be red"; it does NOT cover the predicate.**
+   *
+   * A `> 0` row passes the fresh-database test too, and then goes green on ONE pair — certifying
+   * "somebody ran the seed" while reporting "the interaction book is loaded" (#175: a census row
+   * must measure what it certifies). This case is the only thing that tells the two apart, and it is
+   * why it exists: a PARTIAL book must read RED.
+   *
+   * The failure it guards is silent and reassuring, which is what makes it worth the test:
+   * `opd/rx-checks.ts` runs on every prescription, and with an empty book `listInteractionsAmong`
+   * returns `[]` — on screen, indistinguishable from a checker that ran and found nothing.
+   */
+  it("the interaction book: a PARTIAL seed reads RED, not just an empty one", async () => {
+    await deployG2State(db);
+    expect(verdictOf(await runCensus(db, "hospital"), "hospital", "formulary_interactions_loaded"))
+      .toBe("ok");
+
+    /** Leave exactly one pair — the state a `> 0` predicate would call green. */
+    const all = await db.select({ id: formularyInteractions.id }).from(formularyInteractions);
+    expect(all.length).toBeGreaterThan(1); // non-vacuous: the seed really loaded a book
+    await db.delete(formularyInteractions)
+      .where(inArray(formularyInteractions.id, all.slice(1).map((r) => r.id)));
+
+    expect(verdictOf(await runCensus(db, "hospital"), "hospital", "formulary_interactions_loaded"))
+      .toBe("RED");
   });
   it("an UNPRICED orderable reads RED — the runbook's §4.5 warning, made a check", async () => {
     await deployG2State(db);
