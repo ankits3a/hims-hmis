@@ -12,10 +12,12 @@ export type { PcpndtErrorCode } from "./errors";
 export { PcpndtModule } from "./pcpndt.module";
 export {
   activeRegistrationFor, activeRegistrations, addMachine, addPerson, createRegistration,
-  deactivateMachine, deactivatePerson, deactivateRegistration, registeredMachines,
-  registeredPersons,
+  deactivateMachine, deactivatePerson, deactivateRegistration, readRegister,
+  registeredMachines, registeredPersons,
 } from "./registrations";
-export type { RegisteredMachineRow, RegisteredPersonRow, RegistrationRow } from "./registrations";
+export type {
+  RegisterBookEntry, RegisteredMachineRow, RegisteredPersonRow, RegistrationRow,
+} from "./registrations";
 export {
   assertFormFRecorded, assertMachineRegistered, assertPersonRegistered, openFormF, recordFormF,
   registerFormFSubjectResolver, verifyFormF,

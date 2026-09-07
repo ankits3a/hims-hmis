@@ -58,9 +58,11 @@ register refuses scans and a wrong one permits them.
 - **There is no screen for the register.** `pcpndtManifest` declares `menu: []`, and the only PCPNDT
   screen in the build is the Form F form itself. §2–§4 are performed against the API. Disclosed here
   rather than hidden: it is a real gap and it is not this page's to close.
-- **`pcpndt.registrations.read` guards nothing.** The permission is declared and granted to
-  `radiologist` and `pcpndt_incharge`, and no route reads it — there is no "show me the register"
-  endpoint. Recorded for whoever adds the screen.
+- **You can read the register back, but only over the API.** `GET /pcpndt/registrations` on
+  `pcpndt.registrations.read` returns every registration with its machines and its people —
+  **withdrawn and lapsed rows included, with their flags**, because the register is a historical
+  record and a machine sold last year still has its serial series. Use it after each of §2–§4 to
+  confirm what you actually entered.
 
 ---
 
@@ -126,6 +128,7 @@ Census: `pcpndt_person_registered` → **ok**.
 
 ```
 pnpm --filter @hmis/core standup:check pcpndt
+GET /pcpndt/registrations          # and read back what you entered, line by line
 ```
 
 Every row **ok** except §6's, which is never green by design. Then confirm with one real study that a
