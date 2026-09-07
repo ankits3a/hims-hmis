@@ -92,6 +92,23 @@ describe("the AERB licence register (18c T1)", () => {
     expect(await activeLicenceFor(db, ct, date) !== null).toBe(expected);
   });
 
+  /**
+   * The same sweep, one function over. `fileLicence`'s overlap refusal opened
+   * `device 01M1VRJ4QVQ… already carries licence …` — read by an RSO working down a list of
+   * machines, for whom "which machine" is the whole content of the sentence. The device row is
+   * already read FOR UPDATE here, so carrying its code costs nothing.
+   */
+  it("the overlap refusal names the machine, not its ULID", async () => {
+    await file(ct, "2026-01-01", "2026-12-31");
+    await expect(file(ct, "2026-06-01", "2027-05-31")).rejects.toMatchObject({
+      code: "licence_already_active",
+      message: expect.stringContaining("CT-1 (CT-1 machine)"),
+    });
+    await expect(file(ct, "2026-06-01", "2027-05-31")).rejects.toMatchObject({
+      message: expect.not.stringContaining(ct),
+    });
+  });
+
   it("assertDeviceLicensed refuses a lapsed licence by name, with the date in the detail", async () => {
     await file(ct, "2026-01-01", "2026-12-31");
     await expect(assertDeviceLicensed(db, ct, "2027-01-01")).rejects.toMatchObject({
