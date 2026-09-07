@@ -168,3 +168,87 @@ gap block and the refusal stay demonstrable.
    wrote is a labelled dev placeholder.
 4. **Whether `imaging_study` / `imaging_gate` activation belongs in a seed or a written ceremony.** It
    names three people, so it is probably a runbook step — but radiology has no runbook to put it in.
+
+---
+
+## 7. CORRECTION — the walk's API was a day-old build, and what that changes
+
+**Added the same evening, after the error was found; §7.1 sharpens it the next day.** The stack this
+walk drove was built with `pnpm build` **at the repo root**, which exited **254**
+(`ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL Command "build" not found`); the failure was printed and then
+not read, because a background task reported "exit code 0" and that was the number believed. The API
+served `dist` from the previous day. The command that always works is
+`pnpm --filter @hmis/core build`.
+
+### 7.1 — the failure is CWD-DEPENDENT, which is worse than a wrong command
+
+**Measured by the LIMS lane in both directories, and it corrects this section's first telling.**
+
+```
+from apps/core      pnpm build  ->  EXIT 0    (resolves to @hmis/core's tsc -p tsconfig.build.json)
+from the repo root  pnpm build  ->  EXIT 254
+```
+
+**So the stand-up recipes are not wrong.** They `cd apps/core` several lines above the build step, and
+a reader following one top-to-bottom in a single shell gets a working build. **The command is
+cwd-dependent, and that is the worse failure** — it works when you follow the recipe and fails
+silently when you excerpt the one line you needed, or when an intervening step moved you.
+
+It also changes the search. *"Why did radiology use the wrong command"* has no answer, because it did
+not; **"what moved their cwd, or did they paste one line"** is a different question with a findable
+one. `pnpm --filter @hmis/core build` is the right thing to record because **correct-from-anywhere is
+a stronger property than correct-in-context, and a recipe is read by people who excerpt it.**
+
+**What it does not change, re-measured rather than argued.** Every finding above was confirmed from
+source by jest, and both API-level ones were re-run against a correctly built current API:
+
+```
+GET /aerb/licences/gaps        -> 400   (unchanged)
+POST .../acquisition/start     -> 403   "device 01M1VRJ4QVQ… carries no active AERB licence"
+```
+
+Identical. §1, §2 and the screen observations in §4 are unaffected — **vite serves the client from
+source**, so every UI finding was always against current code.
+
+**What it does change:** the walk never exercised 18a-iii T1–T4, because those routes were not in the
+running API. §3's clinical walk is a walk of 18a, 18b and 18c. That is worth stating plainly rather
+than leaving to be inferred from a date.
+
+**And the lesson is the one that generalises.** `pnpm build` appears in three lanes' stand-up notes
+and does not exist. A command that fails loudly is still silent if nobody reads the number — and a
+backgrounded pipeline reports the exit status of the *last* command in it, not the one that mattered.
+
+---
+
+## 8. THE FINDING THE REBUILD SURFACED — radiology has no inbound door
+
+With the correct build running, the 18a-iii routes appeared, and enumerating what the client actually
+calls answered a question the walk had not thought to ask.
+
+| measured | result |
+|---|---|
+| `/orders` prefix anywhere in `apps/web/src` | **0** |
+| `"radiology/orders"` anywhere in `apps/web/src` | **0** |
+| callers of `placeImagingOrder` in core | `radiology-orders.controller.ts` and `place.ts` only |
+| any OPD path that creates an imaging order | none |
+
+**Nothing in the product places an imaging order.** Reception's *Walk in* auto-slots a study that
+already exists; it does not create one. The department can schedule, gate, acquire, report, sign and
+publish — and no screen can put a study into it. **Every study in this walk was created with `curl`.**
+
+Three more of the same shape, all 18a-iii, all merged this week, all with **zero web callers**:
+
+- `POST /radiology/studies/:id/contrast` — T1, the contrast administration record
+- `POST /radiology/studies/contrast-reactions` — T2, **the reaction that writes the patient's allergy**
+- `POST /radiology/studies/:id/outside` — T4, the outside-study register
+
+**T2 is the one to raise first.** The entire point of that chain is that the next CT's safety gate
+reads an allergy the reaction wrote — 18a's gate reads it, and 18a-iii's D2 put the write in the same
+transaction precisely so it could not be missed. There is no way to record one.
+
+This is the same shape as §1 and §2 at the largest scale, and it is worth noting that it probably
+explains the "18a has been exercised by a real department" line the phase documents carry: alongside
+§1, that reads as inherited optimism rather than a measurement.
+
+**Building an ordering surface is a scope decision and is deliberately not taken here.** It is a new
+clinical screen, not a judgement call inside existing work, and it is the owner's to schedule.
