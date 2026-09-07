@@ -58,8 +58,8 @@ cat roster.json | pnpm seed:staff
 
 `seed:radiology` creates the twenty study types' tariff **service rows with no prices** (a phase that
 invented prices would be inventing money) and five `device` resources — one X-ray, one ultrasound,
-one CT, one MRI, one mammography unit. **A hospital with two CTs adds the second through the
-resources screen**; the seed does not guess at an inventory.
+one CT, one MRI, one mammography unit. The seed does not guess at an inventory, and **a hospital
+with two CTs adds the second through this script — there is no resources screen. See §5.**
 
 It also self-publishes the `study_types` book, leaving `approval_id` NULL as the provenance — the
 owner's 2026-08-31 ruling. Every LATER version goes through the medical superintendent's approval on
@@ -131,8 +131,24 @@ against it. Set the AE title too if the machine will read the modality worklist 
 runbook.
 
 **The device registry row is what an AERB licence points at.** A machine that does not exist as a
-resource cannot be licensed, and therefore cannot be used for an ionising examination. Create the
-machines before you enter the certificates.
+resource cannot be licensed, and therefore cannot be used for an ionising examination. The machines
+must exist before you enter the certificates.
+
+**THERE IS NO RESOURCES SCREEN, and this section said otherwise until it was measured.** The kernel
+exposes `/resources/board`, `/resources/tree` and `/resources/:id/history` — all GET — and no create
+or update route at all. `createResource` is reached only through `materials/stores.ts`,
+`opd/masters.ts`, `lab/instruments.ts` and two seed scripts. **The laboratory has a door for its
+instruments; radiology has none for its machines.**
+
+So `seed:radiology` is the only writer of an imaging device, and the honest instruction is:
+
+> A hospital with two CTs, a second DR unit or a C-arm adds it to `MODALITY_MACHINES` in
+> `apps/core/scripts/seed-radiology.ts` and re-runs `pnpm seed:radiology`. Every step is
+> find-or-create, so a re-run adds the new machine and touches nothing else.
+
+**That is a deployment act, not a hospital one**, and it is a gap rather than a design: a hospital
+cannot commission a machine on a Sunday without an engineer. It is recorded here so nobody looks for
+a screen, and it is the same shape as §0 — a capability whose door was never built.
 
 ---
 

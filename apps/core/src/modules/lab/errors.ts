@@ -115,6 +115,8 @@ export const LAB_ERROR_CODES = [
   "result_superseded",
   /** ── the range book's door (the writer that `lab_reference_ranges` never had) ── */
   "range_overlap",
+  /** ── DD11's morning review of a night release ── */
+  "review_not_pending",
 ] as const;
 
 export type LabErrorCode = (typeof LAB_ERROR_CODES)[number];
@@ -221,6 +223,12 @@ const STATUS: Record<LabErrorCode, number> = {
    * is a rule the screen must name.
    */
   range_overlap: 422,
+  /**
+   * 409 with the other state conflicts: the row is not in the state this act moves it out of —
+   * either it never needed a morning review, or somebody has already given it one. The caller's
+   * correct response is to re-read the queue, which is what 409 means.
+   */
+  review_not_pending: 409,
 };
 
 export function labHttpStatus(code: LabErrorCode): number {
