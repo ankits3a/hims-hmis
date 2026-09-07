@@ -39,7 +39,8 @@
     "seed:pharmacy-demo": "tsx scripts/seed-pharmacy-demo.ts",
     "validate:billing": "tsx scripts/validate-billing-config.ts",
     "validate:config": "tsx scripts/validate-config.ts",
-    "check:config-present": "tsx scripts/check-config-present.ts"
+    "check:config-present": "tsx scripts/check-config-present.ts",
+    "import:lab-catalogue": "tsx scripts/import-lab-catalogue.ts"
   },
   "dependencies": {
     "@hmis/contracts": "workspace:*",
