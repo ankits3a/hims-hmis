@@ -14,6 +14,9 @@ import { createService } from "../src/modules/tariff/services";
 import { seedTariffConfig } from "../scripts/seed-tariff";
 import { ensurePharmacyCounter } from "../scripts/seed-pharmacy";
 import { ensureLabStandUp } from "../scripts/seed-lab";
+import { ensureOtUnit } from "../scripts/seed-ot";
+import { seedOtBase } from "./helpers/ot";
+import { registerOtApprovalTypes } from "../src/modules/ot";
 import { STANDUP_ROWS, anyRed, censusLines, isNotModelled, runCensus } from "../scripts/standup-check";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../src/kernel/db/client";
@@ -52,6 +55,11 @@ const RUNBOOK_MODULE: Record<string, string> = {
    * counter two identities in one census.
    */
   "opd-go-live.md": "front-desk",
+  /**
+   * 2026-09-07 — the page `seed-ot.ts` has printed a pointer to since Plan 15. The OT had no runbook
+   * AND no row set, so it was invisible to both directions of the completeness guard at once.
+   */
+  "ot-go-live.md": "ot",
   "pharmacy-go-live.md": "pharmacy",
   "radiation-safety-go-live.md": "radiology",
   "radiology-go-live.md": "radiology",
@@ -86,6 +94,17 @@ async function deployG2State(db: Db): Promise<void> {
   await registerPatientApprovalTypes(db, ACTOR);
   await ensurePharmacyCounter(db, ACTOR);
   await ensureLabStandUp(db, ACTOR);
+  /**
+   * `deploy.sh` runs `seed-ot.js`, so the OT's approval types and its theatre ARE deploy facts and
+   * their rows are G2. This helper is a hand-built mirror of that script — the assertion below that
+   * "exactly the G2 rows are green" measures the gap between the two, so anything the real deploy
+   * establishes has to be established here or the measurement reports a defect that is the mirror's.
+   *
+   * It deliberately does NOT publish or activate anything: `seed-ot.ts` does not either, which is
+   * what keeps the two G3 rows RED here and is the whole point of `ot-go-live.md`.
+   */
+  await registerOtApprovalTypes(db, ACTOR);
+  await ensureOtUnit(db, ACTOR);
 }
 
 const verdictOf = (rows: RowResult[], module: string, code: string): string | undefined =>
@@ -222,6 +241,42 @@ describe("standup:check — the readiness census (11i T2)", () => {
     expect(verdictOf(await runCensus(db, "front-desk"), "front-desk", "opd_visit_definition_active")).toBe("ok");
   });
 
+  /**
+   * ═══ THE OT — AND THIS ASSERTION IS WHAT `test/helpers/ot.ts` WAS ALWAYS FOR ═══
+   *
+   * That helper's own comment says why it performs the real two-key ceremony instead of inserting
+   * rows: *"A fixture that activated these by inserting a row would prove nothing about whether the
+   * runbook is performable."* **It was written to prove a runbook performable and the runbook did not
+   * exist.** `ot-go-live.md` is now that page, and this test closes the loop by measuring the
+   * fixture's ceremony against the census rows the runbook cites.
+   *
+   * TWO GOVERNANCES, TWO ROWS, AND THEY ARE NOT THE SAME ACT.
+   *   · `ot_workflow_definitions_active` — `daycare_case` and `ot_gate`, KERNEL definitions,
+   *     change-class A, three people. Nothing in the tree drafts them (§2).
+   *   · `ot_definitions_published` — the module's OWN `ot_definitions` table, published by the MS
+   *     under `ot_definition_publish`. `seed:ot` drafts three of the four kinds and publishes none;
+   *     **`privileges` it does not even draft** (§3-§4), because which surgeon may perform which
+   *     procedure is a credentialling record no seed can guess.
+   */
+  it("the OT: both governances are RED after the deploy, and green only after the ceremony the runbook describes", async () => {
+    await deployG2State(db);
+
+    /** `seed:ot` runs in `deploy.sh`, so the approval types and the theatre ARE deploy facts. */
+    expect(verdictOf(await runCensus(db, "ot"), "ot", "ot_approval_types_registered")).toBe("ok");
+    expect(verdictOf(await runCensus(db, "ot"), "ot", "ot_theatre_present")).toBe("ok");
+    /** And it deliberately activates and publishes nothing — the state every deployment sits in. */
+    const afterDeploy = await runCensus(db, "ot");
+    expect(verdictOf(afterDeploy, "ot", "ot_workflow_definitions_active")).toBe("RED");
+    expect(verdictOf(afterDeploy, "ot", "ot_definitions_published")).toBe("RED");
+
+    /** `seedOtBase` performs BOTH ceremonies for real — the two-key activation and all four publishes. */
+    await truncateAll(db);
+    await seedOtBase(db);
+
+    const afterCeremony = await runCensus(db, "ot");
+    expect(verdictOf(afterCeremony, "ot", "ot_workflow_definitions_active")).toBe("ok");
+    expect(verdictOf(afterCeremony, "ot", "ot_definitions_published")).toBe("ok");
+  });
   it("an UNPRICED orderable reads RED — the runbook's §4.5 warning, made a check", async () => {
     await deployG2State(db);
     const { serviceId } = await withTx(db, (tx) =>
