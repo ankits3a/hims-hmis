@@ -186,10 +186,16 @@ over.
 
 ## 7. Why this document exists
 
-`activateOpdVisitDefinition` was defined in `test/helpers/opd.ts` and called by **forty test files
-and by nothing in `src/` or `scripts/`.** Every OPD suite passed, because every suite performed the
-ceremony itself in `beforeEach`. Production works because a human performed it once and no runbook
-recorded that they had.
+`activateOpdVisitDefinition` is defined in `test/helpers/opd.ts` and called by **forty test files.**
+Every OPD suite passes, because every suite performs the ceremony itself in `beforeEach`.
+
+**One script outside the test tree does perform it — and it is not a commissioning path.**
+`scripts/dev-lab-standup.ts` runs the real two-key ceremony against synthetic users, and it
+**refuses production two ways** (a `:5434` URL, or `NODE_ENV=production`); it is in neither
+`package.json` nor `deploy.sh`. So it stands a developer's box up and can never stand a hospital up.
+**No production path activates `opd_visit`, and until this document there was nowhere the act was
+written down.** Production works because a human performed it once and nothing recorded that they
+had.
 
 **A test helper is not a commissioning path**, and a green suite over a fixture that performs a
 missing step is the quietest way for that step to stay missing. The check in §2.6 is the fix, and it
