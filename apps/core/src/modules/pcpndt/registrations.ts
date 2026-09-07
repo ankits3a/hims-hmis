@@ -266,6 +266,40 @@ export async function activeRegistrationFor(
 }
 
 /** Every person on a registration, for the console and for the membership check. */
+/**
+ * ═══ THE REGISTER, FOR A READINESS CHECK — added 2026-09-07 (§PCPNDT-UNROSTERED) ═══
+ *
+ * `activeRegistrationFor` answers *"is THIS machine registered today"*, which is the question the
+ * acquisition gate asks and the only one this module needed until now. **The readiness census asks a
+ * different one: is there a register AT ALL** — and there was no loader for it, which is part of why
+ * a deployment could scan patients with an empty `pcpndt_registrations` table and nothing go red.
+ *
+ * `onDate` is a parameter rather than a wall-clock read, the house rule this module already follows
+ * everywhere (F52: the statutory date is the server's, never the caller's — and never a hidden one).
+ */
+export async function activeRegistrations(
+  exec: Db | Tx, onDate: string,
+): Promise<RegistrationRow[]> {
+  assertIstDate(onDate, "onDate");
+  return await (exec as Db).select().from(pcpndtRegistrations)
+    .where(and(
+      eq(pcpndtRegistrations.status, "active"),
+      sql`${pcpndtRegistrations.validFrom} <= ${onDate}`,
+      sql`${pcpndtRegistrations.validTo} >= ${onDate}`,
+    ));
+}
+
+/** Every ACTIVE machine on the register, for the same reason as `activeRegistrations` above. */
+export async function registeredMachines(
+  exec: Db | Tx, registrationId: string,
+): Promise<RegisteredMachineRow[]> {
+  return await (exec as Db).select().from(pcpndtRegisteredMachines)
+    .where(and(
+      eq(pcpndtRegisteredMachines.registrationId, registrationId),
+      eq(pcpndtRegisteredMachines.active, true),
+    ));
+}
+
 export async function registeredPersons(
   exec: Db | Tx, registrationId: string,
 ): Promise<RegisteredPersonRow[]> {
