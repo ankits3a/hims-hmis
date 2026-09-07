@@ -21,6 +21,10 @@ import {
 import { balances, findStoreByCode, listItems } from "../src/modules/materials";
 import { IMAGING_GATE_DEF_KEY, IMAGING_STUDY_DEF_KEY, activeStudyTypes } from "../src/modules/radiology";
 import { appointments, unlicensedDevices } from "../src/modules/aerb";
+import {
+  activeRegistrations, registeredMachines, registeredPersons,
+} from "../src/modules/pcpndt";
+import { istDayString } from "../src/kernel/approvals/cumulative";
 import type { Db } from "../src/kernel/db/client";
 
 /**
@@ -469,6 +473,76 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       fix: "assign `surgeon` at hospital scope at /admin/users — no case can be booked without one" },
     { gate: "G4", code: "ot_anaesthetist_held", check: heldAtHospitalScope("anaesthetist"),
       fix: "assign `anaesthetist` at hospital scope at /admin/users — the anaesthesia gate has no holder without it" },
+  ],
+
+  /**
+   * ═══ THE PCPNDT REGISTER — a department by every test that made the other five (2026-09-07) ═══
+   *
+   * Master data no deploy can supply (`pcpndt_registrations` and its machines and persons), human
+   * acts no seed may perform (`form-f.ts`: *"a Form F is signed by a person — a system actor cannot
+   * write or verify one"*), **and until this row set nothing anywhere checked that any of it
+   * existed.** A hospital could stand this system up, scan patients, and hold no register at all
+   * with no row going red.
+   *
+   * THERE IS NO `seed-pcpndt.ts`, SO NOTHING HERE IS G2. Every row below is an act by a person with
+   * a legal obligation — the registration certificate, the Form B machine list, the list of doctors
+   * who may scan. That is the whole shape of this module and `registrations.ts`'s own header calls
+   * it *"the posture": this file seeds nothing.*
+   *
+   * THE STATUTE DOES NOT CHANGE THE ENGINEERING, BUT IT CHANGES WHAT SILENCE COSTS. The PCPNDT Act
+   * governs sex determination and the register is the legal artefact; a missing row here is not an
+   * inconvenience at the counter.
+   */
+  pcpndt: [
+    {
+      gate: "G3", code: "pcpndt_registration_active",
+      /**
+       * The premises certificate, valid TODAY. `validTo` is checked because a lapsed registration is
+       * exactly the state O-7's hard block exists for, and a census that reported "a registration
+       * exists" while it expired last month would be the report that let the scan happen.
+       */
+      check: async (db) => (await activeRegistrations(db, istDayString(new Date()))).length > 0,
+      fix: "pcpndt-go-live.md §2: POST /pcpndt/registrations with the premises registration number and its validity window — the certificate's own dates, never today's",
+    },
+    {
+      gate: "G3", code: "pcpndt_machine_registered",
+      /** Form B's list. `assertMachineRegistered` refuses acquisition without it, per machine. */
+      check: async (db) => {
+        for (const r of await activeRegistrations(db, istDayString(new Date()))) {
+          if ((await registeredMachines(db, r.id)).length > 0) return true;
+        }
+        return false;
+      },
+      fix: "pcpndt-go-live.md §3: POST /pcpndt/registrations/:id/machines for EVERY ultrasound machine on the Form B declaration — an unregistered machine refuses at acquisition",
+    },
+    {
+      gate: "G4", code: "pcpndt_person_registered",
+      /**
+       * E1's decisive edge case as a row: the 02:00 suspected ectopic with the sonologist at home.
+       * **The doctor who scans is a registered person or the scan does not happen**, so the answer
+       * is to register every doctor who may ever scan rather than to build a bypass.
+       */
+      check: async (db) => {
+        for (const r of await activeRegistrations(db, istDayString(new Date()))) {
+          if ((await registeredPersons(db, r.id)).length > 0) return true;
+        }
+        return false;
+      },
+      fix: "pcpndt-go-live.md §4: POST /pcpndt/registrations/:id/persons for every doctor who may ever acquire a covered scan, including the ones who only cover nights",
+    },
+    { gate: "G4", code: "pcpndt_incharge_held", check: heldAtHospitalScope("pcpndt_incharge"),
+      fix: "assign `pcpndt_incharge` at hospital scope at /admin/users — nobody can verify a Form F without it" },
+    {
+      gate: "G3", code: "pcpndt_certificate_displayed",
+      /**
+       * THE THIRD VERDICT, and this is what it is for. The Act requires the registration certificate
+       * to be DISPLAYED at the premises; no column holds that fact and no query can answer it.
+       * Reporting it green would certify a legal display nobody made; reporting it RED would be a
+       * permanent red that trains its reader to ignore reds.
+       */
+      runbook: { file: "docs/runbooks/pcpndt-go-live.md", section: "## 6. The wall" },
+      fix: "hang the registration certificate where patients can see it, and keep the Form F register available for inspection",
+    } as NotModelledRow,
   ],
 
   radiology: [

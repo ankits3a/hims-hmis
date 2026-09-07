@@ -16,6 +16,7 @@ import { ensurePharmacyCounter } from "../scripts/seed-pharmacy";
 import { ensureLabStandUp } from "../scripts/seed-lab";
 import { ensureOtUnit } from "../scripts/seed-ot";
 import { seedOtBase } from "./helpers/ot";
+import { setupPcpndtFixture } from "./helpers/pcpndt";
 import { registerOtApprovalTypes } from "../src/modules/ot";
 import { STANDUP_ROWS, anyRed, censusLines, isNotModelled, runCensus } from "../scripts/standup-check";
 import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
@@ -68,15 +69,26 @@ const DEPARTMENTS: Record<string, string> = {
   pharmacy: "pharmacy",
   radiology: "radiology",
   ot: "ot",
+  /**
+   * RULED A DEPARTMENT 2026-09-07. It meets every test the other five did — master data no deploy
+   * supplies, human acts no seed may perform — and it was the only one where **nothing anywhere
+   * checked that any of it existed**: a hospital could scan patients holding no register at all.
+   * `aerb` was ruled the other way in the same pass and stays below: its acts (`radiology_devices_licensed`,
+   * `radiology_rso_appointed`) are already checked under `radiology`, because AERB is a statutory
+   * layer over one department rather than a department with its own seats.
+   */
+  pcpndt: "pcpndt",
 };
 
 /**
  * NOT A DEPARTMENT — no go-live day of its own, so no runbook and no row set.
  *
- * ═══ FIVE OF THESE ARE AN OPEN QUESTION AND ARE RECORDED, NOT DECIDED (2026-09-07) ═══
+ * ═══ THREE ARE AN OPEN QUESTION AND ARE RECORDED, NOT DECIDED ═══
  *
- * `billing`, `materials`, `membership`, `aerb` and `pcpndt` each hold master data or a statutory
- * obligation no deploy can supply, which is the property that made the other five departments.
+ * Five were open on 2026-09-07 and two were ruled the same day: **`pcpndt` IS a department** (it is
+ * in `DEPARTMENTS` above) and **`aerb` is not** (see its line below). The remaining three —
+ * `billing`, `materials`, `membership` — each hold master data no deploy can supply, which is the
+ * property that made the departments.
  * **Whether they owe a go-live runbook is a scope call with real cost** — moving one to
  * `DEPARTMENTS` turns this suite red until somebody writes both halves — and it belongs to the
  * board, not to the lane that happened to be here. **This map records today's answer (they are
@@ -105,8 +117,7 @@ const NOT_DEPARTMENTS: Record<string, string> = {
   billing: "OPEN — `billing_config` is checked under `hospital`; a cashier's go-live may still be one",
   materials: "OPEN — vendors, items and opening stock are master data no seed supplies",
   membership: "OPEN — the holder book is loaded from the owner's own files (Plan 09 DD3)",
-  aerb: "OPEN — HAS a runbook (`radiation-safety-go-live.md`) mapped to `radiology`, and no rows of its own",
-  pcpndt: "OPEN — a statutory register (Form F); its machines and persons are registered by a human",
+  aerb: "RULED not a department 2026-09-07 — a statutory layer OVER radiology; `radiology_devices_licensed` and `radiology_rso_appointed` already check its acts, and a row set of its own would demand a second check of the same certificates",
 };
 
 /**
@@ -128,6 +139,7 @@ const RUNBOOK_MODULE: Record<string, string> = {
    * AND no row set, so it was invisible to both directions of the completeness guard at once.
    */
   "ot-go-live.md": "ot",
+  "pcpndt-go-live.md": "pcpndt",
   "pharmacy-go-live.md": "pharmacy",
   "radiation-safety-go-live.md": "radiology",
   "radiology-go-live.md": "radiology",
@@ -399,6 +411,40 @@ describe("standup:check — the readiness census (11i T2)", () => {
     const afterCeremony = await runCensus(db, "ot");
     expect(verdictOf(afterCeremony, "ot", "ot_workflow_definitions_active")).toBe("ok");
     expect(verdictOf(afterCeremony, "ot", "ot_definitions_published")).toBe("ok");
+  });
+
+  /**
+   * ═══ §PCPNDT — THE REGISTER NOTHING CHECKED, AND THE STATUTE BEHIND IT ═══
+   *
+   * `pcpndt` has NO seed and therefore NO G2 row: every act is a person's, with a legal obligation.
+   * Before this row set, a hospital could deploy, scan patients and hold **no register at all** with
+   * nothing going red — the module was in nobody's population, which is exactly what the
+   * `ALL_MANIFESTS` guard above now prevents.
+   *
+   * The fixture performs the real ceremony §2-§4 of the runbook describes — premises, machine,
+   * person — so this measures the runbook rather than restating the check.
+   */
+  it("§PCPNDT: the register is RED after every deploy seed, and green only after the premises, machine and person are registered", async () => {
+    await deployG2State(db);
+
+    /** No seed exists, so the deploy leaves the whole register empty. */
+    const afterDeploy = await runCensus(db, "pcpndt");
+    expect(verdictOf(afterDeploy, "pcpndt", "pcpndt_registration_active")).toBe("RED");
+    expect(verdictOf(afterDeploy, "pcpndt", "pcpndt_machine_registered")).toBe("RED");
+    expect(verdictOf(afterDeploy, "pcpndt", "pcpndt_person_registered")).toBe("RED");
+    /** And the wall is never green: no column holds it (§6). */
+    expect(verdictOf(afterDeploy, "pcpndt", "pcpndt_certificate_displayed")).toBe("NOT MODELLED");
+
+    await truncateAll(db);
+    await setupPcpndtFixture(db);
+
+    const afterRegistering = await runCensus(db, "pcpndt");
+    expect(verdictOf(afterRegistering, "pcpndt", "pcpndt_registration_active")).toBe("ok");
+    expect(verdictOf(afterRegistering, "pcpndt", "pcpndt_machine_registered")).toBe("ok");
+    expect(verdictOf(afterRegistering, "pcpndt", "pcpndt_person_registered")).toBe("ok");
+    expect(verdictOf(afterRegistering, "pcpndt", "pcpndt_incharge_held")).toBe("ok");
+    /** Still not green, and it never can be — that is what the third verdict is for. */
+    expect(verdictOf(afterRegistering, "pcpndt", "pcpndt_certificate_displayed")).toBe("NOT MODELLED");
   });
 
   it("an UNPRICED orderable reads RED — the runbook's §4.5 warning, made a check", async () => {
