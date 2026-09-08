@@ -182,7 +182,17 @@ export function LabReports(): React.ReactElement {
                     <tr key={r.reportId} className="border-t border-border" data-testid={`register-${r.orderNo}`}>
                       <td className="px-2 py-1">
                         <span className="font-medium">{r.patientDisplay}</span>
-                        <span className="text-muted-foreground"> · {r.orderables.join(" · ")}{r.partial && <> · {t("lab.reports.partial")}</>}</span>
+                        {/*
+                          A REASON WHERE A REASON BELONGS — the register ROW, which is what a counter
+                          reads. `orders.read.restricted` withholds test names ALL-OR-NOTHING and is
+                          held by NO ROLE by deliberate design, so this column is blank for every user
+                          in the system and rendered `Farida Khatoon · ·`, which reads as a defect.
+                        */}
+                        <span className="text-muted-foreground">
+                          {" · "}
+                          {r.orderables.length > 0 ? r.orderables.join(" · ") : t("lab.reports.testsWithheld")}
+                          {r.partial && <> · {t("lab.reports.partial")}</>}
+                        </span>
                         {r.sensitive && <span className="ml-1 text-xs font-semibold">{t("lab.reports.inPersonOnly")}</span>}
                       </td>
                       <td className="px-2 text-muted-foreground">{t("lab.reports.doctorScreen")}</td>
@@ -248,7 +258,23 @@ export function LabReports(): React.ReactElement {
                     <article key={r.reportId} className="space-y-2 rounded border border-border p-3 text-sm" data-testid={`report-${r.orderNo}`}>
                       <header className="flex flex-wrap items-baseline gap-x-2">
                         <span className="font-semibold">{t("lab.reports.report")} · v{r.version}{r.partial && <> · {t("lab.reports.partial")}</>}</span>
-                        <span className="text-muted-foreground">{r.orderables.join(" · ")} · {r.orderNo}</span>
+                        {/*
+                          A REASON WHERE A REASON BELONGS. `orders.read.restricted` withholds test
+                          names ALL-OR-NOTHING (`reports.ts`, close review pass 1 F3) and is held by
+                          NO ROLE by deliberate design — `seed-roles.ts` parks it as a Class-A grant
+                          the runbook hands to the owner, because giving it to a bench role "would
+                          decide, without anyone noticing, that a role may read every restricted
+                          investigation in the building".
+
+                          The control is right and the withholding is right. What nobody had joined
+                          up is that the register's test column is therefore blank for EVERY user,
+                          rendering `Kavita Sharma · ·` — which reads as a defect and trains the eye
+                          to skip it. Found by opening the register in a browser.
+                        */}
+                        <span className="text-muted-foreground">
+                          {r.orderables.length > 0 ? r.orderables.join(" · ") : t("lab.reports.testsWithheld")}
+                          {" · "}{r.orderNo}
+                        </span>
                         {r.publishedAt !== null && <span className="text-muted-foreground">· {t("lab.reports.signedBy", { when: fmtIst(r.publishedAt) })}</span>}
                       </header>
                       <p className="text-xs text-muted-foreground">

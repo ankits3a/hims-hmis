@@ -501,10 +501,30 @@ export const imagingCriticalFindings = pgTable(
     /** F76 — who entered the acknowledgement. Separate from who gave it, deliberately. */
     recordedBy: text("recorded_by"),
     acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+    /**
+     * ═══ 18a-iii T5 / D7 — WHEN THE CHASER ESCALATED THIS ONE, AND WHY IT IS NOT A STATUS ═══
+     *
+     * This table's own header left the note: *"the escalation ladder that chases an unacknowledged
+     * critical at 02:00 is 18a-iii's, and it reads these rows."* This is the mark it writes.
+     *
+     * It exists because a sweep with no memory alerts every cycle. `sweepCriticalChaser` runs every
+     * minute — a sweep coarser than the window it enforces cannot enforce it — and an unacknowledged
+     * red finding would otherwise put a row in front of a human sixty times an hour, which is how an
+     * alert surface becomes one nobody reads.
+     *
+     * **It is a record that an escalation happened, NOT a state of the finding.** D7 is explicit
+     * that the chasers escalate to a human and never to a status: nothing reads this column to
+     * decide what a finding IS, `acknowledgedAt` remains the only answer to "was this closed", and a
+     * chased finding is exactly as unacknowledged as it was a minute earlier.
+     */
+    chasedAt: timestamp("chased_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index("imaging_critical_findings_report_idx").on(t.reportId),
+    /** The chaser's own query: everything unacknowledged and unchased, oldest first. */
+    index("imaging_critical_findings_chase_idx")
+      .on(t.acknowledgedAt, t.chasedAt, t.createdAt),
     check("imaging_critical_findings_category_ck", inList(t.category, IMAGING_CRITICAL_CATEGORIES)),
     /** An acknowledgement is a person and an instant; half of one is not an acknowledgement. */
     check(
@@ -833,5 +853,64 @@ export const imagingOutsideStudies = pgTable(
      * would. `registerOutsideStudy` validates against the owning constant instead, which is also
      * where `imaging_studies` gets its modality answered from (the study TYPE, never a column).
      */
+  ],
+);
+
+/**
+ * ═══ PLAN 18a-iii T5 / D7 — `imaging_report_delivery`: WHAT HAPPENED TO A REPORT AFTER IT WAS SIGNED ═══
+ *
+ * **This table exists because the database refused the first design, and the database was right.**
+ *
+ * The Unread Watchman needs two mutable facts about a signed report — was it read by anybody but its
+ * author, and has the chaser already escalated it. The obvious place was three columns on
+ * `imaging_reports`, and `imaging_reports_forbid_mutation` (migration 0047) rejected the write:
+ * *"only status and published_at may change after insert"*.
+ *
+ * That trigger is 18a's A10 — a signed report is a courtroom document and its row is append-only.
+ * A design that put a chaser's bookkeeping on it would have made the document mutable to buy a
+ * worker sweep a column, and every later reader would have had to know which of its fields were
+ * evidence and which were housekeeping. **The report is immutable; its DELIVERY is not, and they
+ * are different objects.** That is a better model than the one the trigger refused, and it was not
+ * the one being written until the refusal.
+ *
+ * ═══ WHAT EACH COLUMN IS FOR ═══
+ *
+ * `first_read_*` — `reportView` writes this the first time a reader who is NOT the signer opens a
+ * published report. Nothing else in the tree could answer "did this land": `phi_access_log` is an
+ * AUDIT surface keyed by patient and surface, carrying the accession only inside a free-text
+ * `reason`, and making a clinical escalation depend on that sentence would stop the chasing the day
+ * somebody rewords it. `imaging_image_views` answers who opened the IMAGES, which is a different
+ * question.
+ *
+ * FIRST read rather than latest, because the question is whether it landed — a report read once and
+ * forgotten has landed. The SIGNER is excluded because a radiologist re-reading their own report is
+ * not the referring clinician acting on it, and counting it would make every report look read the
+ * moment it was written: the Watchman would go permanently silent, and **a safety net's silence is
+ * indistinguishable from everything being fine.**
+ *
+ * `unread_chased_at` — a record that an escalation HAPPENED, never a state of the report. Same
+ * argument as `imaging_critical_findings.chased_at`, and D7's rule that these chasers get a voice
+ * rather than teeth.
+ */
+export const imagingReportDelivery = pgTable(
+  "imaging_report_delivery",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    reportId: text("report_id").notNull().references(() => imagingReports.id),
+    firstReadAt: timestamp("first_read_at", { withTimezone: true }),
+    firstReadBy: text("first_read_by"),
+    unreadChasedAt: timestamp("unread_chased_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    /** One delivery record per report. The read is an upsert against this. */
+    uniqueIndex("imaging_report_delivery_report_ux").on(t.reportId),
+    /** The Watchman's own query: unread and unchased, oldest first. */
+    index("imaging_report_delivery_unread_idx").on(t.firstReadAt, t.unreadChasedAt),
+    /** A read is a person and an instant. Half of one is not a read. */
+    check(
+      "imaging_report_delivery_first_read_ck",
+      sql`(${t.firstReadBy} is null) = (${t.firstReadAt} is null)`,
+    ),
   ],
 );

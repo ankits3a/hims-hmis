@@ -1,4 +1,4 @@
-import { and, eq, isNull, ne, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { aerbLicences, aerbPersons } from "../../kernel/db/schema/aerb";
@@ -141,7 +141,8 @@ export async function fileLicence(
    * so locking it serialises two concurrent files and makes the overlap check below race-free,
    * which a pre-read alone could never be (and which no partial unique index can express).
    */
-  const deviceRows = await tx.select({ kind: resources.kind })
+  const deviceRows = await tx
+    .select({ kind: resources.kind, code: resources.code, name: resources.name })
     .from(resources).where(eq(resources.id, input.deviceResourceId)).for("update");
   const device = deviceRows[0];
   if (device === undefined || device.kind !== "device") {
@@ -179,7 +180,7 @@ export async function fileLicence(
   if (overlap !== undefined) {
     throw new AerbError(
       "licence_already_active",
-      `device ${input.deviceResourceId} already carries licence ${overlap.licenceNo} covering `
+      `${device.code} (${device.name}) already carries licence ${overlap.licenceNo} covering `
       + `${overlap.validFrom}..${overlap.validTo}, which overlaps ${input.validFrom}..${input.validTo}. `
       + "Two certificates cannot cover the same day; a RENEWAL simply starts where the last one ends "
       + "and may be filed the day it arrives",
@@ -218,7 +219,7 @@ export async function fileLicence(
     if ((e as { code?: unknown }).code === "23505") {
       throw new AerbError(
         "licence_already_active",
-        `licence ${input.licenceNo} or device ${input.deviceResourceId} was filed by somebody else `
+        `licence ${input.licenceNo} or ${device.code} (${device.name}) was filed by somebody else `
         + "while this was being recorded",
         { deviceResourceId: input.deviceResourceId, licenceNo: input.licenceNo },
       );
@@ -295,11 +296,23 @@ export async function changeLicenceStatus(
       c.licenceNo === licence.licenceNo
       || (c.validFrom <= licence.validTo && licence.validFrom <= c.validTo));
     if (blocking !== undefined) {
+      /**
+       * Named on the REFUSAL PATH only — two ids, one query, and neither costs a licensed act
+       * anything. An RSO reading "device 01M1VRJ4QVQ…" cannot tell which machine in the building
+       * they have collided with, and that is the only fact this sentence exists to deliver.
+       */
+      const ids = [licence.deviceResourceId, blocking.deviceResourceId];
+      const named = await tx.select({ id: resources.id, code: resources.code, name: resources.name })
+        .from(resources).where(inArray(resources.id, ids));
+      const label = (id: string): string => {
+        const r = named.find((n) => n.id === id);
+        return r ? `${r.code} (${r.name})` : `device ${id}`;
+      };
       throw new AerbError(
         "licence_already_active",
         blocking.licenceNo === licence.licenceNo
-          ? `licence number ${licence.licenceNo} is live on device ${blocking.deviceResourceId}`
-          : `device ${licence.deviceResourceId} already carries licence ${blocking.licenceNo} covering `
+          ? `licence number ${licence.licenceNo} is live on ${label(blocking.deviceResourceId)}`
+          : `${label(licence.deviceResourceId)} already carries licence ${blocking.licenceNo} covering `
             + `${blocking.validFrom}..${blocking.validTo}`,
         { deviceResourceId: licence.deviceResourceId, conflictingLicenceId: blocking.id },
       );
@@ -362,11 +375,36 @@ export async function assertDeviceLicensed(
 ): Promise<{ licenceId: string; licenceNo: string }> {
   const licence = await activeLicenceFor(exec, deviceResourceId, onDate);
   if (!licence) {
+    /**
+     * ═══ THE MACHINE IS NAMED THE WAY THE PERSON READING THIS KNOWS IT ═══
+     *
+     * This sentence used to open `device 01M1VRJ4QVQWNA2V3X8YYK62MF carries no active AERB
+     * licence…`, and it is the message that STOPS the imaging department. A radiographer meets it
+     * standing at a console in X-ray room 1; nothing on that screen maps the ULID back to the
+     * room, so the one thing they must tell the RSO — WHICH MACHINE — was the one thing the
+     * refusal did not say. Seen in a browser during the go-live rehearsal, not in a test.
+     *
+     * The lookup is on the REFUSAL PATH ONLY, so a licensed scan still costs one query. The ULID
+     * stays in `detail`, where a machine reads it; it has no business in the prose.
+     *
+     * It also names the remedy. A hard stop that does not say who can lift it sends the
+     * technologist to whoever is nearest rather than to the radiation safety officer.
+     *
+     * **The code helps a Hindi reader too, which is why it is the fix rather than a translation.**
+     * This message is English on a screen that is otherwise fully translated — a real gap, tracked
+     * separately — but `XR-1` reads identically in both scripts, and a ULID reads as noise in
+     * either. Naming the machine is worth more to that radiographer than translating the sentence
+     * around the ULID would have been.
+     */
+    const rows = await (exec as Db).select({ code: resources.code, name: resources.name })
+      .from(resources).where(eq(resources.id, deviceResourceId));
+    const machine = rows[0] ? `${rows[0].code} (${rows[0].name})` : `device ${deviceResourceId}`;
     throw new AerbError(
       "device_not_licensed",
-      `device ${deviceResourceId} carries no active AERB licence covering ${onDate} — equipment that `
-      + "emits ionising radiation may not be operated without one",
-      { deviceResourceId, onDate },
+      `${machine} carries no active AERB licence covering ${onDate} — equipment that `
+      + "emits ionising radiation may not be operated without one. The radiation safety officer "
+      + "files the certificate under Radiation safety → Licences.",
+      { deviceResourceId, onDate, code: rows[0]?.code ?? null, name: rows[0]?.name ?? null },
     );
   }
   return { licenceId: licence.id, licenceNo: licence.licenceNo };

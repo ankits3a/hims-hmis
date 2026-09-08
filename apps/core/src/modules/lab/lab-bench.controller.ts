@@ -7,7 +7,7 @@ import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { withIdempotency } from "../billing";
 import { receive, reject } from "./accession";
 import { acknowledgeCritical, openCriticalCalls, RUNGS } from "./criticals";
-import { enterResult } from "./results";
+import { chooseReportedResult, enterResult } from "./results";
 import { benchArrivals, benchWorklist } from "./worklist";
 import { idSchema, LAB_IDEMPOTENT_ROUTES, parsed, toHttp } from "./lab-http";
 import type { Actor } from "@hmis/contracts";
@@ -57,6 +57,17 @@ const resultBody = z.object({
   /** 17d T1 — the same shape, and never a boolean, for the same reason the header above gives. */
   impossibleOverride: z.object({ by: idSchema }).optional(),
 });
+/**
+ * 17-E T7 — the bench's choice between an analyser's two runs of one tube. **The reason is a
+ * required string with a floor, not an optional note**: `{ chosen: true }` with nothing beside it
+ * would be the auto-supersession this rule removes, wearing a person's name. 200 characters is the
+ * same budget the relabel witness's reason carries — a sentence, not a report.
+ */
+const chooseBody = z.object({
+  resultId: idSchema,
+  reason: z.string().min(1).max(200),
+});
+
 const ackBody = z.object({
   attempt: z.object({
     contact: z.string().min(1).max(160),
@@ -134,6 +145,23 @@ export class LabBenchController {
         /** 17d T1 — `enterResult` is `Db`-FIRST: its swap flag is written outside the rollback. */
         () => enterResult(this.db, actor, input),
       );
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * 17-E T7 / D18 — WHICH RUN THE REPORT CARRIES. `lab.results.enter`, because the act is the
+   * bench's judgement about a measurement and the vocabulary already named it; the second pair of
+   * hands is `verify.ts`, which signs it and cannot sign the row this did not choose.
+   */
+  @Post("results/choose")
+  @RequirePermission("lab.results.enter", "hospital")
+  async choose(
+    @CurrentActor() actor: Actor,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    const input = parsed(chooseBody, body);
+    try {
+      return await chooseReportedResult(this.db, actor, input);
     } catch (e) { toHttp(e); }
   }
 

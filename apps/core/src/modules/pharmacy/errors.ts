@@ -41,6 +41,16 @@ export const PHARMACY_ERROR_CODES = [
   "invoice_not_settled",
   // ── the close review, second contract sweep: expired stock ──
   "batch_expired",
+  /**
+   * THE SAME FACT AS `batch_expired`, A DIFFERENT REMEDY — which is why it is a different code.
+   *
+   * `batch_expired` is raised at the PICK, where the pharmacist NAMED a carton and can name
+   * another; its string says "Choose another batch" and there that is true. This one is raised at
+   * HAND OVER, on a line already picked, priced, billed and PAID. There is no batch to choose, the
+   * money has moved, and the screen offers no such control. Reusing the code would hand the
+   * pharmacist an impossible instruction at the one moment they are facing a patient.
+   */
+  "batch_expired_before_collection",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -89,6 +99,7 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   identity_mismatch: 409,
   invoice_not_settled: 409,
   batch_expired: 409,
+  batch_expired_before_collection: 409,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {
