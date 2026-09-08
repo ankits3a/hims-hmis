@@ -277,15 +277,53 @@ describe("the alias layer and the route pin move with the screen", () => {
    * vitals route and ONE nav entry, and that the bay is what they point at. A second `/opd/vitals/*`
    * route growing back is the two-doors problem this ruling exists to end, so it is asserted as an
    * absence.
+   *
+   * ═══ PHASE 11i T9 — THE ASSERTION NAMED AN INSTANCE, NOT THE PROPERTY, AND WENT RED WHILE THE
+   *     RULE IT PROTECTS WAS STILL SATISFIED ═══
+   *
+   * It read `expect(src).not.toContain('path: "/opd/vitals/bay"')` — the absence of a STRING. Its
+   * own title says what it means: *no second vitals path*, i.e. no second SCREEN mounted under a
+   * vitals URL. To a substring check a redirect and a mounted screen are indistinguishable, so
+   * when 11i T9 added a `beforeLoad` redirect at that path — no component, no nav row, no manifest
+   * entry, a forwarding address for the bookmarks production has been serving since 2 September,
+   * removed one release after the laboratory opens — this row went red and the ruling it guards
+   * was never in question.
+   *
+   * This is `deploy-parity`'s seed-ordering defect, found in the same phase, running the other
+   * way. There, a pinned PAIR stayed green while the rule (`seed-roles` runs last) was broken;
+   * here, a pinned STRING goes red while the rule holds. A text assertion cannot tell the thing it
+   * names from the thing it means, and the symptom it produces is a coin toss.
+   *
+   * So it now asserts the property: **exactly one route MOUNTS a vitals screen, and any other
+   * `/opd/vitals/*` route carries no component at all.** A real second bay fails it; a forwarding
+   * address does not.
    */
-  it("router.tsx mounts the BAY at /opd/vitals, with one nav row and no second vitals path", () => {
+  it("router.tsx mounts the BAY at /opd/vitals, with one nav row and no second vitals SCREEN", () => {
     const src = readFileSync(resolve(__dirname, "../router.tsx"), "utf8");
     expect(src).toContain('path: "/opd/vitals",');
     expect(src).toContain("component: VitalsBay");
-    expect(src).not.toContain('path: "/opd/vitals/bay"');
     expect(src).toMatch(/to: "\/opd\/vitals", label: "nav\.opdVitals", permission: "opd\.vitals\.record"/);
     expect(src).not.toContain("nav.vitalsBay");
     // THE KILL for the old screen coming back: nothing may import it again.
     expect(src).not.toContain("screens/opd-vitals");
+
+    // The bay is mounted ONCE. A second `component: VitalsBay` anywhere is a second door by any
+    // path, which is the thing the ruling is actually about.
+    expect((src.match(/component: VitalsBay/g) ?? []).length).toBe(1);
+
+    /*
+      And every OTHER `/opd/vitals/*` route is componentless. `createRoute({ … })` blocks are read
+      whole rather than by substring, so "declares this path" and "mounts a screen at it" are two
+      different questions again — which is the whole correction above.
+    */
+    const blocks = [...src.matchAll(/createRoute\(\{([\s\S]*?)\n\}\);/g)].map((m) => m[1] ?? "");
+    expect(blocks.length).toBeGreaterThan(20); // non-vacuous: the parser found the route table
+    const vitalsBlocks = blocks.filter((b) => /path: "\/opd\/vitals/.test(b));
+    expect(vitalsBlocks).toHaveLength(2); // the bay, and T9's forwarding address
+    const mounting = vitalsBlocks.filter((b) => /\bcomponent:/.test(b));
+    expect(mounting).toHaveLength(1);
+    expect(mounting[0]).toMatch(/path: "\/opd\/vitals",/);
+    const forwarding = vitalsBlocks.filter((b) => !/\bcomponent:/.test(b));
+    expect(forwarding[0]).toMatch(/redirect\(\{ to: "\/opd\/vitals", search \}\)/);
   });
 });
