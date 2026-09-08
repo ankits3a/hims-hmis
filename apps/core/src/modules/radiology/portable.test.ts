@@ -46,8 +46,15 @@ describe("the portable study (18a-iii T3)", () => {
   let trolley: string;
 
   const DAY = "2026-08-31";
-  const NOW = new Date("2026-08-31T06:00:00.000Z");
-  const SLOT = new Date("2026-08-31T09:00:00.000Z");
+  /**
+   * DERIVED from `DAY`, not pinned beside it. `openFormF` compares `onDate` against the clock
+   * (`FORM_F_BACKFILL_DAYS`), so any call passing `DAY` must also pass a `now` on that day —
+   * and two independently pinned constants can drift apart in a later edit while both still
+   * look right. `form-f.concurrency.test.ts` states the rule: *a test that walks a year
+   * boundary says which day it is standing on rather than depending on the real one.*
+   */
+  const NOW = new Date(`${DAY}T06:00:00.000Z`);
+  const SLOT = new Date(`${DAY}T09:00:00.000Z`);
   const WARD = "Ward 3, Bed 12";
   let seq = 0;
 
@@ -266,7 +273,7 @@ describe("the portable study (18a-iii T3)", () => {
       await withTx(db, (tx) => openFormF(tx, fx.radiographer, {
         studyId: ward.studyId, patientId: fx.patientId, deviceResourceId: trolley,
         personUserId: fx.radiographer.id, indicationCode: "obstetric", applicability: "pregnant",
-        onDate: DAY,
+        onDate: DAY, now: NOW,
       }));
       for (const kind of checked.gates) {
         const gate = await requireStudyGate(db, ward.studyId, kind);
@@ -292,7 +299,7 @@ describe("the portable study (18a-iii T3)", () => {
       const { formFId } = await withTx(db, (tx) => openFormF(tx, fx.radiographer, {
         studyId: ward.studyId, patientId: fx.patientId, deviceResourceId: trolley,
         personUserId: fx.radiographer.id, indicationCode: "obstetric", applicability: "pregnant",
-        onDate: DAY,
+        onDate: DAY, now: NOW,
       }));
       await withTx(db, (tx) => recordFormF(tx, fx.radiographer, {
         formFId, sections: { F: "anomaly" }, declaration: { signature_kind: "signature" },
