@@ -144,6 +144,49 @@ it("the register says how each report went out: WhatsApp sent, HELD with the amo
   expect(screen.getAllByText("on the doctor's screen")).toHaveLength(3);
 });
 
+/**
+ * ═══ A REFUSAL IS A SENTENCE, NOT A BLANK ═══
+ *
+ * `orders.read.restricted` withholds test names ALL-OR-NOTHING (close review pass 1, F3) and is held
+ * by NO ROLE by deliberate design — `seed-roles.ts` parks it as a Class-A grant the runbook hands to
+ * the owner, because giving it to a bench role *"would decide, without anyone noticing, that a role
+ * may read every restricted investigation in the building"*.
+ *
+ * The control is right and the withholding is right. **What nobody had joined up until the register
+ * was opened in a browser is that the test column is therefore blank for EVERY user in the system** —
+ * it rendered `Farida Khatoon · ·`, which reads as a defect and trains the eye to skip the column.
+ */
+it("the register says WHY the test names are missing, rather than rendering an empty gap", async () => {
+  mockRoutes({
+    "GET /api/lab/reports/register": {
+      status: 200,
+      body: REGISTER.map((r) => ({ ...r, orderables: [] })),
+    },
+  });
+  renderWithProviders(<LabReports />);
+  await waitFor(() => expect(screen.getByTestId("register-L2609010102")).toBeInTheDocument());
+
+  expect(screen.getByTestId("register-L2609010102")).toHaveTextContent(/test names withheld/);
+  /**
+   * THE KILL: everything ELSE on the row survives the substitution. The first draft of this asserted
+   * the order NUMBER was still there and failed — the row never printed it, it is only the `testid`.
+   * A test that had been written from the component rather than from the screen would have shipped
+   * that assertion green somewhere else and wrong here.
+   */
+  expect(screen.getByTestId("register-L2609010102")).toHaveTextContent("Farida Khatoon");
+  expect(screen.getByTestId("register-L2609010102")).toHaveTextContent(/PARTIAL/);
+});
+
+/** And a holder of the grant still sees the tests — the sentence replaces a gap, never a value. */
+it("a caller who MAY see the test names still sees them, unchanged", async () => {
+  mockRoutes({ "GET /api/lab/reports/register": { status: 200, body: REGISTER } });
+  renderWithProviders(<LabReports />);
+  await waitFor(() => expect(screen.getByTestId("register-L2609010102")).toBeInTheDocument());
+
+  expect(screen.getByTestId("register-L2609010102")).toHaveTextContent("LFT · CBC · GLUF");
+  expect(screen.getByTestId("register-L2609010102")).not.toHaveTextContent(/withheld/);
+});
+
 it("D9 — a settled report prints with the collector's name and relation; the paper is the snapshot the server sent", async () => {
   const seen = mockRoutes({
     "GET /api/lab/reports/register": { status: 200, body: REGISTER },

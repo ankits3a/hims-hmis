@@ -281,13 +281,28 @@ and that is correct: no deploy hires a pathologist or types in a catalogue.
 does not run it, so radiology's Class-C definition is established by no deploy — the same defect
 11i T1 closed for the lab. It is the radiology lane's to fix.
 
-**Three things that must be unchanged.** A seed must never touch a CA-signed row:
+**Three things that must be unchanged.** A seed must never touch a CA-signed row — and the check
+below is the SECOND version of this step, because the first one was wrong in a way that produced a
+false alarm on the very first deploy it met.
 
     docker exec hmis-prod-db-1 psql -U hmis -d hmis -qAt \
-      -c "select count(*), max(updated_at) from gst_config"
+      -c "select category, exempt, updated_at from gst_config order by updated_at, category"
 
-**Expected:** the same count and the same `updated_at` as before the deploy. Take that reading in
-step 1 as well as here.
+**Expected:** every category that existed before the deploy carries **the same `updated_at` it had
+in step 1**. New rows with the deploy's own timestamp are correct and expected — a deploy that
+brings a module brings its GST categories with it. Take the same reading in step 1 and compare
+ROW BY ROW.
+
+> **Why not `count(*), max(updated_at)`, which is what this step used to say.** That pair cannot
+> answer the question. `max()` over a table that gained a row moves by construction, so a correct
+> deploy fails the check — and a reader who has no *before* count reads "the count is 8 and the
+> timestamp moved" as *something rewrote the slabs*. That is exactly what happened on 2026-09-06:
+> five pre-existing categories were untouched at `2026-08-24 17:47:03`, three new ones
+> (`pharmacy_exempt`, `pharmacy_5`, `pharmacy_18`) were created at `12:35:23`, and the aggregate
+> reported an alarm about a table nothing had violated. `seed-tariff` skips a category that already
+> exists (`if (haveCategories.has(cfg.category)) continue`) and its guard held perfectly.
+>
+> **An aggregate cannot tell you which row moved.** Read the rows.
 
     docker exec hmis-prod-db-1 psql -U hmis -d hmis -qAt \
       -c "select series_key, fy, next_no from document_series order by series_key, fy"
@@ -375,7 +390,7 @@ Fill this in as you go. A step performed and not recorded is a step nobody can c
 | (3) census before — RED rows | | |
 | (4) window declared / deploy 8/8 / gaps empty / mode normal | | |
 | (5) desk told: bookmarks, `/opd/vitals`, UHID series | | |
-| (6) census after / `gst_config` unchanged / next invoice no. / migrations = 78 | | |
+| (6) census after / `gst_config` **row by row**, pre-existing rows unmoved / next invoice no. / migrations = 78 | | |
 | (7) #73 closed | | |
 | (8) edge gate | | |
 | (9) rollback needed? | | |

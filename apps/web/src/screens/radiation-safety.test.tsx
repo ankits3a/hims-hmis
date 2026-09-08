@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { renderWithProviders } from "../test-utils";
@@ -589,7 +589,10 @@ const PICKER_BOOK = {
     { resourceId: "D2", code: "DR-1", name: "DR machine", modality: "xray", status: "available", licensable: true },
     { resourceId: "D3", code: "MRI-1", name: "MRI", modality: "mri", status: "available", licensable: false },
   ],
-  users: [{ userId: "U1", fullName: "Manoj Bhat" }, { userId: "U2", fullName: "S. Iyer" }],
+  users: [
+    { userId: "U1", fullName: "Manoj Bhat", aerbRole: "rso" },
+    { userId: "U2", fullName: "S. Iyer", aerbRole: null },
+  ],
 };
 
 const GAP_DR = { deviceResourceId: "D2", code: "DR-1", name: "DR machine", modality: "xray" };
@@ -696,6 +699,40 @@ describe("the AERB write surface (18c T6)", () => {
     /** An untouched optional field goes over the wire as null, never as "". */
     expect(sentBodies(FILE_LICENCE)[0]).toMatchObject({ eloraRef: null, typeApprovalRef: null });
     expect(await screen.findByTestId("aerb-outcome")).toHaveTextContent("AERB/DR/2026/9");
+  });
+
+  /**
+   * ═══ THE RSO FIELD SAYS WHO IS ACTUALLY APPOINTED ═══
+   *
+   * This dropdown is every active user in the hospital, `fileLicence` does not validate
+   * `rsoUserId` and the column is nullish — so a statutory AERB licence could be filed naming the
+   * cashier as the Radiological Safety Officer with nothing refusing and nothing warning. Measured
+   * on a stand-up: a filed licence named a radiologist who held no `radiation_safety_officer` role
+   * and had no appointment row at all.
+   *
+   * Nobody is filtered out and nothing is refused — a certificate may legitimately be filed before
+   * the appointment paperwork, and `PersonForm` uses this same list to appoint the FIRST RSO, which
+   * a filtered list could never do. The server states the fact and the form renders it, exactly as
+   * it already does for a machine AERB does not licence.
+   */
+  it("marks the people with no AERB appointment in the licence form's RSO field", async () => {
+    mockRoutes({
+      [LICENCES]: { status: 200, body: { rows: [], canManage: true } },
+      [GAPS]: { status: 200, body: { rows: [GAP_DR] } },
+      [PICKERS]: { status: 200, body: PICKER_BOOK },
+    });
+    renderWithProviders(<RadiationSafety />);
+    await userEvent.click(await screen.findByTestId("aerb-gap-file-D2"));
+    await screen.findByTestId("aerb-licence-form");
+
+    const options = within(screen.getByTestId("aerb-licence-rso")).getAllByRole("option");
+    const labelled = Object.fromEntries(
+      options.filter((o) => (o as HTMLOptionElement).value).map((o) => [(o as HTMLOptionElement).value, o.textContent]),
+    );
+    expect(labelled.U1).toBe("Manoj Bhat");
+    expect(labelled.U2).toContain("no AERB appointment on file");
+    /** Marked, not removed — the appointment door needs the unappointed. */
+    expect(Object.keys(labelled).sort()).toEqual(["U1", "U2"]);
   });
 
   /**
