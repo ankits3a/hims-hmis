@@ -267,6 +267,63 @@ describe("the dispense counter — pick, bill, hand over (16c T4)", () => {
     expect(p.lines[0]!.batchId).toBe(today);
   });
 
+  /**
+   * THE OVERNIGHT CROSSING — expiry was asked at the OFFER and never again, and money holds the
+   * window open.
+   *
+   * A pick that is abandoned self-cancels after 30 minutes, but `sweepExpiredPicks` filters
+   * `status = 'picked'` (expiry.ts:68): once the patient has PAID, the dispense is deliberately
+   * never swept and the stock stays held. So a batch that is legitimately in date when it is
+   * picked and billed at 21:00 is EXPIRED when the patient collects the next morning, and until
+   * this test nothing between the pick and the irreversible `consume` asked again.
+   *
+   * WHY THIS FIXTURE DISCRIMINATES, and the three ways the obvious version does not:
+   *
+   *   · `expiryDate: "2026-08-17"` is exactly MON's own IST day, so the batch is REAL stock at the
+   *     pick: `sellableBatchRows` keeps it (`'2026-08-17' >= '2026-08-17'`) and `pick.ts:83` lets
+   *     it through (`'2026-08-17' < '2026-08-17'` is false). A batch dated 2026-08-01 — the
+   *     obvious choice — is excluded by the offer gate, so the dispense would die at `short_stock`
+   *     and never reach hand over at all. **A batch expired under BOTH clocks cannot tell two
+   *     clocks apart**; that is the trap this module has been caught by twice.
+   *   · The two clocks must straddle an IST calendar day. MON3 is MON+40min — 09:30 to 10:10 IST
+   *     on the SAME day — so reusing it makes the predicate false and the test green against the
+   *     unfixed code. TUE is the next IST morning.
+   *   · The medicine must be OTC. On the H1 Azee a `{}` hand over throws
+   *     `identity_confirmation_required` FIRST, so a loose `.rejects.toThrow()` would pass against
+   *     fixed and unfixed code alike. Crocin is OTC, and the code is asserted by name.
+   *
+   * The same-day hand over below is the POSITIVE CONTROL: same batch, same pick, same everything
+   * but the clock. Without it a guard that simply refused this batch always would pass.
+   */
+  it("a batch in date at the pick and expired by collection is refused at HAND OVER, and the same batch collected the same day is not", async () => {
+    const TUE = new Date("2026-08-18T04:00:00.000Z"); // the next IST morning, 09:30 Asia/Kolkata
+    const boundary = await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "CR-BOUNDARY", expiryDate: "2026-08-17", qtyBase: 40, mrpPaise: 12000 });
+
+    // ── the control: picked, billed and COLLECTED while the batch is still in date ──
+    const ok = await verified([line({ drug: "Crocin 500", medicineId: fx.med.crocin })], [10]);
+    const pOk = await pickDispense(db, fx.pharmacist.actor, fx.decls, ok.id, {}, MON2);
+    expect(pOk.lines[0]!.batchId).toBe(boundary); // FEFO takes it: it is the earliest still IN date
+    const prevOk = await previewDispenseBill(db, fx.pharmacist.actor, ok.id, MON2);
+    await billDispense(db, fx.pharmacist.actor, ok.id, { tenders: [{ mode: "cash", amountPaise: prevOk.totals.netPayablePaise }] }, MON2);
+    expect((await handOverDispense(db, fx.pharmacist.actor, fx.decls, ok.id, {}, MON3)).status).toBe("handed_over");
+
+    // ── the defect: same batch, same acts, collected one IST day later ──
+    const late = await verified([line({ drug: "Crocin 500", medicineId: fx.med.crocin })], [10]);
+    const pLate = await pickDispense(db, fx.pharmacist.actor, fx.decls, late.id, {}, MON2);
+    expect(pLate.lines[0]!.batchId).toBe(boundary); // legitimately picked — it had not expired yet
+    const prevLate = await previewDispenseBill(db, fx.pharmacist.actor, late.id, MON2);
+    await billDispense(db, fx.pharmacist.actor, late.id, { tenders: [{ mode: "cash", amountPaise: prevLate.totals.netPayablePaise }] }, MON2);
+
+    const consumedBefore = (await db.select().from(stockLedger).where(eq(stockLedger.reason, "consume"))).length;
+    await expect(handOverDispense(db, fx.pharmacist.actor, fx.decls, late.id, {}, TUE))
+      .rejects.toThrow(expect.objectContaining({ code: "batch_expired_before_collection" }));
+
+    // nothing left the shelf, and the money is still where it was — the stuck-bill 16d inherits
+    expect(await db.select().from(stockLedger).where(eq(stockLedger.reason, "consume"))).toHaveLength(consumedBefore);
+    expect((await getDispense(db, fx.pharmacist.actor, late.id)).status).toBe("billed");
+    expect(await db.select().from(pharmacyRegH1)).toHaveLength(0);
+  });
+
   it("when the ONLY stock is expired the counter refuses the pick, and nothing is reserved", async () => {
     await stockIn(db, fx, { itemId: fx.item.calpol, batchNo: "CP-DEAD", expiryDate: "2026-08-01", qtyBase: 40, mrpPaise: 9000 });
     const v = await verified([line({ drug: "Calpol 500", medicineId: fx.med.calpol })], [10]);

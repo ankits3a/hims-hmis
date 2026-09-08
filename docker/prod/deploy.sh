@@ -86,6 +86,62 @@ case "$TARGET" in
     echo "deploy.sh: HMIS_TARGET must be 'prod' or 'uat' (got '$TARGET')" >&2; exit 1 ;;
 esac
 
+# ════════════════════════════════════════════════════════════════════════════════════════════════
+# PHASE 11i T3 — `HMIS_DEPLOY_ALLOW_DIRTY=1` IS FOR A REHEARSAL, AND A REHEARSAL IS NOT PRODUCTION.
+#
+# ═══ THIS GUARD EXISTS BECAUSE A DEPLOY HAPPENED THAT NOBODY DECIDED — 2026-09-06 ═══
+#
+# TWO EVENTS, and the second one COMPLETED. An earlier version of this comment described only the
+# first and said "nothing reached the deploy directory, the images, the database or the containers".
+# That was true of the first event and false of the day, and a reader would have taken it as a
+# statement about production. It is corrected here rather than deleted.
+#
+# EVENT ONE — the near miss. The commissioning lane meant to stand UAT up from its own branch —
+# which it has to, because the `uat` target and the synthetic-data door had not merged yet — and ran
+#
+#     HMIS_TARGET=uat HMIS_DEPLOY_ALLOW_DIRTY=1 bash docker/prod/deploy.sh
+#
+# from a worktree left checked out on an EARLIER branch in the same stack. That branch's copy of
+# this script predates the target concept, so `HMIS_TARGET` was an environment variable nothing
+# read: `DEPLOY_DIR` defaulted to /opt/hmis-prod. Killed during step 1; production verified
+# untouched at that point.
+#
+# EVENT TWO — the fix for event one deployed production. The leg added to `deploy-parity.test.ts`
+# proves this refusal fires BY EXECUTING THIS SCRIPT. The mutation run that DELETES the refusal
+# therefore ran a `deploy.sh` with nothing left to stop it, and that leg did not set
+# `HMIS_DEPLOY_DIR` — on the reasoning that the guard fires before the deploy-directory check, so
+# the value could not matter. It cannot matter WHILE THE GUARD IS THERE. Measured afterwards:
+#
+#     hmis-prod/{server,web}:399f92c   built 12:35:00 and 12:35:04 from a LANE tree
+#     hmis-prod-api-1                  StartedAt 12:35:42 on that image
+#     migrations                       56 -> 78, the whole pending journal
+#     8 of 9 containers                restarted; db and node-exporter untouched
+#
+# Production came up healthy and is serving. It is running a commit that is not on `main`, and the
+# image it replaced is gone from the daemon, so this one deploy has no image-level rollback.
+#
+# WHAT LET BOTH HAPPEN is the same thing: `HMIS_DEPLOY_ALLOW_DIRTY=1` disabled BOTH refusals
+# standing between a lane tree and the hospital — the dirty-tree check and `HEAD == origin/main`.
+#
+# ═══ WHAT THE GUARD IS, AND WHY IT IS NOT MERELY A RULE ═══
+#
+# The override's own comment below has always said "for a rehearsal only". A rehearsal is UAT. So
+# the word is now enforced rather than trusted: on the PROD target the override REFUSES, and the
+# refusal names the two things it would have switched off. Nothing legitimate is lost — a real
+# production deploy is cut from `origin/main` with a clean tree, which is the definition of not
+# needing this flag — and the rollback path never reaches here because it builds nothing.
+#
+# A newer script cannot defend against an older copy of itself, and this guard does not pretend to.
+# What it does is make the FLAG safe, so the same mistake with today's script stops at a refusal.
+# ════════════════════════════════════════════════════════════════════════════════════════════════
+if [ "$TARGET" = "prod" ] && [ "${HMIS_DEPLOY_ALLOW_DIRTY:-0}" = "1" ] && [ -z "${HMIS_DEPLOY_ROLLBACK_TO:-}" ]; then
+  echo "deploy.sh: HMIS_DEPLOY_ALLOW_DIRTY=1 is refused on the PROD target." >&2
+  echo "    It switches off BOTH refusals between a checkout and the hospital: the dirty-tree" >&2
+  echo "    check and HEAD == origin/main. A production deploy is cut from origin/main with a" >&2
+  echo "    clean tree and needs neither. Rehearse on HMIS_TARGET=uat instead." >&2
+  exit 1
+fi
+
 # PHASE 11i T8 / D13 — THE WAY BACK.
 #
 # `HMIS_DEPLOY_ROLLBACK_TO=<short-sha>` retags `:latest` from images that are already on the daemon

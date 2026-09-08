@@ -4,7 +4,8 @@ import { hasPermission } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
 import {
   approvals, labAnalytes, labItems, labOrderableAnalytes, labOrderables, labReportDeliveries,
-  labReports, labResults, notifications, orderItems, orders, patients, users, workflowInstances,
+  labReports, labResults, notifications, opdDoctors, orderItems, orders, patients, users,
+  workflowInstances,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { istDayWindow } from "../../kernel/approvals/cumulative";
@@ -13,6 +14,7 @@ import { recordPhiAccess } from "../../kernel/phi/audit";
 import { transition } from "../../kernel/workflow/instances";
 /** Spec §4 — through the module's INDEX, never a deep path: `kernel/orders/read.ts` may reach into
  *  `display-name.ts` because the kernel has no index of its own to go through; a module may not. */
+import { loadOpdConfig } from "../opd";
 import { displayName, listMergedLoserIds, resolvePatientId } from "../patients";
 import { RELEASE_UNPAID_APPROVAL_TYPE } from "./approval-types";
 import { canonicalNames } from "./criticals";
@@ -100,7 +102,35 @@ export type ReportSnapshot = {
   patient: { id: string; uhid: string; name: string; sex: string; dob: string | null };
   orderingClinicianId: string | null;
   panels: ReportPanel[];
-  signatory: { userId: string; username: string; signedAt: string };
+  /**
+   * ═══ WHO SIGNED IT, AS A PERSON — AND `username` IS KEPT ONLY AS THE AUDIT HANDLE ═══
+   *
+   * A username is an authentication artefact; it appears on no medical document anywhere, and it was
+   * what the printed A4 carried under "Authorised by". `full_name` is `notNull()` on `users` and
+   * `registration_no` is the council number `opd_doctors` already describes as *"printed on the
+   * e-Rx"* — both were one join away for the whole of Plan 17.
+   *
+   * `fullName` and `registrationNo` are OPTIONAL on this type and that is not laziness. A published
+   * report is immutable by database trigger, so **reports signed before this change can never gain
+   * the fields** — there is no backfill and there must not be one. An old snapshot renders exactly
+   * as it was signed, which is the property the trigger exists to protect.
+   */
+  signatory: {
+    userId: string;
+    username: string;
+    signedAt: string;
+    fullName?: string;
+    registrationNo?: string | null;
+  };
+  /**
+   * The hospital, as it was named on the day this was signed. SNAPSHOTTED rather than read at print
+   * time, for the reason the reference range and the patient's identity are: a rename must not
+   * rewrite a document already handed to a patient. The printed invoice reads it live because an
+   * invoice is rebuilt from live rows; this is a frozen signed artefact.
+   *
+   * Optional for the same reason as the signatory fields above — an older snapshot has none.
+   */
+  letterhead?: { name: string; addressLines: string[] };
   /** 02 D7 — a partial publish at 24 h; the rest follows as a later version. */
   partial: boolean;
   notes: string[];
@@ -213,8 +243,22 @@ async function buildSnapshot(
   const canonical = (await resolvePatientId(tx, order.patientId)) ?? order.patientId;
   const [patient] = await tx.select().from(patients).where(eq(patients.id, canonical));
   if (!patient) throw new LabError("unknown_item", `order ${order.orderNo} names no patient`);
-  const [signatory] = await tx.select({ username: users.username })
-    .from(users).where(eq(users.id, actor.id));
+  /**
+   * LEFT JOIN, because not every signatory is a doctor. `opd_doctors` is unique on `user_id`
+   * (`opd_doctors_user_ux`), so the join is one row or none — and "none" is a lab_reception login
+   * publishing a report, which is a real and permitted case that must not lose the person's name
+   * along with the registration they never had.
+   */
+  const [signatory] = await tx
+    .select({
+      username: users.username,
+      fullName: users.fullName,
+      registrationNo: opdDoctors.registrationNo,
+    })
+    .from(users)
+    .leftJoin(opdDoctors, eq(opdDoctors.userId, users.id))
+    .where(eq(users.id, actor.id));
+  const letterhead = (await loadOpdConfig(tx)).letterhead;
 
   const notes: string[] = [];
   const panels: ReportPanel[] = [];
@@ -278,7 +322,20 @@ async function buildSnapshot(
       },
       orderingClinicianId: order.orderingClinicianId,
       panels,
-      signatory: { userId: actor.id, username: signatory?.username ?? actor.id, signedAt: now.toISOString() },
+      signatory: {
+        userId: actor.id,
+        username: signatory?.username ?? actor.id,
+        signedAt: now.toISOString(),
+        /**
+         * The fallback is the USERNAME and never the id: if `users` has somehow lost the row, the
+         * document should carry the least-wrong human-readable handle rather than a ULID. It is
+         * unreachable — `full_name` is `notNull()` — and it is here so that an unreachable state
+         * does not print a ULID on a patient's report.
+         */
+        fullName: signatory?.fullName ?? signatory?.username ?? actor.id,
+        registrationNo: signatory?.registrationNo ?? null,
+      },
+      letterhead,
       partial: unfinished.length > 0,
       notes: [...new Set(notes)],
     },

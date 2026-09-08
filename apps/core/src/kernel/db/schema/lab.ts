@@ -5,6 +5,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { invoiceLines, invoices } from "./billing";
 import { orderItems, orders } from "./orders";
+import { interfaces } from "./ops";
 import { patients } from "./patients";
 import { resources } from "./resources";
 import { services } from "./tariff";
@@ -488,6 +489,20 @@ export const labResults = pgTable(
     pathologistReviewPending: boolean("pathologist_review_pending").notNull().default(false),
     rerunOf: text("rerun_of"),
     supersedesResultId: text("supersedes_result_id"),
+    /**
+     * ═══ 17-E T7 / D17 — THE BENCH'S CHOICE, WHEN A MACHINE RAN THE SAME TUBE TWICE ═══
+     *
+     * A human re-key supersedes the row it replaces (close review M3) and needs no choice: one live
+     * value, and the chain is the auditor's path. **An analyser re-running does not supersede**
+     * (D9), so an analyte can carry two live values that are both legitimate measurements — and
+     * which of them the report prints is a judgement, made by a person, with a reason.
+     *
+     * The three columns move together or not at all, and the reason may not be blank: a choice
+     * recorded without one is the auto-supersession this task exists to remove, wearing a name.
+     */
+    reportedChoiceAt: timestamp("reported_choice_at", { withTimezone: true }),
+    reportedChoiceBy: text("reported_choice_by"),
+    reportedChoiceReason: text("reported_choice_reason"),
     remarks: text("remarks"),
   },
   (t) => [
@@ -523,6 +538,31 @@ export const labResults = pgTable(
       "lab_results_verified_status_ck",
       sql`(${t.verificationStatus} = 'unverified') = (${t.verifiedBy} is null)`,
     ),
+    /**
+     * 17-E T7 — the choice is a TRIPLE. Two of the three would let a row say it was chosen without
+     * saying by whom, or why; the biconditional is the same shape as the verification pair above.
+     */
+    check(
+      "lab_results_reported_choice_ck",
+      sql`(${t.reportedChoiceAt} is null) = (${t.reportedChoiceBy} is null)
+        and (${t.reportedChoiceAt} is null) = (${t.reportedChoiceReason} is null)`,
+    ),
+    /** A blank reason is no reason. The service trims; this is the floor under it. */
+    check(
+      "lab_results_reported_choice_reason_ck",
+      sql`${t.reportedChoiceReason} is null or length(btrim(${t.reportedChoiceReason})) > 0`,
+    ),
+    /**
+     * ═══ ONE CHOSEN VALUE PER ANALYTE PER ITEM, ENFORCED BY THE DATABASE ═══
+     *
+     * The service moves the choice inside one transaction, so two chosen rows should be
+     * unreachable. This index is what makes that a fact rather than a promise: a set with two
+     * chosen values is a report with two answers for one line, and the renderer would pick by
+     * accident of ordering.
+     */
+    uniqueIndex("lab_results_one_choice_idx")
+      .on(t.orderItemId, t.analyteId)
+      .where(sql`${t.reportedChoiceAt} is not null`),
   ],
 );
 
@@ -684,6 +724,52 @@ export const labSlaBreaches = pgTable(
  * problem (D1: the bridge is out of this repository), and a column the server branches on would be
  * a lie about where that decision is made.
  */
+/**
+ * ═══ WHICH FILE PRODUCED THIS CATALOGUE — the provenance `import-item-master` shipped without ═══
+ *
+ * `import:lab-catalogue` takes the owner's own spreadsheets. Six months later the question is *"where
+ * did this reference range come from"*, and `lab_reference_ranges.source` answers it clinically (the
+ * kit insert, the textbook) while nothing answered it operationally: **which file, sent when, loaded
+ * by whom.** The first loader recorded neither, and the design note names that as its open defect.
+ *
+ * `holder_book_imports` (Plan 09 T5) is the precedent and this mirrors it deliberately, including
+ * what it does NOT do: **per IMPORT, never per row.** A column on `lab_analytes`,
+ * `lab_orderables` and `lab_reference_ranges` would be three migrations, three joins and a
+ * per-row fact nobody asks for; what an operator actually asks is "was the March range book
+ * loaded, and by whom", which one row answers.
+ *
+ * `file_hash` makes a re-send visible: the same bytes arriving twice is the ordinary case when a
+ * transfer is retried, and it should read as the same import rather than as a second one.
+ * `imported_by` is a NAME in plain text, never a foreign key — note §6, inherited from
+ * `seed-staff`: an operator is identified without the script authenticating one.
+ *
+ * ROW COUNTS ARE PER KIND because the three files are separate and any subset may be sent; a single
+ * `rows_accepted` would make "the range book went in" and "the test list went in" indistinguishable.
+ */
+export const labCatalogueImports = pgTable(
+  "lab_catalogue_imports",
+  {
+    id: text("id").primaryKey(),
+    /** The three file names as given, joined — an audit reads what the operator actually ran. */
+    fileNames: text("file_names").notNull(),
+    fileHash: text("file_hash").notNull(),
+    analytesWritten: integer("analytes_written").notNull().default(0),
+    orderablesWritten: integer("orderables_written").notNull().default(0),
+    rangesWritten: integer("ranges_written").notNull().default(0),
+    importedBy: text("imported_by").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [
+    /**
+     * The same bytes are the same import. A retried transfer must not read as a second load, and an
+     * operator re-running the identical file should be told so rather than silently duplicating a
+     * record of work that happened once.
+     */
+    uniqueIndex("lab_catalogue_imports_hash_ux").on(t.fileHash),
+  ],
+);
+
 export const labInstruments = pgTable(
   "lab_instruments",
   {
@@ -693,6 +779,19 @@ export const labInstruments = pgTable(
     sampleIdMode: text("sample_id_mode").notNull(),
     /** Free text, for a human reading the register. Nothing branches on it — see the header. */
     connection: text("connection"),
+    /**
+     * 17-E T7b — the `interfaces` row this machine's BRIDGE heartbeats on (Plan 11c D6).
+     *
+     * **NULLABLE, and that is Q5's rule at the instrument level.** *"`interface_down` is written only
+     * by the bridge's own heartbeat lapse, never by idleness"* — and an analyser with no registered
+     * bridge is not a broken link, it is a machine nobody has connected yet, which is the state every
+     * instrument is in the day it is entered in the register. NOT NULL would have forced a fake
+     * interface row per instrument and then downed every one of them on the first sweep.
+     *
+     * It is NOT `connection`, whose own comment two lines up says nothing branches on it. Making a
+     * free-text field branch is the silent overloading this schema avoids everywhere else.
+     */
+    interfaceId: text("interface_id").references(() => interfaces.id),
     active: boolean("active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     createdBy: text("created_by").notNull(),
@@ -700,6 +799,12 @@ export const labInstruments = pgTable(
     updatedBy: text("updated_by").notNull(),
   },
   (t) => [
+    /**
+     * ONE INSTRUMENT PER BRIDGE. Two analysers pointing at one `interfaces` row would both go
+     * `interface_down` on one lapse and both come back on one heartbeat, which is a lie about
+     * whichever of them was actually still connected.
+     */
+    uniqueIndex("lab_instruments_interface_ux").on(t.interfaceId).where(sql`${t.interfaceId} is not null`),
     /**
      * TWO instrument rows against one machine would give it two code maps and two sample-id modes,
      * and an ingest resolving through "the" instrument would pick by row order. The machine is the

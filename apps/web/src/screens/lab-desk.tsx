@@ -8,6 +8,7 @@ import {
   searchOrderables,
 } from "../lib/lab-api";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "../lib/auth";
 import { LabSeatFrame, sexAge } from "./lab-seat";
 import type {
   DeskOrderRequest, WireDeskFindHit, WireDeskOrder, WireDuplicateWarning, WireLabDoctor, WireOrderable, WirePricedDraft,
@@ -81,6 +82,7 @@ export function moneyBlockFor(
 
 export function LabDesk(): React.ReactElement {
   const { t } = useTranslation();
+  const { can } = useAuth();
   const qc = useQueryClient();
   const serviceDate = istToday();
 
@@ -112,9 +114,28 @@ export function LabDesk(): React.ReactElement {
 
   useEffect(() => { fieldRef.current?.focus(); }, []);
 
+  /**
+   * ═══ THE PANEL ASKS FOR A GRANT THIS SEAT DOES NOT HOLD, AND SAID SO AS A FAILURE ═══
+   *
+   * `GET /lab/collection/queue` is gated on `lab.collection.operate` — the permission to DRAW BLOOD —
+   * and `lab_reception` does not hold it. This query had no `enabled:` guard and a 30-second refetch,
+   * so a reception screen fired a **forbidden request twice a minute, for ever**, and rendered
+   * *"The portal list could not be loaded"* — which sends a clerk to look for a network fault that
+   * does not exist. Found by opening the seat in a browser; no test can see a 403 the UI swallows.
+   *
+   * The `enabled:` idiom was already three lines below this, on `catalogue`.
+   *
+   * **The vocabulary mismatch is NOT fixed here and must not be.** Reception wants to READ the queue
+   * to answer *"has my order reached?"* — the hint above the panel says exactly that — and the only
+   * door is the ACT of drawing blood. Widening `lab.collection.operate` to reception would decide,
+   * in a screen fix, that a clerk may draw blood. Splitting the route into a read door and an operate
+   * door is a design call and it is the owner's.
+   */
+  const maySeePortal = can("lab.collection.operate");
   const portal = useQuery({
     queryKey: ["lab", "collection", serviceDate],
     queryFn: () => collectionQueue(serviceDate),
+    enabled: maySeePortal,
     refetchInterval: 30_000,
   });
   const catalogue = useQuery({
@@ -273,7 +294,14 @@ export function LabDesk(): React.ReactElement {
         <section className="space-y-2" aria-label={t("lab.desk.portal")}>
           <h2 className="text-sm font-semibold">{t("lab.desk.portal")}</h2>
           <p className="text-xs text-muted-foreground">{t("lab.desk.portalHint")}</p>
-          {portal.isError && <p className="text-sm">{t("lab.desk.portalUnavailable")}</p>}
+          {/*
+            A REFUSAL IS A SENTENCE, NOT A BLANK. Gating the query alone would replace a misleading
+            error with an empty panel and no explanation, which is worse: a refusal presented as a
+            failure teaches a user to ignore it, and a refusal presented as NOTHING teaches it faster.
+            So the seat is told what it may not see, and by which grant.
+          */}
+          {!maySeePortal && <p className="text-sm">{t("lab.desk.portalNotPermitted")}</p>}
+          {maySeePortal && portal.isError && <p className="text-sm">{t("lab.desk.portalUnavailable")}</p>}
           <ul className="divide-y divide-border rounded border border-border text-sm">
             {(portal.data ?? []).slice(0, 12).map((row) => (
               <li key={row.specimenId} className="flex items-center justify-between gap-2 px-2 py-1.5">

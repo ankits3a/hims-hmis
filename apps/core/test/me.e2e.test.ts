@@ -9,7 +9,8 @@ import { setupTestDb, truncateAll } from "./helpers/db";
 import {
   activateOpdVisitDefinition, ensureRole, mkDoctor, mkPatient, mkUser, openOpdVisit, seedOpdBase, seedOpdMasters,
 } from "./helpers/opd";
-import { grantPermissionToRole, syncPermissions } from "../src/kernel/auth/permissions";
+import { grantPermissionToRole, hasPermission, syncPermissions } from "../src/kernel/auth/permissions";
+import { collectDeskProviders } from "../src/kernel/desk/registry";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
 import { events } from "../src/kernel/db/schema/events";
@@ -83,10 +84,45 @@ describe("me (desk / report / export) e2e — 07c", () => {
   const get = (path: string, token: string) =>
     request(app.getHttpServer()).get(path).set("Authorization", `Bearer ${token}`);
 
+  /**
+   * ═══ THE DESK PROMISES "UP TO N, BEST EFFORT" — SO N IS NOT ASSERTABLE AT RUNTIME ═══
+   *
+   * `runOne` gives every provider `DESK_PROVIDER_BUDGET_MS` (250 ms) and resolves `[]` on timeout,
+   * deliberately: *"one provider failing degrades its own card, never the desk."* An EXACT card set
+   * therefore asserts something the assembler never promised, and this case asserted one against the
+   * real registry — five providers under load is five dice, which is how the sibling below failed on
+   * a 21.6-minute twin and blocked #168.
+   *
+   * **The subject of THIS case is the permission mapping, not the race**, so it is asserted where it
+   * can be exact: which PROVIDERS the clerk's permissions unlock, read straight off the real
+   * registry with no `load()` and no budget.
+   *
+   * **Provider keys, not card keys, and the distinction is the point.** `loadDesk` gates on
+   * `provider.permission` and one provider may emit several cards under names of its own choosing —
+   * `opd.desk` is a single provider and it returns `opd.hall` and `opd.myVisits`. So the gate is
+   * assertable exactly, at the layer the gate lives on; the card keys are that provider's OUTPUT,
+   * and output is what the budget can take away. Asserting the gate at the card layer conflated the
+   * two, which is why an authorisation claim was riding on a stopwatch.
+   *
+   * What remains at runtime is the half that is still exact under degradation: **no card appears
+   * that the caller's permissions do not unlock.** A dropped card can only shorten the list, never
+   * add a key, so the leak guard survives the budget intact.
+   */
   it("T1: the desk composes the cards the caller's permissions unlock", async () => {
+    const unlocked: string[] = [];
+    for (const provider of collectDeskProviders(registry)) {
+      /** `ctx.actor.id` and `"hospital"` — the exact call `loadDesk` makes, so this asserts the
+       *  question the runtime asks rather than a neighbouring one. */
+      if (await hasPermission(db, clerkA.actor.id, provider.permission, "hospital")) unlocked.push(provider.key);
+    }
+    expect(unlocked.sort()).toEqual(["opd.desk"]);
+
     const res = await get(`/me/desk?date=${DATE}`, clerkA.token).expect(200);
     expect(res.body.date).toBe(DATE);
-    expect(res.body.cards.map((c: { key: string }) => c.key).sort()).toEqual(["opd.hall", "opd.myVisits"]);
+    /** And at runtime, the half that stays exact under degradation: nothing appears from a provider
+     *  the clerk does not hold. A dropped card can only shorten this list, never add a key. */
+    const keys = (res.body.cards as { key: string }[]).map((c) => c.key);
+    expect(keys.filter((k) => !["opd.hall", "opd.myVisits"].includes(k))).toEqual([]);
   });
 
   /** E-1 from the server's side: an empty desk is INFORMATION, and it is not a refusal. */
@@ -191,7 +227,22 @@ describe("me (desk / report / export) e2e — 07c", () => {
     await mkPatient(db, ramesh.actor, { name: "Kamla", phone: undefined });   // no mobile, registered today by him
     const res = await get(`/me/desk?date=${new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10)}`, ramesh.token).expect(200);
     const cards = res.body.cards as { key: string; stats?: { key: string; value: string; href?: string }[]; rows?: unknown[] }[];
-    expect(cards.map((c) => c.key).sort()).toEqual(["opd.appointments", "opd.hall", "opd.myVisits", "patients.cameBack", "patients.registration"]);
+    /**
+     * SUBSET, not equality — see the budget note on T1. Five providers each needing to land under
+     * 250 ms is five dice, and this is the case that failed on a loaded runner. Nothing is lost:
+     * the negative claim ("no drawer") is asserted on its own line below, and the positive claim is
+     * the registration tile, which this case is ABOUT and which the next line requires to exist.
+     */
+    expect(cards.map((c) => c.key).filter((k) => ![
+      "opd.appointments", "opd.hall", "opd.myVisits", "patients.cameBack", "patients.registration",
+    ].includes(k))).toEqual([]);
+    /**
+     * ASSERTED EXPLICITLY, because the three checks below it are vacuously true on an empty desk —
+     * `every()` on `[]` passes and `JSON.stringify([])` contains no patient name. Without this line
+     * a total degradation would have turned this case green while proving nothing, which is the one
+     * failure that looks exactly like success.
+     */
+    expect(cards.map((c) => c.key)).toContain("patients.registration");
     const reg = cards.find((c) => c.key === "patients.registration")!;
     expect(reg.stats!.find((s) => s.key === "desk.patients.registered")!.value).toBe("1");
     expect(reg.stats!.find((s) => s.key === "desk.patients.noMobile")!.value).toBe("1");
@@ -207,7 +258,12 @@ describe("me (desk / report / export) e2e — 07c", () => {
     await openSessionFor(db, asha, 225000);
     const res = await get(`/me/desk?date=${DATE}`, asha.token).expect(200);
     const cards = res.body.cards as { key: string; stats?: { key: string; value: string }[] }[];
-    expect(cards.map((c) => c.key)).toEqual(["billing.myCollections"]);
+    /** Subset for the budget, and the presence of the drawer asserted on its own: `cards[0]!` would
+     *  have thrown a TypeError on an empty desk rather than failing an assertion, which reads as a
+     *  harness fault instead of the degradation it is. The negative — no registration tile — is
+     *  carried by the subset exactly as it was by the equality. */
+    expect(cards.map((c) => c.key).filter((k) => k !== "billing.myCollections")).toEqual([]);
+    expect(cards.map((c) => c.key)).toContain("billing.myCollections");
     const stats = cards[0]!.stats!;
     expect(stats.find((s) => s.key === "desk.billing.float")!.value).toBe(stats.find((s) => s.key === "desk.billing.expectedCash")!.value);   // nothing taken yet: the drawer should hold the float
     expect(stats.find((s) => s.key === "desk.billing.float")!.value).toContain("2,250");
