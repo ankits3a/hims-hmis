@@ -1,7 +1,8 @@
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { recordPhiAccess } from "../../kernel/phi/audit";
-import { imagingReports, imagingStudies } from "../../kernel/db/schema/radiology";
+import { imagingReportDelivery, imagingReports, imagingStudies } from "../../kernel/db/schema/radiology";
 import { orderItems } from "../../kernel/db/schema/orders";
 import { patients } from "../../kernel/db/schema/patients";
 import { displayName } from "../patients";
@@ -376,6 +377,47 @@ export async function reportView(db: Db, actor: Actor, reportId: string): Promis
     encounterId: row.study.encounterNo,
     reason: `report v${String(row.report.version)} on ${row.study.accessionNo}`,
   });
+
+  /**
+   * ═══ 18a-iii T5 / D7 — THE FACT THE UNREAD WATCHMAN NEEDS, RECORDED WHERE IT HAPPENS ═══
+   *
+   * Stamped on the FIRST read by somebody who is not the signer, and never again. See the column's
+   * own comment for why the signer is excluded (a radiologist re-reading their own report is not the
+   * referring clinician acting on it) and why first rather than latest (the question is "did it
+   * land", and a report read once has landed).
+   *
+   * `isNull(firstReadAt)` in the WHERE makes this idempotent and race-free without a transaction of
+   * its own: the second reader's update matches no row. It is a `set` and not a read-then-write for
+   * that reason.
+   *
+   * **A failure here must never fail the read.** A radiologist opening a report at 02:00 does not
+   * care that a chaser's bookkeeping column could not be written, and a `catch` that swallowed the
+   * report itself would be the cure being worse than the disease. Drizzle throws on a genuine
+   * failure and the route's `toHttp` would turn it into a 500 on a screen that had already
+   * succeeded — so the write is last, after the PHI log, and its only effect on the caller is a
+   * column they do not read.
+   */
+  if (row.report.status === "signed" && row.report.publishedAt !== null
+      && row.report.signerId !== actor.id) {
+    /**
+     * An UPSERT on `imaging_report_delivery`, not an update of the report: the report row is
+     * append-only by database trigger (`imaging_reports_forbid_mutation`, migration 0047) and only
+     * `status` and `published_at` may ever change on it. That refusal is what produced this table —
+     * a signed report is a courtroom document, and a chaser's bookkeeping does not belong on it.
+     *
+     * `setWhere` on the conflict arm is what makes it FIRST-read rather than latest, and makes two
+     * simultaneous readers safe without a transaction: the second reader's update matches no row
+     * because `first_read_at` is already set.
+     */
+    await db
+      .insert(imagingReportDelivery)
+      .values({ id: newId(), reportId: row.report.id, firstReadAt: new Date(), firstReadBy: actor.id })
+      .onConflictDoUpdate({
+        target: imagingReportDelivery.reportId,
+        set: { firstReadAt: new Date(), firstReadBy: actor.id },
+        setWhere: isNull(imagingReportDelivery.firstReadAt),
+      });
+  }
 
   return {
     reportId: row.report.id, studyId: row.study.id, accessionNo: row.study.accessionNo,

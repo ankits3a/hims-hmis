@@ -44,8 +44,15 @@ describe("acquisition: the patient is on the table (18a T7)", () => {
   let sonologist: Actor;
 
   const DAY = "2026-08-31";
-  const NOW = new Date("2026-08-31T06:00:00.000Z");
-  const SLOT = new Date("2026-08-31T09:00:00.000Z");
+  /**
+   * DERIVED from `DAY`, not pinned beside it. `openFormF` compares `onDate` against the clock
+   * (`FORM_F_BACKFILL_DAYS`), so any call passing `DAY` must also pass a `now` on that day —
+   * and two independently pinned constants can drift apart in a later edit while both still
+   * look right. `form-f.concurrency.test.ts` states the rule: *a test that walks a year
+   * boundary says which day it is standing on rather than depending on the real one.*
+   */
+  const NOW = new Date(`${DAY}T06:00:00.000Z`);
+  const SLOT = new Date(`${DAY}T09:00:00.000Z`);
 
   beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
   afterAll(async () => { await teardown(); });
@@ -116,7 +123,7 @@ describe("acquisition: the patient is on the table (18a T7)", () => {
       await withTx(db, (tx) => openFormF(tx, fx.radiographer, {
         studyId: study.studyId, patientId: fx.patientId,
         deviceResourceId: fx.devices[deviceKey]!, personUserId: fx.radiographer.id,
-        indicationCode: "obstetric", applicability: "pregnant", onDate: DAY,
+        indicationCode: "obstetric", applicability: "pregnant", onDate: DAY, now: NOW,
       }));
     }
     for (const kind of checked.gates) {

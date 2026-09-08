@@ -169,8 +169,16 @@ What that means operationally:
 
 - Between 21:00 and 07:00 IST a pathologist who keys a result may sign it, and the row is stamped
   `pathologist_review_pending = true`. **The printed report says PROVISIONAL.**
-- Those rows are the morning queue. Somebody must work it, and this build ships no screen filter for
-  it — read `lab_results` where `pathologist_review_pending` is true.
+- Those rows are the morning queue, and **the verify seat now shows it**: *"Released overnight ·
+  awaiting the second pair of hands"*, with the patient, the analyte, the number and **who released
+  it alone** on each row. It appears only when there is something in it. A second pathologist clicks
+  Reviewed, the flag clears, and the next report prints as final rather than PROVISIONAL.
+  **The reviewer may not be the releaser** — that is refused as `sod_violation`, because night mode
+  BORROWED the second pair of hands and the morning review is that pair arriving.
+  Each review is evented as `lab.night_release_reviewed`, naming both people: that is the record
+  NABL 15189 asks for when it asks who reviewed results released in the authorised signatory's
+  absence. **Until this shipped the queue existed only as a SQL predicate in this paragraph**, which
+  is why it says so.
 - Between 07:00 and 21:00 the same act is refused `sod_violation` and the refusal is EVENTED
   (`lab.sod_violation_blocked`). NABL asks how often the single-operator path was used; that event
   is the count.
@@ -255,7 +263,12 @@ existing process and this one, and the paper record remains authoritative until 
 
 Stated here so nobody discovers it at a counter:
 
-- **No analyzer interface.** Every number is keyed. `entry_mode = 'interface'` does not exist (17-E).
+- **The analyser interface EXISTS as of 17-E** and this line used to deny it. `entry_mode =
+  'interface'` is written by the ingest route a bridge posts to; instruments are registered, codes
+  are mapped per machine, and a value that cannot be named PARKS rather than attaching by guess.
+  What is still true: **no hospital has connected one**, so nothing has ever written `interface` on
+  a real deployment — and the two acts that make it reachable, registering an instrument and
+  creating a `lab_bridge` account, are deliberate human ones.
 - **No auto-verification.** The engine ships with zero rules and a `system` actor is refused at
   verify outright.
 - **No QC, no reagent lots, no cultures, no send-outs, no histology** (17-E, 17-M, 17-H).
@@ -264,6 +277,11 @@ Stated here so nobody discovers it at a counter:
 - **No patient-app access to results** (22c-F).
 - **No KPI registry.** 02 §8's KPI lines are NOT registered anywhere, because Plan 21's registry does
   not exist. The pilot harvest in §9 is the manual substitute.
+- **One harvest line no longer has to be counted by hand:** a reflex rule that fires and cannot place
+  — the reflexed test has no price in the active tariff version — now emits `lab.reflex_refused`
+  naming the rule, the test it could not add and why. It used to roll back with its savepoint, show
+  the pathologist a warning once, and be counted nowhere; *"how often does a reflex fail to place"*
+  is how a hospital learns its tariff has a hole in it.
 - **The `lab_item` machine has no `resulted → cancelled` or `verified → cancelled` edge** (§9.2 F37).
   A test withdrawn after its number is keyed cancels on the ENVELOPE and the lab instance is left
   where it stands. Nothing reads it — every worklist and sweep keys off the envelope — but a phase

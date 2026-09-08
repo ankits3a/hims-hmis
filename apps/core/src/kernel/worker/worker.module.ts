@@ -24,7 +24,7 @@ import {
   OT_IMPLANT_CONFIRMED_CONSUMER, OT_PATIENT_MERGED_CONSUMER, implantConfirmedConsumer, otManifest,
   patientMergedConsumer,
 } from "../../modules/ot";
-import { labManifest } from "../../modules/lab";
+import { LAB_INTERFACE_CONSUMER, labInterfaceConsumer, labManifest } from "../../modules/lab";
 import { pcpndtManifest } from "../../modules/pcpndt";
 import {
   RADIOLOGY_ORDER_PLACED_CONSUMER, orderPlacedConsumer, radiologyManifest,
@@ -274,6 +274,22 @@ export function workerConsumers(db: Db): Record<string, Handler> {
     // PLAN 15 T5 / DD9 — the scan's asynchronous half. `otManifest` declares
     // `material.consumed` -> `ot.implant_confirmed` in the commit that adds this line.
     [OT_IMPLANT_CONFIRMED_CONSUMER]: implantConfirmedConsumer(db),
+    /**
+     * PLAN 17-E T7b — the EIGHTH, and the other half of the lab's first subscription. `labManifest`
+     * declares `interface.down` and `interface.restored` -> `lab.interface_status` in the commit that
+     * adds this line; `buildSubscriptionBus` turns a declaration with no matching handler into a BOOT
+     * ERROR, so shipping one without the other stops the worker at startup.
+     *
+     * Both names are the KERNEL's and every registered printer and scanner in the hospital raises
+     * them, so this handler resolves `lab_instruments.interface_id` first and returns on a device that
+     * is not an analyser's bridge — the `kind !== "imaging"` shape, asked of a join.
+     *
+     * **The install above did not change.** `labManifest` has been registered in this process since
+     * Plan 17 T2 for its two scheduler sweeps, so this task adds a subscription to a manifest the
+     * worker already carried rather than a manifest to the worker; `manifests.test.ts` leg 3 stays at
+     * six for the same reason.
+     */
+    [LAB_INTERFACE_CONSUMER]: labInterfaceConsumer(db),
   };
 }
 

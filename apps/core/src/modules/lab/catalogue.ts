@@ -5,6 +5,7 @@ import {
   labAnalytes, labOrderableAnalytes, labOrderables, labReferenceRanges, labReflexRules,
 } from "../../kernel/db/schema";
 import { assertFormulaParses } from "./formula";
+import { isFutureIstDay } from "./ranges";
 import { LabError } from "./errors";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -260,13 +261,158 @@ export async function getOrderable(
   return row;
 }
 
-/** This analyte's range rows, for `resolveRange`. Loaded once per analyte and passed in (purity). */
+/**
+ * This analyte's range rows, for `resolveRange`. Loaded once per analyte and passed in (purity).
+ *
+ * ═══ ORDERED, AND THAT IS A CORRECTNESS PROPERTY RATHER THAN A TIDINESS ONE ═══
+ *
+ * `pickBySex` takes the FIRST row matching the patient's sex (`ranges.ts:83`, `rows.find(...)`), and
+ * this select had no `ORDER BY`. Two bands overlapping for one (sex, age window) would therefore
+ * decide which reference interval a report is flagged against **by the order Postgres happened to
+ * return rows in** — the same shape that had `attachMachineValue` attaching a machine value to an
+ * arbitrary order item, one table over in this same phase.
+ *
+ * `putReferenceRange` now refuses to create such an overlap, so this ordering should never be what
+ * decides anything. It is here for the book that was loaded before that door existed: **an
+ * unordered query is a decision nobody made**, and two reads of identical data must not resolve
+ * differently. Narrowest-starting band first, sex breaking the tie, id last so the order is total.
+ */
 export async function rangesFor(
   exec: Db | Tx,
   analyteId: string,
 ): Promise<(typeof labReferenceRanges.$inferSelect)[]> {
-  return (exec as Db).select().from(labReferenceRanges).where(eq(labReferenceRanges.analyteId, analyteId));
+  return (exec as Db).select().from(labReferenceRanges)
+    .where(eq(labReferenceRanges.analyteId, analyteId))
+    .orderBy(labReferenceRanges.ageMinDays, labReferenceRanges.sex, labReferenceRanges.id);
 }
+
+/**
+ * ═══ THE RANGE BOOK'S DOOR — AND THE GUARD THAT STOPS THE DOOR BEING THE DEFECT ═══
+ *
+ * `lab_reference_ranges` had exactly two writes in the tree, both in `seed-lab-catalogue.ts` — a
+ * `delete` of every row and an `insert` — and that script refuses production by design. So a
+ * hospital loading its own catalogue through `POST /lab/catalogue/analytes` and `/orderables` got
+ * analytes and orderables and **no reference bands**: every flag inert, `standup:check`'s
+ * `lab_range_sources_present` red for ever, and a printed report with no biological reference
+ * interval, which is not a report an NABL laboratory may issue.
+ *
+ * **Two latent defects become reachable the moment this function exists, so both are refused here
+ * rather than in a follow-up.** They are unreachable today only because the sole writer is a curated
+ * fixture — measured: 124 rows, zero overlaps, every `effective_from` the same past date.
+ *
+ *  1. **OVERLAP.** See `rangesFor` above. Refused per SEX VALUE, not across them: `pickBySex` prefers
+ *     an exact sex and falls back to `any`, so a general adult band beside a narrower one for women
+ *     is the DESIGN. A refusal that compared age windows without comparing the sex would make the
+ *     book unable to express the most ordinary thing in it, and the curator would discover the rule
+ *     by having their real range book rejected.
+ *
+ *  2. **A FUTURE `effective_from`.** The column is `notNull()` and **nothing reads it** — not
+ *     `ranges.ts`, not `resolveRange`, not this file — and there is no `effective_to`, so the book
+ *     has no versioning at all. A band dated next year would take effect the instant it was written.
+ *     Giving the column a reader is range-book VERSIONING: it changes how every historical result
+ *     resolves and it is its own phase. **Until then the honest act is to refuse a date the code
+ *     will silently ignore**, rather than accept it and appear to have honoured it.
+ *
+ * The high bound is EXCLUSIVE, matching `resolveRange`'s own age filter (`ageDays >= min && ageDays
+ * < max`) — so two bands that merely touch at 6570 days are adjacent and not overlapping. A refusal
+ * that used a closed interval here would contradict the resolver and reject a correctly built book.
+ */
+export type ReferenceRangeInput = {
+  analyteId: string;
+  sex: "male" | "female" | "other" | "any";
+  ageMinDays: number;
+  ageMaxDays: number;
+  low?: string | null;
+  high?: string | null;
+  text?: string | null;
+  criticalLow?: string | null;
+  criticalHigh?: string | null;
+  /** NABL asks where a range came from: the kit insert, the textbook, the local study. */
+  source: string;
+  effectiveFrom: string;
+};
+
+export async function putReferenceRange(
+  exec: Db | Tx,
+  actor: Actor,
+  input: ReferenceRangeInput,
+  now: Date = new Date(),
+): Promise<string> {
+  await assertMayManage(exec, actor);
+
+  const [analyte] = await (exec as Db).select({ code: labAnalytes.code })
+    .from(labAnalytes).where(eq(labAnalytes.id, input.analyteId));
+  if (!analyte) {
+    throw new LabError("unknown_analyte", `no lab analyte ${input.analyteId}`);
+  }
+
+  /**
+   * Refused HERE as well as by `lab_reference_ranges_age_ck` and `..._value_ck`, which is
+   * `upsertAnalyte`'s own argument two functions up: the table is the backstop for everything that
+   * never passes through this function, and the sentence is for the curator at a screen.
+   */
+  if (input.ageMinDays >= input.ageMaxDays) {
+    throw new LabError(
+      "catalogue_invalid",
+      `${analyte.code}: the age band ${input.ageMinDays}..${input.ageMaxDays} days is inverted or empty`,
+    );
+  }
+  if ((input.low ?? null) === null && (input.high ?? null) === null && (input.text ?? null) === null) {
+    throw new LabError(
+      "catalogue_invalid",
+      `${analyte.code}: a range that carries neither a number nor text says nothing at all`,
+    );
+  }
+  if (input.source.trim() === "") {
+    throw new LabError("catalogue_invalid", `${analyte.code}: a reference range names its source`);
+  }
+  if (isFutureIstDay(input.effectiveFrom, now)) {
+    throw new LabError(
+      "catalogue_invalid",
+      `${analyte.code}: a range effective ${input.effectiveFrom} is in the future, and nothing in ` +
+        "this build reads `effective_from` — it would take effect immediately, so it is refused " +
+        "rather than accepted and silently ignored",
+    );
+  }
+
+  const siblings = await (exec as Db).select().from(labReferenceRanges)
+    .where(and(
+      eq(labReferenceRanges.analyteId, input.analyteId),
+      eq(labReferenceRanges.sex, input.sex),
+    ));
+  const clash = siblings.find(
+    (r) => input.ageMinDays < r.ageMaxDays && r.ageMinDays < input.ageMaxDays,
+  );
+  if (clash) {
+    throw new LabError(
+      "range_overlap",
+      `${analyte.code}: ${input.sex} ${input.ageMinDays}..${input.ageMaxDays} days overlaps the ` +
+        `existing band ${clash.ageMinDays}..${clash.ageMaxDays} — two bands over one age would make ` +
+        "the interval a report is flagged against depend on row order",
+      { existingRangeId: clash.id },
+    );
+  }
+
+  const id = newId();
+  await (exec as Db).insert(labReferenceRanges).values({
+    id,
+    analyteId: input.analyteId,
+    sex: input.sex,
+    ageMinDays: input.ageMinDays,
+    ageMaxDays: input.ageMaxDays,
+    low: input.low ?? null,
+    high: input.high ?? null,
+    text: input.text ?? null,
+    criticalLow: input.criticalLow ?? null,
+    criticalHigh: input.criticalHigh ?? null,
+    source: input.source.trim(),
+    effectiveFrom: input.effectiveFrom,
+    createdBy: actor.id,
+    createdAt: now,
+  });
+  return id;
+}
+
 
 /** The ACTIVE reflex rules for one analyte. 17b calls it inside the verifying transaction (DD8). */
 export async function activeReflexRules(
