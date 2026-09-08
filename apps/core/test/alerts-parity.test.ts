@@ -144,10 +144,21 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
         // carries the enumeration rather than the slogan — corrected in pass 2, once the sixth
         // registrant was the one who would pay for the difference.
         "sweepExpiredPharmacyPicks",
+        // PLAN 18a-iii T5 / D7 — the SEVENTEENTH and EIGHTEENTH. The docstring's enumeration held
+        // for a SIXTH registrant and was right again: `jobs.ts`, `scheduler.test.ts`'s census and
+        // its spies, this list and its two counts, and `alerts.yml` in three places (leg 1a's
+        // regex, leg 1b's regex, and two `absent()` terms).
+        //
+        // Reading the enumeration BEFORE writing the jobs is what it is for, and this registrant
+        // did not: the `alerts.yml` legs were found by this suite going red, not by the docstring
+        // being read first. The tax is the same either way; the difference is whether you pay it
+        // once or discover it three times.
+        "sweepCriticalChaser",
+        "sweepUnreadWatchman",
       ].sort(),
     );
-    expect(registered).toHaveLength(16);
-    expect(new Set(registered).size).toBe(16); // no job registered twice
+    expect(registered).toHaveLength(18);
+    expect(new Set(registered).size).toBe(18); // no job registered twice
   });
 
   it("the two staleness legs together cover every registered job, exactly once each", () => {

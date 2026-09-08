@@ -380,7 +380,33 @@ export function PharmacyCounter(): React.ReactElement {
                       <input aria-label={t("pharmacyCounter.identityValue")} className="w-24 rounded border px-2 py-1" value={identityValue} onChange={(ev) => setIdentityValue(ev.target.value)} />
                     </>
                   )}
-                  <Button type="button" onClick={() => void handOver()}>{t("pharmacyCounter.handover")}</Button>
+                  {/*
+                    THE IDENTITY BOX IS REQUIRED, SO THE BUTTON SAYS SO — it used to say "API 400".
+
+                    `handOver` always sends `{ via, value: identityValue.trim() }` for a scheduled
+                    dispense, and the controller's schema is `z.string().min(1).max(12)`, parsed one
+                    line ABOVE its try/catch. So an empty box was rejected by zod, not by the
+                    pharmacy guard: the thrown BadRequestException carries a zod issue ARRAY and no
+                    `code`, `pharmacyErrorText` finds nothing to look up, and the counter fell
+                    through to `ApiError.message` — the literal string `API 400`, at the Schedule
+                    H1 hand-over, which is the most legally-loaded control on this screen.
+
+                    The server guard is NOT dead code and this does not replace it:
+                    `pharmacy.e2e.test.ts:107` POSTs `{}` and gets a 409
+                    `identity_confirmation_required`, which is what any other client sees. The
+                    refusal always failed CLOSED — rejected before `withIdempotency`, before any
+                    database access, so no stock moved and no register row was written. What was
+                    broken was only the pharmacist's ability to read it.
+
+                    `disabled` is the same answer the cancel control ten lines below already gives
+                    (`disabled={reason.trim() === ""}`): a required field states its requirement in
+                    the control rather than in a refusal after the click.
+                  */}
+                  <Button
+                    type="button"
+                    disabled={inHand.scheduled && identityValue.trim() === ""}
+                    onClick={() => void handOver()}
+                  >{t("pharmacyCounter.handover")}</Button>
                 </div>
               )}
               {inHand.status === "handed_over" && (

@@ -6,6 +6,7 @@ import { withTx } from "../../kernel/db/client";
 import { AERB_LICENCE_TYPES, AERB_PERSON_ROLES, QA_RESULTS } from "../../kernel/db/schema/aerb";
 import { appointPerson, changeLicenceStatus, endAppointment, fileLicence } from "./licences";
 import { aerbPickers, appointments, licenceRegister, unlicensedDevices } from "./read";
+import { istDayString } from "../../kernel/approvals/cumulative";
 import { mayManage } from "./access";
 import { qaRegister, recordQa } from "./qa";
 import { doseRegisterRows, patientCumulativeDose } from "./dose";
@@ -156,7 +157,23 @@ export class AerbController {
   @Get("licences/gaps")
   @RequirePermission("aerb.registers.read", "hospital")
   async gaps(@Query("onDate") onDate?: string): Promise<unknown> {
-    const date = parsed(isoDateSchema, onDate);
+    /**
+     * ═══ THE GO-LIVE CHECK IS THE BARE CALL, AND THE BARE CALL WAS A 400 ═══
+     *
+     * `onDate` is declared optional and was parsed as required, so `GET /aerb/licences/gaps` —
+     * the exact request `docs/runbooks/radiation-safety-go-live.md` §0 tells a human to make, and
+     * the one whose empty answer is the deploy gate — came back
+     * `400 expected string, received undefined`. The screen was unaffected because it always sends
+     * a date, and the e2e only ever asked with `?onDate=`, so nothing pointed at the documented
+     * form.
+     *
+     * Defaulting to the server's IST day is this module's own idiom (`calendar.ts`, `badges.ts`:
+     * `opts.onDate ?? istDayString(new Date())`) and every other optional date parameter in this
+     * controller already guards with `undefined ? undefined : parsed(...)`. This one was the
+     * exception. **The IST day, never the UTC one** — between 00:00 and 05:30 IST the UTC date is
+     * yesterday, and a gap check run on the night shift would answer for the wrong day.
+     */
+    const date = onDate === undefined ? istDayString(new Date()) : parsed(isoDateSchema, onDate);
     try {
       return { rows: await unlicensedDevices(this.db, date) };
     } catch (e) { toHttp(e); }

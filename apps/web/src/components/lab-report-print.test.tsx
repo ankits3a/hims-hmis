@@ -59,6 +59,74 @@ it("prints the SNAPSHOT's identity, value, unit, flag word and reference interva
   expect(screen.getByText(/reference range: unspecified sex/)).toBeInTheDocument();
 });
 
+/**
+ * ═══ THE HOSPITAL, AND THE PERSON WHO SIGNED — the half of this document nobody had opened ═══
+ *
+ * `REPORT` above is deliberately left as it was: **no `letterhead`, no `fullName`, no
+ * `registrationNo`.** That is not an oversight, it is the OLD-SNAPSHOT case, and the existing
+ * assertions below are its contract — a report published before this change is immutable by database
+ * trigger, can never be backfilled, and must keep rendering exactly as it was signed.
+ *
+ * The new fixture is a separate constant so both states are proved, rather than the old one being
+ * quietly upgraded and the fallback going untested. `dr.iyer` staying green below is the assertion
+ * that a pre-change report is not broken by this change.
+ */
+const SIGNED: WireReportView = {
+  ...REPORT,
+  snapshot: {
+    ...REPORT.snapshot,
+    letterhead: {
+      name: "CRK Medical College & Hospital",
+      addressLines: ["Rooma, Kanpur 208001", "Uttar Pradesh"],
+    },
+    signatory: {
+      ...REPORT.snapshot.signatory,
+      fullName: "Dr Meera Iyer",
+      registrationNo: "UPMC-45219",
+    },
+  },
+};
+
+it("prints the HOSPITAL that issued the report — its name and every address line", () => {
+  renderWithProviders(<LabReportPrint report={SIGNED} />);
+
+  expect(screen.getByText("CRK Medical College & Hospital")).toBeInTheDocument();
+  expect(screen.getByText("Rooma, Kanpur 208001")).toBeInTheDocument();
+  expect(screen.getByText("Uttar Pradesh")).toBeInTheDocument();
+  /** The department line stays — it is now a subtitle under a hospital rather than the whole
+   *  letterhead, which is what it was pretending to be. */
+  expect(screen.getByText("Department of Laboratory Medicine")).toBeInTheDocument();
+});
+
+it("signs with the practitioner's NAME and council number, never the login", () => {
+  renderWithProviders(<LabReportPrint report={SIGNED} />);
+
+  expect(screen.getByText("Dr Meera Iyer")).toBeInTheDocument();
+  expect(screen.getByText(/UPMC-45219/)).toBeInTheDocument();
+  /**
+   * **THE KILL.** The login must be absent from the page, not merely displaced by the name. A
+   * username is an authentication artefact and belongs on no medical document.
+   */
+  expect(screen.queryByText("dr.iyer")).not.toBeInTheDocument();
+});
+
+/**
+ * ═══ AND A REPORT SIGNED BEFORE ANY OF THIS STILL PRINTS ═══
+ *
+ * `lab_reports_forbid_published_mutation` freezes a published snapshot, so the fields cannot be
+ * backfilled and older reports will carry none of them for ever. The failure mode to design against
+ * is not a missing hospital — it is the word `undefined` on a patient's report, or a crash on a
+ * reprint of a document somebody is holding a receipt for.
+ */
+it("an OLD snapshot — no letterhead, no full name — still renders, and never prints `undefined`", () => {
+  const { container } = renderWithProviders(<LabReportPrint report={REPORT} />);
+
+  expect(screen.getByText("dr.iyer")).toBeInTheDocument();
+  expect(screen.queryByText("CRK Medical College & Hospital")).not.toBeInTheDocument();
+  expect(screen.queryByText(/Reg\. No\./)).not.toBeInTheDocument();
+  expect(container.textContent).not.toMatch(/undefined|\[object Object\]/);
+});
+
 it("names the signatory and says the report is computer generated — with NO signature line", () => {
   renderWithProviders(<LabReportPrint report={REPORT} />);
   expect(screen.getByText("dr.iyer")).toBeInTheDocument();

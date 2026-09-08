@@ -261,6 +261,12 @@ export type CriteriaEntry = CriteriaBody["entries"][number];
 export type PrivilegesBody = z.infer<typeof privilegesBodySchema>;
 export type DepositPolicyBody = z.infer<typeof depositPolicyBodySchema>;
 export type PacuThresholdsBody = z.infer<typeof pacuThresholdsBodySchema>;
+/**
+ * The four kinds, re-exported from this module's own seam. `standup:check` reads it to ask whether
+ * every kind has a published row, and D3 says a census reads through the MODULE's loader rather than
+ * reaching into the schema — so the vocabulary has to leave by the same door as `activeDefinitionRow`.
+ */
+export { OT_DEFINITION_KIND_VALUES };
 export type OtDefinitionKind = (typeof OT_DEFINITION_KIND_VALUES)[number];
 
 /** The one place a body is validated. One kind, one schema, no second copy anywhere. */
