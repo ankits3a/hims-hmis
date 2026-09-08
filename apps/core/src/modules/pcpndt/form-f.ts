@@ -1,10 +1,11 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { appendEvent } from "../../kernel/events/append";
 import {
   pcpndtFormF, pcpndtFormFSerials, pcpndtRegisteredPersons,
 } from "../../kernel/db/schema/pcpndt";
+import { resources } from "../../kernel/db/schema/resources";
 import { PcpndtError } from "./errors";
 import { formFRecorded } from "./events";
 import { activeRegistrationFor } from "./registrations";
@@ -69,6 +70,32 @@ async function assertPermission(exec: Db | Tx, actor: Actor, permission: string)
  * A2 — the machine is on an ACTIVE registration whose validity window contains the scan day.
  * Returns the registration so the caller does not read it twice.
  */
+/**
+ * ═══ THE MACHINE, NAMED THE WAY A SONOLOGIST KNOWS IT ═══
+ *
+ * The refusals below print a device id, and a sonologist standing at a console cannot map a
+ * 26-character ULID to a room. The wrong-machine refusal was the worst of them: it printed TWO in
+ * one sentence and asked the reader to spot the difference.
+ *
+ * Reached on the REFUSAL PATH ONLY, so a registered scan still costs nothing. `pcpndt` naming a
+ * machine crosses no module boundary — `kernel/db/schema/pcpndt.ts` already FK-references
+ * `resources.id`, and `resources` is kernel rather than another module's table.
+ *
+ * The id is kept in `detail`, where a client reads it, and is the fallback when the row is gone.
+ */
+async function machineLabels(
+  exec: Db | Tx, ids: readonly string[],
+): Promise<(id: string) => string> {
+  const wanted = [...new Set(ids)];
+  const rows = wanted.length === 0 ? [] : await (exec as Db)
+    .select({ id: resources.id, code: resources.code, name: resources.name })
+    .from(resources).where(inArray(resources.id, wanted));
+  return (id: string): string => {
+    const r = rows.find((x) => x.id === id);
+    return r ? `${r.code} (${r.name})` : `device ${id}`;
+  };
+}
+
 export async function assertMachineRegistered(
   exec: Db | Tx, deviceResourceId: string, onDate: string,
 ): Promise<{ registrationId: string; machineId: string }> {
@@ -76,8 +103,9 @@ export async function assertMachineRegistered(
   if (!found) {
     throw new PcpndtError(
       "machine_not_registered",
-      `device ${deviceResourceId} is not on an active PCPNDT registration on ${onDate} — an `
-      + "ultrasound machine outside Form B may not perform a scan the Act covers",
+      `${(await machineLabels(exec, [deviceResourceId]))(deviceResourceId)} is not on an active `
+      + `PCPNDT registration on ${onDate} — an ultrasound machine outside Form B may not perform a `
+      + "scan the Act covers",
       { deviceResourceId, onDate },
     );
   }
@@ -140,7 +168,21 @@ async function nextSerialNo(
     ))
     .returning({ nextNo: pcpndtFormFSerials.nextNo });
   const row = rows[0];
-  if (!row) throw new PcpndtError("serial_conflict", `the serial counter for device ${deviceResourceId} vanished`);
+  if (!row) {
+    /**
+     * A lost race, and the reader's action is "try again" whichever machine it was — which is the
+     * argument for leaving the id raw. It is named anyway, on the rule that separates this from the
+     * `mwl.ts` exclusion: **that one is an audit FIELD, this one is prose a human reads.** And the
+     * single scenario where this fires more than once in a lifetime is the one where knowing which
+     * machine is the whole diagnosis.
+     */
+    const label = await machineLabels(tx, [deviceResourceId]);
+    throw new PcpndtError(
+      "serial_conflict",
+      `the Form F serial counter for ${label(deviceResourceId)} vanished — try again`,
+      { deviceResourceId },
+    );
+  }
   return row.nextNo - 1;
 }
 
@@ -198,10 +240,11 @@ async function assertSubjectMatches(tx: Tx, input: OpenFormFInput): Promise<void
       );
     }
     if (subject.deviceResourceId !== input.deviceResourceId) {
+      const label = await machineLabels(tx, [input.deviceResourceId, subject.deviceResourceId]);
       throw new PcpndtError(
         "unknown_form",
-        `this Form F names device ${input.deviceResourceId} and study ${input.studyId} is booked on `
-        + `${subject.deviceResourceId} — the register records the machine the scan happened on`,
+        `this Form F names ${label(input.deviceResourceId)} and the study is booked on `
+        + `${label(subject.deviceResourceId)} — the register records the machine the scan happened on`,
         { studyId: input.studyId, given: input.deviceResourceId, actual: subject.deviceResourceId },
       );
     }

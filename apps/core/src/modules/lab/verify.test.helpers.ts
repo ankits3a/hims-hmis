@@ -19,3 +19,17 @@ export async function activateTshReflex(db: Db): Promise<void> {
   await db.update(labReflexRules).set({ active: true })
     .where(eq(labReflexRules.analyteId, tsh!.id));
 }
+
+/**
+ * The DIABETIC reflex: a fasting glucose over 126 mg/dL adds an HbA1c — standard screening in any
+ * Indian corporate lab. **Its target is deliberately UNPRICED by `seedLabDeskBase`** (`HBA1C` is not
+ * in `PRICED_LAB_CODES`), which makes it the fixture for the refusal path: the counter never sells
+ * an HbA1c on its own, so nobody notices it is unpriced until a glucose reflexes onto it. That is
+ * the ordinary go-live gap close review M1 describes, reproduced rather than invented.
+ */
+export async function activateGlucoseReflex(db: Db): Promise<void> {
+  const [gluf] = await db.select({ id: labAnalytes.id }).from(labAnalytes)
+    .where(eq(labAnalytes.code, "GLUF"));
+  await db.update(labReflexRules).set({ active: true })
+    .where(eq(labReflexRules.analyteId, gluf!.id));
+}

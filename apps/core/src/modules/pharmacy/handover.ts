@@ -11,7 +11,7 @@ import { listMedicines } from "../formulary";
 import { consumeReservation, effectiveRegulation, getBatch, itemUomRows, itemsByIds, materialConsumed } from "../materials";
 import { getDoctor, getPrescription, getVisit } from "../opd";
 import { getPatient } from "../patients";
-import { REFUSED_FLAGS, REGISTER_FLAGS, SCHEDULED_FLAGS } from "./config";
+import { REFUSED_FLAGS, REGISTER_FLAGS, SCHEDULED_FLAGS, istDateOf } from "./config";
 import { dispenseHandedOver } from "./events";
 import { PharmacyError } from "./errors";
 import { priceForBatch } from "./price";
@@ -143,6 +143,45 @@ export async function handOverDispense(
       }
       const batch = await getBatch(tx, line.batchId);
       if (batch === undefined) throw new PharmacyError("batch_not_saleable", `batch ${line.batchId} not found`);
+      /**
+       * EXPIRY IS ASKED AGAIN HERE, BECAUSE THIS IS THE ACT — the settlement guard twenty lines up
+       * learned the same lesson about money and this line applies it to the medicine.
+       *
+       * Until this clause, expiry was tested exactly twice on the outbound path and both were at
+       * the OFFER: `sellableBatchRows` excludes an already-expired batch from FEFO (materials/
+       * ledger.ts:397) and `pick.ts:83` refuses one the pharmacist NAMES. `ledger.ts:390` states
+       * the doctrine as "a batch that must not reach a patient must not be OFFERED to the person
+       * handing it over" — and the code stopped at the word OFFERED. Nothing asked again between
+       * the offer and the irreversible `consume` below: `consumeReservation` checks the
+       * reservation's status, and `postMovements` guards recall-freeze and net quantity, neither
+       * of them a date (that is why DD14's recall never needed a pharmacy-layer check and expiry
+       * always did).
+       *
+       * THE WINDOW IS THE OVERNIGHT ONE, AND MONEY IS WHAT HOLDS IT OPEN. A pick that is abandoned
+       * self-cancels after 30 minutes — but `sweepExpiredPicks` filters `status = 'picked'`
+       * (expiry.ts:68), so once the patient has PAID the dispense is deliberately never swept and
+       * the stock stays held for them. Bill at 21:00 on the last day the batch may be used, return
+       * for it the next morning, and the batch that was legitimately in date at the pick is expired
+       * at the counter. FEFO makes that likelier rather than rarer: it selects the earliest
+       * still-in-date batch, which is the one nearest the boundary.
+       *
+       * IT IS DELIBERATELY NOT IN `postMovements`. `transfers.ts` moves expired stock to quarantine
+       * BY NAMING THE BATCH, which is the disposal path and must keep working; a ledger-level date
+       * guard would refuse the very movement that gets expired medicine off the shelf.
+       *
+       * WHAT THIS LEAVES BEHIND, SAID OUT LOUD BECAUSE THE PR MUST CARRY IT: the patient has paid
+       * and now cannot collect, and `cancelDispense` refuses a `billed` dispense (verify.ts:288)
+       * while the sweep skips it — so there is no exit in the shipped UI. That is still the right
+       * trade (a stuck payment beats an expired drug in a patient) but it is a REFUND, and refunds
+       * are 16d's. Until 16d lands, the counter's answer is the billing desk's credit note.
+       */
+      if (batch.expiryDate !== null && batch.expiryDate < istDateOf(now)) {
+        throw new PharmacyError(
+          "batch_expired_before_collection",
+          `line ${String(line.lineIdx + 1)}: batch ${batch.batchNo} expired on ${batch.expiryDate} and cannot be handed over — it was in date when it was picked. Quarantine the strip and send the patient to the billing desk; the bill is already paid and needs a credit note.`,
+          { lineIdx: line.lineIdx, batchId: line.batchId, batchNo: batch.batchNo, expiryDate: batch.expiryDate, asOf: istDateOf(now) },
+        );
+      }
       const { ledgerEntryId } = await consumeReservation(tx, actor, line.reservationId, {
         reason: "consume", refType: "pharmacy_dispense", refId: d.id, patientId: d.patientId, encounterId: d.encounterId, occurredAt: now,
       });

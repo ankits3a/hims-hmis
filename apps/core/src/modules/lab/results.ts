@@ -11,11 +11,11 @@ import { getEncounter } from "../opd";
 import { resolvePatientId } from "../patients";
 import { analytesFor, rangesFor } from "./catalogue";
 import { LabError } from "./errors";
-import { evaluateFormula } from "./formula";
+import { evaluateFormula, formulaInputCodes } from "./formula";
 import { applicabilityBreach, applicabilityBreachText, flagFor, resolveRange } from "./ranges";
 import {
-  labNotifiableFlagged, labResultCriticalFlagged, labResultDeltaFlagged, labResultEntered,
-  labTubeSwapSuspected,
+  labNotifiableFlagged, labResultChosen, labResultCriticalFlagged, labResultDeltaFlagged,
+  labResultEntered, labTubeSwapSuspected,
 } from "./events";
 import type { Actor } from "@hmis/contracts";
 import { withTx } from "../../kernel/db/client";
@@ -518,10 +518,17 @@ async function enterResultInTx(
    * ═══ CLOSE REVIEW M3 — THE SUPERSESSION CHAIN IS DERIVED, NOT REMEMBERED ═══
    *
    * `EnterResultInput` declared `supersedesResultId` and `rerunOf` and `requestRerun`'s header said
-   * they were *"set by the caller"*. **There was no such caller**: `enterResult` has one call site,
-   * the bench route, and its zod schema named neither — so zod stripped them and every re-keyed
-   * value was written with a NULL chain. An NABL auditor following `supersedes_result_id` back to
-   * the number that was wrong found nothing, on the one path that exists to answer that question.
+   * they were *"set by the caller"*. **There was no such caller**: at the time M3 was written
+   * `enterResult` had one call site, the bench route, and its zod schema named neither — so zod
+   * stripped them and every re-keyed value was written with a NULL chain. An NABL auditor following
+   * `supersedes_result_id` back to the number that was wrong found nothing, on the one path that
+   * exists to answer that question.
+   *
+   * **"ONE CALL SITE" IS NOW HISTORY AND IS MARKED AS SUCH.** 17-E T3 added the ingest
+   * (`ingest.ts`, through `attachMachineValue`), so there are TWO server call sites and the second
+   * is a machine — which is precisely what makes the paragraph below necessary. A comment that
+   * records a MOMENT reads as a statement about the present, and the next reader re-derives the
+   * wrong invariant from it; caught at T7 by the census, and corrected here rather than left to be.
    *
    * A field a caller must remember is a field a caller forgets, and 22c-A's C1 is the same shape one
    * layer out. So the chain is computed HERE, from the rows: a value keyed for an analyte that
@@ -532,11 +539,47 @@ async function enterResultInTx(
     .from(labResults)
     .where(and(eq(labResults.orderItemId, ctx.orderItemId), eq(labResults.analyteId, analyte.id)))
     .orderBy(desc(labResults.enteredAt)).limit(1);
+
+  /**
+   * ═══ 17-E T7 / D9 / D17 — A MACHINE NEVER SUPERSEDES; A HUMAN ALWAYS DOES ═══
+   *
+   * M3's rule above and D9 are BOTH RIGHT ABOUT THEIR OWN CASE, and this is the one line that has
+   * to hold both. A technologist re-keying at the bench is correcting a number, and the chain is
+   * how an auditor finds what was corrected. **An analyser re-running the same tube is not
+   * correcting anything** — both values are legitimate measurements of one sample, and
+   * auto-choosing the later one is how a bad second run silently overwrites a good first one.
+   *
+   * `entry_mode` already carries the distinction, so nothing is widened and nothing is deleted: the
+   * fallback that M3 added applies on the human path exactly as it did, and stops at the machine's.
+   *
+   * **THE DISCRIMINATOR IS READ FROM THE ROW BEING WRITTEN, NEVER PASSED BY THE CALLER.** D6 makes
+   * `entry_mode` route-bounded — `lab-bench.controller.ts`'s enum is `["manual",
+   * "manual_from_printout"]`, so a human cannot label a keystroke machine-produced, and `interface`
+   * is reachable only from the route the bridge posts to. A parameter meaning "I am a machine"
+   * would be the same fact asserted by its caller, and a caller that can assert it can deny it.
+   */
+  const machineProduced = input.entryMode === "interface";
+  if (machineProduced && input.supersedesResultId) {
+    /**
+     * The caller-supplied override stays open for the amendment path that genuinely knows better
+     * (`requestRerun`) and is SHUT here. Without this the rule would be enforced by a `??` any
+     * caller can step around, and would hold only for callers that did not think to pass the field.
+     */
+    throw new LabError(
+      "machine_cannot_supersede",
+      "a machine-produced value may not supersede an earlier one: a rerun keeps both, and which " +
+        "of them the report carries is a person's choice, recorded with a reason",
+      { resultId: input.supersedesResultId },
+    );
+  }
   const primary = await writeResult(tx, actor, ctx, {
     analyte, value: input.value, numeric, unit: input.unit ?? analyte.unit,
     entryMode: input.entryMode, analyzerId: input.analyzerId ?? null,
     remarks: input.remarks ?? null, absurdOverriddenBy, impossibleOverriddenBy,
-    supersedesResultId: input.supersedesResultId ?? priorForAnalyte?.id ?? null,
+    supersedesResultId: machineProduced
+      ? null
+      : input.supersedesResultId ?? priorForAnalyte?.id ?? null,
+    /** The link survives on both paths: it is what tells the bench these two are one tube twice. */
     rerunOf: input.rerunOf ?? priorForAnalyte?.id ?? null,
   }, now);
 
@@ -937,8 +980,17 @@ async function computeFormulaAnalytes(
    */
   const currentRows = await tx.select().from(labResults)
     .where(eq(labResults.orderItemId, ctx.orderItemId)).orderBy(labResults.enteredAt);
+  /**
+   * 17-E T7 — the same refinement `siblingValues` makes, on the OUTPUT side. C3's argument was that
+   * the newest row is the current value; that is true of a set with one live row and false of a
+   * rerun nobody has chosen between, so the comparison "does the derived value still agree with its
+   * inputs" is made against the analyte's ONE current row or against nothing at all.
+   */
   const currentByAnalyte = new Map<string, typeof labResults.$inferSelect>();
-  for (const row of currentRows) currentByAnalyte.set(row.analyteId, row);
+  for (const analyte of analytes) {
+    const current = currentValue(currentRows, analyte.id);
+    if (current) currentByAnalyte.set(analyte.id, current);
+  }
   const written: EnteredResult[] = [];
 
   for (let pass = 0; pass < formulas.length; pass += 1) {
@@ -1006,27 +1058,76 @@ async function siblingValues(
   analytes: (typeof labAnalytes.$inferSelect)[],
 ): Promise<Siblings> {
   const rows = await tx
-    .select({ analyteId: labResults.analyteId, valueNumeric: labResults.valueNumeric })
-    .from(labResults)
+    .select().from(labResults)
     .where(and(
       eq(labResults.specimenId, ctx.specimenId),
       inArray(labResults.analyteId, analytes.map((a) => a.id)),
     ))
     /**
-     * ASCENDING, AND THE LAST ROW PER CODE WINS. A rerun writes a NEW row carrying
+     * ASCENDING, AND THE LAST **LIVE** ROW PER CODE WINS. A rerun writes a NEW row carrying
      * `supersedes_result_id` rather than editing the one it doubts, so the newest row for an
      * analyte is the current value — filtering on `supersedes_result_id IS NULL` would do the
      * exact opposite and feed the SUPERSEDED number into every formula.
+     *
+     * **17-E T7 REFINES "NEWEST", IT DOES NOT REPLACE IT.** While every path superseded, the newest
+     * row was always the live one and the two readings agreed. A machine's rerun does not supersede
+     * (D9), so an analyte can now carry two live values and the newest is merely the later of two
+     * nobody has chosen between. `currentValue` below returns `undefined` for that state, and
+     * `evaluateFormula` already treats a missing input as a WAIT rather than a failure — which is
+     * exactly right: an LDL computed from a cholesterol the laboratory is still deciding about is
+     * close review C3's defect with a machine holding the pen.
      */
     .orderBy(labResults.enteredAt);
   const codeOf = new Map(analytes.map((a) => [a.id, a.code] as const));
   const out: Record<string, number | undefined> = {};
-  for (const row of rows) {
-    const code = codeOf.get(row.analyteId);
-    if (code === undefined || row.valueNumeric === null) continue;
-    out[code] = Number(row.valueNumeric);
+  for (const analyte of analytes) {
+    const current = currentValue(rows, analyte.id);
+    if (current === undefined || current.valueNumeric === null) continue;
+    const code = codeOf.get(analyte.id);
+    if (code === undefined) continue;
+    out[code] = Number(current.valueNumeric);
   }
   return out;
+}
+
+/**
+ * ═══ 17-E T7 / D18 — WHAT "LIVE" MEANS, AND IT IS NOT "UNVERIFIED" ═══
+ *
+ * A row is LIVE while no other row in the set names it in `supersedes_result_id`. Verification is
+ * deliberately not part of the test: if "live" meant "unverified", signing the chosen value would
+ * release its twin, and `reports.ts` — which prints the LAST VERIFIED row per analyte — would then
+ * carry the number the bench rejected. The whole point of the guard is that signing one member of
+ * a rerun pair must not open the door for the other.
+ *
+ * `rows` is every row for the analyte that the caller has already fetched. The supersession set is
+ * computed from the SAME list rather than by a second query, so a caller cannot be handed a
+ * "current value" that disagrees with the rows it is holding.
+ */
+export function liveRowsFor<T extends { id: string; analyteId: string; supersedesResultId: string | null }>(
+  rows: readonly T[],
+  analyteId: string,
+): T[] {
+  const superseded = new Set(
+    rows.map((r) => r.supersedesResultId).filter((x): x is string => x !== null),
+  );
+  return rows.filter((r) => r.analyteId === analyteId && !superseded.has(r.id));
+}
+
+/**
+ * The one value an analyte currently has, or `undefined` when it has none and when it has more than
+ * one that nobody has chosen between. **The three answers are deliberately different**: a caller
+ * that could not tell "no result yet" from "two results and no decision" would compute over the
+ * second exactly as C3's `done` counter computed over a stale input.
+ */
+export function currentValue<
+  T extends { id: string; analyteId: string; supersedesResultId: string | null; reportedChoiceAt: Date | null },
+>(rows: readonly T[], analyteId: string): T | undefined {
+  const live = liveRowsFor(rows, analyteId);
+  if (live.length <= 1) return live[0];
+  const chosen = live.filter((r) => r.reportedChoiceAt !== null);
+  /** Two chosen rows is unreachable — `lab_results_one_choice_idx` refuses it — so this is honest
+   *  about the only state left: more than one live value and no decision. */
+  return chosen.length === 1 ? chosen[0] : undefined;
 }
 
 /** Every analyte CODE the formula and its guard name has a value in `siblings`. */
@@ -1034,9 +1135,8 @@ function inputsAllPresent(
   analyte: { formula: string | null; formulaGuard: string | null },
   siblings: Siblings,
 ): boolean {
-  const text = `${analyte.formula ?? ""} ${analyte.formulaGuard ?? ""}`;
-  const codes = text.match(/[A-Za-z][A-Za-z0-9_]*/g) ?? [];
-  return codes.every((code) => siblings[code] !== undefined);
+  return formulaInputCodes(analyte.formula, analyte.formulaGuard)
+    .every((code) => siblings[code] !== undefined);
 }
 
 function roundTo(value: number, decimals: number): string {
@@ -1122,6 +1222,146 @@ export type RequestRerunInput = {
  * would strand the lab's own machine behind an envelope that says the department has finished — and
  * the honest instrument for a number that must change after publication is an AMENDMENT (T7 A6).
  */
+/**
+ * ═══ 17-E T7 / D18 — THE BENCH CHOOSES WHICH RUN THE REPORT CARRIES, AND SAYS WHY ═══
+ *
+ * The other half of D9. `enterResult` stopped the machine superseding; **something still has to
+ * decide**, or a rerun would simply stall two live values for ever. The decision is a bench act:
+ * the technologist who watched the run knows the first tube clotted, or that the repeat went on at
+ * the wrong dilution, and that sentence is the record NABL asks for.
+ *
+ * ═══ IT NEEDS NO NEW PERMISSION, AND THAT IS A RULING, NOT A SAVING ═══
+ *
+ * The vocabulary already names the act (#139). Judging which of two measurements of one tube is the
+ * laboratory's answer is the same class of judgement as keying the number in the first place, so it
+ * is `lab.results.enter` — **the bench's grant, not the pathologist's**. The second pair of hands
+ * arrives where it always did: `verify.ts` signs it, under separation of duties, and cannot sign
+ * the row the bench did not choose. A new grant here would have cost eighteen census sites to say
+ * something two existing grants already say between them.
+ *
+ * ═══ THE CHOICE MOVES UNTIL IT IS SIGNED, AND THEN IT IS FINAL ═══
+ *
+ * A technologist who chose the repeat and then saw the QC for that run fail must be able to change
+ * their mind; a signed report may not be re-chosen underneath its signature. `verifyResult` is the
+ * boundary, and `rerun_choice_final` is what a caller on the wrong side of it is told.
+ */
+export type ChooseReportedResultInput = { resultId: string; reason: string };
+
+export async function chooseReportedResult(
+  db: Db,
+  actor: Actor,
+  input: ChooseReportedResultInput,
+  now: Date = new Date(),
+): Promise<{ resultId: string; analyteId: string; supersededResultIds: string[] }> {
+  return await withTx(db, (tx) => chooseReportedResultInTx(tx, actor, input, now));
+}
+
+async function chooseReportedResultInTx(
+  tx: Tx,
+  actor: Actor,
+  input: ChooseReportedResultInput,
+  now: Date,
+): Promise<{ resultId: string; analyteId: string; supersededResultIds: string[] }> {
+  await assertMay(tx, actor, LAB_RESULTS_ENTER, "choose which run of a lab result the report carries");
+
+  /** Trimmed before it is judged and before it is stored, so the CHECK below can never be the
+   *  first thing to notice a reason made of spaces. */
+  const reason = input.reason.trim();
+  if (reason === "") {
+    throw new LabError(
+      "rerun_choice_reason_required",
+      "choosing which of an analyser's runs the report carries requires a reason — the reason is " +
+        "the record of the judgement, and a choice without one is the auto-supersession this rule " +
+        "exists to remove",
+    );
+  }
+
+  const [chosen] = await tx.select().from(labResults).where(eq(labResults.id, input.resultId));
+  if (!chosen) throw new LabError("unknown_result", `no lab result ${input.resultId}`);
+
+  const rows = await tx.select().from(labResults)
+    .where(and(
+      eq(labResults.orderItemId, chosen.orderItemId),
+      eq(labResults.analyteId, chosen.analyteId),
+    ))
+    .orderBy(labResults.enteredAt);
+  const live = liveRowsFor(rows, chosen.analyteId);
+
+  if (live.length <= 1) {
+    throw new LabError(
+      "no_rerun_to_choose",
+      `analyte ${chosen.analyteId} on item ${chosen.orderItemId} carries one live value — there is ` +
+        "nothing to choose between, and a choice stamped on a set of one would say a judgement was " +
+        "made that nobody made",
+      { orderItemId: chosen.orderItemId, analyteId: chosen.analyteId },
+    );
+  }
+  if (!live.some((r) => r.id === chosen.id)) {
+    throw new LabError(
+      "result_superseded",
+      `result ${chosen.id} was superseded by a later row — the report carries the value that ` +
+        "replaced it, and choosing a replaced value would put it back",
+    );
+  }
+  const signed = live.find((r) => r.verificationStatus !== "unverified");
+  if (signed) {
+    throw new LabError(
+      "rerun_choice_final",
+      `result ${signed.id} for this analyte is already ${signed.verificationStatus} — the set is ` +
+        "closed, and a signed value is corrected with a superseding row and a new report version, " +
+        "never by re-choosing underneath the signature",
+      { signedResultId: signed.id },
+    );
+  }
+
+  const previous = live.find((r) => r.reportedChoiceAt !== null && r.id !== chosen.id) ?? null;
+  /**
+   * CLEARED BEFORE THE NEW ONE IS SET, INSIDE ONE TRANSACTION. `lab_results_one_choice_idx` refuses
+   * a second chosen row, so the order is not a style preference: setting first would trip the
+   * unique index and the caller would read a constraint violation instead of a moved choice.
+   */
+  if (previous) {
+    await tx.update(labResults)
+      .set({ reportedChoiceAt: null, reportedChoiceBy: null, reportedChoiceReason: null })
+      .where(eq(labResults.id, previous.id));
+  }
+  await tx.update(labResults)
+    .set({ reportedChoiceAt: now, reportedChoiceBy: actor.id, reportedChoiceReason: reason })
+    .where(eq(labResults.id, chosen.id));
+
+  /**
+   * ═══ THE CHOICE IS AN INPUT MOVING, SO EVERY FORMULA OVER IT IS RECOMPUTED (#136) ═══
+   *
+   * Close review C3's whole finding was that a derived value left standing over a corrected input
+   * publishes an arithmetically impossible pair — *cholesterol 150, LDL 426* — that a cardiologist
+   * acts on. While the set was unresolved this analyte had NO current value, so no formula over it
+   * was computed or rewritten; the choice is the moment it acquires one. A choice that stopped at
+   * the row it stamped would walk the new door to the end of the thing it changed rather than to
+   * the end of the lifecycle, and DD13 makes the stale row unrewritable afterwards.
+   */
+  const ctx = await resultContext(tx, chosen.orderItemId);
+  const analytes = await analytesFor(tx, ctx.serviceId);
+  await computeFormulaAnalytes(tx, actor, ctx, analytes, chosen.entryMode as LabEntryMode, now);
+
+  const supersededResultIds = live.filter((r) => r.id !== chosen.id).map((r) => r.id);
+  await appendEvent(tx, labResultChosen.make({
+    actor,
+    patientId: ctx.patientId,
+    encounterId: ctx.encounterId,
+    correlationId: ctx.orderId,
+    payload: {
+      resultId: chosen.id,
+      orderItemId: chosen.orderItemId,
+      analyteId: chosen.analyteId,
+      chosenBy: actor.id,
+      reason,
+      supersededResultIds,
+      previousChoiceId: previous?.id ?? null,
+    },
+  }));
+  return { resultId: chosen.id, analyteId: chosen.analyteId, supersededResultIds };
+}
+
 export async function requestRerun(
   tx: Tx,
   actor: Actor,

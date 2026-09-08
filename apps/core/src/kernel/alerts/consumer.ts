@@ -6,6 +6,7 @@ import { appendEvent } from "../events/append";
 import { notificationFailed } from "../notify/events";
 import { modeChanged } from "../ops/events";
 import { escalationTriggered } from "../workflow/events";
+import { imagingCriticalOverdue, imagingReportUnread } from "../../modules/radiology/events";
 import { usersHoldingRole } from "../workflow/roles";
 import { alertRaised } from "./events";
 import type { Db } from "../db/client";
@@ -34,6 +35,19 @@ const ALERT_KIND_MANUAL_NOTIFY = "manual_notify";
 /** D6: an ID, not an identity. The desk reaches the patient through permission-checked routes. */
 const MANUAL_NOTIFY_REF_TYPE = "patient";
 const ALERT_KIND_OPERATING_MODE = "operating_mode";
+/**
+ * ═══ PLAN 18a-iii T5 / D7 — THE TWO RADIOLOGY CHASERS ═══
+ *
+ * Both refer to an `imaging_study`, because that is the object a recipient opens: a critical finding
+ * and a report are both read THROUGH the study, and a deep link to a finding id would land nowhere.
+ *
+ * **The events are imported from the radiology module and that is the direction the boundary
+ * allows** — this file already imports `notify`, `ops` and `workflow` event definitions for exactly
+ * the same reason. Matching on the definition's `.name` rather than a string literal is the
+ * `consumers.ts` discipline: a literal that drifts by one character subscribes to nothing.
+ */
+const ALERT_KIND_IMAGING_CHASE = "imaging_chase";
+const IMAGING_CHASE_REF_TYPE = "imaging_study";
 /**
  * Plan 11c D4, CORRECTED BY 11d D6. The mode service has exactly ONE hospital-wide subject and no
  * per-subject instances (D2), so 11c made the "id" this alert refers to the mode WORD. That named
@@ -81,6 +95,14 @@ export function alertsConsumer(db: Db): Handler {
     }
     if (e.name === modeChanged.name) {
       await handleModeChanged(db, e);
+      return;
+    }
+    if (e.name === imagingCriticalOverdue.name) {
+      await handleImagingCriticalOverdue(db, e);
+      return;
+    }
+    if (e.name === imagingReportUnread.name) {
+      await handleImagingReportUnread(db, e);
       return;
     }
     await handleEscalationTriggered(db, e);
@@ -257,5 +279,55 @@ async function handleModeChanged(db: Db, e: DispatchedEvent): Promise<void> {
     // carried, and never nothing. Drop the fallback only once no consumer's window can still
     // reach a pre-11d row — which is a fact about live data, not about this file.
     refId: payload.changeId ?? payload.to,
+  });
+}
+
+/**
+ * ═══ 18a-iii T5 / D7 — A CRITICAL FINDING NOBODY ACKNOWLEDGED, PAST ITS OWN TIER'S WINDOW ═══
+ *
+ * The duty managers, for the reason the chaser's own header gives: the honest first rung is the
+ * people whose job is *"something needs a human"*. A radiologist-specific or on-call-specific route
+ * needs a ROTA to escalate into, and 18a's §7 has none — inventing one here would be this file
+ * deciding a clinical escalation policy.
+ *
+ * **The title carries the tier and the minutes and nothing else.** No finding text, no impression,
+ * no patient. That is this file's standing rule and it is load-bearing here more than anywhere: an
+ * unacknowledged RED finding is exactly the payload somebody would be tempted to put in the alert
+ * body "so the reader knows what it is about", and the alert is fanned straight to a browser.
+ */
+async function handleImagingCriticalOverdue(db: Db, e: DispatchedEvent): Promise<void> {
+  const payload = imagingCriticalOverdue.payloadSchema.parse(e.payload);
+  const recipients = await withTx(db, (tx) => usersHoldingRole(tx, DUTY_MANAGER_ROLE));
+
+  await raiseAlerts(db, e, recipients, {
+    kind: ALERT_KIND_IMAGING_CHASE,
+    title: `Critical imaging finding unacknowledged (${payload.category})`,
+    body:
+      `A ${payload.category} finding has been waiting ${String(payload.overdueMin)} minutes past its `
+      + "communication window with no acknowledgement recorded. Open the study and confirm a "
+      + "clinician has been told.",
+    refType: IMAGING_CHASE_REF_TYPE,
+    refId: payload.studyId,
+  });
+}
+
+/**
+ * ═══ 18a-iii T5 / D7 — A SIGNED REPORT NOBODY BUT ITS AUTHOR HAS OPENED ═══
+ *
+ * The failure a radiology department cannot see from inside itself: from in here the work is
+ * finished. The referring clinician has not acted on the report and does not know they have not.
+ */
+async function handleImagingReportUnread(db: Db, e: DispatchedEvent): Promise<void> {
+  const payload = imagingReportUnread.payloadSchema.parse(e.payload);
+  const recipients = await withTx(db, (tx) => usersHoldingRole(tx, DUTY_MANAGER_ROLE));
+
+  await raiseAlerts(db, e, recipients, {
+    kind: ALERT_KIND_IMAGING_CHASE,
+    title: "Signed imaging report unread",
+    body:
+      `A signed report has been published for ${String(payload.unreadHours)} hours and nobody but `
+      + "its author has opened it. Check that the referring clinician has the result.",
+    refType: IMAGING_CHASE_REF_TYPE,
+    refId: payload.studyId,
   });
 }
