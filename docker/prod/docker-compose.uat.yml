@@ -1,0 +1,95 @@
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# PHASE 11i T3 — THE UAT OVERLAY. `docker compose -f docker-compose.prod.yml -f this`.
+#
+# UAT runs THE PRODUCTION IMAGE against its own database, in its own compose project, on this same
+# box. That is the whole design: a rehearsal on a different build proves nothing about the build
+# that ships. What this file changes is only what MUST differ — the ports (production holds
+# 80/443/5434), the memory (this box has 15 GB and production must never be starved by a training
+# session), the archiving (there is no backup repository and there must not be one), and which
+# services run at all.
+#
+# ═══ WHY THE FIVE MONITORING SERVICES ARE BEHIND A PROFILE AND NOT DELETED ═══
+#
+# A compose override cannot REMOVE a service the base declares — there is no such operation, and
+# an override that tried would be a service with half its definition. `profiles:` is how compose
+# says "not part of this run": a profiled service is excluded from `up`, and — the part that
+# matters here — from `compose config --services`, which is what deploy.sh step 6b enumerates when
+# it asserts that every declared service is running. So UAT's census names the four it runs and
+# does not go looking for a prometheus that was never meant to start.
+#
+# The base file is UNTOUCHED, which is the property worth having: nothing about production's
+# deploy changes because UAT exists.
+#
+# ═══ NOTHING HERE IS SHARED WITH PRODUCTION ═══
+#
+# Volumes and networks are namespaced by compose project. Under `-p hmis-uat` the volume declared
+# as `hmis_prod_pgdata` becomes the object `hmis-uat_hmis_prod_pgdata` — a different volume from
+# production's `hmis-prod_hmis_prod_pgdata`, on a different network. This file declares no
+# `external: true` volume and no `name:` override, and `deploy-parity.test.ts` asserts that,
+# because either would be the one way to reach across.
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+services:
+  db:
+    # NO ARCHIVING. `archive_command` would run `pgbackrest` against a stanza that does not exist,
+    # and a failing archive_command does not fail loudly — it fills pg_wal until the disk does.
+    command: !override ["postgres"]
+    # `.env.pgbackrest` is derived by deploy.sh for production only; UAT's db container must not
+    # be handed a backup credential it has no repository for and no business holding.
+    env_file: !reset null
+    # 5435, not 5434: production's db publishes 5434 on loopback and this box runs both.
+    ports: !override ["127.0.0.1:5435:5432"]
+    volumes: !override
+      - hmis_prod_pgdata:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "1g"
+        reservations:
+          memory: "256m"
+
+  api:
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "768m"
+        reservations:
+          memory: "128m"
+
+  worker:
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "512m"
+        reservations:
+          memory: "128m"
+
+  caddy:
+    # 8443 ONLY. 80 and 443 belong to production and taking either would be an outage, not a
+    # collision — this is the single most dangerous line in the file and it is an `!override`
+    # precisely because compose MERGES port lists by default.
+    ports: !override ["8443:443"]
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "256m"
+        reservations:
+          memory: "64m"
+
+  # ── the five that do not run on UAT ─────────────────────────────────────────────────────────
+  # Not deleted (an override cannot) and not disabled by scale (`compose config --services` would
+  # still name them and step 6b would still wait for them). A profile nothing enables is the only
+  # expression compose has for "declared, and not part of this run".
+  node-exporter:
+    profiles: ["monitoring"]
+  postgres-exporter:
+    profiles: ["monitoring"]
+  prometheus:
+    profiles: ["monitoring"]
+  grafana:
+    profiles: ["monitoring"]
+  alertmanager:
+    profiles: ["monitoring"]
