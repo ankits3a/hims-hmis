@@ -286,14 +286,28 @@ describe("FD-24 T3: rendering the counter's documents", () => {
     });
 
     /**
-     * DEPARTURE 2. The design drops the token and this keeps it. Nothing else the patient carries
-     * names the token, the counter reads it off this sheet, and the owner reported token visibility
-     * as a defect on 2026-09-06. If a later task removes it, it is answering that report again.
+     * DEPARTURE 2, WITHDRAWN. Owner, 2026-09-12: *"remove 'Token:' field from the prescription."*
+     * The sheet now matches the artboard here.
+     *
+     * HONESTLY LABELLED — THIS IS AN ABSENCE TEST AND A REVERT PAIR CANNOT PROVE IT. Putting the row
+     * back turns it red, which says only that the string is gone from the output, not that it is
+     * gone from the right PLACE. So the positive half is asserted beside it: the band still carries
+     * its five right-hand rows, and the token still prints on the slip the patient actually holds
+     * (`renderTokenSlip`, asserted throughout this file). Deleting the whole identity band would
+     * satisfy the `not.toContain` and is caught by the row assertions below it.
      */
-    it("keeps the token, which the design drops and the counter needs", async () => {
+    it("drops the token from the clinical sheet, and keeps the rest of the band intact", async () => {
       const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
-      expect(doc!.html).toContain(`<span class="lb">Token:</span>`);
-      expect(doc!.html).toContain("MED-1");
+      expect(doc!.html).not.toContain(`<span class="lb">Token:</span>`);
+      /* Not merely "Token:" — "MED-1" is the rendered VALUE, and it is what a reader would spot. */
+      expect(doc!.html).not.toContain("MED-1");
+      // The band is still a band: the five rows that remain on the right, and the left-hand five.
+      for (const label of ["Name:", "UHID:", "Gender:", "DOB:", "Doctor ID:", "Encounter ID:", "Encounter Type:", "Visit/Admn Date:", "Department:", "Speciality:"]) {
+        expect(doc!.html).toContain(`<span class="lb">${label}</span>`);
+      }
+      /* The token did not leave the building — it is on the paper the patient carries to a counter. */
+      const slip = await renderTokenSlip(db, { encounterId }, MON);
+      expect(slip!.html).toContain("MED-1");
     });
 
     /**

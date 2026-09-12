@@ -715,10 +715,20 @@ export async function renderPaymentReceipt(
  *      markup puts it second, which is what a moved block leaves behind), and it adds the
  *      carried-height caption under the strip. Both are followed here; `render.test.ts` pins the
  *      order, because the artboard AND the shipped renderer were both wrong about it.
- *   2. **The token stays, as a sixth row.** The design drops it. Nothing else the patient carries
- *      out of the building names the token, the counter reads it off this sheet, and the owner
- *      raised token visibility as a defect four days ago. One row against that is a cheap trade —
- *      but it IS a departure from the design and reversing it is one line.
+ *   2. ~~**The token stays, as a sixth row.**~~ **WITHDRAWN 2026-09-12 on the owner's instruction:**
+ *      *"I would like you to remove 'Token:' field from the prescription."* The identity band is now
+ *      the artboard's five rows on the right and this renderer no longer departs from the design
+ *      here.
+ *
+ *      The trade this departure was made on has since been paid off elsewhere, which is why the
+ *      withdrawal costs nothing. It was kept because "nothing else the patient carries out of the
+ *      building names the token, the counter reads it off this sheet, and the owner raised token
+ *      visibility as a defect four days ago" — but that report was about the BILLING COUNTER, where
+ *      a cashier had no token on screen to match against the patient's slip, and FD-28 answered it
+ *      there: the counter's rail draws `visit-token` from the quote. The token also still prints on
+ *      `renderTokenSlip`, which is the paper the patient is actually holding when they present at a
+ *      counter. So the token is on the cashier's screen and on the patient's slip; what it is no
+ *      longer on is the clinical sheet the doctor writes on, which is what the design always said.
  *   3. **`Doctor ID` prints, and the doctor's name and council number do NOT** — owner, 2026-09-06,
  *      overruling this file's first answer: *"As a medical Institution with college, there's no need
  *      of mentioning Dr. Name and their registration number. Only Dr. ID is required."* The first cut
@@ -950,7 +960,6 @@ export async function renderPrescriptionSheet(
           ${idRow("Visit/Admn Date:", `<span class="num">${esc(formatCalendarDay(s.serviceDate) ?? s.serviceDate)}</span>`)}
           ${idRow("Department:", esc(s.departmentName))}
           ${idRow("Speciality:", esc(s.doctorSpecialty ?? s.departmentName))}
-          ${idRow("Token:", `<span class="num">${esc(tokenLabel(s.departmentCode, s.tokenNo))}</span>`)}
         </div>
       </div>
       <div class="rule" style="margin-top:10px;flex-shrink:0"></div>
