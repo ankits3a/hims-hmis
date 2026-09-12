@@ -65,8 +65,31 @@ than two instances of one class would have been — and note the second one's fi
 held by the freeze, so it will keep firing until #175 lands.
 
 Measured on `#174` the same night: **47m37s against a twin's 10m27s on the same SHA.** A 4.5×
-wall-clock skew between identical jobs is the finding, and it is about what else was running on the
-box.
+wall-clock skew between identical jobs is the finding.
+
+### CORRECTION — the runner is NOT this box, and that settles the fix direction
+
+The first draft of this section said the skew "is about what else was running on the box." **That is
+wrong**, and it is worth keeping the correction visible because the wrong version points at a lever
+that does not exist. Measured:
+
+    .github/workflows/ci.yml:79, :121, :152    runs-on: ubuntu-latest
+    grep -rn "self-hosted" .github/            (nothing)
+
+**All three CI jobs run on GitHub-hosted runners.** Nothing about lane load on this 15 GB host, the
+test mutex, a docker build, or six sessions on this terminal moves that skew. The test mutex still
+matters and still binds — it governs local jest pools and docker builds, which genuinely do share this
+box — but that is a different resource from the one CI spends.
+
+So the earlier session's inference survives and sharpens: *three structurally unrelated paths is
+evidence about the runner* — **and the runner is one nobody here administers.**
+
+> When the instrument is someone else's datacentre, the budget IS the thing you control.
+
+That retires the objection that raising a budget is "treating the instrument". You cannot make a shared
+runner quieter; you can only stop asserting a wall-clock figure that a quiet runner happens to meet.
+**Which makes item 1's `SETTLE_CEILING_MS = 2_000` (#175) the actual fix and not a workaround** — and
+the same reasoning applies to every other fixed-millisecond assertion on this page.
 
 ### Why this census could not have found it, which is the part worth carrying
 
