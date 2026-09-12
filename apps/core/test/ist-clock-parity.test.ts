@@ -166,6 +166,72 @@ describe("the IST clock is the same clock everywhere (09a close, ledger §2.105)
       .toEqual({ sitesWhoseExpressionMoved: [] });
   });
 
+  /**
+   * ═══ THE SAME CLOCK IN SQL, WHICH THIS FILE COULD NOT SEE UNTIL NOW ═══
+   *
+   * Everything above pins JavaScript expressions. **That is a guard keyed to one language, and the
+   * defect it exists to stop can be written in another.** `timestamptz::date` in Postgres resolves
+   * in the SESSION time zone, which on this host is `Etc/UTC` and which nothing in `client.ts`,
+   * `jest.config.cjs` or `test/helpers/db.ts` sets. So a bare `::date` on a `withTimezone: true`
+   * column buckets an IST hospital's rows by UTC DAY — and a row stamped 02:00 IST lands on
+   * yesterday, every day, in the 05:30 window the whole F52 family is about.
+   *
+   * Found by the 2026-09-12 flake census at `modules/ot/bill.ts`, where three casts bucketed
+   * day-care discharges by UTC date while the function's own header said such an encounter "is
+   * reported HERE or by nobody". **Its test shared the error** — it derived a UTC day too, so the
+   * two agreed and nothing was red. A test that agrees with the code proves they agree, not that
+   * either is right.
+   *
+   * ═══ IT IS EXACT, NOT A GREP, AND THAT IS THE WHOLE DESIGN ═══
+   *
+   * The set of zone-carrying columns is read FROM THE SCHEMA — every `timestamp(..., { withTimezone:
+   * true })` declaration — so this leg knows which casts are dangerous rather than guessing from a
+   * name. A cast on a `date` column (`dob`, `expiry_date`, `valid_from`) carries no zone and is
+   * correctly unqualified; a cast on a bound PARAMETER (`${day}::date`) is a parameter, not a
+   * column. Both are silent here, and both exist in the tree today, so a name-shaped grep would
+   * have produced four false positives.
+   *
+   * THE CORRECT IDIOM IS ALREADY IN THE TREE, TWICE, and is what this leg requires:
+   *
+   *     (${column} at time zone 'Asia/Kolkata')::date
+   *       · modules/pharmacy/queue.ts:92
+   *       · kernel/db/schema/radiology.ts:695
+   */
+  it("no bare `::date` is applied to a zone-carrying column — the clock in SQL, read from the schema", () => {
+    const schemaDir = join(CORE, "src", "kernel", "db", "schema");
+    const zoned = new Set<string>();
+    for (const file of sourceFiles(schemaDir)) {
+      const text = readFileSync(file, "utf8");
+      for (const m of text.matchAll(
+        /(\w+):\s*timestamp\(\s*"(\w+)"\s*,\s*\{[^}]*withTimezone:\s*true/g,
+      )) {
+        zoned.add(m[1]!); // the camelCase property, for `${t.givenAt}::date`
+        zoned.add(m[2]!); // the snake_case column, for `e.discharged_at::date`
+      }
+    }
+    /** Non-vacuous: the schema really was read and it really declares zone-carrying columns. */
+    expect(zoned.size).toBeGreaterThan(20);
+
+    const offenders: string[] = [];
+    for (const file of sourceFiles(join(CORE, "src"))) {
+      const lines = readFileSync(file, "utf8").split("\n");
+      lines.forEach((line, i) => {
+        for (const m of line.matchAll(/([A-Za-z_$][\w.$]*|\}\s*)::date/g)) {
+          const operand = m[1]!;
+          /** `${…}::date` is a bound parameter, not a column — it carries no zone to lose. */
+          if (operand.trim() === "}") continue;
+          const leaf = operand.split(".").pop()!;
+          if (!zoned.has(leaf)) continue;
+          /** Qualified correctly — the cast is on an expression already moved into IST. */
+          const before = line.slice(0, m.index);
+          if (/at time zone 'Asia\/Kolkata'\s*\)\s*$/.test(before)) continue;
+          offenders.push(`${rel(file)}:${String(i + 1)} — ${leaf}::date (zone-carrying column, no \`at time zone\`)`);
+        }
+      });
+    }
+    expect(offenders).toEqual([]);
+  });
+
   it("the census is pinned — a FOURTEENTH copy of the hospital clock is a deliberate change", () => {
     const carrying = new Set<string>();
     for (const file of sourceFiles(join(CORE, "src"))) {

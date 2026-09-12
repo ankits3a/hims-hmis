@@ -758,16 +758,45 @@ describe("the OT discharge bill (Plan 15 T7 / DD11)", () => {
     expect(composed.lines.length).toBeGreaterThan(0);
   });
 
-  it("§11.11 — a discharged encounter with no invoice is reported by the OT's own scan", async () => {
+  /**
+   * ═══ THE DAY IS AN IST DAY, AND THIS CASE PINS THE BOUNDARY RATHER THAN THE CODE ═══
+   *
+   * Until 2026-09-12 this test derived `new Date().toISOString().slice(0, 10)` — a **UTC** day — and
+   * `unbilledDaycare` compared a bare `timestamptz::date`, which resolves in the session zone
+   * (`Etc/UTC` here). **Both ends were wrong in the same direction, so they agreed and this test was
+   * green over a real defect**: a discharge at 02:00 IST bucketed to the previous day, and §11.11's
+   * report — which the function's own header says is made "HERE or by nobody" — missed every case
+   * discharged before 05:30.
+   *
+   * So the instant is PINNED at the worst moment rather than taken from the clock:
+   *
+   *     2026-04-01 02:00 IST  ==  2026-03-31 20:30 UTC
+   *
+   * and both directions are asserted. **The second assertion is the one that discriminates** — the
+   * old code filed this encounter in the 31 March bucket, so `not.toContain` there fails against it
+   * and passes only once the cast is moved into IST. Asserting the IST day alone would have passed
+   * under both readings and proved nothing.
+   *
+   * `updatedAt` is pinned to the same instant deliberately: the query ORs three columns, and a row
+   * whose `updated_at` is `now()` would match today's bucket too and hide the boundary.
+   */
+  it("§11.11 — a discharged encounter with no invoice is reported on its IST day, not its UTC one", async () => {
     const e = await anEncounter();
-    const today = new Date().toISOString().slice(0, 10);
-    await db.update(daycareEncounters).set({ dischargedAt: new Date() }).where(eq(daycareEncounters.id, e.encounterId));
-    const orphans = await unbilledDaycare(db, today);
-    expect(orphans.map((o) => o.encounterNo)).toContain(e.encounterNo);
+    const AT_0200_IST = new Date("2026-03-31T20:30:00Z"); // 02:00 IST on 1 April
+    const IST_DAY = "2026-04-01";
+    const UTC_DAY = "2026-03-31";
+    await db.update(daycareEncounters)
+      .set({ dischargedAt: AT_0200_IST, updatedAt: AT_0200_IST })
+      .where(eq(daycareEncounters.id, e.encounterId));
+
+    expect((await unbilledDaycare(db, IST_DAY)).map((o) => o.encounterNo)).toContain(e.encounterNo);
+    /** THE DISCRIMINATOR: the old bare cast filed it here, 5h30m before the theatre ran. */
+    expect((await unbilledDaycare(db, UTC_DAY)).map((o) => o.encounterNo)).not.toContain(e.encounterNo);
 
     await holdFor(e.encounterId, 6_000_000);
     await settleDischargeBill(db, cashier, { encounterId: e.encounterId });
-    expect((await unbilledDaycare(db, today)).map((o) => o.encounterNo)).not.toContain(e.encounterNo);
+    /** Settling clears it from the report — on the IST day, which is the only day it was ever on. */
+    expect((await unbilledDaycare(db, IST_DAY)).map((o) => o.encounterNo)).not.toContain(e.encounterNo);
   });
 
   /** F4 — no implant service carries a `regulated_prices` row, so billing's own clamp is a no-op

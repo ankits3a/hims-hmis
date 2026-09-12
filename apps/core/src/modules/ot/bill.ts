@@ -554,6 +554,25 @@ export async function settleDischargeBill(
  * §11.11's orphan report, OT-side. The daily close's own `orphanScan` reads `opd_encounters` only
  * and its widening is routed to 16c with the chargeables spine (DD11), so a discharged day-care
  * encounter with no invoice is reported HERE or by nobody.
+ *
+ * ═══ `day` IS AN IST CALENDAR DAY, AND THE CAST HAS TO SAY SO ═══
+ *
+ * Until 2026-09-12 the three comparisons below were bare `::date` on `timestamptz` columns.
+ * **Postgres resolves `timestamptz::date` in the SESSION time zone**, which is `Etc/UTC` on this
+ * deployment and which nothing in `client.ts`, `jest.config.cjs` or `test/helpers/db.ts` sets — so
+ * the scan bucketed an IST hospital's discharges by UTC day. **A discharge at 02:00 IST on 1 April
+ * is 20:30 UTC on 31 March**, so it fell into the previous bucket and the report run for "today"
+ * did not contain last night's theatre. Given the sentence above — reported here or by nobody —
+ * that is the whole of §11.11 missing for every case discharged before 05:30.
+ *
+ * It was invisible because **the test shared the error**: it derived `new Date().toISOString()
+ * .slice(0, 10)`, also a UTC day, so query and fixture agreed and nothing was ever red. A test that
+ * agrees with the code proves they agree, not that either is right.
+ *
+ * The idiom is the one already in the tree at `pharmacy/queue.ts:92` and
+ * `schema/radiology.ts:695`, and `ist-clock-parity.test.ts` now refuses a bare `::date` on any
+ * `withTimezone: true` column — read from the schema, so a `date` column like `expiry_date` and a
+ * bound parameter like `${day}::date` stay correctly unqualified.
  */
 export async function unbilledDaycare(
   db: Db, day: string,
@@ -562,8 +581,9 @@ export async function unbilledDaycare(
     select e.id as "encounterId", e.encounter_no as "encounterNo", e.outcome as "outcome"
       from daycare_encounters e
      where e.outcome in ('discharged', 'converted', 'absconded', 'deceased')
-       and (e.discharged_at::date = ${day}::date or e.converted_at::date = ${day}::date
-            or e.updated_at::date = ${day}::date)
+       and ((e.discharged_at at time zone 'Asia/Kolkata')::date = ${day}::date
+            or (e.converted_at at time zone 'Asia/Kolkata')::date = ${day}::date
+            or (e.updated_at at time zone 'Asia/Kolkata')::date = ${day}::date)
        and not exists (select 1 from invoices i where i.encounter_id = e.encounter_no)
      order by e.encounter_no
   `)).rows as { encounterId: string; encounterNo: string; outcome: string | null }[];
