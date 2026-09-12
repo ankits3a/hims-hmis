@@ -55,7 +55,7 @@ import type { Actor } from "@hmis/contracts";
 const DAY = new Date("2026-08-30T06:00:00Z");
 
 /**
- * Every lab state a worklist row can be in before a signature. A13 passes all three rather than the
+ * Every lab state a worklist row can be in before a signature. A14 passes all three rather than the
  * bench's two: whether a rerun's item sits at `in_analysis` or has already reached `resulted`
  * depends on how many of the orderable's analytes the machine reported, and the assertion is about
  * the ASSEMBLY both seats share, not about which of them happens to be looking.
@@ -125,9 +125,9 @@ describe("17-E T7 — a rerun keeps both values and a human chooses", () => {
   /**
    * One machine transmission of one analyte for one tube.
    *
-   * `at` defaults to `DAY` for the assertions that do not care. **A13 passes two distinct times on
+   * `at` defaults to `DAY` for the assertions that do not care. **A14 passes two distinct times on
    * purpose:** two rows sharing `entered_at` to the microsecond make "oldest first" a tie, and a tie
-   * is resolved by whatever physical order Postgres happens to return — which A13b's own `UPDATE`
+   * is resolved by whatever physical order Postgres happens to return — which A14b's own `UPDATE`
    * was observed to change mid-test. A rerun happens *after* the run it repeats, so the fixture that
    * says so is both deterministic and truer.
    */
@@ -491,7 +491,7 @@ describe("17-E T7 — a rerun keeps both values and a human chooses", () => {
     expect(verified.map((r) => r.analyteId).sort()).toEqual([ids.LDL!, ids.TC!].sort());
   });
 
-  /* ─────────── A13 — the seat that must choose can SEE the pair, in its own worklist ─────────── */
+  /* ─────────── A14 — the seat that must choose can SEE the pair, in its own worklist ─────────── */
 
   /**
    * **THE SCREEN'S HALF OF D18, AND THE HALF THAT WAS MISSING.** A3 proves nothing unchosen reaches
@@ -518,7 +518,7 @@ describe("17-E T7 — a rerun keeps both values and a human chooses", () => {
    * of that fixture in the worklist's own file would be a second place for the rerun's semantics to
    * drift from `liveRowsFor`. The worklist's three existing cases cover the single-value shape.
    */
-  it("A13 — two live runs: the worklist reports NO value and offers the pair, oldest first", async () => {
+  it("A14 — two live runs: the worklist reports NO value and offers the pair, oldest first", async () => {
     await grantPermissionToRole(db, fx.registry, "lab_technician", "lab.worklist.read");
     const { specimenNo, analyteId } = await tubeWithMappedCode();
     await transmit(specimenNo, "5.0", "run-1");
@@ -554,7 +554,7 @@ describe("17-E T7 — a rerun keeps both values and a human chooses", () => {
    * value — not the latest — and stops asking. A view that kept offering a resolved pair would send
    * the technologist back to a decision they had already recorded a reason for.
    */
-  it("A13b — after the choice the worklist carries the CHOSEN run and offers nothing", async () => {
+  it("A14b — after the choice the worklist carries the CHOSEN run and offers nothing", async () => {
     await grantPermissionToRole(db, fx.registry, "lab_technician", "lab.worklist.read");
     const { specimenNo, analyteId } = await tubeWithMappedCode();
     await transmit(specimenNo, "5.0", "run-1");
