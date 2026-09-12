@@ -816,3 +816,54 @@ export function rescheduleAppointment(
 export function cancelAppointment(appointmentId: string, reason: string): Promise<{ appointment: WireAppointment }> {
   return api("POST", `/opd/appointments/${encodeURIComponent(appointmentId)}/cancel`, { reason });
 }
+
+/**
+ * ═══ FD-30 — THE TRANSCRIPTION DRAFT (OWNER RULING 2026-09-12: DRAFT THEN CONFIRM) ═══
+ *
+ * The scribe at the OPD door types what the doctor wrote in pen; the treating doctor taps to issue.
+ * `WireRxLine` is reused verbatim rather than copied — a draft whose shape could drift from the
+ * prescription's is a slip the doctor's tap would refuse for a reason nobody could see.
+ */
+export type WireRxDraft = {
+  id: string;
+  encounterId: string;
+  patientId: string;
+  lines: WireRxLine[];
+  note: string | null;
+  status: "pending" | "issued" | "discarded";
+  draftedBy: string;
+  draftedAt: string;
+  resolvedBy: string | null;
+  resolvedAt: string | null;
+  issuedPrescriptionId: string | null;
+};
+
+export function fetchRxDraft(encounterId: string): Promise<{ draft: WireRxDraft | null }> {
+  return api("GET", `/opd/visits/${encodeURIComponent(encounterId)}/prescription-draft`);
+}
+
+export function saveRxDraft(
+  encounterId: string, body: { lines: WireRxLine[]; note?: string | null },
+): Promise<WireRxDraft> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/prescription-draft`, body);
+}
+
+export function discardRxDraft(encounterId: string): Promise<{ draft: WireRxDraft | null }> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/prescription-draft/discard`, {});
+}
+
+/**
+ * THE TAP. Overrides ride HERE and never on the draft: clearing an allergy conflict, a severe
+ * interaction or a duplicate salt is a clinical judgement recorded against the prescriber who made
+ * it, so the warnings surface at the doctor's screen and the reasons are typed there.
+ */
+export function issueRxDraft(
+  encounterId: string,
+  overrides: {
+    overrides?: { lineIndex: number; substance: string; reason: string }[];
+    interactionOverrides?: { lineIndex: number; reason: string; saltPair?: [string, string] }[];
+    duplicateOverrides?: { lineIndex: number; reason: string; moiety?: string }[];
+  } = {},
+): Promise<{ prescriptionId: string; version: number; draftId: string }> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/prescription-draft/issue`, overrides);
+}

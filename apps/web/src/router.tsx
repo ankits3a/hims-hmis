@@ -33,6 +33,7 @@ import { OpdDesk } from "./screens/opd-desk";
 import { VitalsBay } from "./screens/vitals-bay";
 import { OpdConsult } from "./screens/opd-consult";
 import { OpdDisplay } from "./screens/opd-display";
+import { OpdScribe } from "./screens/opd-scribe";
 import { BillingCounter } from "./screens/billing-counter";
 import { BillingDues } from "./screens/billing-dues";
 import { BillingSession } from "./screens/billing-session";
@@ -155,6 +156,8 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   { to: "/opd/vitals", label: "nav.opdVitals", permission: "opd.vitals.record", group: "opd" },
   { to: "/opd/consult", label: "nav.opdConsult", permission: "opd.consult", group: "opd" },
   { to: "/opd/display", label: "nav.opdDisplay", permission: "opd.display.read", group: "opd" },
+  // FD-30 / owner ruling 2026-09-12 — the OPD door: the paper slip, transcribed for the doctor's tap.
+  { to: "/opd/scribe", label: "nav.opdScribe", permission: "opd.prescription.draft", group: "opd" },
   { to: "/billing", label: "nav.billing", permission: "billing.invoice.issue", group: "billing" },
   { to: "/billing/dues", label: "nav.billingDues", permission: "billing.invoice.read", group: "billing" },
   { to: "/billing/session", label: "nav.billingSession", permission: "billing.session.own", group: "billing" },
@@ -906,6 +909,17 @@ const opdConsultRoute = createRoute({
   component: OpdConsult,
 });
 
+/**
+ * FD-30 — the OPD-door scribe. No search parameters: the visit is TYPED OR SCANNED into the screen's
+ * own box (one input, both roads — the prescription QR encodes exactly the visit number), so there
+ * is no deep link to validate and no state to carry between patients.
+ */
+const opdScribeRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/opd/scribe",
+  component: OpdScribe,
+});
+
 const opdDisplayRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/opd/display",
@@ -1046,7 +1060,7 @@ export const router = createRouter({
     changePasswordRoute,
     authedRoute.addChildren([
       indexRoute, myDayRoute, staffReportsRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
-      opdDeskRoute, opdConsultRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
+      opdDeskRoute, opdConsultRoute, opdScribeRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
       // FD-2 — 47 -> 46. `/counter/seat` is GONE, the seat serves `counterDeskRoute` above, and

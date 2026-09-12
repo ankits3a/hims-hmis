@@ -62,7 +62,8 @@
     "pharmacyItems": "Pharmacy sale items",
     "radiationSafety": "Radiation safety",
     "registration": "Registration",
-    "appointment": "Booking desk"
+    "appointment": "Booking desk",
+    "opdScribe": "Door scribe"
   },
   "palette": {
     "title": "Search",
@@ -703,7 +704,15 @@
     "seat": "Consulting room",
     "queueRail": "The queue",
     "noPatientTitle": "Nobody is in the chair",
-    "noPatientBody": "Call the next token, or press Enter. The queue on the left is live."
+    "noPatientBody": "Call the next token, or press Enter. The queue on the left is live.",
+    "draft": {
+      "heading": "Waiting from the OPD door",
+      "issue": "Issue this prescription",
+      "load": "Load into the editor",
+      "discard": "Discard",
+      "who": "Typed at the door from the paper slip. It is not a prescription until you issue it.",
+      "refusedHint": "load it into the editor below to resolve this and issue."
+    }
   },
   "rx": {
     "regNo": "Reg. No.",
@@ -3695,5 +3704,33 @@
       "dues_one": "{{count}} unpaid bill on their account. It is listed in the rail. — from the dues poll.",
       "dues_other": "{{count}} unpaid bills on their account. They are listed in the rail. — from the dues poll."
     }
+  },
+  "scribe": {
+    "title": "OPD door — transcribe the slip",
+    "findVisit": "Which visit?",
+    "findVisitHint": "Scan the QR on the slip, or type the visit number",
+    "open": "Open",
+    "notFound": "No visit found for “{{id}}”. Check the number on the slip.",
+    "another": "Try another",
+    "matched": "This slip is for",
+    "notThem": "Not this patient",
+    "whatIsWritten": "What the doctor wrote",
+    "drug": "Medicine",
+    "dose": "Dose",
+    "route": "Route",
+    "frequency": "Frequency",
+    "days": "Days",
+    "instructions": "Instructions",
+    "remove": "Remove",
+    "addLine": "Add a line",
+    "note": "Anything the doctor should look at (optional)",
+    "save": "Send to the doctor",
+    "notAPrescription": "This is not a prescription until the doctor issues it.",
+    "savedBody": "The doctor issues it from their consultation screen. Nothing is dispensed until they do.",
+    "next": "Next slip",
+    "alreadyPending_one": "A slip of {{count}} line is already waiting for the doctor on this visit. Saving replaces it.",
+    "alreadyPending_other": "A slip of {{count}} lines is already waiting for the doctor on this visit. Saving replaces it.",
+    "savedTitle_one": "Sent — {{count}} line waiting for the doctor",
+    "savedTitle_other": "Sent — {{count}} lines waiting for the doctor"
   }
 }

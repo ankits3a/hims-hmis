@@ -68,6 +68,19 @@ export const opdManifest: ModuleManifest = {
     "opd.paper.reprint",
     "opd.queue.read", "opd.queue.operate", "opd.queue.transfer",
     "opd.consult", "opd.prescriptions.verify", "opd.display.read",
+    /**
+     * FD-30 / owner ruling 2026-09-12 — THE TRANSCRIPTION GRANT, AND IT PRESCRIBES NOTHING.
+     *
+     * *"Doctors have so tight schedule that they fail to enter his observation … they just write
+     * manually by pen on the prescription slip."* This authorises composing a DRAFT from that paper
+     * and nothing else. It cannot issue: `issuePrescription` is reached only through the doctor's
+     * own tap and refuses any actor without an `opd_doctors` profile for THIS encounter
+     * (`requireTreatingDoctor`), which is the check this permission deliberately does not touch.
+     *
+     * Separate from `opd.consult` for the obvious reason — `opd.consult` is the whole consultation
+     * surface, including issuing — and from `patients.update` because a draft is about the VISIT.
+     */
+    "opd.prescription.draft",
   ],
   // PLAN 11h T3 — doctors and departments on `opd.masters.read`, appointments on
   // `opd.appointments.read`. Patient confidentiality is NOT re-implemented here (DD1/DD3).

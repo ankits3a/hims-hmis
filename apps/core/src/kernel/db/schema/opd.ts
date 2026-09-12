@@ -613,3 +613,66 @@ export const opdPrescriptions = pgTable(
     index("opd_prescriptions_patient_idx").on(t.patientId),
   ],
 );
+
+/**
+ * ═══ THE PAPER SLIP, TRANSCRIBED — AND INERT UNTIL A DOCTOR TOUCHES IT ═══
+ *
+ * Owner ruling, 2026-09-12: *"Go with draft then confirm, doctor taps to issue."*
+ *
+ * The problem it answers, in the owner's words: *"doctors have so tight schedule that they fail to
+ * enter his observation on the operating system. They just write manually by pen on the
+ * prescription slip."* A scribe at the OPD door transcribes what the doctor wrote; the doctor
+ * issues it.
+ *
+ * ═══ WHY THIS IS A SEPARATE TABLE AND NOT A `status` ON `opd_prescriptions` ═══
+ *
+ * Because a draft must be UNREACHABLE by everything downstream, and a status column is a filter
+ * that every reader has to remember. `pharmacy/queue.ts` enqueues a dispense from an
+ * `opd_prescriptions` row; `verify.ts` loads one by id; the FHIR bundle, the QR and the printed
+ * sheet all read that table. A draft sharing it would be one forgotten `WHERE status <> 'draft'`
+ * away from being dispensed — and the forgetting would be silent. Here there is no such clause to
+ * forget: nothing downstream joins this table at all, and a draft becomes real only by passing
+ * through `issuePrescription`, which is where `requireTreatingDoctor` and every safety check live.
+ *
+ * ═══ NO `doctor_id` COLUMN, DELIBERATELY ═══
+ *
+ * A draft names no prescriber. The prescriber is decided at ISSUE time and only by the encounter's
+ * own treating doctor being the actor — storing an intended one here would be a claim the scribe
+ * is not authorised to make, and it would be the first stone of an on-behalf path. The encounter
+ * already says whose patient this is.
+ */
+export const opdPrescriptionDrafts = pgTable(
+  "opd_prescription_drafts",
+  {
+    id: text("id").primaryKey(),
+    encounterId: text("encounter_id").notNull().references(() => opdEncounters.id),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    /** RxLine[] — the SAME shape `opd_prescriptions.lines` carries, so issuing is a hand-off. */
+    lines: jsonb("lines").notNull(),
+    /** What the scribe could not read, or what the doctor should look at. Free text, never a line. */
+    note: text("note"),
+    /** 'pending' | 'issued' | 'discarded'. One PENDING row per encounter (partial unique index). */
+    status: text("status").notNull().default("pending"),
+    draftedBy: text("drafted_by").notNull(),
+    draftedAt: timestamp("drafted_at", { withTimezone: true }).notNull().defaultNow(),
+    /** The doctor who issued or discarded it, and when. Null while pending. */
+    resolvedBy: text("resolved_by"),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    /**
+     * The prescription this draft became. The whole medico-legal chain — *typed by Priya, issued by
+     * Dr Rao* — is recoverable from here, which is why `opd_prescriptions` needs no new column:
+     * `issued_by` there is the DOCTOR (it always was), and `drafted_by` here is the scribe.
+     */
+    issuedPrescriptionId: text("issued_prescription_id"),
+  },
+  (t) => [
+    /**
+     * ONE PENDING DRAFT PER ENCOUNTER, enforced by the database rather than by a read-then-write.
+     * Two scribes at one door, or a double submit, would otherwise leave two pending slips and the
+     * doctor would issue whichever they happened to be shown.
+     */
+    uniqueIndex("opd_rx_drafts_pending_ux").on(t.encounterId).where(sql`status = 'pending'`),
+    index("opd_rx_drafts_patient_idx").on(t.patientId),
+    index("opd_rx_drafts_drafted_by_at_idx").on(t.draftedBy, t.draftedAt),
+  ],
+);

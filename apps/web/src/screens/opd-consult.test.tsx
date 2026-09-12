@@ -1387,3 +1387,79 @@ describe("07d T5 — advised investigations", () => {
     expect(await screen.findByText(/The catalogue is curated in the tariff, not here/i)).toBeInTheDocument();
   });
 });
+
+/**
+ * ═══ FD-30 — THE DOOR'S SLIP, AND THE DOCTOR'S TAP (OWNER RULING 2026-09-12) ═══
+ *
+ * *"Go with draft then confirm, doctor taps to issue."* The panel exists so a doctor who wrote on
+ * paper never types it again; the ruling exists so that no one but the doctor issues it.
+ *
+ * The second row is the one that matters more than the first. A refused tap — an allergy conflict
+ * is the common case — must leave the slip WHERE IT WAS, because the doctor's next act is to look
+ * at it. A panel that cleared itself on a refusal would lose the transcription and send the clerk
+ * back to a patient who has left.
+ */
+describe("FD-30 — the transcription draft on the doctor's screen", () => {
+  const DRAFT = {
+    id: "DR-9", encounterId: "enc-1", patientId: "p-1",
+    lines: [
+      { drug: "Tab Amoxicillin 500 mg", dose: "1 tab", route: "oral", frequency: "TDS", durationDays: 5, instructions: "after food", noSubstitution: false },
+    ],
+    note: "second line unreadable", status: "pending",
+    draftedBy: "u-scribe", draftedAt: "2026-09-12T10:00:00.000Z", resolvedBy: null, resolvedAt: null, issuedPrescriptionId: null,
+  };
+
+  it("shows the slip the door typed, and one tap issues it through the doctor's own route", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/visits/enc-1/prescription-draft": { status: 200, body: { draft: DRAFT } },
+      "POST /api/opd/visits/enc-1/prescription-draft/issue": { status: 201, body: { prescriptionId: "rx-1", version: 1, draftId: "DR-9" } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+
+    expect(await screen.findByTestId("rx-draft")).toBeInTheDocument();
+    expect(screen.getByTestId("rx-draft-line-0")).toHaveTextContent("Tab Amoxicillin 500 mg");
+    expect(screen.getByTestId("rx-draft-note")).toHaveTextContent("second line unreadable");
+    /* The panel says what the slip IS, so nobody reads it as an already-issued prescription. */
+    expect(screen.getByTestId("rx-draft")).toHaveTextContent("not a prescription until you issue it");
+
+    await user.click(screen.getByTestId("rx-draft-issue"));
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/prescription-draft/issue")).toHaveLength(1); });
+  });
+
+  it("a REFUSED tap is stated and the slip stays put — the doctor's next act is to look at it", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/visits/enc-1/prescription-draft": { status: 200, body: { draft: DRAFT } },
+      "POST /api/opd/visits/enc-1/prescription-draft/issue": {
+        status: 409,
+        body: { statusCode: 409, code: "allergy_conflict", message: "1 line(s) conflict with an active allergy", detail: { matches: [] } },
+      },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await screen.findByTestId("rx-draft");
+
+    await user.click(screen.getByTestId("rx-draft-issue"));
+    /* Scoped INSIDE the panel: the screen carries other alert regions and a bare `getByRole` would
+       be ambiguous today and, worse, could pass tomorrow by matching somebody else's message. */
+    const panel = within(screen.getByTestId("rx-draft"));
+    await waitFor(() => { expect(panel.getByRole("alert")).toHaveTextContent("conflict with an active allergy"); });
+    /* The road out, named in the message rather than left for the doctor to find. */
+    expect(panel.getByRole("alert")).toHaveTextContent("load it into the editor");
+    /* STILL THERE. */
+    expect(screen.getByTestId("rx-draft-line-0")).toBeInTheDocument();
+  });
+
+  it("a visit with no slip shows no panel at all", async () => {
+    mockRoutes({ ...baseRoutes(), "GET /api/opd/visits/enc-1/prescription-draft": { status: 200, body: { draft: null } } });
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await screen.findByTestId("rx-row-0");
+    expect(screen.queryByTestId("rx-draft")).not.toBeInTheDocument();
+  });
+});

@@ -10,11 +10,13 @@ import { parsed, toHttp } from "./opd-masters.controller";
 import {
   getPrescriptionPrint, issuePrescription, listPrescriptions, precheckPrescription, verifyPrescriptionQr,
 } from "./prescriptions";
+import { discardDraft, getPendingDraft, issueDraft, saveDraft } from "./prescription-drafts";
 import { boardSnapshot, callNext, listQueue, skipCalled, summaryByDoctor } from "./queue";
 import { setSessionStatus } from "./sessions";
 import { istDate } from "./time";
 import type { EncounterRow, PrescriptionRow, QueueEntryRow } from "./encounters";
 import type { IssuedPrescription, RxPrecheckResult, RxPrintData, RxVerifyResult } from "./prescriptions";
+import type { DraftRow } from "./prescription-drafts";
 import type { BoardItem, DoctorSummary, QueueView } from "./queue";
 import type { SessionRow } from "./sessions";
 import type { AppConfig } from "../../kernel/config";
@@ -93,6 +95,33 @@ const prescriptionBody = z.object({
 });
 /** The pre-check takes the lines alone: nothing is written, so nothing else is needed. */
 const precheckBody = z.object({ lines: z.array(rxLineBody) });
+/**
+ * FD-30 — the transcription. The SAME `rxLineBody` the prescription takes, because the draft is
+ * handed to `issuePrescription` unchanged and a draft that could hold a line the issue route would
+ * refuse is a slip the doctor cannot tap.
+ *
+ * NO OVERRIDE ARRAYS. A scribe cannot pre-clear an allergy conflict, a severe interaction or a
+ * duplicate salt: clearing one is a clinical judgement with a mandatory reason recorded against the
+ * prescriber. The warnings surface at the doctor's tap and the reasons are typed there.
+ */
+const draftBody = z.object({
+  lines: z.array(rxLineBody),
+  note: z.string().max(2000).nullish(),
+});
+/** The tap. Overrides ride HERE, with the doctor, for the reason `draftBody` states. */
+const issueDraftBody = z.object({
+  overrides: z.array(z.object({
+    lineIndex: z.number().int().nonnegative(), substance: z.string().max(200), reason: z.string().max(500),
+  })).optional(),
+  interactionOverrides: z.array(z.object({
+    lineIndex: z.number().int().nonnegative(), reason: z.string().max(500),
+    saltPair: z.tuple([z.string().min(1), z.string().min(1)]).optional(),
+  })).optional(),
+  duplicateOverrides: z.array(z.object({
+    lineIndex: z.number().int().nonnegative(), reason: z.string().max(500),
+    moiety: z.string().min(1).max(200).optional(),
+  })).optional(),
+});
 const verifyBody = z.object({ payload: z.string().min(1).max(500) });
 
 @Controller("opd")
@@ -228,6 +257,74 @@ export class OpdQueueController {
     const b = parsed(prescriptionBody, body);
     try {
       return await issuePrescription(this.db, actor, this.cfg, id, b);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  // ——— FD-30: the paper slip, transcribed then confirmed (owner ruling 2026-09-12) ———
+
+  /**
+   * The scribe composes. `opd.prescription.draft` authorises THIS and nothing else — see the
+   * manifest's entry, and `prescription-drafts.ts` for why a draft is inert by construction rather
+   * than by a status check somebody has to remember.
+   */
+  @RequirePermission("opd.prescription.draft", "hospital")
+  @Post("visits/:id/prescription-draft")
+  async draft(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<DraftRow> {
+    const b = parsed(draftBody, body);
+    try {
+      return await saveDraft(this.db, actor, id, { lines: b.lines, note: b.note ?? null });
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * BOTH SEATS READ IT — the scribe re-opens what they typed, the doctor reads it before tapping —
+   * and `RequirePermission` takes exactly ONE string, so the pair is made in the ROLE MODEL rather
+   * than here: `doctor` holds `opd.prescription.draft` beside `opd.consult` (see `seed-roles.ts`).
+   * Guarding this on `opd.consult` instead would have been the same decision pointing the other
+   * way and would have shut out the seat that wrote the slip.
+   */
+  @RequirePermission("opd.prescription.draft", "hospital")
+  @Get("visits/:id/prescription-draft")
+  async readDraft(@Param("id") id: string): Promise<{ draft: DraftRow | null }> {
+    try {
+      return { draft: await getPendingDraft(this.db, id) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** Taken off the list — by the doctor who will not issue it, or the scribe who mis-keyed it. */
+  @RequirePermission("opd.prescription.draft", "hospital")
+  @Post("visits/:id/prescription-draft/discard")
+  async discard(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ draft: DraftRow | null }> {
+    try {
+      return { draft: await discardDraft(this.db, actor, id) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * ═══ THE TAP ═══
+   *
+   * `opd.consult`, which a scribe does not hold — and even holding it would not be enough:
+   * `issueDraft` calls the shipped `issuePrescription` with THIS actor, and
+   * `requireTreatingDoctor` inside it refuses anyone without an `opd_doctors` profile for this
+   * encounter. The permission is the outer door; the guard is the lock, and the lock is the one
+   * every other prescription in the hospital passes through.
+   */
+  @RequirePermission("opd.consult", "hospital")
+  @Post("visits/:id/prescription-draft/issue")
+  async issueDraftRoute(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown,
+  ): Promise<IssuedPrescription & { draftId: string }> {
+    const b = parsed(issueDraftBody, body ?? {});
+    try {
+      return await issueDraft(this.db, actor, this.cfg, id, b);
     } catch (e) {
       toHttp(e);
     }

@@ -380,7 +380,7 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // the run reported `Received length: 50` against `expect(49)`. The series total is what the
     // build plan predicted, but it arrived in TWO steps and neither step was the sum — which is the
     // whole reason this pin is measured rather than computed.
-    expect(routes).toHaveLength(50);
+    expect(routes).toHaveLength(51); // FD-30 / owner ruling 2026-09-12: +1, `/opd/scribe` (the OPD-door transcription seat)
     expect(routes).toContain("/radiology/radiation-safety");
     /*
       FD-9 recorded the deletion of both as negative assertions. FD-25 reverses ONE of them.

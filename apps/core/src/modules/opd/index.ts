@@ -29,6 +29,8 @@ export type { AdvisedTest } from "./consultation";
 // `verifyPrescriptionQr` is the scanner's door; `runRxChecks` re-runs the issue-time checks on the
 // RESOLVED medicines at dispense time (16c D9) — it is bound to a patient, not to a consult.
 export { getPrescription, listPrescriptions, matchAllergies, runRxChecks, verifyPrescriptionQr } from "./prescriptions";
+export { discardDraft, getPendingDraft, issueDraft, saveDraft } from "./prescription-drafts";
+export type { DraftRow, SaveDraftInput } from "./prescription-drafts";
 export type {
   AllergyMatch, AllergyOverride, RxCheckOutcome, RxNotice, RxOverride, RxVerifyReason, RxVerifyResult,
 } from "./prescriptions";
