@@ -357,3 +357,34 @@
   background: var(--background);
   color: var(--foreground);
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════
+   PHASE 11i T3 (§2b row 22) — THE ENVIRONMENT BANNER.
+
+   Fixed, full width, above everything including Desk One (`.d1` is z-index 40, its palette 60),
+   and `pointer-events: none` so it can never take a click from the screen it is warning about —
+   FD-11 found the shell alive and tabbable UNDER Desk One and that is the defect this must not
+   repeat. It renders only when the API reports an environment label, which production never sets.
+   ══════════════════════════════════════════════════════════════════════════════════════════════ */
+.env-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9000;
+  pointer-events: none;
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+  justify-content: center;
+  padding: 2px 8px;
+  background: repeating-linear-gradient(135deg, #b45309 0 12px, #92400e 12px 24px);
+  color: #fff;
+  font: 600 11px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow: 0 1px 0 rgb(0 0 0 / 25%);
+}
+.env-banner__label { font-weight: 800; letter-spacing: 0.14em; }
+.env-banner__note { font-weight: 500; letter-spacing: 0.02em; text-transform: none; opacity: 0.92; }
+@media (max-width: 640px) { .env-banner__note { display: none; } }

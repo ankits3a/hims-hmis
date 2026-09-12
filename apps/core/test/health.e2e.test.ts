@@ -42,7 +42,22 @@ describe("GET /health", () => {
 
   it("reports ok with db connectivity", async () => {
     const res = await request(app.getHttpServer()).get("/health").expect(200);
-    expect(res.body).toEqual({ status: "ok", db: "ok", worker: "not_running" });
+    expect(res.body).toEqual({ status: "ok", db: "ok", worker: "not_running", environment: null });
+  });
+
+  /**
+   * PHASE 11i T3 (§2b row 22) — `environment` is `null` HERE and everywhere the key is unset,
+   * which is production. The four assertions above are the positive control for that: they are
+   * whole-body compares, so a field that appeared with a value would fail every one of them.
+   *
+   * The value's presence is proved on the OTHER side of the wire — `apps/web/src/shell-banner`'s
+   * suite renders the banner from a `/health` payload that carries one — because the thing worth
+   * asserting is that a person sees it, not that a string travelled.
+   */
+  it("reports environment: null when HMIS_ENVIRONMENT_LABEL is unset — production's answer", async () => {
+    expect(process.env.HMIS_ENVIRONMENT_LABEL ?? "").toBe("");
+    const res = await request(app.getHttpServer()).get("/health").expect(200);
+    expect(res.body.environment).toBeNull();
   });
 
   // R1. Express stamps `X-Powered-By: Express` on every response unless the adapter disables it,
@@ -51,7 +66,7 @@ describe("GET /health", () => {
   // positive control — absence must not be purchased by a request that failed.
   it("serves /health with no X-Powered-By banner", async () => {
     const res = await request(app.getHttpServer()).get("/health").expect(200);
-    expect(res.body).toEqual({ status: "ok", db: "ok", worker: "not_running" });
+    expect(res.body).toEqual({ status: "ok", db: "ok", worker: "not_running", environment: null });
     expect(res.headers["x-powered-by"]).toBeUndefined();
   });
 
@@ -62,19 +77,19 @@ describe("GET /health", () => {
     // Zero rows is NOT a fault: a deployment without a worker is not something the API can
     // diagnose, so the status stays ok.
     const notRunning = await request(app.getHttpServer()).get("/health").expect(200);
-    expect(notRunning.body).toEqual({ status: "ok", db: "ok", worker: "not_running" });
+    expect(notRunning.body).toEqual({ status: "ok", db: "ok", worker: "not_running", environment: null });
 
     await db.insert(schedulerHeartbeats).values({
       job: "runDispatchCycle",
       lastStartedAt: new Date(Date.now() - 10 * 60 * 1000), // 10 min back, against a 60 s window
     });
     const stale = await request(app.getHttpServer()).get("/health").expect(200);
-    expect(stale.body).toEqual({ status: "degraded", db: "ok", worker: "stale" });
+    expect(stale.body).toEqual({ status: "degraded", db: "ok", worker: "stale", environment: null });
 
     // A second, FRESH job leaves the aged row in place: the freshest heartbeat decides.
     await db.insert(schedulerHeartbeats).values({ job: "runDueTimers", lastStartedAt: new Date() });
     const ok = await request(app.getHttpServer()).get("/health").expect(200);
-    expect(ok.body).toEqual({ status: "ok", db: "ok", worker: "ok" });
+    expect(ok.body).toEqual({ status: "ok", db: "ok", worker: "ok", environment: null });
     expect(await db.select().from(schedulerHeartbeats).where(eq(schedulerHeartbeats.job, "runDispatchCycle")))
       .toHaveLength(1);
 
