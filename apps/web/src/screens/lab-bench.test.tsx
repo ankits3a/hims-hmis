@@ -35,7 +35,7 @@ function mockRoutes(handlers: Record<string, Reply | ((body: unknown) => Reply)>
 const analyte = (code: string, over: Partial<WireWorklistRow["analytes"][number]> = {}): WireWorklistRow["analytes"][number] => ({
   analyteId: `a-${code}`, code, nameEn: code, unit: "mg/dL", resultType: "numeric", resultId: null, value: null, flag: null,
   refLow: "70", refHigh: "100", refText: null, verificationStatus: null, enteredById: null, pathologistReviewPending: false,
-  previous: null, ...over,
+  previous: null, rerunChoice: [], ...over,
 });
 const WORKLIST: WireWorklistRow[] = [{
   orderItemId: "i-1", orderId: "o-1", orderNo: "L2608300001", encounterNo: "V2608290001",
@@ -324,4 +324,102 @@ it("02 §3.6 — the open call panel says a READ-BACK is what closes it", async 
   await userEvent.type(screen.getByLabelText(/Read-back/), "potassium six point eight");
   await userEvent.click(screen.getByRole("button", { name: "Record" }));
   await waitFor(() => expect(screen.getByLabelText("Who was called Ram Kumar")).toHaveValue(""));
+});
+
+/* ───────────────────── 17-E T7 / D18 — which run the report carries ───────────────────── */
+
+/** Two live runs of one analyte and no decision — what an analyser's repeat leaves behind. */
+const PAIR: WireWorklistRow = {
+  ...WORKLIST[0]!,
+  orderItemId: "i-3", serviceId: "svc-k", orderableCode: "K", orderableName: "Potassium",
+  specimenNo: "S2608300003",
+  analytes: [analyte("K", {
+    /** NULL, and that is the point: the analyte has no reportable value until somebody chooses. */
+    value: null, resultId: null, flag: null,
+    rerunChoice: [
+      { resultId: "r-k1", value: "6.8000", flag: "HH", deltaFlag: false, at: "2026-08-30T06:00:00.000Z", entryMode: "interface", isRerun: false },
+      { resultId: "r-k2", value: "4.2000", flag: "N", deltaFlag: true, at: "2026-08-30T06:10:00.000Z", entryMode: "interface", isRerun: true },
+    ],
+  })],
+};
+
+it("17-E T7 — an unchosen pair shows BOTH runs and no entry box; the bench is never asked to key a third", async () => {
+  mockRoutes({
+    "GET /api/lab/bench/worklist": { status: 200, body: [PAIR] },
+    "GET /api/lab/bench/arrivals": { status: 200, body: [] },
+    "GET /api/lab/bench/criticals": { status: 200, body: [] },
+  });
+  renderWithProviders(<LabBench />);
+  await waitFor(() => expect(screen.getByText("Potassium")).toBeInTheDocument());
+
+  /**
+   * **FIRST, BECAUSE IT IS THE REGRESSION THIS PINS** — and an assertion placed after one that also
+   * fails is an assertion the mutant never reaches. `value === null` is what opens the keying field
+   * on every other analyte, and an unchosen pair HAS a null value; a field inviting a THIRD
+   * measurement is the wrong act, so the pair branch must take precedence over it.
+   */
+  expect(screen.queryByLabelText("K K")).not.toBeInTheDocument();
+
+  /** Both measurements, legible, with which one is the repeat said in words. */
+  expect(screen.getByText("6.8000")).toBeInTheDocument();
+  expect(screen.getByText("4.2000")).toBeInTheDocument();
+  expect(screen.getByRole("radio", { name: "first run, 6.8000" })).toBeInTheDocument();
+  expect(screen.getByRole("radio", { name: "repeat run, 4.2000" })).toBeInTheDocument();
+
+  /** And the row says so where a technologist scrolling the list will see it. */
+  expect(screen.getByText(/run choice owed/)).toBeInTheDocument();
+});
+
+it("17-E T7 — the choose button is inert until a run AND a reason are given, and posts the reason", async () => {
+  const seen = mockRoutes({
+    "GET /api/lab/bench/worklist": { status: 200, body: [PAIR] },
+    "GET /api/lab/bench/arrivals": { status: 200, body: [] },
+    "GET /api/lab/bench/criticals": { status: 200, body: [] },
+    "POST /api/lab/bench/results/choose": { status: 200, body: { resultId: "r-k1", analyteId: "a-K", supersededResultIds: [] } },
+  });
+  renderWithProviders(<LabBench />);
+  await waitFor(() => expect(screen.getByText("Potassium")).toBeInTheDocument());
+
+  const button = screen.getByRole("button", { name: "Use this run" });
+  expect(button).toBeDisabled();
+
+  /** A run, still no reason. The server would refuse `rerun_choice_reason_required`. */
+  await userEvent.click(screen.getByRole("radio", { name: "first run, 6.8000" }));
+  expect(button).toBeDisabled();
+
+  /** Whitespace is not a reason — trimmed here exactly as `chooseReportedResult` trims it. */
+  await userEvent.type(screen.getByLabelText("K K — Why this run"), "   ");
+  expect(button).toBeDisabled();
+
+  await userEvent.type(screen.getByLabelText("K K — Why this run"), "repeat run's QC failed on the same plate");
+  expect(button).toBeEnabled();
+  await userEvent.click(button);
+
+  await waitFor(() => expect(seen.find((s) => s.path === "/api/lab/bench/results/choose")).toBeDefined());
+  /** The chosen run and the reason, and nothing the client invented. */
+  expect(seen.find((s) => s.path === "/api/lab/bench/results/choose")!.body).toEqual({
+    resultId: "r-k1", reason: "repeat run's QC failed on the same plate",
+  });
+});
+
+it("17-E T7 — a critical run keeps its flag and its colour while the choice is pending", async () => {
+  mockRoutes({
+    "GET /api/lab/bench/worklist": { status: 200, body: [PAIR] },
+    "GET /api/lab/bench/arrivals": { status: 200, body: [] },
+    "GET /api/lab/bench/criticals": { status: 200, body: [] },
+  });
+  renderWithProviders(<LabBench />);
+  await waitFor(() => expect(screen.getByText("Potassium")).toBeInTheDocument());
+
+  /**
+   * A potassium of 6.8 is the case this whole module exists for. The ANALYTE's flag is null while
+   * the choice is owed — there is no reportable value to flag — so if the run did not carry its own
+   * flag, the one number most likely to need a telephone call would render as an ordinary digit.
+   */
+  const critical = screen.getByText("6.8000");
+  expect(critical).toHaveClass("font-bold");
+  expect(critical).toHaveStyle({ color: "var(--state-danger)" });
+  expect(screen.getByText(/HH/)).toBeInTheDocument();
+  /** The repeat's delta is said too: it is why a bench would look twice before picking it. */
+  expect(screen.getByText(/delta/)).toBeInTheDocument();
 });

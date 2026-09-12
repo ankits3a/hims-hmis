@@ -2156,7 +2156,15 @@
       "tryNext": "अगला प्रयास: {{rung}}",
       "openFor": "{{minutes}} मिनट से खुला · लक्ष्य {{target}} मिनट",
       "kitSerial": "नली पर डाउनटाइम किट सीरियल",
-      "kitSerialHint": "जैसे DK-0241"
+      "kitSerialHint": "जैसे DK-0241",
+      "rerunOwed": "रन का चयन बाकी ({{count}})",
+      "rerunFirst": "पहला रन",
+      "rerunRepeat": "दोहराया रन",
+      "rerunDelta": "अंतर",
+      "rerunPick": "{{run}}, {{value}}",
+      "rerunReason": "यह रन क्यों",
+      "rerunReasonHint": "यह रन क्यों — जैसे दोहराए रन की क्यूसी विफल",
+      "rerunChoose": "यही रन लें"
     },
     "verify": {
       "title": "सत्यापन एवं रिपोर्ट",
