@@ -91,8 +91,12 @@ compose run --rm api node dist/scripts/check-config-present.js
 
 step "4/5 the synthetic data, behind the door (11i T5 / D5)"
 compose run --rm api node dist/scripts/seed-lab-catalogue.js
-compose run --rm api node dist/scripts/seed-lab-demo.js
-note "the golden catalogue and a lab day are loaded"
+# ALLOW_DEMO_DATA is seed:lab-demo's OWN opt-in — a word an operator types — and this script IS
+# that operator: running it is the deliberate act. The synthetic-data door (HMIS_SYNTHETIC_DATA_OK)
+# comes from the deploy directory's .env through the compose env_file, and both are required.
+compose run --rm -e ALLOW_DEMO_DATA=yes api node dist/scripts/seed-lab-demo.js
+compose run --rm api node dist/scripts/seed-aerb-demo.js || note "seed:aerb-demo skipped — no device or no RSO yet"
+note "the golden catalogue, a lab day and the DEMO certificates are loaded"
 
 step "5/5 api and worker back up, and the census"
 compose up -d api worker

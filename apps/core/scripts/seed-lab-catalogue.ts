@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { createDb } from "../src/kernel/db/client";
+import { SYNTHETIC_DATA_KEY, assertSyntheticDataAllowed } from "./synthetic-door";
 import { labAnalytes, labOrderables, labReferenceRanges, labReflexRules, services } from "../src/kernel/db/schema";
 import { upsertAnalyte, upsertOrderable } from "../src/modules/lab/catalogue";
 import type { Actor } from "@hmis/contracts";
@@ -167,12 +168,31 @@ async function main(): Promise<void> {
    * carrying them would be signed by a pathologist against numbers nobody chose. §9.9's runbook
    * loads the owner's own catalogue; this script exists for dev and for the suite.
    */
-  if (url.includes(":5434") || (process.env.NODE_ENV === "production")) {
+  if (url.includes(":5434")) {
     throw new Error(
       "seed:lab-catalogue: REFUSED — this fixture's reference ranges are invented and must never " +
         "back a real report. The hospital's own catalogue is a runbook act (17a §9.9).",
     );
   }
+  /**
+   * 11i T5 / D5 — THE THIRD DOOR, and the reason the `NODE_ENV` half moved rather than stayed.
+   *
+   * UAT runs the PRODUCTION IMAGE, which sets `NODE_ENV=production` — if it did not, UAT would be
+   * rehearsing a different build, which is the one thing it must never do. So `NODE_ENV` can no
+   * longer be the thing that separates "the hospital" from "the bench"; the environment key can,
+   * because production's own environment file never carries it.
+   *
+   * `NODE_ENV=production` STILL REFUSES unless the door is open. The two are read together, so a
+   * plain production container is refused exactly as before and only a deployment that has said
+   * so in its .env gets through.
+   */
+  if (process.env.NODE_ENV === "production" && process.env[SYNTHETIC_DATA_KEY] !== "1") {
+    throw new Error(
+      "seed:lab-catalogue: REFUSED — NODE_ENV=production and " + SYNTHETIC_DATA_KEY + " is not 1. " +
+        "These reference ranges are invented and must never back a real report (17a §9.9).",
+    );
+  }
+  assertSyntheticDataAllowed("seed:lab-catalogue");
   const { db, pool } = createDb(url);
   const actor: Actor = { type: "user", id: process.env.SEED_ACTOR_ID ?? "seed-lab-catalogue" };
   try {
