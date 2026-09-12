@@ -13,12 +13,12 @@ import { registrationConfigured } from "../src/modules/patients";
 import {
   LAB_DEF_KEYS, RELEASE_UNPAID_APPROVAL_TYPE, analytesFor, listOrderables, rangesFor,
 } from "../src/modules/lab";
-import { OPD_PHARMACY_STORE_CODE, PHARMACY_DEF_KEYS } from "../src/modules/pharmacy";
+import { OPD_PHARMACY_STORE_CODE, PHARMACY_DEF_KEYS, listSaleItems } from "../src/modules/pharmacy";
 import {
   DAYCARE_CASE_DEF_KEY, DEFINITION_PUBLISH_APPROVAL_TYPE, DEPOSIT_EXCEPTION_APPROVAL_TYPE,
   OT_DEFINITION_KIND_VALUES, OT_GATE_DEF_KEY, activeDefinitionRow,
 } from "../src/modules/ot";
-import { balances, findStoreByCode, listItems } from "../src/modules/materials";
+import { availableQty, findStoreByCode, listItems } from "../src/modules/materials";
 import { IMAGING_GATE_DEF_KEY, IMAGING_STUDY_DEF_KEY, activeStudyTypes } from "../src/modules/radiology";
 import { appointments, unlicensedDevices } from "../src/modules/aerb";
 import {
@@ -402,6 +402,36 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       runbook: { file: LAB_RUNBOOK, section: "## 6. Benches, resources and the physical laboratory" },
       fix: "§6: there is no printer destination registry — label, A4 and receipt printers are three devices at three seats. Record one test print per device per seat.",
     } as NotModelledRow,
+    /**
+     * ═══ Q5 — THE ANALYSER BRIDGE MUST NOT OPEN BEFORE ITS GUARD IS DEPLOYED ═══
+     *
+     * The deployed base already ships `registerInstrument`, its wired controller, migrations
+     * 0070/0071 and a seeded `lab_bridge` role — but NOT 17-E T7a's guard, which is in one of the
+     * migrations still pending. Today that holds only by luck: `lab_instruments` has no rows and
+     * nobody holds `lab_bridge`, so the unguarded path has no actor and no machine.
+     *
+     * ═══ WHY IT IS `NOT MODELLED` AND NOT A CHECK, WHICH IS THE INTERESTING PART ═══
+     *
+     * It was written first as a check — green while no instrument exists and nobody holds the role.
+     * **The census rejected it on BOTH of its structural invariants** ("on a FRESH database every
+     * checkable row is RED" and "after the deploy's seeds, exactly the G2 rows are green"), and the
+     * rejection is correct rather than inconvenient.
+     *
+     * This census's grammar is **every row is RED until an act makes it green**, so a reader
+     * scanning for RED is reading a to-do list. An inverted row — green until somebody does
+     * something dangerous — makes green mean two different things on one page, and the more
+     * dangerous meaning is the one that looks like "done".
+     *
+     * **The census cannot express "do this, but NOT YET" in a grammar where green means done.**
+     * What it has instead is exactly right for it: NOT MODELLED says a human adjudicates this,
+     * because the thing being judged is not a row in a table — it is whether now is the right time.
+     * `pharmacist_council_number` is here for the same reason from the other direction.
+     */
+    {
+      gate: "G3", code: "lab_bridge_not_open_before_its_guard",
+      runbook: { file: LAB_RUNBOOK, section: "## 11. What this build does NOT do" },
+      fix: "17-E T7a's guard is NOT in the deployed base. Do not register a `lab_instruments` row and do not grant `lab_bridge` until the pending migrations are deployed — until then the analyser path has no guard and is safe only because nobody can reach it. Re-read this row after the catch-up deploy: once the guard ships, the prohibition lifts and `lab_bridge` becomes an ordinary G4 staffing row.",
+    } as NotModelledRow,
   ],
 
   pharmacy: [
@@ -425,14 +455,46 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
     {
       gate: "G3", code: "pharmacy_item_present",
       check: async (db) => (await listItems(db, { class: "drug", active: true })).length > 0,
-      fix: "§2.2: register each medicine as a drug ITEM at /materials/items, then for sale at /pharmacy/items",
+      /**
+       * ITS FIX TEXT USED TO NAME TWO ACTS AND ITS CHECK TESTED ONE. "register each medicine as a
+       * drug ITEM at /materials/items, THEN FOR SALE at /pharmacy/items" — the second half was
+       * never asked. A drug item that exists and was never registered for sale has no
+       * `pharmacy_sale_items` row and no `RX-<code>` tariff service, so the counter refuses every
+       * line with `unknown_sale_item` while this row reads green.
+       *
+       * They are also two different people: §2.2 is `materials_head` at /materials/items, §2.3 is
+       * `pharmacy` at /pharmacy/items. **One row cannot certify two roles' work, and a row that
+       * tries will be green for whichever half is easier.**
+       */
+      fix: "§2.2: create a drug ITEM for each medicine at /materials/items (materials_head). Registering it FOR SALE is §2.3 and is the next row.",
+    },
+    {
+      gate: "G3", code: "pharmacy_sale_item_registered",
+      check: async (db) => (await listSaleItems(db)).some((i) => i.active && i.itemActive),
+      fix: "§2.3: register each drug item FOR SALE at /pharmacy/items (pharmacy) — it mints the RX-<code> tariff service the bill prices from",
     },
     {
       gate: "G3", code: "pharmacy_batch_in_stock",
+      /**
+       * `availableQty`, NOT a raw balance, and scoped to REGISTERED sale items.
+       *
+       * It asked `qtyOnHand > 0` over every balance at the store: no expiry filter, no recall
+       * filter, no reserved/frozen deduction, and no check that the item can be sold at all. **An
+       * expired batch has `qtyOnHand > 0`, so this read GREEN on a shelf the counter refuses every
+       * line from** — and it is precisely the number `pharmacy-go-live.md` §2 spends six lines
+       * explaining is not "N available".
+       *
+       * The row's claim is "there is stock". A human reads "the counter will dispense." Those came
+       * apart the moment expiry was enforced at the pick, and this closes the gap by asking the
+       * same predicate `fefoPick` picks from.
+       */
       check: async (db) => {
         const store = await findStoreByCode(db, OPD_PHARMACY_STORE_CODE);
         if (store === undefined) return false;
-        return (await balances(db, { resourceId: store.id })).some((b) => b.qtyOnHand > 0);
+        for (const item of (await listSaleItems(db)).filter((i) => i.active && i.itemActive)) {
+          if ((await availableQty(db, store.id, item.itemId)) > 0) return true;
+        }
+        return false;
       },
       fix: "§2.5: GRN stock into PHARM-OPD with batch, expiry and the printed MRP per pack",
     },
@@ -456,6 +518,25 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
    * what these rows are for.
    */
   ot: [
+    /**
+     * ═══ A MUST-NOT-OPEN-WITHOUT ROW, AND THE CONDITION IS NOT THE DEFECT ═══
+     *
+     * `ot/bill.ts` bucketed day-care discharges by UTC date in an IST hospital, so an orphan scan
+     * for "today" missed a 02:00 IST discharge — and that function's own header says such an
+     * encounter "is reported HERE or by nobody". The arithmetic is the LIMS lane's to fix and is
+     * not what this row is about.
+     *
+     * **The condition this row states is the one that outlives the fix: the orphan report is the
+     * only path a day-care discharge has, and a report nobody holds the role to read is a report
+     * that does not exist.** So the OT must not open for day-care work until somebody holds
+     * `ot_incharge` at hospital scope. G4, because it is a fact about the hospital's people and no
+     * deploy can write it.
+     */
+    {
+      gate: "G4", code: "ot_incharge_held",
+      check: heldAtHospitalScope("ot_incharge"),
+      fix: "assign `ot_incharge` to a named human at /admin/users — the day-care orphan report is read by that role or by nobody",
+    },
     {
       gate: "G2", code: "ot_approval_types_registered",
       // `seed:ot` registers both, and `deploy.sh` runs `seed-ot.js` — so this IS a deploy fact.
