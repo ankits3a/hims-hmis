@@ -4,13 +4,17 @@
 determinism from a surface which never promised it fails under load, looks like a new flake each
 time, and costs every lane on the board a CI cycle.
 
-**This is the list, deliberately without fixes.** Five classes were swept by content. The point of
-reporting before fixing is that the fixes land in different modules and can be sequenced across
-lanes instead of colliding in one PR — and that the ranking is visible, so the cheap ones are not
-done first by accident.
+**This is the list, deliberately without fixes.** Five classes were swept by content — **and §0 below
+is a sixth that a content sweep could not have found, already on the board before this census ran.
+Read it first.** The point of reporting before fixing is that the fixes land in different modules and
+can be sequenced across lanes instead of colliding in one PR — and that the ranking is visible, so the
+cheap ones are not done first by accident.
 
-**Headline: two of the five classes are already clean, and the largest live item is three
-instances of one bound, two of which the board did not know about.**
+**Headline: two of the five swept classes are already clean, and the largest live item is three
+instances of one bound, two of which the board did not know about.** And **load-sensitivity on this
+board is proven, not inferred: two PRs that changed no code at all went red** — one on §0's hook
+ceiling, one on item 1's lock-settle budget — each with a green same-SHA twin. Which class accounts for
+the most reds is not measured here and is not claimed.
 
 ---
 
@@ -26,6 +30,78 @@ instances of one bound, two of which the board did not know about.**
 | **6** | `kernel/search/registry.test.ts:164` | completeness of best-effort | medium |
 | **7** | `test/lab.e2e.test.ts:220` | fixture from the real clock | low-medium |
 | — | `modules/ot/bill.ts:565` | **not a flake — a correctness finding** | see §6 |
+
+---
+
+## 0. WHAT A SWEEP OF THE CODE CANNOT SEE — read this before re-running the census
+
+**Source: `/opt/hmis-lanes/.orchestrator/BLOCKERS.md:905-925`, written by an earlier session and
+found only after this census was delivered.** Named here so the next sweep starts from what the board
+already knows instead of rediscovering it.
+
+There is a sixth class, it was already diagnosed, and its conclusion is **stronger than anything the
+five classes below could have reached**: a 15 s hook ceiling (`jest.config.cjs:27`'s `testTimeout`,
+which applies to hooks) blown by three structurally unrelated setup paths inside one window —
+
+    lab suites        beforeEach -> truncateAll + seedLabDeskBase      ~1.84 s per test
+    partners/accrual  beforeAll  -> CREATE DATABASE + migrate()        906 ms per worker
+    opd e2e           beforeEach -> the OPD seed chain + nine grants    80.5 s suite, one hook died
+
+**In all three the average is nowhere near 15 s and a SPIKE did it. Three independent paths is no
+longer evidence about a fixture; it is evidence about the runner.**
+
+The corroboration is as clean as this board gets for free, and it is **broader than this one class** —
+measured, not taken on report:
+
+    BLOCKERS.md:905   docs-only, 1 file, +222/-0   red: test/opd.e2e.test.ts   15 s HOOK ceiling
+    #176              docs-only, 1 file, +91/-37   red: membership/entitlements.contention.test.ts
+                                                        -> this census's items 1 and 2, the 300 ms
+                                                           lock-settle budget, ALREADY FIXED in #175
+    both: the same-SHA twin job PASSED ENTIRELY.
+
+**A docs change cannot break a core test.** Two docs-only PRs, two *structurally different*
+load-sensitive assertions, both with a green same-SHA twin. That is stronger evidence for the runner
+than two instances of one class would have been — and note the second one's fix is already written and
+held by the freeze, so it will keep firing until #175 lands.
+
+Measured on `#174` the same night: **47m37s against a twin's 10m27s on the same SHA.** A 4.5×
+wall-clock skew between identical jobs is the finding, and it is about what else was running on the
+box.
+
+### Why this census could not have found it, which is the part worth carrying
+
+This census swept **code** for patterns, exhaustively, and that is the right instrument for an
+assertion that demands determinism from a surface which never promised it. But *"three unrelated paths,
+therefore the runner"* is **an inference across incidents over time**, and no grep over a tree can see
+it. It lived in the board's prose, not in the suite.
+
+> Before sweeping a tree for a failure class, read what the board has already concluded about
+> failures. A code sweep answers "where is this pattern"; it cannot answer "what do these incidents
+> have in common".
+
+The same gap let a peer session publish a "fifth flake class" on 2026-09-12 that was neither fifth nor
+a class: it read `duplicate key value violates unique constraint "opd_config_pkey"` as a non-re-entrant
+fixture helper, when the line ABOVE it in the same log was this section's hook timeout and the
+duplicates were its residue. The discriminator was free — the same aborted hook also threw
+`users_username_ux`, which the proposed fix could not have touched. **A diagnosis that explains symptom
+1 and is structurally incapable of explaining symptom 2 is not the cause.**
+
+### And it changes the fix direction, including the obvious one
+
+The tempting fix for the OPD hook is to hoist its invariant setup out of `beforeEach` — nine
+sequential DB groups per test, of which `truncateAll`, `seedOpdBase`, `activateOpdVisitDefinition`
+(the full three-person Class A ceremony) and `seedOpdMasters` do not change across the suite's tests.
+That is correct engineering and worth doing on its merits. **It would not have saved any of the three,
+because none of them is slow on average.** Treating one suite's structure is treating the instance.
+
+It is also not the two-token change it looks like: `truncateAll` in `beforeEach` wipes whatever
+`beforeAll` seeded, so hoisting means moving the truncate too and **proving no test reads state the
+previous one left.**
+
+**Logged as census item 9: the runner's load — not a fixture, and not a timeout number.** Raising
+`jest.config.cjs:27` globally is the wrong lever: that file is a shared surface, line 33's
+`maxWorkers: 2` carries an owner ruling, and a bigger number hides every other slow-hook problem
+behind it.
 
 ---
 
