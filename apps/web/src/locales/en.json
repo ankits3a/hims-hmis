@@ -3619,6 +3619,9 @@
       "thisVisit": "This visit",
       "onTheirAccount": "On their account",
       "unpaidStamp": "UNPAID",
+      "paidStamp": "PAID",
+      "creditStamp": "ON CREDIT",
+      "alreadyBilled": "Already billed on {{invoiceNo}} — the consultation fee is not charged twice.",
       "panelStamp": "PANEL",
       "nothingCarried": "Nothing carried forward. Dues from an earlier visit would show here and travel onto this bill."
     },

@@ -1563,6 +1563,96 @@ describe("BillingCounter", () => {
     expect(screen.queryByTestId("counter-error")).toBeNull();
   });
 
+  /**
+   * ═══ THE STAMP WAS ANSWERING A DIFFERENT QUESTION FROM THE ONE IT APPEARS TO ANSWER ═══
+   *
+   * Owner, 2026-09-12: *"it shows … 'This Visit New Rs 500, Unpaid' … I click payment method as cash
+   * and click 'Take Rs 500.00', the screen shows error 'invoice INV/26-27/000020 already charges
+   * this service on this visit' … if the visit was already charged then why does the screen show
+   * UNPAID on the left panel?"*
+   *
+   * The stamp read `collectablePaise` — the priced DRAFT on screen. A draft is never paid, so that
+   * branch could only ever print UNPAID; on a visit whose fee was on a settled invoice it printed a
+   * falsehood while the number beside it was perfectly correct. The ledger's own verdict now rides
+   * the quote (`visit.feeStatus`), which is the same projection the OPD queue stamps tokens with.
+   */
+  it("FD-28 (the stamp): a visit whose fee is already SETTLED reads PAID — the ledger's verdict, not the draft's arithmetic", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "GET /api/billing/visits/enc-1/fee-quote": {
+        status: 200,
+        body: {
+          ...QUOTE_NEW,
+          patient: { id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", alias: null, restricted: false, administrativeGender: "female", dob: null, phone: null },
+          visit: { visitNo: "V2609120001", serviceDate: "2026-09-12", status: "registered", tokenNo: 2, departmentCode: "MED", feeStatus: "settled" },
+          alreadyBilled: { invoiceId: "inv-20", invoiceNo: "INV/26-27/000020" },
+        },
+      },
+    });
+    renderWithProviders(<BillingCounter />);
+
+    /*
+      ANCHORED. `toHaveTextContent("PAID")` is a SUBSTRING match and "UNPAID" contains "PAID", so the
+      loose form passes against the very state this test exists to reject — measured, on the parent.
+    */
+    await waitFor(() => { expect(screen.getByTestId("token-stamp")).toHaveTextContent(/^PAID$/); });
+    /* And it NAMES the bill — "PAID" alone does not say which paper the patient is holding. */
+    expect(screen.getByTestId("already-billed")).toHaveTextContent("INV/26-27/000020");
+  });
+
+  /**
+   * The stamp was the lie the owner SAW; this is what walked them into the refusal. The counter
+   * pre-fills the visit's consult fee from the quote — right on an unbilled visit, and on a billed
+   * one a draft whose only line the server is guaranteed to refuse, priced at ₹500 and printed on
+   * the button. The cashier can take the cash before the server ever sees it.
+   */
+  it("FD-28 (the draft): a fee already on a live bill is NOT seeded into the next draft", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "GET /api/billing/visits/enc-1/fee-quote": {
+        status: 200,
+        body: {
+          ...QUOTE_NEW,
+          patient: { id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", alias: null, restricted: false, administrativeGender: "female", dob: null, phone: null },
+          visit: { visitNo: "V2609120001", serviceDate: "2026-09-12", status: "registered", tokenNo: 2, departmentCode: "MED", feeStatus: "settled" },
+          alreadyBilled: { invoiceId: "inv-20", invoiceNo: "INV/26-27/000020" },
+        },
+      },
+    });
+    renderWithProviders(<BillingCounter />);
+
+    await waitFor(() => { expect(screen.getByTestId("already-billed")).toBeInTheDocument(); });
+    /* The visit and its fee are still STATED — the box is not blanked, it is told the truth. */
+    expect(screen.getByTestId("fee-amount")).toHaveTextContent("₹560.00");
+    /* … and nothing is queued to charge again. */
+    expect(screen.queryByTestId("line-row-fee")).toBeNull();
+    expect(screen.getByText("Add at least one line before issuing")).toBeInTheDocument();
+  });
+
+  /** The unbilled visit is unchanged: the fee still seeds and the stamp still reads UNPAID. */
+  it("FD-28 (the stamp): an UNSETTLED visit still reads UNPAID and still seeds its fee", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "GET /api/billing/visits/enc-1/fee-quote": {
+        status: 200,
+        body: {
+          ...QUOTE_NEW,
+          patient: { id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", alias: null, restricted: false, administrativeGender: "female", dob: null, phone: null },
+          visit: { visitNo: "V2609120003", serviceDate: "2026-09-12", status: "registered", tokenNo: 3, departmentCode: "MED", feeStatus: "unsettled" },
+          alreadyBilled: null,
+        },
+      },
+    });
+    renderWithProviders(<BillingCounter />);
+
+    await waitFor(() => { expect(screen.getByTestId("token-stamp")).toHaveTextContent("UNPAID"); });
+    expect(await screen.findByTestId("line-row-fee")).toBeInTheDocument();
+    expect(screen.queryByTestId("already-billed")).toBeNull();
+  });
+
   it("FD-28: a deferred visit has no token yet and says so, rather than printing a dash", async () => {
     searchState.current = { encounterId: "enc-1" };
     mockRoutes({

@@ -275,6 +275,25 @@ describe("billing e2e", () => {
     expect(detail.body.lines).toHaveLength(1);
     expect(detail.body.settlement.state).toBe("settled");
 
+    /*
+      ═══ THE OWNER'S SEQUENCE: QUOTE THE SAME VISIT AGAIN, AFTER IT HAS BEEN BILLED ═══
+
+      Owner, 2026-09-12: *"if the visit was already charged then why … does the screen show UNPAID
+      on the left panel?"* — measured on a visit whose consult fee sat on a settled invoice.
+
+      The counter draws its money stamp from THIS answer, so the regression belongs here rather than
+      only in the screen's own suite: the second quote must carry the LEDGER's verdict, and it must
+      name the bill that already charges the fee. `counterState` computed `feeStatus` all along and
+      this route discarded it; `alreadyBilled` asks FD-27's duplicate guard its own question early,
+      so the screen and the refusal cannot disagree about one visit.
+    */
+    const reQuote = await http().get(`/billing/visits/${encounterId}/fee-quote`).set(...auth(cashier.token)).expect(200);
+    expect(reQuote.body.visit.feeStatus).toBe("settled");
+    expect(reQuote.body.alreadyBilled).toEqual({ invoiceId, invoiceNo: issued.body.invoiceNo });
+    // The FIRST quote, before any of this, said the opposite — and said it about the same visit.
+    expect(quote.body.visit.feeStatus).toBe("unsettled");
+    expect(quote.body.alreadyBilled).toBeNull();
+
     const printed = await http().get(`/billing/invoices/${invoiceId}/print`).set(...auth(cashier.token)).expect(200);
     expect(printed.body.letterhead).toEqual(DEFAULT_LETTERHEAD); // the ONE shipped letterhead (spec: one hospital)
     expect(printed.body.patient.uhid).toEqual(expect.any(String));
@@ -306,6 +325,70 @@ describe("billing e2e", () => {
 
     const started = await http().post(`/opd/visits/${encounterId}/consult/start`).set(...auth(dra.token)).expect(201);
     expect(started.body.encounter.status).toBe("in_consultation");
+  });
+
+  /**
+   * ═══ BILLED BY THE NUMBER ON THE PATIENT'S SLIP — THE ONLY SPELLING A CASHIER IS SHOWN ═══
+   *
+   * Owner, 2026-09-12, on a visit already paid twice: *"if the visit was already charged then why
+   * … does the screen show UNPAID on the left panel?"*
+   *
+   * `invoices.encounter_id` is plain text and the counter stored whatever the cashier typed. The
+   * cashier types `V2609120001` — the visit number, which is the only identifier printed on the
+   * slip — and every projection over the ledger keys on `opd_encounters.id`. So the bill was
+   * accepted, the money was taken, and the visit remained `unsettled` to every reader in the
+   * hospital. MEASURED on the preview before the fix: the consult gate saw ZERO invoices for a
+   * visit with ₹1000 collected against it.
+   *
+   * Each leg below is a different reader, because one canonical reference is exactly what makes
+   * them agree — and the last leg is the one a unit test cannot fake: the duplicate guard must
+   * catch a second bill spelled the OTHER way, which on the old code was a fresh key against a
+   * string nothing matched.
+   */
+  it("a visit billed by its VISIT NUMBER is settled for every reader — one canonical reference reaches the ledger", async () => {
+    const patientId = await registerPatient("Anand Kumar", "9876543219");
+    const open = await http().post("/opd/visits").set(...auth(cashier.token))
+      .send({ patientId, departmentId: deptId, doctorId: dra.doctorId }).expect(201);
+    const encounterId = open.body.encounter.id as string;
+    const visitNo = open.body.encounter.visitNo as string;
+    expect(visitNo).not.toBe(encounterId); // the two spellings really are different strings
+    await http().post(`/opd/visits/${encounterId}/vitals`).set(...auth(cashier.token)).send(adultOk).expect(201);
+    await openSession(cashier.token);
+
+    // The cashier bills the number on the slip — accepted before and after; that was never the bug.
+    const issued = await http().post("/billing/invoices").set(...auth(cashier.token)).send({
+      draftId: "draft-visitno-1", patientId, encounterId: visitNo,
+      lines: [{ lineId: "fee", serviceId: base.consultNewServiceId, qty: 1 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 50_000 }] },
+    }).expect(201);
+    expect(issued.body.settlement).toEqual({ state: "settled", outstandingPaise: 0 });
+
+    // 1 — THE ROW. Stored canonically, whichever spelling came in.
+    const listed = await http().get(`/billing/invoices?encounterId=${encounterId}`).set(...auth(cashier.token)).expect(200);
+    expect(listed.body.items.map((i: { id: string }) => i.id)).toContain(issued.body.invoiceId);
+    expect(listed.body.items.find((i: { id: string }) => i.id === issued.body.invoiceId).encounterId).toBe(encounterId);
+
+    // 2 — THE COUNTER'S OWN RAIL, by either spelling, because both resolve to one visit.
+    for (const spelling of [visitNo, encounterId]) {
+      const q = await http().get(`/billing/visits/${spelling}/fee-quote`).set(...auth(cashier.token)).expect(200);
+      expect(q.body.visit.feeStatus).toBe("settled");
+      expect(q.body.alreadyBilled.invoiceNo).toBe(issued.body.invoiceNo);
+    }
+
+    // 3 — THE CONSULT GATE. The patient paid; the doctor's door opens. This is the leg that was
+    //     shut on a paid visit, and it is the one that costs a patient their appointment.
+    const started = await http().post(`/opd/visits/${encounterId}/consult/start`).set(...auth(dra.token)).expect(201);
+    expect(started.body.encounter.status).toBe("in_consultation");
+
+    // 4 — THE DUPLICATE GUARD, ACROSS THE TWO SPELLINGS. A second bill on the canonical id is the
+    //     same visit and must be refused; spelled differently it used to be a visit nothing knew.
+    const dup = await http().post("/billing/invoices").set(...auth(cashier.token)).send({
+      draftId: "draft-visitno-2", patientId, encounterId,
+      lines: [{ lineId: "fee", serviceId: base.consultNewServiceId, qty: 1 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 50_000 }] },
+    }).expect(409);
+    expect(dup.body.code).toBe("duplicate_invoice_refused");
+    expect(dup.body.detail.invoiceNo).toBe(issued.body.invoiceNo);
   });
 
   it("dues: a credit-extended invoice is listed, then cleared by a receipt and an allocation", async () => {

@@ -469,8 +469,26 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
     setSlipSeededFor(quote.encounterId);
     setAttributionCode(quote.attributionCode ?? "");
   }, [quote, slipSeededFor]);
+  /*
+    ═══ A FEE ALREADY ON A LIVE BILL IS NOT SEEDED INTO THE NEXT DRAFT ═══
+
+    Owner, 2026-09-12: the rail said UNPAID on a visit already charged, and pressing Take returned
+    *"invoice INV/26-27/000020 already charges this service on this visit"*.
+
+    The stamp was the lie the owner saw; THIS is what walked them into the refusal. The counter
+    pre-fills the visit's consult fee from the quote — correct on a visit that has not been billed,
+    and on one that has it builds a draft whose only line is guaranteed to be refused, prices it at
+    ₹500, and puts that figure on the button. The cashier can take the cash before the server ever
+    sees the draft.
+
+    So the seed asks what the server already told us: a fee on a LIVE invoice (not entered-in-error,
+    not fully credited — `liveInvoiceCharging`'s own definition) is not seeded again. The cashier can
+    still add the consult by hand, deliberately, and then gets the refusal with its sentence; what
+    they no longer get is a duplicate they never asked for.
+  */
   useEffect(() => {
     if (quote === undefined || quote.free) return;
+    if (quote.alreadyBilled != null) return;
     const feeServiceId = quote.feeServiceId;
     if (feeServiceId === null) return;
     const priced = quote.draft?.lines[0];
@@ -523,6 +541,14 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
     and `totals` stays null forever: a gate written on the priced figure alone would print nothing
     at all about collection on the one visit where the sentence is unarguably true.
   */
+  /*
+    ═══ WHAT THE LEDGER SAYS ABOUT THIS VISIT'S FEE ═══
+
+    Held apart from `collectablePaise` deliberately. They answer two questions that a cashier reads
+    as one and that diverge exactly when it matters: "what would this draft cost" (below) and "has
+    this visit's fee been paid" (here). The stamp asks the second and used to be told the first.
+  */
+  const visitMoneyStamp = quote?.visit?.feeStatus ?? null;
   const collectablePaise: number | null = payablePaise !== null
     ? payablePaise
     : quote?.free === true && lines.length === 0 ? 0 : null;
@@ -1003,7 +1029,36 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
                             {tokenLabel(quote.visit.departmentCode, quote.visit.tokenNo)}
                           </span>
                         )}
-                        {collectablePaise === 0 ? (
+                        {/*
+                          ═══ THE MONEY STAMP IS THE LEDGER'S VERDICT, NOT THE DRAFT'S ARITHMETIC ═══
+
+                          Owner, 2026-09-12: *"that is showing that this specific visit/encounter id
+                          is unpaid … if the visit was already charged then why does the screen show
+                          UNPAID on the left panel?"*
+
+                          It read `collectablePaise` — the priced DRAFT in front of the cashier. A
+                          draft is never paid, so this branch could only ever say UNPAID, and it said
+                          it over a visit whose consult fee sat on a fully settled invoice. It was
+                          not reading the wrong number; it was answering a different question from
+                          the one the stamp appears to answer, which is worse, because the number was
+                          right and the sentence was false.
+
+                          `quote.visit.feeStatus` is the server's projection of the invoice ledger
+                          for THIS visit's fee — the same derivation the OPD queue has stamped tokens
+                          with since RC-1, so the two surfaces cannot disagree about one visit.
+
+                          The draft figure remains the fallback and only where the server states no
+                          verdict (billing unconfigured): a free visit still stamps ₹0 from the quote.
+                        */}
+                        {visitMoneyStamp === "settled" ? (
+                          <span className="stamp pd" data-testid="token-stamp">{t("billingSeat.rail.paidStamp")}</span>
+                        ) : visitMoneyStamp === "credit" ? (
+                          <span className="stamp un" data-testid="token-stamp">{t("billingSeat.rail.creditStamp")}</span>
+                        ) : visitMoneyStamp === "free" ? (
+                          <span className="stamp pd" data-testid="token-stamp">{fmtPaise(0)}</span>
+                        ) : visitMoneyStamp === "unsettled" ? (
+                          <span className="stamp un" data-testid="token-stamp">{t("billingSeat.rail.unpaidStamp")}</span>
+                        ) : collectablePaise === 0 ? (
                           <span className="stamp pd" data-testid="token-stamp">{fmtPaise(0)}</span>
                         ) : (
                           <span className="stamp un" data-testid="token-stamp">{t("billingSeat.rail.unpaidStamp")}</span>
@@ -1012,6 +1067,17 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
                           <span className="stamp pd" data-testid="payer-stamp">{t("billingSeat.rail.panelStamp")}</span>
                         )}
                       </div>
+                      {/*
+                        The bill that already charges this visit's fee, NAMED — because "PAID" alone
+                        does not tell a cashier which paper the patient is holding, and because the
+                        refusal that used to be the only way to learn this arrived after the money
+                        was counted. The invoice number is the one the server would have quoted.
+                      */}
+                      {quote.alreadyBilled != null && (
+                        <p data-testid="already-billed" style={{ margin: "7px 0 0", fontSize: 11.5, color: "var(--faint)" }}>
+                          {t("billingSeat.rail.alreadyBilled", { invoiceNo: quote.alreadyBilled.invoiceNo })}
+                        </p>
+                      )}
                       {quote.visit == null ? null : (
                         <div className="mo" data-testid="visit-no" style={{ marginTop: 5, fontSize: 10.5, color: "var(--faint)" }}>
                           {quote.visit.visitNo} · {quote.visit.serviceDate}

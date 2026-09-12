@@ -85,7 +85,7 @@ import { issueCreditNote, listCreditNotes } from "./credit-notes";
 import { MembershipError, membershipHttpStatus } from "../membership";
 import { BillingError, billingHttpStatus } from "./errors";
 import { withIdempotency } from "./idempotency";
-import { getInvoice, invoiceSettlement, issueInvoice, listInvoices, previewInvoiceWithBalances } from "./invoices";
+import { getInvoice, invoiceSettlement, issueInvoice, listInvoices, liveInvoiceCharging, previewInvoiceWithBalances } from "./invoices";
 import { collectionWorklist } from "./worklist";
 import type { CollectionRow } from "./worklist";
 import type { BenefitBalance } from "./invoices";
@@ -101,6 +101,7 @@ import type { BillingConfig } from "./config";
 import type { DayBook, Gstr1Row } from "./daily-close";
 import type { CreditNoteRow, IssueCreditNoteInput, IssueCreditNoteResult } from "./credit-notes";
 import type { InvoiceLineRow, InvoiceRow, IssueInvoiceResult, PricedDraft } from "./invoices";
+import type { EncounterFeeStatus } from "./fee-status";
 import type { AllocateReceiptResult, DueRow, MarkEnteredInErrorResult, PatientBalance, RecordReceiptResult, ReverseAllocationResult } from "./receipts";
 import type { IssueRefundVoucherResult, PayRefundVoucherResult, RequestRefundResult, RefundVoucherRow } from "./refunds";
 import type { MismatchRow, UploadSettlementResult } from "./recon";
@@ -121,6 +122,23 @@ type VisitFacts = {
   tokenNo: number | null;
   /** The department's code, so the counter spells the token exactly as the patient's slip does. */
   departmentCode: string | null;
+  /**
+   * ═══ WHAT THE LEDGER SAYS ABOUT THIS VISIT'S FEE — ALREADY COMPUTED, PREVIOUSLY DISCARDED ═══
+   *
+   * Owner, 2026-09-12: *"if the visit was already charged then why … does the screen show UNPAID
+   * on the left panel?"* — on a visit whose consult fee was on a settled invoice.
+   *
+   * `counterState` has derived this since Plan 16c and the queue view has rendered it since RC-1:
+   * `free | settled | credit | unsettled`, a projection of the invoice ledger that "cannot drift
+   * from the money because it IS the money, read". This route already called `counterState` for
+   * the token — the verdict was in the same variable, one field away, and thrown away. The counter
+   * then painted its stamp from the PRICED DRAFT instead, and a draft is never paid, so the rail
+   * said UNPAID over a paid visit as a matter of arithmetic rather than of fact.
+   *
+   * Null only where the module is UNCONFIGURED, which is `encounterFeeStatuses`' own "no fee for a
+   * stamp to be a fact about" — the screen says nothing there rather than inventing a state.
+   */
+  feeStatus: EncounterFeeStatus | null;
 };
 import type { OpdConfig } from "../opd";
 import type { AppConfig } from "../../kernel/config";
@@ -659,7 +677,10 @@ export class BillingController {
     // `string | string[]`, matching the schema: Nest hands back an array for a repeated parameter,
     // and an annotation narrower than the parser invites someone to "simplify" the union back out.
     @Query("referral") referral?: string | string[],
-  ): Promise<FeeQuote & { patient: PatientSummary | null; visit: VisitFacts | null }> {
+  ): Promise<FeeQuote & {
+    patient: PatientSummary | null; visit: VisitFacts | null;
+    alreadyBilled: { invoiceId: string; invoiceNo: string } | null;
+  }> {
     const couponCodes = parsed(feeQuoteCouponsQuery, coupon);
     const attributionCode = parsed(feeQuoteReferralQuery, referral);
     try {
@@ -675,8 +696,35 @@ export class BillingController {
         { withContact: { reason: "billing counter — the person being billed" } },
       );
       const state = await counterState(this.db, encounterId);
+      /*
+        ═══ THE STANDING BILL, NAMED BEFORE THE MONEY IS TAKEN AND NOT AFTER ═══
+
+        FD-27's duplicate guard (`invoices.ts`) is the authority and stays exactly where it is. What
+        it could not do is speak in time: it runs INSIDE the issue transaction, so the only way a
+        cashier learned the visit was already billed was to count the cash, press Take, and read
+        `duplicate_invoice_refused`. The owner did precisely that.
+
+        So the quote asks the guard's OWN question with the guard's OWN function, against the same
+        encounter key the guard uses — the screen cannot claim "already billed" on a different
+        basis from the refusal, which is how a warning and a guard start disagreeing.
+
+        Scoped to the visit's fee service because that is what the rail's stamp is a fact about; a
+        visit whose consult is billed is still open for a dressing or a lab test, and this must not
+        read as "this visit is closed".
+      */
+      /*
+        Asked with the ENCOUNTER'S OWN ID, never with the string the cashier typed. The ledger is
+        keyed canonically (`canonicalEncounterRef`) and this route is reached by either spelling —
+        a cashier types the visit number off the slip, the OPD desk deep-links the row id. Asking
+        with the raw parameter answered "no standing bill" for the visit-number road, which is the
+        road the owner was on and the one this whole repair is about.
+      */
+      const alreadyBilled = quote.feeServiceId === null || encounter === null
+        ? null
+        : await liveInvoiceCharging(this.db, encounter.id, [quote.feeServiceId]);
       return {
         ...quote,
+        alreadyBilled: alreadyBilled === null ? null : { invoiceId: alreadyBilled.id, invoiceNo: alreadyBilled.invoiceNo },
         patient: patient ?? null,
         visit: encounter === null ? null : {
           visitNo: encounter.visitNo,
@@ -684,6 +732,7 @@ export class BillingController {
           status: encounter.status,
           tokenNo: state?.tokenNo ?? null,
           departmentCode: state?.departmentCode ?? null,
+          feeStatus: state?.feeStatus ?? null,
         },
       };
     } catch (e) {

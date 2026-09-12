@@ -105,12 +105,25 @@ export type WireQuotePatient = {
   phone?: string | null;
 };
 
+/**
+ * `free | settled | credit | unsettled` — the SERVER's projection of the invoice ledger for this
+ * visit's fee, spelled exactly as `EncounterFeeStatus` spells it. Null means the billing module is
+ * unconfigured and there is no fact to state.
+ */
+export type WireFeeStatus = "free" | "settled" | "credit" | "unsettled";
+
 export type WireQuoteVisit = {
   visitNo: string; serviceDate: string; status: string;
   /** Null on a deferred visit that has not joined the queue — there is genuinely no token yet. */
   tokenNo: number | null;
   /** The department's code — the token reads by department ("MED-4"), on the owner's ruling. */
   departmentCode: string | null;
+  /**
+   * Owner, 2026-09-12: *"if the visit was already charged then why … does the screen show UNPAID?"*
+   * The rail's money stamp is drawn from THIS — the ledger — and never again from the priced draft,
+   * which is never paid and so could only ever say UNPAID.
+   */
+  feeStatus: WireFeeStatus | null;
 };
 
 export type WireFeeQuote = {
@@ -118,6 +131,13 @@ export type WireFeeQuote = {
   feeServiceId: string | null; draft: WirePricedDraft | null;
   patient?: WireQuotePatient | null;
   visit?: WireQuoteVisit | null;
+  /**
+   * The live invoice that ALREADY charges this visit's fee, asked of FD-27's own duplicate guard so
+   * the screen and the refusal cannot disagree. Non-null means pressing Take with the fee line in
+   * the draft will be refused `duplicate_invoice_refused` — which is what the cashier needs to know
+   * BEFORE counting the cash, not after.
+   */
+  alreadyBilled?: { invoiceId: string; invoiceNo: string } | null;
   /**
    * RC-1 T5 / D8 shipped this on the server's `FeeQuote` and it never reached this type, so the
    * seat that is meant to print "review visit — free till <date> (<doctor>)" could not see the

@@ -387,6 +387,46 @@ export async function listInvoices(
 export type { EncounterResolver } from "../../kernel/episodes/encounter-resolvers";
 export { registerEncounterResolver, registeredEncounterPrefixes } from "../../kernel/episodes/encounter-resolvers";
 
+/**
+ * ═══ ONE SPELLING OF A VISIT REACHES THE LEDGER, AND IT IS THE CANONICAL ONE ═══
+ *
+ * Owner, 2026-09-12: a visit billed twice, ₹1000 collected, and the counter still stamping UNPAID.
+ * The stamp was reading the ledger correctly by then — the LEDGER was keyed on a string no reader
+ * looks for.
+ *
+ * `invoices.encounter_id` is plain text with no FK (house precedent), and the counter sends
+ * whatever the cashier typed. A cashier types the VISIT NUMBER — `V2609120001`, the thing printed
+ * on the patient's slip — because that is the only spelling they are ever shown. `getEncounter`
+ * accepts it, so pricing, the patient resolution and the invoice all succeeded; the row then stored
+ * that display string, while every projection over the ledger keys on `opd_encounters.id`:
+ *
+ *   - `encounterFeeStatuses` — the token stamp on the OPD queue AND the counter's own rail
+ *   - `feeGate` — the consult gate. MEASURED on the preview: the guard saw ZERO invoices for a
+ *     visit that had been paid twice, so the patient pays and the doctor's door stays shut.
+ *   - `daily-close`'s uncharged-visit sweep
+ *
+ * None of them is wrong. They agree with each other and with the schema; the writer was the odd one
+ * out, and it was writing whatever it was handed.
+ *
+ * THE CANONICAL REFERENCE IS WHATEVER `getEncounter` RESOLVES TO, and the test for "is this an OPD
+ * visit" is that reader answering — not a prefix. Prefix matching is the WRONG instrument here and
+ * choosing it cost a round trip: OPD registers `V` itself (`opd.module.ts`), so a visit number
+ * matches a registered prefix, and "a registered prefix keeps its own spelling" left `V2609120001`
+ * exactly as it came. The resolver contract returns `{patientId, intendedPayer}` and no id, so it
+ * cannot answer this question at all; `getEncounter` can, and already accepts both spellings —
+ * that acceptance is why the counter worked and the ledger did not.
+ *
+ * Another module's episode number (the OT's `D…`) fails `VISIT_NO_RE` and matches no
+ * `opd_encounters.id`, so it resolves to nothing and is returned untouched — that module owns its
+ * own spelling. An id that resolves to nothing anywhere is likewise left exactly as it came, so the
+ * refusal further down still names what the caller actually sent.
+ */
+async function canonicalEncounterRef(db: Db, encounterId: string | undefined): Promise<string | undefined> {
+  if (encounterId === undefined) return undefined;
+  const encounter = await getEncounter(db, encounterId);
+  return encounter === null ? encounterId : encounter.id;
+}
+
 async function resolveEncounter(
   db: Db,
   encounterId: string | undefined,
@@ -916,6 +956,14 @@ export async function issueInvoice(
   now: Date = new Date(),
 ): Promise<IssueInvoiceResult> {
   const cfg = await loadBillingConfig(db);
+  /*
+    Resolved BEFORE anything is written and used for every mention of the visit below — the row, the
+    duplicate lock and guard, the event scopes, the fee-status hook and the realtime nudge. Rebinding
+    `input` itself is deliberate: leaving the raw string in scope beside a canonical one is how the
+    two get mixed at the next edit, and a lock taken on one spelling while the row stores the other
+    is a duplicate guard that does not guard. See `canonicalEncounterRef`.
+  */
+  input = { ...input, encounterId: await canonicalEncounterRef(db, input.encounterId) };
   const { priced: draft, benefits } = await priceDraftWithBenefits(db, input, now);
   const { totals } = draft;
 
