@@ -12,12 +12,18 @@ the classifier blocks it and `CLAUDE.md` forbids it.
 
 Production last deployed on **2 September** at `c11833d`. Since then:
 
-| | measured at `dc2bedc`, 2026-09-06 |
+> **THE NUMBERS BELOW WERE MEASURED AT `dc2bedc` ON 2026-09-06 AND THE TIP HAS MOVED.** The
+> candidate's journal is now **82**, read out of the image itself (see §2a). Production's `56` was
+> read BEFORE the accidental deploy of 2026-09-06 12:35, which applied migrations of its own — so
+> **`§1` is not a formality on this run: production's watermark must be re-read, not carried down
+> from this table.** A runbook figure is a measurement with a date on it.
+
+| | measured at `dc2bedc`, 2026-09-06 — **candidate column refreshed 2026-09-12 at `0960ca6`** |
 |---|---|
 | commits | **82** |
-| migrations applied on production | **56** (`0000`–`0055`, watermark `0055_drawer_session_indexes`, `when = 1788351286473`) |
-| migrations in the candidate's journal | **78** |
-| pending | **22** — `0056_pharmacy_dispense` … `0077_radiology_outside_studies` |
+| migrations applied on production | **56** as of 2026-09-05 — **STALE, re-read it at §1**: the 12:35 deploy on 09-06 applied more |
+| migrations in the candidate's journal | **82** (`0960ca6`, read from the image) |
+| pending | **whatever §1 reads, subtracted from 82** — do not carry a number down from here |
 | whole modules production has never had | **pharmacy**, **aerb** |
 | SPA routes | **47 → 53**: six added, **none deleted** |
 | environment keys added | **none** (`docker/prod/.env.prod.example` at the tip and at `c11833d` declare the same keys) |
@@ -130,10 +136,27 @@ copy of production with the candidate's migrator:
     cd /opt/hmis
     git fetch origin && git pull --ff-only        # deploy.sh refuses any HEAD but origin/main
     SHA=$(git rev-parse --short HEAD)
-    docker build --tag "hmis-prod/server:$SHA" .  # the BUILD half only: no migrate, no restart
+    docker build --tag "hmis-candidate/server:$SHA" .   # the BUILD half only: no migrate, no restart
 
-    HMIS_DRILL_SERVER_IMAGE="hmis-prod/server:$SHA" HMIS_DRILL_REHEARSAL=1 \
+    HMIS_DRILL_SERVER_IMAGE="hmis-candidate/server:$SHA" HMIS_DRILL_REHEARSAL=1 \
       bash /opt/hmis-prod/drill/restore-drill.sh
+
+> **ALREADY BUILT FOR `0960ca6`:** `hmis-candidate/server:0960ca6` is on the daemon (2026-09-12,
+> 439 MB), built from `/opt/hmis` clean at `origin/main`, and it declares **82** migrations —
+> verified with
+> `docker run --rm --entrypoint node hmis-candidate/server:0960ca6 -e 'console.log(require("/app/apps/core/drizzle/meta/_journal.json").entries.length)'`.
+> If the tip has not moved, the build line above is done and only the drill line remains.
+>
+> **`hmis-candidate/`, not `hmis-prod/`.** Nothing enforces this — a candidate in the prod namespace
+> is *not* rollback-targetable, because `HMIS_DEPLOY_ROLLBACK_TO` requires **all three** of
+> `server`, `web` and `db` at that tag and this builds only `server`, so a rollback to it refuses by
+> name. It is a naming discipline, not a guard: it keeps `hmis-prod/*` meaning "images that have
+> actually served".
+>
+> **On `HMIS_DRILL_STANZA` / `HMIS_DRILL_REPO_PATH`:** the script's header says a rehearsal sets both
+> at a scratch prefix, and that instruction is aimed at **a lane**, not at this runbook. Run here, by
+> the operator, against production's own repository, the rehearsal restores the same backup the
+> weekly drill does — which is the point. A lane rehearsing must not.
 
 **Expected transcript, in order:**
 
@@ -142,8 +165,8 @@ copy of production with the candidate's migrator:
   — twelve `rehearsing seed-*.js` lines, then `seed:roles`, then
   `config-present: ok=true problems=0`
 - `standup:check all` printing its rows — **its RED lines are a preview of step 3's**
-- `candidate image hmis-prod/server:<sha> declares 78 migrations in its journal`
-- `rehearsal: all 78 of the candidate's migrations are applied on the restored copy` — an
+- `candidate image <tag> declares 82 migrations in its journal` — 82 measured at `0960ca6`
+- `rehearsal: all 82 of the candidate's migrations are applied on the restored copy` — an
   **equality**, not a `>=`: a half-applied journal must not pass a rehearsal
 - `7/7 drop the scratch database` … `DRILL PASSED`
 - `verdict: passed — appending backup.drill_rehearsed (a rehearsal is not a drill)`
@@ -316,7 +339,8 @@ And the migration count:
     docker exec hmis-prod-db-1 psql -U hmis -d hmis -qAt \
       -c "select count(*) from drizzle.__drizzle_migrations"
 
-**Expected: `78`** — equal to the candidate's journal, the same equality step 2a rehearsed.
+**Expected: `82`** — equal to the candidate's journal at `0960ca6`, the same equality step 2a
+rehearsed. If the tip has moved again, read it from the image rather than from this line.
 
 ---
 
@@ -356,7 +380,7 @@ images are gone and there is no way back through this path; say so immediately r
 improvising.
 
 **What a rollback cannot undo:** the rows in §4's list, written by the new code while it was
-serving. The schema stays at 78 migrations — that is the design, and it is why the backout is
+serving. The schema stays at the candidate's 82 migrations — that is the design, and it is why the backout is
 *old code on the new schema* rather than a downgrade.
 
 ---
@@ -390,7 +414,7 @@ Fill this in as you go. A step performed and not recorded is a step nobody can c
 | (3) census before — RED rows | | |
 | (4) window declared / deploy 8/8 / gaps empty / mode normal | | |
 | (5) desk told: bookmarks, `/opd/vitals`, UHID series | | |
-| (6) census after / `gst_config` **row by row**, pre-existing rows unmoved / next invoice no. / migrations = 78 | | |
+| (6) census after / `gst_config` **row by row**, pre-existing rows unmoved / next invoice no. / migrations = 82 | | |
 | (7) #73 closed | | |
 | (8) edge gate | | |
 | (9) rollback needed? | | |
