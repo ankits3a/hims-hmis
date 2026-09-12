@@ -183,6 +183,26 @@ export function mirrorFor(key: TileKey, take: Take, ageYears: number | null, ran
   return null;
 }
 
+export type TakeSource = "typed" | "device" | "counted";
+export type GateContext = { ageYears: number | null; ranges: WireDangerRanges | null; last: WirePreStage["last"] };
+
+/**
+ * ONE take against the tiles as they stand, plus the gate it trips — the pure half of the bay's
+ * `commit`. It is pure because the save commits every still-typed tile in one pass, and each of
+ * those must see the tiles the one before it produced: `tiles` in a callback's closure is a render
+ * old by the second key, and a loop over the setter would chart the last number only.
+ */
+export function applyTake(tiles: Tiles, key: TileKey, source: TakeSource, take: Take, ctx: GateContext): { tiles: Tiles; mirror: Mirror | null } {
+  const tile = tiles[key];
+  const m = mirrorFor(key, take, ctx.ageYears, ctx.ranges, ctx.last, tile);
+  if (m !== null && m.kind === "probe_error") {
+    // held OUT of the chart until it survives a re-clip: the number is kept, not charted
+    return { tiles: { ...tiles, [key]: { ...tile, held: [...tile.held, m.value], source } }, mirror: m };
+  }
+  if (m !== null) return { tiles, mirror: m };
+  return { tiles: { ...tiles, [key]: { ...tile, takes: [...tile.takes, take], source, carried: null } }, mirror: null };
+}
+
 export function missingFor(tiles: Tiles, required: TileKey[], emergency: boolean): TileKey[] {
   const need = emergency ? EMERGENCY_TILES : required;
   return need.filter((k) => operative(tiles[k]) === null && tiles[k].carried === null);
@@ -366,6 +386,20 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
   const band = bandFor(ranges, preStage?.band ?? null);
   const [tiles, setTiles] = useState<Tiles>(emptyTiles);
   const [raw, setRaw] = useState<Record<TileKey, string>>(() => Object.fromEntries(TILE_KEYS.map((k) => [k, ""])) as Record<TileKey, string>);
+  /**
+   * ═══ WHAT IS IN THE BOXES, READABLE THIS INSTANT ═══
+   *
+   * `raw` renders them; this ref is what the commits read. ⏎ charts a tile, empties its box and
+   * moves the focus in one breath — and the blur that focus causes runs against the handlers of a
+   * render that has not happened yet, where the box still holds the number. Read from state there
+   * and ⏎ charts every reading twice (the escalation protocol saw two first readings and demanded
+   * the other arm twice). State is a render behind the keyboard; a ref is not.
+   */
+  const rawRef = useRef(raw);
+  const putRaw = useCallback((next: (r: Record<TileKey, string>) => Record<TileKey, string>): void => {
+    rawRef.current = next(rawRef.current);
+    setRaw(rawRef.current);
+  }, []);
   const [mirror, setMirror] = useState<{ key: TileKey; m: Mirror } | null>(null);
   const [serverGates, setServerGates] = useState<WireVitalsGate[]>([]);
   const [lockedByServer, setLockedByServer] = useState<WireVitalKey[]>([]);
@@ -397,11 +431,11 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
       setRrNudge((n) => (n === null ? null : { ...n, secondsLeft: left }));
       if (left === 0 && rrTimer.current !== null) {
         clearInterval(rrTimer.current); rrTimer.current = null;
-        setRaw((r) => ({ ...r, rr: "" }));
+        putRaw((r) => ({ ...r, rr: "" }));
         setFocusReq("rr");
       }
     }, 250);
-  }, []);
+  }, [putRaw]);
 
   /**
    * Ruling 3 — `1`–`8` address a tile when nobody is typing (a bare digit inside a tile is a value).
@@ -442,7 +476,7 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
       if (takes.length > 0) next[k] = { ...next[k], takes: [...takes], carried: null };
     }
     setTiles(next);
-    setRaw(Object.fromEntries(TILE_KEYS.map((k) => [k, ""])) as Record<TileKey, string>);
+    putRaw(() => Object.fromEntries(TILE_KEYS.map((k) => [k, ""])) as Record<TileKey, string>);
     setMirror(null); setServerGates([]); setLockedByServer([]); setMissing([]); setError(null); setChips({});
     setKeys({ typed: 0, device: 0 });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `initialTakes` is read once per patient, with the reset
@@ -464,40 +498,55 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
     if (next !== undefined) refs.current[next]?.focus();
   }, [order]);
 
+  const gateCtx = useMemo(
+    () => ({ ageYears: preStage?.ageYears ?? null, ranges, last: preStage?.last ?? null }),
+    [preStage, ranges],
+  );
+
   /**
    * A take is applied to the CURRENT tiles synchronously — never inside a state updater, whose
    * side effects React may run later or twice — so the jump to the next empty tile reads the
    * tiles the keystroke actually produced (the first draft focused the wrong tile for this reason).
    */
-  const commit = useCallback((key: TileKey, source: "typed" | "device" | "counted", take: Take): Tiles | null => {
-    const tile = tiles[key];
-    const m = mirrorFor(key, take, preStage?.ageYears ?? null, ranges, preStage?.last ?? null, tile);
-    if (m !== null && m.kind === "probe_error") {
-      // held OUT of the chart until it survives a re-clip: the number is kept, not charted
-      const next = { ...tiles, [key]: { ...tile, held: [...tile.held, m.value], source } };
-      setTiles(next); setMirror({ key, m });
-      return next;
+  const commit = useCallback((key: TileKey, source: TakeSource, take: Take): Tiles | null => {
+    const r = applyTake(tiles, key, source, take, gateCtx);
+    if (r.mirror !== null) {
+      // a probe error is HELD — the number is kept out of the chart, not lost, and the tile moves on
+      if (r.mirror.kind === "probe_error") { setTiles(r.tiles); setMirror({ key, m: r.mirror }); return r.tiles; }
+      setMirror({ key, m: r.mirror });
+      return null;
     }
-    if (m !== null) { setMirror({ key, m }); return null; }
     setMirror(null);
-    const next = { ...tiles, [key]: { ...tile, takes: [...tile.takes, take], source, carried: null } };
-    setTiles(next);
-    onCommitted?.(key, take, next);
-    return next;
-  }, [tiles, preStage, ranges, onCommitted]);
+    setTiles(r.tiles);
+    onCommitted?.(key, take, r.tiles);
+    return r.tiles;
+  }, [tiles, gateCtx, onCommitted]);
 
-  const onEnter = useCallback((key: TileKey) => {
-    const take = parseTake(key, raw[key]);
-    if (take === null) { setError(key === "bp" ? t("vitalsBay.capture.bpBoth") : t("vitalsBay.capture.notANumber")); return; }
+  /**
+   * ═══ WHAT IS IN THE BOX IS A READING ═══
+   *
+   * `advance` is the whole difference between ⏎ and every other way of leaving a tile: ⏎ jumps to
+   * the next empty tile, while a Tab or a click elsewhere must chart the number and leave the
+   * cursor where the nurse put it. `demandANumber` is ⏎'s alone — pressing it on an empty tile
+   * still says so; tabbing through an empty tile is not a mistake, it is the MUAC row on an adult.
+   */
+  const commitTyped = useCallback((key: TileKey, opts: { advance: boolean; demandANumber: boolean }): boolean => {
+    const text = rawRef.current[key];
+    if (!opts.demandANumber && text.trim() === "") return true;
+    const take = parseTake(key, text);
+    if (take === null) { setError(key === "bp" ? t("vitalsBay.capture.bpBoth") : t("vitalsBay.capture.notANumber")); return false; }
     setError(null);
+    putRaw((r) => ({ ...r, [key]: "" }));       // emptied BEFORE the focus moves — see `rawRef`
     if (key === "rr" && typeof take === "number") {
       const instant = rrFocusedAt.current !== null && Date.now() - rrFocusedAt.current < 15_000 && (rrNudge === null || rrNudge.secondsLeft !== 0);
       setRrNudge(instant ? { value: take, secondsLeft: null } : null);
     }
     const next = commit(key, rrNudge !== null && rrNudge.secondsLeft === 0 && key === "rr" ? "counted" : "typed", take);
-    setRaw((r) => ({ ...r, [key]: "" }));
-    if (next !== null) focusNextEmpty(key, next);
-  }, [raw, commit, focusNextEmpty, t, rrNudge]);
+    if (next !== null && opts.advance) focusNextEmpty(key, next);
+    return next !== null;
+  }, [putRaw, commit, focusNextEmpty, t, rrNudge]);
+
+  const onEnter = useCallback((key: TileKey) => { commitTyped(key, { advance: true, demandANumber: true }); }, [commitTyped]);
 
   const readDevice = useCallback(async (key: TileKey) => {
     const take = await driver.read(key);
@@ -534,13 +583,54 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
   }, []);
 
   const save = useCallback(async (emergency: boolean) => {
-    const miss = missingFor(tiles, set.required, emergency);
+    /*
+      ═══ THE PENDING KEYSTROKE, AND WHY IT IS FLUSHED HERE ═══
+
+      A tile became a reading on ⏎ and on nothing else. A nurse who tabs down the grid, or who
+      types the last number and reaches straight for the button, had every box filled and a save
+      that could not see one of them — the screen answered "Still needed:" with the whole required
+      set, naming back to her the eight numbers she was looking at. Everything still in a box is
+      charted HERE, in tile order, before the set is judged.
+
+      It runs even though leaving a tile now charts it: a click on Save blurs the focused input in
+      a browser and not in a test, and the save must not depend on which. A gate or an unreadable
+      box stops the save on that tile, exactly as ⏎ would — the numbers before it stay charted.
+    */
+    let current = tiles;
+    const flushed: TileKey[] = [];
+    /*
+      The first tile that cannot go through, and ONLY the first: the pass does not abort on it.
+      A half-typed BP must not cost her the six numbers below it — they are charted, the cursor
+      goes to the one tile that needs her, and the bad text stays in its box for her to finish.
+    */
+    let stop: { key: TileKey; mirror: Mirror | null } | null = null;
+    for (const k of order) {
+      const text = rawRef.current[k];
+      if (text.trim() === "") continue;
+      const take = parseTake(k, text);
+      if (take === null) { stop ??= { key: k, mirror: null }; continue; }   // her text stays in the box
+      const r = applyTake(current, k, "typed", take, gateCtx);
+      current = r.tiles;
+      flushed.push(k);
+      if (r.mirror !== null) { stop ??= { key: k, mirror: r.mirror }; continue; }
+      onCommitted?.(k, take, current);
+    }
+    if (flushed.length > 0) putRaw((r) => ({ ...r, ...Object.fromEntries(flushed.map((k) => [k, ""])) }));
+    if (current !== tiles) setTiles(current);
+    if (stop !== null) {
+      if (stop.mirror !== null) setMirror({ key: stop.key, m: stop.mirror });
+      else setError(stop.key === "bp" ? t("vitalsBay.capture.bpBoth") : t("vitalsBay.capture.notANumber"));
+      refs.current[stop.key]?.focus();
+      return;
+    }
+    if (flushed.length > 0) setMirror(null);
+    const miss = missingFor(current, set.required, emergency);
     if (miss.length > 0) { setMissing(miss); refs.current[miss[0]!]?.focus(); return; }
     setMissing([]); setError(null); setBusy(true); onBusy?.(true);
     const chipList = CHIPS.filter((c) => chips[c.key] !== undefined)
       .map((c) => ({ key: c.key, question: c.question, answer: chips[c.key] === "yes" ? c.yes : c.no }));
     try {
-      const result = await postVitals(row.encounterId, buildBody(tiles, { emergency, chips: chipList }));
+      const result = await postVitals(row.encounterId, buildBody(current, { emergency, chips: chipList }));
       onSaved(result);
     } catch (e) {
       if (e instanceof ApiError) {
@@ -556,7 +646,7 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
     } finally {
       setBusy(false); onBusy?.(false);
     }
-  }, [tiles, set.required, chips, row.encounterId, onSaved, onBusy]);
+  }, [tiles, putRaw, order, gateCtx, onCommitted, t, set.required, chips, row.encounterId, onSaved, onBusy]);
 
   const acceptServerGate = useCallback((g: WireVitalsGate, action: "confirm" | "fix") => {
     const key: TileKey = g.key === "sbp" || g.key === "dbp" ? "bp" : g.key;
@@ -686,8 +776,15 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
                     className="in mo" style={{ padding: "4px 7px", fontSize: 13 }}
                     placeholder={k === "bp" ? "158/96" : ""}
                     value={raw[k]}
-                    onChange={(e) => setRaw((r) => ({ ...r, [k]: e.target.value }))}
+                    onChange={(e) => putRaw((r) => ({ ...r, [k]: e.target.value }))}
                     onFocus={() => { if (k === "rr" && rrFocusedAt.current === null) rrFocusedAt.current = Date.now(); }}
+                    /*
+                      Leaving the tile charts it. Without this a nurse who tabs saw no source pill,
+                      no band tint and no danger protocol until she pressed Save — the screen showed
+                      her eight numbers and knew none of them. The focus is NOT moved: a Tab is
+                      already going somewhere, and ⏎ is the keystroke that says "and jump".
+                    */
+                    onBlur={() => { commitTyped(k, { advance: false, demandANumber: false }); }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") { e.preventDefault(); onEnter(k); return; }
                       if (e.key.length === 1 || e.key === "Backspace") setKeys((c) => ({ ...c, typed: c.typed + 1 }));

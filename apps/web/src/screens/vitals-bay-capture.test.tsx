@@ -214,7 +214,7 @@ describe("VD-2 T5 — the contract pass closed three clauses: 1–8 address a ti
     await user.keyboard("37.1");                                   // digits inside the tile are the value
     expect((screen.getByTestId("input-tempC") as HTMLInputElement).value).toBe("37.1");
     expect(document.activeElement).toBe(screen.getByTestId("input-tempC"));
-    (document.activeElement as HTMLElement).blur();
+    act(() => { (document.activeElement as HTMLElement).blur(); });   // leaving the tile charts the 37.1
     fireEvent.keyDown(window, { key: "9" });                       // no ninth tile: nothing moves
     expect(document.activeElement).not.toBe(screen.getByTestId("input-tempC"));
     expect(screen.getByTestId("prestage-last").textContent).toContain("11-Jun-2026");
@@ -436,5 +436,78 @@ describe("VD-2 T2 — the ASSEMBLED bay: the typing lane at speed, the carried l
     expect(screen.getByTestId("lane-toggle").getAttribute("data-lane")).toBe("serial");
     expect(localStorage.getItem("vitalsBay.lane")).toBe("serial");
     expect(within(screen.getByTestId("tile-bp")).getByTestId("device-bp")).toBeInTheDocument();
+  });
+});
+
+/**
+ * ═══ THE TYPED NUMBER THAT NEVER REACHED THE SAVE ═══
+ *
+ * Reported from the bay: every tile filled, "Save & send" pressed, and the screen answered
+ * "Still needed: Height, Weight, BP, Temp, SpO₂, Pulse" — the WHOLE required set. The list is the
+ * client's own (the server's would name `sbp` and `dbp` and say BP twice), so nothing was ever
+ * posted: a tile only became a reading on ⏎, and a nurse who tabs — or who types the last number
+ * and reaches straight for the button — committed none of them.
+ *
+ * Every test above drives this screen with `{Enter}`, which is why 537 green tests never saw it.
+ * These two do not type a single ⏎.
+ */
+describe("a typed number is a reading whether or not ⏎ was pressed", () => {
+  const TYPED = [["bp", "128/84"], ["pulse", "78"], ["spo2", "97"], ["tempC", "36.8"], ["rr", "16"], ["weightKg", "62"], ["heightCm", "168"]] as const;
+
+  it("the nurse who TABS: seven tiles filled, no ⏎, one click on Save & send — the save carries all seven and never says 'Still needed'", async () => {
+    const posted: Posted[] = [];
+    stubBay([ROW_B], () => saved(), posted);
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-121")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("bench-row-121"));
+    await waitFor(() => expect(screen.getByTestId("capture")).toBeInTheDocument());
+    for (const [k, v] of TYPED) fireEvent.change(screen.getByTestId(`input-${k}`), { target: { value: v } });
+    fireEvent.click(screen.getByTestId("save"));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(screen.queryByTestId("missing")).not.toBeInTheDocument();
+    const body = posted[0]!.body as { readings: Record<string, { takes: unknown[] }> };
+    expect(body.readings.bp!.takes).toEqual([[128, 84]]);
+    expect(body.readings.pulse!.takes).toEqual([78]);
+    expect(body.readings.spo2!.takes).toEqual([97]);
+    expect(body.readings.tempC!.takes).toEqual([36.8]);
+    expect(body.readings.rr!.takes).toEqual([16]);
+    expect(body.readings.weightKg!.takes).toEqual([62]);
+    expect(body.readings.heightCm!.takes).toEqual([168]);
+  });
+
+  it("leaving the tile charts it: the value, the source pill and the band tint are on the screen as she tabs, not after the save", async () => {
+    stubBay([ROW_K], () => saved());
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-130")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("bench-row-130"));
+    await waitFor(() => expect(screen.getByTestId("capture")).toBeInTheDocument());
+    fireEvent.change(screen.getByTestId("input-tempC"), { target: { value: "38.4" } });
+    expect(screen.getByTestId("value-tempC").textContent).toBe("—");        // still only typing
+    fireEvent.blur(screen.getByTestId("input-tempC"));
+    expect(screen.getByTestId("value-tempC").textContent).toBe("38.4");
+    expect(screen.getByTestId("source-tempC").getAttribute("data-source")).toBe("typed");
+    expect(screen.getByTestId("tile-tempC").getAttribute("data-tint")).toBe("notice");   // 38.4 on a 4-year-old
+    expect((screen.getByTestId("input-tempC") as HTMLInputElement).value).toBe("");
+  });
+
+  it("a tile left half-typed stops the save ON that tile and keeps every number charted before it", async () => {
+    const posted: Posted[] = [];
+    stubBay([ROW_B], () => saved(), posted);
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-121")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("bench-row-121"));
+    await waitFor(() => expect(screen.getByTestId("capture")).toBeInTheDocument());
+    for (const [k, v] of TYPED) fireEvent.change(screen.getByTestId(`input-${k}`), { target: { value: k === "bp" ? "128" : v } });
+    fireEvent.click(screen.getByTestId("save"));
+    expect(posted).toHaveLength(0);
+    expect(screen.getByTestId("capture-error").textContent).toContain("both numbers");
+    expect((screen.getByTestId("input-bp") as HTMLInputElement).value).toBe("128");   // hers to fix, not thrown away
+    expect(screen.getByTestId("value-pulse").textContent).toBe("78");                 // charted on the way past
+    fireEvent.change(screen.getByTestId("input-bp"), { target: { value: "128/84" } });
+    fireEvent.click(screen.getByTestId("save"));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    const body = posted[0]!.body as { readings: Record<string, { takes: unknown[] }> };
+    expect(body.readings.bp!.takes).toEqual([[128, 84]]);
+    expect(body.readings.pulse!.takes).toEqual([78]);
   });
 });
