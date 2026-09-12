@@ -268,11 +268,29 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
   });
 
   /*
-    FD-28 — the dues read follows whoever the rail resolved. Derived HERE, beside the quote it reads
-    from, rather than from `shown` below: `shown` is declared after the quote's other consumers and a
-    hook cannot be moved after them without changing hook order.
+    ═══ WHO THIS COUNTER IS ABOUT — ONE DEFINITION, AND EVERY CONSUMER READS IT ═══
+
+    FD-28 derived this HERE, beside the quote it reads from, rather than from `shown` below: `shown`
+    is declared after the quote's other consumers and a hook cannot be moved after them without
+    changing hook order. FD-28 named it for the one box that first needed it — the dues rail — and
+    that name is exactly why the defect below survived FD-28.
+
+    Owner, 2026-09-12: *"I entered Encounter number V2609120001, it shows Patient name and service
+    detail along with how much I need to collect … clicking 'Take 500' … error 'Pick a patient
+    before issuing a bill'."*
+
+    FD-28 taught the RAIL — the heading, the account box — to read whichever road the cashier
+    arrived by, and left `submit` and the coverage read still keyed on `patient`, the person a
+    cashier SEARCHED for. On `/billing?encounterId=…`, which is how the OPD desk hands a patient
+    over and how the owner walked in, nobody is searched for. So the counter named the person,
+    priced their visit, lit a button with their money on it, and then refused to issue on the
+    ground that nobody had been picked.
+
+    A name that says "dues" invites the next consumer to derive its own copy from `patient`, which
+    is what both of those did. This one names the FACT — the person the bill is for, by whichever
+    road the cashier arrived — so there is nothing left for a consumer to re-derive.
   */
-  const duesPatientId = patient?.id ?? feeQuote.data?.patient?.id ?? null;
+  const resolvedPatientId = patient?.id ?? feeQuote.data?.patient?.id ?? null;
 
   /** THE screen's one polling read (K39). Dues move while the cashier is on another patient. */
   /*
@@ -282,9 +300,9 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
     reason; see `shown`.
   */
   const dues = useQuery({
-    queryKey: ["billing", "balance", duesPatientId ?? ""],
-    queryFn: () => fetchPatientBalance(duesPatientId!),
-    enabled: duesPatientId !== null,
+    queryKey: ["billing", "balance", resolvedPatientId ?? ""],
+    queryFn: () => fetchPatientBalance(resolvedPatientId!),
+    enabled: resolvedPatientId !== null,
     refetchInterval: POLL_MS,
   });
 
@@ -370,10 +388,16 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
    * artboard's "East Central Railway · employee 41129" — and until now the build spec's conclusion
    * that the data did not exist was the reasonable reading, because nothing could reach it.
    */
+  /*
+    Keyed on the RESOLVED person (see `resolvedPatientId`). Keyed on the PICKED one this read never
+    fired on the `?encounterId=` road, so a panel patient the OPD desk handed over got no
+    Corporate/TPA card at all — the one surface that reads `patient_coverages` went blank on the
+    road the desk actually uses, and read as "this patient has no panel".
+  */
   const coverages = useQuery({
-    queryKey: ["patient-coverages", patient?.id ?? ""],
-    queryFn: () => listCoverages(patient?.id ?? ""),
-    enabled: patient !== null,
+    queryKey: ["patient-coverages", resolvedPatientId ?? ""],
+    queryFn: () => listCoverages(resolvedPatientId!),
+    enabled: resolvedPatientId !== null,
     staleTime: 60_000,
   });
 
@@ -425,7 +449,9 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
     ordinary answer for a patient with no photo and is swallowed, exactly as Desk One swallows it.
   */
   const [photo, setPhoto] = useState<string | null>(null);
-  const shownId = shown?.id ?? null;
+  /* The same id as `resolvedPatientId` by construction (`shown` is `patient ?? quote.patient`), and
+     read from it rather than derived again — a second derivation is a second thing to forget. */
+  const shownId = resolvedPatientId;
   useEffect(() => {
     setPhoto(null);
     if (shownId === null) return;
@@ -569,7 +595,14 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
   // ——— the write ————————————————————————————————————————————————————————————————————————————
 
   const submit = async (idemKey: string): Promise<void> => {
-    if (patient === null) {
+    /*
+      The RESOLVED person, not the picked one — the owner's 2026-09-12 refusal, and the reason
+      `resolvedPatientId` is named for the fact instead of for the dues box. The server requires
+      `patientId` on the body, so "resolved" has to hold all the way to the wire and not merely as
+      far as the rail's heading. It stays a refusal rather than becoming an assertion: reached with
+      no encounter typed and nobody searched for, there is genuinely no one to bill.
+    */
+    if (resolvedPatientId === null) {
       setError(t("billing.counter.pickPatientFirst"));
       setErrorCode(null);
       return;
@@ -607,7 +640,7 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
 
     const body: WireIssueInvoiceBody = {
       draftId,
-      patientId: patient.id,
+      patientId: resolvedPatientId,
       lines: lineInputs,
     };
     if (encounterId.trim() !== "") body.encounterId = encounterId.trim();
@@ -992,7 +1025,7 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
             <div className="box" style={{ padding: 14 }}>
               <span className="tag">{t("billingSeat.rail.onTheirAccount")}</span>
               <div data-testid="dues-sidebar" style={{ marginTop: 9, display: "flex", flexDirection: "column", gap: 5 }}>
-                {duesPatientId === null && (
+                {resolvedPatientId === null && (
                   <p style={{ margin: 0, fontSize: 12, color: "var(--faint)" }}>{t("billing.counter.pickPatientFirst")}</p>
                 )}
                 {/*
@@ -1009,7 +1042,7 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
                   Summed from the server's own per-row figures and nothing else. Each row is already
                   floored at zero server-side, so one over-collected bill cannot mask another's dues.
                 */}
-                {duesPatientId !== null && (dues.data?.dues ?? []).length > 0 && (
+                {resolvedPatientId !== null && (dues.data?.dues ?? []).length > 0 && (
                   <>
                     {/*
                       THE SERVER'S TOTAL, not a client sum over the rows. `patientBalance` floors
@@ -1042,7 +1075,7 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
                     <span style={{ fontSize: 11.5, color: "var(--dim)" }}> {t("billingSeat.rail.advanceHeld")}</span>
                   </div>
                 )}
-                {duesPatientId !== null && (dues.data?.dues ?? []).length === 0 && (
+                {resolvedPatientId !== null && (dues.data?.dues ?? []).length === 0 && (
                   <>
                     <span className="mo" style={{ fontSize: 19, fontWeight: 600 }}>{fmtPaise(0)}</span>
                     <span style={{ fontSize: 11.5, color: "var(--dim)" }}>{t("billing.counter.noDues")}</span>

@@ -1502,6 +1502,67 @@ describe("BillingCounter", () => {
     expect(screen.getByTestId("visit-no")).toHaveTextContent("V2609060003");
   });
 
+  /**
+   * ═══ FD-28 — THE ROAD THE WRITE NEVER TOOK ═══
+   *
+   * Owner, 2026-09-12: *"When I entered Encounter number V2609120001, it shows Patient name and
+   * service detail along with how much I need to collect … clicking 'Take 500' … error 'Pick a
+   * patient before issuing a bill'."*
+   *
+   * FD-28 taught the RAIL to read whichever road the cashier arrived by — `shown`, `duesPatientId`
+   * — and left `submit` reading the PICKED patient alone. So the counter named the person, priced
+   * their visit, lit the button with their money on it, and then refused to issue on the ground
+   * that nobody had been picked. Every write test in this file calls `pickPatient` first, including
+   * the ones that set `?encounterId=`, so the suite could not see it: the guard was only ever
+   * evaluated with `patient` already non-null.
+   *
+   * This test picks NOBODY. It is the whole point.
+   */
+  it("FD-28: entered by encounterId alone, the bill ISSUES against the person the quote named — nobody is picked twice", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "GET /api/billing/visits/enc-1/fee-quote": {
+        status: 200,
+        body: {
+          ...QUOTE_NEW,
+          patient: {
+            id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", alias: null, restricted: false,
+            administrativeGender: "female", dob: "1975-04-02", phone: "9835041772",
+          },
+          visit: { visitNo: "V2609120001", serviceDate: "2026-09-12", status: "registered", tokenNo: 2, departmentCode: "MED" },
+        },
+      },
+      "POST /api/billing/invoices": { status: 201, body: ISSUED },
+      "GET /api/billing/invoices/inv-1/print": { status: 200, body: PRINT },
+    });
+    renderWithProviders(<BillingCounter />);
+    const user = userEvent.setup();
+
+    /* The rail resolved the person from the visit — this half FD-28 already shipped. */
+    await waitFor(() => { expect(screen.getByTestId("paying-name")).toHaveTextContent("Asha Devi"); });
+    /* And the picker is gone, which is the screen's own claim that it does not need one. */
+    expect(screen.queryByLabelText("Search")).toBeNull();
+
+    await screen.findByTestId("line-row-fee");
+    await waitFor(() => { expect(screen.getByTestId("preview-net")).toHaveTextContent("₹560.00"); });
+
+    await user.type(screen.getByLabelText("Amount", { selector: "#tender-amount-0" }), "560");
+    await clickIssue(user);
+
+    await waitFor(() => { expect(callsTo("POST", "/api/billing/invoices")).toHaveLength(1); });
+    const body = bodiesOf("POST", "/api/billing/invoices")[0]!;
+    /*
+      The id comes from the QUOTE, and it is the encounter's own patient — the server requires
+      `patientId` and would 400 without it, so "resolved" has to mean resolved all the way to the
+      wire, not merely as far as the rail's heading.
+    */
+    expect(body.patientId).toBe("p-1");
+    expect(body.encounterId).toBe("enc-1");
+    /* And nothing was refused on the way: the counter said nothing about picking anybody. */
+    expect(screen.queryByTestId("counter-error")).toBeNull();
+  });
+
   it("FD-28: a deferred visit has no token yet and says so, rather than printing a dash", async () => {
     searchState.current = { encounterId: "enc-1" };
     mockRoutes({
