@@ -10,7 +10,7 @@ import {
 } from "./vitals-bay-protocol";
 import { AmendPanel, AmendTrail } from "./vitals-bay-amend";
 import type { Amended } from "./vitals-bay-amend";
-import { verifyQrScan } from "../lib/patients-api";
+import { activeAllergies, addAllergy, listAllergies, verifyQrScan } from "../lib/patients-api";
 import { api } from "../lib/api";
 import { usePatientInHand } from "../lib/patient-in-hand";
 import { useAuth } from "../lib/auth";
@@ -193,6 +193,138 @@ export function BenchRail({ rows, inHandEncounterId, onTake }: {
 
 const LAST_KEYS = ["heightCm", "weightKg", "sbp", "dbp", "pulse", "rr", "spo2", "tempC", "muacCm"] as const;
 
+/**
+ * ═══ THE ALLERGY STEP, AT THE ONE DESK EVERY OPD PATIENT PASSES ═══
+ *
+ * Owner, 2026-09-12: *"add 'record allergy' step in the registration or vitals flow, where a clerk
+ * is already talking to the patient."*
+ *
+ * DECIDED — THE BAY, not registration, and the choice is a measurement rather than a preference:
+ * `waiting_vitals` is the state every queue entry is born into (`bench.ts`, `queue.ts`), so the bay
+ * is the one seat on the OPD road that nobody skips. Registration is skipped by every returning
+ * patient who is already on file. Asking here also matches who should ask — a nurse taking a cuff
+ * off an arm is already asking clinical questions — and `vitals_desk` already holds
+ * `patients.update`, so no permission moves for this.
+ *
+ * `source: "vitals"` was ALREADY in the server's enum (`allergyBody`: registration | vitals |
+ * consult). The column anticipated this desk before a control existed to fill it — which is the
+ * ordinary "readers without writers" shape, pointing the other way for once.
+ *
+ * WHAT THIS DELIBERATELY DOES NOT HAVE is a "no known allergies" button. Owner, same message: an
+ * empty register now prints a BLANK strip on the prescription rather than a claim, precisely so
+ * that "nobody asked" is never rendered as "none". A control here that let a nurse assert the
+ * negative would put that claim straight back, one layer down.
+ */
+function AllergyStep({ patientId }: { patientId: string }): React.ReactElement {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [substance, setSubstance] = useState("");
+  const [reaction, setReaction] = useState("");
+  const [severity, setSeverity] = useState<"mild" | "moderate" | "severe">("mild");
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  const queryKey = ["patient-allergies", patientId];
+  const allergies = useQuery({ queryKey, queryFn: () => listAllergies(patientId), retry: false });
+  /* ACTIVE only — a retracted row is history, never a warning. The filter lives in `patients-api`. */
+  const active = activeAllergies(allergies.data?.items);
+
+  const reset = (): void => { setSubstance(""); setReaction(""); setSeverity("mild"); setFailed(false); };
+
+  const save = async (): Promise<void> => {
+    const s = substance.trim();
+    if (s === "" || busy) return;
+    setBusy(true);
+    setFailed(false);
+    try {
+      await addAllergy(patientId, {
+        substance: s,
+        ...(reaction.trim() === "" ? {} : { reaction: reaction.trim() }),
+        severity,
+        source: "vitals",
+      });
+      await queryClient.invalidateQueries({ queryKey });
+      reset();
+      setOpen(false);
+    } catch {
+      /* STATED, never swallowed: a nurse who typed an allergen and saw the form close would believe
+         it was recorded. The form stays open with what they typed still in it. */
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div data-testid="allergy-step" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <span className="tag">{t("vitalsBay.allergy.title")}</span>
+      {active.length === 0 ? (
+        <p data-testid="allergy-none" style={{ margin: 0, color: "var(--faint)", fontSize: 11.5 }}>
+          {t("vitalsBay.allergy.none")}
+        </p>
+      ) : (
+        <div data-testid="allergy-chips" style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+          {active.map((a) => (
+            <span key={a.id} data-testid={`allergy-chip-${a.id}`} className="pill rd" style={{ fontWeight: 600 }}>
+              {a.substance}{a.severity === null ? "" : ` · ${t(`vitalsBay.allergy.${a.severity}`)}`}
+            </span>
+          ))}
+        </div>
+      )}
+      {open ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: 11 }}>
+            {t("vitalsBay.allergy.substance")}
+            <input
+              data-testid="allergy-substance" autoFocus value={substance}
+              onChange={(e) => { setSubstance(e.target.value); }}
+            />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: 11 }}>
+            {t("vitalsBay.allergy.reaction")}
+            <input data-testid="allergy-reaction" value={reaction} onChange={(e) => { setReaction(e.target.value); }} />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: 11 }}>
+            {t("vitalsBay.allergy.severity")}
+            <select
+              data-testid="allergy-severity" value={severity}
+              onChange={(e) => { setSeverity(e.target.value as "mild" | "moderate" | "severe"); }}
+            >
+              <option value="mild">{t("vitalsBay.allergy.mild")}</option>
+              <option value="moderate">{t("vitalsBay.allergy.moderate")}</option>
+              <option value="severe">{t("vitalsBay.allergy.severe")}</option>
+            </select>
+          </label>
+          {failed && (
+            <p data-testid="allergy-failed" style={{ margin: 0, fontSize: 11, color: "var(--bad)" }}>
+              {t("vitalsBay.allergy.failed")}
+            </p>
+          )}
+          <div style={{ display: "flex", gap: 5 }}>
+            <button
+              type="button" className="pri" data-testid="allergy-save"
+              disabled={substance.trim() === "" || busy} onClick={() => { void save(); }}
+            >
+              {t("vitalsBay.allergy.save")}
+            </button>
+            <button
+              type="button" className="sec" data-testid="allergy-cancel"
+              onClick={() => { reset(); setOpen(false); }}
+            >
+              {t("vitalsBay.allergy.cancel")}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" className="sec" data-testid="allergy-open" onClick={() => { setOpen(true); }}>
+          {t("vitalsBay.allergy.add")}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function SessionColumn({ row, preStage, failed, pending, children }: {
   row: WireBenchRow | null; preStage: WirePreStage | null; failed: boolean; pending: boolean; children?: React.ReactNode;
 }): React.ReactElement {
@@ -256,6 +388,8 @@ export function SessionColumn({ row, preStage, failed, pending, children }: {
           )}
         </div>
       )}
+      {/* Keyed on the patient, so switching benches remounts rather than showing the last one's. */}
+      {row.patient !== null && <AllergyStep key={row.patient.id} patientId={row.patient.id} />}
       {children}
     </section>
   );

@@ -289,3 +289,129 @@ describe("the alias layer and the route pin move with the screen", () => {
     expect(src).not.toContain("screens/opd-vitals");
   });
 });
+
+/**
+ * ═══ THE ALLERGY STEP — OWNER, 2026-09-12 ═══
+ *
+ * *"Add 'record allergy' step in the registration or vitals flow, where a clerk is already talking
+ * to the patient."* It went to the BAY because `waiting_vitals` is the state every queue entry is
+ * born into, so this is the one seat on the OPD road nobody skips.
+ *
+ * The file's D8 rule applies with full force here and is the reason the second half exists: an
+ * allergen is the most dangerous thing on this screen to attach to the wrong person, so the test
+ * puts TWO patients through and names the first one's allergen as ABSENT under the second.
+ */
+describe("VD-2 — the allergy step, and it never bleeds between patients", () => {
+  const ALLERGIES: Record<string, { items: unknown[] }> = {
+    "P-A": { items: [] },
+    "P-B": { items: [{ id: "AL-B1", substance: "Penicillin", reaction: "rash", severity: "severe", status: "active" }] },
+  };
+
+  function stubBayWithAllergies(): void {
+    stubFetch({
+      "GET /api/auth/me": { actor: { type: "user", id: "u-vd" }, permissions: { hospital: ["opd.vitals.record", "opd.queue.read", "opd.vitals.history.read", "patients.update"], scoped: { department: {}, floor: {} } } },
+      "GET /api/opd/bench": { items: [ROW_A, ROW_B] },
+      "GET /api/opd/queues/summary": { items: SUMMARY },
+      "GET /api/opd/visits/E-A/prestage": PRE_A,
+      "GET /api/opd/visits/E-B/prestage": PRE_B,
+      /* The scan door, same payload the file's other stub answers — B is reached by card below. */
+      "POST /api/patients/qr/verify": (init?: RequestInit) => {
+        const payload = (JSON.parse(String(init?.body)) as { payload: string }).payload;
+        return payload === "q1.P-B.UH-26-00121.1.sig"
+          ? { ok: true, patient: { id: "P-B", uhid: "UH-26-00121", name: "Ganesh Oraon", administrativeGender: "male", dob: null } }
+          : { ok: false, reason: "invalid_signature" };
+      },
+      "GET /api/patients/P-A/allergies": () => ALLERGIES["P-A"],
+      "GET /api/patients/P-B/allergies": () => ALLERGIES["P-B"],
+      "POST /api/patients/P-A/allergies": (init?: RequestInit) => {
+        const b = JSON.parse(String(init?.body)) as { substance: string; severity: string; reaction?: string };
+        ALLERGIES["P-A"] = { items: [{ id: "AL-A1", substance: b.substance, reaction: b.reaction ?? null, severity: b.severity, status: "active" }] };
+        return { allergyId: "AL-A1" };
+      },
+    });
+  }
+
+  function postedAllergies(): Record<string, unknown>[] {
+    return vi.mocked(fetch).mock.calls
+      .filter(([input, init]) => init?.method === "POST" && String(input).includes("/allergies"))
+      .map(([, init]) => JSON.parse(String(init?.body)) as Record<string, unknown>);
+  }
+
+  it("records an allergen at the bay, carries source `vitals`, and shows it back", async () => {
+    ALLERGIES["P-A"] = { items: [] };
+    stubBayWithAllergies();
+    const user = userEvent.setup();
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-118")).toBeInTheDocument());
+
+    await user.type(screen.getByTestId("identify"), "118{Enter}");
+    await waitFor(() => expect(screen.getByTestId("session").getAttribute("data-encounter")).toBe("E-A"));
+
+    /* Nothing on file says exactly that — and does NOT claim the patient has no allergies. */
+    await waitFor(() => expect(screen.getByTestId("allergy-none")).toBeInTheDocument());
+    expect(screen.getByTestId("allergy-none").textContent).toContain("ask the patient");
+    expect(screen.queryByTestId("allergy-chips")).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId("allergy-open"));
+    await user.type(screen.getByTestId("allergy-substance"), "Sulfa drugs");
+    await user.type(screen.getByTestId("allergy-reaction"), "hives");
+    await user.selectOptions(screen.getByTestId("allergy-severity"), "moderate");
+    await user.click(screen.getByTestId("allergy-save"));
+
+    await waitFor(() => expect(postedAllergies()).toHaveLength(1));
+    expect(postedAllergies()[0]).toEqual({
+      substance: "Sulfa drugs", reaction: "hives", severity: "moderate",
+      /* The provenance the server's own enum already named — a nurse asking is not a clerk copying. */
+      source: "vitals",
+    });
+    /* Read BACK from the server, not painted optimistically: the chip proves the re-read landed. */
+    await waitFor(() => expect(screen.getByTestId("allergy-chips").textContent).toContain("Sulfa drugs"));
+    expect(screen.queryByTestId("allergy-none")).not.toBeInTheDocument();
+  });
+
+  it("the next patient's register is THEIRS — the previous allergen is gone, and a blank substance cannot be saved", async () => {
+    ALLERGIES["P-A"] = { items: [{ id: "AL-A9", substance: "Iodine", reaction: null, severity: "mild", status: "active" }] };
+    stubBayWithAllergies();
+    const user = userEvent.setup();
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-118")).toBeInTheDocument());
+
+    await user.type(screen.getByTestId("identify"), "118{Enter}");
+    await waitFor(() => expect(screen.getByTestId("allergy-chips").textContent).toContain("Iodine"));
+    /* The empty form refuses BEFORE any request — the same shape the rest of this bay uses. */
+    await user.click(screen.getByTestId("allergy-open"));
+    expect(screen.getByTestId("allergy-save")).toBeDisabled();
+    await user.click(screen.getByTestId("allergy-cancel"));
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.getByTestId("session-empty")).toBeInTheDocument());
+
+    await user.type(screen.getByTestId("identify"), "q1.P-B.UH-26-00121.1.sig{Enter}");
+    await waitFor(() => expect(screen.getByTestId("session").getAttribute("data-encounter")).toBe("E-B"));
+    await waitFor(() => expect(screen.getByTestId("allergy-chips").textContent).toContain("Penicillin"));
+    /* A's allergen does not follow B onto the bench. This is the assertion the step exists to earn. */
+    expect(screen.getByTestId("allergy-chips").textContent).not.toContain("Iodine");
+    expect(postedAllergies()).toHaveLength(0);
+  });
+
+  /**
+   * A RETRACTED ROW IS HISTORY, NEVER A WARNING. `patient_allergies` is append-only and the GET
+   * returns `entered_in_error` rows too, so every surface filters. Dropping the filter shows an
+   * allergen the hospital formally retracted — `render.ts` calls the same mistake "the
+   * safety-critical line on the page", and this is the same mistake on a screen.
+   */
+  it("does not show an allergen that was entered in error", async () => {
+    ALLERGIES["P-A"] = { items: [
+      { id: "AL-X", substance: "Ibuprofen", reaction: null, severity: "mild", status: "entered_in_error" },
+      { id: "AL-Y", substance: "Latex", reaction: null, severity: "mild", status: "active" },
+    ] };
+    stubBayWithAllergies();
+    const user = userEvent.setup();
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-118")).toBeInTheDocument());
+    await user.type(screen.getByTestId("identify"), "118{Enter}");
+
+    await waitFor(() => expect(screen.getByTestId("allergy-chips").textContent).toContain("Latex"));
+    expect(screen.getByTestId("allergy-chips").textContent).not.toContain("Ibuprofen");
+  });
+});

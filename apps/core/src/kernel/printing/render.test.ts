@@ -398,18 +398,32 @@ describe("FD-24 T3: rendering the counter's documents", () => {
           markAllergyEnteredInError(tx, clerk.actor, added.allergyId, "recorded against the wrong patient"));
         const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
         expect(doc!.html).not.toContain("SULFA DRUGS");
-        expect(doc!.html).toContain('<span class="sub">NO KNOWN ALLERGIES</span>');
+        /* A retraction leaves the register EMPTY, so the sheet falls back to the blank strip. */
+        expect(doc!.html).toContain('class="alg none blank"');
       });
 
-      /** A band that VANISHES when nothing is on file is indistinguishable from one that failed to
-       *  render. The negative statement is the ward standard and the placeholder it replaces —
-       *  "to be confirmed with the patient" — asserted nothing had been checked even when three
-       *  allergies were on file. */
-      it("states no known allergies rather than disappearing, and drops the red", async () => {
+      /**
+       * ═══ EMPTY MEANS EMPTY — THE SHEET STOPPED MAKING A CLAIM NOBODY HAD CHECKED ═══
+       *
+       * Owner, 2026-09-12: *"If there's no allergy is recorded then do not print 'NO KNOWN
+       * ALLERGIES' — keep it blank for the staff to write it using pen."*
+       *
+       * "None" and "not asked" are different facts and an empty register can only support the
+       * second. Two halves, and both matter: the CLAIM is gone, and the BAND IS NOT — a band that
+       * vanished when empty would leave no writing space and would be indistinguishable from a
+       * renderer that failed, which is why the previous cut stated the negative at all.
+       */
+      it("prints a BLANK writing strip when nothing is on file — no claim, and no vanishing band", async () => {
         const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
-        expect(doc!.html).toContain('<span class="sub">NO KNOWN ALLERGIES</span>');
-        expect(doc!.html).toContain('class="alg none"');
+        /* Markup, not the bare phrase: it also occurs in this file's own comments above. */
+        expect(doc!.html).not.toContain('<span class="sub">NO KNOWN ALLERGIES</span>');
+        expect(doc!.html).not.toContain("कोई ज्ञात एलर्जी नहीं");
         expect(doc!.html).not.toContain("to be confirmed with the patient");
+        /* The strip is still THERE, still labelled in both scripts, and carries the writing height. */
+        expect(doc!.html).toContain('class="alg none blank"');
+        expect(doc!.html).toContain('<span class="t">Allergy</span>');
+        expect(doc!.html).toContain("एलर्जी");
+        expect(doc!.html).toContain(".alg.blank { min-height: 9mm; }");
       });
     });
 

@@ -885,6 +885,8 @@ export async function renderPrescriptionSheet(
        vanishes is indistinguishable from one that failed to render, and "nothing recorded" is a
        clinical statement a prescriber acts on. */
     .alg.none, .alg.none .t, .alg.none .sub, .alg.none .hi { border-color: #9a9a9a; color: #333; }
+    /* Owner 2026-09-12 — the empty band is a WRITING STRIP; a pen needs more than a text line. */
+    .alg.blank { min-height: 9mm; }
     .alg.none .bar { background: #9a9a9a; }
     .vit { border-top: 1px solid #9a9a9a; border-bottom: 1px solid #9a9a9a; padding: 7px 0; margin-top: 11px; flex-shrink: 0; }
     .vit .g { display: flex; align-items: baseline; gap: 0; }
@@ -930,11 +932,25 @@ export async function renderPrescriptionSheet(
     ? ""
     : `${esc(newest.reaction)}, `;
   const more = allergies.length > 1 ? ` · +${String(allergies.length - 1)} more on file` : "";
+  /*
+    ═══ NOTHING RECORDED PRINTS A BLANK STRIP, NOT A CLAIM ═══
+
+    Owner, 2026-09-12: *"If there's no allergy is recorded then do not print 'NO KNOWN ALLERGIES' —
+    keep it blank for the staff to write it using pen if any allergy is found later."*
+
+    It used to print NO KNOWN ALLERGIES over an empty register, which is a clinical assertion the
+    hospital had not made: nobody had asked. "None" and "not asked" are different facts and this
+    sheet could only ever say the first. A blank strip says the true thing — there is nothing on
+    file — and leaves the doctor somewhere to write what they learn in the room.
+
+    THE LABEL AND THE BOX STAY. A band that vanished when empty would leave no writing space, and a
+    reader could not tell "no allergy section on this form" from "nothing to report"; the empty
+    outline IS the instruction. It is also taller than the populated band for exactly one reason:
+    a pen needs room.
+  */
   const allergyBand = newest === undefined
-    ? `<div class="alg none"><span class="t">Allergy</span><span class="bar"></span>`
-      + `<span class="sub">NO KNOWN ALLERGIES</span>`
-      + `<span class="note">— none recorded against this patient</span>`
-      + `<div class="sp"></div><span class="hi">कोई ज्ञात एलर्जी नहीं</span></div>`
+    ? `<div class="alg none blank"><span class="t">Allergy</span><span class="bar"></span>`
+      + `<div class="sp"></div><span class="hi">एलर्जी</span></div>`
     : `<div class="alg"><span class="t">Allergy</span><span class="bar"></span>`
       + `<span class="sub">${esc(substances)}</span>`
       + `<span class="note">— ${reaction}recorded ${esc(formatCalendarDay(newest.recordedAt) ?? "—")}${more}</span>`

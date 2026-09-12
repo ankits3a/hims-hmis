@@ -2835,6 +2835,20 @@
       },
       "valveNote": "The valve: every minute a patient waits here is a minute a doctor waits downstream."
     },
+    "allergy": {
+      "title": "Allergies",
+      "none": "Nothing on file — ask the patient",
+      "add": "Record an allergy",
+      "substance": "Substance",
+      "reaction": "Reaction (optional)",
+      "severity": "Severity",
+      "mild": "Mild",
+      "moderate": "Moderate",
+      "severe": "Severe",
+      "save": "Save",
+      "cancel": "Cancel",
+      "failed": "Not saved — try again"
+    },
     "session": {
       "empty": "Nobody in hand — scan, or type a token number or UHID",
       "band": "Band",
