@@ -299,7 +299,6 @@ if [ "$TARGET" = "prod" ]; then
     Open a clean shell (or: unset HMIS_SYNTHETIC_DATA_OK) and re-run."
   note "synthetic-data door is closed on this target"
 fi
-
 if [ "$TARGET" = "uat" ]; then
   # 11i T3 — UAT HAS NO BACKUP REPOSITORY AND NO ALERT SINK, and neither is an omission.
   # It holds nothing worth restoring (that is the whole point of it), and an alert path pointing
