@@ -504,6 +504,19 @@ note "docker-compose.prod.yml, caddy/Caddyfile, pgbackrest/pgbackrest.conf, dril
 note "prometheus/$(cd "$DEPLOY_DIR/prometheus" && echo *.yml | tr ' ' ',' ), postgres-exporter/queries.yml, grafana/provisioning/**"
 fi
 
+# ════════════════════════════════════════════════════════════════════════════════════════════════
+# BOTH DERIVATIONS BELOW ARE PRODUCTION-ONLY, AND UNTIL NOW NOTHING SAID SO.
+#
+# `R2_ENV` and `SMTP_ENV` are assigned in the PROD branch of the pre-flight and nowhere else, and
+# this script runs under `set -euo pipefail`. So on `HMIS_TARGET=uat` the first `"$R2_ENV"` below
+# was an UNBOUND VARIABLE and the deploy died here — after building images and copying configs,
+# before ever reaching the database. The uat pre-flight already says why neither credential exists
+# ("no pgBackRest credentials and no alert sink expected"); the derivations simply never learned it.
+#
+# Guarded rather than made conditional inside: a rehearsal box must not derive a backup credential
+# at all, not derive an empty one.
+# ════════════════════════════════════════════════════════════════════════════════════════════════
+if [ "$TARGET" != "uat" ]; then
 # --- the backup credentials, derived rather than duplicated --------------------------------------
 # GC2: the five owner-supplied values live in $R2_ENV and ONLY there. They are translated here into
 # the six PGBACKREST_* names the binary reads, written to a 600 file that only the db service
@@ -620,6 +633,8 @@ chmod 600 "$AM_YML" "$AM_PASS"
 chown "$ALERTMANAGER_UID:$ALERTMANAGER_UID" "$AM_YML" "$AM_PASS"
 unset SMTP_PASSWORD_V AM_TPL
 note "alert routing derived into alertmanager/alertmanager.yml + smtp_password (600, uid $ALERTMANAGER_UID)"
+fi
+
 
 # ----------------------------------------------------------------------------------------------
 step "3/8 database up"
