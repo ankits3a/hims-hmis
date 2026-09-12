@@ -317,6 +317,31 @@ export class OpdQueueController {
    * encounter. The permission is the outer door; the guard is the lock, and the lock is the one
    * every other prescription in the hospital passes through.
    */
+  /**
+   * ═══ FD-31 — THE DESK SENDS IT, BECAUSE THERE IS NO ASSISTANT TO WAIT FOR ═══
+   *
+   * Owner, 2026-09-12: *"the staff outside the doctor room types the medicine prescribed by the
+   * doctor then the pharmacy department would be notified about the upcoming job. However, the
+   * pharmacist will cross confirm the prescription slip … before generating the medicine bill."*
+   *
+   * The prescriber of record is taken from the ENCOUNTER, never from this caller, so no clerk can
+   * name a doctor the patient did not see. `issuePrescription` re-asserts
+   * `opd.prescription.transcribe` itself — this decorator is the outer door and that assertion is
+   * the lock, for the reason `walk-in.ts` gives: one `@RequirePermission` silently replaces another.
+   */
+  @RequirePermission("opd.prescription.transcribe", "hospital")
+  @Post("visits/:id/prescription-draft/transcribe")
+  async transcribeDraft(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown,
+  ): Promise<IssuedPrescription & { draftId: string }> {
+    const b = parsed(issueDraftBody, body ?? {});
+    try {
+      return await issueDraft(this.db, actor, this.cfg, id, b, new Date(), "paper_slip");
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
   @RequirePermission("opd.consult", "hospital")
   @Post("visits/:id/prescription-draft/issue")
   async issueDraftRoute(

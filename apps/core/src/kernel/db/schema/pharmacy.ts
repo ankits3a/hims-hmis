@@ -92,6 +92,20 @@ export const pharmacyDispenses = pgTable(
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
     pickedBy: text("picked_by"),
     pickedAt: timestamp("picked_at", { withTimezone: true }),
+    /**
+     * ═══ FD-31 — THE PHARMACIST SAW THE SLIP (OWNER RULING 2026-09-12) ═══
+     *
+     * Owner: *"the pharmacist will cross confirm the prescription slip (either the photo capture of
+     * prescription or physical prescription slip) before generating the medicine bill."*
+     *
+     * Set only on a dispense whose prescription was TRANSCRIBED (`opd_prescriptions.transcribed_by`
+     * is not null). On a doctor-entered Rx there is nothing to cross-confirm — the prescriber
+     * operated the keyboard — and demanding the ceremony there would train a pharmacist to click it
+     * without looking, which is how a real control becomes a habit. `billDispense` refuses while it
+     * is null on a transcribed one; the WINDOW is the bill, per the owner's sentence, not the claim.
+     */
+    slipConfirmedBy: text("slip_confirmed_by"),
+    slipConfirmedAt: timestamp("slip_confirmed_at", { withTimezone: true }),
     invoiceId: text("invoice_id").references(() => invoices.id),
     billedAt: timestamp("billed_at", { withTimezone: true }),
     handedOverBy: text("handed_over_by"),

@@ -81,6 +81,21 @@ export const opdManifest: ModuleManifest = {
      * surface, including issuing — and from `patients.update` because a draft is about the VISIT.
      */
     "opd.prescription.draft",
+    /**
+     * FD-31 / owner ruling 2026-09-12 — THE SECOND MODE, AND THE SHARPEST GRANT IN THIS FILE.
+     *
+     * *"I can't hire a human assistant for the doctor to scribe on behalf of the doctor"* — so in
+     * that mode nobody taps. This authorises the OPD Order Desk to send a prescription the doctor
+     * signed IN PEN, and it is separate from `opd.prescription.draft` precisely because drafting is
+     * inert and this is not: the row it creates feeds the pharmacy queue.
+     *
+     * WHAT IT STILL CANNOT DO. The prescriber is read from the ENCOUNTER, so this grant names no
+     * doctor; the allergy, severe-interaction and duplicate-salt gates all evaluate unchanged; and
+     * the dispense it produces CANNOT BE BILLED until a pharmacist has cross-confirmed the slip
+     * (`billDispense` → `slip_not_confirmed`). The clinical check moved to the pharmacist, who is a
+     * clinician; it did not disappear.
+     */
+    "opd.prescription.transcribe",
   ],
   // PLAN 11h T3 — doctors and departments on `opd.masters.read`, appointments on
   // `opd.appointments.read`. Patient confidentiality is NOT re-implemented here (DD1/DD3).

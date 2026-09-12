@@ -321,6 +321,14 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     roleKey: "opd_scribe",
     permissions: [
       "opd.prescription.draft",
+      /**
+       * FD-31 / owner ruling 2026-09-12 — the desk's MODE B key. With it this seat can send a
+       * prescription the doctor wrote in pen straight to the pharmacy queue; without it the seat
+       * can only draft and wait for a tap that, in a hospital with no assistant to spare, never
+       * comes. The control it trades away is recovered at the pharmacy, not abandoned: the
+       * dispense refuses to bill until a pharmacist cross-confirms the slip.
+       */
+      "opd.prescription.transcribe",
       // The visit is the thing being transcribed against, and the queue says who has been seen.
       "opd.visits.read",
       "opd.queue.read",

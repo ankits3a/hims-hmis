@@ -1,7 +1,7 @@
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
-import { pharmacyDispenseLines, pharmacyDispenses } from "../../kernel/db/schema";
+import { opdPrescriptions, pharmacyDispenseLines, pharmacyDispenses } from "../../kernel/db/schema";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { withTx } from "../../kernel/db/client";
 import { listMedicines } from "../formulary";
@@ -83,6 +83,17 @@ export type QueueRow = {
   createdAt: Date;
   claimedAt: Date | null;
   patient: { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean };
+  /**
+   * ═══ FD-31 — WHO TYPED THIS, AND WHETHER THE SLIP HAS BEEN SEEN ═══
+   *
+   * Owner, 2026-09-12: the departments *"would see that it is notified by which staff of which
+   * desk"*. Null on the ordinary prescription — the doctor keyed it — and the user id of the OPD
+   * Order Desk clerk on one typed from paper. The pharmacist needs this on the LIST, not inside the
+   * dispense: it is what tells them to have the slip in hand before they claim it.
+   */
+  transcribedBy: string | null;
+  /** Set once a pharmacist has cross-confirmed the slip. `billDispense` refuses while it is null. */
+  slipConfirmedBy: string | null;
 };
 
 /** The counter's portal list: today's dispenses that are not finished, oldest first. Names are alias-safe. */
@@ -99,6 +110,12 @@ export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: str
     .where(inArray(pharmacyDispenseLines.dispenseId, rows.map((r) => r.id)))
     .groupBy(pharmacyDispenseLines.dispenseId);
   const countById = new Map(counts.map((c) => [c.dispenseId, c.n]));
+  /* ONE query for the whole page, not one per row: the counter's list is polled. */
+  const rxRows = await db
+    .select({ id: opdPrescriptions.id, transcribedBy: opdPrescriptions.transcribedBy })
+    .from(opdPrescriptions)
+    .where(inArray(opdPrescriptions.id, rows.map((r) => r.prescriptionId)));
+  const transcribedByRx = new Map(rxRows.map((r) => [r.id, r.transcribedBy]));
   const summaries = await getPatientSummaries(db, actor, rows.map((r) => r.patientId));
   const byRequested = new Map(summaries.map((s) => [s.requestedId, s]));
   const out: QueueRow[] = [];
@@ -109,6 +126,8 @@ export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: str
       dispenseId: r.id, status: r.status, dispenseNo: r.dispenseNo, scheduled: r.scheduled,
       lineCount: countById.get(r.id) ?? 0, createdAt: r.createdAt, claimedAt: r.claimedAt,
       patient: { id: s.id, uhid: s.uhid, name: s.name, alias: s.alias, restricted: s.restricted },
+      transcribedBy: transcribedByRx.get(r.prescriptionId) ?? null,
+      slipConfirmedBy: r.slipConfirmedBy,
     });
   }
   return out;
@@ -167,6 +186,46 @@ export type DispenseView = {
  * rules (`getPatientSummaries`); the Rx lines are PHI and the read is logged on the pharmacy's own
  * surface. An invisible patient gives the same `unknown_dispense` as a missing row.
  */
+/**
+ * ═══ FD-31 — THE PHARMACIST SAYS THEY HAVE SEEN THE SLIP (OWNER RULING 2026-09-12) ═══
+ *
+ * *"The pharmacist will cross confirm the prescription slip (either the photo capture of
+ * prescription or physical prescription slip) before generating the medicine bill."* Either source
+ * satisfies it, which is why this records WHO attested and not WHICH artefact they looked at: the
+ * hospital's control is a named pharmacist's word, and a field claiming "photo" on a paper check
+ * would be a fact the system cannot support.
+ *
+ * IT IS ONLY MEANINGFUL ON A TRANSCRIPTION, and calling it on a doctor-keyed Rx is refused rather
+ * than silently recorded — an attestation that means nothing is worse than none, because it makes
+ * the column untrustworthy where it does mean something.
+ *
+ * Idempotent: confirming twice keeps the FIRST pharmacist's name. The attestation is theirs.
+ */
+export async function confirmSlip(
+  db: Db, actor: Actor, dispenseId: string, now: Date = new Date(),
+): Promise<DispenseRow> {
+  if (actor.type !== "user") throw new PharmacyError("permission_denied", "a slip is confirmed by a person");
+  const d = await getDispenseRow(db, dispenseId);
+  const rx = await db
+    .select({ transcribedBy: opdPrescriptions.transcribedBy })
+    .from(opdPrescriptions)
+    .where(eq(opdPrescriptions.id, d.prescriptionId));
+  if ((rx[0]?.transcribedBy ?? null) === null) {
+    throw new PharmacyError(
+      "dispense_not_in_state",
+      `dispense ${d.id} is against a prescription the doctor entered — there is no paper slip to cross-confirm`,
+      { status: d.status },
+    );
+  }
+  if (d.slipConfirmedBy !== null) return d;
+  const updated = await db
+    .update(pharmacyDispenses)
+    .set({ slipConfirmedBy: actor.id, slipConfirmedAt: now })
+    .where(and(eq(pharmacyDispenses.id, d.id), isNull(pharmacyDispenses.slipConfirmedBy)))
+    .returning();
+  return updated[0] ?? d;
+}
+
 export async function getDispense(db: Db, actor: Actor, dispenseId: string, now: Date = new Date()): Promise<DispenseView> {
   const d = await getDispenseRow(db, dispenseId);
   const [summary] = await getPatientSummaries(db, actor, [d.patientId]);

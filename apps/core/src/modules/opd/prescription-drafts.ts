@@ -9,7 +9,7 @@ import { OpdError } from "./errors";
 import type { AppConfig } from "../../kernel/config";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { RxLine } from "./fhir";
-import type { IssuePrescriptionInput, IssuedPrescription } from "./prescriptions";
+import type { IssuePrescriptionInput, IssuedPrescription, PrescriptionAuthority } from "./prescriptions";
 
 /**
  * ═══ THE PAPER SLIP, TRANSCRIBED — AND WHY NOTHING HERE CAN PRESCRIBE ═══
@@ -157,13 +157,27 @@ export async function issueDraft(
   db: Db, actor: Actor, cfg: AppConfig, encounterId: string,
   overrides: Omit<IssuePrescriptionInput, "lines"> = {},
   now: Date = new Date(),
+  /**
+   * FD-31 — WHICH OF THE TWO MODES RESOLVED THIS SLIP.
+   *
+   * `"doctor"` is FD-30's tap and the default: the treating doctor confirms and every guard holds
+   * exactly as it did. `"paper_slip"` is the owner's second mode, for a hospital that cannot staff
+   * an assistant — the OPD Order Desk sends a slip the doctor signed in pen, `issuePrescription`
+   * takes the prescriber from the ENCOUNTER, and the control moves downstream to the pharmacist's
+   * cross-confirmation before the bill.
+   *
+   * ONE FUNCTION FOR BOTH, deliberately. Two would drift, and the whole difference is an argument
+   * `issuePrescription` interprets — including asserting the transcriber's own permission, which
+   * no route can skip and no second copy of this function could be trusted to repeat.
+   */
+  authority: PrescriptionAuthority = "doctor",
 ): Promise<IssuedPrescription & { draftId: string }> {
   const draft = await getPendingDraft(db, encounterId);
   /* `unknown_draft` and not a bespoke code: `opdStatus` maps every `unknown_*` to 404 by rule, and
      "the pending draft is not there" is exactly a missing resource — the doctor's list moved on. */
   if (draft === null) throw new OpdError("unknown_draft", `no pending transcription for encounter ${encounterId}`);
 
-  const issued = await issuePrescription(db, actor, cfg, encounterId, { ...overrides, lines: draft.lines }, now);
+  const issued = await issuePrescription(db, actor, cfg, encounterId, { ...overrides, lines: draft.lines }, now, authority);
 
   await db
     .update(opdPrescriptionDrafts)

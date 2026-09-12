@@ -1,7 +1,9 @@
 import { eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
-import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters, testCfg } from "../../../test/helpers/opd";
+import { ModuleRegistry } from "../../kernel/modules/loader";
+import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
+import { activateOpdVisitDefinition, ensureRole, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters, testCfg } from "../../../test/helpers/opd";
 import { opdPrescriptionDrafts, patientAllergies } from "../../kernel/db/schema";
 import { startConsultation } from "./consultation";
 import { openVisit } from "./encounters";
@@ -62,6 +64,17 @@ describe("FD-30 — the transcription draft, and the doctor's tap", () => {
     drb = await mkDoctor(db, { username: "drb", departmentId: deptId, roomId: room2Id });
     clerk = await mkUser(db, "clerk", ["front_office"]);
     vd = await mkUser(db, "vd", ["vitals_desk"]);
+    /*
+      THE GRANT IS REAL, because the guard under test is a REAL permission read. `ensureRole` mints a
+      role row and no permissions, so a scribe made the ordinary way would be refused
+      `transcription_not_permitted` for the wrong reason and the Mode B rows below would pass while
+      proving nothing. The radiology helper sets the same thing up the same way.
+    */
+    const registry = new ModuleRegistry();
+    registry.install({ key: "opd", title: "OPD", menu: [], permissions: ["opd.prescription.transcribe"], subscriptions: [] });
+    await syncPermissions(db, registry);
+    await ensureRole(db, "opd_scribe");
+    await grantPermissionToRole(db, registry, "opd_scribe", "opd.prescription.transcribe");
     scribe = await mkUser(db, "scribe", ["opd_scribe"]);
     patient = await mkPatient(db, clerk.actor, {});
   });
@@ -183,6 +196,60 @@ describe("FD-30 — the transcription draft, and the doctor's tap", () => {
     );
     expect(issued.allergyOverrideCount).toBe(1);
     expect((await db.select().from(opdPrescriptionDrafts).where(eq(opdPrescriptionDrafts.id, draft.id)))[0]!.status).toBe("issued");
+  });
+
+  /**
+   * ═══ FD-31 — MODE B: NO ASSISTANT, SO THE DESK SENDS IT (OWNER RULING 2026-09-12) ═══
+   *
+   * *"I can't hire a human assistant for the doctor to scribe on behalf of the doctor."* So the
+   * desk sends a slip the doctor signed in pen, and the clinical check moves to the pharmacist.
+   *
+   * The three properties that make that safe are each executed here rather than asserted in prose:
+   * the PRESCRIBER still comes from the encounter, the GRANT is required, and the row is MARKED.
+   */
+  it("the desk sends a signed paper slip: the prescriber is the ENCOUNTER'S doctor, and the row says it was transcribed", async () => {
+    const enc = await inConsult();
+    await saveDraft(db, scribe.actor, enc.id, { lines: SLIP }, MON);
+
+    const issued = await issueDraft(db, scribe.actor, testCfg, enc.id, {}, MON2, "paper_slip");
+    const rows = await listPrescriptions(db, dra.actor, enc.id);
+    expect(rows).toHaveLength(1);
+    /*
+      `doctorId` IS STILL DR A. The clerk named nobody — there is no field on this road for them to
+      name a doctor with — so a transcription cannot attribute a prescription to a doctor the
+      patient never saw. `issuedBy` is the clerk because the clerk operated the keyboard, and
+      `transcribedBy` is what every reader downstream branches on.
+    */
+    expect(rows[0]).toMatchObject({ doctorId: dra.doctorId, issuedBy: scribe.id, transcribedBy: scribe.id, status: "active" });
+    expect(issued.prescriptionId).toBe(rows[0]!.id);
+  });
+
+  it("without the transcribe grant the same call is refused — and the refusal is the SERVICE's, not the route's", async () => {
+    const enc = await inConsult();
+    await saveDraft(db, scribe.actor, enc.id, { lines: SLIP }, MON);
+    /* `clerk` is `front_office`: it holds neither `opd.consult` nor `opd.prescription.transcribe`. */
+    await expect(issueDraft(db, clerk.actor, testCfg, enc.id, {}, MON2, "paper_slip"))
+      .rejects.toMatchObject({ code: "transcription_not_permitted" });
+    expect(await listPrescriptions(db, dra.actor, enc.id)).toEqual([]);
+  });
+
+  it("MODE B DOES NOT SKIP THE SAFETY GATES — an allergy still refuses, and the desk cannot override it", async () => {
+    await db.insert(patientAllergies).values({ id: newId(), patientId: patient.id, substance: "Penicillin", source: "registration", recordedBy: "t" });
+    const enc = await inConsult();
+    await saveDraft(db, scribe.actor, enc.id, { lines: PENICILLIN }, MON);
+
+    await expect(issueDraft(db, scribe.actor, testCfg, enc.id, {}, MON2, "paper_slip"))
+      .rejects.toMatchObject({ code: "allergy_conflict" });
+    expect(await listPrescriptions(db, dra.actor, enc.id)).toEqual([]);
+    expect((await getPendingDraft(db, enc.id))?.status).toBe("pending");
+  });
+
+  /** The doctor's own tap is UNCHANGED by any of this: nothing is marked, because nothing was transcribed. */
+  it("a doctor-issued prescription carries NO transcriber", async () => {
+    const enc = await inConsult();
+    await saveDraft(db, scribe.actor, enc.id, { lines: SLIP }, MON);
+    await issueDraft(db, dra.actor, testCfg, enc.id, {}, MON2);
+    expect((await listPrescriptions(db, dra.actor, enc.id))[0]).toMatchObject({ transcribedBy: null });
   });
 
   it("a discarded slip is gone from the list but not from the record, and cannot then be issued", async () => {

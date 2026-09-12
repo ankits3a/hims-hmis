@@ -595,6 +595,23 @@ export const opdPrescriptions = pgTable(
     interactionOverrides: jsonb("interaction_overrides").notNull().default(sql`'[]'::jsonb`),
     duplicateOverrides: jsonb("duplicate_overrides").notNull().default(sql`'[]'::jsonb`),
     status: text("status").notNull().default("active"), // 'active' | 'superseded'
+    /**
+     * ═══ FD-31 — TYPED FROM A PAPER SLIP, AND BY WHOM (OWNER RULING 2026-09-12) ═══
+     *
+     * NULL is the ordinary prescription: the treating doctor entered it themselves and `issued_by`
+     * is that doctor. NON-NULL means the OPD Order Desk typed it off a slip the doctor signed in
+     * pen — `doctor_id` is still the prescriber of record, because the doctor DID prescribe; what
+     * changed is only who operated the keyboard.
+     *
+     * A COLUMN AND NOT A DERIVED PREDICATE. "Transcribed" could be computed as `issued_by` not
+     * matching the doctor's user id, but that is a join and a comparison at every reader, and the
+     * pharmacy's bill gate must not depend on getting it right — one reader with the predicate
+     * inverted would bill a transcription as if a doctor had keyed it. The precedent is one module
+     * over: `orders.ordering_clinician_id` is a separate column from `ordered_by_id` for exactly
+     * this reason, and its comment says so ("a nurse keying a consultant's verbal order is the
+     * normal case").
+     */
+    transcribedBy: text("transcribed_by"),
     issuedBy: text("issued_by").notNull(),
     issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
   },

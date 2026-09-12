@@ -39,6 +39,9 @@ export type OpdErrorCode =
   // rides the `unknown_*` rule to 404 deliberately: a doctor tapping issue on a slip a colleague
   // just discarded is asking for something that is no longer there, not sending a bad request.
   | "unknown_draft"
+  // FD-31 — 403 through `opdStatus`'s own rule, like `registration_not_permitted` beside it: the
+  // request is well formed and the account simply may not do this.
+  | "transcription_not_permitted"
   // PLAN 16a T5 — the hard-warning grammar EXTENDS rather than forks (DD3): these two carry their
   // hits in `detail` and are cleared by an override with a reason, exactly as `allergy_conflict` is.
   // A severe interaction, and the same moiety twice on one slip under two brand names.

@@ -10,6 +10,7 @@ import { listInteractionsAmong, normalizeDrugName, resolveDrugTexts, resolveMedi
 import { checkDuplicateSalt, checkInteractions, matchAllergiesSaltAware } from "./rx-checks";
 import { loadOpdConfig } from "./config";
 import { requireTreatingDoctor } from "./consultation";
+import { hasPermission } from "../../kernel/auth/permissions";
 import { getEncounter } from "./encounters";
 import { OpdError } from "./errors";
 import type { AdvisedTest } from "./consultation";
@@ -330,12 +331,54 @@ export type IssuedPrescription = {
  * function never writes (§3.28) — so two doctors' devices submitting at once serialize into 1 and 2 rather
  * than colliding on the (encounter_id, version) unique index.
  */
+/**
+ * ═══ FD-31 — WHO IS ALLOWED TO OPERATE THE KEYBOARD (OWNER RULING 2026-09-12) ═══
+ *
+ * Owner, on a hospital that cannot staff an assistant for every doctor: *"the staff outside the
+ * doctor room types the medicine prescribed by the doctor … however, the pharmacist will cross
+ * confirm the prescription slip … before generating the medicine bill."*
+ *
+ * `"doctor"` is the shipped road and every existing caller takes it: `requireTreatingDoctor` refuses
+ * any actor without an `opd_doctors` profile for THIS encounter.
+ *
+ * `"paper_slip"` is the OPD Order Desk typing a prescription the doctor already signed in pen. THE
+ * PRESCRIBER DOES NOT CHANGE — `doctorId` is still resolved from the ENCOUNTER, so the doctor of
+ * record is the one the patient actually saw and no clerk can name a different one. What changes is
+ * `transcribedBy`, which marks the row for everything downstream, and the control moves to the
+ * pharmacy: `billDispense` refuses a transcribed dispense until a pharmacist has cross-confirmed
+ * the slip. The paper the doctor signed remains the legal instrument; this is its transcription.
+ *
+ * THE PERMISSION IS ASSERTED HERE AND NOT ONLY AT THE ROUTE — the `walk-in.ts` precedent, whose
+ * comment says why: a decorator writes one metadata key, so a second `@RequirePermission` silently
+ * replaces the first, and an authority this consequential should not rest on a decorator nobody
+ * re-reads. A caller that reaches this function with `"paper_slip"` and without the grant is
+ * refused here, whatever the route did.
+ */
+export type PrescriptionAuthority = "doctor" | "paper_slip";
+
 export async function issuePrescription(
   db: Db, actor: Actor, cfg: AppConfig, encounterId: string, input: IssuePrescriptionInput, now: Date = new Date(),
+  authority: PrescriptionAuthority = "doctor",
 ): Promise<IssuedPrescription> {
   const encounter = await getEncounter(db, encounterId);
   if (!encounter) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
-  const doctor = await requireTreatingDoctor(db, actor, encounter);
+  let transcribedBy: string | null = null;
+  let doctor;
+  if (authority === "paper_slip") {
+    if (actor.type !== "user") throw new OpdError("user_actor_required", "a transcription is a user action");
+    if (!(await hasPermission(db, actor.id, "opd.prescription.transcribe", "hospital"))) {
+      throw new OpdError("transcription_not_permitted", "this account may not type a prescription from a paper slip");
+    }
+    if (encounter.doctorId === null) {
+      throw new OpdError("not_a_doctor", `encounter ${encounter.id} names no doctor to transcribe for`);
+    }
+    const signing = await getDoctor(db, encounter.doctorId);
+    if (!signing) throw new OpdError("unknown_doctor", `unknown doctor ${encounter.doctorId}`);
+    doctor = signing;
+    transcribedBy = actor.id;
+  } else {
+    doctor = await requireTreatingDoctor(db, actor, encounter);
+  }
   if (encounter.status !== "in_consultation") {
     throw new OpdError("encounter_state_conflict", `a prescription is issued in consultation, not ${encounter.status}`);
   }
@@ -432,7 +475,7 @@ export async function issuePrescription(
       // record, not a transient. It used to be validated, counted, and dropped.
       interactionOverrides: matchedInteractionOverrides,
       duplicateOverrides: matchedDuplicateOverrides,
-      status: "active", issuedBy: actor.id, issuedAt: now,
+      status: "active", issuedBy: actor.id, transcribedBy, issuedAt: now,
     });
     await appendEvent(tx, prescriptionIssued.make({
       actor, patientId: encounter.patientId, encounterId, correlationId: encounter.workflowInstanceId,

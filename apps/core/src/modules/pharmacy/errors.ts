@@ -41,6 +41,17 @@ export const PHARMACY_ERROR_CODES = [
   "invoice_not_settled",
   // ── the close review, second contract sweep: expired stock ──
   "batch_expired",
+  /**
+   * ── FD-31, owner ruling 2026-09-12 ──
+   *
+   * *"The pharmacist will cross confirm the prescription slip (either the photo capture of
+   * prescription or physical prescription slip) before generating the medicine bill."*
+   *
+   * 409 and not 403: the account is allowed to bill, the DISPENSE is not ready to be billed. It is
+   * the same animal as `invoice_not_settled` two lines up — a state conflict the pharmacist clears
+   * by doing the thing, not an authority they lack.
+   */
+  "slip_not_confirmed",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -89,6 +100,7 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   identity_mismatch: 409,
   invoice_not_settled: 409,
   batch_expired: 409,
+  slip_not_confirmed: 409,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {

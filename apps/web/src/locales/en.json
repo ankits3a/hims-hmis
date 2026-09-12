@@ -3091,7 +3091,8 @@
     "fefo_override_unavailable": "That batch cannot cover this quantity at this store.",
     "invoice_not_settled": "This dispense carries no settled invoice yet — it cannot be handed over until billing is done.",
     "identity_mismatch": "Those four digits do not end the phone number on the record.",
-    "batch_expired": "That batch has expired and cannot be dispensed. Choose another batch."
+    "batch_expired": "That batch has expired and cannot be dispensed. Choose another batch.",
+    "slip_not_confirmed": "This prescription was typed from the doctor’s paper slip. Check the slip — the photo on the visit, or the paper the patient is holding — against these lines, then confirm it before billing."
   },
   "pharmacyCounter": {
     "title": "Dispense counter",
