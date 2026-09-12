@@ -28,6 +28,43 @@ import type { DispatchedEvent } from "../../kernel/events/subscriptions";
 import type { Pool } from "pg";
 
 /**
+ * ═══ THE LOCK-SETTLE CEILING — a ceiling, not a target (census 2026-09-12, items 1-3) ═══
+ *
+ * Three tests in this repository measure `Date.now() - releasedAt` after a lock holder commits, and
+ * all three compared it to **300 ms**: this file and `membership/entitlements.contention.test.ts`
+ * twice. Only one of them was on the board, as F11(a), and it had been **observed at 348 ms on a
+ * loaded runner** — a red CI cycle for whichever lane happened to be pushing.
+ *
+ * MEASURED BEFORE CHANGING IT, nine samples across three runs on an idle host:
+ *
+ *     settle after commit ....... 5, 5, 6, 6, 8, 8, 8, 8, 10 ms
+ *     worst observed, loaded .... 348 ms            (the F11(a) report)
+ *
+ * **A 35-70x spread between idle and loaded is what makes a fixed bound a guess about the tail**,
+ * and 300 ms sat inside it. This is `perf-opd-queue.ts:21`'s finding in a different file: a ceiling
+ * pressed against the measurement noise fails a correct run, and a check that fires on correct work
+ * trains its reader to override it.
+ *
+ * 2 000 ms is ~200x the idle median and ~6x the worst ever observed. It is deliberately a CEILING:
+ *
+ * ═══ WHAT THE ASSERTION IS STILL FOR, WHICH IS WHY IT IS NOT DELETED ═══
+ *
+ * The `after400ms: "pending"` assertion beside it proves the writer BLOCKED. This one proves it was
+ * released **by the commit** rather than woken by a timer — an implementation that polled the row on
+ * an interval would satisfy "pending at 400 ms" and then settle on its own schedule. Poll intervals
+ * are seconds, so a 2 000 ms ceiling still catches that; a bound tuned to the idle median catches
+ * nothing extra and fails honest runs.
+ *
+ * ═══ WHY NOT `fastest(times)` OVER 5 RUNS, WHICH IS THIS REPO'S OTHER ANSWER ═══
+ *
+ * `perf-opd-queue.ts` gates on the fastest of five because it re-reads the same prepared state. A
+ * contention trial cannot be cheaply repeated: the comment below this test records that each trial
+ * "truncates and re-seeds the whole billing base", which is why it already carries an explicit
+ * timeout. Five trials would cost five re-seeds to sharpen a ceiling that does not need sharpening.
+ */
+const SETTLE_CEILING_MS = 2_000;
+
+/**
  * PLAN 09 T6 — DD12's LEDGER, ON REAL INVOICES. Assertion Book rows F1, F2, F3, F6, F7, F8, F9
  * and F11 live here; the pure arithmetic is fixtured in `golden/` and the wiring is in
  * `consumer.test.ts`.
@@ -581,7 +618,7 @@ describe("the commission ledger: DD12's delta-to-target on real invoices", () =>
     }
 
     expect({ after400ms: stateAt400 }).toEqual({ after400ms: "pending" });
-    expect(settleMs).toBeLessThan(300);
+    expect(settleMs).toBeLessThan(SETTLE_CEILING_MS);
     expect(await payableTotalPaise(db, partner.counterpartyId)).toBe(10_000);
   });
 
