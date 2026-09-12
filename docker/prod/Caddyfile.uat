@@ -10,7 +10,19 @@
 # of `/opt/hmis-uat/.env`, which deploy.sh's pre-flight refuses to continue without. Mint a hash
 # with:  docker run --rm caddy:2-alpine caddy hash-password --plaintext '<password>'
 {
-	admin off
+	# `admin off` WAS HERE, AND IT MADE THE DEPLOY IMPOSSIBLE TO FINISH.
+	#
+	# `deploy.sh` step 6 runs `compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile`
+	# on BOTH targets — it has to, because the Caddyfile reaches the container through a
+	# bind-mounted DIRECTORY and `up -d` sees no service-definition change when only the file's
+	# contents changed. `caddy reload` is a CLIENT OF THE ADMIN API. With the admin endpoint off
+	# there is nothing for it to talk to, so the reload retries five times and the deploy dies —
+	# after building, after migrating, after the seeds had already run.
+	#
+	# Leaving it on is not an exposure. Caddy's admin endpoint defaults to `localhost:2019`
+	# INSIDE the container, and `docker-compose.uat.yml` publishes only 8443 — nothing maps 2019,
+	# so it is reachable from that container and nowhere else. Production's own `Caddyfile` does
+	# not disable it either (checked, not assumed), and that one answers on a public hostname.
 	auto_https disable_redirects
 	# The same reasoning as production's: the compose file publishes TCP only, so advertising
 	# HTTP/3 would be a promise nothing can keep.
