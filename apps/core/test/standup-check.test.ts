@@ -9,7 +9,7 @@ import { assignRole } from "../src/kernel/auth/permissions";
 import { withTx } from "../src/kernel/db/client";
 import {
   billingConfig, formularyInteractions, labOrderables, opdDepartments, opdDoctors, resources,
-  services,
+  services, pharmacySaleItems,
 } from "../src/kernel/db/schema";
 import { registerBillingApprovalTypes } from "../src/modules/billing/approval-types";
 import { registerPatientApprovalTypes } from "../src/modules/patients/approval-types";
@@ -17,6 +17,7 @@ import { registerTariffApprovalTypes } from "../src/modules/tariff/approval-type
 import { createService } from "../src/modules/tariff/services";
 import { seedTariffConfig } from "../scripts/seed-tariff";
 import { ensurePharmacyCounter } from "../scripts/seed-pharmacy";
+import { seedPharmacyBase } from "./helpers/pharmacy";
 import { ensureLabStandUp } from "../scripts/seed-lab";
 import { seedFormularyInteractions } from "../scripts/seed-formulary-interactions";
 import { ensureOtUnit } from "../scripts/seed-ot";
@@ -323,6 +324,37 @@ describe("standup:check — the readiness census (11i T2)", () => {
     expect(missing).toEqual([]);
   });
 
+  /**
+   * ═══ RULE 3 HAD NO ENFORCEMENT, AND SIX OF EIGHT RUNBOOKS DO NOT SATISFY IT ═══
+   *
+   * A go-live runbook's whole purpose is a department head performing its acts — and six of the
+   * eight have **nowhere to record that they did**. `lab-go-live.md` and `pharmacy-go-live.md`
+   * carry an `## Executed` section with a numbered row per act and a defects log; the other six
+   * carry none, so a walk-through leaves no artefact and the phase gate has nothing to read.
+   *
+   * THIS TEST IS A RATCHET, NOT A WISH. Writing the six missing sections means authoring six
+   * departments' walk-throughs, which belongs to the lanes that own those modules — inventing
+   * radiology's acts from outside is how a runbook acquires steps nobody performs. So the gap is
+   * pinned at its CURRENT size: a new runbook without an Executed section fails immediately, and a
+   * runbook that gains one fails until it is removed from this list. **The list may only shrink,
+   * and shrinking it is a deliberate act rather than a silent one.**
+   */
+  it("no go-live runbook loses its Executed section, and no new one arrives without it", () => {
+    const KNOWN_MISSING = [
+      "opd-go-live.md", "ot-go-live.md", "pcpndt-go-live.md",
+      "radiation-safety-go-live.md", "radiology-go-live.md", "radiology-pacs-go-live.md",
+    ];
+    const dir = resolve(__dirname, "..", "..", "..", "docs", "runbooks");
+    const runbooks = readdirSync(dir).filter((f) => f.endsWith("-go-live.md")).sort();
+    const withExecuted = runbooks.filter((f) => /^## .*Executed/m.test(readFileSync(resolve(dir, f), "utf8")));
+    const without = runbooks.filter((f) => !withExecuted.includes(f));
+
+    /* The guard on the guard: a glob that matched nothing would pass both assertions forever. */
+    expect(runbooks.length).toBeGreaterThanOrEqual(8);
+    expect(without.sort()).toEqual(KNOWN_MISSING.sort());
+    expect(withExecuted).toContain("pharmacy-go-live.md");
+  });
+
   it("every NOT MODELLED row names a runbook SECTION THAT EXISTS", () => {
     const notModelled = Object.values(STANDUP_ROWS).flat().filter(isNotModelled);
     expect(notModelled.length).toBeGreaterThan(0); // the third verdict is used, not merely declared
@@ -572,6 +604,47 @@ describe("standup:check — the readiness census (11i T2)", () => {
     expect(verdictOf(results, "lab", "lab_doctor_registration_no")).toBe("RED");
     expect(roomId).toBeDefined();
   });
+
+  /**
+   * THE TWO PHARMACY ROWS THAT CERTIFIED MORE THAN THEY MEASURED.
+   *
+   * `pharmacy_item_present`'s fix text named TWO acts — create the drug item (§2.2, materials_head)
+   * and register it FOR SALE (§2.3, pharmacy) — and its check tested only the first. An item that
+   * exists and was never registered has no `RX-<code>` service, so the counter refuses every line
+   * with `unknown_sale_item` while the row reads green. **One row cannot certify two roles' work.**
+   *
+   * `pharmacy_batch_in_stock` asked `qtyOnHand > 0` over raw balances: no expiry filter, no recall
+   * filter, no reserved deduction, and no check the item was sellable at all. **An expired batch
+   * has `qtyOnHand > 0`** — so it read green on a shelf the counter refuses every line from.
+   */
+  it("a drug item that was never registered FOR SALE leaves the sale-item row RED", async () => {
+    await seedPharmacyBase(db);
+    await ensurePharmacyCounter(db, ACTOR);
+    /* The fixture registers its three items FOR SALE as well as creating them, so the two rows
+       agree out of the box and prove nothing. Removing only the sale registrations builds the
+       state the old single row could not describe: §2.2 done, §2.3 not. */
+    await db.delete(pharmacySaleItems);
+    const rows = await runCensus(db, "pharmacy");
+    expect(rows.find((r) => r.code === "pharmacy_item_present")?.verdict).toBe("ok");
+    expect(rows.find((r) => r.code === "pharmacy_sale_item_registered")?.verdict).toBe("RED");
+  });
+
+  it("the stock row asks what the PICK will honour, not what the shelf holds", async () => {
+    await seedPharmacyBase(db);
+    await ensurePharmacyCounter(db, ACTOR);
+    const rows = await runCensus(db, "pharmacy");
+    expect(rows.find((r) => r.code === "pharmacy_batch_in_stock")?.verdict).toBe("RED");
+  });
+
+  /**
+   * The OT's day-care orphan report "is reported HERE or by nobody", so the role that reads it is a
+   * must-not-open-without condition rather than a nicety. G4: no deploy can write it.
+   */
+  it("the OT does not open for day-care work until someone holds ot_incharge", async () => {
+    const rows = await runCensus(db, "ot");
+    expect(rows.find((r) => r.code === "ot_incharge_held")?.verdict).toBe("RED");
+  });
+
 
   it("a NOT MODELLED row is never ok and never RED, and does not fail the exit code by itself", async () => {
     const notModelled = Object.values(STANDUP_ROWS).flat().filter(isNotModelled).map((r) => r.code);
