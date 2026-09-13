@@ -80,8 +80,11 @@ export function parseCsv(text: string): string[][] {
   let field = "";
   let quoted = false;
   let i = 0;
-  // A leading UTF-8 BOM would otherwise become part of the first header name and fail the header
-  // check below with a message naming a column that looks identical to the one in the file.
+  // A leading UTF-8 BOM would otherwise become part of the first header name. `rowsToObjects`
+  // trims header cells and `String.trim()` happens to treat U+FEFF as whitespace, so that path is
+  // already covered - this strip is what makes `parseCsv` correct for a caller that does NOT trim,
+  // which is every caller that treats it as a general parser. Belt and braces, said as such rather
+  // than claimed as the only guard.
   if (text.charCodeAt(0) === 0xfeff) i = 1;
   const pushField = (): void => { row.push(field); field = ""; };
   const pushRow = (): void => { pushField(); rows.push(row); row = []; };

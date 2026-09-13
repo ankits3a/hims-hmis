@@ -59,9 +59,12 @@ describe("parseCsv — RFC4180, and the four things split(\",\") gets wrong", ()
   });
 
   it("strips a leading BOM, so the first column name is not silently corrupted", () => {
-    // Without the strip the first header reads "﻿substance_sctid", which fails the header
-    // check with a message naming a column that looks IDENTICAL to the one in the file — the
-    // worst kind of refusal, because the operator cannot see the difference.
+    // HONEST NOTE ON WHAT THIS CASE DOES AND DOES NOT PROVE. It survived the split(",") mutant,
+    // because that mutant also calls `.trim()` and `String.trim()` treats U+FEFF as whitespace.
+    // So this does not discriminate against the naive parser; it pins `parseCsv` being correct
+    // STANDALONE, for a caller that does not trim. Three of these six cases go red against the
+    // mutant (quoted comma, escaped quote, embedded newline) and three do not — recorded here
+    // rather than left for a reader to discover that half the file is not load-bearing.
     const parsed = parseCsv("﻿substance_sctid,substance_name\n1,abacavir");
     expect(parsed[0]?.[0]).toBe("substance_sctid");
   });
