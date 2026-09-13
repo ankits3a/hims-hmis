@@ -11,6 +11,7 @@ import {
 import { AmendPanel, AmendTrail } from "./vitals-bay-amend";
 import type { Amended } from "./vitals-bay-amend";
 import { activeAllergies, addAllergy, listAllergies, verifyQrScan } from "../lib/patients-api";
+import { UnpaidMark } from "../components/unpaid-mark";
 import { api } from "../lib/api";
 import { usePatientInHand } from "../lib/patient-in-hand";
 import { useAuth } from "../lib/auth";
@@ -358,6 +359,13 @@ export function SessionColumn({ row, preStage, failed, pending, children }: {
       </div>
       {pending && <p style={{ margin: 0, color: "var(--faint)" }}>{t("app.loading")}</p>}
       {failed && <p data-testid="prestage-failed" style={{ margin: 0, color: "var(--dim)" }}>{t("vitalsBay.session.noHistory")}</p>}
+      {/*
+        FD-32 / owner 2026-09-13 — the money warning sits ABOVE the band, because it changes what
+        the nurse does next rather than how they measure. Unpaid and NOT waived means this patient
+        should be at the counter; unpaid and waived names the clerk's reason so the bay does not
+        send an emergency back.
+      */}
+      {preStage !== null && <UnpaidMark unpaid={preStage.feeUnpaid} bypass={preStage.feeBypass} />}
       {preStage !== null && (
         <div data-testid="prestage" style={{ display: "flex", flexDirection: "column", gap: 7 }}>
           {/*

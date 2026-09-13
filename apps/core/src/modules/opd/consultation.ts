@@ -100,6 +100,53 @@ export function registerConsultStartGuard(key: string, guard: ConsultStartGuard)
   };
 }
 
+/**
+ * ═══ FD-32 — THE SAME SHAPE, ONE DESK EARLIER (OWNER RULING 2026-09-13) ═══
+ *
+ * Owner: *"I can see a patient who got the token but has not been billed yet is visible in vitals
+ * dashboard. I think we must put a guard here. No patient should reach vitals desk until he has
+ * paid."*
+ *
+ * A SECOND REGISTRY RATHER THAN REUSING `consultStartGuards`, and the reason is the bypass. The two
+ * doors ask the same question of billing but answer a WAIVER differently: an emergency patient
+ * waved past the counter must still reach the nurse, and — the owner's own words — the warning
+ * travels with them to every desk after it. One registry shared between the doors would make
+ * "bypassed at vitals" silently mean "bypassed at consultation", which is a clinical decision
+ * nobody made. Two registries, two verdicts, one bypass column that each reads for itself.
+ *
+ * Dependency-inverted exactly as the consult registry is: OPD owns the registry and the thrown
+ * refusal, billing hands in a verdict function and imports no OPD internals. Keyed, so a second
+ * module init in one jest worker REPLACES rather than double-registers.
+ */
+export type VitalsStartGuard = ConsultStartGuard;
+
+const vitalsStartGuards = new Map<string, VitalsStartGuard>();
+
+/** Registers (or replaces) the vitals-door guard under `key`; returns the unregister function. */
+export function registerVitalsStartGuard(key: string, guard: VitalsStartGuard): () => void {
+  vitalsStartGuards.set(key, guard);
+  return () => {
+    vitalsStartGuards.delete(key);
+  };
+}
+
+/**
+ * Every registered verdict, first refusal wins — or `{ok:true}` when the front desk has opened the
+ * door for this visit. The bypass is read HERE rather than inside each guard so that a module
+ * registering a new guard cannot forget to honour it, and so the audit answer to "who let this
+ * patient through" has exactly one place to look.
+ */
+export async function vitalsGateVerdict(
+  db: Db | Tx, encounter: EncounterRow,
+): Promise<{ ok: true } | { ok: false; code: string; detail?: unknown }> {
+  if (encounter.feeBypassBy !== null && encounter.feeBypassReason !== null) return { ok: true };
+  for (const guard of vitalsStartGuards.values()) {
+    const verdict = await guard(db, encounter);
+    if (!verdict.ok) return verdict;
+  }
+  return { ok: true };
+}
+
 /** The encounter's newest queue entry (seq, never id — ledger §3.26) and its session's room: the doctor-day event fields. */
 async function entryWhere(tx: Tx, encounterId: string): Promise<{ sessionId: string; roomId: string | null; tokenNo: number }> {
   const entries = await tx

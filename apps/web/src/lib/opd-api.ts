@@ -635,6 +635,15 @@ export type WirePreStage = {
   sealed: boolean;
   required: WireVitalKey[];
   notRoutine: WireVitalKey[];
+  /**
+   * FD-32 / owner ruling 2026-09-13 — *"A symbol to symbolize in the vital dashboard that the user
+   * has not yet paid."* The LEDGER's answer, not the draft's: false on an unconfigured hospital,
+   * which has no fee policy to warn about. `feeBypass` is the front desk's waiver carried as the
+   * clerk's own sentence, so each desk shows WHY rather than a bare icon — and it never clears
+   * `feeUnpaid`, because a bypass waives the ORDER of payment and not the fee.
+   */
+  feeUnpaid: boolean;
+  feeBypass: { by: string; reason: string; at: string } | null;
   last: {
     vitalsId: string; recordedAt: string; serviceDate: string;
     heightCm: number | null; weightKg: number | null; sbp: number | null; dbp: number | null;

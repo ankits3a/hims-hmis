@@ -3733,5 +3733,10 @@
     "alreadyPending_other": "A slip of {{count}} lines is already waiting for the doctor on this visit. Saving replaces it.",
     "savedTitle_one": "Sent — {{count}} line waiting for the doctor",
     "savedTitle_other": "Sent — {{count}} lines waiting for the doctor"
+  },
+  "unpaid": {
+    "title": "This patient has not paid the consultation fee yet.",
+    "notPaid": "NOT PAID",
+    "bypassed": "PASSED WITHOUT PAYING"
   }
 }

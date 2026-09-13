@@ -167,12 +167,33 @@ describe("billing e2e", () => {
     return reg.body.patient.id as string;
   };
 
-  /** A walk-in `new` visit, moved to `waiting` by vitals — the state `startConsultation` needs. */
+  /**
+   * A walk-in `new` visit, moved to `waiting` by vitals — the state `startConsultation` needs.
+   *
+   * ═══ FD-32 — THE FEE BYPASS IS PART OF THE FIXTURE NOW, AND IT HAS TO BE ═══
+   *
+   * Owner ruling 2026-09-13: *"No patient should reach vitals desk until he has paid."* So this
+   * helper's old shape — open a visit, record vitals, bill later — is a flow the hospital no longer
+   * permits, and six tests in this file were written on it.
+   *
+   * They bypass rather than bill, deliberately, and the choice is the fixture telling the truth
+   * about its own subject: every one of them is about what happens at the BILLING counter to a visit
+   * that has not paid yet, so paying inside the helper would delete the state under test. The
+   * front desk's emergency door is exactly how an unpaid visit legitimately reaches the bench, and
+   * it is the only way that state exists after this ruling.
+   *
+   * IT DOES NOT WEAKEN THE CONSULT GATE, which is what the test below turns on: the bypass opens the
+   * VITALS door only. `feeGate` at the consultation still refuses `fee_unsettled`, which is why
+   * "unpaid consult refused 409, paid at the counter, retry starts 201" still passes unchanged —
+   * and if a later task widens the bypass to the doctor's door, that row goes red and says so.
+   */
   const openVisit = async (patientId: string): Promise<string> => {
     const open = await http().post("/opd/visits").set(...auth(cashier.token))
       .send({ patientId, departmentId: deptId, doctorId: dra.doctorId }).expect(201);
     const encounterId = open.body.encounter.id as string;
     expect(open.body.encounter.visitType).toBe("new");
+    await http().post(`/opd/visits/${encounterId}/fee-bypass`).set(...auth(cashier.token))
+      .send({ reason: "fixture: this suite's subject is the counter, so the visit reaches vitals unpaid" }).expect(201);
     await http().post(`/opd/visits/${encounterId}/vitals`).set(...auth(cashier.token)).send(adultOk).expect(201);
     return encounterId;
   };
@@ -352,6 +373,10 @@ describe("billing e2e", () => {
     const encounterId = open.body.encounter.id as string;
     const visitNo = open.body.encounter.visitNo as string;
     expect(visitNo).not.toBe(encounterId); // the two spellings really are different strings
+    /* FD-32 — same reason as `openVisit`'s: this row's subject is the LEDGER's key, so the visit has
+       to reach the bench before it is billed, and the front desk's door is how that happens now. */
+    await http().post(`/opd/visits/${encounterId}/fee-bypass`).set(...auth(cashier.token))
+      .send({ reason: "fixture: billed after the bench, to test the reference the invoice stores" }).expect(201);
     await http().post(`/opd/visits/${encounterId}/vitals`).set(...auth(cashier.token)).send(adultOk).expect(201);
     await openSession(cashier.token);
 

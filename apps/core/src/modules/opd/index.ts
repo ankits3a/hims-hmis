@@ -30,6 +30,8 @@ export type { AdvisedTest } from "./consultation";
 // RESOLVED medicines at dispense time (16c D9) — it is bound to a patient, not to a consult.
 export { getPrescription, listPrescriptions, matchAllergies, runRxChecks, verifyPrescriptionQr } from "./prescriptions";
 export { discardDraft, getPendingDraft, issueDraft, saveDraft } from "./prescription-drafts";
+export { registerVitalsStartGuard, vitalsGateVerdict } from "./consultation";
+export type { VitalsStartGuard } from "./consultation";
 export type { DraftRow, SaveDraftInput } from "./prescription-drafts";
 export type {
   AllergyMatch, AllergyOverride, RxCheckOutcome, RxNotice, RxOverride, RxVerifyReason, RxVerifyResult,

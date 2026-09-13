@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
@@ -904,6 +904,44 @@ export async function findVisitByToken(db: Db, filter: { serviceDate: string; to
     .limit(1);
   const hit = entries[0];
   return hit === undefined ? null : (byId.get(hit.encounterId) ?? null);
+}
+
+/**
+ * ═══ FD-32 — THE FRONT DESK OPENS THE DOOR, AND SIGNS FOR IT (OWNER RULING 2026-09-13) ═══
+ *
+ * Owner: *"in case of emergency or VIP patient, the front desk could enable the patient to bypass
+ * the billing with a warning sign/disclaimer/notification on each desk where the patient goes."*
+ *
+ * THE REASON IS MANDATORY AND IT IS NOT A CHECKBOX. "Emergency" and "VIP" are different facts with
+ * different consequences — one is clinical urgency and the other is a commercial courtesy — and a
+ * two-value dropdown would let the second hide inside the first. The clerk types what happened, and
+ * that sentence is what every downstream desk is shown.
+ *
+ * IT DOES NOT WAIVE THE FEE. The bill is still owed and still raised; what is waived is the ORDER,
+ * which is why this writes nothing to the ledger and `fee_status` keeps saying `unsettled` until
+ * the money actually lands. A bypass that silently marked a visit paid would be a hole in the day's
+ * collection, not a courtesy.
+ *
+ * IDEMPOTENT AND NOT RE-ASSIGNABLE: the first clerk's name and reason stand. A second call is a
+ * no-op rather than an overwrite, because the audit question is who opened the door FIRST.
+ */
+export async function grantFeeBypass(
+  db: Db, actor: Actor, encounterId: string, reason: string, now: Date = new Date(),
+): Promise<EncounterRow> {
+  if (actor.type !== "user") throw new OpdError("user_actor_required", "a bypass is a person's decision");
+  const trimmed = reason.trim();
+  if (trimmed.length < 3) {
+    throw new OpdError("reason_required", "say why this patient may pass the counter — it is shown at every desk after this one");
+  }
+  const enc = await getEncounter(db, encounterId);
+  if (!enc) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
+  if (enc.feeBypassBy !== null) return enc;
+  const updated = await db
+    .update(opdEncounters)
+    .set({ feeBypassBy: actor.id, feeBypassReason: trimmed, feeBypassAt: now })
+    .where(and(eq(opdEncounters.id, enc.id), isNull(opdEncounters.feeBypassBy)))
+    .returning();
+  return updated[0] ?? enc;
 }
 
 export async function counterState(db: Db, encounterId: string): Promise<CounterState | null> {

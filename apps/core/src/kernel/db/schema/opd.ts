@@ -318,6 +318,29 @@ export const opdEncounters = pgTable(
      * validating it where the money is decided keeps the desk fast and the guard in one place.
      */
     attributionCode: text("attribution_code"),
+    /**
+     * ═══ FD-32 — PAY BEFORE VITALS, AND THE DOOR THAT OPENS ANYWAY (OWNER RULING 2026-09-13) ═══
+     *
+     * Owner: *"No patient should reach vitals desk until he has paid. However, in case of emergency
+     * or VIP patient, the front desk could enable the patient to bypass the billing with a warning
+     * sign/disclaimer/notification on each desk where the patient goes."*
+     *
+     * So the guard is not a lock — it is a door with a named person's hand on it. `feeBypassBy` is
+     * that person, `feeBypassReason` is what they typed, and neither is nullable-by-accident: the
+     * bypass exists only where all three are set together.
+     *
+     * ON THE ENCOUNTER AND NOT ON A CONFIG FLAG, deliberately. A hospital-wide "skip billing" switch
+     * is a switch somebody leaves on; this is per-visit, per-patient, and carries the name of the
+     * clerk who opened it to every desk downstream. The marker the owner asked for on the vitals
+     * bay, the consultation and the OPD Order Desk is rendered FROM THESE COLUMNS, so the warning
+     * and the authority that created it can never drift apart.
+     *
+     * It does NOT mean "free". The fee is still owed and the bill is still raised; what was waived
+     * is the ORDER of the two, which is why nothing here touches the ledger.
+     */
+    feeBypassBy: text("fee_bypass_by"),
+    feeBypassReason: text("fee_bypass_reason"),
+    feeBypassAt: timestamp("fee_bypass_at", { withTimezone: true }),
     // Consultation record (T7) — nullable until the doctor writes it.
     chiefComplaint: text("chief_complaint"),
     diagnosis: text("diagnosis"),

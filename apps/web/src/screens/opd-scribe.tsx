@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { fetchRxDraft, saveRxDraft } from "../lib/opd-api";
 import type { WireRxDraft, WireRxLine } from "../lib/opd-api";
 import { PaperScreen, ScreenTitle } from "../components/paper-screen";
+import { UnpaidMark } from "../components/unpaid-mark";
 
 /**
  * ═══ THE OPD DOOR — THE PAPER SLIP, TRANSCRIBED (OWNER RULING 2026-09-12) ═══
@@ -37,6 +38,9 @@ import { PaperScreen, ScreenTitle } from "../components/paper-screen";
 
 type VisitLookup = {
   encounter: { id: string; visitNo: string; serviceDate: string; status: string; visitType: string; doctorId: string | null };
+  /* FD-32 — the owner's third desk. Same two facts, same component, same derivation. */
+  feeUnpaid?: boolean;
+  feeBypass?: { by: string; reason: string; at: string } | null;
   patient: { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean; administrativeGender: string; dob: string | null } | null;
 };
 
@@ -159,6 +163,15 @@ export function OpdScribe(): React.ReactElement {
                 <span className="mo" style={{ fontSize: 12, color: "var(--dim)" }}>
                   {who?.uhid} · {visit.data?.encounter.visitNo} · {visit.data?.encounter.serviceDate}
                 </span>
+              </div>
+              {/*
+                FD-32 / owner 2026-09-13 — this desk is the LAST one before the patient leaves with
+                their paper, and unlike the bay and the chair it has no gate in front of it. So the
+                mark matters most here: a slip transcribed for a patient who never paid is a job
+                sent to the lab, the imaging room and the pharmacy on an unbilled visit.
+              */}
+              <div style={{ marginTop: 9 }}>
+                <UnpaidMark unpaid={visit.data?.feeUnpaid ?? false} bypass={visit.data?.feeBypass ?? null} />
               </div>
               <button type="button" className="sec" data-testid="scribe-release" style={{ marginTop: 9 }} onClick={release}>
                 {t("scribe.notThem")}

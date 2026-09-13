@@ -6,6 +6,7 @@ import { z } from "zod";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../lib/api";
 import { discardRxDraft, fetchRxDraft, issueRxDraft } from "../lib/opd-api";
+import { UnpaidMark } from "../components/unpaid-mark";
 import { isInteractionHit, opdErrorMessage, todayIst } from "../lib/opd-api";
 import type {
   WireDoctor, WireEncounter, WireOpdConfig, WirePatientSummary, WirePrescription, WireQueueEntry,
@@ -58,6 +59,9 @@ const FREQUENCY_OPTIONS = ["OD", "BD", "TDS", "QID", "HS", "SOS", "STAT", "other
 
 type VisitDetail = {
   encounter: WireEncounter;
+  /* FD-32 — the owner's warning, from the same derivation the vitals bay uses. */
+  feeUnpaid?: boolean;
+  feeBypass?: { by: string; reason: string; at: string } | null;
   queueEntries: WireQueueEntry[];
   vitals: WireVitals[];
   prescriptions: WirePrescription[];
@@ -1084,7 +1088,15 @@ export function OpdConsult(): React.ReactElement {
 
                 {!restricted && (
                   <div style={{ paddingTop: 7 }}>
-                    <h3 className="tag" style={{ margin: "0 0 5px" }}>{t("opdConsult.allergies")}</h3>
+                    {/*
+                    FD-32 / owner 2026-09-13 — beside the allergies, because both are things the
+                    doctor must see BEFORE prescribing. The fee gate already refuses an unpaid
+                    consult, so a patient who reaches this chair unpaid was waved through by the
+                    front desk on purpose: the mark names the clerk's reason rather than accusing
+                    the patient.
+                  */}
+                  <UnpaidMark unpaid={visit.data?.feeUnpaid ?? false} bypass={visit.data?.feeBypass ?? null} />
+                  <h3 className="tag" style={{ margin: "0 0 5px" }}>{t("opdConsult.allergies")}</h3>
                     <div data-testid="allergy-chips" style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                       {activeAllergies.length === 0 && (
                         <span style={{ fontSize: 12, color: "var(--dim)" }}>{t("opdConsult.noAllergies")}</span>
