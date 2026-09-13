@@ -75,6 +75,24 @@ export type LabDeskFixture = {
   otherPatientId: string;
   otherEncounterNo: string;
   encounterNo: string;
+  /**
+   * ═══ A SECOND VISIT FOR THE SAME PATIENT — the owner's remedy, 2026-09-13 ═══
+   *
+   * *"The hospital must not charge twice for the same service in one visit. If the patient wish to
+   * consult another doctor/department for another problem, he must be billed a second receipt, a
+   * separate token, a separate prescription."*
+   *
+   * FD-27's duplicate-invoice guard enforces that, and several lab fixtures ordered the same panel
+   * two or three times on `encounterNo` because it was convenient. **Those were never one visit in
+   * the world they describe** — a TSH last week, one yesterday and one today is three visits, and a
+   * repeat creatinine is a fresh act that a hospital bills. Each call mints a new visit number for
+   * this same patient and routes it through the encounter resolver.
+   *
+   * Use it wherever a fixture needs the SAME service again. Do not use it to dodge a guard for a
+   * scenario that really is one visit — there the answer is a credit note, which is what the
+   * refusal itself says.
+   */
+  newVisit: () => string;
   serviceDate: string;
   unregister: () => void;
 };
@@ -185,8 +203,18 @@ export async function seedLabDeskBase(db: Db, encounterNo = "V2608290001"): Prom
       administrativeGender: "male", createdBy: "t", updatedBy: "t" },
   ]);
 
+  /** Every visit number this patient holds. `newVisit()` adds to it; the resolver reads it. */
+  const patientVisits = new Set([encounterNo]);
+  let visitSeq = 0;
+  const newVisit = (): string => {
+    visitSeq += 1;
+    const no = `V26082900${String(50 + visitSeq)}`;
+    patientVisits.add(no);
+    return no;
+  };
+
   const unregister = registerEncounterResolver("V", async (_d, no) =>
-    no === encounterNo ? { patientId, intendedPayer: "self" }
+    patientVisits.has(no) ? { patientId, intendedPayer: "self" }
       : no === otherEncounterNo ? { patientId: otherPatientId, intendedPayer: "self" }
         : null);
 
@@ -234,6 +262,7 @@ export async function seedLabDeskBase(db: Db, encounterNo = "V2608290001"): Prom
     otherPatientId,
     otherEncounterNo,
     encounterNo,
+    newVisit,
     serviceDate,
     unregister,
   };
@@ -257,14 +286,18 @@ export async function deskAndLabel(
   db: Db,
   fx: LabDeskFixture,
   codes: readonly string[] = ["CBC"],
-  over: { draw?: boolean; wristbandScanned?: boolean; priority?: "routine" | "urgent" | "stat" } = {},
+  over: {
+    draw?: boolean; wristbandScanned?: boolean; priority?: "routine" | "urgent" | "stat";
+    /** A visit other than `fx.encounterNo` — see `newVisit`. */
+    encounterNo?: string;
+  } = {},
 ): Promise<{
   orderId: string; orderGroupId: string; itemIds: string[];
   specimens: { specimenId: string; specimenNo: string; itemIds: string[] }[];
 }> {
   const placed = await withTx(db, (tx) => deskOrder(tx, fx.desk.actor, fx.decls, {
     patientId: fx.patientId,
-    encounterNo: fx.encounterNo,
+    encounterNo: over.encounterNo ?? fx.encounterNo,
     serviceDate: fx.serviceDate,
     orderingClinicianId: fx.pathologist.id,
     priority: over.priority,
@@ -374,6 +407,8 @@ export async function runLabOrder(
     values?: Readonly<Record<string, string>>;
     enterActor?: Actor;
     verifyActor?: Actor;
+    /** A visit other than `fx.encounterNo` — see `newVisit`. */
+    encounterNo?: string;
   } = {},
 ): Promise<LabRun> {
   const now = opts.at ?? new Date();
@@ -381,7 +416,7 @@ export async function runLabOrder(
   const warnings = await withTx(db, (tx) =>
     duplicateWarnings(tx, fx.desk.actor, fx.patientId, serviceIds, now));
   const placed = await withTx(db, (tx) => deskOrder(tx, fx.desk.actor, fx.decls, {
-    patientId: fx.patientId, encounterNo: fx.encounterNo, serviceDate: fx.serviceDate,
+    patientId: fx.patientId, encounterNo: opts.encounterNo ?? fx.encounterNo, serviceDate: fx.serviceDate,
     orderingClinicianId: fx.pathologist.id,
     items: serviceIds.map((serviceId) => ({ serviceId })),
     credit: { reason: "counter order" },
