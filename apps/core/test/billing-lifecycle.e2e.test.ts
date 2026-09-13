@@ -161,12 +161,26 @@ describe("billing lifecycle e2e", () => {
     return reg.body.patient.id as string;
   };
 
-  /** A walk-in `new` visit, moved to `waiting` by vitals — the state `startConsultation` needs. */
+  /**
+   * A walk-in `new` visit, moved to `waiting` by vitals — the state `startConsultation` needs.
+   *
+   * FD-32 / owner ruling 2026-09-13 — *"No patient should reach vitals desk until he has paid."* The
+   * bypass is how an unpaid visit legitimately reaches the bench now, and this whole suite is the
+   * story of a visit that pays LATER, at the counter: story (1) is literally "the gate refuses 409,
+   * the counter settles it, the doctor starts". Billing inside this helper would delete the state
+   * every one of those steps is about.
+   *
+   * The consult gate is untouched by the bypass — it opens the VITALS door only — which is why
+   * story (1)'s 409 at `consult/start` still fires. That row is now also the canary: if a later
+   * task widens the bypass to the doctor's door, it goes red and says so.
+   */
   const openVisit = async (patientId: string): Promise<string> => {
     const open = await http().post("/opd/visits").set(...auth(cashierA.token))
       .send({ patientId, departmentId: deptId, doctorId: dra.doctorId }).expect(201);
     const encounterId = open.body.encounter.id as string;
     expect(open.body.encounter.visitType).toBe("new");
+    await http().post(`/opd/visits/${encounterId}/fee-bypass`).set(...auth(cashierA.token))
+      .send({ reason: "fixture: this story pays at the counter AFTER the bench, which is its subject" }).expect(201);
     await http().post(`/opd/visits/${encounterId}/vitals`).set(...auth(cashierA.token)).send(adultOk).expect(201);
     return encounterId;
   };
