@@ -7,6 +7,7 @@ import { fmtPaise } from "../lib/format";
 import { todayIst } from "../lib/opd-api";
 import { api } from "../lib/api";
 import { billingErrorMessage } from "../lib/billing-api";
+import type { WireChargeOrphan } from "../lib/billing-api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -50,8 +51,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
  */
 const POLL_MS = 15_000;
 
-type OfficeTab = "refunds" | "recon" | "daybook" | "gstr1";
-const TABS: OfficeTab[] = ["refunds", "recon", "daybook", "gstr1"];
+type OfficeTab = "refunds" | "recon" | "daybook" | "gstr1" | "orphans";
+const TABS: OfficeTab[] = ["refunds", "recon", "daybook", "gstr1", "orphans"];
 
 type RefundKind = "invoice_refund" | "advance_refund";
 type RefundMethod = "cash" | "bank_transfer";
@@ -268,6 +269,24 @@ export function BillingOffice(): React.ReactElement {
     refetchInterval: POLL_MS,
   });
 
+  /**
+   * ═══ FD-33 — WHY IS THERE NO BILL AGAINST THIS TOKEN? (OWNER, 2026-09-13) ═══
+   *
+   * *"When auditing, I am unable to see why there's no bill against that token."* The nightly close
+   * has computed this since Plan 08 and it reached no screen. The list is the day's visits that
+   * SHOULD carry a consultation charge and do not — a free revisit is absent by construction — so
+   * the audit inverts: a token MISSING from here is legitimately unbilled.
+   *
+   * Polled like the other live tabs, and READ-ONLY on the server (`chargeOrphans`, never
+   * `runDailyClose`) so a refresh cannot close the books.
+   */
+  const orphans = useQuery({
+    queryKey: ["billing-office", "orphans", day],
+    queryFn: () => api<{ items: WireChargeOrphan[] }>("GET", `/billing/charge-orphans?serviceDate=${encodeURIComponent(day)}`),
+    enabled: tab === "orphans",
+    refetchInterval: POLL_MS,
+  });
+
   const gstr1 = useQuery({
     queryKey: ["billing-office", "gstr1", range.from, range.to],
     queryFn: async () => {
@@ -285,7 +304,7 @@ export function BillingOffice(): React.ReactElement {
    * about WHICH permission guards which route — it renders whatever the server refused, in the
    * server's own words, wherever the operator was looking.
    */
-  const active = tab === "refunds" ? vouchers : tab === "recon" ? mismatches : tab === "daybook" ? dayBook : gstr1;
+  const active = tab === "refunds" ? vouchers : tab === "recon" ? mismatches : tab === "daybook" ? dayBook : tab === "orphans" ? orphans : gstr1;
   const loadError = active.error === null ? null : billingErrorMessage(active.error);
 
   const voucherRows = vouchers.data ?? [];
@@ -944,11 +963,39 @@ export function BillingOffice(): React.ReactElement {
           <TabsTrigger value="recon" data-testid="tab-recon">{t("billingOffice.tabs.recon")}</TabsTrigger>
           <TabsTrigger value="daybook" data-testid="tab-daybook">{t("billingOffice.tabs.dayBook")}</TabsTrigger>
           <TabsTrigger value="gstr1" data-testid="tab-gstr1">{t("billingOffice.tabs.gstr1")}</TabsTrigger>
+          <TabsTrigger value="orphans" data-testid="tab-orphans">{t("billingOffice.tabs.orphans")}</TabsTrigger>
         </TabsList>
         <TabsContent value="refunds">{refundsTab}</TabsContent>
         <TabsContent value="recon">{reconTab}</TabsContent>
         <TabsContent value="daybook">{dayBookTab}</TabsContent>
         <TabsContent value="gstr1">{gstr1Tab}</TabsContent>
+        <TabsContent value="orphans">
+          <p style={{ margin: "0 0 9px", fontSize: 12, color: "var(--dim)" }}>{t("billingOffice.orphans.blurb")}</p>
+          {orphans.data?.items.length === 0 ? (
+            /* The GOOD answer, and it has to read as one: an empty list means every visit that owed
+               a consultation fee has one raised against it. A blank table would read as a failure. */
+            <p data-testid="orphans-none" style={{ margin: 0, fontWeight: 600 }}>{t("billingOffice.orphans.none", { day })}</p>
+          ) : (
+            <table data-testid="orphans-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+              <thead>
+                <tr style={{ textAlign: "left", color: "var(--dim)", fontSize: 10.5 }}>
+                  <th>{t("billingOffice.orphans.visit")}</th>
+                  <th>{t("billingOffice.orphans.type")}</th>
+                  <th>{t("billingOffice.orphans.date")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(orphans.data?.items ?? []).map((o) => (
+                  <tr key={o.encounterId} data-testid={`orphan-${o.encounterId}`}>
+                    <td className="mo">{o.visitNo}</td>
+                    <td>{o.visitType}</td>
+                    <td className="mo">{o.serviceDate}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </TabsContent>
       </Tabs>
 
       {/* The cascade is named BEFORE the operator confirms, not after: voiding a receipt reverses

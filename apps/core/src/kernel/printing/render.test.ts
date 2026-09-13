@@ -47,6 +47,7 @@ describe("FD-24 T3: rendering the counter's documents", () => {
 
   const MON = new Date("2026-08-17T04:00:00.000Z");
 
+  let clerk: Awaited<ReturnType<typeof mkUser>>;
   beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
   afterAll(async () => { await teardown(); });
 
@@ -55,7 +56,7 @@ describe("FD-24 T3: rendering the counter's documents", () => {
     await seedOpdBase(db);
     await activateOpdVisitDefinition(db);
     ({ deptId, roomId } = await seedOpdMasters(db));
-    const clerk = await mkUser(db, "render-clerk", ["front_office"]);
+    clerk = await mkUser(db, "render-clerk", ["front_office"]);
     const doctor = await mkDoctor(db, { username: "dr-render", departmentId: deptId, roomId, displayName: "Dr Anand Rao", code: "DR-0114" });
     const patient = await mkPatient(db, clerk.actor, { name: "Muskan Arora", sex: "female", ageYears: 28 });
     const visit = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: doctor.doctorId }, MON);
@@ -81,6 +82,68 @@ describe("FD-24 T3: rendering the counter's documents", () => {
       expect(doc!.html).toContain("width: 72mm");
       // THE HALF THAT ACTUALLY REACHES THE PRINTER
       expect(doc!.page).toEqual({ widthMm: 72, heightMm: null }); // null = continuous, measure it
+    });
+
+    /**
+     * ═══ FD-33 — THE AUDIT QUESTION, ANSWERED ON THE PAPER (OWNER, 2026-09-13) ═══
+     *
+     * Owner: *"when a patient is revisiting, I can't find a bill against the token … when auditing,
+     * I am unable to see why there's no bill against that token. I think printing the type of
+     * visit/encounter will solve this issue."*
+     *
+     * The type is printed. So is the LEDGER'S VERDICT beside it, because a type answers only one of
+     * the four reasons a token legitimately carries no bill — and the free revisit is the one the
+     * owner met. A slip that says REVISIT and nothing else still leaves the auditor computing the
+     * review window from a policy they have to remember.
+     */
+    it("prints the visit type always — and makes NO money claim on a hospital with no fee policy", async () => {
+      const doc = await renderTokenSlip(db, { encounterId }, MON);
+      expect(doc!.html).toContain("Visit type");
+      expect(doc!.html).toContain("NEW");
+      /*
+        MEASURED, AND THE CODE WAS RIGHT WHERE MY FIRST EXPECTATION WAS NOT. This fixture seeds no
+        `billing_config`, so `encounterFeeStatuses` returns an empty map and the slip says nothing
+        about money — the same rule the UNPAID stamp follows, and the same rule the vitals-desk
+        warning follows. "Unknown is not unpaid" is the one invariant three surfaces now share, and
+        a slip that guessed here would tell a commissioning hospital to send every patient to a
+        billing counter that has no prices in it.
+      */
+      expect(doc!.html).not.toContain("pay at the billing counter");
+      expect(doc!.html).not.toContain("FREE — review visit");
+    });
+
+    /** With a fee policy in place the verdict prints, and it is the ledger's — not the draft's. */
+    it("with billing CONFIGURED a new visit says UNPAID and where to pay", async () => {
+      await seedBillingBase(db);
+      const doc = await renderTokenSlip(db, { encounterId }, MON);
+      expect(doc!.html).toContain("NEW");
+      expect(doc!.html).toContain("UNPAID — pay at the billing counter");
+    });
+
+    /**
+     * ═══ THE OTHER HALF OF THE SAME REPORT ═══
+     *
+     * Owner: *"There's no staff username and time of the print visible on token. I can see
+     * '2026-09-13 · V2609130007' in the footer but I believe this is of no use as the same info is
+     * already printed in the body of the token."*
+     *
+     * He was right: the old footer was `serviceDate · visitNo`, and BOTH are rows in the identity
+     * block two lines above it. The one line a 72 mm roll can spare said nothing new. It now carries
+     * what the A4 prescription has carried since FD-29 — the operator's LOGIN and the clock.
+     */
+    it("the footer names the operator and the print time, and no longer repeats the body", async () => {
+      const doc = await renderTokenSlip(db, { encounterId }, MON, clerk.actor);
+      expect(doc!.html).toContain("Printed by render-clerk");
+      /* The DUPLICATION is gone — asserted on the footer's own markup, because the visit number and
+         the date both legitimately appear elsewhere (the identity rows, the bar field, the caption). */
+      expect(doc!.html).not.toMatch(/<div class="ft">2026-08-17 \u00b7 /);
+    });
+
+    /** A relay claims the job minutes later with no user actor: it prints the clock and no "by". */
+    it("a job printed by no user names no operator rather than a ULID", async () => {
+      const doc = await renderTokenSlip(db, { encounterId }, MON);
+      expect(doc!.html).toContain("Printed 17-Aug-2026");
+      expect(doc!.html).not.toContain("Printed by");
     });
 
     it("carries the token in the grammar the screen says out loud", async () => {

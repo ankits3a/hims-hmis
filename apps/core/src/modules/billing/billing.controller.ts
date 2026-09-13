@@ -86,6 +86,8 @@ import { MembershipError, membershipHttpStatus } from "../membership";
 import { BillingError, billingHttpStatus } from "./errors";
 import { withIdempotency } from "./idempotency";
 import { getInvoice, invoiceSettlement, issueInvoice, listInvoices, liveInvoiceCharging, previewInvoiceWithBalances } from "./invoices";
+import { chargeOrphans } from "./daily-close";
+import type { ChargeOrphanRow } from "./daily-close";
 import { collectionWorklist } from "./worklist";
 import type { CollectionRow } from "./worklist";
 import type { BenefitBalance } from "./invoices";
@@ -538,6 +540,30 @@ export class BillingController {
    * somebody else's screen. `billing.invoice.read` is the right key: knowing who owes money is the
    * same authority as reading the invoice that says so.
    */
+  /**
+   * ═══ FD-33 — WHY IS THERE NO BILL AGAINST THIS TOKEN? (OWNER, 2026-09-13) ═══
+   *
+   * The day's visits that SHOULD carry a consultation charge and do not. A FREE REVISIT is absent by
+   * construction — `orphanScan` skips a visit whose fee service is null — so the owner's audit
+   * inverts into something answerable at a glance: a token MISSING from this list is legitimately
+   * unbilled; a token PRESENT on it is the leak.
+   *
+   * READ-ONLY. `chargeOrphans` and deliberately not `runDailyClose`, which claims the day and
+   * appends a `charge.orphan_flagged` per finding: an auditor refreshing a screen must not close the
+   * books, and must not be answered "already claimed, here is what the worker found at 23:59" when
+   * they are asking about 11am.
+   */
+  @RequirePermission("billing.reports.read", "hospital")
+  @Get("charge-orphans")
+  async chargeOrphansRoute(@Query() query: unknown): Promise<{ items: ChargeOrphanRow[] }> {
+    const q = parsed(worklistQuery, query);
+    try {
+      return { items: await chargeOrphans(this.db, q.serviceDate) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
   @RequirePermission("billing.invoice.read", "hospital")
   @Get("worklist")
   async worklist(

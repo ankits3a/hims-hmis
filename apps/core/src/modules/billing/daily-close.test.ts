@@ -17,7 +17,7 @@ import { registerPatient } from "../patients";
 import {
   activateVersion, createDraftVersion, createService, setTariffItem, submitVersion, taxHead, upsertGstCategory,
 } from "../tariff";
-import { dayBook, gstr1Summary, runDailyClose } from "./daily-close";
+import { chargeOrphans, dayBook, gstr1Summary, runDailyClose } from "./daily-close";
 import { issueCreditNote } from "./credit-notes";
 import { getInvoice, issueInvoice } from "./invoices";
 import { markEnteredInError, recordReceipt } from "./receipts";
@@ -290,6 +290,52 @@ describe("the daily close: claim, day book, orphan scan and GSTR-1 (D9, §11.11)
     expect(closed.claimed).toBe(true);
     expect(closed.orphans).toEqual([]);
     expect(await eventsNamed("charge.orphan_flagged")).toHaveLength(0);
+  });
+
+  /**
+   * ═══ FD-33 — THE AUDIT QUESTION, ASKED WITHOUT CLOSING THE BOOKS (OWNER, 2026-09-13) ═══
+   *
+   * Owner: *"when a patient is revisiting, I can't find a bill against the token … when auditing, I
+   * am unable to see why there's no bill against that token."*
+   *
+   * The scan above already answers it and reached no screen. `chargeOrphans` is that same scan made
+   * ASKABLE: the inversion an auditor actually needs is "a token absent from this list is
+   * legitimately unbilled", and the revisit row below is what makes that inversion true.
+   */
+  it("chargeOrphans answers the auditor: the uncharged NEW visit is listed with its visit number, the FREE revisit is not", async () => {
+    const uncharged = await mkTestPatient("Uncharged Audit");
+    const revisiting = await mkTestPatient("Revisit Audit");
+    const unchargedEnc = await shapeEncounter({ patientId: uncharged, visitType: "new" });
+    await shapeEncounter({ patientId: revisiting, visitType: "revisit" });
+
+    const rows = await chargeOrphans(db, DAY);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ encounterId: unchargedEnc, patientId: uncharged, visitType: "new" });
+    /* ENRICHED, because a list of ULIDs is not an audit — the visit number is what the auditor is
+       holding on paper, and it is the join between the token in their hand and this row. */
+    expect(rows[0]!.visitNo).not.toBe("");
+    expect(rows[0]!.visitNo).not.toBe(rows[0]!.encounterId);
+  });
+
+  /**
+   * THE PROPERTY THAT MAKES IT SAFE TO PUT ON A SCREEN. A refresh must not close the day, and must
+   * not answer "already claimed" to the second person who looks.
+   */
+  it("chargeOrphans WRITES NOTHING — no day claim, no flags, and the close can still run afterwards", async () => {
+    const patientId = await mkTestPatient("Read Only");
+    await shapeEncounter({ patientId, visitType: "new" });
+
+    expect(await chargeOrphans(db, DAY)).toHaveLength(1);
+    expect(await chargeOrphans(db, DAY)).toHaveLength(1); // asked twice, still nothing written
+    expect(await eventsNamed("charge.orphan_flagged")).toHaveLength(0);
+
+    /* The books are still open: the close that follows CLAIMS the day, which it could not do if the
+       read had taken the claim row. This is the assertion that would go red if someone "simplified"
+       `chargeOrphans` into a call to `runDailyClose`. */
+    const closed = await runDailyClose(db, DAY, NOW);
+    expect(closed.claimed).toBe(true);
+    expect(closed.orphans).toHaveLength(1);
+    expect(await eventsNamed("charge.orphan_flagged")).toHaveLength(1);
   });
 
   it("an ENTERED-IN-ERROR fee invoice is not cover: the visit is flagged again", async () => {

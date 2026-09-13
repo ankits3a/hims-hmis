@@ -973,7 +973,8 @@
       "refunds": "Refunds",
       "recon": "Reconciliation",
       "dayBook": "Day book",
-      "gstr1": "GSTR-1"
+      "gstr1": "GSTR-1",
+      "orphans": "Unbilled visits"
     },
     "status": {
       "issued": "ISSUED",
@@ -1095,6 +1096,13 @@
       "sgst": "SGST",
       "total": "Total",
       "empty": "No outward supply in this range"
+    },
+    "orphans": {
+      "blurb": "Visits today that should carry a consultation fee and have no bill against them. A free follow-up never appears here — that is why a token missing from this list is legitimately unbilled.",
+      "none": "Every visit on {{day}} that owed a consultation fee has a bill against it.",
+      "visit": "Visit",
+      "type": "Visit type",
+      "date": "Date"
     }
   },
   "alerts": {

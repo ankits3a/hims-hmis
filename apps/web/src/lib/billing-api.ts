@@ -439,3 +439,18 @@ export function fetchCurrentSession(): Promise<{ session: WireCashSession | null
 export function openCashSession(floatPaise: number): Promise<WireCashSession> {
   return api("POST", "/billing/sessions", { floatPaise });
 }
+
+
+/**
+ * FD-33 / owner 2026-09-13 — a visit that should carry a consultation charge and does not. A FREE
+ * REVISIT never appears: the server's scan skips a visit with no fee service, which is what makes
+ * "absent from this list" the auditor's answer rather than a gap in it.
+ */
+export type WireChargeOrphan = {
+  encounterId: string;
+  patientId: string;
+  feeServiceId: string;
+  visitNo: string;
+  visitType: string;
+  serviceDate: string;
+};

@@ -3,6 +3,9 @@ import {
   opdDepartments, opdDoctors, opdEncounters, opdQueueEntries, opdVitals, patients, users,
 } from "../db/schema";
 import { encounterFeeStatuses } from "../../modules/billing/fee-status";
+/* The FREE branch only — it returns before `previewInvoice`, so a revisit is cheap and a paying
+   visit never reaches it. Imported directly, the shape this file already uses for `encounterFeeStatuses`. */
+import { feeQuote } from "../../modules/billing/charge-rules";
 import { LAB_DEPARTMENT_CODE } from "../../modules/opd/encounters";
 /* FD-25 §14 — the ONE place a confidential patient's name is decided. See `subjectOf`.
    `resolvePatientId` is the OTHER half of that decision: it names WHOSE record this is after a
@@ -590,6 +593,68 @@ export async function renderTokenSlip(
   const unpaid = status === undefined ? params.unpaid === true : status === "unsettled";
 
   /*
+    ═══ FD-33 — WHY THERE IS NO BILL AGAINST THIS TOKEN (OWNER, 2026-09-13) ═══
+
+    Owner: *"when a patient is revisiting, I can't find a bill against the token. The reason of no
+    bill is because revisit is free in a certain period of time. But when auditing, I am unable to
+    see why there's no bill against that token."*
+
+    The owner's proposal was to print the VISIT TYPE, and that is printed below. But a type answers
+    only one of the four reasons a token legitimately carries no bill, and one of the other three
+    landed this morning:
+
+      · REVISIT inside the review window  — free, and there is no charge to be missing
+      · PANEL / TPA / corporate           — billed, just not to the patient
+      · FEE BYPASS (FD-32)                — owed, deferred by a named clerk at the front desk
+      · genuinely unbilled                — the leak the daily close's orphan scan exists to find
+
+    So the slip prints the LEDGER'S VERDICT beside the type, which subsumes it. `status` is the same
+    projection the stamp above reads — no second derivation, no second chance to disagree.
+
+    THE WINDOW DATE IS FETCHED ONLY ON THE FREE BRANCH, and that is what makes it affordable:
+    `feeQuote` returns EARLY for a visit with no fee service (`charge-rules.ts`), before
+    `previewInvoice` runs, so a revisit costs one config read and the anchor lookup and a paying
+    visit costs nothing at all. An auditor holding the slip then reads the window end rather than
+    computing it from a policy they have to remember.
+  */
+  /*
+    WHO PRINTED IT, and the owner's other half of the same report: *"There's no staff username and
+    time of the print visible on token."* The footer used to repeat `serviceDate · visitNo` — both
+    already in the body two rows up — so the one line a thermal roll can spare said nothing new.
+
+    `username` and not `full_name`, and the reason is `renderPrescriptionSheet`'s, which has printed
+    this line since FD-29: "Printed by" identifies an OPERATOR for an audit, and an operator is a
+    login. A system, agent or unknown actor prints no "by" clause rather than a ULID nobody can look
+    up — the token slip is enqueued by the desk and claimed by a relay, so that case is real here.
+  */
+  const slipOperator = requester !== null && requester.type === "user"
+    ? (await db.select({ username: users.username }).from(users).where(eq(users.id, requester.id)))[0]?.username ?? null
+    : null;
+
+  const VISIT_TYPE_LABEL: Record<string, string> = { new: "NEW", revisit: "REVISIT", renewal: "RENEWAL" };
+  const typeLabel = VISIT_TYPE_LABEL[s.visitType] ?? s.visitType.toUpperCase();
+  let moneyLine: string;
+  if (status === "free") {
+    let until: string | null = null;
+    try {
+      const quote = await feeQuote(db, encounterId, now);
+      until = quote.freeReason === null ? null : formatCalendarDay(quote.freeReason.windowEndsOn);
+    } catch {
+      /* An unconfigured or unpriceable visit still prints the TYPE; it simply cannot name a window.
+         A slip that failed to render because the fee policy moved would be far worse than one
+         missing a date. */
+    }
+    moneyLine = until === null
+      ? "FREE — review visit, no consultation fee"
+      : `FREE — review visit, no fee until ${until}`;
+  } else if (status === "settled") moneyLine = "PAID";
+  else if (status === "credit") moneyLine = "ON CREDIT — amount owed";
+  else if (status === "unsettled") moneyLine = "UNPAID — pay at the billing counter";
+  /* UNKNOWN IS NOT A CLAIM. An unconfigured hospital has no fee policy, so the slip says the type
+     and nothing about money — the same rule the stamp above follows. */
+  else moneyLine = "";
+
+  /*
     ═══ FD-25 — A LAB WALK-IN IS NOT AN OPD VISIT, AND ITS SLIP MUST NOT PRETEND TO BE ═══
 
     `openLabWalkinInTx` opens a real visit through `openVisitInTx`, so the two print jobs fire for a
@@ -633,6 +698,8 @@ export async function renderTokenSlip(
       <div class="row"><span class="k">UHID</span><span class="v mo">${esc(s.uhid)}</span></div>
       <div class="row"><span class="k">Visit</span><span class="v mo">${esc(s.visitNo)}</span></div>
       <div class="row"><span class="k">Date</span><span class="v">${esc(s.serviceDate)}</span></div>
+      <div class="row"><span class="k">Visit type</span><span class="v">${esc(typeLabel)}</span></div>
+      ${moneyLine === "" ? "" : `<div class="row"><span class="k">Fee</span><span class="v">${esc(moneyLine)}</span></div>`}
     </div>
     ${stampHtml}
     <div class="next sec">
@@ -641,7 +708,9 @@ export async function renderTokenSlip(
         ${onwardHtml}
       </ol>
     </div>
-    <div class="ft">${esc(s.serviceDate)} · ${esc(s.visitNo)}</div>
+    <div class="ft">${slipOperator === null
+      ? `Printed ${esc(formatIstDay(now))} at ${esc(formatIstTime(now))}`
+      : `Printed by ${esc(slipOperator)} · ${esc(formatIstDay(now))} at ${esc(formatIstTime(now))}`}</div>
   `;
   return thermalPage(`Token ${tokenLabel(s.departmentCode, s.tokenNo)} — ${s.patientName}`, body);
 }
