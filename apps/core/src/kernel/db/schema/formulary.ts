@@ -74,6 +74,14 @@ export const formularySalts = pgTable(
     aliases: jsonb("aliases").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     drugClass: text("drug_class"),
     atcCode: text("atc_code"),
+    /**
+     * SNOMED CT concept id for the substance, from the NRCeS national release. NULLABLE, and the
+     * nullability is the point: the 29 moieties `seed-formulary-interactions` writes are named by
+     * a curator and have no concept id, and a column that forced one would make the seed unable to
+     * run. 3,260 of the release's 3,283 substances are INTERNATIONAL core concepts rather than
+     * India-extension ones, so this is a globally portable identifier, not a local key.
+     */
+    sctid: text("sctid"),
     active: boolean("active").notNull().default(true),
     ...auditColumns,
   },
@@ -81,6 +89,9 @@ export const formularySalts = pgTable(
     // Case-insensitive uniqueness: "Amoxicillin" and "amoxicillin" are one moiety, and two rows
     // for one moiety would split every check that groups by it.
     uniqueIndex("formulary_salts_name_lower_ux").using("btree", sql`lower(${t.name})`),
+    // Two rows carrying one concept id is the same split by a different route. NULLs do not
+    // collide in Postgres, so the curator-named moieties are unaffected.
+    uniqueIndex("formulary_salts_sctid_ux").on(t.sctid),
   ],
 );
 
@@ -124,6 +135,90 @@ export const formularyMedicineSalts = pgTable(
     strength: text("strength"),
   },
   (t) => [primaryKey({ columns: [t.medicineId, t.saltId] })],
+);
+
+/**
+ * THE CLINICAL DRUG — the tier between a moiety and a branded product, and the tier this schema
+ * did not have.
+ *
+ * ═══ WHY IT HAD TO BE ADDED RATHER THAN FOLDED INTO `formulary_medicines` ═══
+ *
+ * SNOMED CT's drug model is three levels: SUBSTANCE (amlodipine) -> CLINICAL DRUG ("amlodipine
+ * 5 mg oral tablet") -> BRANDED PRODUCT ("Amlopres 5 mg tablet, Cipla"). This schema had two, and
+ * the missing middle is where several things live that nothing else can express:
+ *
+ *   - GENERIC SUBSTITUTION. "give the patient any amlodipine 5 mg tablet" is a statement about
+ *     this tier. With only brands, substitution has to be re-derived from composition every time,
+ *     and two products that are clinically interchangeable are related by nothing.
+ *   - COMPOSITION ONCE, NOT PER BRAND. The NRCeS release carries 10,303 clinical drugs against
+ *     93,905 branded products. Composition belongs to the clinical drug; holding it per brand
+ *     would store the same fact ~9 times and let the copies drift.
+ *   - DOSE FORM AND ROUTE as released, not as re-typed. 174 dose forms and 58 routes, and several
+ *     routes are compound ("Intramuscular route; Intravenous route; Subcutaneous route").
+ *
+ * ═══ `formulary_medicine_salts` IS NOT REPLACED, AND THAT IS DELIBERATE ═══
+ *
+ * `resolve.ts` reads the medicine->salt join directly for every interaction and allergy check.
+ * Re-pointing it at this tier would rewrite the checking path in the same change that loads a
+ * catalogue, so instead the loader DERIVES `formulary_medicine_salts` by expanding
+ * medicine -> generic -> substances. Every existing check keeps working untouched, and the
+ * derived rows are what they always were: the moieties a product contains.
+ *
+ * ═══ WHAT THIS TABLE DOES NOT CARRY, MEASURED RATHER THAN ASSUMED ═══
+ *
+ * The release's clinical columns are mostly empty, and carrying a column that is 97% blank beside
+ * a table named `formulary_interactions` would invite a reader to mistake it for the interaction
+ * dataset. Fill rates over its 10,303 rows, measured 2026-09-13:
+ * `interaction_with_drugs` 3% · `classification_of_drug` 1% · `indications` 23% ·
+ * `contraindications` 23% · `drug_type` 22% · `source` 18%. None is carried here. The computable
+ * interaction and allergy-class content is the ONE PURCHASE of the 2026-08-23 RFQ, and a 3%-full
+ * prose column must not be allowed to look like it arrived early.
+ */
+export const formularyGenerics = pgTable(
+  "formulary_generics",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    /** SNOMED CT concept id. NOT NULL here: a generic exists in this table only by import. */
+    sctid: text("sctid").notNull(),
+    name: text("name").notNull(),
+    /** As released — "Oral tablet", "Eye drops". 174 distinct values; not an enum, by design. */
+    doseForm: text("dose_form").notNull(),
+    /** As released, and sometimes compound: "Intravenous route; Intramuscular route". */
+    routeOfAdministration: text("route_of_administration").notNull(),
+    /** The release's own human-readable composition line, kept verbatim for display and audit. */
+    compositionSummary: text("composition_summary"),
+    /**
+     * WHICH RELEASE PUT THIS ROW HERE — the provenance the spreadsheet-loader design note lists as
+     * its one still-open defect (§"The four things", #4). A catalogue row nobody can attribute is
+     * a row nobody can re-import, diff or retire when the next national release lands.
+     */
+    source: text("source").notNull(),
+    active: boolean("active").notNull().default(true),
+    ...auditColumns,
+  },
+  (t) => [
+    uniqueIndex("formulary_generics_sctid_ux").on(t.sctid),
+  ],
+);
+
+/**
+ * THE COMPOSITION, held once per clinical drug. `generic_compositions.csv` arrives already
+ * normalised — 13,125 rows against 10,303 generics — which is the shape this table is.
+ *
+ * `strength` and `unit` are kept AS RELEASED ("5/1", "milligram/Tablet") rather than parsed into a
+ * number and a unit. Parsing is a lossy judgement about 174 dose forms made at import time by
+ * something that cannot ask; the ratio form is what the release asserts, and a later task that
+ * needs arithmetic can parse it with the original still present to check against.
+ */
+export const formularyGenericSalts = pgTable(
+  "formulary_generic_salts",
+  {
+    genericId: text("generic_id").notNull().references(() => formularyGenerics.id),
+    saltId: text("salt_id").notNull().references(() => formularySalts.id),
+    strength: text("strength"),
+    unit: text("unit"),
+  },
+  (t) => [primaryKey({ columns: [t.genericId, t.saltId] })],
 );
 
 /** MOIETY-level interaction pairs. Ordered, unique, provenanced, optionally route-scoped. */
