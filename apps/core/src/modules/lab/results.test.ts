@@ -16,7 +16,7 @@ import { duplicateWarnings } from "./duplicates";
 import { enterResult, requestRerun } from "./results";
 import { printLabels } from "./specimens";
 import { verifyResult } from "./verify";
-import { amendResult } from "./results";
+import { amendResult, liveRowsFor } from "./results";
 import type { LabDeskFixture } from "../../../test/helpers/lab";
 import type { Db } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
@@ -614,6 +614,66 @@ describe("lab results — entry (17b T6)", () => {
     const flagged = await eventsNamed("lab.result_critical_flagged");
     expect(flagged).toHaveLength(1);
     expect(flagged[0]!.payload).toMatchObject({ value: "6.9", band: "high" });
+  });
+
+  /**
+   * ═══ A SECOND AMENDMENT OF THE SAME SIGNED ROW LEAVES A REPORT WITH TWO ANSWERS ═══
+   *
+   * `amendResultInTx` guards on the prior being SIGNED (`report_not_amendable` for an unverified
+   * one) and **never on the prior still being LIVE.** So two amendments naming the same
+   * `resultId` write two rows that both carry `supersedes_result_id = prior.id`:
+   *
+   *     prior (superseded)     A  supersedes=prior, VERIFIED     B  supersedes=prior, VERIFIED
+   *
+   * `liveRowsFor` excludes only `prior` — the superseded set is the ids rows NAME, and nobody names
+   * A or B. **Two live verified rows for one analyte**, which is exactly the state
+   * `lab_results_one_choice_idx` exists to prevent, arriving through the one path the rerun-choice
+   * rule never touches. There is no unique index on `supersedes_result_id` to stop it.
+   *
+   * **And it is unreconcilable once it exists.** `chooseReportedResult` refuses `rerun_choice_final`
+   * the moment any live row is verified, so the bench cannot pick between them; `reports.ts` takes
+   * the last VERIFIED row by `verified_at` and prints whichever amendment happened to be second.
+   * A clinician reads one number and the laboratory holds two, with nothing marking the other as
+   * withdrawn.
+   *
+   * The refusal is `result_superseded` — deliberately the SAME code `chooseReportedResult` already
+   * raises for this shape, because it is the same fact about the same column. Re-pointing the
+   * amendment at the live row instead would be worse than refusing: `prior` supplies the range, the
+   * unit and the entry mode, so the caller would be amending a row they never read.
+   */
+  it("A15: a signed row may be amended ONCE — a second amendment of the same row is refused", async () => {
+    const { itemIds } = await resultable(["RFT"]);
+    const k = await analyteIdFor("K");
+    const entered = await enterResult(db, fx.bench.actor, {
+      orderItemId: itemIds[0]!, analyteId: k, value: "4.2", entryMode: "manual",
+    });
+    await verifyResult(db, fx.pathologist.actor, fx.decls, { resultId: entered.resultId });
+
+    /** The correction the pathologist meant to make. */
+    const first = await amendResult(db, fx.pathologist.actor, {
+      resultId: entered.resultId, value: "5.0",
+    });
+
+    /** The same row again — a retry, a second reader, or somebody working from the printed report. */
+    await expect(amendResult(db, fx.pathologist.actor, {
+      resultId: entered.resultId, value: "5.5",
+    })).rejects.toMatchObject({ code: "result_superseded" });
+
+    /**
+     * **THE STATE THAT MATTERS**, asserted through the helper the report and the verifier both read
+     * rather than by counting rows: exactly ONE live value, and it is the first amendment.
+     */
+    const rows = await db.select().from(labResults).where(eq(labResults.analyteId, k));
+    expect(rows).toHaveLength(2);
+    const live = liveRowsFor(rows, k);
+    expect(live.map((r) => [r.id, r.valueNumeric])).toEqual([[first.resultId, "5.0000"]]);
+
+    /** And the amendment that WAS allowed is still amendable — the chain continues from the live row. */
+    const second = await amendResult(db, fx.pathologist.actor, {
+      resultId: first.resultId, value: "5.5",
+    });
+    expect(liveRowsFor(await db.select().from(labResults).where(eq(labResults.analyteId, k)), k)
+      .map((r) => [r.id, r.valueNumeric])).toEqual([[second.resultId, "5.5000"]]);
   });
 
   /* ═══════════════════════ the item's own machine, and the rerun ═══════════════════════ */

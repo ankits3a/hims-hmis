@@ -1467,6 +1467,48 @@ async function amendResultInTx(
     );
   }
 
+  /**
+   * ═══ AND IT MUST STILL BE THE LIVE ROW — "SIGNED" IS NOT THE SAME PROPERTY ═══
+   *
+   * The check above asks whether the prior was ever signed. It does not ask whether it is still the
+   * value the report carries, and an already-amended row is BOTH signed and replaced. Without this,
+   * two amendments naming the same `resultId` write two rows that each carry
+   * `supersedes_result_id = prior.id`:
+   *
+   *     prior (superseded)   A supersedes=prior VERIFIED   B supersedes=prior VERIFIED
+   *
+   * `liveRowsFor` excludes only the ids rows NAME, and nobody names A or B — so the analyte has
+   * **two live verified values**, the state `lab_results_one_choice_idx` exists to prevent, reached
+   * through the one path the rerun-choice rule never touches. No unique index on
+   * `supersedes_result_id` stops it, and it is UNRECONCILABLE once written:
+   * `chooseReportedResult` refuses `rerun_choice_final` as soon as a live row is verified, and
+   * `reports.ts` prints whichever amendment happened to be signed second while the laboratory holds
+   * two answers and marks neither as withdrawn.
+   *
+   * **Refusing is right and re-pointing at the live row would be worse.** `prior` supplies the
+   * reference range the value is flagged against, the unit and the entry mode — amending a
+   * different row than the one named means correcting a value the caller never read. The refusal
+   * names the current row so they can read it and amend that.
+   *
+   * `result_superseded` is deliberately the same code `chooseReportedResult` and `verifyResult`
+   * raise: it is the same fact about the same column, and a second name for it would make the
+   * ladder's own vocabulary depend on which door the caller came through.
+   */
+  const priorSiblings = await tx.select().from(labResults).where(and(
+    eq(labResults.orderItemId, prior.orderItemId),
+    eq(labResults.analyteId, prior.analyteId),
+  ));
+  const livePrior = liveRowsFor(priorSiblings, prior.analyteId);
+  if (!livePrior.some((r) => r.id === prior.id)) {
+    throw new LabError(
+      "result_superseded",
+      `result ${input.resultId} was already replaced by a later row — amend the value the report ` +
+        "carries, not the one it replaced, or the analyte ends up with two signed answers and no " +
+        "way to choose between them",
+      { currentResultIds: livePrior.map((r) => r.id) },
+    );
+  }
+
   const [analyte] = await tx.select().from(labAnalytes).where(eq(labAnalytes.id, prior.analyteId));
   if (!analyte) throw new LabError("unknown_analyte", `no analyte ${prior.analyteId}`);
   /**
