@@ -776,7 +776,15 @@ function LinkedPatientsSection({ patient }: { patient: PatientRow }): React.Reac
               key={row.id}
               type="button"
               data-testid={`linked-${row.uhid}`}
-              className="flex w-full items-center justify-between rounded border p-3 text-left"
+              /*
+                `.box` and not tailwind's `rounded border`: inside `.pp` the primitives come from
+                `desk-one.css` (`.pp .box { background: var(--card); border: 1px solid var(--line) }`)
+                and a bare tailwind border painted nothing at all — the row read as loose text on
+                paper, which is not what a thing you can click looks like. Found by screenshotting
+                it, not by a test; the allergies table on this same screen already uses `.box`.
+              */
+              className="box flex w-full items-center justify-between text-left"
+              style={{ padding: "10px 12px", cursor: "pointer" }}
               onClick={() => { void navigate({ to: "/patients/$patientId", params: { patientId: row.id } }); }}
             >
               <span>
