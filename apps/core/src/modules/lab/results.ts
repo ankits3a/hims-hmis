@@ -326,11 +326,33 @@ export function deferNearMiss<E extends Error>(err: E, event: PendingEvent): E {
   return err;
 }
 
-/** Appends a deferred near-miss, if the error carries one. Never masks the original failure. */
+/**
+ * Appends a deferred near-miss, if the error carries one. **Never masks the original failure** —
+ * which it did not, until the `catch` below.
+ *
+ * ═══ EVERY CALL SITE IS `catch (e) { await flushNearMiss(db, e); throw e; }` ═══
+ *
+ * So a throw from this function escapes **before the caller's `throw e` is ever reached**, and the
+ * caller receives the audit transaction's error instead of the refusal. On the swap path that means
+ * a technologist shown "connection terminated" where `analyte_not_applicable` — the one refusal that
+ * names another patient's tube — should have been. And the near-miss is lost in the bargain, so both
+ * halves of the sentence above fail together. That is the tell: **a best-effort write that can take
+ * the caller's error down with it is not best-effort, it is a second point of failure wearing the
+ * word.**
+ *
+ * Swallowed exactly as `kernel/phi/audit.ts` swallows its own, and for the same reason: the act being
+ * recorded is the priority, and a record that cannot be written must not become the answer. The
+ * deferral already accepts that this write happens outside the caller's transaction and can fail on
+ * its own; this makes that failure cost the record only, which is what it was always meant to cost.
+ */
 export async function flushNearMiss(db: Db, e: unknown): Promise<void> {
   const event = (e as Record<symbol, PendingEvent | undefined>)[NEAR_MISS];
   if (event === undefined) return;
-  await withTx(db, (auditTx) => appendEvent(auditTx, event));
+  try {
+    await withTx(db, (auditTx) => appendEvent(auditTx, event));
+  } catch {
+    // Deliberately swallowed — see the header. The refusal the caller must see is the priority.
+  }
 }
 
 

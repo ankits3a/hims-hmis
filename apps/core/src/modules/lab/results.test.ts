@@ -6,8 +6,8 @@ import {
 import { mkUser } from "../../../test/helpers/opd";
 import { withTx } from "../../kernel/db/client";
 import {
-  events, labAnalytes, labCriticalCalls, labReferenceRanges, labResults, orderItems, patients,
-  workflowInstances,
+  events, labAnalytes, labCriticalCalls, labReferenceRanges, labResults, labSpecimens, orderItems,
+  patients, workflowInstances,
 } from "../../kernel/db/schema";
 import { receive } from "./accession";
 import { collect } from "./collection";
@@ -16,7 +16,9 @@ import { duplicateWarnings } from "./duplicates";
 import { enterResult, requestRerun } from "./results";
 import { printLabels } from "./specimens";
 import { verifyResult } from "./verify";
-import { amendResult, liveRowsFor } from "./results";
+import { amendResult, deferNearMiss, flushNearMiss, liveRowsFor } from "./results";
+import { labTubeSwapSuspected } from "./events";
+import { LabError } from "./errors";
 import type { LabDeskFixture } from "../../../test/helpers/lab";
 import type { Db } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
@@ -674,6 +676,61 @@ describe("lab results — entry (17b T6)", () => {
     });
     expect(liveRowsFor(await db.select().from(labResults).where(eq(labResults.analyteId, k)), k)
       .map((r) => [r.id, r.valueNumeric])).toEqual([[second.resultId, "5.5000"]]);
+  });
+
+  /**
+   * ═══ A FAILING AUDIT WRITE MUST NOT REPLACE THE REFUSAL IT WAS RECORDING ═══
+   *
+   * `flushNearMiss`'s own docstring says *"Never masks the original failure"*, and against the code
+   * this guards it does exactly that. Every one of its four call sites has the shape
+   *
+   *     catch (e) { await flushNearMiss(db, e); throw e; }
+   *
+   * so if the deferred `withTx` throws — the audit connection is gone, the pool is exhausted, the
+   * events table is locked — **that throw escapes before `throw e` is ever reached.** The caller
+   * receives the audit transaction's error instead of `analyte_not_applicable`, which is the one
+   * refusal on the bench that names another patient's tube; the technologist is shown a database
+   * error about a swap they are never told to look for. And the near-miss is lost anyway, so the
+   * NABL record the deferral exists to preserve is gone in the bargain.
+   *
+   * Both halves of the promise fail together, which is the tell: a best-effort write that can take
+   * the caller's error down with it is not best-effort, it is a second point of failure wearing the
+   * word. Swallowed the way `kernel/phi/audit.ts` swallows its own, for the same reason — the act
+   * being recorded is the priority, and a record that cannot be written must not become the answer.
+   */
+  it("A16: an audit write that FAILS does not swallow the refusal it was recording", async () => {
+    const { itemIds } = await resultable(["RFT"]);
+    const k = await analyteIdFor("K");
+    const [item] = await db.select().from(orderItems).where(eq(orderItems.id, itemIds[0]!));
+    const [specimen] = await db.select().from(labSpecimens).limit(1);
+
+    /** A real deferred near-miss, built the way the swap path builds it. */
+    const refusal = new LabError("analyte_not_applicable", "this analyte is not reported for this patient");
+    deferNearMiss(refusal, labTubeSwapSuspected.make({
+      actor: fx.bench.actor,
+      patientId: fx.patientId,
+      correlationId: item!.orderId,
+      payload: {
+        orderItemId: itemIds[0]!, orderGroupId: item!.orderId, analyteId: k,
+        specimenId: specimen!.id, siblingSpecimenIds: [], breach: "sex",
+        raisedBy: fx.bench.actor.id, overridden: false,
+      },
+    }));
+
+    /** The audit connection is gone. `withTx` is `db.transaction(fn)` and this one refuses. */
+    const brokenDb = {
+      transaction: () => Promise.reject(new Error("audit db down")),
+    } as unknown as Db;
+
+    /**
+     * **THE KILL.** It must RESOLVE. A rejection here is the caller's `throw e` never running, and
+     * the bench reading "audit db down" where the refusal should have been.
+     */
+    await expect(flushNearMiss(brokenDb, refusal)).resolves.toBeUndefined();
+
+    /** And a working db still writes it — the catch must not have turned the flush into a no-op. */
+    await flushNearMiss(db, refusal);
+    expect(await eventsNamed("lab.tube_swap_suspected")).toHaveLength(1);
   });
 
   /* ═══════════════════════ the item's own machine, and the rerun ═══════════════════════ */
