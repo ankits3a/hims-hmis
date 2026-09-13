@@ -19,6 +19,7 @@ import { useRealtime } from "../lib/realtime";
 import { RxPrint } from "../components/rx-print";
 import { flagTone, provisionalResultsForEncounter, resultsForEncounter } from "../lib/lab-api";
 import { CheckboxField, FormKit, SelectField, TextField } from "../components/form-kit";
+import { DrugCombobox } from "../components/drug-combobox";
 import { PaperScreen, ScreenTitle } from "../components/paper-screen";
 import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
@@ -143,10 +144,6 @@ type WirePrecheck = {
   notices: WireRxNotice[];
   unresolvedLineIndexes: number[];
 };
-type WireMedicine = {
-  id: string; brandName: string; routeClass: string;
-  salts: { saltId: string; strength: string | null }[];
-};
 type WireCoverage = { coverage: number; noticeEnabled: boolean };
 
 
@@ -218,17 +215,12 @@ export function OpdConsult(): React.ReactElement {
   const doctorId = me.data?.id ?? "";
 
   const config = useQuery({ queryKey: ["opd", "config"], queryFn: () => api<WireOpdConfig>("GET", "/opd/config") });
-  /**
-   * PLAN 16a T6 — the formulary, for the picker. A doctor holds `formulary.read` (DD10); if this
-   * ever answers 403 the picker is simply empty and free typing is unaffected, which is design
-   * law 1 holding at the transport layer too.
+  /*
+   * PLAN 16a T6's whole-formulary fetch is GONE. It pulled every branded medicine, unpaginated,
+   * on every consultation — safe only while the table was empty. The drug field now queries
+   * `/formulary/suggest` for what the doctor is actually typing (`DrugCombobox`), and design law 1
+   * still holds at the transport layer: if that request fails, the field is a plain text box.
    */
-  const formulary = useQuery({
-    queryKey: ["formulary", "medicines"],
-    queryFn: () => api<{ items: WireMedicine[] }>("GET", "/formulary/medicines?active=true"),
-    retry: false,
-  });
-  const medicines = formulary.data?.items ?? [];
   /**
    * DD5 — the client NEVER re-derives the threshold. It reads `noticeEnabled` and nothing else, and
    * a 404 (T8 not deployed yet) means OFF, which is also the correct long-term degrade: silence
@@ -1139,45 +1131,24 @@ export function OpdConsult(): React.ReactElement {
                         <div key={f.id} data-testid={`rx-row-${String(i)}`} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 9, padding: "11px 0", borderTop: i === 0 ? "none" : "1px solid var(--line)" }}>
                           <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                             {/*
-                              C1 (independent review) — TYPING OVER A PICKED NAME DROPS THE ID.
-                              The schema comment claimed this ("cleared the moment the doctor
-                              types") and nothing implemented it, so a line could read "Paracetamol
-                              500" while carrying warfarin's id — and the server preferred the id.
-                              The server now cross-checks the brand name too; this is the half that
-                              keeps the two honest in the first place.
+                              THE DRUG FIELD IS NOW A COMBOBOX over the CLINICAL DRUG tier —
+                              molecule and strength, no brand. It replaces a plain TextField plus a
+                              `<select>` that listed every branded medicine unpaginated and worked
+                              only because `formulary_medicines` is empty; at the 93,905 rows the
+                              national release carries, that control mounts 93,905 option nodes and
+                              fetches a 38 MiB payload on every consultation.
+
+                              C1's rule is kept and moved INSIDE the component: typing over a picked
+                              name drops `medicineId`. A pick does not set one — see
+                              `modules/formulary/suggest.ts` for why that is the safe choice while
+                              the catalogue is uncurated.
                             */}
-                            <TextField
+                            <DrugCombobox
                               name={`lines.${String(i)}.drug`}
+                              medicineIdName={`lines.${String(i)}.medicineId`}
                               label={t("opdConsult.drug")}
-                              onChange={() => {
-                                if (rxForm.getValues(`lines.${i}.medicineId`) !== null) {
-                                  rxForm.setValue(`lines.${i}.medicineId`, null);
-                                }
-                              }}
+                              testId={`rx-drug-${String(i)}`}
                             />
-                            {/*
-                              PLAN 16a T6 — the formulary picker. Free typing in the field above is
-                              untouched and always legal (design law 1); picking fills the name AND
-                              the id, which is what turns a line into a checked one.
-                            */}
-                            <select
-                              data-testid={`rx-formulary-${String(i)}`}
-                              aria-label={t("opdConsult.pickFromFormulary")}
-                              value={rxForm.watch(`lines.${i}.medicineId`) ?? ""}
-                              onChange={(e) => {
-                                const picked = medicines.find((m) => m.id === e.target.value);
-                                rxForm.setValue(`lines.${i}.medicineId`, picked?.id ?? null);
-                                if (picked !== undefined) rxForm.setValue(`lines.${i}.drug`, picked.brandName);
-                              }}
-                              className="in" style={{ width: "100%", height: 32, fontSize: 12 }}
-                            >
-                              <option value="">{t("opdConsult.pickFromFormulary")}</option>
-                              {medicines.map((m) => (
-                                <option key={m.id} value={m.id}>
-                                  {m.salts.length > 0 ? `${m.brandName} — ${String(m.salts.length)}` : m.brandName}
-                                </option>
-                              ))}
-                            </select>
                             {/*
                               DD5 — the hint renders ONLY when the server says coverage is high
                               enough. Below the threshold it would fire on almost every line and
