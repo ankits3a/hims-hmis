@@ -4,7 +4,7 @@ import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, s
 import { events, opdQueueEntries } from "../../kernel/db/schema";
 import { completeConsultation, parkConsultation, resumeConsultation, saveConsultNote, startConsultation } from "./consultation";
 import { getEncounter, openVisit } from "./encounters";
-import { callNext, listQueue } from "./queue";
+import { boardSnapshot, callNext, listQueue, summaryByDoctor } from "./queue";
 import { recordVitals } from "./vitals";
 import type { Db } from "../../kernel/db/client";
 
@@ -160,6 +160,34 @@ describe("opd — parking a consultation and resuming it", () => {
     await resumeConsultation(db, dra.actor, a.encounterId, LATER(9));
     await expect(resumeConsultation(db, dra.actor, a.encounterId, LATER(10))).rejects.toMatchObject({ code: "queue_entry_state_conflict" });
     expect(await named("consultation.resumed")).toHaveLength(1);
+  });
+
+  /**
+   * ═══ THE CORRIDOR BOARD MUST NOT CALL A PARKED TOKEN ═══
+   *
+   * `summarise` answers "now serving" with the called row, or failing that the first `in_consult`
+   * row it finds — and with a park that is the patient who is NOT in the room. The hall would read
+   * "now serving 1" over an empty chair while the doctor saw token 2, and the parked patient's
+   * family would send them back in. A hold is invisible to the public board by design: it says who
+   * is actually with the doctor, and when that is nobody it says nothing.
+   */
+  it("P6: the board and the desk announce the patient in the chair, never the one being held", async () => {
+    const a = await arrive(asha.id);
+    const r = await arrive(ram.id, LATER(1));
+    await seat(a.encounterId, a.sessionId);
+    await parkConsultation(db, dra.actor, a.encounterId, LATER(6));
+
+    // held, and nobody else called yet: the doctor is serving NOBODY, and the board says so
+    const alone = await boardSnapshot(db, "2026-08-17", undefined, LATER(7));
+    expect(alone.find((b) => b.doctorId === dra.doctorId)!.nowServing).toBeNull();
+
+    await callNext(db, dra.actor, a.sessionId, LATER(7));
+    await startConsultation(db, dra.actor, r.encounterId, LATER(8));
+
+    const board = await boardSnapshot(db, "2026-08-17", undefined, LATER(9));
+    expect(board.find((b) => b.doctorId === dra.doctorId)!.nowServing).toBe(2);
+    const desk = await summaryByDoctor(db, deptId, "2026-08-17", LATER(9));
+    expect(desk.find((d) => d.doctor.id === dra.doctorId)!.nowServing).toBe(2);
   });
 
   it("P5: completing a patient who was parked finishes the visit and leaves no hold behind — done and held are never both true", async () => {

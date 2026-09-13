@@ -1388,167 +1388,168 @@ describe("07d T5 — advised investigations", () => {
     expect(await screen.findByText(/The catalogue is curated in the tariff, not here/i)).toBeInTheDocument();
   });
 
+});
+
+/**
+ * ═══ THE PARKED PATIENT (owner report, 2026-09-13) ═══
+ *
+ * *"I select call next patient and click on Start consultation … in between the patient decide to
+ * stop and he gets outside for 15 minutes … Since I don't have hold/park patient option/button, I
+ * simply clicked on call next button. Now the issue is that old patient gets invisible in the
+ * dashboard … The patient is kicked out even from the 'My Queue' section."*
+ *
+ * `inConsult` was on this wire the whole time and the rail rendered `current` and `ordered` only,
+ * so a patient the doctor had half-seen was on the server, in the queue view the screen had
+ * already fetched, and on no screen in the building. The first test here is that defect exactly:
+ * it fails against the shipped rail, which renders two rows and knows nothing of the third.
+ */
+describe("OpdConsult — parking a patient and picking them up again", () => {
+  /** Fifteen minutes ago, measured from the wall clock the row renders against. */
+  const PARKED_AT = new Date(Date.now() - 15 * 60_000).toISOString();
+
+  const PARKED = entry({
+    id: "qe-park", seq: 4, encounterId: "enc-9", tokenNo: 3, status: "in_consult",
+    position: null, queueClass: null, calledAt: NOW_ISO, callCount: 1,
+    parkedAt: PARKED_AT, parkedBy: "u-1",
+    encounter: { id: "enc-9", patientId: "p-9", visitType: "new", dangerFlagged: false, status: "in_consultation" },
+    patient: summary("p-9", "HMS0000000090", "Gita Kumari"),
+  });
+  const SEATED = entry({
+    id: "qe-seat", seq: 5, encounterId: "enc-8", tokenNo: 4, status: "in_consult",
+    position: null, queueClass: null, calledAt: NOW_ISO, callCount: 1,
+    encounter: { id: "enc-8", patientId: "p-8", visitType: "new", dangerFlagged: false, status: "in_consultation" },
+    patient: summary("p-8", "HMS0000000080", "Hari Shankar"),
+  });
+
+  const VISIT_9 = {
+    encounter: { ...ENCOUNTER, id: "enc-9", patientId: "p-9", status: "in_consultation" },
+    queueEntries: [PARKED], vitals: [], prescriptions: [], patient: summary("p-9", "HMS0000000090", "Gita Kumari"),
+  };
+  const PATIENT_9 = {
+    patient: { uhid: "HMS0000000090", name: "Gita Kumari", alias: null, dob: "1990-01-01", administrativeGender: "female" },
+    resolvedFrom: null,
+  };
+
+  function withInConsult(rows: Record<string, unknown>[], over: Record<string, Handler> = {}): Record<string, Handler> {
+    return {
+      ...baseRoutes(),
+      "GET /api/opd/queues": {
+        status: 200,
+        body: { ...QUEUE_VIEW, inConsult: rows, counts: { ...QUEUE_VIEW.counts, inConsult: rows.length } },
+      },
+      "GET /api/opd/visits/enc-9": { status: 200, body: VISIT_9 },
+      "GET /api/patients/p-9": { status: 200, body: PATIENT_9 },
+      "GET /api/patients/p-9/allergies": { status: 200, body: { items: [] } },
+      "GET /api/opd/patients/p-9/timeline": { status: 200, body: { items: [] } },
+      ...over,
+    };
+  }
+
+  it("W1: a patient held mid-consultation is ON the rail, with how long they have been held", async () => {
+    mockRoutes(withInConsult([PARKED]));
+    renderWithProviders(<OpdConsult />);
+
+    const row = await screen.findByTestId("queue-row-qe-park");
+    expect(within(row).getByTestId("queue-token-qe-park")).toHaveTextContent("3");
+    expect(within(row).getByText("Gita Kumari")).toBeInTheDocument();
+    expect(within(row).getByTestId("queue-parked-qe-park")).toHaveTextContent("Parked 15 min");
+    // and the called token and the waiting tokens are still exactly where they were
+    expect(screen.getByTestId("queue-row-qe-cur")).toHaveAttribute("aria-current", "true");
+    expect(screen.getByTestId("queue-row-qe-a")).toBeInTheDocument();
+  });
+
+  it("W2: Resume puts the held patient back in the chair — one POST, and the panel is theirs", async () => {
+    mockRoutes(withInConsult([PARKED], {
+      "POST /api/opd/visits/enc-9/consult/resume": { status: 201, body: { encounter: VISIT_9.encounter, queueEntry: PARKED } },
+    }));
+    const user = userEvent.setup();
+    renderWithProviders(<OpdConsult />);
+
+    await user.click(await screen.findByTestId("queue-open-qe-park"));
+
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-9/consult/resume")).toHaveLength(1); });
+    expect(await screen.findByTestId("panel-patient-name")).toHaveTextContent("Gita Kumari");
+    // NOT a second consultation: the screen never re-starts a visit it is resuming.
+    expect(callsTo("POST", "/api/opd/visits/enc-9/consult/start")).toHaveLength(0);
+  });
+
+  it("W3: Park empties the chair without ending the visit, and the patient is still on the rail", async () => {
+    let parked = false;
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/queues": () => ({
+        status: 200,
+        body: parked
+          ? { ...QUEUE_VIEW, current: null, inConsult: [{ ...CURRENT, status: "in_consult", parkedAt: new Date().toISOString(), parkedBy: "u-1" }] }
+          : QUEUE_VIEW,
+      }),
+      "POST /api/opd/visits/enc-1/consult/park": () => {
+        parked = true;
+        return { status: 201, body: { encounter: ENCOUNTER, queueEntry: CURRENT } };
+      },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(screen.getByRole("button", { name: "Park patient" }));
+
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/consult/park")).toHaveLength(1); });
+    // the chair is empty…
+    expect(await screen.findByText("Nobody is in the chair")).toBeInTheDocument();
+    expect(screen.queryByTestId("patient-panel")).toBeNull();
+    // …and the visit was NOT completed to get there
+    expect(callsTo("POST", "/api/opd/visits/enc-1/consult/complete")).toHaveLength(0);
+    // …and they are on the rail, held, with the way back
+    expect(await screen.findByTestId("queue-parked-qe-cur")).toBeInTheDocument();
+    expect(screen.getByTestId("queue-open-qe-cur")).toHaveTextContent("Resume");
+  });
+
   /**
-   * ═══ THE PARKED PATIENT (owner report, 2026-09-13) ═══
-   *
-   * *"I select call next patient and click on Start consultation … in between the patient decide to
-   * stop and he gets outside for 15 minutes … Since I don't have hold/park patient option/button, I
-   * simply clicked on call next button. Now the issue is that old patient gets invisible in the
-   * dashboard … The patient is kicked out even from the 'My Queue' section."*
-   *
-   * `inConsult` was on this wire the whole time and the rail rendered `current` and `ordered` only,
-   * so a patient the doctor had half-seen was on the server, in the queue view the screen had
-   * already fetched, and on no screen in the building. The first test here is that defect exactly:
-   * it fails against the shipped rail, which renders two rows and knows nothing of the third.
+   * The report's own sequence: no park button existed, so the doctor pressed Call next. That
+   * patient is `in_consult` and NOT parked — the row still has to be a door back in, and it must
+   * not claim they are held when nobody said so.
    */
-  describe("parking a patient and picking them up again", () => {
-    /** Fifteen minutes ago, measured from the wall clock the row renders against. */
-    const PARKED_AT = new Date(Date.now() - 15 * 60_000).toISOString();
-
-    const PARKED = entry({
-      id: "qe-park", seq: 4, encounterId: "enc-9", tokenNo: 3, status: "in_consult",
-      position: null, queueClass: null, calledAt: NOW_ISO, callCount: 1,
-      parkedAt: PARKED_AT, parkedBy: "u-1",
-      encounter: { id: "enc-9", patientId: "p-9", visitType: "new", dangerFlagged: false, status: "in_consultation" },
-      patient: summary("p-9", "HMS0000000090", "Gita Kumari"),
-    });
-    const SEATED = entry({
-      id: "qe-seat", seq: 5, encounterId: "enc-8", tokenNo: 4, status: "in_consult",
-      position: null, queueClass: null, calledAt: NOW_ISO, callCount: 1,
-      encounter: { id: "enc-8", patientId: "p-8", visitType: "new", dangerFlagged: false, status: "in_consultation" },
-      patient: summary("p-8", "HMS0000000080", "Hari Shankar"),
-    });
-
-    const VISIT_9 = {
-      encounter: { ...ENCOUNTER, id: "enc-9", patientId: "p-9", status: "in_consultation" },
-      queueEntries: [PARKED], vitals: [], prescriptions: [], patient: summary("p-9", "HMS0000000090", "Gita Kumari"),
-    };
-    const PATIENT_9 = {
-      patient: { uhid: "HMS0000000090", name: "Gita Kumari", alias: null, dob: "1990-01-01", administrativeGender: "female" },
-      resolvedFrom: null,
-    };
-
-    function withInConsult(rows: Record<string, unknown>[], over: Record<string, Handler> = {}): Record<string, Handler> {
-      return {
-        ...baseRoutes(),
-        "GET /api/opd/queues": {
-          status: 200,
-          body: { ...QUEUE_VIEW, inConsult: rows, counts: { ...QUEUE_VIEW.counts, inConsult: rows.length } },
+  it("W4: a patient left behind by Call next is on the rail as in consultation, and opens without a resume", async () => {
+    mockRoutes(withInConsult([SEATED], {
+      "GET /api/opd/visits/enc-8": {
+        status: 200,
+        body: {
+          encounter: { ...ENCOUNTER, id: "enc-8", patientId: "p-8", status: "in_consultation" },
+          queueEntries: [SEATED], vitals: [], prescriptions: [], patient: summary("p-8", "HMS0000000080", "Hari Shankar"),
         },
-        "GET /api/opd/visits/enc-9": { status: 200, body: VISIT_9 },
-        "GET /api/patients/p-9": { status: 200, body: PATIENT_9 },
-        "GET /api/patients/p-9/allergies": { status: 200, body: { items: [] } },
-        "GET /api/opd/patients/p-9/timeline": { status: 200, body: { items: [] } },
-        ...over,
-      };
-    }
+      },
+      "GET /api/patients/p-8": {
+        status: 200,
+        body: { patient: { uhid: "HMS0000000080", name: "Hari Shankar", alias: null, dob: "1985-01-01", administrativeGender: "male" }, resolvedFrom: null },
+      },
+      "GET /api/patients/p-8/allergies": { status: 200, body: { items: [] } },
+      "GET /api/opd/patients/p-8/timeline": { status: 200, body: { items: [] } },
+    }));
+    const user = userEvent.setup();
+    renderWithProviders(<OpdConsult />);
 
-    it("W1: a patient held mid-consultation is ON the rail, with how long they have been held", async () => {
-      mockRoutes(withInConsult([PARKED]));
-      renderWithProviders(<OpdConsult />);
+    const row = await screen.findByTestId("queue-row-qe-seat");
+    expect(within(row).queryByTestId("queue-parked-qe-seat")).toBeNull();
+    await user.click(within(row).getByTestId("queue-open-qe-seat"));
 
-      const row = await screen.findByTestId("queue-row-qe-park");
-      expect(within(row).getByTestId("queue-token-qe-park")).toHaveTextContent("3");
-      expect(within(row).getByText("Gita Kumari")).toBeInTheDocument();
-      expect(within(row).getByTestId("queue-parked-qe-park")).toHaveTextContent("Parked 15 min");
-      // and the called token and the waiting tokens are still exactly where they were
-      expect(screen.getByTestId("queue-row-qe-cur")).toHaveAttribute("aria-current", "true");
-      expect(screen.getByTestId("queue-row-qe-a")).toBeInTheDocument();
-    });
+    expect(await screen.findByTestId("panel-patient-name")).toHaveTextContent("Hari Shankar");
+    expect(callsTo("POST", "/api/opd/visits/enc-8/consult/resume")).toHaveLength(0);
+  });
 
-    it("W2: Resume puts the held patient back in the chair — one POST, and the panel is theirs", async () => {
-      mockRoutes(withInConsult([PARKED], {
-        "POST /api/opd/visits/enc-9/consult/resume": { status: 201, body: { encounter: VISIT_9.encounter, queueEntry: PARKED } },
-      }));
-      const user = userEvent.setup();
-      renderWithProviders(<OpdConsult />);
+  /** A refusal is rendered where the doctor reads it, like every other act on this screen. */
+  it("W5: a resume the server refuses is shown on the rail, and the chair stays empty", async () => {
+    mockRoutes(withInConsult([PARKED], {
+      "POST /api/opd/visits/enc-9/consult/resume": {
+        status: 409,
+        body: { statusCode: 409, message: "this patient is not parked", code: "queue_entry_state_conflict" },
+      },
+    }));
+    const user = userEvent.setup();
+    renderWithProviders(<OpdConsult />);
 
-      await user.click(await screen.findByTestId("queue-open-qe-park"));
+    await user.click(await screen.findByTestId("queue-open-qe-park"));
 
-      await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-9/consult/resume")).toHaveLength(1); });
-      expect(await screen.findByTestId("panel-patient-name")).toHaveTextContent("Gita Kumari");
-      // NOT a second consultation: the screen never re-starts a visit it is resuming.
-      expect(callsTo("POST", "/api/opd/visits/enc-9/consult/start")).toHaveLength(0);
-    });
-
-    it("W3: Park empties the chair without ending the visit, and the patient is still on the rail", async () => {
-      let parked = false;
-      mockRoutes({
-        ...baseRoutes(),
-        "GET /api/opd/queues": () => ({
-          status: 200,
-          body: parked
-            ? { ...QUEUE_VIEW, current: null, inConsult: [{ ...CURRENT, status: "in_consult", parkedAt: new Date().toISOString(), parkedBy: "u-1" }] }
-            : QUEUE_VIEW,
-        }),
-        "POST /api/opd/visits/enc-1/consult/park": () => {
-          parked = true;
-          return { status: 201, body: { encounter: ENCOUNTER, queueEntry: CURRENT } };
-        },
-      });
-      const user = userEvent.setup();
-      await openPanel(user);
-
-      await user.click(screen.getByRole("button", { name: "Park patient" }));
-
-      await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/consult/park")).toHaveLength(1); });
-      // the chair is empty…
-      expect(await screen.findByText("Nobody is in the chair")).toBeInTheDocument();
-      expect(screen.queryByTestId("patient-panel")).toBeNull();
-      // …and the visit was NOT completed to get there
-      expect(callsTo("POST", "/api/opd/visits/enc-1/consult/complete")).toHaveLength(0);
-      // …and they are on the rail, held, with the way back
-      expect(await screen.findByTestId("queue-parked-qe-cur")).toBeInTheDocument();
-      expect(screen.getByTestId("queue-open-qe-cur")).toHaveTextContent("Resume");
-    });
-
-    /**
-     * The report's own sequence: no park button existed, so the doctor pressed Call next. That
-     * patient is `in_consult` and NOT parked — the row still has to be a door back in, and it must
-     * not claim they are held when nobody said so.
-     */
-    it("W4: a patient left behind by Call next is on the rail as in consultation, and opens without a resume", async () => {
-      mockRoutes(withInConsult([SEATED], {
-        "GET /api/opd/visits/enc-8": {
-          status: 200,
-          body: {
-            encounter: { ...ENCOUNTER, id: "enc-8", patientId: "p-8", status: "in_consultation" },
-            queueEntries: [SEATED], vitals: [], prescriptions: [], patient: summary("p-8", "HMS0000000080", "Hari Shankar"),
-          },
-        },
-        "GET /api/patients/p-8": {
-          status: 200,
-          body: { patient: { uhid: "HMS0000000080", name: "Hari Shankar", alias: null, dob: "1985-01-01", administrativeGender: "male" }, resolvedFrom: null },
-        },
-        "GET /api/patients/p-8/allergies": { status: 200, body: { items: [] } },
-        "GET /api/opd/patients/p-8/timeline": { status: 200, body: { items: [] } },
-      }));
-      const user = userEvent.setup();
-      renderWithProviders(<OpdConsult />);
-
-      const row = await screen.findByTestId("queue-row-qe-seat");
-      expect(within(row).queryByTestId("queue-parked-qe-seat")).toBeNull();
-      await user.click(within(row).getByTestId("queue-open-qe-seat"));
-
-      expect(await screen.findByTestId("panel-patient-name")).toHaveTextContent("Hari Shankar");
-      expect(callsTo("POST", "/api/opd/visits/enc-8/consult/resume")).toHaveLength(0);
-    });
-
-    /** A refusal is rendered where the doctor reads it, like every other act on this screen. */
-    it("W5: a resume the server refuses is shown on the rail, and the chair stays empty", async () => {
-      mockRoutes(withInConsult([PARKED], {
-        "POST /api/opd/visits/enc-9/consult/resume": {
-          status: 409,
-          body: { statusCode: 409, message: "this patient is not parked", code: "queue_entry_state_conflict" },
-        },
-      }));
-      const user = userEvent.setup();
-      renderWithProviders(<OpdConsult />);
-
-      await user.click(await screen.findByTestId("queue-open-qe-park"));
-
-      expect(await screen.findByRole("alert")).toBeInTheDocument();
-      expect(screen.queryByTestId("patient-panel")).toBeNull();
-    });
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByTestId("patient-panel")).toBeNull();
   });
 });

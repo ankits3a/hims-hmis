@@ -270,7 +270,6 @@ export function OpdConsult(): React.ReactElement {
     parked — a wrong statement about where a patient is, on the screen that answers that question.
   */
   const parkedSince = (e: WireQueueEntryView): string | null => (typeof e.parkedAt === "string" ? e.parkedAt : null);
-  const activeEntry = inConsult.find((e) => e.encounterId === active?.encounterId) ?? null;
 
   // D6: a frame on my queue topic (or on the open encounter) is a HINT to re-read.
   const topics = doctorId === ""
@@ -947,7 +946,7 @@ export function OpdConsult(): React.ReactElement {
 
   const queueRow = (e: WireQueueEntryView, mode: "called" | "seated" | "parked" | "waiting"): React.ReactElement => {
     const isCurrent = mode === "called";
-    const isActive = e.encounterId === activeEntry?.encounterId;
+    const isActive = active !== null && e.encounterId === active.encounterId;
     const held = mode === "parked" ? parkedMinutes(parkedSince(e) ?? new Date().toISOString()) : 0;
     return (
     <li
