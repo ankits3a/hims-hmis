@@ -761,6 +761,7 @@
       "dues": "Outstanding dues",
       "noDues": "Nothing outstanding",
       "pickPatientFirst": "Pick a patient before issuing a bill",
+      "conflictRefused": "This screen is holding two different people — choose the patient or the visit before billing.",
       "lines": "Lines",
       "addService": "Add service",
       "qty": "Quantity",
@@ -3639,6 +3640,14 @@
       "drawerOpen": "drawer open · {{float}} float"
     },
     "rail": {
+      "conflict": {
+        "title": "Two different people on this screen",
+        "explain": "The patient in hand and the patient who had this visit are not the same. Choose one before billing.",
+        "inHand": "in hand",
+        "thisVisit": "this visit",
+        "keepPicked": "Keep {{name}} — clear the visit",
+        "useVisit": "Bill {{name}} — whose visit this is"
+      },
       "papersForVisit": "Their papers for this visit",
       "advanceHeld": "on deposit, not yet allocated",
       "noPhone": "no number on file",

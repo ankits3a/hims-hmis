@@ -1704,4 +1704,104 @@ describe("BillingCounter", () => {
     expect(screen.getByTestId("dues-credit-inv-9")).toBeInTheDocument();
   });
 
+  /**
+   * ═════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-36 — ONE SCREEN, TWO PEOPLE: THE COUNTER REFUSES TO DRAW THE BLEND
+   * ═════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Owner, 2026-09-13: *"I have a patient in hand, let's call him Ankit … in the Encounter Id
+   * field, I input encounter Id of another patient, lets call him Abhay … It shows Abhay's
+   * encounter/visit details under the Ankit."*
+   *
+   * FD-28's `patient?.id ?? feeQuote.data?.patient?.id` is right for the case it was written for —
+   * entered by `?encounterId=` with nobody picked. This is the case it did not consider, and the
+   * screen drew half of each person with no warning.
+   *
+   * THE ASSERTIONS ARE BOTH HALVES ON PURPOSE. That the refusal appears is the easy half; that the
+   * VISIT CARD IS GONE is the one that matters, because the visit card under the picked patient's
+   * name IS the defect. A fix that added a banner and left the card would satisfy a lazier test and
+   * would still be showing Abhay's fee under Ankit's name.
+   */
+  it("FD-36 — a picked patient and somebody else's encounter: both are named, nothing is blended, and nothing can be billed", async () => {
+    const user = userEvent.setup();
+    mockRoutes({
+      ...BASE_ROUTES,
+      /* enc-9 belongs to Abhay. The cashier has Asha Devi (p-1) in hand from the picker. */
+      "GET /api/billing/visits/enc-9/fee-quote": {
+        status: 200,
+        body: {
+          ...QUOTE_NEW,
+          encounterId: "enc-9",
+          patient: {
+            requestedId: "p-9", id: "p-9", uhid: "HMS0000009999", name: "Abhay Kumar", alias: null,
+            restricted: false, administrativeGender: "male", dob: null, phone: null,
+          },
+          visit: null,
+        },
+      },
+    });
+    renderWithProviders(<BillingCounter />);
+
+    await pickPatient(user);
+    fireEvent.change(screen.getByLabelText("Encounter"), { target: { value: "enc-9" } });
+
+    const conflict = await screen.findByTestId("patient-conflict");
+    expect(conflict).toBeInTheDocument();
+    /* BOTH people, by name and UHID — a cashier cannot choose between two rows they cannot tell apart. */
+    expect(screen.getByTestId("conflict-picked")).toHaveTextContent("Asha Devi");
+    expect(screen.getByTestId("conflict-picked")).toHaveTextContent("HMS0000001234");
+    expect(screen.getByTestId("conflict-visit")).toHaveTextContent("Abhay Kumar");
+    expect(screen.getByTestId("conflict-visit")).toHaveTextContent("HMS0000009999");
+
+    /* THE BLEND IS GONE: no identity line, and above all no visit card under the wrong name. */
+    expect(screen.queryByTestId("paying-name")).toBeNull();
+    expect(screen.queryByTestId("fee-branch")).toBeNull();
+    expect(screen.queryByTestId("fee-amount")).toBeNull();
+
+    /* And no bill can leave while it stands — asserted by the absence of a POST, not by the copy. */
+    await clickIssue(user);
+    expect(callsTo("POST", "/api/billing/invoices")).toHaveLength(0);
+    expect(screen.getByTestId("counter-error")).toHaveTextContent("two different people");
+  });
+
+  /* The way out, both directions — a refusal a cashier cannot act on is a dead end, not a guard. */
+  it("FD-36 — clearing the visit keeps the person in hand; dropping the person bills the visit's patient", async () => {
+    const user = userEvent.setup();
+    const abhay = {
+      requestedId: "p-9", id: "p-9", uhid: "HMS0000009999", name: "Abhay Kumar", alias: null,
+      restricted: false, administrativeGender: "male", dob: null, phone: null,
+    };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "GET /api/billing/visits/enc-9/fee-quote": {
+        status: 200,
+        body: { ...QUOTE_NEW, encounterId: "enc-9", patient: abhay, visit: null },
+      },
+      "GET /api/billing/patients/p-9/balance": {
+        status: 200, body: { patientId: "p-9", advancePaise: 0, outstandingPaise: 0, dues: [] },
+      },
+    });
+    renderWithProviders(<BillingCounter />);
+
+    await pickPatient(user);
+    fireEvent.change(screen.getByLabelText("Encounter"), { target: { value: "enc-9" } });
+    await screen.findByTestId("patient-conflict");
+
+    // KEEP THE PERSON: the encounter is cleared, and Asha is the counter's subject again.
+    await user.click(screen.getByTestId("conflict-keep-picked"));
+    expect(await screen.findByTestId("paying-name")).toHaveTextContent("Asha Devi");
+    expect(screen.queryByTestId("patient-conflict")).toBeNull();
+
+    // …and back into the conflict, to take the other road out.
+    fireEvent.change(screen.getByLabelText("Encounter"), { target: { value: "enc-9" } });
+    await screen.findByTestId("patient-conflict");
+
+    // BILL THE VISIT: the picked patient is dropped and the quote's patient takes the rail —
+    // which is FD-28's fallback doing exactly the job it was written for.
+    await user.click(screen.getByTestId("conflict-use-visit"));
+    expect(await screen.findByTestId("paying-name")).toHaveTextContent("Abhay Kumar");
+    expect(screen.queryByTestId("patient-conflict")).toBeNull();
+    expect(await screen.findByTestId("fee-branch")).toBeInTheDocument();
+  });
+
 });

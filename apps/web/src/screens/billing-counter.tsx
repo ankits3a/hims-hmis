@@ -444,6 +444,38 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
   } | null = patient ?? quote?.patient ?? null;
 
   /*
+    ═══════════════════════════════════════════════════════════════════════════════════════════════
+    FD-36 — WHEN THE TWO ROADS NAME TWO PEOPLE, THE SCREEN REFUSES TO DRAW ONE
+    ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+    Owner, 2026-09-13: *"I have a patient in hand, let's call him Ankit … in the Encounter Id field,
+    I input encounter Id of another patient, lets call him Abhay … It shows Abhay's encounter/visit
+    details under the Ankit."*
+
+    `shown` above and `resolvedPatientId` are FD-28's answer to the opposite case — entered by
+    `?encounterId=` with nobody picked, where the rail used to say "pick a patient before issuing a
+    bill" beside a bill it was already pricing. That fallback is right and stays. What it never
+    considered is DISAGREEMENT: with somebody picked AND a different encounter typed, `patient` wins
+    the rail, the heading, the face and the dues poll while `quote` fills the visit card and the fee
+    — one screen, two people, no warning.
+
+    FLIPPING THE PRECEDENCE WOULD BE THE SAME BUG FACING THE OTHER WAY: it silently retargets the
+    bill to whoever the encounter belongs to, while the cashier is looking at the person they
+    searched for. So this is a STATE, not a winner — the screen names both and the cashier says
+    which. It mirrors the server, which refuses the same pair with `patient_encounter_mismatch`
+    (FD-35) rather than rebinding the bill for anybody.
+
+    MERGE-SAFE BY CONSTRUCTION, and worth saying because the server half needed explicit care here:
+    both ids are already canonical. A `PatientPickerHit` comes from `searchPatients`, which returns
+    active rows only, and `quote.patient` comes from `getPatientSummaries`, which resolves the merge
+    chain before it answers. Two spellings of one merged person therefore arrive as one id and this
+    never fires on them.
+  */
+  const conflict = patient !== null && quote?.patient != null && patient.id !== quote.patient.id
+    ? { picked: patient, visitOf: quote.patient }
+    : null;
+
+  /*
     THE FACE, read back rather than assumed. `hasPhoto` on a search hit is a snapshot from the moment
     the row was searched; a photo taken at registration two minutes ago would be missed. A 404 is the
     ordinary answer for a patient with no photo and is swallowed, exactly as Desk One swallows it.
@@ -630,6 +662,17 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
     */
     if (resolvedPatientId === null) {
       setError(t("billing.counter.pickPatientFirst"));
+      setErrorCode(null);
+      return;
+    }
+    /*
+      FD-36 — the two roads name two people, so there is no bill to issue. The SERVER refuses this
+      pair too (`patient_encounter_mismatch`, FD-35) and that is the load-bearing half; this one
+      exists so the cashier is told at the counter rather than after the money is counted, and so
+      the screen never sends a request it knows is contradictory.
+    */
+    if (conflict !== null) {
+      setError(t("billing.counter.conflictRefused"));
       setErrorCode(null);
       return;
     }
@@ -915,7 +958,52 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
           <div style={{ width: 290, flexShrink: 0, display: "flex", flexDirection: "column", gap: 13 }}>
             <div className="box" style={{ padding: 14 }}>
               <span className="tag">{t("billingSeat.rail.paying")}</span>
-              {shown === null ? (
+              {conflict !== null ? (
+                /*
+                  FD-36 — the blend, refused where it used to be drawn. Both people by name and
+                  UHID, and the two ways out: keep the person at the window and drop the visit, or
+                  bill the visit and drop the person. No third reading is offered, and nothing below
+                  this renders while it stands.
+                */
+                <div data-testid="patient-conflict" style={{ marginTop: 9, display: "flex", flexDirection: "column", gap: 9 }}>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "var(--red, #b42318)" }}>
+                    {t("billingSeat.rail.conflict.title")}
+                  </p>
+                  <p style={{ margin: 0, fontSize: 12, color: "var(--dim)" }}>{t("billingSeat.rail.conflict.explain")}</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    <div>
+                      <span className="tag">{t("billingSeat.rail.conflict.inHand")}</span>
+                      <div data-testid="conflict-picked" style={{ fontSize: 13.5, fontWeight: 600 }}>
+                        {conflict.picked.name ?? "—"}{" "}
+                        <span className="mo" style={{ fontSize: 11.5, fontWeight: 400, color: "var(--dim)" }}>{conflict.picked.uhid}</span>
+                      </div>
+                    </div>
+                    <div>
+                      <span className="tag">{t("billingSeat.rail.conflict.thisVisit")}</span>
+                      <div data-testid="conflict-visit" style={{ fontSize: 13.5, fontWeight: 600 }}>
+                        {conflict.visitOf.name ?? "—"}{" "}
+                        <span className="mo" style={{ fontSize: 11.5, fontWeight: 400, color: "var(--dim)" }}>{conflict.visitOf.uhid}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                    <button
+                      className="sec"
+                      data-testid="conflict-keep-picked"
+                      onClick={() => { setEncounterId(""); }}
+                    >
+                      {t("billingSeat.rail.conflict.keepPicked", { name: conflict.picked.name ?? conflict.picked.uhid })}
+                    </button>
+                    <button
+                      className="sec"
+                      data-testid="conflict-use-visit"
+                      onClick={() => { setPatient(null); }}
+                    >
+                      {t("billingSeat.rail.conflict.useVisit", { name: conflict.visitOf.name ?? conflict.visitOf.uhid })}
+                    </button>
+                  </div>
+                </div>
+              ) : shown === null ? (
                 <div style={{ marginTop: 9 }}>
                   <p style={{ margin: "0 0 9px", color: "var(--faint)", fontSize: 12.5 }}>
                     {t("billing.counter.pickPatientFirst")}
@@ -969,7 +1057,9 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
                 nesting the fee branch inside `patient !== null` hid it on exactly the road the
                 screen is reached by. Found by `fee-branch` going missing, not by looking.
               */}
-              {quote === undefined ? null : (
+              {/* FD-36 — `conflict` suppresses it: this card IS the half that was being read under
+                  the wrong person's name, and drawing it beside a refusal would keep the blend. */}
+              {quote === undefined || conflict !== null ? null : (
                 <>
                     <div style={{ marginTop: 12, padding: "11px 12px", background: "var(--wash)", borderRadius: 6 }}>
                       <span className="tag">{t("billingSeat.rail.thisVisit")}</span>
