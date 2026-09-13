@@ -24,9 +24,15 @@ import type { Tx } from "../src/kernel/db/client";
  * The NRCeS (National Resource Centre for EHR Standards, MoHFW / C-DAC) SNOMED CT national release
  * for Indian medicines. Three of its files, which are the STRUCTURAL SPINE:
  *
- *   substances.csv            3,283 active moieties      -> formulary_salts
+ *   substances.csv            3,283 released substances -> formulary_substances
  *   generics.csv             10,303 clinical drugs       -> formulary_generics
- *   generic_compositions.csv 13,125 composition rows     -> formulary_generic_salts
+ *   generic_compositions.csv 13,125 composition rows     -> formulary_generic_substances
+ *
+ * NOT `formulary_salts`, and this table said so until 2026-09-13. The body was re-cut onto the
+ * release tier and these three lines were not, so the header named the curated moiety table while
+ * the code inserted into the release one. Two independent reviewers read it as authority. A
+ * comment that disagrees with the code beneath it is the version a reader trusts - defect #3 of
+ * `docs/superpowers/specs/2026-09-07-spreadsheet-loader-design.md`, third instance, this one mine.
  *
  * `medicines.csv` (93,905 branded products) is DELIBERATELY NOT HERE. Loading it needs a decision
  * this loader must not take quietly: `formulary_medicines_brand_lower_ux` is UNIQUE on
