@@ -34,6 +34,7 @@
     "seed:lab-demo": "tsx scripts/seed-lab-demo.ts",
     "import:holder-book": "tsx scripts/import-holder-book.ts",
     "import:item-master": "tsx scripts/import-item-master.ts",
+    "import:nrces": "tsx scripts/import-nrces-formulary.ts",
     "seed:ops": "tsx scripts/seed-ops.ts",
     "seed:roles": "tsx scripts/seed-roles.ts",
     "seed:staff": "tsx scripts/seed-staff.ts",
