@@ -5,7 +5,7 @@ import { activeChart, amendedReadings, diffOf } from "./vitals-bay-amend";
 import { renderWithProviders } from "../test-utils";
 import { setToken } from "../lib/api";
 import { resetRealtimeClientForTests } from "../lib/realtime";
-import type { WireBenchRow, WireVitals } from "../lib/opd-api";
+import type { WireBenchRow, WireEscalationView, WireVitals } from "../lib/opd-api";
 
 /**
  * VD-2 T4 — amend after save (story 7). The ✓ row re-opens the chart ON A COPY; the reason is the
@@ -21,7 +21,7 @@ class FakeWebSocket {
 }
 const chart = (id: string, encounterId: string, patientId: string, over: Partial<WireVitals> = {}): WireVitals => ({
   id, encounterId, patientId, heightCm: 151, weightKg: 62, sbp: 128, dbp: 84, pulse: 78, rr: 16, spo2: 97, tempC: 36.8, muacCm: null, notes: null,
-  ageYearsAtRecord: 55, band: "adult",dangerFlags: [], recordedBy: "u-vd", recordedAt: "2026-09-02T04:20:00.000Z",
+  ageYearsAtRecord: 55, band: "adult",dangerFlags: [], recordedBy: "u-vd", recordedByName: "Anjali Kujur", recordedAt: "2026-09-02T04:20:00.000Z",
   readings: {}, contextChips: [], carriedForward: [], supersedesVitalsId: null, amendmentReason: null, status: "active", emergency: false, ...over,
 });
 const ROW_A: WireBenchRow = {
@@ -33,8 +33,9 @@ const ROW_B: WireBenchRow = { ...ROW_A, encounterId: "E-B", entryId: "Q-B", toke
   patient: { ...ROW_A.patient!, requestedId: "P-B", id: "P-B", uhid: "UH-26-00121", name: "Ganesh Oraon" } };
 
 type Call = { key: string; body: unknown };
-function stubBay(seed: WireBenchRow[], calls: Call[], charts: Record<string, WireVitals[]>, onAmend?: (body: Record<string, unknown>, prior: WireVitals) => Response | null): void {
+function stubBay(seed: WireBenchRow[], calls: Call[], charts: Record<string, WireVitals[]>, onAmend?: (body: Record<string, unknown>, prior: WireVitals) => Response | null, escalation?: { state: WireEscalationView["state"]; after: WireEscalationView["state"] }): void {
   const rows = seed.map((r) => ({ ...r }));   // the stub mutates vitalsId after an amend; the module constants must not carry that into the next test
+  let escalated = false;
   const json = (b: unknown, status = 200): Response => new Response(JSON.stringify(b), { status, headers: { "Content-Type": "application/json" } });
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.pathname : input.url;
@@ -44,6 +45,14 @@ function stubBay(seed: WireBenchRow[], calls: Call[], charts: Record<string, Wir
     if (key === "GET /api/auth/me") return json({ actor: { type: "user", id: "u-vd" }, permissions: { hospital: ["opd.vitals.record", "opd.visits.read"], scoped: { department: {}, floor: {} } } });
     if (key === "GET /api/opd/bench") return json({ items: rows });
     if (key === "GET /api/opd/queues/summary") return json({ items: [] });
+    if (escalation !== undefined && /\/escalation$/.test(path)) {
+      calls.push({ key: `GET ${path}`, body: undefined });
+      return json({ escalation: { entryId: "Q-A", state: escalated ? escalation.after : escalation.state, escalatedAt: null, escalatedFromClass: null, escalationBy: null, cancelMsRemaining: 0 } });
+    }
+    if (escalation !== undefined && key.endsWith("/escalation/escalate")) {
+      escalated = true;
+      return json({ entryId: "Q-A", state: escalation.after, escalatedAt: null, escalatedFromClass: null, escalationBy: null, cancelMsRemaining: 0 });
+    }
     if (key === "GET /api/opd/departments") return json({ code: "forbidden" }, 403);
     if (key === "GET /api/opd/config") return json({ code: "forbidden" }, 403);
     const g = /\/opd\/vitals\/([^/]+)$/.exec(path);
@@ -184,7 +193,9 @@ describe("VD-2 T4 — the ASSEMBLED bay: amend after save, two patients", () => 
     expect(calls[0]!.body).toMatchObject({ weightKg: 64, heightCm: 151, sbp: 128, dbp: 84, reason: "scale read 64, typed 62", emergency: false });
     expect(screen.getByTestId("saved-banner").textContent).toContain("Amended Sunita Devi");
     expect(screen.getByTestId("trail-weightKg").textContent).toContain("62 → 64");
-    expect(screen.getByTestId("trail-weightKg").textContent).toContain("u-vd");
+    // 2026-09-13: this line used to assert `toContain("u-vd")` — it pinned the defect. The trail
+    // names the PERSON; the actor id is what the owner was being shown and is not a name.
+    expect(screen.getByTestId("trail-weightKg").textContent).toContain("Anjali Kujur");
     expect(screen.getByTestId("trail-weightKg").textContent).toContain("10:01");  // 04:31Z in IST
     expect(screen.getByTestId("session-empty")).toBeInTheDocument();
 
@@ -227,5 +238,91 @@ describe("VD-2 T4 — the ASSEMBLED bay: amend after save, two patients", () => 
     fireEvent.click(screen.getByTestId("amend-save"));
     await waitFor(() => expect(screen.getByTestId("saved-danger")).toBeInTheDocument());
     expect(screen.getByTestId("saved-danger").textContent).toContain("spo2 85");
+  });
+});
+
+/**
+ * ═══ WHAT THE OWNER FOUND AT THE BAY, 2026-09-13 ═══
+ *
+ * Four things, all in the correction flow, all measured on the running preview:
+ *   1. the reason was a bare box — a nurse retypes "rechecked on the other arm" every time
+ *   2. "Save amendment" was a BUTTON that rendered as a sentence: `background: rgba(0,0,0,0)`,
+ *      `border: 0px none`, `padding: 0px` — the seat resolves no `bg-primary`
+ *   3. the trail said `by 01M1R6FXR0AQN3BNA8Q8K0ESM6` — the signed-in ULID, at a nurse
+ *   4. the bench went on saying `other arm, now` over a chart that had just answered it
+ */
+describe("the correction desk: one tap for the reason, a button that looks like one, a name, and a demand that ends", () => {
+  const charts = () => ({ "E-A": [chart("V-A1", "E-A", "P-A", { sbp: 208, dbp: 126 })] });
+
+  async function openAmend(calls: Call[], cs: Record<string, WireVitals[]>, esc?: { state: WireEscalationView["state"]; after: WireEscalationView["state"] }): Promise<void> {
+    stubBay([{ ...ROW_A, escalation: esc === undefined ? "none" : "recheck_demanded" }], calls, cs, undefined, esc);
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-118")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("bench-row-118"));
+    await waitFor(() => expect(screen.getByTestId("amend")).toBeInTheDocument());
+  }
+
+  it("1 · a preset writes the reason, tapping it again clears it, and what is STORED is the English sentence — not whatever language the bay was in", async () => {
+    const calls: Call[] = []; const cs = charts();
+    await openAmend(calls, cs);
+    fireEvent.change(screen.getByTestId("amend-sbp"), { target: { value: "134" } });
+    const preset = screen.getByTestId("amend-reason-otherArm");
+    fireEvent.click(preset);
+    expect((screen.getByTestId("amend-reason") as HTMLInputElement).value).toBe("Rechecked on the other arm");
+    expect(preset.getAttribute("data-on")).toBe("true");
+    fireEvent.click(preset);                                                  // a mis-tap undoes itself
+    expect((screen.getByTestId("amend-reason") as HTMLInputElement).value).toBe("");
+    fireEvent.click(preset);
+    fireEvent.click(screen.getByTestId("amend-save"));
+    await waitFor(() => expect(calls.filter((c) => c.key.endsWith("/amend"))).toHaveLength(1));
+    expect((calls.find((c) => c.key.endsWith("/amend"))!.body as { reason: string }).reason).toBe("Rechecked on the other arm");
+  });
+
+  it("2 · the save wears the bay's own primary — the same class the capture lane's Save & send wears, not a token this seat resolves to nothing", async () => {
+    const calls: Call[] = []; const cs = charts();
+    await openAmend(calls, cs);
+    const save = screen.getByTestId("amend-save");
+    expect(save.tagName).toBe("BUTTON");
+    expect(save.className.split(/\s+/)).toContain("pri");
+    expect(save.className).not.toMatch(/bg-primary|text-primary-foreground/);
+  });
+
+  it("3 · the trail names the person, and the id it used to print appears nowhere on the screen", async () => {
+    const calls: Call[] = []; const cs = charts();
+    await openAmend(calls, cs);
+    fireEvent.change(screen.getByTestId("amend-sbp"), { target: { value: "134" } });
+    fireEvent.click(screen.getByTestId("amend-reason-otherArm"));
+    fireEvent.click(screen.getByTestId("amend-save"));
+    await waitFor(() => expect(screen.getByTestId("amend-trail")).toBeInTheDocument());
+    const trail = screen.getByTestId("amend-trail").textContent ?? "";
+    expect(trail).toContain("Anjali Kujur");
+    expect(trail).not.toContain("u-vd");          // the signed-in actor id
+    expect(trail).not.toContain("sister");
+  });
+
+  it("4 · a correction ANSWERS 'the other arm, now': the amended reading goes to the server's judgement and the withdrawn demand leaves the row", async () => {
+    const calls: Call[] = []; const cs = charts();
+    await openAmend(calls, cs, { state: "recheck_demanded", after: "none" });
+    // the ProtocolPanel is mounted by the CAPTURE lane only — an amended row has no panel, and the
+    // `other arm, now` the owner sees is the BENCH's label. So wait for the hook's own read.
+    await waitFor(() => expect(calls.filter((c) => c.key.endsWith("/escalation"))).not.toHaveLength(0));
+    fireEvent.change(screen.getByTestId("amend-sbp"), { target: { value: "134" } });
+    fireEvent.change(screen.getByTestId("amend-dbp"), { target: { value: "86" } });
+    fireEvent.click(screen.getByTestId("amend-reason-otherArm"));
+    fireEvent.click(screen.getByTestId("amend-save"));
+    await waitFor(() => expect(calls.filter((c) => c.key.endsWith("/escalation/escalate"))).toHaveLength(1));
+    // the CORRECTED numbers are what the server judges — not the ones that raised the demand
+    expect(calls.find((c) => c.key.endsWith("/escalation/escalate"))!.body).toMatchObject({ sbp: 134, dbp: 86 });
+  });
+
+  it("4b · an amendment that touches no ranged vital does NOT answer the demand — a corrected height is not the other arm", async () => {
+    const calls: Call[] = []; const cs = charts();
+    await openAmend(calls, cs, { state: "recheck_demanded", after: "none" });
+    await waitFor(() => expect(calls.filter((c) => c.key.endsWith("/escalation"))).not.toHaveLength(0));
+    fireEvent.change(screen.getByTestId("amend-heightCm"), { target: { value: "152" } });
+    fireEvent.click(screen.getByTestId("amend-reason-keyed"));
+    fireEvent.click(screen.getByTestId("amend-save"));
+    await waitFor(() => expect(calls.filter((c) => c.key.endsWith("/amend"))).toHaveLength(1));
+    expect(calls.filter((c) => c.key.endsWith("/escalation/escalate"))).toHaveLength(0);
   });
 });

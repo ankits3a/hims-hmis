@@ -2989,7 +2989,16 @@
       "readFailed": "The saved chart could not be read",
       "trail": "by {{by}} at {{at}} — the old value stays in the trail",
       "carried": "carried forward",
-      "stale": "This chart was amended elsewhere while you were typing — re-open it from the bench to correct the current one"
+      "stale": "This chart was amended elsewhere while you were typing — re-open it from the bench to correct the current one",
+      "reasonPlaceholder": "or type the reason",
+      "reasonPreset": {
+        "otherArm": "Other arm",
+        "remeasured": "Re-measured",
+        "keyed": "Typing error",
+        "device": "Device misread",
+        "wrongVital": "Wrong vital",
+        "wrongChart": "Wrong chart"
+      }
     },
     "doctor": "Doctor",
     "allDoctors": "All doctors on the bench",

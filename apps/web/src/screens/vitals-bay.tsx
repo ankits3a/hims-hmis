@@ -2,18 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { fetchBench, fetchEscalation, fetchPreStage, setBenchState, todayIst } from "../lib/opd-api";
-import type { WireBenchRow, WireDoctorSummary, WirePreStage, WireVitalsSaveResult } from "../lib/opd-api";
+import type { WireBenchRow, WireDoctorSummary, WirePreStage, WireVitalKey, WireVitalsSaveResult } from "../lib/opd-api";
 import { CaptureCore, SavedBannerView, bandFor, flagOf, humanDate, istClock, rangesFrom, readLane, writeLane } from "./vitals-bay-capture";
 import type { Lane, SavedBanner, Take, TileKey, Tiles } from "./vitals-bay-capture";
 import {
-  ProtocolPanel, REST_MINUTES, RestOffer, heldFirstTake, holdFirstTake, isElevated, readingFrom, releaseFirstTake, useDangerProtocol,
+  ProtocolPanel, REST_MINUTES, RestOffer, heldFirstTake, holdFirstTake, isElevated, readingFrom, readingFromVitals, releaseFirstTake, useDangerProtocol,
 } from "./vitals-bay-protocol";
 import { AmendPanel, AmendTrail } from "./vitals-bay-amend";
 import type { Amended } from "./vitals-bay-amend";
 import { verifyQrScan } from "../lib/patients-api";
 import { api } from "../lib/api";
 import { usePatientInHand } from "../lib/patient-in-hand";
-import { useAuth } from "../lib/auth";
 import { useRealtime } from "../lib/realtime";
 import { PaperScreen } from "../components/paper-screen";
 import { AgentDock, logged } from "../components/agent-dock";
@@ -49,6 +48,8 @@ import type { AgentLine } from "../components/agent-dock";
 export const BENCH_POLL_MS = 5_000;
 /** The tiles the other-arm protocol judges; MUAC zones and the measurements are not readings of a moment. */
 const RANGED: readonly TileKey[] = ["bp", "pulse", "spo2", "tempC", "rr"];
+/** The same set in the wire's vocabulary — which vitals an AMENDMENT can be an answer to a demand about. */
+const RANGED_WIRE: readonly WireVitalKey[] = ["sbp", "dbp", "pulse", "spo2", "tempC", "rr"];
 
 export type Door =
   | { kind: "token"; tokenNo: number }
@@ -338,7 +339,6 @@ export function VitalsBay(): React.ReactElement {
   const [lane, setLane] = useState<Lane>(readLane);
   const [banner, setBanner] = useState<SavedBanner | null>(null);
   const [trail, setTrail] = useState<Amended | null>(null);
-  const { actor } = useAuth();
   const [keys, setKeys] = useState({ typed: 0, device: 0 });
   const [log, setLog] = useState<AgentLine[]>([]);
   const [answer, setAnswer] = useState<string | null>(null);
@@ -464,16 +464,33 @@ export function VitalsBay(): React.ReactElement {
    * VD-2 T4 — the amended save: the diff is the trail (old value, actor, clock), the board is
    * refreshed by `vitals.amended` on the doctor's topic, and the desk clears like any save.
    */
-  const onAmended = useCallback((a: Amended, row: WireBenchRow) => {
+  const onAmended = useCallback(async (a: Amended, row: WireBenchRow) => {
     const who = row.patient === null ? t("vitalsBay.bench.unknownPatient")
       : row.patient.restricted ? (row.patient.alias ?? t("vitalsBay.bench.restricted")) : (row.patient.name ?? row.patient.uhid);
+    /*
+      ═══ A CORRECTION IS AN ANSWER TO "THE OTHER ARM, NOW" ═══
+
+      The demand was raised on a reading; the nurse went and took the other arm; she came back and
+      corrected the chart. Nothing routed that to the protocol, so the bench went on saying
+      `other arm, now` over a chart that had already been answered — the owner watched a saved
+      amendment leave the row exactly as it was. The amended reading now goes to the SAME server
+      judgement a second take typed at the bay goes to: a calm arm withdraws the demand and the row
+      returns to `✓ with doctor`, a still-dangerous one escalates. The bay does not decide which —
+      it never did for the capture lane either, and an amendment is not a quieter kind of reading.
+
+      Awaited before the bench is invalidated, or the refetch races the withdrawal and paints the
+      stale demand back for one poll.
+    */
+    if ((protocol.view?.state ?? "none") === "recheck_demanded" && a.changes.some((c) => RANGED_WIRE.includes(c.key))) {
+      await protocol.confirm(readingFromVitals(a.result.vitals)).catch(() => undefined);
+    }
     setBanner({ who, doctorName: row.doctorName, flags: a.result.flags, amended: true });
     setTrail(a);
     void qc.invalidateQueries({ queryKey: ["vitals-bay", "bench"] });
     void qc.invalidateQueries({ queryKey: ["vitals-bay", "chart"] });
     note(t("vitalsBay.log.amended", { token: row.tokenNo }), "warn");
     clearDesk();
-  }, [qc, clearDesk, t, note]);
+  }, [qc, clearDesk, t, note, protocol]);
 
   const onSaved = useCallback((result: WireVitalsSaveResult, row: WireBenchRow) => {
     const who = row.patient === null ? t("vitalsBay.bench.unknownPatient")
@@ -630,7 +647,7 @@ export function VitalsBay(): React.ReactElement {
               <IdentifyBox key={deskGen} onSubmit={(raw) => { void identify(raw); }} error={error} busy={busy} compact={rowInHand !== null} />
             </div>
             {banner !== null && <SavedBannerView banner={banner} onDismiss={() => { setBanner(null); setTrail(null); }} />}
-            {banner !== null && trail !== null && <AmendTrail amended={trail} by={actor?.id ?? ""} />}
+            {banner !== null && trail !== null && <AmendTrail amended={trail} />}
             <div className="box" style={{ padding: "15px 16px" }}>
               {/*
                 THE STAGE HOSTS THE WORK, NOT THE IDENTITY. An earlier pass wrapped this in a second
@@ -640,7 +657,7 @@ export function VitalsBay(): React.ReactElement {
               */}
               <div data-testid="stage">
               {rowInHand !== null && rowInHand.vitalsDone && (
-                <AmendPanel key={`${deskGen}:${rowInHand.encounterId}`} row={rowInHand} onAmended={(a) => onAmended(a, rowInHand)} />
+                <AmendPanel key={`${deskGen}:${rowInHand.encounterId}`} row={rowInHand} onAmended={(a) => { void onAmended(a, rowInHand); }} />
               )}
               {rowInHand !== null && !rowInHand.vitalsDone && !pending && (
                 <CaptureCore

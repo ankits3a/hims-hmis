@@ -277,6 +277,12 @@ export type WireVitals = {
   ageYearsAtRecord: number | null; band: "infant" | "child_1_5" | "child_6_12" | "adult";
   dangerFlags: WireDangerFlag[]; recordedBy: string; recordedAt: string;
   /**
+   * Who recorded it, as a person rather than a ULID: `users.fullName`, falling back to the
+   * username and only then to the id. The kernel hands no caller a display name, so the OPD
+   * module resolves it — see `opd/vitals.ts: withRecorder`.
+   */
+  recordedByName: string;
+  /**
    * VD-1 T1 / D1 — the reading beside the scalars. The scalars above carry the OPERATIVE take and
    * every shipped consumer keeps reading them; this is where the pair, the source and the values
    * a sanity gate held out of the chart live. `unknown` until VD-2 renders it — a wire type that
