@@ -193,8 +193,17 @@ export async function markDone(tx: Tx, encounterId: string, now: Date): Promise<
     .where(and(eq(opdQueueEntries.encounterId, encounterId), inArray(opdQueueEntries.status, [...LIVE_ENTRY_STATUSES])))
     .orderBy(desc(opdQueueEntries.seq)).limit(1))[0];
   if (!current) return null;
+  /*
+    THE PARK MARK IS CLEARED WITH THE ROW IT BELONGS TO. A doctor may complete a patient who was
+    parked — they came back, the note was already written, and the completion is the next click —
+    so `done` and `parked_at` must never be true of the same row: "parked" means HELD MID-
+    CONSULTATION, and a finished visit is not held. The other three writers that move an entry out
+    of `in_consult` (abandon → cancelled, re-entry → done, transfer → transferred) take the row off
+    the board altogether, where no reader asks the question; this is the one path a parked patient
+    is actually carried along.
+  */
   const updated = await tx.update(opdQueueEntries)
-    .set({ status: "done", doneAt: now })
+    .set({ status: "done", doneAt: now, parkedAt: null, parkedBy: null })
     .where(and(eq(opdQueueEntries.id, current.id), eq(opdQueueEntries.status, current.status))).returning();
   return updated[0] ?? null;
 }

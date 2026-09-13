@@ -252,6 +252,25 @@ export function OpdConsult(): React.ReactElement {
   const view: WireQueueView | null = queue.data !== undefined && queue.data.session !== null ? queue.data : null;
   const current = view?.current ?? null;
   const ordered = view?.ordered ?? [];
+  /*
+    ═══ THE ROWS THE RAIL NEVER RENDERED (owner report, 2026-09-13) ═══
+
+    `inConsult` has been on this wire since the queue view existed and NOTHING read it. So a doctor
+    who called the next token while somebody was still with them — the only way to move on, there
+    being no park button — watched that patient disappear: the encounter was open, the token was
+    live, the half-written note was on the server, and no screen in the building showed a way back
+    to them. Both halves of the fix meet here. The list below renders these rows, and each one is a
+    door back into the consultation.
+  */
+  const inConsult = view?.inConsult ?? [];
+  /*
+    A ROW IS HELD ONLY IF THE SERVER SAID SO, IN WORDS. The field is typed `string | null`, and the
+    one moment it is neither is the deploy window: a tab talking to the previous build gets a queue
+    view with no `parkedAt` at all, and `!== null` would read every patient in consultation as
+    parked — a wrong statement about where a patient is, on the screen that answers that question.
+  */
+  const parkedSince = (e: WireQueueEntryView): string | null => (typeof e.parkedAt === "string" ? e.parkedAt : null);
+  const activeEntry = inConsult.find((e) => e.encounterId === active?.encounterId) ?? null;
 
   // D6: a frame on my queue topic (or on the open encounter) is a HINT to re-read.
   const topics = doctorId === ""
@@ -441,6 +460,48 @@ export function OpdConsult(): React.ReactElement {
       await invalidateQueue();
     } catch (e) {
       setQueueError(opdErrorMessage(e));
+    }
+  };
+
+  /**
+   * PARK — *"the patient decide to stop and he gets outside for 15 minutes"* (owner, 2026-09-13).
+   *
+   * The panel is cleared because the chair is empty, and NOTHING ELSE MOVES: the encounter stays in
+   * consultation on the server, so the note, the prescription lines and the advised tests the
+   * doctor has already saved are exactly where they were when `openEntry` brings them back.
+   * `resetPanel` is the same call `startConsult` makes, for the same reason — unsaved 16a state
+   * belongs to the patient it was typed for (C7).
+   */
+  const parkActive = async (): Promise<void> => {
+    if (active === null) return;
+    setQueueError(null);
+    try {
+      await api("POST", `/opd/visits/${active.encounterId}/consult/park`);
+      resetPanel();
+      setActive(null);
+      await invalidateQueue();
+    } catch (e) {
+      setQueueError(opdErrorMessage(e));
+    }
+  };
+
+  /**
+   * THE DOOR BACK IN, and it is ONE door for both kinds of row on purpose. A parked patient is
+   * resumed on the server first (the hold is a fact, and clearing it is the server's act); a
+   * patient who is merely in consultation — because the doctor called the next token without
+   * parking, which is exactly how the report was filed — needs no write at all, only the panel.
+   * A screen that offered two different buttons would be asking the doctor to know which of the two
+   * states they are looking at before they can get back to their patient.
+   */
+  const openEntry = async (e: WireQueueEntryView): Promise<void> => {
+    setQueueError(null);
+    try {
+      if (parkedSince(e) !== null) await api("POST", `/opd/visits/${e.encounter.id}/consult/resume`);
+      resetPanel();
+      setActive({ encounterId: e.encounter.id, patientId: e.encounter.patientId, summary: e.patient });
+      await invalidateQueue();
+    } catch (err) {
+      setQueueError(opdErrorMessage(err));
     }
   };
 
@@ -874,7 +935,21 @@ export function OpdConsult(): React.ReactElement {
     );
   }
 
-  const queueRow = (e: WireQueueEntryView, isCurrent: boolean): React.ReactElement => (
+  /**
+   * FOUR KINDS OF ROW, ONE LIST, in the order the doctor's attention travels: the token that has
+   * been called, then the people already in consultation (in the chair, or held), then the queue.
+   *
+   * `called` keeps the green bar it has always had — the row a doctor finds with their peripheral
+   * vision. A held row is GOLD rather than green or red: it is neither the patient in front of them
+   * nor an alarm, it is a thing left half-done, and the palette already uses gold for exactly that.
+   */
+  const parkedMinutes = (iso: string): number => Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 60_000));
+
+  const queueRow = (e: WireQueueEntryView, mode: "called" | "seated" | "parked" | "waiting"): React.ReactElement => {
+    const isCurrent = mode === "called";
+    const isActive = e.encounterId === activeEntry?.encounterId;
+    const held = mode === "parked" ? parkedMinutes(parkedSince(e) ?? new Date().toISOString()) : 0;
+    return (
     <li
       key={e.id}
       data-testid={`queue-row-${e.id}`}
@@ -887,9 +962,11 @@ export function OpdConsult(): React.ReactElement {
       */
       style={{
         display: "flex", flexWrap: "wrap", alignItems: "center", gap: 7, padding: "8px 10px", fontSize: 12.5,
-        ...(isCurrent
+        ...(isCurrent || isActive
           ? { background: "var(--green-soft)", boxShadow: "inset 3px 0 0 var(--green)" }
-          : {}),
+          : mode === "parked"
+            ? { background: "var(--gold-soft)", boxShadow: "inset 3px 0 0 var(--gold)" }
+            : {}),
       }}
     >
       <span data-testid={`queue-position-${e.id}`} className="mo" style={{ fontSize: 10, color: "var(--faint)" }}>
@@ -902,8 +979,31 @@ export function OpdConsult(): React.ReactElement {
         <span data-testid={`queue-danger-${e.id}`} aria-label={t("opdConsult.danger")} style={{ color: "var(--red)", fontWeight: 700 }}>⚠</span>
       )}
       {e.reEntry && <span className="pill" data-testid={`queue-reentry-${e.id}`}>{t("opdConsult.reEntry")}</span>}
+      {mode === "parked" && (
+        <span data-testid={`queue-parked-${e.id}`} className="pill" style={{ color: "var(--gold)", fontWeight: 600 }}>
+          {held === 0 ? t("opdConsult.parkedJustNow") : t("opdConsult.parkedFor", { minutes: held })}
+        </span>
+      )}
+      {mode === "seated" && isActive && <span data-testid={`queue-seated-${e.id}`} className="pill">{t("opdConsult.inChair")}</span>}
+      {/*
+        THE WAY BACK, on the row itself. It is rendered for every patient in consultation who is
+        not the one in the chair — parked or simply left behind by a call-next — because those are
+        the two ways a doctor arrives at this screen looking for somebody they have already seen
+        half of. A `waiting` row has no button: its way in is Call next, which is where the token
+        order is decided.
+      */}
+      {(mode === "parked" || (mode === "seated" && !isActive)) && (
+        <button
+          type="button" className="sec" data-testid={`queue-open-${e.id}`}
+          style={{ padding: "1px 9px", fontSize: 11.5 }}
+          onClick={() => void openEntry(e)}
+        >
+          {mode === "parked" ? t("opdConsult.resume") : t("opdConsult.openPatient")}
+        </button>
+      )}
     </li>
-  );
+    );
+  };
 
   return (
     <PaperScreen testId="opd-consult" style={{ padding: "16px 20px 0", gap: 13 }}>
@@ -954,6 +1054,12 @@ export function OpdConsult(): React.ReactElement {
             <button type="button" className="pri" style={{ padding: "3px 11px", fontSize: 12 }} onClick={() => void callNext()}>{t("opdConsult.callNext")}</button>
             <button type="button" className="sec" style={{ padding: "3px 11px", fontSize: 12 }} onClick={() => void skipCurrent()}>{t("opdConsult.skip")}</button>
             <button type="button" className="sec grn" style={{ padding: "3px 11px", fontSize: 12 }} onClick={() => void startConsult()}>{t("opdConsult.start")}</button>
+            {/*
+              PARK sits with the other three because it answers the same question they do — what
+              happens to the chair next — and because the alternative the owner was left with was
+              Call next, which is how a half-seen patient went missing in the first place.
+            */}
+            <button type="button" className="sec" style={{ padding: "3px 11px", fontSize: 12 }} onClick={() => void parkActive()}>{t("opdConsult.park")}</button>
           </div>
           <ErrorLine message={queueError} />
 
@@ -979,12 +1085,16 @@ export function OpdConsult(): React.ReactElement {
           {view === null && queue.data !== undefined && (
             <p style={{ margin: 0, fontSize: 12, color: "var(--dim)" }}>{t("opdConsult.noSession")}</p>
           )}
-          {view !== null && current === null && ordered.length === 0 && (
+          {view !== null && current === null && ordered.length === 0 && inConsult.length === 0 && (
             <p style={{ margin: 0, fontSize: 12, color: "var(--dim)" }}>{t("opdConsult.emptyQueue")}</p>
           )}
+          {inConsult.some((e) => parkedSince(e) !== null) && (
+            <p data-testid="parked-hint" style={{ margin: 0, fontSize: 11, color: "var(--faint)" }}>{t("opdConsult.parkedHint")}</p>
+          )}
           <ul data-testid="consult-queue" style={{ listStyle: "none", margin: 0, padding: 0 }}>
-            {current !== null && queueRow(current, true)}
-            {ordered.map((e) => queueRow(e, false))}
+            {current !== null && queueRow(current, "called")}
+            {inConsult.map((e) => queueRow(e, parkedSince(e) === null ? "seated" : "parked"))}
+            {ordered.map((e) => queueRow(e, "waiting"))}
           </ul>
         </aside>
 

@@ -702,7 +702,14 @@
     "seat": "Consulting room",
     "queueRail": "The queue",
     "noPatientTitle": "Nobody is in the chair",
-    "noPatientBody": "Call the next token, or press Enter. The queue on the left is live."
+    "noPatientBody": "Call the next token, or press Enter. The queue on the left is live.",
+    "park": "Park patient",
+    "resume": "Resume",
+    "openPatient": "Open",
+    "inChair": "In consultation",
+    "parkedFor": "Parked {{minutes}} min",
+    "parkedJustNow": "Parked just now",
+    "parkedHint": "Parked patients keep their turn, their note and their token. Pick one to carry on."
   },
   "rx": {
     "regNo": "Reg. No.",
