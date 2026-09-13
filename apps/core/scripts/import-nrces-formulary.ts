@@ -1,9 +1,11 @@
 import { readFileSync } from "node:fs";
-import { eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { createDb, withTx } from "../src/kernel/db/client";
-import { formularyGenericSalts, formularyGenerics, formularySalts } from "../src/kernel/db/schema";
-import type { Db, Tx } from "../src/kernel/db/client";
+import { requireEnv } from "../src/kernel/config";
+import {
+  formularyGenericSubstances, formularyGenerics, formularySalts, formularySubstances,
+} from "../src/kernel/db/schema";
+import type { Tx } from "../src/kernel/db/client";
 
 /**
  * `pnpm --filter @hmis/core import:nrces -- --dir ./nrces --release nrces-2026-09 --actor "<name>" [--apply]`
@@ -57,18 +59,28 @@ import type { Db, Tx } from "../src/kernel/db/client";
  * put ~13,600 rows in the outbox for the dispatcher to walk on the next boot. Provenance is served
  * by `formulary_generics.source` and by the audit columns, which is what provenance is for.
  *
- * === THE 29 CURATOR-NAMED MOIETIES, AND THE ONE THING THAT COULD GO SILENTLY WRONG ===
+ * === WHAT IT DOES WITH THE 29 CURATOR-NAMED MOIETIES ===
  *
- * `seed-formulary-interactions` writes 29 moieties by hand, with no concept id. If this loader
- * created a SECOND row for one of them under the release's spelling, the duplicate would split
- * every check that groups by moiety - which is the exact failure `formulary_salts_name_lower_ux`
- * exists to prevent, arriving by a route that index cannot see (two different spellings).
+ * The release is imported AS RELEASED into `formulary_substances`. The only automatic link to a
+ * curated moiety is an EXACT match of the substance name or one of its synonyms against an
+ * existing `formulary_salts` name - "Ibuprofen" to `ibuprofen`, which invents nothing because it
+ * is the same word. Everything else lands `pending` for a pharmacist, however obvious it looks:
+ * "Warfarin sodium" is NOT linked to `warfarin` by this script, because deriving a moiety from a
+ * salt form is a clinical act and rule 3 forbids a loader performing one.
  *
- * So a release substance is matched against existing salts by its own name AND by every synonym it
- * carries, and a match LINKS (backfills `sctid`) rather than creating. Two guards on that: a
- * release row matching an existing salt that already holds a DIFFERENT sctid is a refusal, and the
- * report NAMES every existing moiety left unlinked - because an unlinked curator moiety is the one
- * place a duplicate can still hide, and a count would not tell you which.
+ * A previous cut of this file created moieties directly and REFUSED the import when two release
+ * rows matched one curated moiety. Both were wrong. Many substances to one moiety is the design -
+ * four doxycycline salt forms, one `doxycycline` - so it links both and refuses nothing.
+ *
+ * === THE SENTENCE THAT USED TO BE HERE AND WAS FALSE ===
+ *
+ * An earlier version of this header said the loader derives `formulary_medicine_salts` so that
+ * "every existing check keeps working untouched". It does not derive it, and the claim was unsafe
+ * as well as untrue: every guard in the prescribing and dispensing path tests for an EMPTY salt
+ * list and none tests for an INCOMPLETE one, so a derivation that emitted the components it
+ * happened to have would produce a short list that reads as a complete one - 1,108 generics
+ * carrying 12,783 branded products are in exactly that state. When the derivation is written it
+ * must refuse to emit a partial composition at all.
  */
 
 // ---------------------------------------------------------------------------------------------
@@ -170,13 +182,13 @@ function splitPipes(raw: string): string[] {
   return raw.split("|").map((s) => s.trim()).filter((s) => s !== "");
 }
 
-export interface SaltPlan {
-  kind: "create" | "link";
+export interface SubstancePlan {
   sctid: string;
   name: string;
-  aliases: string[];
+  synonyms: string[];
   active: boolean;
-  existingId?: string;
+  /** Set only by an EXACT name/synonym match against a curated moiety. Never by a rule. */
+  saltId: string | null;
 }
 export interface GenericPlan {
   kind: "create" | "skip";
@@ -194,20 +206,20 @@ export interface CompositionPlan {
   unit: string | null;
 }
 export interface Plan {
-  salts: SaltPlan[];
+  substances: SubstancePlan[];
   generics: GenericPlan[];
   compositions: CompositionPlan[];
-  unlinkedExistingSalts: string[];
   release: string;
 }
 
-interface ExistingSalt { id: string; name: string; sctid: string | null }
+interface ExistingSalt { id: string; name: string }
 
 export function planImport(
   substancesCsv: string,
   genericsCsv: string,
   compositionsCsv: string,
   existingSalts: ExistingSalt[],
+  existingSubstanceSctids: Set<string>,
   existingGenericSctids: Set<string>,
   release: string,
 ): Plan {
@@ -216,16 +228,22 @@ export function planImport(
   const compositions = rowsToObjects("generic_compositions.csv", compositionsCsv, COMPOSITION_COLUMNS);
 
   // -- substances ------------------------------------------------------------------------------
+  //
+  // THE ONLY AUTO-LINK IS AN EXACT NAME MATCH, and the distinction is the whole safety argument.
+  // Matching "Ibuprofen" to the curated moiety `ibuprofen` INVENTS NOTHING - it is the same word.
+  // Deriving `doxycycline` from "Doxycycline hyclate" is a clinical transformation, and rule 3 of
+  // the loader design note forbids a loader making one. Everything that is not an exact match is
+  // left `pending` for a pharmacist, however obvious it looks.
+  //
+  // MANY SUBSTANCES MAY MAP TO ONE MOIETY AND THAT IS NOT A CONFLICT. An earlier cut REFUSED the
+  // whole import when two release rows matched one curated moiety; under this model that is the
+  // intended shape (four doxycycline salt forms, one moiety), so it links both.
   const byName = new Map<string, ExistingSalt>();
-  const bySctid = new Map<string, ExistingSalt>();
-  for (const s of existingSalts) {
-    byName.set(s.name.trim().toLowerCase(), s);
-    if (s.sctid !== null) bySctid.set(s.sctid, s);
-  }
-  const saltPlans: SaltPlan[] = [];
+  for (const s of existingSalts) byName.set(s.name.trim().toLowerCase(), s);
+
+  const substancePlans: SubstancePlan[] = [];
   const seenSctid = new Set<string>();
   const seenName = new Set<string>();
-  const claimedExisting = new Map<string, string>(); // existing salt id -> release sctid that claimed it
 
   for (const r of substances) {
     const sctid = r["substance_sctid"] ?? "";
@@ -233,20 +251,16 @@ export function planImport(
     if (sctid === "" || name === "") {
       throw new Error("substances.csv: a row has an empty substance_sctid or substance_name. Nothing was written.");
     }
-    // Rule 4 - a file that contradicts itself is refused; which row was meant is the operator's to say.
     if (seenSctid.has(sctid)) throw new Error(`substances.csv: sctid ${sctid} appears twice. Nothing was written.`);
     seenSctid.add(sctid);
     const lower = name.toLowerCase();
     if (seenName.has(lower)) throw new Error(`substances.csv: substance_name "${name}" appears twice. Nothing was written.`);
     seenName.add(lower);
+    if (existingSubstanceSctids.has(sctid)) continue; // already imported by an earlier release
 
     const synonyms = splitPipes(r["synonyms"] ?? "");
     const active = parseActive("substances.csv", r["active"] ?? "", `substance ${sctid}`);
 
-    if (bySctid.has(sctid)) continue; // this concept is already on a salt row - nothing to do
-
-    // Match by the released name first, then by any synonym: the curator's 29 moieties are named
-    // by hand and a release spelling that differs is exactly how a duplicate moiety is born.
     let hit = byName.get(lower);
     if (hit === undefined) {
       for (const syn of synonyms) {
@@ -254,26 +268,7 @@ export function planImport(
         if (h !== undefined) { hit = h; break; }
       }
     }
-    if (hit !== undefined) {
-      if (hit.sctid !== null && hit.sctid !== sctid) {
-        throw new Error(
-          `substances.csv: "${name}" (${sctid}) matches the existing moiety "${hit.name}", which already ` +
-          `carries a DIFFERENT concept id (${hit.sctid}). Two concept ids for one moiety is a ` +
-          "contradiction a loader must not resolve on its own. Nothing was written.",
-        );
-      }
-      const prior = claimedExisting.get(hit.id);
-      if (prior !== undefined) {
-        throw new Error(
-          `substances.csv: both ${prior} and ${sctid} match the existing moiety "${hit.name}". ` +
-          "Linking either would leave the other to create a duplicate. Nothing was written.",
-        );
-      }
-      claimedExisting.set(hit.id, sctid);
-      saltPlans.push({ kind: "link", sctid, name, aliases: synonyms, active, existingId: hit.id });
-    } else {
-      saltPlans.push({ kind: "create", sctid, name, aliases: synonyms, active });
-    }
+    substancePlans.push({ sctid, name, synonyms, active, saltId: hit?.id ?? null });
   }
 
   // -- generics --------------------------------------------------------------------------------
@@ -302,23 +297,21 @@ export function planImport(
   }
 
   // -- compositions ----------------------------------------------------------------------------
-  const plannedSaltSctids = new Set<string>([...seenSctid, ...bySctid.keys()]);
-  const plannedGenericSctids = new Set<string>([...seenGeneric, ...existingGenericSctids]);
+  const knownSubstances = new Set<string>([...seenSctid, ...existingSubstanceSctids]);
+  const knownGenerics = new Set<string>([...seenGeneric, ...existingGenericSctids]);
   const compositionPlans: CompositionPlan[] = [];
   const seenPair = new Set<string>();
   for (const r of compositions) {
     const g = r["generic_sctid"] ?? "";
     const s = r["substance_sctid"] ?? "";
-    // Rule 4 - an identifier that does not resolve is refused. A composition row pointing at a
-    // generic or a moiety this import does not contain would leave a product with a PARTIAL
-    // composition, which reads as complete and silently under-reports what a patient is taking.
-    if (!plannedGenericSctids.has(g)) {
+    if (!knownGenerics.has(g)) {
       throw new Error(`generic_compositions.csv: generic_sctid ${g} is in no generic row. Nothing was written.`);
     }
-    if (!plannedSaltSctids.has(s)) {
+    if (!knownSubstances.has(s)) {
       throw new Error(`generic_compositions.csv: substance_sctid ${s} is in no substance row. Nothing was written.`);
     }
     const key = `${g} ${s}`;
+    // Keyed on the SUBSTANCE, so two salt forms of one moiety are two rows and neither is lost.
     if (seenPair.has(key)) {
       throw new Error(`generic_compositions.csv: the pair (${g}, ${s}) appears twice. Nothing was written.`);
     }
@@ -332,16 +325,7 @@ export function planImport(
     });
   }
 
-  const linked = new Set(saltPlans.filter((p) => p.kind === "link").map((p) => p.existingId));
-  const unlinked = existingSalts
-    .filter((s) => s.sctid === null && !linked.has(s.id))
-    .map((s) => s.name)
-    .sort();
-
-  return {
-    salts: saltPlans, generics: genericPlans, compositions: compositionPlans,
-    unlinkedExistingSalts: unlinked, release,
-  };
+  return { substances: substancePlans, generics: genericPlans, compositions: compositionPlans, release };
 }
 
 /**
@@ -350,29 +334,23 @@ export function planImport(
  * products with partial composition, and the operator could not tell which half.
  */
 export async function applyPlan(tx: Tx, plan: Plan, actor: string): Promise<void> {
-  const saltIdBySctid = new Map<string, string>();
-
-  for (const p of plan.salts) {
-    if (p.kind === "link") {
-      const id = p.existingId;
-      if (id === undefined) throw new Error("internal: link plan with no existingId");
-      await tx.update(formularySalts)
-        .set({ sctid: p.sctid, updatedBy: actor, updatedAt: new Date() })
-        .where(eq(formularySalts.id, id));
-      saltIdBySctid.set(p.sctid, id);
-    } else {
-      const id = newId();
-      await tx.insert(formularySalts).values({
-        id, name: p.name, aliases: p.aliases, sctid: p.sctid, active: p.active,
-        createdBy: actor, updatedBy: actor,
-      });
-      saltIdBySctid.set(p.sctid, id);
-    }
+  const substanceIdBySctid = new Map<string, string>();
+  for (const s of plan.substances) {
+    const id = newId();
+    const mapped = s.saltId !== null;
+    await tx.insert(formularySubstances).values({
+      id, sctid: s.sctid, name: s.name, synonyms: s.synonyms,
+      saltId: s.saltId,
+      mappingStatus: mapped ? "mapped" : "pending",
+      mappedBy: mapped ? `import:${plan.release}` : null,
+      mappedAt: mapped ? new Date() : null,
+      source: plan.release, active: s.active, createdBy: actor, updatedBy: actor,
+    });
+    substanceIdBySctid.set(s.sctid, id);
   }
-  // Salts already carrying a concept id before this run are still valid composition targets.
-  const priorSalts = await tx.select({ id: formularySalts.id, sctid: formularySalts.sctid })
-    .from(formularySalts);
-  for (const s of priorSalts) if (s.sctid !== null) saltIdBySctid.set(s.sctid, s.id);
+  const priorSubstances = await tx.select({ id: formularySubstances.id, sctid: formularySubstances.sctid })
+    .from(formularySubstances);
+  for (const s of priorSubstances) substanceIdBySctid.set(s.sctid, s.id);
 
   const genericIdBySctid = new Map<string, string>();
   for (const g of plan.generics) {
@@ -391,43 +369,41 @@ export async function applyPlan(tx: Tx, plan: Plan, actor: string): Promise<void
 
   for (const c of plan.compositions) {
     const genericId = genericIdBySctid.get(c.genericSctid);
-    const saltId = saltIdBySctid.get(c.substanceSctid);
-    if (genericId === undefined || saltId === undefined) {
+    const substanceId = substanceIdBySctid.get(c.substanceSctid);
+    if (genericId === undefined || substanceId === undefined) {
       throw new Error(
         `internal: composition (${c.genericSctid}, ${c.substanceSctid}) did not resolve after planning`,
       );
     }
-    await tx.insert(formularyGenericSalts)
-      .values({ genericId, saltId, strength: c.strength, unit: c.unit })
-      .onConflictDoNothing();
+    // No onConflictDoNothing: the plan already refused a duplicate pair, so a conflict here would
+    // be a defect worth hearing about rather than a row to drop quietly.
+    await tx.insert(formularyGenericSubstances)
+      .values({ genericId, substanceId, strength: c.strength, unit: c.unit });
   }
 }
 
 export function renderReport(plan: Plan, applied: boolean): string {
-  const created = plan.salts.filter((p) => p.kind === "create").length;
-  const linkedN = plan.salts.filter((p) => p.kind === "link").length;
+  const mapped = plan.substances.filter((s) => s.saltId !== null).length;
+  const pending = plan.substances.length - mapped;
   const newGenerics = plan.generics.filter((g) => g.kind === "create").length;
   const skipped = plan.generics.filter((g) => g.kind === "skip").length;
-  const lines = [
+  return [
     "",
     `NRCeS formulary import - release ${plan.release}`,
     applied ? "APPLIED" : "DRY RUN - nothing was written. Re-run with --apply to write.",
     "",
-    `  moieties      ${String(created)} new, ${String(linkedN)} linked to an existing curator-named row`,
-    `  generics      ${String(newGenerics)} new, ${String(skipped)} already present (skipped)`,
-    `  compositions  ${String(plan.compositions.length)}`,
+    `  substances     ${String(plan.substances.length)} imported as released`,
+    `    mapped       ${String(mapped)} auto-linked to a curated moiety by EXACT name or synonym`,
+    `    pending      ${String(pending)} awaiting a pharmacist`,
+    `  generics       ${String(newGenerics)} new, ${String(skipped)} already present (skipped)`,
+    `  compositions   ${String(plan.compositions.length)}`,
     "",
-  ];
-  if (plan.unlinkedExistingSalts.length > 0) {
-    lines.push(
-      `  ${String(plan.unlinkedExistingSalts.length)} EXISTING MOIETIES MATCHED NOTHING IN THIS RELEASE.`,
-      "  They keep a null sctid. Each is a place a duplicate could later be created under a",
-      "  different spelling, so they are named rather than counted:",
-      ...plan.unlinkedExistingSalts.map((n) => `    - ${n}`),
-      "",
-    );
-  }
-  return lines.join("\n");
+    "  THE PENDING COUNT IS NOT A BACKLOG TO BE RUSHED. Until a substance is mapped, products",
+    "  containing it have no curated moiety, and the derivation must REFUSE to emit a partial",
+    "  composition for them rather than emit the components it happens to have - a short salt list",
+    "  reads as a complete one to every check in the system.",
+    "",
+  ].join("\n");
 }
 
 function parseArgs(argv: string[]): { dir: string; release: string; actor: string; apply: boolean } {
@@ -452,25 +428,33 @@ function parseArgs(argv: string[]): { dir: string; release: string; actor: strin
 
 async function main(): Promise<void> {
   const { dir, release, actor, apply } = parseArgs(process.argv.slice(2));
-  const db: Db = createDb();
+  const { db, pool } = createDb(requireEnv("DATABASE_URL"));
   const read = (f: string): string => readFileSync(`${dir}/${f}`, "utf8");
 
   const existingSalts = await db.select({
-    id: formularySalts.id, name: formularySalts.name, sctid: formularySalts.sctid,
+    id: formularySalts.id, name: formularySalts.name,
   }).from(formularySalts);
+  const existingSubstances = await db.select({ sctid: formularySubstances.sctid }).from(formularySubstances);
   const existingGenerics = await db.select({ sctid: formularyGenerics.sctid }).from(formularyGenerics);
 
   const plan = planImport(
     read("substances.csv"), read("generics.csv"), read("generic_compositions.csv"),
-    existingSalts, new Set(existingGenerics.map((g) => g.sctid)), release,
+    existingSalts,
+    new Set(existingSubstances.map((s) => s.sctid)),
+    new Set(existingGenerics.map((g) => g.sctid)),
+    release,
   );
 
-  if (!apply) {
-    process.stdout.write(renderReport(plan, false));
-    return;
+  try {
+    if (!apply) {
+      process.stdout.write(renderReport(plan, false));
+      return;
+    }
+    await withTx(db, (tx) => applyPlan(tx, plan, actor));
+    process.stdout.write(renderReport(plan, true));
+  } finally {
+    await pool.end();
   }
-  await withTx(db, (tx) => applyPlan(tx, plan, actor));
-  process.stdout.write(renderReport(plan, true));
 }
 
 if (require.main === module) {

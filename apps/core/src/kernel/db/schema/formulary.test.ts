@@ -34,13 +34,14 @@ const AUDIT = { createdBy: "t", updatedBy: "t" };
  *    here asks the database what formulary tables EXIST. The completeness leg below does ask.
  */
 const CENSUS: Record<string, string[]> = {
-  formulary_salts: ["active", "aliases", "atc_code", "created_at", "created_by", "drug_class", "id", "name", "sctid", "updated_at", "updated_by"],
+  formulary_salts: ["active", "aliases", "atc_code", "created_at", "created_by", "drug_class", "id", "name", "updated_at", "updated_by"],
   formulary_medicines: ["active", "brand_name", "created_at", "created_by", "form", "id", "route_class", "schedule_flag", "staging_id", "strength_label", "updated_at", "updated_by"],
-  formulary_medicine_salts: ["medicine_id", "salt_id", "strength"],
+  formulary_medicine_salts: ["medicine_id", "salt_id", "source", "strength"],
   formulary_interactions: ["active", "created_at", "created_by", "id", "note", "route_scope", "salt_a_id", "salt_b_id", "severity", "source", "updated_at", "updated_by"],
   formulary_staging: ["id", "kind", "medicine_id", "mined_at", "name", "payload", "reviewed_at", "reviewed_by", "source_url", "status"],
   formulary_generics: ["active", "composition_summary", "created_at", "created_by", "dose_form", "id", "name", "route_of_administration", "sctid", "source", "updated_at", "updated_by"],
-  formulary_generic_salts: ["generic_id", "salt_id", "strength", "unit"],
+  formulary_generic_substances: ["generic_id", "strength", "substance_id", "unit"],
+  formulary_substances: ["active", "created_at", "created_by", "id", "mapped_at", "mapped_by", "mapping_status", "name", "salt_id", "sctid", "source", "synonyms", "updated_at", "updated_by"],
 };
 
 describe("the formulary tables (Plan 16a T1)", () => {

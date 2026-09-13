@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  boolean, check, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex,
+  boolean, check, index, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -74,14 +74,6 @@ export const formularySalts = pgTable(
     aliases: jsonb("aliases").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     drugClass: text("drug_class"),
     atcCode: text("atc_code"),
-    /**
-     * SNOMED CT concept id for the substance, from the NRCeS national release. NULLABLE, and the
-     * nullability is the point: the 29 moieties `seed-formulary-interactions` writes are named by
-     * a curator and have no concept id, and a column that forced one would make the seed unable to
-     * run. 3,260 of the release's 3,283 substances are INTERNATIONAL core concepts rather than
-     * India-extension ones, so this is a globally portable identifier, not a local key.
-     */
-    sctid: text("sctid"),
     active: boolean("active").notNull().default(true),
     ...auditColumns,
   },
@@ -89,9 +81,16 @@ export const formularySalts = pgTable(
     // Case-insensitive uniqueness: "Amoxicillin" and "amoxicillin" are one moiety, and two rows
     // for one moiety would split every check that groups by it.
     uniqueIndex("formulary_salts_name_lower_ux").using("btree", sql`lower(${t.name})`),
-    // Two rows carrying one concept id is the same split by a different route. NULLs do not
-    // collide in Postgres, so the curator-named moieties are unaffected.
-    uniqueIndex("formulary_salts_sctid_ux").on(t.sctid),
+    /**
+     * THERE IS DELIBERATELY NO `sctid` ON THIS TABLE, AND AN EARLIER CUT OF THIS WORK PUT ONE HERE.
+     *
+     * A curated moiety is reached from MANY release substances - `doxycycline` from Doxycycline
+     * hyclate, monohydrate, calcium and hydrochloride - so there is no single concept id to store,
+     * and a UNIQUE index on one made the intended many-to-one shape unstorable for all 568 such
+     * groups. The concept id belongs to `formulary_substances`, which is the tier that has one
+     * each. The link is `formulary_substances.salt_id`, in that direction only: two paths to one
+     * fact is how the two drift.
+     */
   ],
 );
 
@@ -125,7 +124,19 @@ export const formularyMedicines = pgTable(
   ],
 );
 
-/** The composition join — a fixed-dose combination is simply a medicine with more than one row. */
+/**
+ * The composition join - a fixed-dose combination is simply a medicine with more than one row.
+ *
+ * === `source` EXISTS BECAUSE TWO WRITERS ARE ABOUT TO SHARE THIS TABLE ===
+ *
+ * Today the only writer is a pharmacist through `addMedicine`/`updateMedicine`, and
+ * `updateMedicine` does an unconditional `delete ... where medicine_id = $1` before re-inserting
+ * (`masters.ts:247`). Once a derivation also writes here - medicine -> generic -> substance ->
+ * curated moiety - those two overwrite each other in both directions and neither can tell which
+ * rows were its own. A pharmacist's correction would vanish on the next derivation run, silently.
+ *
+ * So every row says where it came from, and the curated delete is scoped to `curated`.
+ */
 export const formularyMedicineSalts = pgTable(
   "formulary_medicine_salts",
   {
@@ -133,8 +144,94 @@ export const formularyMedicineSalts = pgTable(
     saltId: text("salt_id").notNull().references(() => formularySalts.id),
     /** Per-salt strength, e.g. '500 mg' on the amoxicillin row of an Augmentin 625. */
     strength: text("strength"),
+    /** 'curated' (a pharmacist typed it) or 'derived' (the release produced it). */
+    source: text("source").notNull().default("curated"),
   },
-  (t) => [primaryKey({ columns: [t.medicineId, t.saltId] })],
+  (t) => [
+    primaryKey({ columns: [t.medicineId, t.saltId] }),
+    check("formulary_medicine_salts_source_ck", sql`${t.source} in ('curated', 'derived')`),
+  ],
+);
+
+/**
+ * THE RELEASE, AS RELEASED - and the tier that exists because the release is not a moiety list.
+ *
+ * === WHY THIS TABLE EXISTS AT ALL ===
+ *
+ * `formulary_salts` is the ACTIVE MOIETY: "diclofenac", never "diclofenac sodium", because a
+ * patient allergic to one salt form is allergic to the other. The NRCeS national release does not
+ * work that way. Measured over its 3,283 substances on 2026-09-13: **1,006 (30%) are named as a
+ * salt form**, and 73 moieties would split across two or more rows - doxycycline across four.
+ *
+ * Loading that list straight into `formulary_salts` would have produced a moiety table that is
+ * really a salt-form table, in which an allergy to Doxycycline hyclate does not match Doxycycline
+ * monohydrate, and in which warfarin exists twice: once curated carrying 5 interaction pairs, and
+ * once from the release carrying none. Both failures are silent and both leave every test green.
+ *
+ * === AND WHY NO RULE COLLAPSES THEM ===
+ *
+ * The obvious rule - "strip a known salt-form suffix, or withhold if you see one" - was tried and
+ * refuted against the real file. It SPLITS DOXYCYCLINE, the case it was written to fix: `hyclate`
+ * is a salt token and `monohydrate` is not, so one is withheld and the other silently becomes a
+ * second moiety (75 names are in that hydrate class). Worse, a suffix test cannot see a salt
+ * written cation-first - `Calcium leucovorin`, `Sodium fusidate`, `Procaine penicillin G` (58 of
+ * them) - and it cannot tell a moiety from a CLASS: `Antineoplastic agent`, `Tricyclic
+ * antidepressant` and 63 other mechanism-of-action groupers would each become a "moiety" that
+ * matches no allergy. `Diclofenac diethylammonium` would auto-create a third diclofenac row, and
+ * that row sits on 64 medicines in the release.
+ *
+ * So the collapse is a CLINICAL act, performed once per substance by a pharmacist, and this table
+ * is where the release waits for it. The loader invents nothing; it imports what was published.
+ */
+export const formularySubstances = pgTable(
+  "formulary_substances",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    /** SNOMED CT concept id. One per row here, which is what `formulary_salts` cannot promise. */
+    sctid: text("sctid").notNull(),
+    /** Exactly as released, salt form and all: "Warfarin sodium", "Ipoveratril hydrochloride". */
+    name: text("name").notNull(),
+    /** The release's pipe-delimited synonym list, split. Read EXACTLY, never fuzzily. */
+    synonyms: jsonb("synonyms").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    /**
+     * THE CURATED MOIETY, or null. Many substances point at one moiety; that is the whole design,
+     * so this is deliberately NOT unique.
+     */
+    saltId: text("salt_id").references(() => formularySalts.id),
+    /**
+     * WHY `salt_id IS NULL` IS NOT ENOUGH ON ITS OWN. Null means two different things - "no human
+     * has looked at this yet" and "a human looked and ruled it unmappable" (a grouper concept, an
+     * excipient, a vehicle). Without this column the second kind is re-presented to the pharmacist
+     * for ever, which is how a worklist becomes a screen nobody opens.
+     */
+    mappingStatus: text("mapping_status").notNull().default("pending"),
+    mappedBy: text("mapped_by"),
+    mappedAt: timestamp("mapped_at", { withTimezone: true }),
+    /** Which national release put this row here. */
+    source: text("source").notNull(),
+    active: boolean("active").notNull().default(true),
+    ...auditColumns,
+  },
+  (t) => [
+    uniqueIndex("formulary_substances_sctid_ux").on(t.sctid),
+    uniqueIndex("formulary_substances_name_lower_ux").using("btree", sql`lower(${t.name})`),
+    // NOT unique: many substances resolve to one moiety.
+    index("formulary_substances_salt_idx").on(t.saltId),
+    check(
+      "formulary_substances_mapping_status_ck",
+      sql`${t.mappingStatus} in ('pending', 'mapped', 'unmappable')`,
+    ),
+    // A mapped row must name a moiety; a pending one must not pretend to have been decided.
+    check(
+      "formulary_substances_mapped_has_salt_ck",
+      sql`(${t.mappingStatus} = 'mapped') = (${t.saltId} is not null)`,
+    ),
+    // Every decided row records who decided and when; a pending one records neither.
+    check(
+      "formulary_substances_decided_audit_ck",
+      sql`(${t.mappingStatus} = 'pending') = (${t.mappedBy} is null and ${t.mappedAt} is null)`,
+    ),
+  ],
 );
 
 /**
@@ -202,23 +299,32 @@ export const formularyGenerics = pgTable(
 );
 
 /**
- * THE COMPOSITION, held once per clinical drug. `generic_compositions.csv` arrives already
- * normalised — 13,125 rows against 10,303 generics — which is the shape this table is.
+ * THE COMPOSITION, held once per clinical drug, KEYED ON THE RELEASE'S OWN SUBSTANCE.
+ *
+ * `generic_compositions.csv` arrives already normalised - 13,125 rows against 10,303 generics -
+ * and it references `substance_sctid`. Keying this table on the SUBSTANCE rather than on the
+ * curated moiety is what makes it a faithful copy of the release: it can be loaded before a single
+ * curation decision has been taken, it is idempotent across releases, and re-running it can never
+ * lose a row.
+ *
+ * The earlier cut keyed it on `salt_id`, and that silently lost rows: a generic containing two
+ * salt forms of one moiety collapses to a single primary key, so `onConflictDoNothing` dropped the
+ * second - picking which strength survived by row order, in silence.
  *
  * `strength` and `unit` are kept AS RELEASED ("5/1", "milligram/Tablet") rather than parsed into a
  * number and a unit. Parsing is a lossy judgement about 174 dose forms made at import time by
  * something that cannot ask; the ratio form is what the release asserts, and a later task that
  * needs arithmetic can parse it with the original still present to check against.
  */
-export const formularyGenericSalts = pgTable(
-  "formulary_generic_salts",
+export const formularyGenericSubstances = pgTable(
+  "formulary_generic_substances",
   {
     genericId: text("generic_id").notNull().references(() => formularyGenerics.id),
-    saltId: text("salt_id").notNull().references(() => formularySalts.id),
+    substanceId: text("substance_id").notNull().references(() => formularySubstances.id),
     strength: text("strength"),
     unit: text("unit"),
   },
-  (t) => [primaryKey({ columns: [t.genericId, t.saltId] })],
+  (t) => [primaryKey({ columns: [t.genericId, t.substanceId] })],
 );
 
 /** MOIETY-level interaction pairs. Ordered, unique, provenanced, optionally route-scoped. */

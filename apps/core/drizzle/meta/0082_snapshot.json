@@ -1,5 +1,5 @@
 {
-  "id": "31490c94-4206-4280-b11a-16863c4b5709",
+  "id": "3bcf698e-29af-4279-a439-1697303ab3fc",
   "prevId": "2413543d-ee2d-497d-8fa0-94c4073ba01f",
   "version": "7",
   "dialect": "postgresql",
@@ -11705,8 +11705,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.formulary_generic_salts": {
-      "name": "formulary_generic_salts",
+    "public.formulary_generic_substances": {
+      "name": "formulary_generic_substances",
       "schema": "",
       "columns": {
         "generic_id": {
@@ -11715,8 +11715,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "salt_id": {
-          "name": "salt_id",
+        "substance_id": {
+          "name": "substance_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -11736,9 +11736,9 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "formulary_generic_salts_generic_id_formulary_generics_id_fk": {
-          "name": "formulary_generic_salts_generic_id_formulary_generics_id_fk",
-          "tableFrom": "formulary_generic_salts",
+        "formulary_generic_substances_generic_id_formulary_generics_id_fk": {
+          "name": "formulary_generic_substances_generic_id_formulary_generics_id_fk",
+          "tableFrom": "formulary_generic_substances",
           "tableTo": "formulary_generics",
           "columnsFrom": [
             "generic_id"
@@ -11749,12 +11749,12 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "formulary_generic_salts_salt_id_formulary_salts_id_fk": {
-          "name": "formulary_generic_salts_salt_id_formulary_salts_id_fk",
-          "tableFrom": "formulary_generic_salts",
-          "tableTo": "formulary_salts",
+        "formulary_generic_substances_substance_id_formulary_substances_id_fk": {
+          "name": "formulary_generic_substances_substance_id_formulary_substances_id_fk",
+          "tableFrom": "formulary_generic_substances",
+          "tableTo": "formulary_substances",
           "columnsFrom": [
-            "salt_id"
+            "substance_id"
           ],
           "columnsTo": [
             "id"
@@ -11764,11 +11764,11 @@
         }
       },
       "compositePrimaryKeys": {
-        "formulary_generic_salts_generic_id_salt_id_pk": {
-          "name": "formulary_generic_salts_generic_id_salt_id_pk",
+        "formulary_generic_substances_generic_id_substance_id_pk": {
+          "name": "formulary_generic_substances_generic_id_substance_id_pk",
           "columns": [
             "generic_id",
-            "salt_id"
+            "substance_id"
           ]
         }
       },
@@ -12052,6 +12052,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'curated'"
         }
       },
       "indexes": {},
@@ -12094,7 +12101,12 @@
       },
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "formulary_medicine_salts_source_ck": {
+          "name": "formulary_medicine_salts_source_ck",
+          "value": "\"formulary_medicine_salts\".\"source\" in ('curated', 'derived')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.formulary_medicines": {
@@ -12246,12 +12258,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "sctid": {
-          "name": "sctid",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "active": {
           "name": "active",
           "type": "boolean",
@@ -12294,21 +12300,6 @@
               "expression": "lower(\"name\")",
               "asc": true,
               "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "formulary_salts_sctid_ux": {
-          "name": "formulary_salts_sctid_ux",
-          "columns": [
-            {
-              "expression": "sctid",
-              "isExpression": false,
-              "asc": true,
               "nulls": "last"
             }
           ],
@@ -12404,6 +12395,181 @@
         "formulary_staging_status_ck": {
           "name": "formulary_staging_status_ck",
           "value": "\"formulary_staging\".\"status\" in ('pending', 'approved', 'rejected')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.formulary_substances": {
+      "name": "formulary_substances",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "sctid": {
+          "name": "sctid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "synonyms": {
+          "name": "synonyms",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "salt_id": {
+          "name": "salt_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mapping_status": {
+          "name": "mapping_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "mapped_by": {
+          "name": "mapped_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mapped_at": {
+          "name": "mapped_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "formulary_substances_sctid_ux": {
+          "name": "formulary_substances_sctid_ux",
+          "columns": [
+            {
+              "expression": "sctid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "formulary_substances_name_lower_ux": {
+          "name": "formulary_substances_name_lower_ux",
+          "columns": [
+            {
+              "expression": "lower(\"name\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "formulary_substances_salt_idx": {
+          "name": "formulary_substances_salt_idx",
+          "columns": [
+            {
+              "expression": "salt_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "formulary_substances_salt_id_formulary_salts_id_fk": {
+          "name": "formulary_substances_salt_id_formulary_salts_id_fk",
+          "tableFrom": "formulary_substances",
+          "tableTo": "formulary_salts",
+          "columnsFrom": [
+            "salt_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "formulary_substances_mapping_status_ck": {
+          "name": "formulary_substances_mapping_status_ck",
+          "value": "\"formulary_substances\".\"mapping_status\" in ('pending', 'mapped', 'unmappable')"
+        },
+        "formulary_substances_mapped_has_salt_ck": {
+          "name": "formulary_substances_mapped_has_salt_ck",
+          "value": "(\"formulary_substances\".\"mapping_status\" = 'mapped') = (\"formulary_substances\".\"salt_id\" is not null)"
+        },
+        "formulary_substances_decided_audit_ck": {
+          "name": "formulary_substances_decided_audit_ck",
+          "value": "(\"formulary_substances\".\"mapping_status\" = 'pending') = (\"formulary_substances\".\"mapped_by\" is null and \"formulary_substances\".\"mapped_at\" is null)"
         }
       },
       "isRLSEnabled": false
