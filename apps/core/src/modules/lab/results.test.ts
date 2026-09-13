@@ -71,14 +71,18 @@ describe("lab results — entry (17b T6)", () => {
   /** Order → label → draw → RECEIVE: the triple 17a §6.2 hands over, built by 17a's own writers. */
   async function resultable(
     codes: readonly string[],
-    opts: { reflexConsent?: boolean; at?: Date; receiveTube?: boolean } = {},
+    opts: {
+      reflexConsent?: boolean; at?: Date; receiveTube?: boolean;
+      /** A visit other than `fx.encounterNo` — for a fixture that orders the SAME panel again. */
+      encounterNo?: string;
+    } = {},
   ): Promise<Resultable> {
     const now = opts.at ?? new Date();
     const serviceIds = codes.map((c) => serviceIdForLabCode(c));
     const warnings = await withTx(db, (tx) =>
       duplicateWarnings(tx, fx.desk.actor, fx.patientId, serviceIds, now));
     const placed = await withTx(db, (tx) => deskOrder(tx, fx.desk.actor, fx.decls, {
-      patientId: fx.patientId, encounterNo: fx.encounterNo, serviceDate: fx.serviceDate,
+      patientId: fx.patientId, encounterNo: opts.encounterNo ?? fx.encounterNo, serviceDate: fx.serviceDate,
       orderingClinicianId: fx.pathologist.id,
       items: serviceIds.map((serviceId) => ({ serviceId })),
       credit: { reason: "counter order" },
@@ -179,14 +183,20 @@ describe("lab results — entry (17b T6)", () => {
     const t1 = new Date("2026-08-30T05:00:00Z");
     const t2 = new Date("2026-08-30T06:00:00Z");
 
-    const first = await resultable(["RFT"], { at: t0 });
+    /*
+      A REPEAT CREATININE IS A FRESH ACT THE HOSPITAL BILLS, so these are three visits and not one
+      — the owner's ruling of 2026-09-13, and what the fixture was always describing. The delta is
+      computed over the PATIENT's history and its 168-hour window, neither of which the encounter
+      touches, so every assertion below is unchanged by the split.
+    */
+    const first = await resultable(["RFT"], { at: t0, encounterNo: fx.newVisit() });
     const entered0 = await enterResult(db, fx.bench.actor, {
       orderItemId: first.itemIds[0]!, analyteId: crea, value: "0.9", entryMode: "manual",
     }, t0);
     await verifyResult(db, fx.pathologist.actor, fx.decls, { resultId: entered0.resultId }, t0);
 
     /** A SECOND, MORE RECENT prior — keyed, never signed. The mutant compares against this one. */
-    const second = await resultable(["RFT"], { at: t1 });
+    const second = await resultable(["RFT"], { at: t1, encounterNo: fx.newVisit() });
     await enterResult(db, fx.bench.actor, {
       orderItemId: second.itemIds[0]!, analyteId: crea, value: "4.2", entryMode: "manual",
     }, t1);

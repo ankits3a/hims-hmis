@@ -72,11 +72,23 @@ describe("the verify seat's previous value (17c T4)", () => {
   it("previous is the last VERIFIED TSH, never a later UNVERIFIED one; the TAT target follows the priority", async () => {
     await grantLabResultPermissions(db, fx);
     const t0 = new Date("2026-08-29T04:00:00Z");
+    /*
+      THREE TSHs A WEEK APART ARE THREE VISITS, and this fixture used to put all three on one
+      encounter. That is not a detail of the guard FD-27 added — it is what the fixture was always
+      describing: a patient does not come in last week, yesterday and today on one token, one
+      receipt and one prescription. `newVisit()` is the owner's own remedy (2026-09-13) and the
+      assertion below is untouched by it: `previousVerified` keys on the CANONICAL PATIENT, not on
+      the encounter, which is exactly the property D11 exists to hold.
+    */
     // 1. Signed last week: TSH 5.5 — the comparison the pathologist wants.
-    await runLabOrder(db, fx, ["TSH"], { at: new Date(t0.getTime() - 7 * 86_400_000), values: { TSH: "5.5" } });
+    await runLabOrder(db, fx, ["TSH"], {
+      at: new Date(t0.getTime() - 7 * 86_400_000), values: { TSH: "5.5" }, encounterNo: fx.newVisit(),
+    });
     // 2. Keyed yesterday and NEVER signed: 4.0 — the mutant's answer (latest by entered_at).
-    await runLabOrder(db, fx, ["TSH"], { at: new Date(t0.getTime() - 86_400_000), values: { TSH: "4.0" }, verify: false });
-    // 3. Today, on the pathologist's queue.
+    await runLabOrder(db, fx, ["TSH"], {
+      at: new Date(t0.getTime() - 86_400_000), values: { TSH: "4.0" }, verify: false, encounterNo: fx.newVisit(),
+    });
+    // 3. Today, on the pathologist's queue — the visit the fixture already had.
     const today = await runLabOrder(db, fx, ["TSH"], { at: t0, values: { TSH: "3.0" }, verify: false });
 
     const queue = await verifyWorklist(db, fx.pathologist.actor);
