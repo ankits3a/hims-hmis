@@ -403,12 +403,19 @@ describe("opd lifecycle e2e (HTTP + WebSocket)", () => {
 
     // (b) a skip re-queues with eligibleAt = now — behind the walk-in in time, still ahead of it in CLASS
     const entryId = (firstCall.body.entry as EntryWire).id;
-    const skipped = await http().post(`/opd/queues/entries/${entryId}/skip`).set(...auth(dra.token)).expect(201);
+    // A REASON IS PART OF THE ROUTE NOW (owner, 2026-09-13): an empty body is a 400 here, which is
+    // the point — a skip that says nothing is the state that change ended. The reason rides the
+    // event, so the hall's own frame carries why the token was passed over.
+    await http().post(`/opd/queues/entries/${entryId}/skip`).set(...auth(dra.token)).send({}).expect(400);
+    const skipped = await http().post(`/opd/queues/entries/${entryId}/skip`)
+      .set(...auth(dra.token)).send({ reason: "at_billing", note: "counter 2" }).expect(201);
     expect((skipped.body.entry as EntryWire).status).toBe("waiting");
     expect((skipped.body.entry as EntryWire).skips).toBe(1);
     const skipFrame = await queueStream.expect(isEvent("queue.skipped", `queue:${dra.doctorId}:${today}`));
-    expect((skipFrame.payload as { tokenNo: number; left: boolean }).tokenNo).toBe(1);
-    expect((skipFrame.payload as { tokenNo: number; left: boolean }).left).toBe(false);
+    expect((skipFrame.payload as { tokenNo: number; left: boolean; reason: string; note: string | null }).tokenNo).toBe(1);
+    expect((skipFrame.payload as { tokenNo: number; left: boolean; reason: string; note: string | null }).left).toBe(false);
+    expect((skipFrame.payload as { tokenNo: number; left: boolean; reason: string; note: string | null }).reason).toBe("at_billing");
+    expect((skipFrame.payload as { tokenNo: number; left: boolean; reason: string; note: string | null }).note).toBe("counter 2");
 
     const secondCall = await http().post(`/opd/queues/${sessionId}/call-next`).set(...auth(dra.token)).expect(201);
     expect((secondCall.body.entry as EntryWire).tokenNo).toBe(1); // the eligibleAt reset does NOT demote class 0

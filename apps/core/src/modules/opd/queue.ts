@@ -243,19 +243,49 @@ export async function undoSkip(db: Db, actor: Actor, entryId: string, now: Date 
   return withTx(db, async (tx) => {
     const current = (await tx.select().from(opdQueueEntries).where(eq(opdQueueEntries.id, entryId)))[0];
     if (!current) throw new OpdError("unknown_queue_entry", `unknown queue entry ${entryId}`);
-    if (current.skippedAt === null) throw new OpdError("queue_entry_state_conflict", "this token has no skip to undo");
     if (current.status !== "waiting" && current.status !== "left") {
       throw new OpdError("queue_entry_state_conflict", `an undo needs a waiting or left entry, not ${current.status}`);
+    }
+    /*
+      ═══ A ROW THAT FELL OUT IS RECOVERABLE WHETHER OR NOT IT SAYS WHY ═══
+
+      Found by walking the owner's own data in a browser, and it is the difference between a guard
+      on the RIGHT property and a guard on the adjacent one. The first draft refused any entry
+      without a standing skip mark — and the patient this whole change exists for, skipped three
+      times on the build BEFORE `skip_reason` existed, is exactly that: `left`, no reason, visit
+      open. The one row the fix was written for was the one row it refused.
+
+      `left` IS ITS OWN EVIDENCE. A token does not reach it by any road but the skip cap, so the
+      reason column being empty says the skip predates this column — never that nothing happened.
+      A `waiting` row is different: without a mark there is genuinely no skip to take back, and
+      saying so is better than silently decrementing a counter.
+    */
+    if (current.skippedAt === null && current.status !== "left") {
+      throw new OpdError("queue_entry_state_conflict", "this token has no skip to undo");
     }
     const skippedAt = current.skippedAt;
     const updated = await tx.update(opdQueueEntries)
       .set({
-        status: "waiting", skips: Math.max(0, current.skips - 1), eligibleAt: current.preSkipEligibleAt,
+        status: "waiting", skips: Math.max(0, current.skips - 1),
+        /*
+          THE TURN COMES BACK, and on a `left` row it never left: `skipCalled` moves `eligible_at`
+          to now only when the token stays in the queue (`left ? current.eligibleAt : now`), so a
+          row that fell out still carries the turn it arrived with. An unmarked one therefore keeps
+          what it has, and a marked one gets back what the skip took.
+        */
+        eligibleAt: skippedAt === null ? current.eligibleAt : current.preSkipEligibleAt,
         skipReason: null, skipNote: null, skippedAt: null, skippedBy: null, preSkipEligibleAt: null,
       })
-      // The belt is `skipped_at`, not the status: two doctors undoing the same skip must not both
-      // decrement the counter, and the second one finds the mark already cleared.
-      .where(and(eq(opdQueueEntries.id, entryId), eq(opdQueueEntries.skippedAt, skippedAt))).returning();
+      /*
+        THE BELT IS WHICHEVER FACT THIS UNDO IS ACTING ON. For a marked skip it is `skipped_at`:
+        two doctors undoing the same skip must not both decrement the counter, and the loser finds
+        the mark already cleared. For an unmarked `left` row there is no mark, so the status IS the
+        claim — the loser finds it `waiting` and refuses.
+      */
+      .where(and(
+        eq(opdQueueEntries.id, entryId),
+        skippedAt === null ? eq(opdQueueEntries.status, "left") : eq(opdQueueEntries.skippedAt, skippedAt),
+      )).returning();
     if (updated.length === 0) throw new OpdError("queue_entry_state_conflict", "entry moved concurrently");
     const entry = updated[0]!;
     const session = (await tx.select().from(opdQueueSessions).where(eq(opdQueueSessions.id, entry.sessionId)))[0]!;
@@ -263,7 +293,7 @@ export async function undoSkip(db: Db, actor: Actor, entryId: string, now: Date 
     await appendEvent(tx, queueSkipUndone.make({ actor, patientId: encounter.patientId, encounterId: encounter.id, correlationId: encounter.workflowInstanceId, payload: {
       encounterId: encounter.id, patientId: encounter.patientId, entryId: entry.id, doctorId: session.doctorId, serviceDate: session.serviceDate,
       sessionId: session.id, roomId: session.roomId, tokenNo: entry.tokenNo,
-      skips: entry.skips, reason: current.skipReason, skippedAt: skippedAt.toISOString(),
+      skips: entry.skips, reason: current.skipReason, skippedAt: skippedAt?.toISOString() ?? null,
       undoneAt: now.toISOString(), wasLeft: current.status === "left",
     } }));
     return { entry };

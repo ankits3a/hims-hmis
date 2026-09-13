@@ -160,6 +160,45 @@ describe("opd — why a token was skipped, and taking the skip back", () => {
     expect((await entryOf(a.entryId)).status).toBe("called");
   });
 
+  /**
+   * FOUND BY WALKING THE OWNER'S OWN DATA IN A BROWSER, not by a test: the patient this change
+   * exists for was skipped out of the queue on the build BEFORE `skip_reason` existed, so her row
+   * is `left` with no marks at all — and the first draft of the guard, which required a standing
+   * mark, refused the one row it was written to rescue. `left` is its own evidence: no road but the
+   * skip cap reaches it.
+   */
+  it("S7: a token that fell out before any reason was ever recorded can still be brought back", async () => {
+    const a = await arrive(asha.id, AT(0));
+    await db.update(opdQueueEntries).set({ eligibleAt: AT(0) }).where(eq(opdQueueEntries.id, a.entryId));
+    for (const min of [5, 10, 15]) {
+      await callNext(db, dra.actor, a.sessionId, AT(min));
+      await skipCalled(db, dra.actor, a.entryId, { reason: "absent" }, AT(min + 1));
+    }
+    // the shape a pre-migration row has: left, with every skip column empty
+    await db.update(opdQueueEntries)
+      .set({ skipReason: null, skipNote: null, skippedAt: null, skippedBy: null, preSkipEligibleAt: null })
+      .where(eq(opdQueueEntries.id, a.entryId));
+    expect((await entryOf(a.entryId)).status).toBe("left");
+
+    await undoSkip(db, dra.actor, a.entryId, AT(20));
+
+    const row = await entryOf(a.entryId);
+    /*
+      SHE COMES BACK WHERE SHE FELL OUT, which is AT(11) and not her 09:30 arrival: the first two
+      skips moved her turn (that is what a skip in the queue does), and only the THIRD — the one
+      that ejected her — left `eligible_at` alone. So an unmarked bring-back restores the place she
+      actually held at the moment she left, and claims nothing about the two turns she had already
+      lost fairly. The first draft of this assertion expected AT(0) and was simply wrong about the
+      mechanism.
+    */
+    expect({ status: row.status, skips: row.skips, eligibleAt: row.eligibleAt?.toISOString() })
+      .toEqual({ status: "waiting", skips: 2, eligibleAt: AT(11).toISOString() });
+    const view = (await listQueue(db, dra.actor, dra.doctorId, "2026-08-17", AT(21)))!;
+    expect(view.ordered.map((x) => x.id)).toEqual([a.entryId]);
+    const [e] = await named("queue.skip_undone");
+    expect(e!.payload).toMatchObject({ entryId: a.entryId, wasLeft: true, skippedAt: null, reason: null });
+  });
+
   it("S6: an entry that was never skipped has no skip to take back", async () => {
     const a = await arrive(asha.id, AT(0));
     await expect(undoSkip(db, dra.actor, a.entryId, AT(5))).rejects.toMatchObject({ code: "queue_entry_state_conflict" });

@@ -353,7 +353,8 @@ export const queueSkipUndone = defineEvent("queue.skip_undone", MODULE, z.object
   encounterId: id, patientId: id, entryId: id, ...where,
   skips: z.number().int().nonnegative(), // the counter AFTER the undo
   reason: z.enum(SKIP_REASONS).nullable(), // what the skip being undone had said
-  skippedAt: iso,
+  /** Null when the skip predates `skipped_at` — a `left` row is its own evidence that one happened. */
+  skippedAt: iso.nullable(),
   undoneAt: iso,
   wasLeft: z.boolean(),
 }));

@@ -998,6 +998,12 @@ export function OpdConsult(): React.ReactElement {
     // A skip counts as STANDING only while the token can still be given its turn back: once it is
     // called again the mark is history, and the server refuses the undo for the same reason.
     const skipMark = (mode === "waiting" || mode === "left") && typeof e.skipReason === "string" ? e.skipReason : null;
+    /*
+      THE BUTTON FOLLOWS RECOVERABILITY, NOT THE REASON. A token that fell out is recoverable
+      whether or not it says why — the patient this was written for was skipped before the reason
+      column existed, and keying the button to `skipMark` hid the way back from exactly her.
+    */
+    const recoverable = mode === "left" || skipMark !== null;
     return (
     <li
       key={e.id}
@@ -1050,7 +1056,7 @@ export function OpdConsult(): React.ReactElement {
       {e.skipNote !== null && e.skipNote !== "" && (
         <span data-testid={`queue-skipnote-${e.id}`} style={{ fontSize: 11, color: "var(--faint)" }}>{e.skipNote}</span>
       )}
-      {skipMark !== null && (
+      {recoverable && (
         <button
           type="button" className="sec" data-testid={`queue-undoskip-${e.id}`}
           style={{ padding: "1px 9px", fontSize: 11.5 }}
@@ -1827,7 +1833,7 @@ export function OpdConsult(): React.ReactElement {
           <p style={{ margin: 0, fontSize: 11.5, color: "var(--faint)" }}>{t("opdConsult.skipMistakeHint")}</p>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 7 }}>
             <button type="button" className="sec" style={{ padding: "4px 13px", fontSize: 12.5 }} onClick={() => { setSkipping(null); }}>
-              {t("common.cancel")}
+              {t("opdConsult.cancel")}
             </button>
             <button
               type="button" className="pri" data-testid="skip-confirm"

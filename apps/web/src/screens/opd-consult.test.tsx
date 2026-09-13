@@ -1665,6 +1665,31 @@ describe("OpdConsult — skipping a token, and taking it back", () => {
     await waitFor(() => { expect(callsTo("POST", "/api/opd/queues/entries/qe-left/undo-skip")).toHaveLength(1); });
   });
 
+  /**
+   * THE RAW-KEY SCAN, and it is here because the BROWSER found it and jsdom did not: the dialog's
+   * cancel button read `common.cancel` on screen — a key that does not exist in the bundle, in the
+   * one namespace this screen does not own. A test that never asserts a label cannot see a missing
+   * one, so this one reads the dialog's own text and refuses anything shaped like a key.
+   */
+  it("K6: every label in the skip dialog is translated — no raw i18n keys reach the screen", async () => {
+    mockRoutes(routes());
+    const user = userEvent.setup();
+    renderWithProviders(<OpdConsult />);
+    await screen.findByTestId("queue-row-qe-cur");
+    await user.click(screen.getByRole("button", { name: "Skip" }));
+
+    const dialog = await screen.findByTestId("skip-dialog");
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    /*
+      THE NAMESPACES, not "anything with a dot in it". The first draft of this line was
+      `/\b[a-z][a-zA-Z]*\.[a-zA-Z]/`, which matched the dialog's own English: the rendered text
+      concatenates across elements, so "…on the visit's record." + "Not at the door…" reads as
+      `record.Not`. A raw key is always one of this app's namespaces followed by a key name, and
+      that is a thing prose cannot accidentally be.
+    */
+    expect(dialog.textContent ?? "").not.toMatch(/\b(common|opdConsult|opd|vitalsBay)\.[a-zA-Z]/);
+  });
+
   it("K5: a server refusal lands on the rail and the dialog closes rather than trapping the doctor", async () => {
     mockRoutes(routes({
       "POST /api/opd/queues/entries/qe-cur/skip": {
