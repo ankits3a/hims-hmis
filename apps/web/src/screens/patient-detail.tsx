@@ -15,6 +15,7 @@ import { PatientPhoto } from "../components/patient-photo";
 import { QrCard, type QrCardData } from "../components/qr-card";
 import { PaperScreen } from "../components/paper-screen";
 import { usePatientInHand } from "../lib/patient-in-hand";
+import { ageOf, sexLetter } from "./desk-one/model";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
@@ -73,6 +74,21 @@ type GuardianRow = {
   validTo: string | null;
   status: "active" | "ended" | "majority_ended";
 };
+
+/** FD-34 — `GET /patients/:id/linked` (modules/patients/linked.ts). Dates arrive ISO-serialized. */
+type LinkedRow = {
+  id: string;
+  uhid: string;
+  name: string;
+  phone: string | null;
+  altPhone: string | null;
+  administrativeGender: string;
+  dob: string | null;
+  isConfidential: boolean;
+  registeredOn: string;
+  sharedOn: string[];
+};
+type LinkedWire = { numbers: string[]; items: LinkedRow[]; total: number };
 
 type EffectiveAuthority = { messages: boolean; consents: boolean; dsr: boolean; bills: boolean };
 type GuardianItem = { guardian: GuardianRow; effectiveAuthority: EffectiveAuthority };
@@ -711,6 +727,86 @@ function GuardiansSection({ patient }: { patient: PatientRow }): React.ReactElem
   );
 }
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-34 — THE FAMILY, ON THE RECORD THAT ALREADY KNEW ABOUT IT
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner, 2026-09-13: Ankit's record must name Sunil when they share a mobile, and Sunil's must name
+ * Ankit. The server derives both from one predicate (`modules/patients/linked.ts`), so this screen
+ * renders an answer it cannot get half-right — there is no edge to write, nothing to keep in step,
+ * and the second half of the owner's sentence costs nothing.
+ *
+ * IT SAYS WHAT IT KNOWS AND NOT ONE WORD MORE. "Shares a contact number" — never "wife", never
+ * "son". Nobody has told this system the relationship, and a screen that guesses one gets a clerk
+ * to address a woman at a counter as somebody's daughter-in-law. `patient.guardians` directly above
+ * is where a DECLARED relationship lives, and the two sit next to each other so the difference
+ * between what was recorded and what was inferred is visible in one glance.
+ */
+function LinkedPatientsSection({ patient }: { patient: PatientRow }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const linked = useQuery({
+    queryKey: ["patient-linked", patient.id],
+    queryFn: () => api<LinkedWire>("GET", `/patients/${patient.id}/linked`),
+  });
+
+  // D-34 — a phoneless record is a designed path, and it has nothing to be asked about. The hooks
+  // above run first, unconditionally, so the early return cannot reorder them.
+  if (patient.phone === null && patient.altPhone === null) return null;
+
+  const items = linked.data?.items ?? [];
+  const total = linked.data?.total ?? 0;
+  const beyondCap = total - items.length;
+
+  return (
+    <section className="space-y-2" data-testid="linked-patients">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">{t("patient.linked.title")}</h2>
+        <span style={{ fontSize: 12, color: "var(--dim)" }}>{t("patient.linked.basis")}</span>
+      </div>
+      {items.length === 0 ? (
+        <p data-testid="linked-empty" className="text-sm" style={{ color: "var(--dim)" }}>
+          {t("patient.linked.none")}
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {items.map((row) => (
+            <button
+              key={row.id}
+              type="button"
+              data-testid={`linked-${row.uhid}`}
+              className="flex w-full items-center justify-between rounded border p-3 text-left"
+              onClick={() => { void navigate({ to: "/patients/$patientId", params: { patientId: row.id } }); }}
+            >
+              <span>
+                <span className="font-medium">{row.name}</span>
+                {row.isConfidential && <> <Badge variant="destructive">{t("patient.confidentialBadge")}</Badge></>}
+                <span className="block font-mono text-xs" style={{ color: "var(--dim)" }}>
+                  {ageOf(row.dob) === "" ? "" : `${ageOf(row.dob)} `}{sexLetter(row.administrativeGender)} · {row.uhid}
+                </span>
+              </span>
+              <span className="font-mono text-xs" style={{ color: "var(--dim)" }}>
+                {t("patient.linked.shares", { number: row.sharedOn.join(", ") })}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+      {beyondCap > 0 && (
+        /*
+          A NUMBER SHARED BY THIRTY RECORDS IS NOT A HOUSEHOLD — it is a shop, a PCO, a tout or the
+          hospital's own landline typed into a form. The list is capped at 20 server-side; saying so
+          out loud is what stops a clerk reading the first twenty as "the family".
+        */
+        <p data-testid="linked-beyond-cap" className="text-sm" style={{ color: "var(--dim)" }}>
+          {t("patient.linked.more", { count: beyondCap, total })}
+        </p>
+      )}
+    </section>
+  );
+}
+
 // ——— Card: reprint + reissue (D-23: every previously printed card dies at that moment) ———
 
 function CardSection({ patient }: { patient: PatientRow }): React.ReactElement {
@@ -870,6 +966,7 @@ export function PatientDetail(): React.ReactElement {
           <DemographicsSection patient={patient} />
           <AllergiesSection patientId={patient.id} />
           <GuardiansSection patient={patient} />
+          <LinkedPatientsSection patient={patient} />
           <OptInSection patient={patient} />
         </div>
       </div>

@@ -215,7 +215,15 @@
       "merge_reconciliation": "Settled while resolving a duplicate"
     },
     "askPlaceholder": "ask — \"what is their ABHA?\"",
-    "agentIdle": "I read this patient's record only — UHID, date of birth, contact, ABHA. I cannot look anything else up."
+    "agentIdle": "I read this patient's record only — UHID, date of birth, contact, ABHA. I cannot look anything else up.",
+    "linked": {
+      "title": "Linked patients",
+      "basis": "same contact number",
+      "none": "No other patient is registered on this number.",
+      "shares": "shares {{number}}",
+      "more_one": "{{count}} more record shares this number, {{total}} in all — a number on this many records is usually a shop or a shared line, not one household.",
+      "more_other": "{{count}} more records share this number, {{total}} in all — a number on this many records is usually a shop or a shared line, not one household."
+    }
   },
   "merge": {
     "title": "Merge review",

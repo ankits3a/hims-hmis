@@ -15,6 +15,8 @@ import { listPatientCoverages } from "./coverages";
 import type { CoverageRow } from "./coverages";
 import { getPatient, registerPatient, updatePatient } from "./registration";
 import { nearMatches } from "./duplicates";
+import { linkedPatients } from "./linked";
+import type { LinkedPatients } from "./linked";
 import { abhaCapability } from "./abdm";
 import type { AbhaCapability } from "./abdm";
 import { AMENDMENT_REASONS, IDENTITY_ASSURANCE, touchesIdentity, upgradeAssurance } from "./identity";
@@ -523,6 +525,26 @@ export class PatientsController {
   @Get(":id/coverages")
   async coverages(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ items: CoverageRow[] }> {
     return { items: await listPatientCoverages(this.db, actor, id) };
+  }
+
+  /**
+   * ═══ FD-34 — WHO ELSE IS REGISTERED ON THIS PERSON'S MOBILE ═══
+   *
+   * `patients.read`, the same grant the record itself needs, and deliberately not a new permission:
+   * every name this returns is a name the SAME actor can already reach by typing the number into
+   * the search box on the next screen. A second grant would gate the convenience without gating the
+   * disclosure, which is the shape of a control that only looks like one.
+   *
+   * The reader carries the seal, the merge chain, the cap and the audit row — see `linked.ts`.
+   */
+  @RequirePermission("patients.read", "hospital")
+  @Get(":id/linked")
+  async linked(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<LinkedPatients> {
+    try {
+      return await linkedPatients(this.db, actor, id);
+    } catch (e) {
+      toHttp(e);
+    }
   }
 
   @RequirePermission("patients.read", "hospital")
