@@ -6,8 +6,8 @@ import {
 import { mkUser } from "../../../test/helpers/opd";
 import { withTx } from "../../kernel/db/client";
 import {
-  events, labAnalytes, labCriticalCalls, labReferenceRanges, labResults, orderItems, patients,
-  workflowInstances,
+  events, labAnalytes, labCriticalCalls, labReferenceRanges, labResults, labSpecimens, orderItems,
+  patients, workflowInstances,
 } from "../../kernel/db/schema";
 import { receive } from "./accession";
 import { collect } from "./collection";
@@ -16,7 +16,9 @@ import { duplicateWarnings } from "./duplicates";
 import { enterResult, requestRerun } from "./results";
 import { printLabels } from "./specimens";
 import { verifyResult } from "./verify";
-import { amendResult } from "./results";
+import { amendResult, deferNearMiss, flushNearMiss, liveRowsFor } from "./results";
+import { labTubeSwapSuspected } from "./events";
+import { LabError } from "./errors";
 import type { LabDeskFixture } from "../../../test/helpers/lab";
 import type { Db } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
@@ -624,6 +626,121 @@ describe("lab results — entry (17b T6)", () => {
     const flagged = await eventsNamed("lab.result_critical_flagged");
     expect(flagged).toHaveLength(1);
     expect(flagged[0]!.payload).toMatchObject({ value: "6.9", band: "high" });
+  });
+
+  /**
+   * ═══ A SECOND AMENDMENT OF THE SAME SIGNED ROW LEAVES A REPORT WITH TWO ANSWERS ═══
+   *
+   * `amendResultInTx` guards on the prior being SIGNED (`report_not_amendable` for an unverified
+   * one) and **never on the prior still being LIVE.** So two amendments naming the same
+   * `resultId` write two rows that both carry `supersedes_result_id = prior.id`:
+   *
+   *     prior (superseded)     A  supersedes=prior, VERIFIED     B  supersedes=prior, VERIFIED
+   *
+   * `liveRowsFor` excludes only `prior` — the superseded set is the ids rows NAME, and nobody names
+   * A or B. **Two live verified rows for one analyte**, which is exactly the state
+   * `lab_results_one_choice_idx` exists to prevent, arriving through the one path the rerun-choice
+   * rule never touches. There is no unique index on `supersedes_result_id` to stop it.
+   *
+   * **And it is unreconcilable once it exists.** `chooseReportedResult` refuses `rerun_choice_final`
+   * the moment any live row is verified, so the bench cannot pick between them; `reports.ts` takes
+   * the last VERIFIED row by `verified_at` and prints whichever amendment happened to be second.
+   * A clinician reads one number and the laboratory holds two, with nothing marking the other as
+   * withdrawn.
+   *
+   * The refusal is `result_superseded` — deliberately the SAME code `chooseReportedResult` already
+   * raises for this shape, because it is the same fact about the same column. Re-pointing the
+   * amendment at the live row instead would be worse than refusing: `prior` supplies the range, the
+   * unit and the entry mode, so the caller would be amending a row they never read.
+   */
+  it("A15: a signed row may be amended ONCE — a second amendment of the same row is refused", async () => {
+    const { itemIds } = await resultable(["RFT"]);
+    const k = await analyteIdFor("K");
+    const entered = await enterResult(db, fx.bench.actor, {
+      orderItemId: itemIds[0]!, analyteId: k, value: "4.2", entryMode: "manual",
+    });
+    await verifyResult(db, fx.pathologist.actor, fx.decls, { resultId: entered.resultId });
+
+    /** The correction the pathologist meant to make. */
+    const first = await amendResult(db, fx.pathologist.actor, {
+      resultId: entered.resultId, value: "5.0",
+    });
+
+    /** The same row again — a retry, a second reader, or somebody working from the printed report. */
+    await expect(amendResult(db, fx.pathologist.actor, {
+      resultId: entered.resultId, value: "5.5",
+    })).rejects.toMatchObject({ code: "result_superseded" });
+
+    /**
+     * **THE STATE THAT MATTERS**, asserted through the helper the report and the verifier both read
+     * rather than by counting rows: exactly ONE live value, and it is the first amendment.
+     */
+    const rows = await db.select().from(labResults).where(eq(labResults.analyteId, k));
+    expect(rows).toHaveLength(2);
+    const live = liveRowsFor(rows, k);
+    expect(live.map((r) => [r.id, r.valueNumeric])).toEqual([[first.resultId, "5.0000"]]);
+
+    /** And the amendment that WAS allowed is still amendable — the chain continues from the live row. */
+    const second = await amendResult(db, fx.pathologist.actor, {
+      resultId: first.resultId, value: "5.5",
+    });
+    expect(liveRowsFor(await db.select().from(labResults).where(eq(labResults.analyteId, k)), k)
+      .map((r) => [r.id, r.valueNumeric])).toEqual([[second.resultId, "5.5000"]]);
+  });
+
+  /**
+   * ═══ A FAILING AUDIT WRITE MUST NOT REPLACE THE REFUSAL IT WAS RECORDING ═══
+   *
+   * `flushNearMiss`'s own docstring says *"Never masks the original failure"*, and against the code
+   * this guards it does exactly that. Every one of its four call sites has the shape
+   *
+   *     catch (e) { await flushNearMiss(db, e); throw e; }
+   *
+   * so if the deferred `withTx` throws — the audit connection is gone, the pool is exhausted, the
+   * events table is locked — **that throw escapes before `throw e` is ever reached.** The caller
+   * receives the audit transaction's error instead of `analyte_not_applicable`, which is the one
+   * refusal on the bench that names another patient's tube; the technologist is shown a database
+   * error about a swap they are never told to look for. And the near-miss is lost anyway, so the
+   * NABL record the deferral exists to preserve is gone in the bargain.
+   *
+   * Both halves of the promise fail together, which is the tell: a best-effort write that can take
+   * the caller's error down with it is not best-effort, it is a second point of failure wearing the
+   * word. Swallowed the way `kernel/phi/audit.ts` swallows its own, for the same reason — the act
+   * being recorded is the priority, and a record that cannot be written must not become the answer.
+   */
+  it("A16: an audit write that FAILS does not swallow the refusal it was recording", async () => {
+    const { itemIds } = await resultable(["RFT"]);
+    const k = await analyteIdFor("K");
+    const [item] = await db.select().from(orderItems).where(eq(orderItems.id, itemIds[0]!));
+    const [specimen] = await db.select().from(labSpecimens).limit(1);
+
+    /** A real deferred near-miss, built the way the swap path builds it. */
+    const refusal = new LabError("analyte_not_applicable", "this analyte is not reported for this patient");
+    deferNearMiss(refusal, labTubeSwapSuspected.make({
+      actor: fx.bench.actor,
+      patientId: fx.patientId,
+      correlationId: item!.orderId,
+      payload: {
+        orderItemId: itemIds[0]!, orderGroupId: item!.orderId, analyteId: k,
+        specimenId: specimen!.id, siblingSpecimenIds: [], breach: "sex",
+        raisedBy: fx.bench.actor.id, overridden: false,
+      },
+    }));
+
+    /** The audit connection is gone. `withTx` is `db.transaction(fn)` and this one refuses. */
+    const brokenDb = {
+      transaction: () => Promise.reject(new Error("audit db down")),
+    } as unknown as Db;
+
+    /**
+     * **THE KILL.** It must RESOLVE. A rejection here is the caller's `throw e` never running, and
+     * the bench reading "audit db down" where the refusal should have been.
+     */
+    await expect(flushNearMiss(brokenDb, refusal)).resolves.toBeUndefined();
+
+    /** And a working db still writes it — the catch must not have turned the flush into a no-op. */
+    await flushNearMiss(db, refusal);
+    expect(await eventsNamed("lab.tube_swap_suspected")).toHaveLength(1);
   });
 
   /* ═══════════════════════ the item's own machine, and the rerun ═══════════════════════ */
