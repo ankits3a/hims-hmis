@@ -1178,6 +1178,15 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
               )}
             </div>
 
+            {/*
+              FD-36 — "ON THEIR ACCOUNT" HAS NO ANTECEDENT WHILE TWO PEOPLE ARE ON THE SCREEN.
+
+              Found by screenshotting the refusal rather than by the test: the panel above had
+              stopped naming anybody, and a money figure was still sitting under the word "their".
+              It is the picked patient's balance, which is the SAME half-rendering the visit card
+              was — one person's fact drawn where the screen has refused to say who it is about.
+            */}
+            {conflict !== null ? null : (
             <div className="box" style={{ padding: 14 }}>
               <span className="tag">{t("billingSeat.rail.onTheirAccount")}</span>
               <div data-testid="dues-sidebar" style={{ marginTop: 9, display: "flex", flexDirection: "column", gap: 5 }}>
@@ -1254,6 +1263,7 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
                 ))}
               </div>
             </div>
+            )}
 
             <div className="box" style={{ padding: 14 }}>
               <label className="tag" htmlFor="counter-encounter" style={{ display: "block", marginBottom: 5 }}>

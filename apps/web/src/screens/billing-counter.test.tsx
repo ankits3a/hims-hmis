@@ -1757,6 +1757,12 @@ describe("BillingCounter", () => {
     expect(screen.queryByTestId("paying-name")).toBeNull();
     expect(screen.queryByTestId("fee-branch")).toBeNull();
     expect(screen.queryByTestId("fee-amount")).toBeNull();
+    /*
+      …and no money under the word "their". FOUND BY SCREENSHOTTING THE REFUSAL, not by this test:
+      the account box kept rendering the PICKED patient's balance under a heading that had stopped
+      naming anybody. Same half-rendering as the visit card, one box lower.
+    */
+    expect(screen.queryByTestId("dues-sidebar")).toBeNull();
 
     /* And no bill can leave while it stands — asserted by the absence of a POST, not by the copy. */
     await clickIssue(user);
