@@ -10,6 +10,7 @@ CREATE TABLE "formulary_generics" (
 	"id" text PRIMARY KEY NOT NULL,
 	"sctid" text NOT NULL,
 	"name" text NOT NULL,
+	"name_normalized" text NOT NULL,
 	"dose_form" text NOT NULL,
 	"route_of_administration" text NOT NULL,
 	"composition_summary" text,
@@ -46,6 +47,7 @@ ALTER TABLE "formulary_generic_substances" ADD CONSTRAINT "formulary_generic_sub
 ALTER TABLE "formulary_generic_substances" ADD CONSTRAINT "formulary_generic_substances_substance_id_formulary_substances_id_fk" FOREIGN KEY ("substance_id") REFERENCES "public"."formulary_substances"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "formulary_substances" ADD CONSTRAINT "formulary_substances_salt_id_formulary_salts_id_fk" FOREIGN KEY ("salt_id") REFERENCES "public"."formulary_salts"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "formulary_generics_sctid_ux" ON "formulary_generics" USING btree ("sctid");--> statement-breakpoint
+CREATE INDEX "formulary_generics_name_norm_idx" ON "formulary_generics" USING btree (lower("name_normalized"));--> statement-breakpoint
 CREATE UNIQUE INDEX "formulary_substances_sctid_ux" ON "formulary_substances" USING btree ("sctid");--> statement-breakpoint
 CREATE UNIQUE INDEX "formulary_substances_name_lower_ux" ON "formulary_substances" USING btree (lower("name"));--> statement-breakpoint
 CREATE INDEX "formulary_substances_salt_idx" ON "formulary_substances" USING btree ("salt_id");--> statement-breakpoint

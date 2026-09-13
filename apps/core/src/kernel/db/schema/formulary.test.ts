@@ -39,7 +39,7 @@ const CENSUS: Record<string, string[]> = {
   formulary_medicine_salts: ["medicine_id", "salt_id", "source", "strength"],
   formulary_interactions: ["active", "created_at", "created_by", "id", "note", "route_scope", "salt_a_id", "salt_b_id", "severity", "source", "updated_at", "updated_by"],
   formulary_staging: ["id", "kind", "medicine_id", "mined_at", "name", "payload", "reviewed_at", "reviewed_by", "source_url", "status"],
-  formulary_generics: ["active", "composition_summary", "created_at", "created_by", "dose_form", "id", "name", "route_of_administration", "sctid", "source", "updated_at", "updated_by"],
+  formulary_generics: ["active", "composition_summary", "created_at", "created_by", "dose_form", "id", "name", "name_normalized", "route_of_administration", "sctid", "source", "updated_at", "updated_by"],
   formulary_generic_substances: ["generic_id", "strength", "substance_id", "unit"],
   formulary_substances: ["active", "created_at", "created_by", "id", "mapped_at", "mapped_by", "mapping_status", "name", "salt_id", "sctid", "source", "synonyms", "updated_at", "updated_by"],
 };

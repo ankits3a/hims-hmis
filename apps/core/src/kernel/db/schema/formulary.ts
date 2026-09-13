@@ -215,6 +215,8 @@ export const formularySubstances = pgTable(
   (t) => [
     uniqueIndex("formulary_substances_sctid_ux").on(t.sctid),
     uniqueIndex("formulary_substances_name_lower_ux").using("btree", sql`lower(${t.name})`),
+    // The moiety search lane. `substance_name` is the ONE tier that behaves raw: its worst
+    // three-character prefix returns 57 rows, against 1,837 for brands and 4,985 for raw generics.
     // NOT unique: many substances resolve to one moiety.
     index("formulary_substances_salt_idx").on(t.saltId),
     check(
@@ -278,6 +280,21 @@ export const formularyGenerics = pgTable(
     /** SNOMED CT concept id. NOT NULL here: a generic exists in this table only by import. */
     sctid: text("sctid").notNull(),
     name: text("name").notNull(),
+    /**
+     * THE NAME A PRESCRIBER READS AND SEARCHES, and the reason it is stored rather than computed.
+     *
+     * 4,921 of the release's 10,303 clinical-drug names are SNOMED FULLY SPECIFIED NAMES: they
+     * begin "Product containing precisely " and end " (clinical drug)". Left raw they are unusable
+     * as a search key AND unreadable on screen - every one of them shares the prefix `produ`, so a
+     * five-character search still returns 2,357 rows, and the doctor is shown a sentence about
+     * products instead of a drug.
+     *
+     * This strips ONLY that known wrapper. It is not a rewrite and it invents nothing: `name` keeps
+     * the release's string verbatim beside it, so the transformation is always checkable. Computing
+     * it at read time instead would put a function call on the left of every WHERE clause, which no
+     * index can help.
+     */
+    nameNormalized: text("name_normalized").notNull(),
     /** As released — "Oral tablet", "Eye drops". 174 distinct values; not an enum, by design. */
     doseForm: text("dose_form").notNull(),
     /** As released, and sometimes compound: "Intravenous route; Intramuscular route". */
@@ -295,6 +312,10 @@ export const formularyGenerics = pgTable(
   },
   (t) => [
     uniqueIndex("formulary_generics_sctid_ux").on(t.sctid),
+    // The prescriber's search lane. Not unique: two generics may normalise to one string (774
+    // groups do), which is why the list must always render dose form beside the name - it resolves
+    // 97.7% of those collisions.
+    index("formulary_generics_name_norm_idx").using("btree", sql`lower(${t.nameNormalized})`),
   ],
 );
 

@@ -1,5 +1,5 @@
 {
-  "id": "3bcf698e-29af-4279-a439-1697303ab3fc",
+  "id": "cc23012e-e99e-4742-a742-4d8476d34b25",
   "prevId": "2413543d-ee2d-497d-8fa0-94c4073ba01f",
   "version": "7",
   "dialect": "postgresql",
@@ -11799,6 +11799,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "name_normalized": {
+          "name": "name_normalized",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "dose_form": {
           "name": "dose_form",
           "type": "text",
@@ -11869,6 +11875,21 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "formulary_generics_name_norm_idx": {
+          "name": "formulary_generics_name_norm_idx",
+          "columns": [
+            {
+              "expression": "lower(\"name_normalized\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}

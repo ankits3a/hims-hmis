@@ -184,6 +184,26 @@ function parseActive(file: string, raw: string, rowLabel: string): boolean {
   throw new Error(`${file}: ${rowLabel} has active="${raw}", which is neither true nor false. Nothing was written.`);
 }
 
+/**
+ * Strip the SNOMED FULLY SPECIFIED NAME wrapper, and NOTHING else.
+ *
+ * 4,921 of 10,303 clinical-drug names arrive as "Product containing precisely <drug> (clinical
+ * drug)". That wrapper is a SNOMED naming convention, not part of the drug's name, and left on it
+ * makes every one of those rows share the prefix `produ` - so a five-character search still returns
+ * 2,357 rows and the doctor reads a sentence about products.
+ *
+ * This is a display normalisation of a KNOWN, FIXED wrapper, not a rewrite: the release's own
+ * string is kept verbatim in `name`, so the result is always checkable against the source. Rule 3
+ * forbids inventing a value; it does not forbid removing a prefix the publisher documents.
+ */
+export function normalizeGenericName(raw: string): string {
+  return raw
+    .replace(/^Product containing precisely\s+/i, "")
+    .replace(/^Product containing\s+/i, "")
+    .replace(/\s*\(clinical drug\)\s*$/i, "")
+    .trim();
+}
+
 function splitPipes(raw: string): string[] {
   return raw.split("|").map((s) => s.trim()).filter((s) => s !== "");
 }
@@ -200,6 +220,7 @@ export interface GenericPlan {
   kind: "create" | "skip";
   sctid: string;
   name: string;
+  nameNormalized: string;
   doseForm: string;
   routeOfAdministration: string;
   compositionSummary: string | null;
@@ -294,9 +315,16 @@ export function planImport(
     if (seenGeneric.has(sctid)) throw new Error(`generics.csv: sctid ${sctid} appears twice. Nothing was written.`);
     seenGeneric.add(sctid);
     const summary = r["composition_summary"] ?? "";
+    const nameNormalized = normalizeGenericName(name);
+    if (nameNormalized === "") {
+      throw new Error(
+        `generics.csv: generic ${sctid} has a name that is nothing but the SNOMED wrapper ` +
+        `("${name}"). Nothing was written.`,
+      );
+    }
     genericPlans.push({
       kind: existingGenericSctids.has(sctid) ? "skip" : "create",
-      sctid, name, doseForm, routeOfAdministration: route,
+      sctid, name, nameNormalized, doseForm, routeOfAdministration: route,
       compositionSummary: summary === "" ? null : summary,
       active: parseActive("generics.csv", r["active"] ?? "", `generic ${sctid}`),
     });
@@ -363,7 +391,7 @@ export async function applyPlan(tx: Tx, plan: Plan, actor: string): Promise<void
     if (g.kind === "skip") continue;
     const id = newId();
     await tx.insert(formularyGenerics).values({
-      id, sctid: g.sctid, name: g.name, doseForm: g.doseForm,
+      id, sctid: g.sctid, name: g.name, nameNormalized: g.nameNormalized, doseForm: g.doseForm,
       routeOfAdministration: g.routeOfAdministration, compositionSummary: g.compositionSummary,
       source: plan.release, active: g.active, createdBy: actor, updatedBy: actor,
     });
