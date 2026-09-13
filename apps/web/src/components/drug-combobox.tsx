@@ -146,9 +146,19 @@ export function DrugCombobox({
           role="listbox"
           aria-label={label}
           style={{
-            position: "absolute", zIndex: 20, left: 0, right: 0, margin: 0, padding: 0,
-            listStyle: "none", maxHeight: 260, overflowY: "auto",
+            position: "absolute", zIndex: 20, left: 0, margin: 0, padding: 0,
+            listStyle: "none", maxHeight: 280, overflowY: "auto",
             background: "#fff", border: "1px solid #d4d4d8", borderRadius: 4,
+            boxShadow: "0 4px 12px rgba(0,0,0,.10)",
+            /*
+              THE LIST IS WIDER THAN ITS INPUT, AND A BROWSER WALK IS WHAT FOUND THAT.
+              The Drug field sits in a five-column prescription row about 170px wide. Inheriting
+              that width (`right: 0`) wrapped every row onto two or three lines —
+              "Amlodipine (as amlodipine / maleate) 5 mg oral tablet" — which is correct, passes
+              every jsdom test, and is miserable to scan at a counter. Clinical drug names carry
+              molecule, salt form, strength and form, so they need the room.
+            */
+            minWidth: 460, maxWidth: "min(620px, 92vw)", width: "max-content",
           }}
         >
           {items.length === 0 && (
@@ -176,8 +186,9 @@ export function DrugCombobox({
               }}
               onMouseEnter={() => { setActive(i); }}
               style={{
-                padding: "6px 8px", cursor: "pointer", fontSize: 13,
+                padding: "6px 10px", cursor: "pointer", fontSize: 13, lineHeight: 1.35,
                 background: i === active ? "#eef2ff" : "transparent",
+                borderBottom: "1px solid #f4f4f5",
               }}
             >
               <div style={{ fontWeight: 500 }}>{hit.name}</div>
