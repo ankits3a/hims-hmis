@@ -147,7 +147,23 @@ export type WireQueueEntry = {
    * a reader asks both questions: a held patient is `status === "in_consult" && parkedAt !== null`.
    */
   parkedAt: string | null; parkedBy: string | null;
+  /**
+   * WHY THIS TOKEN WAS PASSED OVER, and when (2026-09-13). Null on a row that has never been
+   * skipped, and null again the moment a skip is undone — "was skipped once and got it back" is a
+   * fact about the DAY, which lives in the event log; this pair says only whether a skip is
+   * STANDING, which is the question the rail asks to decide whether to offer the way back.
+   */
+  skipReason: WireSkipReason | null; skipNote: string | null; skippedAt: string | null;
 };
+
+/**
+ * The five reasons an OPD token is passed over, plus `other` — mirrored from
+ * `apps/core/src/modules/opd/skip-reasons.ts`, which the route's zod enum reads. Coded and never
+ * free text, because a coded reason can be counted: "how many turns were lost to the billing queue
+ * this month" is a question the hospital gets to ask of its own day.
+ */
+export const SKIP_REASONS = ["absent", "stepped_out", "at_billing", "at_investigation", "not_ready", "other"] as const;
+export type WireSkipReason = (typeof SKIP_REASONS)[number];
 
 /** A queue row as the desk and the consultation screen read it: the row plus the engine's verdict. */
 export type WireQueueEntryView = WireQueueEntry & {
@@ -189,7 +205,10 @@ export type WirePriceListRow = {
 
 export type WireQueueView = {
   session: WireQueueSession; doctor: WireDoctor; ordered: WireQueueEntryView[];
-  current: WireQueueEntryView | null; inConsult: WireQueueEntryView[]; waitingVitals: number;
+  current: WireQueueEntryView | null; inConsult: WireQueueEntryView[];
+  /** The tokens that fell out after the skip cap — newest first. `counts.left` counts them; this names them. */
+  left: WireQueueEntryView[];
+  waitingVitals: number;
   counts: { waiting: number; called: number; inConsult: number; done: number; left: number };
 };
 

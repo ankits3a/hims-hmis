@@ -20,6 +20,9 @@ export const OPD_REALTIME_NAMES = [
   // doctor-day, so a patient held aside is visible to the desk that is about to be asked where
   // they went — and to the doctor's own second tab.
   "consultation.parked", "consultation.resumed",
+  // The skip and its undo (2026-09-13): a token that lost its turn — or got it back — is a change
+  // every screen watching this doctor-day is showing a stale answer to until it repaints.
+  "queue.skip_undone",
   // RC-1 T3 — the board flip: UNPAID → PAID on the seat and the hall, without a poll.
   "queue.fee_status_changed",
   // VD-1 T3 — the danger protocol. `queue.escalated` IS the doctor-board flash: it rides the same

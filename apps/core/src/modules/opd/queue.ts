@@ -11,8 +11,9 @@ import type { FeeStatusVia } from "../billing";
 import { loadOpdConfig } from "./config";
 import { getEncounter, joinQueueInTx } from "./encounters";
 import { OpdError } from "./errors";
-import { queueCalled, queueFeeStatusChanged, queueSkipped } from "./events";
+import { queueCalled, queueFeeStatusChanged, queueSkipUndone, queueSkipped } from "./events";
 import { classOf, nextInQueue, orderQueue } from "./queue-engine";
+import type { SkipReason } from "./skip-reasons";
 import { istDate, istWeekday } from "./time";
 import type { OpdConfig } from "./config";
 import type { EncounterRow, QueueEntryRow } from "./encounters";
@@ -21,6 +22,8 @@ import type { QueueClass, QueueEntryState } from "./queue-engine";
 import type { SessionRow, SessionStatus } from "./sessions";
 import type { PatientSummary } from "../patients";
 import type { Db, Tx } from "../../kernel/db/client";
+
+export type SkipInput = { reason: SkipReason; note?: string | null };
 
 /** Entry statuses that still occupy the doctor's day. */
 const LIVE_ENTRY_STATUSES = ["waiting_vitals", "waiting", "called", "in_consult"] as const;
@@ -66,6 +69,20 @@ export type QueueEntryView = QueueEntryRow & {
 };
 export type QueueView = {
   session: SessionRow; doctor: DoctorRow; ordered: QueueEntryView[]; current: QueueEntryView | null; inConsult: QueueEntryView[];
+  /**
+   * ═══ THE ROWS THAT FELL OUT — ADDED 2026-09-13, AND THEY WERE VISIBLE NOWHERE ═══
+   *
+   * A token skipped `max_skips_before_left` times becomes `left`, and until this field existed the
+   * view carried the COUNT of them and not one identity. `left` is rendered by no screen in this
+   * application, so a patient whose visit is still open — measured: `left` entry, `waiting`
+   * encounter — was callable by nobody and findable by nobody. The count said "1" and could not say
+   * who.
+   *
+   * They are ordered newest-first: a doctor looking for the patient they just lost is looking for
+   * the most recent one, and the list is naturally short (each row is a patient who was called
+   * three times and did not come).
+   */
+  left: QueueEntryView[];
   waitingVitals: number; counts: { waiting: number; called: number; inConsult: number; done: number; left: number };
 };
 
@@ -111,6 +128,9 @@ export async function listQueue(db: Db, actor: Actor, doctorId: string, serviceD
     session, doctor, ordered,
     current: called === undefined ? null : toView(called, null, null),
     inConsult: rows.filter((r) => r.status === "in_consult").map((r) => toView(r, null, null)),
+    // Newest first: the row a doctor is hunting for is the one that just fell out. No position and
+    // no class — a left row is not in the ordering, and giving it one would say it was.
+    left: rows.filter((r) => r.status === "left").sort((a, b) => b.seq - a.seq).map((r) => toView(r, null, null)),
     waitingVitals: count("waiting_vitals"),
     counts: { waiting: count("waiting"), called: count("called"), inConsult: count("in_consult"), done: count("done"), left: count("left") },
   };
@@ -156,7 +176,14 @@ export async function callNext(db: Db, actor: Actor, sessionId: string, now: Dat
  * The called patient did not come: back to waiting with eligible_at = now (they lose their place, never their token),
  * or out of the queue once max_skips_before_left is reached.
  */
-export async function skipCalled(db: Db, actor: Actor, entryId: string, now: Date = new Date()): Promise<{ entry: QueueEntryRow }> {
+export async function skipCalled(db: Db, actor: Actor, entryId: string, input: SkipInput, now: Date = new Date()): Promise<{ entry: QueueEntryRow }> {
+  const note = input.note?.trim() ?? "";
+  /*
+    `other` IS THE ONLY ONE THAT NEEDS THE BOX, and it needs it absolutely: "other" with no text is
+    the audit trail saying a patient lost their turn for a reason nobody wrote down, which is the
+    state this whole change exists to end. The other five say what they mean on their own.
+  */
+  if (input.reason === "other" && note === "") throw new OpdError("reason_required", "a skip for 'other' records what the reason was");
   return withTx(db, async (tx) => {
     const cfg = await loadOpdConfig(tx);
     const current = (await tx.select().from(opdQueueEntries).where(eq(opdQueueEntries.id, entryId)))[0];
@@ -165,7 +192,16 @@ export async function skipCalled(db: Db, actor: Actor, entryId: string, now: Dat
     const skips = current.skips + 1;
     const left = skips >= cfg.maxSkipsBeforeLeft;
     const updated = await tx.update(opdQueueEntries)
-      .set({ status: left ? "left" : "waiting", skips, eligibleAt: left ? current.eligibleAt : now })
+      .set({
+        status: left ? "left" : "waiting", skips, eligibleAt: left ? current.eligibleAt : now,
+        skipReason: input.reason, skipNote: note === "" ? null : note, skippedAt: now, skippedBy: actor.id,
+        /*
+          THE TURN AS IT WAS, stored BEFORE this skip moves it. `eligible_at` is null until a row
+          becomes `waiting` (arrival order stands in until then), and null is a faithful record of
+          that: `undoSkip` writes back exactly what it finds here, including nothing.
+        */
+        preSkipEligibleAt: current.eligibleAt,
+      })
       .where(and(eq(opdQueueEntries.id, entryId), eq(opdQueueEntries.status, "called"))).returning();
     if (updated.length === 0) throw new OpdError("queue_entry_state_conflict", "entry moved concurrently");
     const entry = updated[0]!;
@@ -174,6 +210,61 @@ export async function skipCalled(db: Db, actor: Actor, entryId: string, now: Dat
     await appendEvent(tx, queueSkipped.make({ actor, patientId: encounter.patientId, encounterId: encounter.id, correlationId: encounter.workflowInstanceId, payload: {
       encounterId: encounter.id, patientId: encounter.patientId, entryId: entry.id, doctorId: session.doctorId, serviceDate: session.serviceDate,
       sessionId: session.id, roomId: session.roomId, tokenNo: entry.tokenNo, skips, left,
+      reason: input.reason, note: note === "" ? null : note,
+    } }));
+    return { entry };
+  });
+}
+
+/**
+ * ═══ THE SKIP THAT SHOULD NOT HAVE HAPPENED (owner, 2026-09-13) ═══
+ *
+ * *"When as a doctor, I clicked 'Skip' by mistake and that patient is no where to be seen in my
+ * dashboard to undo my mistake."*
+ *
+ * Both halves were true, and the second one is worse than the first. A skip below the cap put the
+ * patient back among the waiting with their turn moved to now — recoverable, but silently, with no
+ * marker saying it had happened. A skip that REACHED the cap wrote `left`, and `left` is rendered
+ * by no screen in this application: the patient's visit stays open and callable by nobody. Measured
+ * in the owner's own data the same afternoon — one patient, three skips, `left`, encounter
+ * `waiting`.
+ *
+ * WHAT AN UNDO RESTORES is the state the skip changed and nothing else: the status (`left` back to
+ * `waiting`), the counter, and the turn (`eligible_at`). It is the MOST RECENT skip only — the
+ * column holds one prior turn, so a second undo has nothing to restore and refuses rather than
+ * quietly leaving the patient at the back of the queue.
+ *
+ * NO TIME WINDOW, deliberately. A window is a rule a doctor cannot see and would have to discover
+ * by losing a patient to it, and it would grant nothing: `markInConsult` already lets a doctor take
+ * a waiting patient without calling them, so an undo hands back only what the doctor could always
+ * have done by hand — with their name on it, which is the part that was missing.
+ */
+export async function undoSkip(db: Db, actor: Actor, entryId: string, now: Date = new Date()): Promise<{ entry: QueueEntryRow }> {
+  return withTx(db, async (tx) => {
+    const current = (await tx.select().from(opdQueueEntries).where(eq(opdQueueEntries.id, entryId)))[0];
+    if (!current) throw new OpdError("unknown_queue_entry", `unknown queue entry ${entryId}`);
+    if (current.skippedAt === null) throw new OpdError("queue_entry_state_conflict", "this token has no skip to undo");
+    if (current.status !== "waiting" && current.status !== "left") {
+      throw new OpdError("queue_entry_state_conflict", `an undo needs a waiting or left entry, not ${current.status}`);
+    }
+    const skippedAt = current.skippedAt;
+    const updated = await tx.update(opdQueueEntries)
+      .set({
+        status: "waiting", skips: Math.max(0, current.skips - 1), eligibleAt: current.preSkipEligibleAt,
+        skipReason: null, skipNote: null, skippedAt: null, skippedBy: null, preSkipEligibleAt: null,
+      })
+      // The belt is `skipped_at`, not the status: two doctors undoing the same skip must not both
+      // decrement the counter, and the second one finds the mark already cleared.
+      .where(and(eq(opdQueueEntries.id, entryId), eq(opdQueueEntries.skippedAt, skippedAt))).returning();
+    if (updated.length === 0) throw new OpdError("queue_entry_state_conflict", "entry moved concurrently");
+    const entry = updated[0]!;
+    const session = (await tx.select().from(opdQueueSessions).where(eq(opdQueueSessions.id, entry.sessionId)))[0]!;
+    const encounter = (await getEncounter(tx, entry.encounterId))!;
+    await appendEvent(tx, queueSkipUndone.make({ actor, patientId: encounter.patientId, encounterId: encounter.id, correlationId: encounter.workflowInstanceId, payload: {
+      encounterId: encounter.id, patientId: encounter.patientId, entryId: entry.id, doctorId: session.doctorId, serviceDate: session.serviceDate,
+      sessionId: session.id, roomId: session.roomId, tokenNo: entry.tokenNo,
+      skips: entry.skips, reason: current.skipReason, skippedAt: skippedAt.toISOString(),
+      undoneAt: now.toISOString(), wasLeft: current.status === "left",
     } }));
     return { entry };
   });
