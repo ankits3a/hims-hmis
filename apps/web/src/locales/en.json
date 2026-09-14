@@ -62,7 +62,8 @@
     "pharmacyItems": "Pharmacy sale items",
     "radiationSafety": "Radiation safety",
     "registration": "Registration",
-    "appointment": "Booking desk"
+    "appointment": "Booking desk",
+    "slipCapture": "Slip desk"
   },
   "palette": {
     "title": "Search",
@@ -3818,5 +3819,35 @@
     "pregnantYes": "Yes, pregnant",
     "pregnantNo": "No, not pregnant",
     "fill": "Fill prescription ({{n}} lines)"
+  },
+  "slipCapture": {
+    "title": "Slip desk",
+    "intro": "Scan the QR in the slip's footer, check the name that comes back, then photograph the paper.",
+    "visitNo": "Visit number",
+    "visitNoHint": "Scan the QR, or type the visit number",
+    "find": "Find",
+    "notFound": "No visit numbered {{visitNo}}. Check the number on the slip, or type it.",
+    "unnamed": "(name withheld)",
+    "checkPerson": "Check this is the patient whose slip you are holding before you photograph it.",
+    "openCamera": "Open the camera",
+    "orChooseFile": "…or choose a photo",
+    "noCamera": "No camera available here. Choose a photo instead — on a phone that opens the camera.",
+    "capture": "Capture",
+    "cancel": "Cancel",
+    "retake": "Retake",
+    "previewAlt": "The photograph about to be filed",
+    "kind": "What is this?",
+    "kinds": {
+      "consult_prescription": "Prescription from this visit",
+      "outside_prescription": "Outside prescription",
+      "outside_report": "Outside report"
+    },
+    "note": "Note",
+    "noteHint": "Anything the doctor should know",
+    "fileIt": "File it",
+    "filed": "Filed against {{name}}.",
+    "tooLarge": "That photograph is too large even after downscaling. Move closer and take it again.",
+    "badImage": "That file could not be read as an image.",
+    "failed": "It could not be filed. Try again."
   }
 }

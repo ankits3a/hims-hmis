@@ -394,7 +394,12 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // opposite reason: it is always itself a declared route and would be counted twice.
     // MEASURED and WATCHED FAILING: the run that added the three reported `Received length: 53`
     // against the pinned 50.
-    expect(routes).toHaveLength(53);
+    //
+    // 53 -> 54, 2026-09-14: `/opd/slips`, the desk outside the consultation room that photographs
+    // the paper prescription. Measured from the failure — the run reported `Received length: 54`
+    // against the pinned 53 — rather than incremented on the way past.
+    expect(routes).toHaveLength(54);
+    expect(routes).toContain("/opd/slips");
     expect(routes).toContain("/radiology/radiation-safety");
     /*
       FD-9 recorded the deletion of both as negative assertions. FD-25 reverses ONE of them.
