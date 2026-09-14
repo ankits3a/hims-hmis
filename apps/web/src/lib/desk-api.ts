@@ -84,12 +84,12 @@ export function downloadReportCsv(date: string): Promise<void> {
 }
 
 /**
- * PLAN 07c T8 — the five-period brief. Every clause arrives as an i18n KEY plus pre-formatted
+ * PLAN 07c T8 — the brief, five periods and six since `year`. Every clause arrives as an i18n KEY plus pre-formatted
  * values, so the SERVER decides which sentences can honestly be made (DD8) and the client only
  * decides what language they are in. A clause the server could not make honestly is simply absent,
  * and an empty `clauses` list is a real answer rather than a loading state.
  */
-export type WireBriefPeriod = "day" | "week" | "month" | "quarter" | "half";
+export type WireBriefPeriod = "day" | "week" | "month" | "quarter" | "half" | "year";
 
 export type WireBriefClause = { key: string; values: Record<string, string> };
 
@@ -102,7 +102,24 @@ export type WireBrief = {
   daysWithActivity: number;
 };
 
-export const BRIEF_PERIODS: readonly WireBriefPeriod[] = ["day", "week", "month", "quarter", "half"];
+export const BRIEF_PERIODS: readonly WireBriefPeriod[] = ["day", "week", "month", "quarter", "half", "year"];
+
+/** The history horizon's two strings, owner ruling 2026-09-14. Holding neither is the three-month floor. */
+export const HISTORY_YEAR = "staff.reports.history.year";
+export const HISTORY_FULL = "staff.reports.history.full";
+
+/**
+ * THE PERIODS THIS CALLER MAY ACTUALLY ASK FOR — and this is CONVENIENCE, not the control.
+ *
+ * The server refuses an over-horizon window whatever this returns (`kernel/desk/horizon.ts`), and it
+ * has to: the route is reachable without the screen, and a hidden `<option>` has never been an
+ * access control. What this avoids is offering a person a button that can only answer with a
+ * refusal — which reads as a broken screen rather than as a policy.
+ */
+export function periodsFor(can: (permission: string) => boolean): readonly WireBriefPeriod[] {
+  if (can(HISTORY_FULL) || can(HISTORY_YEAR)) return BRIEF_PERIODS;
+  return BRIEF_PERIODS.filter((p) => p !== "half" && p !== "year");
+}
 
 export function fetchBrief(period: WireBriefPeriod, date?: string): Promise<WireBrief> {
   return api<WireBrief>("GET", `/me/brief?period=${period}${date === undefined ? "" : `&date=${date}`}`);

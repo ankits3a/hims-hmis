@@ -37,6 +37,7 @@
     "import:nrces": "tsx scripts/import-nrces-formulary.ts",
     "seed:ops": "tsx scripts/seed-ops.ts",
     "seed:roles": "tsx scripts/seed-roles.ts",
+    "backfill:facts": "tsx scripts/backfill-facts.ts",
     "seed:staff": "tsx scripts/seed-staff.ts",
     "seed:pharmacy-demo": "tsx scripts/seed-pharmacy-demo.ts",
     "validate:billing": "tsx scripts/validate-billing-config.ts",

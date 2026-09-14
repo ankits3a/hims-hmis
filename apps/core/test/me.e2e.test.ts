@@ -46,6 +46,9 @@ describe("me (desk / report / export) e2e — 07c", () => {
 
   const T0 = new Date("2026-08-17T04:00:00.000Z"); // Monday 09:30 IST
   const DATE = "2026-08-17";
+  /** An IST day `n` days before today. Relative, so a rolling horizon cannot age these tests out. */
+  const daysAgo = (n: number): string =>
+    new Date(Date.now() + 330 * 60_000 - n * 86_400_000).toISOString().slice(0, 10);
 
   beforeAll(async () => {
     ({ db, teardown } = await setupTestDb());
@@ -156,10 +159,36 @@ describe("me (desk / report / export) e2e — 07c", () => {
     expect(today.body.provisional).toBe(true);
   });
 
-  /** T2 A3 — a day with nothing on it is zeroed sections, never an error. */
-  it("T2 A3: a day before this person existed returns empty sections, not a failure", async () => {
-    const res = await get("/me/report?date=2020-01-01", clerkA.token).expect(200);
+  /**
+   * T2 A3 — a day with nothing on it is zeroed sections, never an error.
+   *
+   * ═══ STAFF-REPORTS T0 MOVED THIS DATE, AND THE MOVE IS THE POINT ═══
+   *
+   * This asked for `2020-01-01` — six years back — and after the 2026-09-14 horizon ruling that is
+   * not an empty day, it is a REFUSAL: `desk_clerk` holds neither `staff.reports.history.*` string,
+   * so their own history reaches three months. A3 is about a day INSIDE the horizon that happens to
+   * carry nothing, and the two principles were only ever in tension because the date was extreme.
+   *
+   * COMPUTED FROM TODAY rather than hardcoded, because a fixed date inside a rolling 91-day window
+   * is a test with an expiry date on it — it would pass today and start failing three months from
+   * now for a reason nobody would connect to this commit.
+   */
+  it("T2 A3: an empty day INSIDE the horizon returns empty sections, not a failure", async () => {
+    const res = await get(`/me/report?date=${daysAgo(60)}`, clerkA.token).expect(200);
     expect(res.body.sections.flatMap((s: { rows: string[][] }) => s.rows)).toEqual([]);
+  });
+
+  /**
+   * STAFF-REPORTS T0 — AND BEYOND IT, A REFUSAL RATHER THAN AN EMPTY ANSWER.
+   *
+   * The cheap implementation returns the empty report for an out-of-range date, and it is the one
+   * thing this must not do: empty reads as "you did nothing that day", which is indistinguishable
+   * from a day the caller simply may not see. The refusal names the cap so the person can tell the
+   * difference without opening a ticket.
+   */
+  it("T0: a day beyond the caller's horizon is REFUSED, and the refusal names the cap", async () => {
+    const res = await get(`/me/report?date=${daysAgo(200)}`, clerkA.token).expect(400);
+    expect(JSON.stringify(res.body)).toContain("91");
   });
 
   /**
@@ -189,7 +218,7 @@ describe("me (desk / report / export) e2e — 07c", () => {
   /**
    * PLAN 07c T8 — THE BRIEF IS `/me/…` FOR THE SAME REASON THE REPORT IS.
    *
-   * There is no `userId` on this route either, so the five-period history of a colleague is not
+   * There is no `userId` on this route either, so the six-period history of a colleague is not
    * something a holder can ask for. Asserted over HTTP rather than by reading the controller,
    * because the schema stripping an unknown key is the mechanism and a route test is the only place
    * that mechanism is actually exercised.

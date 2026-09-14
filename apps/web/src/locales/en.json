@@ -1915,7 +1915,8 @@
       "week": "Week",
       "month": "Month",
       "quarter": "3 months",
-      "half": "6 months"
+      "half": "6 months",
+      "year": "1 year"
     },
     "range": "{{from}} to {{to}}",
     "nothingToSay": "Nothing to report for this period yet — a comparison needs a fortnight of history before it can be made honestly.",
