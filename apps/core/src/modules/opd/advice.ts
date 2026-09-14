@@ -3,6 +3,12 @@ import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { opdAdviceTemplates } from "../../kernel/db/schema";
 import { OpdError } from "./errors";
+
+/**
+ * The characters a keyword may start with. Kept in step with `lib/snippets.ts`'s `KEYWORD_LEAD` by
+ * `advice.test.ts` A9 — two lists of the same rule is how the rule ends up meaning two things.
+ */
+export const KEYWORD_LEAD = [";", "/", "\\"];
 import type { Db, Tx } from "../../kernel/db/client";
 
 /**
@@ -17,6 +23,8 @@ import type { Db, Tx } from "../../kernel/db/client";
 export type AdviceTemplate = {
   id: string;
   title: string;
+  /** The typed trigger, e.g. `;rest`. Null for a template that is only ever tapped. */
+  keyword: string | null;
   /** Either may be null and at least one is not — the table's own CHECK. */
   textEn: string | null;
   textHi: string | null;
@@ -24,7 +32,7 @@ export type AdviceTemplate = {
   mine: boolean;
 };
 
-export type NewAdviceTemplate = { title: string; textEn?: string | null; textHi?: string | null };
+export type NewAdviceTemplate = { title: string; keyword?: string | null; textEn?: string | null; textHi?: string | null };
 
 /**
  * The doctor's own templates first, then the hospital's. One query, ordered in SQL so every caller
@@ -42,7 +50,7 @@ export async function listAdviceTemplates(db: Db, actor: Actor): Promise<AdviceT
     ))
     .orderBy(sql`(${opdAdviceTemplates.ownerUserId} is null) asc`, asc(opdAdviceTemplates.title));
   return rows.map((r) => ({
-    id: r.id, title: r.title, textEn: r.textEn, textHi: r.textHi,
+    id: r.id, title: r.title, keyword: r.keyword, textEn: r.textEn, textHi: r.textHi,
     mine: r.ownerUserId === actor.id,
   }));
 }
@@ -63,9 +71,27 @@ export async function saveAdviceTemplate(
   if (title === "" || (en === "" && hi === "")) {
     throw new OpdError("advice_template_incomplete", "a template needs a title and text in at least one script");
   }
+  /*
+    ═══ THE KEYWORD RULE IS ENFORCED HERE, NOT ONLY IN THE BROWSER ═══
+
+    Auto-expansion fires while the doctor types, so a keyword that can occur INSIDE A WORD detonates
+    in the middle of ordinary prose — `rest` inside "rest and fluids", "arrest", "restrict". The web
+    field checks this too; that one is a courtesy to the person typing and this one is the rule,
+    because a body can be posted without ever going through the field.
+  */
+  const keyword = (input.keyword ?? "").trim();
+  if (keyword !== "") {
+    if (!KEYWORD_LEAD.includes(keyword[0] ?? "")) {
+      throw new OpdError("advice_keyword_invalid", `a keyword must start with one of ${KEYWORD_LEAD.join(" ")} so it cannot fire inside a word`);
+    }
+    if (keyword.length < 2) throw new OpdError("advice_keyword_invalid", "a keyword needs a character after its lead");
+    if (/\s/.test(keyword)) throw new OpdError("advice_keyword_invalid", "a keyword cannot contain a space");
+  }
+
   const id = newId();
   await tx.insert(opdAdviceTemplates).values({
-    id, ownerUserId: actor.id, title, textEn: en === "" ? null : en, textHi: hi === "" ? null : hi,
+    id, ownerUserId: actor.id, title, keyword: keyword === "" ? null : keyword,
+    textEn: en === "" ? null : en, textHi: hi === "" ? null : hi,
     createdBy: actor.id, updatedBy: actor.id, createdAt: now, updatedAt: now,
   });
   return { templateId: id };

@@ -771,7 +771,17 @@
       "vitals": "the vitals bay",
       "consult": "this consultation",
       "radiology": "radiology, from a contrast reaction"
-    }
+    },
+    "adviceKeyword": "Keyword",
+    "adviceKeywordProblem": {
+      "lead": "A keyword must start with ; / or \\ — otherwise it fires inside ordinary words.",
+      "short": "Add a word after the ; — a lead character alone is not a keyword.",
+      "space": "A keyword cannot contain a space."
+    },
+    "snippetStops": "Tab to fill: {{label}} ({{n}} more)",
+    "snippetReference": "Placeholders you can use",
+    "snippetReferenceHint": "Type these inside a template. They fill from this patient the moment the snippet expands — nothing with braces is ever saved.",
+    "snippetUnknownTokens": "Not a placeholder: {{list}} — it will become a blank to fill, not text."
   },
   "rx": {
     "regNo": "Reg. No.",

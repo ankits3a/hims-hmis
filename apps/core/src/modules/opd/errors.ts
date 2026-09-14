@@ -15,7 +15,7 @@ export type OpdErrorCode =
   // The advice library. `unknown_advice_template` maps to 404 by the `unknown_` rule and is
   // deliberately also what a doctor gets for another doctor's row: not-found and not-yours must
   // answer identically, or the code becomes a way to probe whose template an id belongs to.
-  | "unknown_advice_template" | "advice_template_incomplete"
+  | "unknown_advice_template" | "advice_template_incomplete" | "advice_keyword_invalid"
   | "call_conflict" | "unknown_queue_entry" | "queue_entry_state_conflict" | "invalid_transfer"
   | "invalid_vitals" | "vitals_incomplete"
   // VD-1 T2 — the sanity gates. `vitals_gate` carries `detail.gates[]` (key, kind, value, and a

@@ -550,14 +550,19 @@ describe("OpdConsult — recording an allergy in the room", () => {
 const ADVICE_TEMPLATES = {
   items: [
     {
-      id: "adv_mine", title: "My asthma advice", mine: true,
+      id: "adv_mine", title: "My asthma advice", mine: true, keyword: ";asth",
       textEn: "Use the inhaler as shown.", textHi: "इनहेलर बताए अनुसार लें।",
     },
     {
-      id: "adv_seed_rest_fluids", title: "Rest and fluids", mine: false,
+      id: "adv_seed_rest_fluids", title: "Rest and fluids", mine: false, keyword: null,
       textEn: "Take rest. Drink plenty of fluids.", textHi: "आराम करें। खूब तरल पिएं।",
     },
-    { id: "adv_en_only", title: "English only", mine: false, textEn: "Only English here.", textHi: null },
+    { id: "adv_en_only", title: "English only", mine: false, keyword: null, textEn: "Only English here.", textHi: null },
+    {
+      id: "adv_rx", title: "Review with weight", mine: true, keyword: ";rev",
+      textEn: "For {name}, {weight} kg. Take {?one tablet} {?} after food. Review on {date+7}.",
+      textHi: null,
+    },
   ],
 };
 
@@ -651,7 +656,8 @@ describe("OpdConsult — the advice library", () => {
 
     await waitFor(() => {
       expect(bodiesOf("POST", "/api/opd/advice-templates").at(-1)).toEqual({
-        title: "Walking", textEn: null, textHi: "रोज़ टहलें।",
+        /* `keyword: null` — this template is TAPPED, not typed. A snippet keyword is optional. */
+        title: "Walking", keyword: null, textEn: null, textHi: "रोज़ टहलें।",
       });
     });
   });
@@ -747,6 +753,170 @@ describe("OpdConsult — removing an allergy recorded in error", () => {
     await user.click(screen.getByTestId("allergy-corrected-toggle"));
     expect(await screen.findByTestId("allergy-corrected-al-2")).toHaveTextContent(/Sulfa/);
     expect(screen.getByTestId("allergy-corrected-al-2")).toHaveTextContent(/wrong patient/);
+  });
+});
+
+/**
+ * ═══ SNIPPETS ON THE ADVICE BOX ═══
+ *
+ * Owner, 2026-09-14, asked for Raycast-style snippets: a keyword, auto-expansion, Tab, and a
+ * reference of the placeholder vocabulary. The part that is not Raycast is where the values come
+ * from — the patient in the chair rather than the machine.
+ *
+ * Nothing with braces is ever stored: expansion happens at insert time, and what the note carries
+ * is ordinary text. That is what keeps the print path, the e-Rx and the relay out of this feature.
+ */
+describe("OpdConsult — snippets in the advice box", () => {
+  beforeEach(() => { vi.restoreAllMocks(); });
+
+  const snippetRoutes = (): Record<string, Handler> => ({
+    ...baseRoutes(),
+    "GET /api/opd/advice-templates": { status: 200, body: ADVICE_TEMPLATES },
+    "POST /api/opd/advice-templates": { status: 201, body: { templateId: "adv-new" } },
+    "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+  });
+
+  it("T1: typing a keyword expands it in place, filled from THIS patient", async () => {
+    mockRoutes(snippetRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const advice = await screen.findByLabelText("Advice");
+    await user.click(advice);
+    await user.type(advice, ";asth");
+
+    // The keyword is gone and the template is in its place — no Enter, no menu, no click.
+    await waitFor(() => { expect(advice).toHaveValue("Use the inhaler as shown."); });
+  });
+
+  it("T2: placeholders resolve from the record — the name and the charted weight", async () => {
+    mockRoutes(snippetRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const advice = await screen.findByLabelText("Advice");
+    await user.click(advice);
+    await user.type(advice, ";rev");
+
+    /* VITALS_LATEST is the chart this panel already shows — 60 kg — and the snippet reads that
+       same number rather than a second one from anywhere else. */
+    await waitFor(() => {
+      expect(String((advice as HTMLTextAreaElement).value)).toContain("For Asha Devi, 60 kg.");
+    });
+    // And no placeholder survives into the field — braces never reach the record or the slip.
+    expect(String((advice as HTMLTextAreaElement).value)).not.toContain("{");
+  });
+
+  it("T3: Tab walks the blanks the snippet left, and the last one LEAVES the field", async () => {
+    mockRoutes(snippetRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const advice = await screen.findByLabelText("Advice");
+    await user.click(advice);
+    await user.type(advice, ";rev");
+    await screen.findByTestId("advice-stops");
+
+    /* The first blank arrives SELECTED, so typing replaces its default rather than appending. */
+    await user.keyboard("2 tablets");
+    expect(String((advice as HTMLTextAreaElement).value)).toContain("Take 2 tablets");
+
+    await user.tab();
+    await user.keyboard("twice daily");
+    expect(String((advice as HTMLTextAreaElement).value)).toContain("Take 2 tablets twice daily after food");
+
+    /* Blanks exhausted: the next Tab is NOT swallowed, so a keyboard user is never stranded. */
+    await user.tab();
+    await waitFor(() => { expect(screen.queryByTestId("advice-stops")).toBeNull(); });
+    expect(advice).not.toHaveFocus();
+  });
+
+  it("T4: Escape abandons the blanks and gives Tab straight back", async () => {
+    mockRoutes(snippetRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const advice = await screen.findByLabelText("Advice");
+    await user.click(advice);
+    await user.type(advice, ";rev");
+    await screen.findByTestId("advice-stops");
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => { expect(screen.queryByTestId("advice-stops")).toBeNull(); });
+    await user.tab();
+    expect(advice).not.toHaveFocus();
+  });
+
+  it("T5: a TAPPED template resolves its placeholders the same way a typed one does", async () => {
+    /* One engine for both paths. A template that behaved differently depending on how it was
+       reached is a difference nobody discovers until a slip is wrong. */
+    mockRoutes(snippetRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(await screen.findByTestId("advice-tpl-adv_rx-en"));
+    const advice = screen.getByLabelText("Advice");
+    await waitFor(() => { expect(String((advice as HTMLTextAreaElement).value)).toContain("For Asha Devi, 60 kg."); });
+    expect(String((advice as HTMLTextAreaElement).value)).not.toContain("{");
+  });
+
+  it("T6: the saved note is plain text — no placeholder is ever stored", async () => {
+    mockRoutes(snippetRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const advice = await screen.findByLabelText("Advice");
+    await user.click(advice);
+    await user.type(advice, ";asth");
+    await user.click(screen.getByRole("heading", { name: "Consultation" }));
+
+    await waitFor(() => {
+      const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { advice: string };
+      expect(body.advice).toBe("Use the inhaler as shown.");
+      expect(body.advice).not.toContain("{");
+    });
+  });
+
+  it("T7: a keyword that would fire inside a word is refused before it can be saved", async () => {
+    mockRoutes(snippetRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const advice = await screen.findByLabelText("Advice");
+    await user.click(advice);
+    await user.type(advice, "Take rest.");
+    await user.click(screen.getByTestId("advice-save-open"));
+    await user.type(screen.getByLabelText("Template name"), "Rest");
+    await user.type(screen.getByLabelText("Keyword"), "rest");
+
+    expect(await screen.findByTestId("advice-keyword-problem")).toBeInTheDocument();
+    expect(screen.getByTestId("advice-save")).toBeDisabled();
+    expect(callsTo("POST", "/api/opd/advice-templates")).toHaveLength(0);
+
+    await user.clear(screen.getByLabelText("Keyword"));
+    await user.type(screen.getByLabelText("Keyword"), ";rest");
+    expect(screen.queryByTestId("advice-keyword-problem")).toBeNull();
+    await user.click(screen.getByTestId("advice-save"));
+
+    await waitFor(() => {
+      expect(bodiesOf("POST", "/api/opd/advice-templates").at(-1)).toMatchObject({
+        title: "Rest", keyword: ";rest", textEn: "Take rest.",
+      });
+    });
+  });
+
+  it("T8: the reference is built FROM the resolver, and previews this patient", async () => {
+    /* A panel hand-written beside the engine drifts from it. This one renders the same list the
+       resolver runs, and shows what each token would produce right now. */
+    mockRoutes(snippetRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(await screen.findByTestId("snippet-ref-toggle"));
+    const ref = await screen.findByTestId("snippet-ref");
+    expect(within(ref).getByTestId("snippet-ref-weight")).toHaveTextContent("→ 60");
+    expect(within(ref).getByTestId("snippet-ref-name")).toHaveTextContent("→ Asha Devi");
+    expect(within(ref).getByTestId("snippet-ref-bp")).toHaveTextContent("→ 190/80");
   });
 });
 

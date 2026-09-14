@@ -23,6 +23,8 @@ import type { Db } from "../../kernel/db/client";
  */
 const templateBody = z.object({
   title: z.string().min(1).max(80),
+  /* Shape only. The RULE — what a keyword may start with — is the service's; see advice.ts. */
+  keyword: z.string().max(32).nullable().optional(),
   /* Either script, at least one — the service refuses a title with no text in either. A doctor
      who writes their advice in Hindi must not have it filed under English. */
   textEn: z.string().max(2000).nullable().optional(),

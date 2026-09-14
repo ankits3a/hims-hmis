@@ -3,7 +3,7 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { mkUser, seedOpdBase } from "../../../test/helpers/opd";
 import { opdAdviceTemplates } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
-import { listAdviceTemplates, retireAdviceTemplate, saveAdviceTemplate } from "./advice";
+import { KEYWORD_LEAD, listAdviceTemplates, retireAdviceTemplate, saveAdviceTemplate } from "./advice";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -95,6 +95,55 @@ describe("the advice library", () => {
     }, NOW))).resolves.toBeDefined();
     const hiOnly = (await listAdviceTemplates(db, dra.actor)).find((i) => i.title === "हिंदी में");
     expect(hiOnly).toMatchObject({ textEn: null, textHi: "खूब पानी पिएं।" });
+  });
+
+  it("V9: a keyword that could fire INSIDE A WORD is refused", async () => {
+    /*
+      Expansion runs while the doctor types. `rest` would detonate in the middle of "rest and
+      fluids", "arrest" and "restrict", replacing prose the doctor was halfway through writing. The
+      browser checks this too; this is the check that holds when a body is posted without it.
+    */
+    await expect(withTx(db, (tx) => saveAdviceTemplate(tx, dra.actor, {
+      title: "Rest", keyword: "rest", textEn: "Take rest.",
+    }, NOW))).rejects.toThrow(/advice_keyword_invalid|start with/);
+
+    await expect(withTx(db, (tx) => saveAdviceTemplate(tx, dra.actor, {
+      title: "Rest", keyword: ";two words", textEn: "Take rest.",
+    }, NOW))).rejects.toThrow(/advice_keyword_invalid|space/);
+
+    await expect(withTx(db, (tx) => saveAdviceTemplate(tx, dra.actor, {
+      title: "Rest", keyword: ";", textEn: "Take rest.",
+    }, NOW))).rejects.toThrow(/advice_keyword_invalid|character after/);
+
+    /* Each permitted lead character works, and no keyword at all stays legal. */
+    for (const lead of KEYWORD_LEAD) {
+      await expect(withTx(db, (tx) => saveAdviceTemplate(tx, dra.actor, {
+        title: `ok ${lead}`, keyword: `${lead}ok`, textEn: "x",
+      }, NOW))).resolves.toBeDefined();
+    }
+    await expect(withTx(db, (tx) => saveAdviceTemplate(tx, dra.actor, {
+      title: "Tapped only", textEn: "x",
+    }, NOW))).resolves.toBeDefined();
+  });
+
+  it("V10: one keyword per doctor, case-folded — two would be a coin toss", async () => {
+    await withTx(db, (tx) => saveAdviceTemplate(tx, dra.actor, { title: "A", keyword: ";uri", textEn: "x" }, NOW));
+
+    /* A doctor with two `;uri` snippets never finds out which one expanded. */
+    await expect(withTx(db, (tx) => saveAdviceTemplate(tx, dra.actor, { title: "B", keyword: ";URI", textEn: "y" }, NOW)))
+      .rejects.toThrow();
+
+    /* ...but ANOTHER doctor's library is their own, and the same keyword there is no collision. */
+    await expect(withTx(db, (tx) => saveAdviceTemplate(tx, drb.actor, { title: "B", keyword: ";uri", textEn: "y" }, NOW)))
+      .resolves.toBeDefined();
+  });
+
+  it("V11: the keyword comes back on the list, so the field knows what to watch for", async () => {
+    await withTx(db, (tx) => saveAdviceTemplate(tx, dra.actor, { title: "Rest", keyword: ";rest", textEn: "Take rest." }, NOW));
+    const mine = (await listAdviceTemplates(db, dra.actor)).find((i) => i.title === "Rest");
+    expect(mine!.keyword).toBe(";rest");
+    /* The hospital's seeded rows are TAPPED, not typed — no keyword, and that is not a defect. */
+    expect((await listAdviceTemplates(db, dra.actor)).find((i) => i.title === "Rest and fluids")!.keyword).toBeNull();
   });
 
   it("V7: retiring DEACTIVATES — the row that printed on a slip last week still explains it", async () => {

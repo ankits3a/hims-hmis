@@ -403,6 +403,22 @@ export const opdAdviceTemplates = pgTable(
     /** The short label on the chip — what the doctor scans for, never what is printed. */
     title: text("title").notNull(),
     /**
+     * ═══ THE TYPED KEYWORD, AND WHY IT MUST NOT START INSIDE A WORD ═══
+     *
+     * Owner, 2026-09-14, asked for Raycast-style snippets: type `;rest` in the advice box and the
+     * template expands where the caret is. Null for a template that is only ever TAPPED, which
+     * every seeded row is.
+     *
+     * Expansion fires WHILE THE DOCTOR TYPES, so a keyword of `rest` would detonate inside "rest
+     * and fluids", "arrest" and "restrict". `keywordProblem` (web `lib/snippets.ts`) requires a
+     * leading `;`, `/` or `\` and the service refuses anything else — the check is on both sides
+     * because the browser's is a courtesy and this one is the rule.
+     *
+     * Unique per owner, case-folded: two of a doctor's own snippets answering to `;uri` is a
+     * coin toss about which one expands, and the doctor would never find out which.
+     */
+    keyword: text("keyword"),
+    /**
      * BOTH ARE NULLABLE AND AT LEAST ONE MUST BE PRESENT — see the CHECK below.
      *
      * The first cut had `text_en NOT NULL`, which quietly asserted that every template is written
@@ -424,6 +440,13 @@ export const opdAdviceTemplates = pgTable(
     index("opd_advice_templates_owner_idx").on(t.ownerUserId, t.title),
     /** A template with no text at all is not a template. One script is enough; none is not. */
     check("opd_advice_templates_text_ck", sql`${t.textEn} is not null or ${t.textHi} is not null`),
+    /**
+     * One keyword per owner, case-folded, and NULLs do not collide — Postgres treats them as
+     * distinct, which is what lets every tapped-only template leave the column empty.
+     */
+    uniqueIndex("opd_advice_templates_keyword_ux")
+      .on(t.ownerUserId, sql`lower(${t.keyword})`)
+      .where(sql`${t.keyword} is not null`),
   ],
 );
 

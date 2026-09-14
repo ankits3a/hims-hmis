@@ -25,6 +25,9 @@ import type { AgentLine } from "../components/agent-dock";
 import { DeskModal } from "../components/desk-modal";
 import { DrugField } from "../components/drug-field";
 import { TagField, splitTags } from "../components/tag-field";
+import { useSnippets } from "../lib/use-snippets";
+import { PLACEHOLDER_FORMS, PLACEHOLDERS, expandSnippet, keywordProblem, unknownTokensIn } from "../lib/snippets";
+import type { SnippetContext } from "../lib/snippets";
 import { ConsultScribe } from "../components/consult-scribe";
 import { completeComplaint, fetchRegimen, suggestSyndromes } from "../lib/cds-api";
 import type { WireCard, WireRegimen, WireSyndromeHit } from "../lib/cds-api";
@@ -71,7 +74,8 @@ type VisitDetail = {
 type PatientDetailRow = { uhid: string; name: string | null; alias: string | null; dob: string | null; administrativeGender: string };
 /** `GET /opd/advice-templates` — the hospital's library, with this doctor's own on top. */
 type WireAdviceTemplate = {
-  id: string; title: string; textEn: string | null; textHi: string | null; mine: boolean;
+  id: string; title: string; keyword: string | null;
+  textEn: string | null; textHi: string | null; mine: boolean;
 };
 /** `GET /opd/cds/complete/allergen` — a rule class, or a moiety out of the formulary. */
 type WireAllergenHit = {
@@ -246,6 +250,8 @@ export function OpdConsult(): React.ReactElement {
   /* The advice library. Fetched once per panel — it is the hospital's list, not the patient's. */
   const [adviceSaveOpen, setAdviceSaveOpen] = useState(false);
   const [adviceSaveTitle, setAdviceSaveTitle] = useState("");
+  const [adviceSaveKeyword, setAdviceSaveKeyword] = useState("");
+  const [adviceRefOpen, setAdviceRefOpen] = useState(false);
   const [adviceSaveError, setAdviceSaveError] = useState<string | null>(null);
   /* The allergy being struck, and the reason the correction requires (E-8). */
   const [allergyStriking, setAllergyStriking] = useState<AllergyRow | null>(null);
@@ -667,7 +673,61 @@ export function OpdConsult(): React.ReactElement {
    * time: `rx-print.tsx` prints `encounter.advice` exactly as stored, so the script has to be in
    * the stored value or it never reaches the patient.
    */
-  const appendAdvice = (text: string): void => {
+  /**
+   * ═══ WHAT A PLACEHOLDER RESOLVES AGAINST: THE PATIENT IN THE CHAIR ═══
+   *
+   * This is the whole reason a snippet is worth more here than in a generic tool. Raycast's
+   * placeholders come from the machine — clipboard, date, uuid. These come from the record open on
+   * the screen, so `{weight}` is the number the bay charted this morning and `{date+7}` is the
+   * follow-up the doctor is about to say out loud.
+   *
+   * Everything here is ALREADY FETCHED for the panel. A snippet adds no request and no permission;
+   * it reads what the doctor is already looking at.
+   */
+  const snippetContext: SnippetContext = {
+    patient: patient.data === undefined ? null : {
+      name: patient.data.patient.name,
+      uhid: patient.data.patient.uhid,
+      ageYears,
+      sex: patient.data.patient.administrativeGender,
+    },
+    vitals: latestVitals === null ? null : {
+      weightKg: latestVitals.weightKg, heightCm: latestVitals.heightCm,
+      sbp: latestVitals.sbp, dbp: latestVitals.dbp, pulse: latestVitals.pulse,
+      spo2: latestVitals.spo2, tempC: latestVitals.tempC,
+    },
+    note: { complaint: note.chiefComplaint, diagnosis: note.diagnosis },
+    doctor: { name: me.data?.displayName ?? null },
+    now: new Date(),
+  };
+
+  /**
+   * Every snippet this doctor can TYPE. A template with both scripts is offered under its keyword
+   * in English and under `keyword.hi` in Hindi — one stored keyword and a documented suffix, rather
+   * than a second column or a guess about which script the doctor meant.
+   */
+  const typedSnippets = (adviceTemplates.data?.items ?? []).flatMap((tpl) => {
+    if (tpl.keyword === null || tpl.keyword === "") return [];
+    const out: { keyword: string; body: string }[] = [];
+    if (tpl.textEn !== null) out.push({ keyword: tpl.keyword, body: tpl.textEn });
+    if (tpl.textHi !== null) out.push({ keyword: `${tpl.keyword}.hi`, body: tpl.textHi });
+    return out;
+  });
+
+  const adviceSnippets = useSnippets({
+    value: note.advice,
+    onChange: (next) => { setNote((n) => ({ ...n, advice: next })); },
+    snippets: typedSnippets,
+    context: snippetContext,
+  });
+
+  const appendAdvice = (body: string): void => {
+    /*
+      A TAPPED template goes through the same engine as a typed keyword, so `{name}` and `{date+7}`
+      resolve either way. One path, so a template cannot behave differently depending on how the
+      doctor reached for it — which is the kind of difference nobody discovers until a slip is wrong.
+    */
+    const { text } = expandSnippet(body, snippetContext);
     setNote((n) => ({ ...n, advice: n.advice.trim() === "" ? text : `${n.advice.trim()}\n${text}` }));
   };
 
@@ -686,10 +746,12 @@ export function OpdConsult(): React.ReactElement {
       const devanagari = /[\u0900-\u097F]/.test(text);
       await api("POST", "/opd/advice-templates", {
         title,
+        keyword: adviceSaveKeyword.trim() === "" ? null : adviceSaveKeyword.trim(),
         textEn: devanagari ? null : text,
         textHi: devanagari ? text : null,
       });
       setAdviceSaveTitle("");
+      setAdviceSaveKeyword("");
       setAdviceSaveOpen(false);
       await queryClient.invalidateQueries({ queryKey: ["opd", "advice-templates"] });
     } catch (e) {
@@ -1989,12 +2051,34 @@ export function OpdConsult(): React.ReactElement {
                     </div>
                     <div>
                       <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="note-advice">{t("opdConsult.advice")}</label>
+                      {/*
+                        ═══ THE ADVICE BOX EXPANDS SNIPPETS AS THE DOCTOR TYPES ═══
+
+                        Typing `;rest` replaces it in place with the template's text, placeholders
+                        already resolved against THIS patient — the weight the bay charted, the
+                        follow-up date seven days out. Tab then walks the blanks the snippet left.
+
+                        Tab is intercepted only while blanks are outstanding, and the LAST Tab is
+                        deliberately let through so the gesture ends by leaving the field. Escape
+                        abandons the blanks and hands Tab straight back.
+                      */}
                       <textarea
                         id="note-advice" rows={3}
+                        ref={adviceSnippets.ref as React.RefObject<HTMLTextAreaElement>}
                         value={note.advice}
-                        onChange={(e) => setNote((n) => ({ ...n, advice: e.target.value }))}
+                        onChange={(e) => { adviceSnippets.onChangeValue(e.target.value, e.target.selectionStart ?? e.target.value.length); }}
+                        onKeyDown={adviceSnippets.onKeyDown}
+                        onBlur={adviceSnippets.onBlur}
                         className="in" style={{ width: "100%", height: "auto", padding: "7px 9px", fontSize: 13 }}
                       />
+                      {adviceSnippets.stops.length > 0 && (
+                        <p data-testid="advice-stops" style={{ margin: "3px 0 0", fontSize: 11, color: "var(--gold)" }}>
+                          {t("opdConsult.snippetStops", {
+                            n: adviceSnippets.stops.length - adviceSnippets.stopIndex - 1,
+                            label: adviceSnippets.stops[adviceSnippets.stopIndex]?.label ?? "",
+                          })}
+                        </p>
+                      )}
                       {/*
                         ═══════════════════════════════════════════════════════════════════════════
                         THE ADVICE LIBRARY — AND THE ONLY FIELD ON THIS SCREEN THE PATIENT READS
@@ -2022,6 +2106,10 @@ export function OpdConsult(): React.ReactElement {
                             }}
                           >
                             <span style={{ color: "var(--dim)" }}>{tpl.title}</span>
+                            {/* The keyword sits ON the chip, which is how a doctor learns it without being taught. */}
+                            {tpl.keyword !== null && tpl.keyword !== "" && (
+                              <span className="mo" data-testid={`advice-tpl-${tpl.id}-kw`} style={{ fontSize: 10, color: "var(--faint)" }}>{tpl.keyword}</span>
+                            )}
                             {tpl.textEn !== null && (
                               <button
                                 type="button" data-testid={`advice-tpl-${tpl.id}-en`}
@@ -2060,15 +2148,82 @@ export function OpdConsult(): React.ReactElement {
                             className="in" style={{ width: 200, height: 28, fontSize: 12 }}
                             placeholder={t("opdConsult.adviceTemplateTitlePlaceholder")}
                           />
-                          <button type="button" className="sec grn" data-testid="advice-save" style={{ height: 28, fontSize: 11.5 }} onClick={() => void saveAdviceTemplate()}>
+                          <input
+                            id="advice-keyword" aria-label={t("opdConsult.adviceKeyword")}
+                            value={adviceSaveKeyword} onChange={(e) => { setAdviceSaveKeyword(e.target.value); }}
+                            className="in mo" style={{ width: 120, height: 28, fontSize: 12 }}
+                            placeholder=";rest"
+                          />
+                          <button
+                            type="button" className="sec grn" data-testid="advice-save" style={{ height: 28, fontSize: 11.5 }}
+                            disabled={keywordProblem(adviceSaveKeyword) !== null}
+                            onClick={() => void saveAdviceTemplate()}
+                          >
                             {t("opdConsult.adviceSave")}
                           </button>
                           <button type="button" className="sec" style={{ height: 28, fontSize: 11.5 }} onClick={() => { setAdviceSaveOpen(false); setAdviceSaveTitle(""); setAdviceSaveError(null); }}>
                             {t("opdConsult.cancel")}
                           </button>
                           <ErrorLine message={adviceSaveError} />
+                          {/*
+                            THE KEYWORD RULE, SAID WHERE IT IS BROKEN. Expansion fires while the
+                            doctor types, so a keyword that can occur inside a word would detonate in
+                            the middle of ordinary prose. The server refuses it too; this is the half
+                            that tells the person typing, before they have saved anything.
+                          */}
+                          {keywordProblem(adviceSaveKeyword) !== null && (
+                            <p data-testid="advice-keyword-problem" style={{ margin: 0, flexBasis: "100%", fontSize: 11.5, color: "var(--gold)" }}>
+                              {t(`opdConsult.adviceKeywordProblem.${keywordProblem(adviceSaveKeyword) ?? ""}`)}
+                            </p>
+                          )}
+                          {unknownTokensIn(note.advice).length > 0 && (
+                            <p data-testid="advice-unknown-tokens" style={{ margin: 0, flexBasis: "100%", fontSize: 11.5, color: "var(--gold)" }}>
+                              {t("opdConsult.snippetUnknownTokens", { list: unknownTokensIn(note.advice).join(", ") })}
+                            </p>
+                          )}
                         </div>
                       )}
+
+                      {/*
+                        ═══ THE KEYWORD CHARACTER REFERENCE ═══
+
+                        Rendered FROM `PLACEHOLDERS`, the same list the resolver runs, so the panel a
+                        doctor reads and the engine that runs can never drift. Each row shows what it
+                        would produce FOR THIS PATIENT right now — a reference that says "{weight}"
+                        teaches less than one that says "{weight} → 62".
+                      */}
+                      <div style={{ marginTop: 5 }}>
+                        <button
+                          type="button" data-testid="snippet-ref-toggle"
+                          onClick={() => { setAdviceRefOpen((v) => !v); }}
+                          style={{ border: "none", background: "none", padding: 0, cursor: "pointer", fontSize: 11, color: "var(--faint)", textDecoration: "underline" }}
+                        >
+                          {t("opdConsult.snippetReference")}
+                        </button>
+                        {adviceRefOpen && (
+                          <div data-testid="snippet-ref" style={{ marginTop: 4, border: "1px solid var(--line)", borderRadius: 5, padding: "6px 8px" }}>
+                            <p style={{ margin: "0 0 5px", fontSize: 11, color: "var(--dim)" }}>{t("opdConsult.snippetReferenceHint")}</p>
+                            <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "2px 12px" }}>
+                              {PLACEHOLDERS.map((ph) => {
+                                const preview = ph.resolve(snippetContext);
+                                return (
+                                  <li key={ph.token} data-testid={`snippet-ref-${ph.token}`} style={{ fontSize: 11 }}>
+                                    <span className="mo" style={{ fontWeight: 600 }}>{`{${ph.token}}`}</span>
+                                    <span style={{ color: "var(--faint)" }}> — {ph.describe}</span>
+                                    {preview !== null && <span className="mo" style={{ color: "var(--green)" }}> → {preview}</span>}
+                                  </li>
+                                );
+                              })}
+                              {PLACEHOLDER_FORMS.map((f) => (
+                                <li key={f.token} style={{ fontSize: 11 }}>
+                                  <span className="mo" style={{ fontWeight: 600 }}>{f.token}</span>
+                                  <span style={{ color: "var(--faint)" }}> — {f.describe}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
                     </div>
                     {noteSaved && <p data-testid="note-saved" style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "var(--green)" }}>{t("opdConsult.noteSaved")}</p>}
                     <ErrorLine message={noteError} />
