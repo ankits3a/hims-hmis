@@ -3,11 +3,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { newIdempotencyKey } from "../lib/api";
 import {
-  acknowledgeCritical, benchArrivals, benchWorklist, enterResult, flagTone, LAB_BENCH_TOPIC, LAB_CRITICAL_TOPIC,
+  acknowledgeCritical, benchArrivals, benchWorklist, chooseResult, enterResult, flagTone,
+  LAB_BENCH_TOPIC, LAB_CRITICAL_TOPIC,
   CRITICAL_RUNGS, labErrorText, labRefusal, openCriticals, receiveSpecimen, rejectSpecimen,
 } from "../lib/lab-api";
 import { useRealtime } from "../lib/realtime";
 import { Button } from "@/components/ui/button";
+import { RerunChoicePair } from "../components/lab-rerun-choice";
 import { capFor } from "../components/specimen-label";
 import { DowntimeNotice, LabSeatFrame, useDowntime } from "./lab-seat";
 import type { CriticalRung, WireBenchArrival, WireWorklistRow } from "../lib/lab-api";
@@ -172,6 +174,20 @@ export function LabBench(): React.ReactElement {
     },
   });
 
+  /**
+   * 17-E T7 / D18 — **WHICH RUN THE REPORT CARRIES.** Not an entry: the analyte already has two
+   * measurements and keying a third is not the act needed. The server holds the whole rule — a blank
+   * reason, a superseded row, a set of one, a set already signed are each their own refusal — so
+   * this says the sentence the server sent rather than guessing at one.
+   */
+  const choose = useMutation({
+    mutationFn: (v: { resultId: string; reason: string }) => chooseResult(v),
+    /** Nothing to clear: the pair stops being rendered, and `RerunChoicePair` takes the half-typed
+     *  reason with it when it unmounts — which is why the pick and the reason live in there. */
+    onSuccess: () => { setError(null); refresh(); },
+    onError: (e: unknown) => setError(labErrorText(e)),
+  });
+
   /** D6 — N values, N calls, in order; the first refusal stops the run and is shown verbatim. */
   const saveAll = useMutation({
     mutationFn: async (row: WireWorklistRow) => {
@@ -216,12 +232,20 @@ export function LabBench(): React.ReactElement {
   const openCalls = criticals.data ?? [];
   const shownWork = hit.kind === "worklist" ? hit.rows : worklist;
 
-  function filledOf(row: WireWorklistRow): { done: number; total: number; ready: boolean } {
+  /**
+   * 17-E T7 — an analyte awaiting a rerun choice is **neither done nor keyable.** Not `done`,
+   * because it has no reportable value; not `pending` either, because `pending` means "needs a
+   * number typed" and typing a third measurement is not what this analyte is waiting for. Counting
+   * it as pending would hold "save & complete" shut over the OTHER analytes with nothing on the
+   * screen saying why.
+   */
+  function filledOf(row: WireWorklistRow): { done: number; total: number; ready: boolean; owed: number } {
     const total = row.analytes.length;
     const done = row.analytes.filter((a) => a.value !== null).length;
-    const pending = row.analytes.filter((a) => a.value === null);
+    const owed = row.analytes.filter((a) => a.rerunChoice.length > 0).length;
+    const pending = row.analytes.filter((a) => a.value === null && a.rerunChoice.length === 0);
     const ready = pending.length > 0 && pending.every((a) => (values[key(row.orderItemId, a.analyteId)] ?? "").trim() !== "");
-    return { done, total, ready };
+    return { done, total, ready, owed };
   }
 
   return (
@@ -403,6 +427,15 @@ export function LabBench(): React.ReactElement {
                   <span className="ml-auto text-xs text-muted-foreground">
                     {elapsed !== null && <>{t("lab.bench.tat")} {elapsed} {t("lab.bench.min")} · </>}
                     {t("lab.bench.filled", { done: filled.done, total: filled.total })}
+                    {/*
+                      17-E T7 — said in the HEADER, because the grid below may be scrolled past and a
+                      run choice is the one thing on this row that no amount of keying will clear.
+                    */}
+                    {filled.owed > 0 && (
+                      <span className="ml-2 font-semibold" style={{ color: "var(--state-danger)" }}>
+                        {t("lab.bench.rerunOwed", { count: filled.owed })}
+                      </span>
+                    )}
                   </span>
                 </header>
                 <table className="w-full text-sm">
@@ -420,7 +453,37 @@ export function LabBench(): React.ReactElement {
                     {row.analytes.map((a) => {
                       const cell = key(row.orderItemId, a.analyteId);
                       const tone = flagTone(a.flag);
+                      /** 17-E T7 — non-empty only while a run choice is owed; see `WireAnalyteRow`. */
+                      const owed = a.rerunChoice;
                       const ref = a.refText ?? (a.refLow !== null || a.refHigh !== null ? `${a.refLow ?? ""} – ${a.refHigh ?? ""}` : "");
+                      /*
+                        17-E T7 / D18 — AN UNCHOSEN PAIR GETS THE ROW, not the value column. The
+                        analyte has two live measurements and no reportable value, so the grid's
+                        other columns have nothing true to say: the reference band and the unit
+                        belong to a number, and `a.flag` is null precisely because no number is
+                        chosen. What this row must carry instead is both runs, each with its own
+                        flag, and the reason — so it carries them across the whole width.
+
+                        It must NOT fall through to the branch below: there `a.value === null` opens
+                        an empty entry box, and inviting a THIRD measurement is not the act this
+                        analyte is waiting for.
+                      */
+                      if (owed.length > 0) {
+                        return (
+                          <tr key={a.analyteId} className="border-t border-border">
+                            <td className="py-1 pr-2">{a.nameEn} <span className="text-xs text-muted-foreground">{a.code}</span></td>
+                            <td colSpan={5} className="py-1">
+                              <RerunChoicePair
+                                runs={owed}
+                                name={`rerun-${cell}`}
+                                analyteLabel={`${row.orderableCode} ${a.code}`}
+                                pending={choose.isPending}
+                                onChoose={(v) => choose.mutate(v)}
+                              />
+                            </td>
+                          </tr>
+                        );
+                      }
                       return (
                         <tr key={a.analyteId} className="border-t border-border">
                           <td className="py-1 pr-2">{a.nameEn} <span className="text-xs text-muted-foreground">{a.code}</span></td>

@@ -137,11 +137,38 @@ attribute when a pathologist queries it.
 
 ---
 
-## The four things `import-item-master` got wrong, in one place
+## The five things `import-item-master` got wrong, in one place
 
 | # | defect | fixed in |
 |---|---|---|
 | 1 | `withTx` per row — a half-applied master, warned about in its own header | #163 |
 | 2 | `medicine_brand` optional, so DD3's refusal surfaced at apply time, not plan time | #144 (during review) |
 | 3 | a comment reading "undefined, not null" above a line writing `?? null` — **a comment that disagrees with the line beneath it is the version a reader trusts** | #163 |
-| 4 | no provenance: nothing records which file produced which row. `import-holder-book` keeps one and this does not. **Still open** — worth fixing in whichever loader is written next, and backporting. | — |
+| 4 | no provenance: nothing records which file produced which row. `import-holder-book` keeps one and this does not. ~~Still open~~ **FIXED in the NRCeS loader** (`formulary_generics.source` carries the release label); still wants backporting to `import-item-master`. | `import-nrces-formulary` |
+| 5 | **`split(",")` for CSV.** Correct for its own file, and NOT the shape to copy. | `import-nrces-formulary` |
+
+---
+
+## 8. PARSE CSV PROPERLY — defect #5, and it is the one that fails SILENTLY
+
+`import-item-master` splits each line on `,`. That is correct for the file it was written for and
+**wrong as a pattern**, because the next file is not that file. Measured on the NRCeS national
+release, 2026-09-13: **2,116 of 10,303 rows in `generics.csv` and 433 of 3,283 in `substances.csv`
+carry a quoted field containing a comma** — clinical drug names such as
+
+    "Product containing precisely amikacin (as amikacin sulfate) 100 milligram/2 milliliter ..."
+
+A naive split shifts every column after that comma by one. Nothing throws: the row still has cells,
+they are just the wrong cells, and a `dose_form` column silently receives half a drug name. **This is
+§4's failure mode without §4's protection** — the header is perfectly valid, so the header check
+passes, and the corruption is per-row rather than per-file.
+
+Write the RFC4180 loop: quoted fields, `""` as an escaped quote, embedded commas and newlines, and
+strip a leading BOM before the header check (a BOM otherwise binds to the first column name and
+produces a refusal naming a column that looks identical to the one in the file).
+`import-nrces-formulary.ts`'s `parseCsv` is ~30 lines and is the version to copy.
+
+**The general form, and it is why this sits in a design note rather than a bug list:** a parser that
+is correct for the input it was tested on and lossy for the input it was not **does not degrade, it
+misaligns** — and misaligned data is well-formed, countable, and reports success. Same family as
+the truncated grep and the census row that reads green while being false.

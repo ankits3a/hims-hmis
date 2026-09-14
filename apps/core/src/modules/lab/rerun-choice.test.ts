@@ -14,6 +14,7 @@ import { ingestResults, LAB_RESULTS_INTERFACE } from "./ingest";
 import { LAB_INSTRUMENTS_READ, mapInstrumentCode, registerInstrument } from "./instruments";
 import { chooseReportedResult, enterResult } from "./results";
 import { verifyResult } from "./verify";
+import { labWorklist } from "./worklist";
 import type { LabDeskFixture } from "../../../test/helpers/lab";
 import type { Db } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
@@ -52,6 +53,17 @@ import type { Actor } from "@hmis/contracts";
  * claims to be a human.
  */
 const DAY = new Date("2026-08-30T06:00:00Z");
+
+/**
+ * Every lab state a worklist row can be in before a signature. A14 passes all three rather than the
+ * bench's two: whether a rerun's item sits at `in_analysis` or has already reached `resulted`
+ * depends on how many of the orderable's analytes the machine reported, and the assertion is about
+ * the ASSEMBLY both seats share, not about which of them happens to be looking.
+ */
+/** The repeat run, ten minutes after the first — see `transmit`. */
+const RERUN_AT = new Date("2026-08-30T06:10:00Z");
+
+const LIVE_LAB_STATES = ["accessioned", "in_analysis", "resulted"] as const;
 
 describe("17-E T7 — a rerun keeps both values and a human chooses", () => {
   let db: Db;
@@ -110,13 +122,21 @@ describe("17-E T7 — a rerun keeps both values and a human chooses", () => {
     return { specimenNo, analyteId: analyte.id, orderItemId: item?.id ?? "" };
   }
 
-  /** One machine transmission of one analyte for one tube. */
-  async function transmit(specimenNo: string, value: string, ref: string): Promise<void> {
+  /**
+   * One machine transmission of one analyte for one tube.
+   *
+   * `at` defaults to `DAY` for the assertions that do not care. **A14 passes two distinct times on
+   * purpose:** two rows sharing `entered_at` to the microsecond make "oldest first" a tie, and a tie
+   * is resolved by whatever physical order Postgres happens to return — which A14b's own `UPDATE`
+   * was observed to change mid-test. A rerun happens *after* the run it repeats, so the fixture that
+   * says so is both deterministic and truer.
+   */
+  async function transmit(specimenNo: string, value: string, ref: string, at: Date = DAY): Promise<void> {
     await ingestResults(db, bridge.actor, {
       instrumentId,
       transmissionRef: ref,
       rows: [{ position: 1, sampleId: specimenNo, code: "HGB", value }],
-    }, DAY);
+    }, at);
   }
 
   async function rowsForAnalyte(analyteId: string) {
@@ -469,5 +489,90 @@ describe("17-E T7 — a rerun keeps both values and a human chooses", () => {
     const verified = await db.select().from(labResults)
       .where(eq(labResults.verificationStatus, "verified"));
     expect(verified.map((r) => r.analyteId).sort()).toEqual([ids.LDL!, ids.TC!].sort());
+  });
+
+  /* ─────────── A14 — the seat that must choose can SEE the pair, in its own worklist ─────────── */
+
+  /**
+   * **THE SCREEN'S HALF OF D18, AND THE HALF THAT WAS MISSING.** A3 proves nothing unchosen reaches
+   * a report; A5 proves the choice carries a reason. Both are the SERVER's half, and both were
+   * already green while the seat that has to make the choice could not see that one was owed.
+   *
+   * `labWorklist` is what the bench and the pathologist both read. Against the code this assertion
+   * guards it answers, for an analyte carrying two live runs:
+   *
+   *     analytes: [ { value: "9.9000", resultId: <the SECOND row>, rerunChoice: undefined } ]
+   *
+   * — the later run, silently, with nothing saying a judgement is owed. **`.at(-1)` is the
+   * auto-supersession D9 forbids, performed by the VIEW instead of by the writer.** The bench sees
+   * one number, believes it, and `assertReportable` then refuses `rerun_unchosen` two seats later at
+   * the pathologist's signature — for a state the bench could neither see nor resolve.
+   *
+   * So the view must say what `currentValue` says, which is the reason that helper returns three
+   * different answers: **no reportable value here, and these are the two candidates.**
+   *
+   * ═══ WHY THIS ASSERTION IS HERE AND NOT IN `worklist.test.ts` ═══
+   *
+   * The pair is what makes it a test, and building one takes a registered analyser, a mapped code
+   * and two transmissions — this file's `beforeEach` and its `tubeWithMappedCode`/`transmit`. A copy
+   * of that fixture in the worklist's own file would be a second place for the rerun's semantics to
+   * drift from `liveRowsFor`. The worklist's three existing cases cover the single-value shape.
+   */
+  it("A14 — two live runs: the worklist reports NO value and offers the pair, oldest first", async () => {
+    await grantPermissionToRole(db, fx.registry, "lab_technician", "lab.worklist.read");
+    const { specimenNo, analyteId } = await tubeWithMappedCode();
+    await transmit(specimenNo, "5.0", "run-1");
+    await transmit(specimenNo, "9.9", "run-2", RERUN_AT);
+
+    const rows = await rowsForAnalyte(analyteId);
+    expect(rows).toHaveLength(2);
+
+    const worklist = await labWorklist(db, fx.bench.actor, LIVE_LAB_STATES);
+    const analyte = worklist.flatMap((r) => r.analytes).find((a) => a.analyteId === analyteId);
+
+    /**
+     * NULL, not "9.9000". The analyte HAS no reportable value while the choice is owed, and a view
+     * that printed one would be printing the answer to a question nobody answered.
+     */
+    expect(analyte).toBeDefined();
+    expect({ value: analyte!.value, resultId: analyte!.resultId }).toEqual({
+      value: null,
+      resultId: null,
+    });
+
+    /** The pair, oldest first, each run with what the bench needs to judge it. */
+    expect(analyte!.rerunChoice.map((c) => [c.value, c.resultId, c.isRerun])).toEqual([
+      ["5.0000", rows[0]!.id, false],
+      ["9.9000", rows[1]!.id, true],
+    ]);
+    /** Machine-produced, which is WHY a choice is owed: a human re-key would have superseded. */
+    expect(analyte!.rerunChoice.map((c) => c.entryMode)).toEqual(["interface", "interface"]);
+  });
+
+  /**
+   * THE OTHER SIDE OF THE SAME SWITCH. Once the bench has chosen, the worklist carries the CHOSEN
+   * value — not the latest — and stops asking. A view that kept offering a resolved pair would send
+   * the technologist back to a decision they had already recorded a reason for.
+   */
+  it("A14b — after the choice the worklist carries the CHOSEN run and offers nothing", async () => {
+    await grantPermissionToRole(db, fx.registry, "lab_technician", "lab.worklist.read");
+    const { specimenNo, analyteId } = await tubeWithMappedCode();
+    await transmit(specimenNo, "5.0", "run-1");
+    await transmit(specimenNo, "9.9", "run-2", RERUN_AT);
+    const rows = await rowsForAnalyte(analyteId);
+
+    /** The FIRST run, which is not the one `.at(-1)` would have shown — that is the discriminator. */
+    await chooseReportedResult(db, fx.bench.actor, {
+      resultId: rows[0]!.id,
+      reason: "second run's QC failed on the same plate",
+    });
+
+    const worklist = await labWorklist(db, fx.bench.actor, LIVE_LAB_STATES);
+    const analyte = worklist.flatMap((r) => r.analytes).find((a) => a.analyteId === analyteId);
+    expect({ value: analyte!.value, resultId: analyte!.resultId, owed: analyte!.rerunChoice }).toEqual({
+      value: "5.0000",
+      resultId: rows[0]!.id,
+      owed: [],
+    });
   });
 });

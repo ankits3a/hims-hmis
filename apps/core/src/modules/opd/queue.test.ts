@@ -124,28 +124,28 @@ describe("opd queue (list / call / skip / in-consult / board / desk summary)", (
 
     await callNext(db, dra.actor, a.sessionId, NOW); // → A (09:00 is the earliest)
     const at1 = new Date(NOW.getTime() + 60_000);
-    const r1 = await skipCalled(db, dra.actor, a.queueEntry.id, at1);
+    const r1 = await skipCalled(db, dra.actor, a.queueEntry.id, { reason: "absent" }, at1);
     expect(r1.entry.status).toBe("waiting");
     expect(r1.entry.skips).toBe(1);
     expect(r1.entry.eligibleAt!.toISOString()).toBe(at1.toISOString());
     expect(r1.entry.tokenNo).toBe(a.tokenNo); // the place is lost, the token is not
     const skipped = await eventsNamed("queue.skipped");
     expect(skipped).toHaveLength(1);
-    expect(skipped[0]!.payload).toMatchObject({ entryId: a.queueEntry.id, tokenNo: a.tokenNo, skips: 1, left: false });
+    expect(skipped[0]!.payload).toMatchObject({ entryId: a.queueEntry.id, tokenNo: a.tokenNo, skips: 1, left: false, reason: "absent", note: null });
 
     const behind = (await listQueue(db, clerk.actor, dra.doctorId, MON, at1))!;
     expect(behind.ordered.map((r) => r.id)).toEqual([f.queueEntry.id, a.queueEntry.id]);
 
-    await expect(skipCalled(db, dra.actor, f.queueEntry.id, at1)).rejects.toMatchObject({ code: "queue_entry_state_conflict" });
+    await expect(skipCalled(db, dra.actor, f.queueEntry.id, { reason: "absent" }, at1)).rejects.toMatchObject({ code: "queue_entry_state_conflict" });
 
     await callNext(db, dra.actor, a.sessionId, at1); // → F
     await withTx(db, (tx) => markDone(tx, f.encounter.id, at1)); // F out of the way
     const at2 = new Date(NOW.getTime() + 120_000);
     await callNext(db, dra.actor, a.sessionId, at2); // → A again
-    expect((await skipCalled(db, dra.actor, a.queueEntry.id, at2)).entry).toMatchObject({ status: "waiting", skips: 2 });
+    expect((await skipCalled(db, dra.actor, a.queueEntry.id, { reason: "at_billing" }, at2)).entry).toMatchObject({ status: "waiting", skips: 2 });
     const at3 = new Date(NOW.getTime() + 180_000);
     await callNext(db, dra.actor, a.sessionId, at3); // → A again
-    const r3 = await skipCalled(db, dra.actor, a.queueEntry.id, at3);
+    const r3 = await skipCalled(db, dra.actor, a.queueEntry.id, { reason: "absent" }, at3);
     expect(r3.entry.status).toBe("left"); // config maxSkipsBeforeLeft = 3
     expect(r3.entry.skips).toBe(3);
 

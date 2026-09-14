@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineEvent } from "@hmis/contracts";
+import { SKIP_REASONS } from "./skip-reasons";
 
 /**
  * The OPD module's complete event surface (Plan 07): seventeen §10.6 P1 names plus qr.signature_failed
@@ -301,6 +302,24 @@ export const queueSessionClosed = defineEvent("queue_session.closed", MODULE, z.
   closedAt: iso, seen: z.number().int().nonnegative(),
 }));
 
+/**
+ * ═══ THE DAY THAT WAS CLOSED BY MISTAKE ═══
+ *
+ * Owner, 2026-09-13: closing the session is one click on a dropdown a doctor uses all day, and it
+ * was IRREVERSIBLE — `setSessionStatus` refused every move out of `closed`, so the misclick ended
+ * the clinic. Every patient still waiting became uncallable (`callNext` refuses a closed session)
+ * and the doctor-day left the corridor board, with no act in the system that could put it back.
+ *
+ * A reopen is a CORRECTION OF THE RECORD rather than a second morning, and the event says so: the
+ * `queue_session.closed` it undoes stays in the log, `openedBy`/`openedAt` are untouched (the
+ * morning had one opener and still does), and `closedMs` measures how long the day was shut — the
+ * figure that separates a misclick from a clinic somebody restarted an hour later.
+ */
+export const queueSessionReopened = defineEvent("queue_session.reopened", MODULE, z.object({
+  sessionId: id, doctorId: id, serviceDate: isoDate, roomId: z.string().nullable(),
+  reopenedAt: iso, closedAt: iso.nullable(), closedMs: z.number().int().nonnegative().nullable(),
+}));
+
 export const queueCalled = defineEvent("queue.called", MODULE, z.object({
   encounterId: id, patientId: id, entryId: id, ...where,
   callCount: z.number().int().positive(),
@@ -310,6 +329,34 @@ export const queueSkipped = defineEvent("queue.skipped", MODULE, z.object({
   encounterId: id, patientId: id, entryId: id, ...where,
   skips: z.number().int().positive(),
   left: z.boolean(), // true when max_skips_before_left was reached and the entry left the queue
+  /**
+   * WHY, ADDED 2026-09-13 — the one question a skip exists to answer and the one this event could
+   * not. It is REQUIRED rather than optional: an optional reason is a reason the busy path omits,
+   * and the busy path is every skip. The coded value is what makes "how many turns were lost to
+   * the billing queue this month" answerable; `note` is the free text and is non-null only when it
+   * was typed (mandatory under `other`, allowed beside any of them).
+   */
+  reason: z.enum(SKIP_REASONS),
+  note: z.string().nullable(),
+}));
+
+/**
+ * ═══ THE SKIP TAKEN BACK ═══
+ *
+ * A correction, and like every correction in this tree it ADDS a fact rather than deleting one: the
+ * `queue.skipped` it undoes stays in the log with its reason, and this row says who took it back,
+ * when, and what the patient's state was — `wasLeft` marks the ones that had already fallen out of
+ * the queue entirely, which is the population worth counting. If that number is not small, the
+ * three-skip cap is set wrong for this hospital and the log is where that shows.
+ */
+export const queueSkipUndone = defineEvent("queue.skip_undone", MODULE, z.object({
+  encounterId: id, patientId: id, entryId: id, ...where,
+  skips: z.number().int().nonnegative(), // the counter AFTER the undo
+  reason: z.enum(SKIP_REASONS).nullable(), // what the skip being undone had said
+  /** Null when the skip predates `skipped_at` — a `left` row is its own evidence that one happened. */
+  skippedAt: iso.nullable(),
+  undoneAt: iso,
+  wasLeft: z.boolean(),
 }));
 
 export const consultationStarted = defineEvent("consultation.started", MODULE, z.object({
@@ -325,6 +372,29 @@ export const consultationCompleted = defineEvent("consultation.completed", MODUL
   referralIssued: z.boolean(),
   prescriptionCount: z.number().int().nonnegative(),
   icd10Code: z.string().nullable(),
+}));
+
+/**
+ * ═══ PARKED AND RESUMED — the patient who stepped out mid-consultation ═══
+ *
+ * Owner, 2026-09-13: *"in between the patient decide to stop and he gets outside for 15 minutes."*
+ * The consultation does not end and does not start again: the encounter stays `in_consultation`
+ * throughout and the queue entry stays `in_consult`, so a park emits NEITHER a completion nor a
+ * second `consultation.started` — either would make the doctor's own day-report count one patient
+ * twice, and `consultation.started` is what `awaiting_results` and the wait-time figures are
+ * measured from.
+ *
+ * `parkedMs` on the resume is the honest measure of "fifteen minutes", and the reason the park
+ * carries a timestamp at all rather than a boolean.
+ */
+export const consultationParked = defineEvent("consultation.parked", MODULE, z.object({
+  encounterId: id, patientId: id, entryId: id, ...where,
+  parkedAt: iso,
+}));
+
+export const consultationResumed = defineEvent("consultation.resumed", MODULE, z.object({
+  encounterId: id, patientId: id, entryId: id, ...where,
+  parkedAt: iso, parkedMs: z.number().int().nonnegative(),
 }));
 
 export const prescriptionIssued = defineEvent("prescription.issued", MODULE, z.object({
