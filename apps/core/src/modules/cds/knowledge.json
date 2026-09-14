@@ -1,0 +1,3276 @@
+{
+  "source": {
+    "file": "syndromes-a.json",
+    "sha256": "bf187fdc5089164b3070494100dba46ffd077f99bca5545e47ba44a3da2a9c06"
+  },
+  "builtFrom": "owner CDS bundle (CDAC DIS / NFI / WHO AWaRe / ICMR / CredibleMeds)",
+  "syndromes": [
+    {
+      "key": "SYN_ASTHMA_06",
+      "name": "Bronchial Asthma Flare & Acute Bronchospasm",
+      "keywords": [
+        "wheezing",
+        "breathlessness",
+        "chest tightness",
+        "asthma attack",
+        "shortness of breath",
+        "nocturnal cough"
+      ],
+      "icd10": "J45.909",
+      "description": "Reversible hyperreactive airway obstruction triggered by allergens, viral infections, or cold air with wheeze and dyspnea.",
+      "lines": [
+        {
+          "band": "adult",
+          "seq": 1,
+          "drugLabel": "Budesonide 200mcg + Formoterol 6mcg Inhaler",
+          "purpose": "Inhaled Corticosteroid + Rapid LABA",
+          "sig": "2 Puffs BD & 1-2 Puffs SOS for Reliever (GINA Track 1)",
+          "duration": "30 Days",
+          "dosing": null
+        },
+        {
+          "band": "adult",
+          "seq": 2,
+          "drugLabel": "Prednisolone 20mg Tablets",
+          "purpose": "Short Course Systemic Anti-inflammatory",
+          "sig": "20mg Once Daily Morning PC",
+          "duration": "5 Days",
+          "dosing": null
+        },
+        {
+          "band": "adult",
+          "seq": 3,
+          "drugLabel": "Montelukast 10mg + Levocetirizine 5mg",
+          "purpose": "Leukotriene Receptor Antagonism",
+          "sig": "0-0-1 At Bedtime",
+          "duration": "14 Days",
+          "dosing": null
+        },
+        {
+          "band": "pediatric",
+          "seq": 1,
+          "drugLabel": "Salbutamol + Budesonide Inhaler with Spacer & Mask",
+          "purpose": "Bronchodilation",
+          "sig": "2 Puffs Every 4-6 hours SOS",
+          "duration": "7 Days",
+          "dosing": {
+            "kind": "fixed"
+          }
+        },
+        {
+          "band": "pediatric",
+          "seq": 2,
+          "drugLabel": "Montelukast 4mg Chewable Tablets",
+          "purpose": "Pediatric Airway Stabilization",
+          "sig": "1 Tablet at Bedtime",
+          "duration": "14 Days",
+          "dosing": {
+            "kind": "fixed"
+          }
+        },
+        {
+          "band": "pediatric",
+          "seq": 3,
+          "drugLabel": "Prednisolone Syrup 5mg/5ml",
+          "purpose": "Oral Steroid Burst",
+          "sig": "14 mL (1 mg/kg/day for 14kg) Morning x 3 Days",
+          "duration": "3 Days",
+          "dosing": {
+            "kind": "stated",
+            "mgPerKg": 1,
+            "per": "day",
+            "concentrationMgPerMl": 1
+          }
+        }
+      ],
+      "substitutions": [
+        {
+          "condition": "Hypoxemia SpO2 < 92%",
+          "substituteFor": null,
+          "drugAdult": null,
+          "drugChild": null,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "key": "SYN_BRONCH_04",
+      "name": "Acute Bronchitis with Productive Cough",
+      "keywords": [
+        "chest congestion",
+        "productive cough",
+        "yellow phlegm",
+        "wet cough",
+        "sputum",
+        "bronchial rattle"
+      ],
+      "icd10": "J20.9",
+      "description": "Lower respiratory tracheobronchial mucosal inflammation characterized by thick mucus production and paroxysmal coughing.",
+      "lines": [
+        {
+          "band": "adult",
+          "seq": 1,
+          "drugLabel": "Ambroxol 30mg + Guaiphenesin 100mg + Terbutaline 2.5mg Syrup",
+          "purpose": "Mucokinetic, Expectorant & Bronchodilator",
+          "sig": "10 mL TDS After Food",
+          "duration": "5 Days",
+          "dosing": null
+        },
+        {
+          "band": "adult",
+          "seq": 2,
+          "drugLabel": "Amoxicillin-Clavulanic Acid 625mg",
+          "purpose": "Bacterial Coverage",
+          "sig": "1-0-1 After Food",
+          "duration": "5 Days",
+          "dosing": null
+        },
+        {
+          "band": "adult",
+          "seq": 3,
+          "drugLabel": "Paracetamol 500mg",
+          "purpose": "Analgesia",
+          "sig": "1-0-1 SOS for chest wall pain",
+          "duration": "3 Days",
+          "dosing": null
+        },
+        {
+          "band": "pediatric",
+          "seq": 1,
+          "drugLabel": "Ambroxol + Terbutaline Pediatric Syrup",
+          "purpose": "Airway Secretion Clearance",
+          "sig": "2.5 mL Every 8 hours",
+          "duration": "5 Days",
+          "dosing": {
+            "kind": "fixed"
+          }
+        },
+        {
+          "band": "pediatric",
+          "seq": 2,
+          "drugLabel": "Amoxicillin-Clavulanate Syrup 228.5mg/5ml",
+          "purpose": "Antibiotic Coverage",
+          "sig": "3.5 mL Every 12h",
+          "duration": "5 Days",
+          "dosing": {
+            "kind": "derived",
+            "mgPerKg": 11.4,
+            "per": "dose",
+            "concentrationMgPerMl": 45.7,
+            "from": {
+              "exampleWeightKg": 14,
+              "exampleVolumeMl": 3.5
+            },
+            "reviewed": false
+          }
+        }
+      ],
+      "substitutions": [
+        {
+          "condition": "Penicillin Allergy",
+          "substituteFor": "Amoxicillin-Clavulanic Acid",
+          "drugAdult": "Azithromycin 500mg OD x 3 Days or Doxycycline 100mg BD x 7 Days",
+          "drugChild": "Azithromycin 100mg/5ml Suspension (7 mL Day 1, then 3.5 mL Days 2-5)",
+          "reason": "Avoids beta-lactam hypersensitivity"
+        }
+      ]
+    },
+    {
+      "key": "SYN_GERD_03",
+      "name": "Acid Peptic Disease / GERD / Acute Dyspepsia",
+      "keywords": [
+        "heartburn",
+        "acidity",
+        "chest burning",
+        "epigastric pain",
+        "acid reflux",
+        "sour belching",
+        "gastritis"
+      ],
+      "icd10": "K21.9",
+      "description": "Excessive gastric acid secretion, reflux esophagitis, or mucosal irritation responsive to proton pump blockade and prokinetics.",
+      "lines": [
+        {
+          "band": "adult",
+          "seq": 1,
+          "drugLabel": "Pantoprazole 40mg + Domperidone 30mg SR",
+          "purpose": "Proton Pump Inhibition & Prokinetic",
+          "sig": "1-0-0 30-60 min Before Breakfast",
+          "duration": "14 Days",
+          "dosing": null
+        },
+        {
+          "band": "adult",
+          "seq": 2,
+          "drugLabel": "Magaldrate + Simethicone Oral Suspension",
+          "purpose": "Rapid Antacid Neutralization",
+          "sig": "10 mL 1 hr after meals & at bedtime SOS",
+          "duration": "7 Days",
+          "dosing": null
+        },
+        {
+          "band": "adult",
+          "seq": 3,
+          "drugLabel": "Sucralfate 1000mg/5ml Suspension",
+          "purpose": "Mucosal Protective Barrier",
+          "sig": "10 mL QID 1 hr before meals & HS",
+          "duration": "7 Days",
+          "dosing": null
+        },
+        {
+          "band": "pediatric",
+          "seq": 1,
+          "drugLabel": "Pantoprazole 20mg Dispersible Tab",
+          "purpose": "Acid Suppression",
+          "sig": "10 mg Once Daily Before Food",
+          "duration": "7 Days",
+          "dosing": {
+            "kind": "fixed"
+          }
+        },
+        {
+          "band": "pediatric",
+          "seq": 2,
+          "drugLabel": "Antacid Gel Pediatric",
+          "purpose": "Buffer Intragastric pH",
+          "sig": "2.5 mL 1 hr after feeds SOS",
+          "duration": "5 Days",
+          "dosing": {
+            "kind": "fixed"
+          }
+        }
+      ],
+      "substitutions": [
+        {
+          "condition": "PPI Allergy",
+          "substituteFor": "Pantoprazole",
+          "drugAdult": "Famotidine 40mg at bedtime",
+          "drugChild": "Ranitidine Syrup 75mg/5ml",
+          "reason": "H2-receptor antagonist alternative"
+        }
+      ]
+    },
+    {
+      "key": "SYN_GE_02",
+      "name": "Acute Gastroenteritis / Diarrhea with Dehydration",
+      "keywords": [
+        "loose stools",
+        "diarrhea",
+        "vomiting",
+        "stomach cramps",
+        "dehydration",
+        "watery stools",
+        "food poisoning"
+      ],
+      "icd10": "A09",
+      "description": "Acute diarrheal disease with fluid loss and electrolyte depletion secondary to viral or bacterial enteropathogens.",
+      "lines": [
+        {
+          "band": "adult",
+          "seq": 1,
+          "drugLabel": "Oral Rehydration Salts (ORS)",
+          "purpose": "Fluid & Electrolyte Repletion",
+          "sig": "200-400 mL after each loose purge",
+          "duration": "Until resolved",
+          "dosing": null
+        },
+        {
+          "band": "adult",
+          "seq": 2,
+          "drugLabel": "Ofloxacin 200mg + Ornidazole 500mg",
+          "purpose": "Enteric Antibacterial & Antiprotozoal",
+          "sig": "1-0-1 After Food",
+          "duration": "3 Days",
+          "dosing": null
+        },
+        {
+          "band": "adult",
+          "seq": 3,
+          "drugLabel": "Racecadotril Capsules 100mg",
+          "purpose": "Antisecretory Antidiarrheal",
+          "sig": "1-1-1 Before Meals",
+          "duration": "3 Days",
+          "dosing": null
+        },
+        {
+          "band": "adult",
+          "seq": 4,
+          "drugLabel": "Ondansetron 4mg",
+          "purpose": "Antiemetic",
+          "sig": "1-0-1 SOS for Vomiting",
+          "duration": "2 Days",
+          "dosing": null
+        },
+        {
+          "band": "pediatric",
+          "seq": 1,
+          "drugLabel": "Oral Rehydration Salts (ORS) Pediatric",
+          "purpose": "Rehydration",
+          "sig": "100-150 mL after every loose stool",
+          "duration": "Until hydration normal",
+          "dosing": {
+            "kind": "fixed"
+          }
+        },
+        {
+          "band": "pediatric",
+          "seq": 2,
+          "drugLabel": "Zinc Sulfate Syrup 20mg/5ml",
+          "purpose": "WHO Protocol: Mucosal Regeneration",
+          "sig": "5 mL Once Daily",
+          "duration": "14 Days",
+          "dosing": {
+            "kind": "fixed"
+          }
+        },
+        {
+          "band": "pediatric",
+          "seq": 3,
+          "drugLabel": "Racecadotril Sachet 15mg",
+          "purpose": "Enkephalinase Inhibitor",
+          "sig": "1 Sachet mixed with water TID",
+          "duration": "3 Days",
+          "dosing": {
+            "kind": "fixed"
+          }
+        },
+        {
+          "band": "pediatric",
+          "seq": 4,
+          "drugLabel": "Ondansetron Syrup 2mg/5ml",
+          "purpose": "Antiemetic",
+          "sig": "3.5 mL (0.15 mg/kg) SOS",
+          "duration": "2 Days",
+          "dosing": {
+            "kind": "stated",
+            "mgPerKg": 0.15,
+            "per": "dose",
+            "concentrationMgPerMl": 0.4
+          }
+        }
+      ],
+      "substitutions": [
+        {
+          "condition": "Quinolone Allergy",
+          "substituteFor": "Ofloxacin + Ornidazole",
+          "drugAdult": "Azithromycin 500mg OD x 3 Days",
+          "drugChild": "Cefixime Oral Suspension 100mg/5ml (4 mL BD x 5 Days)",
+          "reason": "Safe non-quinolone antimicrobial"
+        }
+      ]
+    },
+    {
+      "key": "SYN_HTN_05",
+      "name": "Essential Hypertension (Stage 1 & Stage 2)",
+      "keywords": [
+        "high blood pressure",
+        "elevated bp",
+        "hypertension",
+        "occipital headache",
+        "bp check"
+      ],
+      "icd10": "I10",
+      "description": "Persistent elevation of systemic arterial blood pressure requiring stepped guideline-directed vasodilatory and neurohormonal blockade.",
+      "lines": [
+        {
+          "band": "adult",
+          "seq": 1,
+          "drugLabel": "Telmisartan 40mg Tablets",
+          "purpose": "AT1 Receptor Antagonism",
+          "sig": "1-0-0 Every Morning with/without food",
+          "duration": "30 Days",
+          "dosing": null
+        },
+        {
+          "band": "adult",
+          "seq": 2,
+          "drugLabel": "Amlodipine 5mg Tablets",
+          "purpose": "Arteriolar Vasodilation",
+          "sig": "1-0-0 Morning (if SBP > 150)",
+          "duration": "30 Days",
+          "dosing": null
+        },
+        {
+          "band": "pediatric",
+          "seq": 1,
+          "drugLabel": "Amlodipine 2.5mg Tablets",
+          "purpose": "Pediatric BP Management",
+          "sig": "Consult Pediatric Nephrologist strictly; 2.5mg OD if secondary HTN confirmed",
+          "duration": "14 Days",
+          "dosing": {
+            "kind": "non_drug"
+          }
+        }
+      ],
+      "substitutions": [
+        {
+          "condition": "Bradycardia HR < 55",
+          "substituteFor": "Beta-Blockers",
+          "drugAdult": "Telmisartan 40mg or Amlodipine 5mg",
+          "drugChild": "Amlodipine 2.5mg",
+          "reason": "Non-chronotropic vasodilators preserve heart rate"
+        },
+        {
+          "condition": "Ankle Edema",
+          "substituteFor": "Amlodipine",
+          "drugAdult": "Telmisartan 40mg + Chlorthalidone 12.5mg",
+          "drugChild": "Enalapril",
+          "reason": "Diuretic/ARB combination resolves pre-capillary edema"
+        }
+      ]
+    },
+    {
+      "key": "SYN_MSK_07",
+      "name": "Musculoskeletal Pain, Lumbago & Acute Sprain",
+      "keywords": [
+        "back pain",
+        "joint pain",
+        "muscle spasm",
+        "sprain",
+        "twist",
+        "lumbar ache",
+        "lumbago",
+        "neck stiffness"
+      ],
+      "icd10": "M54.50",
+      "description": "Acute somatic pain and muscular spasm secondary to ligamentous strain, mechanical injury, or localized inflammatory response.",
+      "lines": [
+        {
+          "band": "adult",
+          "seq": 1,
+          "drugLabel": "Aceclofenac 100mg + Paracetamol 325mg + Thiocolchicoside 4mg",
+          "purpose": "NSAID, Analgesic & Centrally Acting Muscle Relaxant",
+          "sig": "1-0-1 After Food",
+          "duration": "5 Days",
+          "dosing": null
+        },
+        {
+          "band": "adult",
+          "seq": 2,
+          "drugLabel": "Pantoprazole 40mg",
+          "purpose": "Gastroprotection against NSAID Gastropathy",
+          "sig": "1-0-0 30 min Before Breakfast",
+          "duration": "5 Days",
+          "dosing": null
+        },
+        {
+          "band": "adult",
+          "seq": 3,
+          "drugLabel": "Diclofenac Diethylamine + Methyl Salicylate Gel",
+          "purpose": "Topical Counterirritant & Anti-inflammatory",
+          "sig": "Apply gently to painful area TID",
+          "duration": "7 Days",
+          "dosing": null
+        },
+        {
+          "band": "pediatric",
+          "seq": 1,
+          "drugLabel": "Paracetamol Oral Suspension 250mg/5ml",
+          "purpose": "Safe Pediatric Analgesia",
+          "sig": "3.5 mL Every 6 hours SOS",
+          "duration": "3 Days",
+          "dosing": {
+            "kind": "derived",
+            "mgPerKg": 12.5,
+            "per": "dose",
+            "concentrationMgPerMl": 50,
+            "from": {
+              "exampleWeightKg": 14,
+              "exampleVolumeMl": 3.5
+            },
+            "reviewed": false
+          }
+        },
+        {
+          "band": "pediatric",
+          "seq": 2,
+          "drugLabel": "Cold Compress / Rest / Ice",
+          "purpose": "RICE Protocol",
+          "sig": "Apply cold pack for 15 min TID",
+          "duration": "48 Hours",
+          "dosing": {
+            "kind": "non_drug"
+          }
+        }
+      ],
+      "substitutions": [
+        {
+          "condition": "NSAID Allergy / AERD",
+          "substituteFor": "Aceclofenac",
+          "drugAdult": "Paracetamol 650mg + Tramadol 37.5mg (1-0-1 PC x 5 Days)",
+          "drugChild": "Paracetamol Oral Suspension",
+          "reason": "Avoids COX-1 mediated bronchospasm and anaphylaxis"
+        }
+      ]
+    },
+    {
+      "key": "SYN_URI_01",
+      "name": "Acute Upper Respiratory Infection (URI) / Tonsillopharyngitis",
+      "keywords": [
+        "fever",
+        "sore throat",
+        "cough",
+        "throat pain",
+        "pharyngitis",
+        "runny nose",
+        "nasal congestion"
+      ],
+      "icd10": "J06.9",
+      "description": "Acute viral or bacterial inflammation of the upper respiratory tract presenting with throat pain, pyrexia, and catarrhal symptoms.",
+      "lines": [
+        {
+          "band": "adult",
+          "seq": 1,
+          "drugLabel": "Paracetamol Tablets 650mg",
+          "purpose": "Antipyresis & Analgesia",
+          "sig": "1-0-1 After Food",
+          "duration": "3 Days",
+          "dosing": null
+        },
+        {
+          "band": "adult",
+          "seq": 2,
+          "drugLabel": "Amoxicillin and Clavulanic Acid 625mg",
+          "purpose": "Bacterial Eradication",
+          "sig": "1-0-1 After Food",
+          "duration": "5 Days",
+          "dosing": null
+        },
+        {
+          "band": "adult",
+          "seq": 3,
+          "drugLabel": "Levocetirizine 5mg + Ambroxol 60mg",
+          "purpose": "Mucolytic & Antihistaminic",
+          "sig": "0-0-1 At Bedtime",
+          "duration": "5 Days",
+          "dosing": null
+        },
+        {
+          "band": "adult",
+          "seq": 4,
+          "drugLabel": "Pantoprazole 40mg",
+          "purpose": "Gastroprotection",
+          "sig": "1-0-0 30 min Before Breakfast",
+          "duration": "5 Days",
+          "dosing": null
+        },
+        {
+          "band": "pediatric",
+          "seq": 1,
+          "drugLabel": "Paracetamol Oral Suspension 250mg/5ml",
+          "purpose": "Antipyresis",
+          "sig": "3.5 mL (for 14kg: 12.5 mg/kg) Every 6h SOS",
+          "duration": "3 Days",
+          "dosing": {
+            "kind": "stated",
+            "mgPerKg": 12.5,
+            "per": "dose",
+            "concentrationMgPerMl": 50
+          }
+        },
+        {
+          "band": "pediatric",
+          "seq": 2,
+          "drugLabel": "Amoxicillin and Clavulanate Syrup 228.5mg/5ml",
+          "purpose": "Antibiotic Coverage",
+          "sig": "3.5 mL Every 12h PC",
+          "duration": "5 Days",
+          "dosing": {
+            "kind": "derived",
+            "mgPerKg": 11.4,
+            "per": "dose",
+            "concentrationMgPerMl": 45.7,
+            "from": {
+              "exampleWeightKg": 14,
+              "exampleVolumeMl": 3.5
+            },
+            "reviewed": false
+          }
+        },
+        {
+          "band": "pediatric",
+          "seq": 3,
+          "drugLabel": "Levocetirizine + Ambroxol Pediatric Syrup",
+          "purpose": "Cough & Cold Relief",
+          "sig": "2.5 mL At Bedtime",
+          "duration": "5 Days",
+          "dosing": {
+            "kind": "fixed"
+          }
+        }
+      ],
+      "substitutions": [
+        {
+          "condition": "Penicillin Allergy",
+          "substituteFor": "Amoxicillin and Clavulanic Acid",
+          "drugAdult": "Azithromycin Tablets 500mg (1-0-0 AC x 3 Days)",
+          "drugChild": "Azithromycin Oral Suspension 100mg/5ml (7 mL Day 1, then 3.5 mL Days 2-5)",
+          "reason": "Macrolide avoids beta-lactam anaphylaxis"
+        }
+      ]
+    },
+    {
+      "key": "SYN_UTI_08",
+      "name": "Uncomplicated Urinary Tract Infection (Cystitis)",
+      "keywords": [
+        "burning urination",
+        "dysuria",
+        "urinary frequency",
+        "urgency",
+        "lower abdominal pain",
+        "cloudy urine"
+      ],
+      "icd10": "N39.0",
+      "description": "Acute bacterial mucosal proliferation in the bladder and lower urinary tract commonly caused by uropathogenic E. coli.",
+      "lines": [
+        {
+          "band": "adult",
+          "seq": 1,
+          "drugLabel": "Nitrofurantoin 100mg SR Tablets",
+          "purpose": "First-Line Urinary Antiseptic (High Urinary Concentration)",
+          "sig": "1-0-1 With Meals",
+          "duration": "5 Days",
+          "dosing": null
+        },
+        {
+          "band": "adult",
+          "seq": 2,
+          "drugLabel": "Disodium Hydrogen Citrate Syrup",
+          "purpose": "Urine Alkalinizer for Burning Sensation",
+          "sig": "15 mL in a glass of water TID",
+          "duration": "3 Days",
+          "dosing": null
+        },
+        {
+          "band": "adult",
+          "seq": 3,
+          "drugLabel": "Paracetamol 500mg",
+          "purpose": "Pelvic Discomfort Relief",
+          "sig": "1-0-1 SOS",
+          "duration": "3 Days",
+          "dosing": null
+        },
+        {
+          "band": "pediatric",
+          "seq": 1,
+          "drugLabel": "Cefixime Oral Suspension 100mg/5ml",
+          "purpose": "Safe Pediatric UTI Regimen",
+          "sig": "4 mL (8 mg/kg/day for 14kg) divided BD",
+          "duration": "7 Days",
+          "dosing": {
+            "kind": "stated",
+            "mgPerKg": 8,
+            "per": "day",
+            "concentrationMgPerMl": 20
+          }
+        },
+        {
+          "band": "pediatric",
+          "seq": 2,
+          "drugLabel": "Oral Fluids Hydration",
+          "purpose": "Bladder Flushing",
+          "sig": "Encourage 1.5 L fluid intake daily",
+          "duration": "7 Days",
+          "dosing": {
+            "kind": "non_drug"
+          }
+        }
+      ],
+      "substitutions": [
+        {
+          "condition": "Sulfa or Nitrofurantoin Intolerance",
+          "substituteFor": "Nitrofurantoin",
+          "drugAdult": "Fosfomycin Trometamol 3g Single Dose Sachet in water or Cefuroxime 500mg BD x 5 Days",
+          "drugChild": "Cefixime 100mg/5ml",
+          "reason": "Safe alternative with high urinary excretion"
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "domain": "vitals_rules",
+      "ruleKey": "1",
+      "subject": "SBP",
+      "severity": "RED",
+      "message": "CRITICAL HYPOTENSION: Systolic BP < 90 mmHg. Administering antihypertensives or nitrates risks cardiogenic shock and cerebral hypoperfusion.",
+      "action": null,
+      "payload": {
+        "id": 1,
+        "vital": "SBP",
+        "op": "<",
+        "val": 90,
+        "unit": "mmHg",
+        "drugs": [
+          "Antihypertensives",
+          "Beta-Blockers",
+          "ACE Inhibitors",
+          "ARBs",
+          "CCBs",
+          "Nitrates",
+          "Diuretics"
+        ],
+        "sev": "RED",
+        "msg": "CRITICAL HYPOTENSION: Systolic BP < 90 mmHg. Administering antihypertensives or nitrates risks cardiogenic shock and cerebral hypoperfusion."
+      }
+    },
+    {
+      "domain": "vitals_rules",
+      "ruleKey": "2",
+      "subject": "SBP",
+      "severity": "AMBER",
+      "message": "STAGE 2 HYPERTENSION: Systolic BP > 160 mmHg. Oral sympathomimetic decongestants and NSAIDs elevate systemic vascular resistance and blunt BP control.",
+      "action": null,
+      "payload": {
+        "id": 2,
+        "vital": "SBP",
+        "op": ">",
+        "val": 160,
+        "unit": "mmHg",
+        "drugs": [
+          "Oral Decongestants (Pseudoephedrine",
+          "Phenylephrine)",
+          "Systemic NSAIDs"
+        ],
+        "sev": "AMBER",
+        "msg": "STAGE 2 HYPERTENSION: Systolic BP > 160 mmHg. Oral sympathomimetic decongestants and NSAIDs elevate systemic vascular resistance and blunt BP control."
+      }
+    },
+    {
+      "domain": "vitals_rules",
+      "ruleKey": "3",
+      "subject": "DBP",
+      "severity": "AMBER",
+      "message": "SEVERE DIASTOLIC HYPERTENSION: DBP > 100 mmHg. Avoid vasoconstrictive and sodium-retaining medications.",
+      "action": null,
+      "payload": {
+        "id": 3,
+        "vital": "DBP",
+        "op": ">",
+        "val": 100,
+        "unit": "mmHg",
+        "drugs": [
+          "Oral Decongestants",
+          "Ergot alkaloids",
+          "Systemic NSAIDs"
+        ],
+        "sev": "AMBER",
+        "msg": "SEVERE DIASTOLIC HYPERTENSION: DBP > 100 mmHg. Avoid vasoconstrictive and sodium-retaining medications."
+      }
+    },
+    {
+      "domain": "vitals_rules",
+      "ruleKey": "4",
+      "subject": "HR",
+      "severity": "RED",
+      "message": "SEVERE BRADYCARDIA: Heart Rate < 55 bpm. Negative chronotropic agents are contraindicated due to high risk of complete AV nodal dissociation and syncope.",
+      "action": null,
+      "payload": {
+        "id": 4,
+        "vital": "HR",
+        "op": "<",
+        "val": 55,
+        "unit": "bpm",
+        "drugs": [
+          "Beta-Blockers (Metoprolol",
+          "Atenolol",
+          "Propranolol)",
+          "Non-DHP CCBs (Verapamil",
+          "Diltiazem)",
+          "Digoxin"
+        ],
+        "sev": "RED",
+        "msg": "SEVERE BRADYCARDIA: Heart Rate < 55 bpm. Negative chronotropic agents are contraindicated due to high risk of complete AV nodal dissociation and syncope."
+      }
+    },
+    {
+      "domain": "vitals_rules",
+      "ruleKey": "5",
+      "subject": "HR",
+      "severity": "AMBER",
+      "message": "SINUS TACHYCARDIA: Heart Rate > 110 bpm. Systemic beta-agonists and anticholinergics exacerbate tachyarrhythmias.",
+      "action": null,
+      "payload": {
+        "id": 5,
+        "vital": "HR",
+        "op": ">",
+        "val": 110,
+        "unit": "bpm",
+        "drugs": [
+          "Short-Acting Beta-2 Agonists (Oral Salbutamol)",
+          "Atropine",
+          "Tricyclic Antidepressants"
+        ],
+        "sev": "AMBER",
+        "msg": "SINUS TACHYCARDIA: Heart Rate > 110 bpm. Systemic beta-agonists and anticholinergics exacerbate tachyarrhythmias."
+      }
+    },
+    {
+      "domain": "vitals_rules",
+      "ruleKey": "6",
+      "subject": "SPO2",
+      "severity": "RED",
+      "message": "HYPOXEMIA ALERT: Oxygen Saturation < 92%. Central nervous system respiratory depressants are contraindicated; provide supplemental oxygen immediately.",
+      "action": null,
+      "payload": {
+        "id": 6,
+        "vital": "SPO2",
+        "op": "<",
+        "val": 92,
+        "unit": "%",
+        "drugs": [
+          "Opioids (Morphine",
+          "Tramadol",
+          "Fentanyl)",
+          "Sedatives (Benzodiazepines",
+          "Zolpidem)"
+        ],
+        "sev": "RED",
+        "msg": "HYPOXEMIA ALERT: Oxygen Saturation < 92%. Central nervous system respiratory depressants are contraindicated; provide supplemental oxygen immediately."
+      }
+    },
+    {
+      "domain": "vitals_rules",
+      "ruleKey": "7",
+      "subject": "TEMP",
+      "severity": "BLUE",
+      "message": "FEBRILE STATE: Core temperature > 100.4 F (38 C). First-line antipyresis (Paracetamol) recommended alongside physical cooling.",
+      "action": null,
+      "payload": {
+        "id": 7,
+        "vital": "TEMP",
+        "op": ">",
+        "val": 100.4,
+        "unit": "F",
+        "drugs": [
+          "Antipyretics Indicated"
+        ],
+        "sev": "BLUE",
+        "msg": "FEBRILE STATE: Core temperature > 100.4 F (38 C). First-line antipyresis (Paracetamol) recommended alongside physical cooling."
+      }
+    },
+    {
+      "domain": "vitals_rules",
+      "ruleKey": "8",
+      "subject": "WEIGHT",
+      "severity": "RED",
+      "message": "PEDIATRIC / LOW BODY WEIGHT: Weight < 40 kg. Adult fixed-dose tablets carry severe hepatotoxic and toxic ceiling risk. Enforce calibrated liquid mL dosing strictly.",
+      "action": null,
+      "payload": {
+        "id": 8,
+        "vital": "WEIGHT",
+        "op": "<",
+        "val": 40,
+        "unit": "kg",
+        "drugs": [
+          "Adult Solid Oral Dosage Forms (500mg/650mg Tablets)"
+        ],
+        "sev": "RED",
+        "msg": "PEDIATRIC / LOW BODY WEIGHT: Weight < 40 kg. Adult fixed-dose tablets carry severe hepatotoxic and toxic ceiling risk. Enforce calibrated liquid mL dosing strictly."
+      }
+    },
+    {
+      "domain": "allergy_rules",
+      "ruleKey": "1",
+      "subject": "Penicillin",
+      "severity": "RED (CRITICAL)",
+      "message": "Documented Penicillin allergy. Risk of Type 1 IgE-Mediated Anaphylaxis, Angioedema, Bronchospasm. Safe alternatives: Macrolides (Azithromycin, Clarithromycin), Fluoroquinolones (Levofloxacin), Doxycycline.",
+      "action": [
+        "Macrolides (Azithromycin",
+        "Clarithromycin)",
+        "Fluoroquinolones (Levofloxacin)",
+        "Doxycycline"
+      ],
+      "payload": {
+        "id": 1,
+        "allergen_class": "Penicillins / Beta-Lactams",
+        "allergen": "Penicillin",
+        "blocked_classes": [
+          "Amoxicillin",
+          "Ampicillin",
+          "Amoxicillin-Clavulanic acid",
+          "Piperacillin",
+          "Cloxacillin",
+          "Cephalexin",
+          "Cefadroxil"
+        ],
+        "severity": "RED (CRITICAL)",
+        "reaction_type": "Type 1 IgE-Mediated Anaphylaxis, Angioedema, Bronchospasm",
+        "message": "Documented Penicillin allergy. Risk of Type 1 IgE-Mediated Anaphylaxis, Angioedema, Bronchospasm. Safe alternatives: Macrolides (Azithromycin, Clarithromycin), Fluoroquinolones (Levofloxacin), Doxycycline.",
+        "safe_alternatives": [
+          "Macrolides (Azithromycin",
+          "Clarithromycin)",
+          "Fluoroquinolones (Levofloxacin)",
+          "Doxycycline"
+        ]
+      }
+    },
+    {
+      "domain": "allergy_rules",
+      "ruleKey": "2",
+      "subject": "Sulfamethoxazole",
+      "severity": "RED (HIGH RISK)",
+      "message": "Documented Sulfamethoxazole allergy. Risk of Stevens-Johnson Syndrome (SJS), Toxic Epidermal Necrolysis (TEN), Agranulocytosis. Safe alternatives: Beta-Lactams (Amoxicillin, Cefuroxime), Ethacrynic acid (loop alternative), Quinolones.",
+      "action": [
+        "Beta-Lactams (Amoxicillin",
+        "Cefuroxime)",
+        "Ethacrynic acid (loop alternative)",
+        "Quinolones"
+      ],
+      "payload": {
+        "id": 2,
+        "allergen_class": "Sulfonamides (Sulfa)",
+        "allergen": "Sulfamethoxazole",
+        "blocked_classes": [
+          "Co-trimoxazole",
+          "Sulfamethoxazole-Trimethoprim",
+          "Sulfasalazine",
+          "Celecoxib",
+          "Furosemide",
+          "Hydrochlorothiazide"
+        ],
+        "severity": "RED (HIGH RISK)",
+        "reaction_type": "Stevens-Johnson Syndrome (SJS), Toxic Epidermal Necrolysis (TEN), Agranulocytosis",
+        "message": "Documented Sulfamethoxazole allergy. Risk of Stevens-Johnson Syndrome (SJS), Toxic Epidermal Necrolysis (TEN), Agranulocytosis. Safe alternatives: Beta-Lactams (Amoxicillin, Cefuroxime), Ethacrynic acid (loop alternative), Quinolones.",
+        "safe_alternatives": [
+          "Beta-Lactams (Amoxicillin",
+          "Cefuroxime)",
+          "Ethacrynic acid (loop alternative)",
+          "Quinolones"
+        ]
+      }
+    },
+    {
+      "domain": "allergy_rules",
+      "ruleKey": "3",
+      "subject": "Aspirin / Ibuprofen",
+      "severity": "RED (HIGH RISK)",
+      "message": "Documented Aspirin / Ibuprofen allergy. Risk of Aspirin-Exacerbated Respiratory Disease (Severe Bronchospasm), Giant Urticaria. Safe alternatives: Paracetamol (Acetaminophen) at standard therapeutic doses, Tramadol (with caution).",
+      "action": [
+        "Paracetamol (Acetaminophen) at standard therapeutic doses",
+        "Tramadol (with caution)"
+      ],
+      "payload": {
+        "id": 3,
+        "allergen_class": "NSAIDs / Aspirin (AERD)",
+        "allergen": "Aspirin / Ibuprofen",
+        "blocked_classes": [
+          "Ibuprofen",
+          "Diclofenac",
+          "Aceclofenac",
+          "Naproxen",
+          "Mefenamic acid",
+          "Ketorolac",
+          "Piroxicam",
+          "Indomethacin"
+        ],
+        "severity": "RED (HIGH RISK)",
+        "reaction_type": "Aspirin-Exacerbated Respiratory Disease (Severe Bronchospasm), Giant Urticaria",
+        "message": "Documented Aspirin / Ibuprofen allergy. Risk of Aspirin-Exacerbated Respiratory Disease (Severe Bronchospasm), Giant Urticaria. Safe alternatives: Paracetamol (Acetaminophen) at standard therapeutic doses, Tramadol (with caution).",
+        "safe_alternatives": [
+          "Paracetamol (Acetaminophen) at standard therapeutic doses",
+          "Tramadol (with caution)"
+        ]
+      }
+    },
+    {
+      "domain": "allergy_rules",
+      "ruleKey": "4",
+      "subject": "Morphine / Codeine",
+      "severity": "RED (CRITICAL)",
+      "message": "Documented Morphine / Codeine allergy. Risk of Severe Histamine Release, Anaphylactoid Collapse, Respiratory Arrest. Safe alternatives: Paracetamol, Regional nerve blocks, Gabapentinoids (Pregabalin/Gabapentin).",
+      "action": [
+        "Paracetamol",
+        "Regional nerve blocks",
+        "Gabapentinoids (Pregabalin/Gabapentin)"
+      ],
+      "payload": {
+        "id": 4,
+        "allergen_class": "Opioids",
+        "allergen": "Morphine / Codeine",
+        "blocked_classes": [
+          "Codeine",
+          "Morphine",
+          "Tramadol",
+          "Fentanyl",
+          "Oxycodone",
+          "Pethidine"
+        ],
+        "severity": "RED (CRITICAL)",
+        "reaction_type": "Severe Histamine Release, Anaphylactoid Collapse, Respiratory Arrest",
+        "message": "Documented Morphine / Codeine allergy. Risk of Severe Histamine Release, Anaphylactoid Collapse, Respiratory Arrest. Safe alternatives: Paracetamol, Regional nerve blocks, Gabapentinoids (Pregabalin/Gabapentin).",
+        "safe_alternatives": [
+          "Paracetamol",
+          "Regional nerve blocks",
+          "Gabapentinoids (Pregabalin/Gabapentin)"
+        ]
+      }
+    },
+    {
+      "domain": "allergy_rules",
+      "ruleKey": "5",
+      "subject": "Procaine / Proparacaine",
+      "severity": "AMBER (MODERATE)",
+      "message": "Documented Procaine / Proparacaine allergy. Risk of Contact Dermatitis, PABA-Mediated Cutaneous Sensitization, Corneal Infiltrates. Safe alternatives: Amide-type Local Anesthetics (Lidocaine, Bupivacaine).",
+      "action": [
+        "Amide-type Local Anesthetics (Lidocaine",
+        "Bupivacaine)"
+      ],
+      "payload": {
+        "id": 5,
+        "allergen_class": "Ester Local Anesthetics",
+        "allergen": "Procaine / Proparacaine",
+        "blocked_classes": [
+          "Proparacaine",
+          "Proxymetacaine",
+          "Tetracaine",
+          "Benzocaine",
+          "Procaine"
+        ],
+        "severity": "AMBER (MODERATE)",
+        "reaction_type": "Contact Dermatitis, PABA-Mediated Cutaneous Sensitization, Corneal Infiltrates",
+        "message": "Documented Procaine / Proparacaine allergy. Risk of Contact Dermatitis, PABA-Mediated Cutaneous Sensitization, Corneal Infiltrates. Safe alternatives: Amide-type Local Anesthetics (Lidocaine, Bupivacaine).",
+        "safe_alternatives": [
+          "Amide-type Local Anesthetics (Lidocaine",
+          "Bupivacaine)"
+        ]
+      }
+    },
+    {
+      "domain": "allergy_rules",
+      "ruleKey": "6",
+      "subject": "Atorvastatin / Rosuvastatin",
+      "severity": "AMBER (MODERATE)",
+      "message": "Documented Atorvastatin / Rosuvastatin allergy. Risk of Severe Statin-Associated Muscle Symptoms (SAMS), Rhabdomyolysis, Autoimmune Necrotizing Myopathy. Safe alternatives: Ezetimibe 10mg, Bempedoic Acid, PCSK9 Inhibitors (Evolocumab).",
+      "action": [
+        "Ezetimibe 10mg",
+        "Bempedoic Acid",
+        "PCSK9 Inhibitors (Evolocumab)"
+      ],
+      "payload": {
+        "id": 6,
+        "allergen_class": "Statins",
+        "allergen": "Atorvastatin / Rosuvastatin",
+        "blocked_classes": [
+          "Atorvastatin",
+          "Simvastatin",
+          "Rosuvastatin",
+          "Pravastatin",
+          "Pitavastatin"
+        ],
+        "severity": "AMBER (MODERATE)",
+        "reaction_type": "Severe Statin-Associated Muscle Symptoms (SAMS), Rhabdomyolysis, Autoimmune Necrotizing Myopathy",
+        "message": "Documented Atorvastatin / Rosuvastatin allergy. Risk of Severe Statin-Associated Muscle Symptoms (SAMS), Rhabdomyolysis, Autoimmune Necrotizing Myopathy. Safe alternatives: Ezetimibe 10mg, Bempedoic Acid, PCSK9 Inhibitors (Evolocumab).",
+        "safe_alternatives": [
+          "Ezetimibe 10mg",
+          "Bempedoic Acid",
+          "PCSK9 Inhibitors (Evolocumab)"
+        ]
+      }
+    },
+    {
+      "domain": "lab_rules",
+      "ruleKey": "LAB_EGFR_CRIT",
+      "subject": null,
+      "severity": "RED",
+      "message": "SEVERE RENAL IMPAIRMENT: eGFR < 30 mL/min. Metformin accumulation provokes fatal lactic acidosis; Nitrofurantoin is ineffective and neurotoxic.",
+      "action": "Discontinue Metformin and NSAIDs immediately; switch to renally safe antidiabetic.",
+      "payload": {
+        "id": "LAB_EGFR_CRIT",
+        "test": "eGFR (CKD-EPI)",
+        "code": "33914-3",
+        "op": "<",
+        "val": 30,
+        "unit": "mL/min/1.73m2",
+        "drugs": [
+          "Metformin",
+          "Spironolactone",
+          "Nitrofurantoin",
+          "SGLT2i (Dapagliflozin)",
+          "NSAIDs"
+        ],
+        "sev": "RED",
+        "msg": "SEVERE RENAL IMPAIRMENT: eGFR < 30 mL/min. Metformin accumulation provokes fatal lactic acidosis; Nitrofurantoin is ineffective and neurotoxic.",
+        "action": "Discontinue Metformin and NSAIDs immediately; switch to renally safe antidiabetic.",
+        "alts": [
+          "Linagliptin 5mg OD (no renal adjustment)",
+          "Basal Insulin Glargine",
+          "Paracetamol"
+        ]
+      }
+    },
+    {
+      "domain": "lab_rules",
+      "ruleKey": "LAB_EGFR_MOD",
+      "subject": null,
+      "severity": "AMBER",
+      "message": "MODERATE CKD: eGFR < 45 mL/min. LMWH bioaccumulation increases fatal bleeding risk.",
+      "action": "Reduce Enoxaparin dose by 50% (1 mg/kg once daily) or switch to Unfractionated Heparin.",
+      "payload": {
+        "id": "LAB_EGFR_MOD",
+        "test": "eGFR (CKD-EPI)",
+        "code": "33914-3",
+        "op": "<",
+        "val": 45,
+        "unit": "mL/min/1.73m2",
+        "drugs": [
+          "Enoxaparin",
+          "Tenofovir",
+          "Aminoglycosides"
+        ],
+        "sev": "AMBER",
+        "msg": "MODERATE CKD: eGFR < 45 mL/min. LMWH bioaccumulation increases fatal bleeding risk.",
+        "action": "Reduce Enoxaparin dose by 50% (1 mg/kg once daily) or switch to Unfractionated Heparin.",
+        "alts": [
+          "Unfractionated Heparin (UFH)",
+          "Abacavir"
+        ]
+      }
+    },
+    {
+      "domain": "lab_rules",
+      "ruleKey": "LAB_HBA1C_HIGH",
+      "subject": null,
+      "severity": "AMBER",
+      "message": "SEVERE GLYCEMIC UNCONTROL: HbA1c > 9.0%. High risk of glucotoxicity, osmotic diuresis, and macrovascular progression.",
+      "action": "Oral monotherapy inadequate; initiate Basal Insulin or Dual Oral + SGLT2/GLP-1 therapy.",
+      "payload": {
+        "id": "LAB_HBA1C_HIGH",
+        "test": "Glycated Hemoglobin (HbA1c)",
+        "code": "4548-4",
+        "op": ">",
+        "val": 9,
+        "unit": "%",
+        "drugs": [
+          "Sulfonylurea Monotherapy"
+        ],
+        "sev": "AMBER",
+        "msg": "SEVERE GLYCEMIC UNCONTROL: HbA1c > 9.0%. High risk of glucotoxicity, osmotic diuresis, and macrovascular progression.",
+        "action": "Oral monotherapy inadequate; initiate Basal Insulin or Dual Oral + SGLT2/GLP-1 therapy.",
+        "alts": [
+          "Insulin Glargine at bedtime + Metformin"
+        ]
+      }
+    },
+    {
+      "domain": "lab_rules",
+      "ruleKey": "LAB_INR_HIGH",
+      "subject": null,
+      "severity": "RED",
+      "message": "SUPRATHERAPEUTIC ANTICOAGULATION: INR > 3.5. High risk of spontaneous fatal internal bleeding.",
+      "action": "Withhold next 1-2 Warfarin doses; if bleeding or INR > 5.0, administer oral Vitamin K1.",
+      "payload": {
+        "id": "LAB_INR_HIGH",
+        "test": "INR (Prothrombin Time)",
+        "code": "6301-6",
+        "op": ">",
+        "val": 3.5,
+        "unit": "ratio",
+        "drugs": [
+          "Warfarin",
+          "Acenocoumarol",
+          "NSAIDs"
+        ],
+        "sev": "RED",
+        "msg": "SUPRATHERAPEUTIC ANTICOAGULATION: INR > 3.5. High risk of spontaneous fatal internal bleeding.",
+        "action": "Withhold next 1-2 Warfarin doses; if bleeding or INR > 5.0, administer oral Vitamin K1.",
+        "alts": [
+          "Low-dose Vitamin K1 (Phytomenadione 2.5mg oral)",
+          "4-Factor PCC if actively bleeding"
+        ]
+      }
+    },
+    {
+      "domain": "lab_rules",
+      "ruleKey": "LAB_K_HIGH",
+      "subject": null,
+      "severity": "RED",
+      "message": "CRITICAL HYPERKALEMIA: Serum K+ > 5.2 mEq/L. Concomitant aldosterone/RAAS blockade carries severe risk of fatal ventricular fibrillation and asystole.",
+      "action": "Hold all potassium-sparing diuretics and ACEi/ARBs immediately; check 12-lead ECG.",
+      "payload": {
+        "id": "LAB_K_HIGH",
+        "test": "Serum Potassium",
+        "code": "2823-3",
+        "op": ">",
+        "val": 5.2,
+        "unit": "mEq/L",
+        "drugs": [
+          "Spironolactone",
+          "Telmisartan",
+          "Ramipril",
+          "Enalapril",
+          "Losartan",
+          "Trimethoprim"
+        ],
+        "sev": "RED",
+        "msg": "CRITICAL HYPERKALEMIA: Serum K+ > 5.2 mEq/L. Concomitant aldosterone/RAAS blockade carries severe risk of fatal ventricular fibrillation and asystole.",
+        "action": "Hold all potassium-sparing diuretics and ACEi/ARBs immediately; check 12-lead ECG.",
+        "alts": [
+          "Furosemide 40mg IV/Oral",
+          "Torsemide",
+          "Calcium Polystyrene Sulfonate"
+        ]
+      }
+    },
+    {
+      "domain": "lab_rules",
+      "ruleKey": "LAB_K_LOW",
+      "subject": null,
+      "severity": "RED",
+      "message": "HYPOKALEMIA DIGOXIN TOXICITY: Serum K+ < 3.5 mEq/L. Low potassium greatly sensitizes myocardial Na+/K+ ATPase to fatal Digoxin arrhythmias.",
+      "action": "Withhold Digoxin until serum potassium is corrected above 4.0 mEq/L.",
+      "payload": {
+        "id": "LAB_K_LOW",
+        "test": "Serum Potassium",
+        "code": "2823-3",
+        "op": "<",
+        "val": 3.5,
+        "unit": "mEq/L",
+        "drugs": [
+          "Digoxin"
+        ],
+        "sev": "RED",
+        "msg": "HYPOKALEMIA DIGOXIN TOXICITY: Serum K+ < 3.5 mEq/L. Low potassium greatly sensitizes myocardial Na+/K+ ATPase to fatal Digoxin arrhythmias.",
+        "action": "Withhold Digoxin until serum potassium is corrected above 4.0 mEq/L.",
+        "alts": [
+          "Oral Potassium Chloride (Potcl syrup)",
+          "IV KCl in Normal Saline"
+        ]
+      }
+    },
+    {
+      "domain": "lab_rules",
+      "ruleKey": "LAB_LFT_HIGH",
+      "subject": null,
+      "severity": "RED",
+      "message": "ACUTE HEPATOCELLULAR INJURY: Transaminases > 3x Upper Limit of Normal. Severe risk of drug-induced liver failure (DILI).",
+      "action": "Temporarily withhold statin, paracetamol (>2g), and hepatotoxic DMARDs; re-evaluate LFT in 72 hours.",
+      "payload": {
+        "id": "LAB_LFT_HIGH",
+        "test": "AST / ALT Transaminases",
+        "code": "1920-8",
+        "op": ">",
+        "val": 120,
+        "unit": "U/L",
+        "drugs": [
+          "Statins (Atorvastatin)",
+          "Paracetamol",
+          "Methotrexate",
+          "Isoniazid",
+          "Pyrazinamide",
+          "Leflunomide"
+        ],
+        "sev": "RED",
+        "msg": "ACUTE HEPATOCELLULAR INJURY: Transaminases > 3x Upper Limit of Normal. Severe risk of drug-induced liver failure (DILI).",
+        "action": "Temporarily withhold statin, paracetamol (>2g), and hepatotoxic DMARDs; re-evaluate LFT in 72 hours.",
+        "alts": [
+          "Ursodeoxycholic Acid (UDCA 300mg)",
+          "Ezetimibe 10mg"
+        ]
+      }
+    },
+    {
+      "domain": "lab_rules",
+      "ruleKey": "LAB_PLT_LOW",
+      "subject": null,
+      "severity": "RED",
+      "message": "SEVERE THROMBOCYTOPENIA: Platelet count < 50,000/uL. Extreme risk of catastrophic intracranial or massive GI hemorrhage.",
+      "action": "Withhold all anticoagulants and antiplatelet agents immediately.",
+      "payload": {
+        "id": "LAB_PLT_LOW",
+        "test": "Platelet Count",
+        "code": "777-3",
+        "op": "<",
+        "val": 50,
+        "unit": "x10^3/uL",
+        "drugs": [
+          "Aspirin",
+          "Clopidogrel",
+          "Ticagrelor",
+          "Heparin",
+          "Enoxaparin",
+          "Rivaroxaban",
+          "Apixaban",
+          "NSAIDs"
+        ],
+        "sev": "RED",
+        "msg": "SEVERE THROMBOCYTOPENIA: Platelet count < 50,000/uL. Extreme risk of catastrophic intracranial or massive GI hemorrhage.",
+        "action": "Withhold all anticoagulants and antiplatelet agents immediately.",
+        "alts": [
+          "Mechanical pneumatic compression stockings",
+          "Platelet transfusion"
+        ]
+      }
+    },
+    {
+      "domain": "g6pd_rules",
+      "ruleKey": "G6PD_DAPS",
+      "subject": "Dapsone",
+      "severity": "RED (HIGH RISK)",
+      "message": "Hydroxylamine metabolite induces severe hemolytic anemia, Heinz body formation, and cyanotic methemoglobinemia.",
+      "action": "Clindamycin 300mg QID / Atovaquone",
+      "payload": {
+        "id": "G6PD_DAPS",
+        "drug": "Dapsone",
+        "hazard": "Hydroxylamine metabolite induces severe hemolytic anemia, Heinz body formation, and cyanotic methemoglobinemia.",
+        "severity": "RED (HIGH RISK)",
+        "alternative": "Clindamycin 300mg QID / Atovaquone"
+      }
+    },
+    {
+      "domain": "g6pd_rules",
+      "ruleKey": "G6PD_METH",
+      "subject": "Methylene Blue (Methylthioninium chloride)",
+      "severity": "RED (CRITICAL CONTRAINDICATION)",
+      "message": "Ineffective for methemoglobinemia in G6PD deficiency and causes massive direct erythrocyte hemolysis.",
+      "action": "High-dose Ascorbic Acid (Vitamin C 1-2g IV) SOS",
+      "payload": {
+        "id": "G6PD_METH",
+        "drug": "Methylene Blue (Methylthioninium chloride)",
+        "hazard": "Ineffective for methemoglobinemia in G6PD deficiency and causes massive direct erythrocyte hemolysis.",
+        "severity": "RED (CRITICAL CONTRAINDICATION)",
+        "alternative": "High-dose Ascorbic Acid (Vitamin C 1-2g IV) SOS"
+      }
+    },
+    {
+      "domain": "g6pd_rules",
+      "ruleKey": "G6PD_NITRO",
+      "subject": "Nitrofurantoin",
+      "severity": "RED (HIGH RISK)",
+      "message": "Generates reactive oxygen species in erythrocytes, causing acute hemolytic crises in G6PD deficient patients.",
+      "action": "Fosfomycin 3g single sachet / Cefixime 200mg BD / Ciprofloxacin 500mg",
+      "payload": {
+        "id": "G6PD_NITRO",
+        "drug": "Nitrofurantoin",
+        "hazard": "Generates reactive oxygen species in erythrocytes, causing acute hemolytic crises in G6PD deficient patients.",
+        "severity": "RED (HIGH RISK)",
+        "alternative": "Fosfomycin 3g single sachet / Cefixime 200mg BD / Ciprofloxacin 500mg"
+      }
+    },
+    {
+      "domain": "g6pd_rules",
+      "ruleKey": "G6PD_PRIM",
+      "subject": "Primaquine",
+      "severity": "RED (CRITICAL CONTRAINDICATION)",
+      "message": "Potent oxidant metabolite causes massive red blood cell glutathione depletion and fatal acute hemolytic anemia.",
+      "action": "Chloroquine / Artemisinin-based therapy with weekly hemoglobin monitoring",
+      "payload": {
+        "id": "G6PD_PRIM",
+        "drug": "Primaquine",
+        "hazard": "Potent oxidant metabolite causes massive red blood cell glutathione depletion and fatal acute hemolytic anemia.",
+        "severity": "RED (CRITICAL CONTRAINDICATION)",
+        "alternative": "Chloroquine / Artemisinin-based therapy with weekly hemoglobin monitoring"
+      }
+    },
+    {
+      "domain": "g6pd_rules",
+      "ruleKey": "G6PD_RASB",
+      "subject": "Rasburicase",
+      "severity": "RED (CRITICAL CONTRAINDICATION)",
+      "message": "Absolute contraindication. Catalyzes uric acid to allantoin generating massive hydrogen peroxide; triggers catastrophic intravascular hemolysis & methemoglobinemia.",
+      "action": "Allopurinol 100-300mg / Febuxostat 40mg",
+      "payload": {
+        "id": "G6PD_RASB",
+        "drug": "Rasburicase",
+        "hazard": "Absolute contraindication. Catalyzes uric acid to allantoin generating massive hydrogen peroxide; triggers catastrophic intravascular hemolysis & methemoglobinemia.",
+        "severity": "RED (CRITICAL CONTRAINDICATION)",
+        "alternative": "Allopurinol 100-300mg / Febuxostat 40mg"
+      }
+    },
+    {
+      "domain": "g6pd_rules",
+      "ruleKey": "G6PD_SULFA",
+      "subject": "Co-trimoxazole (Sulfamethoxazole-Trimethoprim)",
+      "severity": "RED (HIGH RISK)",
+      "message": "Sulfonamide group induces oxidative denaturation of hemoglobin and severe hemolytic anemia.",
+      "action": "Amoxicillin-Clavulanate / Cefuroxime / Azithromycin",
+      "payload": {
+        "id": "G6PD_SULFA",
+        "drug": "Co-trimoxazole (Sulfamethoxazole-Trimethoprim)",
+        "hazard": "Sulfonamide group induces oxidative denaturation of hemoglobin and severe hemolytic anemia.",
+        "severity": "RED (HIGH RISK)",
+        "alternative": "Amoxicillin-Clavulanate / Cefuroxime / Azithromycin"
+      }
+    },
+    {
+      "domain": "tdm_rules",
+      "ruleKey": "TDM_CYCLO",
+      "subject": "Cyclosporine (Neoral)",
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "id": "TDM_CYCLO",
+        "drug": "Cyclosporine (Neoral)",
+        "target": "C0 Trough: 100 - 300 ng/mL | C2 Peak: 800 - 1200 ng/mL",
+        "timing": "C0 immediately pre-dose; C2 exactly 2 hours (+/- 15 min) post-dose",
+        "toxicity": "C0 > 400 ng/mL: Renal vasoconstriction, hirsutism, gingival hyperplasia, microangiopathy",
+        "frequency": "Weekly during dose titration, then monthly"
+      }
+    },
+    {
+      "domain": "tdm_rules",
+      "ruleKey": "TDM_DIGOX",
+      "subject": "Digoxin (Lanoxin)",
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "id": "TDM_DIGOX",
+        "drug": "Digoxin (Lanoxin)",
+        "target": "0.5 - 0.9 ng/mL (Heart Failure) | 0.8 - 1.2 ng/mL (AF)",
+        "timing": "Draw at least 6-8 hours post-dose (ideally immediately pre-dose)",
+        "toxicity": "Level > 2.0 ng/mL: Xanthopsia (yellow-green halos), nausea, bidirectional VT, fatal heart block",
+        "frequency": "Check 7-10 days after initiation or change in renal function"
+      }
+    },
+    {
+      "domain": "tdm_rules",
+      "ruleKey": "TDM_LITH",
+      "subject": "Lithium Carbonate",
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "id": "TDM_LITH",
+        "drug": "Lithium Carbonate",
+        "target": "0.6 - 1.0 mEq/L (Maintenance) | 0.8 - 1.2 mEq/L (Acute Mania)",
+        "timing": "12 hours (+/- 30 min) after evening dose",
+        "toxicity": "Level > 1.5 mEq/L: Coarse tremor, ataxia, vomiting, confusion; > 2.5 mEq/L requires emergency hemodialysis",
+        "frequency": "Every 3 months once stabilized; recheck with any NSAID/ACEi addition"
+      }
+    },
+    {
+      "domain": "tdm_rules",
+      "ruleKey": "TDM_PHENY",
+      "subject": "Phenytoin (Eptoin)",
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "id": "TDM_PHENY",
+        "drug": "Phenytoin (Eptoin)",
+        "target": "10 - 20 mcg/mL Total (1 - 2 mcg/mL Free Unbound)",
+        "timing": "Trough immediately before next dose",
+        "toxicity": "Level > 20 mcg/mL: Nystagmus; > 30 mcg/mL: Ataxia, slurred speech; > 40 mcg/mL: Paradoxical seizures, coma",
+        "frequency": "Check 7 days after dose change; adjust for hypoalbuminemia using Sheiner-Tozer equation"
+      }
+    },
+    {
+      "domain": "tdm_rules",
+      "ruleKey": "TDM_TACRO",
+      "subject": "Tacrolimus (Prograf)",
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "id": "TDM_TACRO",
+        "drug": "Tacrolimus (Prograf)",
+        "target": "5 - 10 ng/mL (Whole blood EDTA)",
+        "timing": "Trough level immediately before morning dose (12h post-dose)",
+        "toxicity": "Trough > 15 ng/mL: Acute nephrotoxicity, tremors, headache, hypertension, hyperkalemia",
+        "frequency": "Twice weekly post-transplant, then monthly when stable"
+      }
+    },
+    {
+      "domain": "tdm_rules",
+      "ruleKey": "TDM_THEOP",
+      "subject": "Theophylline / Aminophylline",
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "id": "TDM_THEOP",
+        "drug": "Theophylline / Aminophylline",
+        "target": "10 - 20 mcg/mL (Optimal: 8 - 15 mcg/mL)",
+        "timing": "Trough 30 min before morning dose (or peak 4h post-sustained release)",
+        "toxicity": "Level > 20 mcg/mL: Persistent nausea, multifocal atrial tachycardia, refractory seizures, cardiac arrest",
+        "frequency": "Every 6-12 months or when interacting drugs (Ciprofloxacin/Macrolides) added"
+      }
+    },
+    {
+      "domain": "tdm_rules",
+      "ruleKey": "TDM_VANCO",
+      "subject": "Vancomycin",
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "id": "TDM_VANCO",
+        "drug": "Vancomycin",
+        "target": "Trough: 15 - 20 mcg/mL (MRSA Sepsis/Endocarditis) | 10 - 15 mcg/mL",
+        "timing": "Trough within 30 minutes before 4th dose (steady state)",
+        "toxicity": "Trough > 20 mcg/mL: Acute tubular necrosis (elevated creatinine), synergistic ototoxicity with aminoglycosides",
+        "frequency": "Weekly in stable patients; twice weekly if fluctuating renal function"
+      }
+    },
+    {
+      "domain": "electrolyte_rules",
+      "ruleKey": "ELEC_CA_HYPER",
+      "subject": null,
+      "severity": "RED (HIGH RISK)",
+      "message": "HYPERCALCEMIA: Serum Ca2+ > 11.0 mg/dL. Thiazides decrease renal calcium excretion, exacerbating hypercalcemic crisis, confusion, and nephrocalcinosis.",
+      "action": "Switch to Loop Diuretic (Furosemide 40mg), withhold calcium/vitamin D",
+      "payload": {
+        "id": "ELEC_CA_HYPER",
+        "electrolyte": "Serum Calcium",
+        "code": "17861-6",
+        "op": ">",
+        "val": 11,
+        "unit": "mg/dL",
+        "drugs": [
+          "Hydrochlorothiazide",
+          "Chlorthalidone",
+          "Calcium Carbonate",
+          "Cholecalciferol (Vit D)"
+        ],
+        "sev": "RED (HIGH RISK)",
+        "hazard": "HYPERCALCEMIA: Serum Ca2+ > 11.0 mg/dL. Thiazides decrease renal calcium excretion, exacerbating hypercalcemic crisis, confusion, and nephrocalcinosis.",
+        "alternative": "Switch to Loop Diuretic (Furosemide 40mg), withhold calcium/vitamin D"
+      }
+    },
+    {
+      "domain": "electrolyte_rules",
+      "ruleKey": "ELEC_CA_HYPO",
+      "subject": null,
+      "severity": "RED (HIGH RISK)",
+      "message": "SEVERE HYPOCALCEMIA: Serum Ca2+ < 8.0 mg/dL. Bisphosphonates & Denosumab severely depress calcium, precipitating laryngospasm, tetany, Chvostek's sign, and prolonged QTc.",
+      "action": "Replete Calcium + Calcitriol before antiresorptive therapy; avoid loop diuretics",
+      "payload": {
+        "id": "ELEC_CA_HYPO",
+        "electrolyte": "Serum Calcium",
+        "code": "17861-6",
+        "op": "<",
+        "val": 8,
+        "unit": "mg/dL",
+        "drugs": [
+          "Zoledronic acid",
+          "Alendronate",
+          "Denosumab",
+          "Furosemide"
+        ],
+        "sev": "RED (HIGH RISK)",
+        "hazard": "SEVERE HYPOCALCEMIA: Serum Ca2+ < 8.0 mg/dL. Bisphosphonates & Denosumab severely depress calcium, precipitating laryngospasm, tetany, Chvostek's sign, and prolonged QTc.",
+        "alternative": "Replete Calcium + Calcitriol before antiresorptive therapy; avoid loop diuretics"
+      }
+    },
+    {
+      "domain": "electrolyte_rules",
+      "ruleKey": "ELEC_MG_HYPO",
+      "subject": null,
+      "severity": "RED (CRITICAL)",
+      "message": "SEVERE HYPOMAGNESEMIA: Serum Mg2+ < 1.4 mg/dL. Chronic PPIs block active intestinal TRPM6/7 magnesium absorption; causes refractory hypokalemia and fatal Torsades de Pointes.",
+      "action": "Switch PPI to Famotidine 40mg BD; administer oral Magnesium Glycinate / IV Magnesium Sulfate",
+      "payload": {
+        "id": "ELEC_MG_HYPO",
+        "electrolyte": "Serum Magnesium",
+        "code": "19123-9",
+        "op": "<",
+        "val": 1.4,
+        "unit": "mg/dL",
+        "drugs": [
+          "Pantoprazole",
+          "Omeprazole",
+          "Esomeprazole",
+          "Furosemide",
+          "Cisplatin"
+        ],
+        "sev": "RED (CRITICAL)",
+        "hazard": "SEVERE HYPOMAGNESEMIA: Serum Mg2+ < 1.4 mg/dL. Chronic PPIs block active intestinal TRPM6/7 magnesium absorption; causes refractory hypokalemia and fatal Torsades de Pointes.",
+        "alternative": "Switch PPI to Famotidine 40mg BD; administer oral Magnesium Glycinate / IV Magnesium Sulfate"
+      }
+    },
+    {
+      "domain": "electrolyte_rules",
+      "ruleKey": "ELEC_NA_HYPO",
+      "subject": null,
+      "severity": "RED (CRITICAL)",
+      "message": "SEVERE HYPONATREMIA: Na+ < 128 mEq/L. Drug-induced SIADH and water retention provoke cerebral edema and seizures. Rapid correction risks Osmotic Demyelination Syndrome.",
+      "action": "Bupropion, Amlodipine, Torsemide; restrict free water intake",
+      "payload": {
+        "id": "ELEC_NA_HYPO",
+        "electrolyte": "Serum Sodium",
+        "code": "2951-2",
+        "op": "<",
+        "val": 128,
+        "unit": "mEq/L",
+        "drugs": [
+          "Escitalopram",
+          "Sertraline",
+          "Fluoxetine",
+          "Carbamazepine",
+          "Oxcarbazepine",
+          "Chlorthalidone",
+          "Hydrochlorothiazide"
+        ],
+        "sev": "RED (CRITICAL)",
+        "hazard": "SEVERE HYPONATREMIA: Na+ < 128 mEq/L. Drug-induced SIADH and water retention provoke cerebral edema and seizures. Rapid correction risks Osmotic Demyelination Syndrome.",
+        "alternative": "Bupropion, Amlodipine, Torsemide; restrict free water intake"
+      }
+    },
+    {
+      "domain": "pregnancy_trimester_rules",
+      "ruleKey": "PREG_LACT_COD",
+      "subject": "Codeine / Tramadol",
+      "severity": "Category C/Black Box",
+      "message": "Mothers who are ultra-rapid CYP2D6 metabolizers convert codeine to toxic breastmilk morphine levels, provoking fatal infant respiratory depression and apnea.",
+      "action": "Paracetamol or Ibuprofen (Very low Relative Infant Dose < 1%; safe in lactation)",
+      "payload": {
+        "id": "PREG_LACT_COD",
+        "drug": "Codeine / Tramadol",
+        "stage": "Lactation / Breastfeeding",
+        "category": "Category C/Black Box",
+        "hazard": "Mothers who are ultra-rapid CYP2D6 metabolizers convert codeine to toxic breastmilk morphine levels, provoking fatal infant respiratory depression and apnea.",
+        "alternative": "Paracetamol or Ibuprofen (Very low Relative Infant Dose < 1%; safe in lactation)"
+      }
+    },
+    {
+      "domain": "pregnancy_trimester_rules",
+      "ruleKey": "PREG_T1_MTX",
+      "subject": "Methotrexate",
+      "severity": "Category X",
+      "message": "Severe aminopterin syndrome: cranial dysmorphism, meningomyelocele, limb agenesis, spontaneous abortion.",
+      "action": "Sulfasalazine (with high-dose Folic Acid 5mg) or Hydroxychloroquine",
+      "payload": {
+        "id": "PREG_T1_MTX",
+        "drug": "Methotrexate",
+        "stage": "Trimester 1 (Organogenesis)",
+        "category": "Category X",
+        "hazard": "Severe aminopterin syndrome: cranial dysmorphism, meningomyelocele, limb agenesis, spontaneous abortion.",
+        "alternative": "Sulfasalazine (with high-dose Folic Acid 5mg) or Hydroxychloroquine"
+      }
+    },
+    {
+      "domain": "pregnancy_trimester_rules",
+      "ruleKey": "PREG_T1_VALP",
+      "subject": "Sodium Valproate",
+      "severity": "Category X/D",
+      "message": "Neural tube defects (spina bifida 1-2%), facial clefts, craniosynostosis, 10-point decrease in child IQ.",
+      "action": "Levetiracetam 500mg BD or Lamotrigine (with 5mg daily Folic Acid)",
+      "payload": {
+        "id": "PREG_T1_VALP",
+        "drug": "Sodium Valproate",
+        "stage": "Trimester 1 (Organogenesis)",
+        "category": "Category X/D",
+        "hazard": "Neural tube defects (spina bifida 1-2%), facial clefts, craniosynostosis, 10-point decrease in child IQ.",
+        "alternative": "Levetiracetam 500mg BD or Lamotrigine (with 5mg daily Folic Acid)"
+      }
+    },
+    {
+      "domain": "pregnancy_trimester_rules",
+      "ruleKey": "PREG_T1_WARF",
+      "subject": "Warfarin",
+      "severity": "Category X",
+      "message": "Warfarin embryopathy: severe nasal hypoplasia, chondrodysplasia punctata (stippled epiphyses), optic atrophy.",
+      "action": "Low Molecular Weight Heparin (Enoxaparin 1 mg/kg BD) - does not cross placenta",
+      "payload": {
+        "id": "PREG_T1_WARF",
+        "drug": "Warfarin",
+        "stage": "Trimester 1 (Organogenesis 6-12 wks)",
+        "category": "Category X",
+        "hazard": "Warfarin embryopathy: severe nasal hypoplasia, chondrodysplasia punctata (stippled epiphyses), optic atrophy.",
+        "alternative": "Low Molecular Weight Heparin (Enoxaparin 1 mg/kg BD) - does not cross placenta"
+      }
+    },
+    {
+      "domain": "pregnancy_trimester_rules",
+      "ruleKey": "PREG_T23_ACE",
+      "subject": "Telmisartan / Ramipril / Enalapril (ACEi / ARBs)",
+      "severity": "Category D",
+      "message": "Renal tubular dysgenesis, oligohydramnios sequence (Potter facies, pulmonary hypoplasia), neonatal anuria, skull calvarial hypoplasia.",
+      "action": "Labetalol 100-200mg BD / Methyldopa 250mg TID / Nifedipine ER 30mg OD",
+      "payload": {
+        "id": "PREG_T23_ACE",
+        "drug": "Telmisartan / Ramipril / Enalapril (ACEi / ARBs)",
+        "stage": "Trimesters 2 & 3 (Fetopathy)",
+        "category": "Category D",
+        "hazard": "Renal tubular dysgenesis, oligohydramnios sequence (Potter facies, pulmonary hypoplasia), neonatal anuria, skull calvarial hypoplasia.",
+        "alternative": "Labetalol 100-200mg BD / Methyldopa 250mg TID / Nifedipine ER 30mg OD"
+      }
+    },
+    {
+      "domain": "pregnancy_trimester_rules",
+      "ruleKey": "PREG_T3_NSAID",
+      "subject": "Ibuprofen / Diclofenac / Aceclofenac (NSAIDs)",
+      "severity": "Category D",
+      "message": "Premature in-utero constriction and closure of fetal ductus arteriosus, persistent pulmonary hypertension of newborn (PPHN), fetal renal failure.",
+      "action": "Paracetamol 650mg (Documented safe across all three trimesters at clinical doses)",
+      "payload": {
+        "id": "PREG_T3_NSAID",
+        "drug": "Ibuprofen / Diclofenac / Aceclofenac (NSAIDs)",
+        "stage": "Trimester 3 (> 28 Weeks)",
+        "category": "Category D",
+        "hazard": "Premature in-utero constriction and closure of fetal ductus arteriosus, persistent pulmonary hypertension of newborn (PPHN), fetal renal failure.",
+        "alternative": "Paracetamol 650mg (Documented safe across all three trimesters at clinical doses)"
+      }
+    },
+    {
+      "domain": "acb_rules",
+      "ruleKey": "ACB_AMIT",
+      "subject": "Amitriptyline",
+      "severity": null,
+      "message": "High central muscarinic M1/M2 blockade: acute confusion, delirium, severe xerostomia, orthostatic falls with hip fracture.",
+      "action": null,
+      "payload": {
+        "id": "ACB_AMIT",
+        "drug": "Amitriptyline",
+        "score": 3,
+        "hazard": "High central muscarinic M1/M2 blockade: acute confusion, delirium, severe xerostomia, orthostatic falls with hip fracture.",
+        "beers_risk": "AGS Beers: Avoid in patients >= 65 yrs. High risk of precipitating dementia progression."
+      }
+    },
+    {
+      "domain": "acb_rules",
+      "ruleKey": "ACB_HYDR",
+      "subject": "Hydroxyzine",
+      "severity": null,
+      "message": "Potent H1 and central anticholinergic effects: excessive daytime somnolence, impaired reaction time, motor incoordination.",
+      "action": null,
+      "payload": {
+        "id": "ACB_HYDR",
+        "drug": "Hydroxyzine",
+        "score": 3,
+        "hazard": "Potent H1 and central anticholinergic effects: excessive daytime somnolence, impaired reaction time, motor incoordination.",
+        "beers_risk": "AGS Beers: High risk of motor vehicle collisions and falls in older adults."
+      }
+    },
+    {
+      "domain": "acb_rules",
+      "ruleKey": "ACB_OXYB",
+      "subject": "Oxybutynin",
+      "severity": null,
+      "message": "Crosses blood-brain barrier readily; causes memory impairment, acute delirium, and worsening of pre-existing Alzheimer dementia.",
+      "action": null,
+      "payload": {
+        "id": "ACB_OXYB",
+        "drug": "Oxybutynin",
+        "score": 3,
+        "hazard": "Crosses blood-brain barrier readily; causes memory impairment, acute delirium, and worsening of pre-existing Alzheimer dementia.",
+        "beers_risk": "Switch to Mirabegron 50mg (Beta-3 agonist) or Trospium (quaternary amine, does not cross BBB)."
+      }
+    },
+    {
+      "domain": "acb_rules",
+      "ruleKey": "ACB_OLAN",
+      "subject": "Olanzapine / Clozapine",
+      "severity": null,
+      "message": "Significant anticholinergic burden: severe obstipation/paralytic ileus, blurred vision, urinary retention, metabolic syndrome.",
+      "action": null,
+      "payload": {
+        "id": "ACB_OLAN",
+        "drug": "Olanzapine / Clozapine",
+        "score": 3,
+        "hazard": "Significant anticholinergic burden: severe obstipation/paralytic ileus, blurred vision, urinary retention, metabolic syndrome.",
+        "beers_risk": "Monitor bowel habits daily; assess cognitive status periodically."
+      }
+    },
+    {
+      "domain": "acb_rules",
+      "ruleKey": "ACB_PROM",
+      "subject": "Promethazine",
+      "severity": null,
+      "message": "Profound anticholinergic and extrapyramidal effects; lowers seizure threshold and causes severe respiratory depression.",
+      "action": null,
+      "payload": {
+        "id": "ACB_PROM",
+        "drug": "Promethazine",
+        "score": 3,
+        "hazard": "Profound anticholinergic and extrapyramidal effects; lowers seizure threshold and causes severe respiratory depression.",
+        "beers_risk": "Avoid in elderly and children < 2 years. Use Ondansetron as non-anticholinergic antiemetic."
+      }
+    },
+    {
+      "domain": "acb_rules",
+      "ruleKey": "ACB_DICY",
+      "subject": "Dicyclomine",
+      "severity": null,
+      "message": "Smooth muscle antispasmodic with intense anticholinergic action: acute urinary retention in BPH, narrow-angle glaucoma attack.",
+      "action": null,
+      "payload": {
+        "id": "ACB_DICY",
+        "drug": "Dicyclomine",
+        "score": 3,
+        "hazard": "Smooth muscle antispasmodic with intense anticholinergic action: acute urinary retention in BPH, narrow-angle glaucoma attack.",
+        "beers_risk": "AGS Beers: Strictly avoid in elderly. Switch to Mebeverine (direct antispasmodic without atropine-like action)."
+      }
+    },
+    {
+      "domain": "acb_rules",
+      "ruleKey": "ACB_PARO",
+      "subject": "Paroxetine",
+      "severity": null,
+      "message": "Most anticholinergic SSRI: sedation, constipation, sexual dysfunction, anticholinergic discontinuation syndrome.",
+      "action": null,
+      "payload": {
+        "id": "ACB_PARO",
+        "drug": "Paroxetine",
+        "score": 2,
+        "hazard": "Most anticholinergic SSRI: sedation, constipation, sexual dysfunction, anticholinergic discontinuation syndrome.",
+        "beers_risk": "Switch to Sertraline or Escitalopram (Zero anticholinergic score: ACB = 0)."
+      }
+    },
+    {
+      "domain": "cyp450_rules",
+      "ruleKey": "CYP_2C19_CLOP",
+      "subject": null,
+      "severity": null,
+      "message": "Inhibits CYP2C19-mediated conversion of clopidogrel prodrug into active platelet-inhibiting thiol metabolite; stent thrombosis risk.",
+      "action": "Switch PPI to Pantoprazole or Rabeprazole, which exhibit negligible CYP2C19 interaction, or use Prasugrel / Ticagrelor.",
+      "payload": {
+        "id": "CYP_2C19_CLOP",
+        "enzyme": "CYP2C19",
+        "type": "STRONG INHIBITION",
+        "perpetrators": [
+          "omeprazole",
+          "esomeprazole"
+        ],
+        "victims": [
+          "clopidogrel (plavix)"
+        ],
+        "hazard": "Inhibits CYP2C19-mediated conversion of clopidogrel prodrug into active platelet-inhibiting thiol metabolite; stent thrombosis risk.",
+        "action": "Switch PPI to Pantoprazole or Rabeprazole, which exhibit negligible CYP2C19 interaction, or use Prasugrel / Ticagrelor."
+      }
+    },
+    {
+      "domain": "cyp450_rules",
+      "ruleKey": "CYP_2C9_WARF",
+      "subject": null,
+      "severity": null,
+      "message": "Markedly impairs clearance of the more potent S-warfarin enantiomer, doubling INR within 72 hours and precipitating major internal bleeding.",
+      "action": "Empirically reduce Warfarin dose by 30-50% when initiating fluconazole/metronidazole; check INR at 48 hours.",
+      "payload": {
+        "id": "CYP_2C9_WARF",
+        "enzyme": "CYP2C9",
+        "type": "STRONG INHIBITION",
+        "perpetrators": [
+          "fluconazole",
+          "metronidazole",
+          "amiodarone"
+        ],
+        "victims": [
+          "warfarin (s-enantiomer)"
+        ],
+        "hazard": "Markedly impairs clearance of the more potent S-warfarin enantiomer, doubling INR within 72 hours and precipitating major internal bleeding.",
+        "action": "Empirically reduce Warfarin dose by 30-50% when initiating fluconazole/metronidazole; check INR at 48 hours."
+      }
+    },
+    {
+      "domain": "cyp450_rules",
+      "ruleKey": "CYP_2D6_TAMOX",
+      "subject": null,
+      "severity": null,
+      "message": "Blocks CYP2D6 bioactivation of Tamoxifen to its active anti-estrogen metabolite Endoxifen, increasing breast cancer recurrence risk.",
+      "action": "Switch antidepressant to Venlafaxine, Citalopram, or Escitalopram (minimal CYP2D6 inhibition).",
+      "payload": {
+        "id": "CYP_2D6_TAMOX",
+        "enzyme": "CYP2D6",
+        "type": "STRONG INHIBITION",
+        "perpetrators": [
+          "fluoxetine",
+          "paroxetine",
+          "bupropion"
+        ],
+        "victims": [
+          "tamoxifen"
+        ],
+        "hazard": "Blocks CYP2D6 bioactivation of Tamoxifen to its active anti-estrogen metabolite Endoxifen, increasing breast cancer recurrence risk.",
+        "action": "Switch antidepressant to Venlafaxine, Citalopram, or Escitalopram (minimal CYP2D6 inhibition)."
+      }
+    },
+    {
+      "domain": "cyp450_rules",
+      "ruleKey": "CYP_3A4_DOAC",
+      "subject": null,
+      "severity": null,
+      "message": "50-70% drop in anticoagulant blood levels, resulting in catastrophic ischemic stroke or pulmonary embolism failure.",
+      "action": "Avoid co-administration. Switch to Unfractionated Heparin or LMWH with anti-Xa monitoring.",
+      "payload": {
+        "id": "CYP_3A4_DOAC",
+        "enzyme": "CYP3A4 / P-gp",
+        "type": "STRONG INDUCTION",
+        "perpetrators": [
+          "rifampicin",
+          "carbamazepine",
+          "phenytoin",
+          "st john's wort"
+        ],
+        "victims": [
+          "apixaban",
+          "rivaroxaban",
+          "dabigatran"
+        ],
+        "hazard": "50-70% drop in anticoagulant blood levels, resulting in catastrophic ischemic stroke or pulmonary embolism failure.",
+        "action": "Avoid co-administration. Switch to Unfractionated Heparin or LMWH with anti-Xa monitoring."
+      }
+    },
+    {
+      "domain": "cyp450_rules",
+      "ruleKey": "CYP_3A4_STAT",
+      "subject": null,
+      "severity": null,
+      "message": "5 to 10-fold increase in statin plasma AUC, massive elevation of CPK, severe rhabdomyolysis and acute tubular necrosis.",
+      "action": "Temporarily withhold statin therapy during antifungal/macrolide treatment. Or switch to Rosuvastatin / Pravastatin (non-CYP3A4).",
+      "payload": {
+        "id": "CYP_3A4_STAT",
+        "enzyme": "CYP3A4",
+        "type": "STRONG INHIBITION",
+        "perpetrators": [
+          "clarithromycin",
+          "ketoconazole",
+          "itraconazole",
+          "ritonavir"
+        ],
+        "victims": [
+          "atorvastatin",
+          "simvastatin"
+        ],
+        "hazard": "5 to 10-fold increase in statin plasma AUC, massive elevation of CPK, severe rhabdomyolysis and acute tubular necrosis.",
+        "action": "Temporarily withhold statin therapy during antifungal/macrolide treatment. Or switch to Rosuvastatin / Pravastatin (non-CYP3A4)."
+      }
+    },
+    {
+      "domain": "amsp_rules",
+      "ruleKey": "AMSP_AMOX",
+      "subject": "Amoxicillin and Clavulanic acid",
+      "severity": "Access",
+      "message": null,
+      "action": "Amoxicillin plain (if Strep pharyngitis)",
+      "payload": {
+        "id": "AMSP_AMOX",
+        "drug": "Amoxicillin and Clavulanic acid",
+        "category": "Access",
+        "tier": "Tier 1 (Community Outpatient)",
+        "max_days": 5,
+        "micro_order": "No",
+        "de_escalation": "Amoxicillin plain (if Strep pharyngitis)"
+      }
+    },
+    {
+      "domain": "amsp_rules",
+      "ruleKey": "AMSP_CEFTRIAX",
+      "subject": "Ceftriaxone",
+      "severity": "Watch",
+      "message": null,
+      "action": "Cefuroxime, Cefazolin, Amoxicillin-Clavulanate",
+      "payload": {
+        "id": "AMSP_CEFTRIAX",
+        "drug": "Ceftriaxone",
+        "category": "Watch",
+        "tier": "Tier 2 (Hospital Inpatient)",
+        "max_days": 5,
+        "micro_order": "Yes (Blood/Urine culture required)",
+        "de_escalation": "Cefuroxime, Cefazolin, Amoxicillin-Clavulanate"
+      }
+    },
+    {
+      "domain": "amsp_rules",
+      "ruleKey": "AMSP_CIPRO",
+      "subject": "Ciprofloxacin",
+      "severity": "Watch",
+      "message": null,
+      "action": "Nitrofurantoin, Co-trimoxazole (if sensitive)",
+      "payload": {
+        "id": "AMSP_CIPRO",
+        "drug": "Ciprofloxacin",
+        "category": "Watch",
+        "tier": "Tier 2 (Specific Enteric/UTI)",
+        "max_days": 5,
+        "micro_order": "Yes (Culture sensitivity required)",
+        "de_escalation": "Nitrofurantoin, Co-trimoxazole (if sensitive)"
+      }
+    },
+    {
+      "domain": "amsp_rules",
+      "ruleKey": "AMSP_COLISTIN",
+      "subject": "Colistin (Polymyxin E)",
+      "severity": "Reserve",
+      "message": null,
+      "action": "Meropenem, Tigecycline (step down if sensitive)",
+      "payload": {
+        "id": "AMSP_COLISTIN",
+        "drug": "Colistin (Polymyxin E)",
+        "category": "Reserve",
+        "tier": "Tier 3 (Extreme Drug Resistance - XDR)",
+        "max_days": 3,
+        "micro_order": "YES (Mandatory Strict Culture & Sensitivity)",
+        "de_escalation": "Meropenem, Tigecycline (step down if sensitive)"
+      }
+    },
+    {
+      "domain": "amsp_rules",
+      "ruleKey": "AMSP_MERO",
+      "subject": "Meropenem",
+      "severity": "Reserve",
+      "message": null,
+      "action": "Piperacillin-Tazobactam, Ceftriaxone (de-escalate upon culture release)",
+      "payload": {
+        "id": "AMSP_MERO",
+        "drug": "Meropenem",
+        "category": "Reserve",
+        "tier": "Tier 3 (Carbapenem Reserve / MDRO)",
+        "max_days": 3,
+        "micro_order": "YES (Mandatory ID Approval & Culture)",
+        "de_escalation": "Piperacillin-Tazobactam, Ceftriaxone (de-escalate upon culture release)"
+      }
+    },
+    {
+      "domain": "amsp_rules",
+      "ruleKey": "AMSP_PIPTAZ",
+      "subject": "Piperacillin and Tazobactam",
+      "severity": "Watch",
+      "message": null,
+      "action": "Ceftriaxone, Cefuroxime (once stabilized)",
+      "payload": {
+        "id": "AMSP_PIPTAZ",
+        "drug": "Piperacillin and Tazobactam",
+        "category": "Watch",
+        "tier": "Tier 2 (Pseudomonal / Severe Sepsis)",
+        "max_days": 5,
+        "micro_order": "Yes (Mandatory Blood Culture)",
+        "de_escalation": "Ceftriaxone, Cefuroxime (once stabilized)"
+      }
+    },
+    {
+      "domain": "dialysis_rules",
+      "ruleKey": "DIAL_ATENOL",
+      "subject": "Atenolol",
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "id": "DIAL_ATENOL",
+        "drug": "Atenolol",
+        "dialyzability": "HIGH (Cleared 50-75% by HD)",
+        "post_hd_dose": "Administer 25mg to 50mg orally post-dialysis to prevent rebound hypertension.",
+        "crrt_guideline": "Switch to Metoprolol Tartrate (hepatically cleared; unaffected by dialysis)."
+      }
+    },
+    {
+      "domain": "dialysis_rules",
+      "ruleKey": "DIAL_CEFTRIAX",
+      "subject": "Ceftriaxone",
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "id": "DIAL_CEFTRIAX",
+        "drug": "Ceftriaxone",
+        "dialyzability": "NONE (< 5% cleared by HD)",
+        "post_hd_dose": "No supplemental dose needed post-dialysis; standard 1g-2g q24h.",
+        "crrt_guideline": "Standard dosing 2g IV once daily; dual biliary elimination preserves levels."
+      }
+    },
+    {
+      "domain": "dialysis_rules",
+      "ruleKey": "DIAL_LEVO",
+      "subject": "Levofloxacin",
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "id": "DIAL_LEVO",
+        "drug": "Levofloxacin",
+        "dialyzability": "LOW (Not dialyzable)",
+        "post_hd_dose": "500mg loading dose, then 250mg every 48 hours given POST-dialysis.",
+        "crrt_guideline": "250mg IV every 24 hours in CRRT."
+      }
+    },
+    {
+      "domain": "dialysis_rules",
+      "ruleKey": "DIAL_MERO",
+      "subject": "Meropenem",
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "id": "DIAL_MERO",
+        "drug": "Meropenem",
+        "dialyzability": "HIGH (Cleared 50% by HD)",
+        "post_hd_dose": "Administer 500mg IV immediately post-dialysis session.",
+        "crrt_guideline": "1000mg IV every 12 hours in Continuous Renal Replacement Therapy (CRRT)."
+      }
+    },
+    {
+      "domain": "dialysis_rules",
+      "ruleKey": "DIAL_VANCO",
+      "subject": "Vancomycin",
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "id": "DIAL_VANCO",
+        "drug": "Vancomycin",
+        "dialyzability": "MODERATE (High-Flux HD clears 35%)",
+        "post_hd_dose": "500-1000mg IV infused during last 60-90 min of HD; target trough 15-20 mcg/mL.",
+        "crrt_guideline": "10-15 mg/kg IV every 24-48 hours guided by daily serum trough levels."
+      }
+    },
+    {
+      "domain": "iv_ysite_rules",
+      "ruleKey": "IV_CEFT_RL",
+      "subject": null,
+      "severity": null,
+      "message": "Forms insoluble calcium-ceftriaxone particulate precipitates in IV line; precipitates in pulmonary and renal micro-vessels causing fatal organ infarction.",
+      "action": null,
+      "payload": {
+        "id": "IV_CEFT_RL",
+        "drug_a": "Ceftriaxone Sodium",
+        "drug_b": "Ringer's Lactate / Hartmann's Solution",
+        "status": "INCOMPATIBLE_FATAL_CRYSTALLIZATION",
+        "hazard": "Forms insoluble calcium-ceftriaxone particulate precipitates in IV line; precipitates in pulmonary and renal micro-vessels causing fatal organ infarction.",
+        "diluent": "Reconstitute and infuse ONLY with 0.9% Normal Saline or 5% Dextrose. NEVER mix with Calcium solutions."
+      }
+    },
+    {
+      "domain": "iv_ysite_rules",
+      "ruleKey": "IV_FURO_OND",
+      "subject": null,
+      "severity": null,
+      "message": "Alkaline Furosemide solution (pH 8.5-9.3) mixed with acidic drugs causes immediate precipitation into cloudy white insoluble particulates.",
+      "action": null,
+      "payload": {
+        "id": "IV_FURO_OND",
+        "drug_a": "Furosemide",
+        "drug_b": "Ondansetron / Morphine / Midazolam",
+        "status": "INCOMPATIBLE_CHEMICAL_PRECIPITATION",
+        "hazard": "Alkaline Furosemide solution (pH 8.5-9.3) mixed with acidic drugs causes immediate precipitation into cloudy white insoluble particulates.",
+        "diluent": "Flush line with 10 mL Normal Saline before and after; never co-infuse through the same Y-site."
+      }
+    },
+    {
+      "domain": "iv_ysite_rules",
+      "ruleKey": "IV_PHEN_D5W",
+      "subject": null,
+      "severity": null,
+      "message": "Phenytoin requires pH > 11 to remain soluble. Acidic pH of D5W causes instantaneous crystallization into micro-needles inside tubing.",
+      "action": null,
+      "payload": {
+        "id": "IV_PHEN_D5W",
+        "drug_a": "Phenytoin Sodium",
+        "drug_b": "5% Dextrose in Water (D5W)",
+        "status": "INCOMPATIBLE_IMMEDIATE_PRECIPITATION",
+        "hazard": "Phenytoin requires pH > 11 to remain soluble. Acidic pH of D5W causes instantaneous crystallization into micro-needles inside tubing.",
+        "diluent": "Dilute ONLY in 0.9% Normal Saline at concentration 1-10 mg/mL; use 0.22 micron in-line filter."
+      }
+    },
+    {
+      "domain": "iv_ysite_rules",
+      "ruleKey": "IV_SOD_BIC",
+      "subject": null,
+      "severity": null,
+      "message": "Bicarbonate precipitates calcium as insoluble calcium carbonate chalk and chemically inactivates catecholamines in alkaline milieu.",
+      "action": null,
+      "payload": {
+        "id": "IV_SOD_BIC",
+        "drug_a": "Sodium Bicarbonate",
+        "drug_b": "Calcium Gluconate / Dopamine",
+        "status": "INCOMPATIBLE_CHEMICAL_INACTIVATION",
+        "hazard": "Bicarbonate precipitates calcium as insoluble calcium carbonate chalk and chemically inactivates catecholamines in alkaline milieu.",
+        "diluent": "Administer via dedicated IV lumen; flush thoroughly between infusions."
+      }
+    },
+    {
+      "domain": "perioperative_rules",
+      "ruleKey": "PERI_SEMA",
+      "subject": "Semaglutide / Tirzepatide (GLP-1 RA)",
+      "severity": null,
+      "message": "MASSIVE PULMONARY ASPIRATION",
+      "action": null,
+      "payload": {
+        "id": "PERI_SEMA",
+        "drug": "Semaglutide / Tirzepatide (GLP-1 RA)",
+        "hold_hours": 168,
+        "hazard": "MASSIVE PULMONARY ASPIRATION",
+        "rationale": "GLP-1 agonists cause profound delayed gastric emptying; solid food remains in stomach despite 8h fasting, aspirating during intubation (ASA Guideline: Hold 1 week)."
+      }
+    },
+    {
+      "domain": "perioperative_rules",
+      "ruleKey": "PERI_CLOP",
+      "subject": "Clopidogrel (Plavix)",
+      "severity": null,
+      "message": "MAJOR SURGICAL BLEEDING & SPINAL HEMATOMA",
+      "action": null,
+      "payload": {
+        "id": "PERI_CLOP",
+        "drug": "Clopidogrel (Plavix)",
+        "hold_hours": 120,
+        "hazard": "MAJOR SURGICAL BLEEDING & SPINAL HEMATOMA",
+        "rationale": "Irreversible P2Y12 platelet inhibition; performing neuraxial spinal/epidural block risks compressing epidural hematoma and permanent paraplegia (Hold 5 days)."
+      }
+    },
+    {
+      "domain": "perioperative_rules",
+      "ruleKey": "PERI_EMPA",
+      "subject": "Empagliflozin / Dapagliflozin (SGLT2i)",
+      "severity": null,
+      "message": "EUGLYCEMIC DIABETIC KETOACIDOSIS (euDKA)",
+      "action": null,
+      "payload": {
+        "id": "PERI_EMPA",
+        "drug": "Empagliflozin / Dapagliflozin (SGLT2i)",
+        "hold_hours": 72,
+        "hazard": "EUGLYCEMIC DIABETIC KETOACIDOSIS (euDKA)",
+        "rationale": "Surgical fasting and catabolic stress provoke severe ketoacidosis with deceptively normal blood glucose (Hold 3-4 days prior to elective surgery)."
+      }
+    },
+    {
+      "domain": "perioperative_rules",
+      "ruleKey": "PERI_RIVAR",
+      "subject": "Rivaroxaban / Apixaban (DOAC)",
+      "severity": null,
+      "message": "UNCONTROLLED INTRAOPERATIVE HEMORRHAGE",
+      "action": null,
+      "payload": {
+        "id": "PERI_RIVAR",
+        "drug": "Rivaroxaban / Apixaban (DOAC)",
+        "hold_hours": 48,
+        "hazard": "UNCONTROLLED INTRAOPERATIVE HEMORRHAGE",
+        "rationale": "Direct factor Xa inhibition; withhold 48 hours for major surgery with normal renal function (72 hours if eGFR < 50 mL/min)."
+      }
+    },
+    {
+      "domain": "perioperative_rules",
+      "ruleKey": "PERI_TELMI",
+      "subject": "Telmisartan / Ramipril (ARB / ACEi)",
+      "severity": null,
+      "message": "REFRACTORY VASOPLEGIC HYPOTENSION",
+      "action": null,
+      "payload": {
+        "id": "PERI_TELMI",
+        "drug": "Telmisartan / Ramipril (ARB / ACEi)",
+        "hold_hours": 24,
+        "hazard": "REFRACTORY VASOPLEGIC HYPOTENSION",
+        "rationale": "Blunts compensatory sympathetic vasoconstriction under general anesthesia, causing profound intraoperative hypotension unresponsive to phenylephrine (Hold morning of surgery)."
+      }
+    },
+    {
+      "domain": "qtc_rules",
+      "ruleKey": "QTC_AMIO",
+      "subject": "Amiodarone",
+      "severity": "Known Risk of TdP (CredibleMeds)",
+      "message": "High intrinsic QTc prolongation potential; blocks hERG potassium channels. Requires baseline ECG.",
+      "action": null,
+      "payload": {
+        "id": "QTC_AMIO",
+        "drug": "Amiodarone",
+        "category": "Known Risk of TdP (CredibleMeds)",
+        "points": 3,
+        "warning": "High intrinsic QTc prolongation potential; blocks hERG potassium channels. Requires baseline ECG."
+      }
+    },
+    {
+      "domain": "qtc_rules",
+      "ruleKey": "QTC_HALO",
+      "subject": "Haloperidol (IV)",
+      "severity": "Known Risk of TdP (CredibleMeds)",
+      "message": "Dose-dependent QTc prolongation; IV route carries 3x higher TdP risk than oral. Monitor telemetry.",
+      "action": null,
+      "payload": {
+        "id": "QTC_HALO",
+        "drug": "Haloperidol (IV)",
+        "category": "Known Risk of TdP (CredibleMeds)",
+        "points": 3,
+        "warning": "Dose-dependent QTc prolongation; IV route carries 3x higher TdP risk than oral. Monitor telemetry."
+      }
+    },
+    {
+      "domain": "qtc_rules",
+      "ruleKey": "QTC_AZITH",
+      "subject": "Azithromycin",
+      "severity": "Known Risk of TdP (CredibleMeds)",
+      "message": "Macrolide class QTc prolongation. Risk multiplies when co-prescribed with antiemetics or fluoroquinolones.",
+      "action": null,
+      "payload": {
+        "id": "QTC_AZITH",
+        "drug": "Azithromycin",
+        "category": "Known Risk of TdP (CredibleMeds)",
+        "points": 2,
+        "warning": "Macrolide class QTc prolongation. Risk multiplies when co-prescribed with antiemetics or fluoroquinolones."
+      }
+    },
+    {
+      "domain": "qtc_rules",
+      "ruleKey": "QTC_LEVO",
+      "subject": "Levofloxacin / Ciprofloxacin",
+      "severity": "Known Risk of TdP (CredibleMeds)",
+      "message": "Fluoroquinolones delay ventricular repolarization; extreme caution with pre-existing structural heart disease.",
+      "action": null,
+      "payload": {
+        "id": "QTC_LEVO",
+        "drug": "Levofloxacin / Ciprofloxacin",
+        "category": "Known Risk of TdP (CredibleMeds)",
+        "points": 2,
+        "warning": "Fluoroquinolones delay ventricular repolarization; extreme caution with pre-existing structural heart disease."
+      }
+    },
+    {
+      "domain": "qtc_rules",
+      "ruleKey": "QTC_ONDAN",
+      "subject": "Ondansetron",
+      "severity": "Known Risk of TdP (CredibleMeds)",
+      "message": "Dose-dependent QTc prolongation; restrict IV dose to max 16mg single infusion.",
+      "action": null,
+      "payload": {
+        "id": "QTC_ONDAN",
+        "drug": "Ondansetron",
+        "category": "Known Risk of TdP (CredibleMeds)",
+        "points": 2,
+        "warning": "Dose-dependent QTc prolongation; restrict IV dose to max 16mg single infusion."
+      }
+    },
+    {
+      "domain": "qtc_rules",
+      "ruleKey": "QTC_FLUCON",
+      "subject": "Fluconazole",
+      "severity": "Known Risk of TdP (CredibleMeds)",
+      "message": "Azole antifungal causes direct hERG channel inhibition and inhibits CYP3A4 metabolism of other QTc drugs.",
+      "action": null,
+      "payload": {
+        "id": "QTC_FLUCON",
+        "drug": "Fluconazole",
+        "category": "Known Risk of TdP (CredibleMeds)",
+        "points": 2,
+        "warning": "Azole antifungal causes direct hERG channel inhibition and inhibits CYP3A4 metabolism of other QTc drugs."
+      }
+    },
+    {
+      "domain": "qtc_rules",
+      "ruleKey": "QTC_ESCIT",
+      "subject": "Escitalopram",
+      "severity": "Known Risk of TdP (CredibleMeds)",
+      "message": "Dose-dependent QTc prolongation; FDA limit max 20mg/day (10mg/day in elderly >65 yrs).",
+      "action": null,
+      "payload": {
+        "id": "QTC_ESCIT",
+        "drug": "Escitalopram",
+        "category": "Known Risk of TdP (CredibleMeds)",
+        "points": 2,
+        "warning": "Dose-dependent QTc prolongation; FDA limit max 20mg/day (10mg/day in elderly >65 yrs)."
+      }
+    },
+    {
+      "domain": "qtc_rules",
+      "ruleKey": "QTC_PANTO",
+      "subject": "Pantoprazole",
+      "severity": "Conditional Risk of TdP",
+      "message": "Chronic use causes hypomagnesemia and hypokalemia, secondarily predisposing to prolonged QTc.",
+      "action": null,
+      "payload": {
+        "id": "QTC_PANTO",
+        "drug": "Pantoprazole",
+        "category": "Conditional Risk of TdP",
+        "points": 1,
+        "warning": "Chronic use causes hypomagnesemia and hypokalemia, secondarily predisposing to prolonged QTc."
+      }
+    },
+    {
+      "domain": "enteral_tube_rules",
+      "ruleKey": "TUBE_DILT",
+      "subject": "Diltiazem CD / SR",
+      "severity": null,
+      "message": null,
+      "action": "Switch to immediate-release Diltiazem 30mg TID or Amlodipine liquid suspension.",
+      "payload": {
+        "id": "TUBE_DILT",
+        "drug": "Diltiazem CD / SR",
+        "form": "Sustained-Release Capsule",
+        "status": "DO_NOT_CRUSH_DOSE_DUMPING",
+        "interaction": "None",
+        "alternative": "Switch to immediate-release Diltiazem 30mg TID or Amlodipine liquid suspension."
+      }
+    },
+    {
+      "domain": "enteral_tube_rules",
+      "ruleKey": "TUBE_LEVO",
+      "subject": "Levothyroxine Sodium",
+      "severity": null,
+      "message": null,
+      "action": "Hold enteral formula feeds for 1 to 2 hours before and after administration.",
+      "payload": {
+        "id": "TUBE_LEVO",
+        "drug": "Levothyroxine Sodium",
+        "form": "Tablet",
+        "status": "SAFE_TO_CRUSH",
+        "interaction": "FEED BINDING: Divalent cations in enteral feeds block gastrointestinal absorption.",
+        "alternative": "Hold enteral formula feeds for 1 to 2 hours before and after administration."
+      }
+    },
+    {
+      "domain": "enteral_tube_rules",
+      "ruleKey": "TUBE_NIFED",
+      "subject": "Nifedipine XL / ER",
+      "severity": null,
+      "message": null,
+      "action": "Switch to Amlodipine 5mg oral suspension or immediate-release drops.",
+      "payload": {
+        "id": "TUBE_NIFED",
+        "drug": "Nifedipine XL / ER",
+        "form": "Extended-Release Tablet",
+        "status": "DO_NOT_CRUSH_FATAL_DOSE_DUMPING",
+        "interaction": "None",
+        "alternative": "Switch to Amlodipine 5mg oral suspension or immediate-release drops."
+      }
+    },
+    {
+      "domain": "enteral_tube_rules",
+      "ruleKey": "TUBE_PANTO",
+      "subject": "Pantoprazole EC",
+      "severity": null,
+      "message": null,
+      "action": "Switch to Pantoprazole 40mg IV infusion or Lansoprazole orally disintegrating tab in water.",
+      "payload": {
+        "id": "TUBE_PANTO",
+        "drug": "Pantoprazole EC",
+        "form": "Enteric-Coated Tablet",
+        "status": "DO_NOT_CRUSH_ACID_LABILE",
+        "interaction": "None",
+        "alternative": "Switch to Pantoprazole 40mg IV infusion or Lansoprazole orally disintegrating tab in water."
+      }
+    },
+    {
+      "domain": "enteral_tube_rules",
+      "ruleKey": "TUBE_PHENY",
+      "subject": "Phenytoin Sodium",
+      "severity": null,
+      "message": null,
+      "action": "Administer IV Fosphenytoin or ensure strict 2-hour enteral feed withholding window.",
+      "payload": {
+        "id": "TUBE_PHENY",
+        "drug": "Phenytoin Sodium",
+        "form": "Oral Capsule / Suspension",
+        "status": "SAFE_TO_CRUSH_IF_IMMEDIATE",
+        "interaction": "SEVERE FEED CHELATION: Binds to enteral protein formulas (Ensure/Peptamen); absorption drops 70%. Hold feeds 2h pre/post.",
+        "alternative": "Administer IV Fosphenytoin or ensure strict 2-hour enteral feed withholding window."
+      }
+    },
+    {
+      "domain": "duplicate_subclasses",
+      "ruleKey": "SUB_ACEI",
+      "subject": null,
+      "severity": null,
+      "message": "DUPLICATE THERAPY ALERT: Multiple ACE inhibitors co-prescribed. Severe risk of acute hypotension and hyperkalemic renal failure.",
+      "action": null,
+      "payload": {
+        "id": "SUB_ACEI",
+        "name": "ACE Inhibitors",
+        "members": [
+          "Ramipril",
+          "Enalapril",
+          "Lisinopril",
+          "Perindopril"
+        ],
+        "max": 1,
+        "warning": "DUPLICATE THERAPY ALERT: Multiple ACE inhibitors co-prescribed. Severe risk of acute hypotension and hyperkalemic renal failure."
+      }
+    },
+    {
+      "domain": "duplicate_subclasses",
+      "ruleKey": "SUB_ARB",
+      "subject": null,
+      "severity": null,
+      "message": "DUPLICATE THERAPY ALERT: Dual ARB prescription detected. Unapproved duplication with profound hypotensive risk.",
+      "action": null,
+      "payload": {
+        "id": "SUB_ARB",
+        "name": "Angiotensin Receptor Blockers (ARBs)",
+        "members": [
+          "Telmisartan",
+          "Losartan",
+          "Olmesartan",
+          "Candesartan",
+          "Valsartan"
+        ],
+        "max": 1,
+        "warning": "DUPLICATE THERAPY ALERT: Dual ARB prescription detected. Unapproved duplication with profound hypotensive risk."
+      }
+    },
+    {
+      "domain": "duplicate_subclasses",
+      "ruleKey": "SUB_NSAID",
+      "subject": null,
+      "severity": null,
+      "message": "DUPLICATE THERAPY ALERT: Co-prescription of multiple systemic NSAIDs. Synergistic gastroduodenal ulceration, acute renal failure, and severe GI hemorrhage.",
+      "action": null,
+      "payload": {
+        "id": "SUB_NSAID",
+        "name": "Systemic NSAIDs",
+        "members": [
+          "Ibuprofen",
+          "Diclofenac",
+          "Aceclofenac",
+          "Naproxen",
+          "Piroxicam",
+          "Mefenamic acid",
+          "Ketorolac"
+        ],
+        "max": 1,
+        "warning": "DUPLICATE THERAPY ALERT: Co-prescription of multiple systemic NSAIDs. Synergistic gastroduodenal ulceration, acute renal failure, and severe GI hemorrhage."
+      }
+    },
+    {
+      "domain": "duplicate_subclasses",
+      "ruleKey": "SUB_PPI",
+      "subject": null,
+      "severity": null,
+      "message": "DUPLICATE THERAPY ALERT: Patient prescribed two concurrent PPIs. Zero added therapeutic benefit; increased risk of hypomagnesemia, C. difficile colitis, and chronic kidney disease.",
+      "action": null,
+      "payload": {
+        "id": "SUB_PPI",
+        "name": "Proton Pump Inhibitors (PPIs)",
+        "members": [
+          "Pantoprazole",
+          "Omeprazole",
+          "Rabeprazole",
+          "Esomeprazole",
+          "Lansoprazole"
+        ],
+        "max": 1,
+        "warning": "DUPLICATE THERAPY ALERT: Patient prescribed two concurrent PPIs. Zero added therapeutic benefit; increased risk of hypomagnesemia, C. difficile colitis, and chronic kidney disease."
+      }
+    },
+    {
+      "domain": "duplicate_subclasses",
+      "ruleKey": "SUB_STATIN",
+      "subject": null,
+      "severity": null,
+      "message": "DUPLICATE THERAPY ALERT: Dual statin therapy. Substantially elevates rhabdomyolysis and hepatic transaminase elevation risk without incremental LDL reduction.",
+      "action": null,
+      "payload": {
+        "id": "SUB_STATIN",
+        "name": "HMG-CoA Reductase Inhibitors (Statins)",
+        "members": [
+          "Atorvastatin",
+          "Rosuvastatin",
+          "Simvastatin",
+          "Pravastatin",
+          "Pitavastatin"
+        ],
+        "max": 1,
+        "warning": "DUPLICATE THERAPY ALERT: Dual statin therapy. Substantially elevates rhabdomyolysis and hepatic transaminase elevation risk without incremental LDL reduction."
+      }
+    },
+    {
+      "domain": "jan_aushadhi_pricing",
+      "ruleKey": "2",
+      "subject": "Telmisartan + Amlodipine (40mg + 5mg Tablet)",
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "id": 2,
+        "drug": "Telmisartan + Amlodipine (40mg + 5mg Tablet)",
+        "matches": [
+          "telmisartan"
+        ],
+        "dpco_ceiling": 11.2,
+        "branded": 16,
+        "jan_aushadhi": 2.8,
+        "code": "PMBJP042",
+        "savings_pct": 82.5
+      }
+    },
+    {
+      "domain": "jan_aushadhi_pricing",
+      "ruleKey": "7",
+      "subject": "Montelukast + Levocetirizine (10mg + 5mg Tablet)",
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "id": 7,
+        "drug": "Montelukast + Levocetirizine (10mg + 5mg Tablet)",
+        "matches": [
+          "montelukast"
+        ],
+        "dpco_ceiling": 14,
+        "branded": 18,
+        "jan_aushadhi": 3.2,
+        "code": "PMBJP089",
+        "savings_pct": 82.2
+      }
+    },
+    {
+      "domain": "jan_aushadhi_pricing",
+      "ruleKey": "5",
+      "subject": "Pantoprazole (40mg Tablet)",
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "id": 5,
+        "drug": "Pantoprazole (40mg Tablet)",
+        "matches": [
+          "pantoprazole"
+        ],
+        "dpco_ceiling": 9.8,
+        "branded": 14,
+        "jan_aushadhi": 2.5,
+        "code": "PMBJP033",
+        "savings_pct": 82.1
+      }
+    },
+    {
+      "domain": "jan_aushadhi_pricing",
+      "ruleKey": "4",
+      "subject": "Atorvastatin (10mg Tablet)",
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "id": 4,
+        "drug": "Atorvastatin (10mg Tablet)",
+        "matches": [
+          "atorvastatin"
+        ],
+        "dpco_ceiling": 8.5,
+        "branded": 12,
+        "jan_aushadhi": 2.2,
+        "code": "PMBJP028",
+        "savings_pct": 81.7
+      }
+    },
+    {
+      "domain": "jan_aushadhi_pricing",
+      "ruleKey": "3",
+      "subject": "Metformin SR (500mg Tablet)",
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "id": 3,
+        "drug": "Metformin SR (500mg Tablet)",
+        "matches": [
+          "metformin"
+        ],
+        "dpco_ceiling": 2.1,
+        "branded": 4.5,
+        "jan_aushadhi": 1.2,
+        "code": "PMBJP015",
+        "savings_pct": 73.3
+      }
+    },
+    {
+      "domain": "jan_aushadhi_pricing",
+      "ruleKey": "1",
+      "subject": "Paracetamol (650mg Tablet)",
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "id": 1,
+        "drug": "Paracetamol (650mg Tablet)",
+        "matches": [
+          "paracetamol"
+        ],
+        "dpco_ceiling": 2.3,
+        "branded": 3.5,
+        "jan_aushadhi": 1,
+        "code": "PMBJP001",
+        "savings_pct": 71.4
+      }
+    },
+    {
+      "domain": "jan_aushadhi_pricing",
+      "ruleKey": "6",
+      "subject": "Azithromycin (500mg Tablet)",
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "id": 6,
+        "drug": "Azithromycin (500mg Tablet)",
+        "matches": [
+          "azithromycin"
+        ],
+        "dpco_ceiling": 24.5,
+        "branded": 25,
+        "jan_aushadhi": 7.6,
+        "code": "PMBJP067",
+        "savings_pct": 69.6
+      }
+    },
+    {
+      "domain": "emergency_antidotes",
+      "ruleKey": "",
+      "subject": null,
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "rule_id": "ANT_BENZO",
+        "toxic_agent": "Benzodiazepines (Midazolam / Diazepam)",
+        "antidote": "Flumazenil",
+        "mechanism": "Competitive antagonist at GABAA receptor benzodiazepine binding site",
+        "dose": "Administer 0.2mg IV over 30 seconds; repeat 0.3mg after 1 min if needed (max total dose 3mg).",
+        "pearl": "WARNING: STRICTLY CONTRAINDICATED in chronic benzodiazepine dependency (triggers fatal status epilepticus)."
+      }
+    },
+    {
+      "domain": "emergency_antidotes",
+      "ruleKey": "",
+      "subject": null,
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "rule_id": "ANT_DABIG",
+        "toxic_agent": "Dabigatran (Pradaxa)",
+        "antidote": "Idarucizumab (Praxbind)",
+        "mechanism": "Humanized monoclonal antibody fragment binds free dabigatran with 350x higher affinity than thrombin",
+        "dose": "Administer 5 grams IV provided as two consecutive 2.5g / 50mL vials as bolus or 5-min infusions.",
+        "pearl": "Reverses anticoagulation within minutes; does not interfere with heparin if emergency surgery needed."
+      }
+    },
+    {
+      "domain": "emergency_antidotes",
+      "ruleKey": "",
+      "subject": null,
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "rule_id": "ANT_HEPARIN",
+        "toxic_agent": "Heparin (Unfractionated / LMWH)",
+        "antidote": "Protamine Sulfate",
+        "mechanism": "Cationic protamine forms stable inactive salt with polyanionic heparin",
+        "dose": "Administer 1 mg Protamine for every 100 units Heparin received in past 2 hours. Give slow IV over 10 min (max 50mg/dose).",
+        "pearl": "Rapid injection causes sudden catastrophic hypotension and anaphylactoid shock."
+      }
+    },
+    {
+      "domain": "emergency_antidotes",
+      "ruleKey": "",
+      "subject": null,
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "rule_id": "ANT_LAST",
+        "toxic_agent": "Local Anesthetics (Bupivacaine / Lidocaine LAST)",
+        "antidote": "20% Lipid Emulsion (Intralipid)",
+        "mechanism": "Lipid sink hypothesis: extracts lipophilic anesthetic from myocardial tissue into plasma lipid droplets",
+        "dose": "Bolus 1.5 mL/kg 20% Lipid Emulsion IV over 1 min, followed by continuous infusion at 0.25 mL/kg/min.",
+        "pearl": "Continue chest compressions; avoid vasopressin and high-dose epinephrine in LAST resuscitation."
+      }
+    },
+    {
+      "domain": "emergency_antidotes",
+      "ruleKey": "",
+      "subject": null,
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "rule_id": "ANT_OPIOID",
+        "toxic_agent": "Opioids (Morphine / Tramadol / Fentanyl)",
+        "antidote": "Naloxone Hydrochloride",
+        "mechanism": "Competitive mu-opioid receptor antagonist",
+        "dose": "Dilute 0.4mg Naloxone in 9 mL NS (40 mcg/mL). Titrate 1-2 mL IV every 2-3 minutes until respiratory rate > 10 bpm.",
+        "pearl": "CRITICAL: Naloxone half-life (30-60 min) is shorter than most opioids; monitor for renarcotization!"
+      }
+    },
+    {
+      "domain": "emergency_antidotes",
+      "ruleKey": "",
+      "subject": null,
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "rule_id": "ANT_PCM",
+        "toxic_agent": "Paracetamol (Acetaminophen Acute Overdose)",
+        "antidote": "N-Acetylcysteine (NAC)",
+        "mechanism": "Replenishes hepatic glutathione reserves and conjugates toxic reactive NAPQI directly",
+        "dose": "3-Bag IV Infusion: Bag 1: 150 mg/kg in 200mL D5W over 1h; Bag 2: 50 mg/kg in 500mL over 4h; Bag 3: 100 mg/kg in 1000mL over 16h.",
+        "pearl": "Plot 4-hour serum paracetamol on Rumack-Matthew nomogram; anaphylactoid flushing treated with antihistamine."
+      }
+    },
+    {
+      "domain": "emergency_antidotes",
+      "ruleKey": "",
+      "subject": null,
+      "severity": null,
+      "message": null,
+      "action": null,
+      "payload": {
+        "rule_id": "ANT_WARFARIN",
+        "toxic_agent": "Warfarin / Acenocoumarol",
+        "antidote": "4-Factor PCC (Beriplex) + Vitamin K1",
+        "mechanism": "Replaces active coagulation factors II, VII, IX, X immediately",
+        "dose": "Dose PCC: 25-50 IU/kg IV based on INR + Vitamin K1 10mg IV slow in 100mL Normal Saline over 30 min.",
+        "pearl": "Re-check INR 30 minutes post-infusion; Vitamin K maintains INR after PCC wears off in 6 hours."
+      }
+    },
+    {
+      "domain": "ddi_rules",
+      "ruleKey": "1",
+      "subject": null,
+      "severity": "AMBER (MODERATE)",
+      "message": null,
+      "action": "Monitor INR if paracetamol is taken regularly for >3 consecutive days.",
+      "payload": {
+        "id": 1,
+        "drug_a": "Paracetamol",
+        "drug_b": "Warfarin",
+        "severity": "AMBER (MODERATE)",
+        "mechanism": "Prolonged regular high-dose paracetamol enhances anticoagulant effect of Warfarin.",
+        "action": "Monitor INR if paracetamol is taken regularly for >3 consecutive days."
+      }
+    },
+    {
+      "domain": "ddi_rules",
+      "ruleKey": "2",
+      "subject": null,
+      "severity": "RED (HIGH RISK)",
+      "message": null,
+      "action": "Avoid or restrict paracetamol to <2000 mg/day; monitor hepatic transaminases.",
+      "payload": {
+        "id": 2,
+        "drug_a": "Paracetamol",
+        "drug_b": "Isoniazid",
+        "severity": "RED (HIGH RISK)",
+        "mechanism": "Isoniazid induces CYP2E1, accelerating production of toxic NAPQI paracetamol metabolite.",
+        "action": "Avoid or restrict paracetamol to <2000 mg/day; monitor hepatic transaminases."
+      }
+    },
+    {
+      "domain": "ddi_rules",
+      "ruleKey": "3",
+      "subject": null,
+      "severity": "RED (HIGH RISK)",
+      "message": null,
+      "action": "Check serum potassium and creatinine within 7 days of co-administration.",
+      "payload": {
+        "id": 3,
+        "drug_a": "ACE Inhibitors / ARBs",
+        "drug_b": "Potassium-Sparing Diuretics / K+ Supplements",
+        "severity": "RED (HIGH RISK)",
+        "mechanism": "Concurrent blockade of aldosterone and potassium excretion provokes life-threatening hyperkalemia.",
+        "action": "Check serum potassium and creatinine within 7 days of co-administration."
+      }
+    },
+    {
+      "domain": "ddi_rules",
+      "ruleKey": "4",
+      "subject": null,
+      "severity": "RED (CRITICAL)",
+      "message": null,
+      "action": "Avoid combination; use Paracetamol for analgesia or co-prescribe a gastroprotective PPI.",
+      "payload": {
+        "id": 4,
+        "drug_a": "NSAIDs (Ibuprofen/Diclofenac)",
+        "drug_b": "Oral Anticoagulants (Warfarin/NOACs)",
+        "severity": "RED (CRITICAL)",
+        "mechanism": "Synergistic inhibition of platelet COX-1 and coagulation cascade dramatically escalates fatal GI bleeding risk.",
+        "action": "Avoid combination; use Paracetamol for analgesia or co-prescribe a gastroprotective PPI."
+      }
+    },
+    {
+      "domain": "ddi_rules",
+      "ruleKey": "5",
+      "subject": null,
+      "severity": "RED (HIGH RISK)",
+      "message": null,
+      "action": "Temporarily withhold statin therapy during 5-day macrolide antibiotic course.",
+      "payload": {
+        "id": 5,
+        "drug_a": "Macrolides (Clarithromycin/Azithromycin)",
+        "drug_b": "Statins (Atorvastatin/Simvastatin)",
+        "severity": "RED (HIGH RISK)",
+        "mechanism": "Potent CYP3A4 inhibition by macrolides leads to marked statin plasma accumulation and rhabdomyolysis.",
+        "action": "Temporarily withhold statin therapy during 5-day macrolide antibiotic course."
+      }
+    },
+    {
+      "domain": "ddi_rules",
+      "ruleKey": "6",
+      "subject": null,
+      "severity": "AMBER (MODERATE)",
+      "message": null,
+      "action": "Administer fluoroquinolone at least 2 hours before or 4 hours after oral antacids/iron.",
+      "payload": {
+        "id": 6,
+        "drug_a": "Fluoroquinolones (Ciprofloxacin/Levofloxacin)",
+        "drug_b": "Antacids / Oral Iron Supplements",
+        "severity": "AMBER (MODERATE)",
+        "mechanism": "Polyvalent cations (Al3+, Mg2+, Fe2+) chelate fluoroquinolones, causing up to 90% loss of antibiotic absorption.",
+        "action": "Administer fluoroquinolone at least 2 hours before or 4 hours after oral antacids/iron."
+      }
+    },
+    {
+      "domain": "ddi_rules",
+      "ruleKey": "7",
+      "subject": null,
+      "severity": "AMBER (MODERATE)",
+      "message": null,
+      "action": "Switch PPI to Pantoprazole or Rabeprazole, which exhibit minimal CYP2C19 interaction.",
+      "payload": {
+        "id": 7,
+        "drug_a": "Proton Pump Inhibitors (Omeprazole)",
+        "drug_b": "Clopidogrel",
+        "severity": "AMBER (MODERATE)",
+        "mechanism": "Competitive CYP2C19 inhibition prevents hepatic metabolic bioactivation of clopidogrel.",
+        "action": "Switch PPI to Pantoprazole or Rabeprazole, which exhibit minimal CYP2C19 interaction."
+      }
+    },
+    {
+      "domain": "ddi_rules",
+      "ruleKey": "8",
+      "subject": null,
+      "severity": "RED (HIGH RISK)",
+      "message": null,
+      "action": "Withhold Metformin 48 hours prior to contrast imaging and resume only after verifying normal eGFR.",
+      "payload": {
+        "id": 8,
+        "drug_a": "Metformin",
+        "drug_b": "Iodinated Radiocontrast Media",
+        "severity": "RED (HIGH RISK)",
+        "mechanism": "Contrast-induced acute nephropathy severely impairs metformin clearance, triggering fatal lactic acidosis.",
+        "action": "Withhold Metformin 48 hours prior to contrast imaging and resume only after verifying normal eGFR."
+      }
+    },
+    {
+      "domain": "ddi_rules",
+      "ruleKey": "9",
+      "subject": null,
+      "severity": "RED (CRITICAL)",
+      "message": null,
+      "action": "Contraindicated in outpatient settings; avoid concurrent administration.",
+      "payload": {
+        "id": 9,
+        "drug_a": "Beta-Blockers (Propranolol/Atenolol)",
+        "drug_b": "Non-Dihydropyridine CCBs (Verapamil/Diltiazem)",
+        "severity": "RED (CRITICAL)",
+        "mechanism": "Dual depression of SA and AV nodal conduction precipitates complete heart block and acute cardiogenic collapse.",
+        "action": "Contraindicated in outpatient settings; avoid concurrent administration."
+      }
+    },
+    {
+      "domain": "ddi_rules",
+      "ruleKey": "10",
+      "subject": null,
+      "severity": "RED (HIGH RISK)",
+      "message": null,
+      "action": "Avoid combination; monitor for tremor, hyperthermia, clonus, and altered mental status.",
+      "payload": {
+        "id": 10,
+        "drug_a": "SSRIs (Sertraline/Fluoxetine)",
+        "drug_b": "Tramadol",
+        "severity": "RED (HIGH RISK)",
+        "mechanism": "Synergistic serotonin reuptake inhibition and direct receptor stimulation triggers life-threatening Serotonin Syndrome.",
+        "action": "Avoid combination; monitor for tremor, hyperthermia, clonus, and altered mental status."
+      }
+    },
+    {
+      "domain": "symptom_mappings",
+      "ruleKey": "1",
+      "subject": "High Grade Fever",
+      "severity": null,
+      "message": "Direct hypothalamic peroxidase/COX inhibition; safe antipyresis with zero gastric erosion.",
+      "action": null,
+      "payload": {
+        "id": 1,
+        "symptom": "High Grade Fever",
+        "system": "General / Systemic",
+        "generic_sctid": "766563000",
+        "drug_name": "Paracetamol Tablets 500mg/650mg",
+        "line": "1st-Line",
+        "rationale": "Direct hypothalamic peroxidase/COX inhibition; safe antipyresis with zero gastric erosion."
+      }
+    },
+    {
+      "domain": "symptom_mappings",
+      "ruleKey": "2",
+      "subject": "Pediatric Fever",
+      "severity": null,
+      "message": "Calculated 10-15 mg/kg per dose; gold standard antipyretic in children.",
+      "action": null,
+      "payload": {
+        "id": 2,
+        "symptom": "Pediatric Fever",
+        "system": "General / Pediatric",
+        "generic_sctid": "766563000",
+        "drug_name": "Paracetamol Oral Suspension 250mg/5ml",
+        "line": "1st-Line",
+        "rationale": "Calculated 10-15 mg/kg per dose; gold standard antipyretic in children."
+      }
+    },
+    {
+      "domain": "symptom_mappings",
+      "ruleKey": "3",
+      "subject": "Sore Throat / Throat Pain",
+      "severity": null,
+      "message": "Bactericidal against Group A Strep and beta-lactamase producing organisms.",
+      "action": null,
+      "payload": {
+        "id": 3,
+        "symptom": "Sore Throat / Throat Pain",
+        "system": "ENT / Upper Airway",
+        "generic_sctid": "2872361000189107",
+        "drug_name": "Amoxicillin and Clavulanate",
+        "line": "1st-Line",
+        "rationale": "Bactericidal against Group A Strep and beta-lactamase producing organisms."
+      }
+    },
+    {
+      "domain": "symptom_mappings",
+      "ruleKey": "4",
+      "subject": "Sore Throat (Penicillin-Allergic)",
+      "severity": null,
+      "message": "50S ribosomal protein inhibitor; safe in penicillin anaphylaxis.",
+      "action": null,
+      "payload": {
+        "id": 4,
+        "symptom": "Sore Throat (Penicillin-Allergic)",
+        "system": "ENT / Upper Airway",
+        "generic_sctid": "1188049002",
+        "drug_name": "Azithromycin 500mg",
+        "line": "1st-Line Alternative",
+        "rationale": "50S ribosomal protein inhibitor; safe in penicillin anaphylaxis."
+      }
+    },
+    {
+      "domain": "symptom_mappings",
+      "ruleKey": "5",
+      "subject": "Dry Irritating Cough",
+      "severity": null,
+      "message": "Centrally acting non-narcotic cough suppressant combined with peripheral H1 antihistamine.",
+      "action": null,
+      "payload": {
+        "id": 5,
+        "symptom": "Dry Irritating Cough",
+        "system": "Respiratory",
+        "generic_sctid": "766563000",
+        "drug_name": "Dextromethorphan + Levocetirizine",
+        "line": "1st-Line",
+        "rationale": "Centrally acting non-narcotic cough suppressant combined with peripheral H1 antihistamine."
+      }
+    },
+    {
+      "domain": "symptom_mappings",
+      "ruleKey": "6",
+      "subject": "Productive / Wet Cough",
+      "severity": null,
+      "message": "Depolymerizes mucopolysaccharides and stimulates ciliary mucus escalator clearance.",
+      "action": null,
+      "payload": {
+        "id": 6,
+        "symptom": "Productive / Wet Cough",
+        "system": "Respiratory",
+        "generic_sctid": "766563000",
+        "drug_name": "Ambroxol + Guaiphenesin + Terbutaline",
+        "line": "1st-Line",
+        "rationale": "Depolymerizes mucopolysaccharides and stimulates ciliary mucus escalator clearance."
+      }
+    },
+    {
+      "domain": "symptom_mappings",
+      "ruleKey": "7",
+      "subject": "Acid Regurgitation / Heartburn",
+      "severity": null,
+      "message": "Covalently binds active gastric H+/K+ ATPase pumps, maintaining intragastric pH > 4.",
+      "action": null,
+      "payload": {
+        "id": 7,
+        "symptom": "Acid Regurgitation / Heartburn",
+        "system": "Gastrointestinal",
+        "generic_sctid": "766563000",
+        "drug_name": "Pantoprazole 40mg",
+        "line": "1st-Line",
+        "rationale": "Covalently binds active gastric H+/K+ ATPase pumps, maintaining intragastric pH > 4."
+      }
+    },
+    {
+      "domain": "symptom_mappings",
+      "ruleKey": "8",
+      "subject": "Nausea & Vomiting",
+      "severity": null,
+      "message": "Potent selective 5-HT3 receptor antagonist acting at CTZ and vagal nerve afferents.",
+      "action": null,
+      "payload": {
+        "id": 8,
+        "symptom": "Nausea & Vomiting",
+        "system": "Gastrointestinal",
+        "generic_sctid": "766563000",
+        "drug_name": "Ondansetron 4mg",
+        "line": "1st-Line",
+        "rationale": "Potent selective 5-HT3 receptor antagonist acting at CTZ and vagal nerve afferents."
+      }
+    },
+    {
+      "domain": "symptom_mappings",
+      "ruleKey": "9",
+      "subject": "Acute Diarrhea / Loose Stools",
+      "severity": null,
+      "message": "Sodium-glucose co-transport mechanism restores cellular intravascular volume.",
+      "action": null,
+      "payload": {
+        "id": 9,
+        "symptom": "Acute Diarrhea / Loose Stools",
+        "system": "Gastrointestinal",
+        "generic_sctid": "766563000",
+        "drug_name": "Oral Rehydration Salts (ORS)",
+        "line": "1st-Line Essential",
+        "rationale": "Sodium-glucose co-transport mechanism restores cellular intravascular volume."
+      }
+    },
+    {
+      "domain": "symptom_mappings",
+      "ruleKey": "10",
+      "subject": "Severe Hypertension (SBP > 160)",
+      "severity": null,
+      "message": "Synergistic arterial vasodilation and RAAS blockade for smooth 24-hour BP reduction.",
+      "action": null,
+      "payload": {
+        "id": 10,
+        "symptom": "Severe Hypertension (SBP > 160)",
+        "system": "Cardiovascular",
+        "generic_sctid": "766563000",
+        "drug_name": "Telmisartan 40mg + Amlodipine 5mg",
+        "line": "1st-Line Dual",
+        "rationale": "Synergistic arterial vasodilation and RAAS blockade for smooth 24-hour BP reduction."
+      }
+    },
+    {
+      "domain": "symptom_mappings",
+      "ruleKey": "11",
+      "subject": "Dysuria / Burning Micturition",
+      "severity": null,
+      "message": "Reaches high urinary bactericidal concentration with minimal systemic gut flora disruption.",
+      "action": null,
+      "payload": {
+        "id": 11,
+        "symptom": "Dysuria / Burning Micturition",
+        "system": "Renal / Urological",
+        "generic_sctid": "766563000",
+        "drug_name": "Nitrofurantoin 100mg SR",
+        "line": "1st-Line",
+        "rationale": "Reaches high urinary bactericidal concentration with minimal systemic gut flora disruption."
+      }
+    },
+    {
+      "domain": "symptom_mappings",
+      "ruleKey": "12",
+      "subject": "Ophthalmic Surface Pain / Tonometry",
+      "severity": null,
+      "message": "Reversible corneal voltage-gated sodium channel blocker inducing anesthesia in 20 seconds.",
+      "action": null,
+      "payload": {
+        "id": 12,
+        "symptom": "Ophthalmic Surface Pain / Tonometry",
+        "system": "Ophthalmology",
+        "generic_sctid": "1193879007",
+        "drug_name": "Proparacaine Eye Drop 0.5%",
+        "line": "1st-Line",
+        "rationale": "Reversible corneal voltage-gated sodium channel blocker inducing anesthesia in 20 seconds."
+      }
+    },
+    {
+      "domain": "radiology_rules",
+      "ruleKey": "RAD_CT_MET",
+      "subject": null,
+      "severity": null,
+      "message": "Contrast-induced acute nephropathy (CIN) severely impairs metformin clearance, provoking fatal Lactic Acidosis (50% mortality).",
+      "action": null,
+      "payload": {
+        "id": "RAD_CT_MET",
+        "procedure": "CT Scan with IV Contrast",
+        "type": "Computed Tomography",
+        "risk": "Iodinated Radiocontrast Media",
+        "drugs": [
+          "Metformin"
+        ],
+        "hazard": "Contrast-induced acute nephropathy (CIN) severely impairs metformin clearance, provoking fatal Lactic Acidosis (50% mortality).",
+        "protocol": "Withhold Metformin on morning of procedure. Pre-hydrate with IV 0.9% Normal Saline (1 mL/kg/h for 12h pre/post).",
+        "post_monitoring": "Hold Metformin for 48 hours post-contrast; restart ONLY after repeat Serum Creatinine confirms baseline renal function."
+      }
+    },
+    {
+      "domain": "radiology_rules",
+      "ruleKey": "RAD_CT_NSAID",
+      "subject": null,
+      "severity": null,
+      "message": "NSAIDs inhibit vasodilatory renal prostaglandins; combined with iodinated contrast precipitates acute contrast nephropathy (CIN).",
+      "action": null,
+      "payload": {
+        "id": "RAD_CT_NSAID",
+        "procedure": "CT Scan with IV Contrast",
+        "type": "Computed Tomography",
+        "risk": "Renal Vasoconstriction + Contrast",
+        "drugs": [
+          "NSAIDs (Ibuprofen",
+          "Diclofenac",
+          "Aceclofenac)"
+        ],
+        "hazard": "NSAIDs inhibit vasodilatory renal prostaglandins; combined with iodinated contrast precipitates acute contrast nephropathy (CIN).",
+        "protocol": "Withhold NSAIDs 24 to 48 hours prior to elective contrast-enhanced imaging.",
+        "post_monitoring": "Ensure adequate oral/IV hydration; check post-procedure urine output and eGFR."
+      }
+    },
+    {
+      "domain": "radiology_rules",
+      "ruleKey": "RAD_ECHO_HF",
+      "subject": null,
+      "severity": null,
+      "message": "Non-dihydropyridine CCBs exert direct negative inotropic depression, provoking acute pulmonary edema and cardiogenic shock in systolic failure.",
+      "action": null,
+      "payload": {
+        "id": "RAD_ECHO_HF",
+        "procedure": "Echocardiogram (Echo)",
+        "type": "Cardiac Ultrasound",
+        "risk": "LVEF < 40% (HFrEF / Systolic Heart Failure)",
+        "drugs": [
+          "Non-DHP CCBs (Verapamil",
+          "Diltiazem)"
+        ],
+        "hazard": "Non-dihydropyridine CCBs exert direct negative inotropic depression, provoking acute pulmonary edema and cardiogenic shock in systolic failure.",
+        "protocol": "Contraindicated in LVEF < 40%. Switch to guideline-directed beta-blocker (Carvedilol or Metoprolol Succinate).",
+        "post_monitoring": "Monitor jugular venous distention (JVP), lung crackles, and peripheral edema."
+      }
+    },
+    {
+      "domain": "radiology_rules",
+      "ruleKey": "RAD_MRI_PATCH",
+      "subject": null,
+      "severity": null,
+      "message": "Metallic and aluminum backings in transdermal drug patches conduct radiofrequency electrical eddy currents, causing 2nd and 3rd degree deep skin thermal burns.",
+      "action": null,
+      "payload": {
+        "id": "RAD_MRI_PATCH",
+        "procedure": "MRI Scanning (Magnetic Resonance)",
+        "type": "Magnetic Resonance Imaging",
+        "risk": "RF Thermal Induction Hazard",
+        "drugs": [
+          "Transdermal Metallic Patches (Fentanyl",
+          "Clonidine",
+          "Nicotine",
+          "Scopolamine)"
+        ],
+        "hazard": "Metallic and aluminum backings in transdermal drug patches conduct radiofrequency electrical eddy currents, causing 2nd and 3rd degree deep skin thermal burns.",
+        "protocol": "Nurse must remove transdermal patch prior to patient entering the MRI magnet room; re-apply fresh patch after scanning.",
+        "post_monitoring": "Inspect underlying skin for thermal erythema or burns post-procedure."
+      }
+    },
+    {
+      "domain": "radiology_rules",
+      "ruleKey": "RAD_US_GALL",
+      "subject": null,
+      "severity": null,
+      "message": "Ceftriaxone is 40% eliminated in bile where it forms insoluble calcium-ceftriaxone biliary precipitates (pseudolithiasis), provoking acute biliary colic.",
+      "action": null,
+      "payload": {
+        "id": "RAD_US_GALL",
+        "procedure": "Ultrasound Abdomen",
+        "type": "Abdominal Ultrasound",
+        "risk": "Cholelithiasis / Biliary Sludge",
+        "drugs": [
+          "Ceftriaxone (High Dose > 2g/day)"
+        ],
+        "hazard": "Ceftriaxone is 40% eliminated in bile where it forms insoluble calcium-ceftriaxone biliary precipitates (pseudolithiasis), provoking acute biliary colic.",
+        "protocol": "In confirmed gallstones or biliary colic, switch to Cefotaxime or Piperacillin-Tazobactam.",
+        "post_monitoring": "Monitor for right upper quadrant (RUQ) abdominal pain and jaundice."
+      }
+    }
+  ]
+}
