@@ -89,6 +89,7 @@ function entry(over: Record<string, unknown>): Record<string, unknown> {
     id: "qe-1", seq: 1, sessionId: "sess-1", encounterId: "enc-1", tokenNo: 5, kind: "walk_in",
     appointmentAt: null, status: "waiting", danger: false, reEntry: false, perk: false,
     eligibleAt: null, calledAt: null, callCount: 0, skips: 0, doneAt: null, createdAt: NOW_ISO,
+    parkedAt: null, parkedBy: null, skipReason: null, skipNote: null, skippedAt: null,
     position: 1, queueClass: 3,
     encounter: { id: "enc-1", patientId: "p-1", visitType: "new", dangerFlagged: true, status: "waiting" },
     patient: summary("p-1", "HMS0000000020", "Asha Devi"),
@@ -111,7 +112,7 @@ const WAIT_B = entry({
 });
 
 const QUEUE_VIEW = {
-  session: SESSION, doctor: DOCTOR, ordered: [WAIT_A, WAIT_B], current: CURRENT, inConsult: [],
+  session: SESSION, doctor: DOCTOR, ordered: [WAIT_A, WAIT_B], current: CURRENT, inConsult: [], left: [],
   waitingVitals: 0, counts: { waiting: 2, called: 1, inConsult: 0, done: 0, left: 0 },
 };
 
@@ -354,7 +355,13 @@ describe("OpdConsult", () => {
     await waitFor(() => expect(queueCalls).toBeGreaterThan(before));
   });
 
-  it("Call next, Skip and Start post to their own routes with no body, Start opens the patient panel — and a stubbed 409 call_conflict renders inline", async () => {
+  /**
+   * CHANGED 2026-09-13 — SKIP NO LONGER POSTS AN EMPTY BODY, and that was the defect rather than the
+   * assertion: the owner asked for a reason, so the button opens the dialog and the post carries the
+   * coded reason the server now requires. Call next and Start still post bare, and this test still
+   * exists to pin that each control hits its OWN route and that a 409 lands inline.
+   */
+  it("Call next and Start post to their own routes with no body, Skip posts its reason, Start opens the patient panel — and a stubbed 409 call_conflict renders inline", async () => {
     let callNextCalls = 0;
     mockRoutes({
       ...baseRoutes(),
@@ -378,8 +385,9 @@ describe("OpdConsult", () => {
     expect(callsTo("POST", "/api/opd/queues/sess-1/call-next")[0]!.body).toBe("");
 
     await user.click(screen.getByRole("button", { name: "Skip" }));
+    await user.click(await screen.findByTestId("skip-confirm"));
     await waitFor(() => expect(callsTo("POST", "/api/opd/queues/entries/qe-cur/skip")).toHaveLength(1));
-    expect(callsTo("POST", "/api/opd/queues/entries/qe-cur/skip")[0]!.body).toBe("");
+    expect(bodiesOf("POST", "/api/opd/queues/entries/qe-cur/skip")[0]).toEqual({ reason: "absent", note: null });
 
     await user.click(screen.getByRole("button", { name: "Start consultation" }));
     await waitFor(() => expect(callsTo("POST", "/api/opd/visits/enc-1/consult/start")).toHaveLength(1));
@@ -571,14 +579,25 @@ describe("OpdConsult", () => {
   /**
    * PLAN 16a T6 — the formulary picker and the two new hard warnings.
    *
-   * The four acceptance points, in order: picking sets `medicineId`; a severe interaction needs a
-   * reason before the submit proceeds; a soft notice never blocks; and the "not in formulary" hint
-   * is COVERAGE-GATED, absent even for an unresolved line while coverage is low.
+   * The four acceptance points, in order: picking fills the drug NAME and leaves `medicineId` null;
+   * a severe interaction needs a reason before the submit proceeds; a soft notice never blocks; and
+   * the "not in formulary" hint is COVERAGE-GATED, absent even for an unresolved line while
+   * coverage is low.
    */
-  const FORMULARY = {
+  /**
+   * THE PICKER IS NOW A COMBOBOX OVER THE CLINICAL DRUG TIER, and the fixture changed with it.
+   *
+   * 16a's picker was a `<select>` fed by the whole medicine table, and picking wrote `medicineId`.
+   * Both are gone: the table now holds a national release of 93,905 brands (so the control cannot
+   * mount it) and setting `medicineId` on a 97.7%-uncurated catalogue makes coverage report a
+   * working formulary while nothing is checked. The suggestion carries no medicine id at all.
+   */
+  const SUGGEST = {
     items: [
-      { id: "m-warf", brandName: "Warf 5", routeClass: "systemic", salts: [{ saltId: "s-warf", strength: "5 mg" }] },
-      { id: "m-asa", brandName: "Ecosprin 75", routeClass: "systemic", salts: [{ saltId: "s-asa", strength: "75 mg" }] },
+      {
+        genericId: "g-warf", name: "Warfarin sodium 5 mg oral tablet", doseForm: "Oral tablet",
+        route: "Oral route", composition: "Warfarin sodium (5/1 mg/Tablet)", matchedOn: "prefix",
+      },
     ],
   };
   const SEVERE_HIT = {
@@ -588,11 +607,11 @@ describe("OpdConsult", () => {
     against: { scope: "prior", prescriptionId: "rx-old", issuedAt: "2026-08-08T04:00:00.000Z", assumedCurrent: false },
   };
 
-  it("16a: the picker sets medicineId, and a severe interaction needs a reason before it will issue", async () => {
+  it("16a: the picker fills the NAME and leaves medicineId null, and a severe interaction needs a reason before it will issue", async () => {
     let rxCalls = 0;
     mockRoutes({
       ...baseRoutes(),
-      "GET /api/formulary/medicines": { status: 200, body: FORMULARY },
+      "GET /api/formulary/suggest": { status: 200, body: SUGGEST },
       "GET /api/formulary/coverage": { status: 200, body: { coverage: 0.92, noticeEnabled: true } },
       "POST /api/opd/visits/enc-1/rx-precheck": {
         status: 201,
@@ -617,9 +636,10 @@ describe("OpdConsult", () => {
     await user.click(screen.getByRole("tab", { name: "Prescription" }));
     await screen.findByLabelText("Drug");
 
-    // Picking from the formulary fills the NAME and carries the id (DD9).
-    await user.selectOptions(await screen.findByTestId("rx-formulary-0"), "m-warf");
-    expect(screen.getByLabelText("Drug")).toHaveValue("Warf 5");
+    // Picking from the formulary fills the NAME. It no longer carries an id — see below.
+    await user.type(screen.getByTestId("rx-drug-0"), "warfarin");
+    await user.click(await screen.findByTestId("rx-drug-0-opt-0"));
+    expect(screen.getByLabelText("Drug")).toHaveValue("Warfarin sodium 5 mg oral tablet");
     await user.type(screen.getByLabelText("Dose"), "1 tab");
     await user.click(screen.getByRole("button", { name: "Issue & print" }));
 
@@ -646,7 +666,16 @@ describe("OpdConsult", () => {
       lines: { medicineId: string | null }[];
       interactionOverrides: { lineIndex: number; reason: string }[];
     };
-    expect(body.lines[0]!.medicineId).toBe("m-warf");
+    /*
+     * DD9 INVERTED, DELIBERATELY, AND THIS LINE IS THE RECORD OF IT.
+     *
+     * It read `toBe("m-warf")`: picking carried the medicine id to the server. A pick now carries
+     * NO id, because the catalogue it picks from is 97.7% uncurated and an id is what tells every
+     * downstream guard the line was checked. Asserting `null` is not a weakened assertion — it
+     * pins the safety property that replaced the old one, and it fails the day a pick starts
+     * setting an id again without that decision being made on purpose.
+     */
+    expect(body.lines[0]!.medicineId).toBeNull();
     expect(body.interactionOverrides).toEqual([{
       lineIndex: 0, reason: "cardiology advised dual therapy", saltPair: ["s-asa", "s-warf"],
     }]);
@@ -665,7 +694,7 @@ describe("OpdConsult", () => {
   it("16a: starting the next patient clears every trace of the last one's checks", async () => {
     mockRoutes({
       ...baseRoutes(),
-      "GET /api/formulary/medicines": { status: 200, body: FORMULARY },
+      "GET /api/formulary/suggest": { status: 200, body: SUGGEST },
       "GET /api/formulary/coverage": { status: 200, body: { coverage: 0.92, noticeEnabled: true } },
       "POST /api/opd/visits/enc-1/rx-precheck": {
         status: 201,
@@ -680,7 +709,8 @@ describe("OpdConsult", () => {
     await openPanel(user);
 
     await user.click(screen.getByRole("tab", { name: "Prescription" }));
-    await user.selectOptions(await screen.findByTestId("rx-formulary-0"), "m-warf");
+    await user.type(screen.getByTestId("rx-drug-0"), "warfarin");
+    await user.click(await screen.findByTestId("rx-drug-0-opt-0"));
     await user.type(screen.getByLabelText("Dose"), "1 tab");
     await user.click(screen.getByRole("button", { name: "Issue & print" }));
 
@@ -732,7 +762,7 @@ describe("OpdConsult", () => {
     };
     mockRoutes({
       ...baseRoutes(),
-      "GET /api/formulary/medicines": { status: 200, body: FORMULARY },
+      "GET /api/formulary/suggest": { status: 200, body: SUGGEST },
       // T8 is not deployed in this scenario: a 404 means the hint stays OFF, which is also the
       // correct long-term degrade (DD5).
       "GET /api/formulary/coverage": { status: 404, body: { message: "not found" } },
@@ -993,7 +1023,7 @@ describe("OpdConsult", () => {
   it("CLOSE PASS 2: Ctrl+Enter does not complete the visit while the override dialog is open", async () => {
     mockRoutes({
       ...baseRoutes(),
-      "GET /api/formulary/medicines": { status: 200, body: FORMULARY },
+      "GET /api/formulary/suggest": { status: 200, body: SUGGEST },
       "POST /api/opd/visits/enc-1/prescriptions": {
         status: 409,
         body: { statusCode: 409, code: "allergy_conflict", message: "allergy", detail: { matches: [{ lineIndex: 0, substance: "Penicillin" }] } },
@@ -1026,7 +1056,7 @@ describe("OpdConsult", () => {
   it("CLOSE PASS 2: typing inside a dialog disarms the two-stage Escape — one press afterwards does not release the patient", async () => {
     mockRoutes({
       ...baseRoutes(),
-      "GET /api/formulary/medicines": { status: 200, body: FORMULARY },
+      "GET /api/formulary/suggest": { status: 200, body: SUGGEST },
       "POST /api/opd/visits/enc-1/prescriptions": {
         status: 409,
         body: { statusCode: 409, code: "allergy_conflict", message: "allergy", detail: { matches: [{ lineIndex: 0, substance: "Penicillin" }] } },
@@ -1385,5 +1415,317 @@ describe("07d T5 — advised investigations", () => {
 
     await user.type(screen.getByLabelText("Search the priced service catalogue"), "ultra");
     expect(await screen.findByText(/The catalogue is curated in the tariff, not here/i)).toBeInTheDocument();
+  });
+
+});
+
+/**
+ * ═══ THE PARKED PATIENT (owner report, 2026-09-13) ═══
+ *
+ * *"I select call next patient and click on Start consultation … in between the patient decide to
+ * stop and he gets outside for 15 minutes … Since I don't have hold/park patient option/button, I
+ * simply clicked on call next button. Now the issue is that old patient gets invisible in the
+ * dashboard … The patient is kicked out even from the 'My Queue' section."*
+ *
+ * `inConsult` was on this wire the whole time and the rail rendered `current` and `ordered` only,
+ * so a patient the doctor had half-seen was on the server, in the queue view the screen had
+ * already fetched, and on no screen in the building. The first test here is that defect exactly:
+ * it fails against the shipped rail, which renders two rows and knows nothing of the third.
+ */
+describe("OpdConsult — parking a patient and picking them up again", () => {
+  /** Fifteen minutes ago, measured from the wall clock the row renders against. */
+  const PARKED_AT = new Date(Date.now() - 15 * 60_000).toISOString();
+
+  const PARKED = entry({
+    id: "qe-park", seq: 4, encounterId: "enc-9", tokenNo: 3, status: "in_consult",
+    position: null, queueClass: null, calledAt: NOW_ISO, callCount: 1,
+    parkedAt: PARKED_AT, parkedBy: "u-1",
+    encounter: { id: "enc-9", patientId: "p-9", visitType: "new", dangerFlagged: false, status: "in_consultation" },
+    patient: summary("p-9", "HMS0000000090", "Gita Kumari"),
+  });
+  const SEATED = entry({
+    id: "qe-seat", seq: 5, encounterId: "enc-8", tokenNo: 4, status: "in_consult",
+    position: null, queueClass: null, calledAt: NOW_ISO, callCount: 1,
+    encounter: { id: "enc-8", patientId: "p-8", visitType: "new", dangerFlagged: false, status: "in_consultation" },
+    patient: summary("p-8", "HMS0000000080", "Hari Shankar"),
+  });
+
+  const VISIT_9 = {
+    encounter: { ...ENCOUNTER, id: "enc-9", patientId: "p-9", status: "in_consultation" },
+    queueEntries: [PARKED], vitals: [], prescriptions: [], patient: summary("p-9", "HMS0000000090", "Gita Kumari"),
+  };
+  const PATIENT_9 = {
+    patient: { uhid: "HMS0000000090", name: "Gita Kumari", alias: null, dob: "1990-01-01", administrativeGender: "female" },
+    resolvedFrom: null,
+  };
+
+  function withInConsult(rows: Record<string, unknown>[], over: Record<string, Handler> = {}): Record<string, Handler> {
+    return {
+      ...baseRoutes(),
+      "GET /api/opd/queues": {
+        status: 200,
+        body: { ...QUEUE_VIEW, inConsult: rows, counts: { ...QUEUE_VIEW.counts, inConsult: rows.length } },
+      },
+      "GET /api/opd/visits/enc-9": { status: 200, body: VISIT_9 },
+      "GET /api/patients/p-9": { status: 200, body: PATIENT_9 },
+      "GET /api/patients/p-9/allergies": { status: 200, body: { items: [] } },
+      "GET /api/opd/patients/p-9/timeline": { status: 200, body: { items: [] } },
+      ...over,
+    };
+  }
+
+  it("W1: a patient held mid-consultation is ON the rail, with how long they have been held", async () => {
+    mockRoutes(withInConsult([PARKED]));
+    renderWithProviders(<OpdConsult />);
+
+    const row = await screen.findByTestId("queue-row-qe-park");
+    expect(within(row).getByTestId("queue-token-qe-park")).toHaveTextContent("3");
+    expect(within(row).getByText("Gita Kumari")).toBeInTheDocument();
+    expect(within(row).getByTestId("queue-parked-qe-park")).toHaveTextContent("Parked 15 min");
+    // and the called token and the waiting tokens are still exactly where they were
+    expect(screen.getByTestId("queue-row-qe-cur")).toHaveAttribute("aria-current", "true");
+    expect(screen.getByTestId("queue-row-qe-a")).toBeInTheDocument();
+  });
+
+  it("W2: Resume puts the held patient back in the chair — one POST, and the panel is theirs", async () => {
+    mockRoutes(withInConsult([PARKED], {
+      "POST /api/opd/visits/enc-9/consult/resume": { status: 201, body: { encounter: VISIT_9.encounter, queueEntry: PARKED } },
+    }));
+    const user = userEvent.setup();
+    renderWithProviders(<OpdConsult />);
+
+    await user.click(await screen.findByTestId("queue-open-qe-park"));
+
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-9/consult/resume")).toHaveLength(1); });
+    expect(await screen.findByTestId("panel-patient-name")).toHaveTextContent("Gita Kumari");
+    // NOT a second consultation: the screen never re-starts a visit it is resuming.
+    expect(callsTo("POST", "/api/opd/visits/enc-9/consult/start")).toHaveLength(0);
+  });
+
+  it("W3: Park empties the chair without ending the visit, and the patient is still on the rail", async () => {
+    let parked = false;
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/queues": () => ({
+        status: 200,
+        body: parked
+          ? { ...QUEUE_VIEW, current: null, inConsult: [{ ...CURRENT, status: "in_consult", parkedAt: new Date().toISOString(), parkedBy: "u-1" }] }
+          : QUEUE_VIEW,
+      }),
+      "POST /api/opd/visits/enc-1/consult/park": () => {
+        parked = true;
+        return { status: 201, body: { encounter: ENCOUNTER, queueEntry: CURRENT } };
+      },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(screen.getByRole("button", { name: "Park patient" }));
+
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/consult/park")).toHaveLength(1); });
+    // the chair is empty…
+    expect(await screen.findByText("Nobody is in the chair")).toBeInTheDocument();
+    expect(screen.queryByTestId("patient-panel")).toBeNull();
+    // …and the visit was NOT completed to get there
+    expect(callsTo("POST", "/api/opd/visits/enc-1/consult/complete")).toHaveLength(0);
+    // …and they are on the rail, held, with the way back
+    expect(await screen.findByTestId("queue-parked-qe-cur")).toBeInTheDocument();
+    expect(screen.getByTestId("queue-open-qe-cur")).toHaveTextContent("Resume");
+  });
+
+  /**
+   * The report's own sequence: no park button existed, so the doctor pressed Call next. That
+   * patient is `in_consult` and NOT parked — the row still has to be a door back in, and it must
+   * not claim they are held when nobody said so.
+   */
+  it("W4: a patient left behind by Call next is on the rail as in consultation, and opens without a resume", async () => {
+    mockRoutes(withInConsult([SEATED], {
+      "GET /api/opd/visits/enc-8": {
+        status: 200,
+        body: {
+          encounter: { ...ENCOUNTER, id: "enc-8", patientId: "p-8", status: "in_consultation" },
+          queueEntries: [SEATED], vitals: [], prescriptions: [], patient: summary("p-8", "HMS0000000080", "Hari Shankar"),
+        },
+      },
+      "GET /api/patients/p-8": {
+        status: 200,
+        body: { patient: { uhid: "HMS0000000080", name: "Hari Shankar", alias: null, dob: "1985-01-01", administrativeGender: "male" }, resolvedFrom: null },
+      },
+      "GET /api/patients/p-8/allergies": { status: 200, body: { items: [] } },
+      "GET /api/opd/patients/p-8/timeline": { status: 200, body: { items: [] } },
+    }));
+    const user = userEvent.setup();
+    renderWithProviders(<OpdConsult />);
+
+    const row = await screen.findByTestId("queue-row-qe-seat");
+    expect(within(row).queryByTestId("queue-parked-qe-seat")).toBeNull();
+    await user.click(within(row).getByTestId("queue-open-qe-seat"));
+
+    expect(await screen.findByTestId("panel-patient-name")).toHaveTextContent("Hari Shankar");
+    expect(callsTo("POST", "/api/opd/visits/enc-8/consult/resume")).toHaveLength(0);
+  });
+
+  /** A refusal is rendered where the doctor reads it, like every other act on this screen. */
+  it("W5: a resume the server refuses is shown on the rail, and the chair stays empty", async () => {
+    mockRoutes(withInConsult([PARKED], {
+      "POST /api/opd/visits/enc-9/consult/resume": {
+        status: 409,
+        body: { statusCode: 409, message: "this patient is not parked", code: "queue_entry_state_conflict" },
+      },
+    }));
+    const user = userEvent.setup();
+    renderWithProviders(<OpdConsult />);
+
+    await user.click(await screen.findByTestId("queue-open-qe-park"));
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByTestId("patient-panel")).toBeNull();
+  });
+});
+
+/**
+ * ═══ THE SKIP: A REASON, AND A WAY BACK (owner report, 2026-09-13) ═══
+ *
+ * *"When as a doctor, I clicked 'Skip' by mistake and that patient is no where to be seen in my
+ * dashboard to undo my mistake. … doctors do not have any input box or pre-identified reason to
+ * select as a reason to why the doctor has to skip the patient?"*
+ *
+ * The shipped button posted immediately with an empty body and the row it skipped went back among
+ * the waiting unmarked — or, at the third skip, into `left`, which this screen rendered nowhere at
+ * all. These five run against that screen and fail on it.
+ */
+describe("OpdConsult — skipping a token, and taking it back", () => {
+  const LEFT_ROW = entry({
+    id: "qe-left", seq: 9, encounterId: "enc-7", tokenNo: 2, status: "left", position: null, queueClass: null,
+    skips: 3, skipReason: "absent", skipNote: null, skippedAt: NOW_ISO, calledAt: NOW_ISO, callCount: 3,
+    encounter: { id: "enc-7", patientId: "p-7", visitType: "new", dangerFlagged: false, status: "waiting" },
+    patient: summary("p-7", "HMS0000000070", "Sonali Sri"),
+  });
+  const SKIPPED_WAITING = entry({
+    id: "qe-a", seq: 2, encounterId: "enc-2", tokenNo: 6, position: 2, queueClass: 3,
+    skips: 1, skipReason: "at_billing", skipNote: "counter 2", skippedAt: NOW_ISO,
+    encounter: { id: "enc-2", patientId: "p-2", visitType: "new", dangerFlagged: false, status: "waiting" },
+    patient: summary("p-2", "HMS0000000030", "Ram Prasad"),
+  });
+
+  function routes(over: Record<string, Handler> = {}): Record<string, Handler> {
+    return { ...baseRoutes(), ...over };
+  }
+
+  it("K1: Skip asks WHY before it posts anything — six reasons, and the default is the common one", async () => {
+    mockRoutes(routes({ "POST /api/opd/queues/entries/qe-cur/skip": { status: 201, body: { entry: CURRENT } } }));
+    const user = userEvent.setup();
+    renderWithProviders(<OpdConsult />);
+    await screen.findByTestId("queue-row-qe-cur");
+
+    await user.click(screen.getByRole("button", { name: "Skip" }));
+
+    const dialog = await screen.findByTestId("skip-dialog");
+    expect(within(dialog).getByTestId("skip-reason-absent")).toHaveAttribute("aria-pressed", "true");
+    expect(within(dialog).getByTestId("skip-reason-at_billing")).toBeInTheDocument();
+    // NOTHING has been posted by opening the dialog — the old screen had already skipped by now
+    expect(callsTo("POST", "/api/opd/queues/entries/qe-cur/skip")).toHaveLength(0);
+
+    await user.click(within(dialog).getByTestId("skip-reason-at_investigation"));
+    await user.type(within(dialog).getByLabelText("Note (optional)"), "sent for X-ray");
+    await user.click(within(dialog).getByTestId("skip-confirm"));
+
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/queues/entries/qe-cur/skip")).toHaveLength(1); });
+    expect(bodiesOf("POST", "/api/opd/queues/entries/qe-cur/skip")[0])
+      .toEqual({ reason: "at_investigation", note: "sent for X-ray" });
+  });
+
+  it("K2: 'Other' cannot be sent without saying what it was", async () => {
+    mockRoutes(routes());
+    const user = userEvent.setup();
+    renderWithProviders(<OpdConsult />);
+    await screen.findByTestId("queue-row-qe-cur");
+    await user.click(screen.getByRole("button", { name: "Skip" }));
+
+    const dialog = await screen.findByTestId("skip-dialog");
+    await user.click(within(dialog).getByTestId("skip-reason-other"));
+    expect(within(dialog).getByTestId("skip-confirm")).toBeDisabled();
+
+    await user.type(within(dialog).getByLabelText("Say what the reason was (required)"), "doctor called away");
+    expect(within(dialog).getByTestId("skip-confirm")).toBeEnabled();
+  });
+
+  it("K3: a token still carrying a skip says so on the rail, and offers the way back", async () => {
+    mockRoutes(routes({
+      "GET /api/opd/queues": { status: 200, body: { ...QUEUE_VIEW, ordered: [SKIPPED_WAITING, WAIT_B] } },
+      "POST /api/opd/queues/entries/qe-a/undo-skip": { status: 201, body: { entry: SKIPPED_WAITING } },
+    }));
+    const user = userEvent.setup();
+    renderWithProviders(<OpdConsult />);
+
+    const row = await screen.findByTestId("queue-row-qe-a");
+    expect(within(row).getByTestId("queue-skipped-qe-a")).toHaveTextContent("At the billing counter");
+    expect(within(row).getByTestId("queue-skipnote-qe-a")).toHaveTextContent("counter 2");
+
+    await user.click(within(row).getByTestId("queue-undoskip-qe-a"));
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/queues/entries/qe-a/undo-skip")).toHaveLength(1); });
+  });
+
+  /**
+   * THE MEASURED CASE. Three skips and the token is `left` — and `left` was rendered by no screen in
+   * this application, so the patient was gone from the building while her visit stayed open.
+   */
+  it("K4: a patient who fell out of the queue is named on the rail, with the button that brings her back", async () => {
+    mockRoutes(routes({
+      "GET /api/opd/queues": { status: 200, body: { ...QUEUE_VIEW, left: [LEFT_ROW], counts: { ...QUEUE_VIEW.counts, left: 1 } } },
+      "POST /api/opd/queues/entries/qe-left/undo-skip": { status: 201, body: { entry: LEFT_ROW } },
+    }));
+    const user = userEvent.setup();
+    renderWithProviders(<OpdConsult />);
+
+    expect(await screen.findByTestId("left-queue-title")).toHaveTextContent("Left the queue (1)");
+    const row = within(screen.getByTestId("left-queue")).getByTestId("queue-row-qe-left");
+    expect(within(row).getByText("Sonali Sri")).toBeInTheDocument();
+    expect(within(row).getByTestId("queue-skipped-qe-left")).toHaveTextContent("Not at the door when called");
+
+    await user.click(within(row).getByTestId("queue-undoskip-qe-left"));
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/queues/entries/qe-left/undo-skip")).toHaveLength(1); });
+  });
+
+  /**
+   * THE RAW-KEY SCAN, and it is here because the BROWSER found it and jsdom did not: the dialog's
+   * cancel button read `common.cancel` on screen — a key that does not exist in the bundle, in the
+   * one namespace this screen does not own. A test that never asserts a label cannot see a missing
+   * one, so this one reads the dialog's own text and refuses anything shaped like a key.
+   */
+  it("K6: every label in the skip dialog is translated — no raw i18n keys reach the screen", async () => {
+    mockRoutes(routes());
+    const user = userEvent.setup();
+    renderWithProviders(<OpdConsult />);
+    await screen.findByTestId("queue-row-qe-cur");
+    await user.click(screen.getByRole("button", { name: "Skip" }));
+
+    const dialog = await screen.findByTestId("skip-dialog");
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    /*
+      THE NAMESPACES, not "anything with a dot in it". The first draft of this line was
+      `/\b[a-z][a-zA-Z]*\.[a-zA-Z]/`, which matched the dialog's own English: the rendered text
+      concatenates across elements, so "…on the visit's record." + "Not at the door…" reads as
+      `record.Not`. A raw key is always one of this app's namespaces followed by a key name, and
+      that is a thing prose cannot accidentally be.
+    */
+    expect(dialog.textContent ?? "").not.toMatch(/\b(common|opdConsult|opd|vitalsBay)\.[a-zA-Z]/);
+  });
+
+  it("K5: a server refusal lands on the rail and the dialog closes rather than trapping the doctor", async () => {
+    mockRoutes(routes({
+      "POST /api/opd/queues/entries/qe-cur/skip": {
+        status: 409,
+        body: { statusCode: 409, message: "a skip needs a called entry", code: "queue_entry_state_conflict" },
+      },
+    }));
+    const user = userEvent.setup();
+    renderWithProviders(<OpdConsult />);
+    await screen.findByTestId("queue-row-qe-cur");
+    await user.click(screen.getByRole("button", { name: "Skip" }));
+    await user.click((await screen.findByTestId("skip-dialog")).querySelector('[data-testid="skip-confirm"]')!);
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    await waitFor(() => { expect(screen.queryByTestId("skip-dialog")).toBeNull(); });
   });
 });

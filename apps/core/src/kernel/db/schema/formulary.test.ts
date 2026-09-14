@@ -19,13 +19,29 @@ import type { Db } from "../client";
  */
 const AUDIT = { createdBy: "t", updatedBy: "t" };
 
-/** The tables this module owns, and the columns each must have. A DROP in a later migration fails here. */
+/**
+ * The tables this module owns, and the columns each must have. A DROP in a later migration fails here.
+ *
+ * TWO THINGS THIS CENSUS LEARNED THE HARD WAY, 2026-09-13, both from migration 0082:
+ *
+ * 1. **The loop at the bottom throws on the FIRST mismatch**, so one stale entry stops the other
+ *    tables being compared at all. `formulary_salts` gained `sctid` and this map did not, and for
+ *    the length of that branch the census was blind to the four tables after it — the instrument
+ *    reporting a failure was also the instrument that stopped measuring. The assertion is now
+ *    accumulate-then-compare, so every table is reported in one run.
+ * 2. **A NEW table is invisible to a census keyed by the tables it already knows.** 0082 added
+ *    `formulary_generics` and `formulary_generic_salts` and nothing here noticed, because nothing
+ *    here asks the database what formulary tables EXIST. The completeness leg below does ask.
+ */
 const CENSUS: Record<string, string[]> = {
   formulary_salts: ["active", "aliases", "atc_code", "created_at", "created_by", "drug_class", "id", "name", "updated_at", "updated_by"],
   formulary_medicines: ["active", "brand_name", "created_at", "created_by", "form", "id", "route_class", "schedule_flag", "staging_id", "strength_label", "updated_at", "updated_by"],
-  formulary_medicine_salts: ["medicine_id", "salt_id", "strength"],
+  formulary_medicine_salts: ["medicine_id", "salt_id", "source", "strength"],
   formulary_interactions: ["active", "created_at", "created_by", "id", "note", "route_scope", "salt_a_id", "salt_b_id", "severity", "source", "updated_at", "updated_by"],
   formulary_staging: ["id", "kind", "medicine_id", "mined_at", "name", "payload", "reviewed_at", "reviewed_by", "source_url", "status"],
+  formulary_generics: ["active", "composition_summary", "created_at", "created_by", "dose_form", "id", "name", "name_normalized", "route_of_administration", "sctid", "source", "updated_at", "updated_by"],
+  formulary_generic_substances: ["generic_id", "strength", "substance_id", "unit"],
+  formulary_substances: ["active", "created_at", "created_by", "id", "mapped_at", "mapped_by", "mapping_status", "name", "salt_id", "sctid", "source", "synonyms", "updated_at", "updated_by"],
 };
 
 describe("the formulary tables (Plan 16a T1)", () => {
@@ -59,10 +75,23 @@ describe("the formulary tables (Plan 16a T1)", () => {
 
   // ─────────────────────────────────── the census ───────────────────────────────────
 
-  it("all five tables exist with exactly the columns the plan names", async () => {
-    for (const [table, expected] of Object.entries(CENSUS)) {
-      expect({ table, columns: await columnsOf(table) }).toEqual({ table, columns: expected });
-    }
+  it("every censused table exists with exactly the columns named — ALL of them, in one run", async () => {
+    // Accumulate, then compare once. A per-table `expect` inside the loop throws on the first
+    // mismatch and leaves every later table unmeasured, which is how one stale entry hid four
+    // tables for the length of a branch.
+    const actual: Record<string, string[]> = {};
+    for (const table of Object.keys(CENSUS)) actual[table] = await columnsOf(table);
+    expect(actual).toEqual(CENSUS);
+  });
+
+  it("no formulary table exists that this census does not know about", async () => {
+    // The leg that would have caught 0082 adding two tables in silence. A census keyed by the
+    // tables it already knows cannot report one it has never heard of, so this asks Postgres.
+    const rows = (await db.execute(sql`
+      select table_name as "tableName" from information_schema.tables
+      where table_schema = 'public' and table_name like 'formulary_%' order by table_name asc
+    `)).rows as { tableName: string }[];
+    expect(rows.map((r) => r.tableName).sort()).toEqual(Object.keys(CENSUS).sort());
   });
 
   // ─────────────────────────── identity is the moiety, case-free ───────────────────────────
