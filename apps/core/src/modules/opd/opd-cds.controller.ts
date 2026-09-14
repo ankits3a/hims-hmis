@@ -4,8 +4,8 @@ import type { Actor } from "@hmis/contracts";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { getPatient, listAllergies } from "../patients";
-import { buildRegimen, cardsFor, rankSyndromes } from "../cds";
-import type { BuiltRegimen, Card, PatientFacts, SyndromeHit } from "../cds";
+import { buildRegimen, cardsFor, rankSyndromes, toRxDraft } from "../cds";
+import type { BuiltLine, BuiltRegimen, Card, PatientFacts, RxDraftLine, SyndromeHit } from "../cds";
 import { getEncounter } from "./encounters";
 import { OpdError } from "./errors";
 import { parsed, toHttp } from "./opd-masters.controller";
@@ -70,7 +70,11 @@ export class OpdCdsController {
   @Get("regimen")
   async regimen(
     @CurrentActor() actor: Actor, @Query() query: unknown,
-  ): Promise<{ regimen: BuiltRegimen; cards: Card[]; facts: { weightKg: number | null; ageYears: number | null; allergies: string[]; pregnant: boolean | null } }> {
+  ): Promise<{
+    regimen: Omit<BuiltRegimen, "lines"> & { lines: (BuiltLine & { rx: RxDraftLine })[] };
+    cards: Card[];
+    facts: { weightKg: number | null; ageYears: number | null; allergies: string[]; pregnant: boolean | null };
+  }> {
     const q = parsed(regimenQuery, query);
     try {
       const encounter = await getEncounter(this.db, q.encounterId);
@@ -96,7 +100,10 @@ export class OpdCdsController {
       const facts: PatientFacts = { ageYears, weightKg, allergies, pregnant: pregnant === true };
       const regimen = buildRegimen(q.syndromeKey, facts);
       if (regimen === null) throw new OpdError("unknown_syndrome", `unknown syndrome ${q.syndromeKey}`);
-      return { regimen, cards: cardsFor(regimen, facts, sex), facts: { weightKg, ageYears, allergies, pregnant } };
+      /* The prescription draft rides the line it came from, so the screen fills a form rather than
+         parsing prose in a browser — one implementation, under test, for every client. */
+      const lines = regimen.lines.map((l) => ({ ...l, rx: toRxDraft(l) }));
+      return { regimen: { ...regimen, lines }, cards: cardsFor(regimen, facts, sex), facts: { weightKg, ageYears, allergies, pregnant } };
     } catch (e) {
       toHttp(e);
     }

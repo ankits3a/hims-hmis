@@ -13,3 +13,5 @@ export { bandFor, buildRegimen, doseFor } from "./regimen";
 export type { BuiltLine, BuiltRegimen, DoseVerdict, PatientBand, PatientFacts } from "./regimen";
 export { cardsFor } from "./guardrails";
 export type { Card } from "./guardrails";
+export { durationDaysOf, frequencyOf, toRxDraft } from "./rx";
+export type { RxDraftLine } from "./rx";

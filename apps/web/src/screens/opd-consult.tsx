@@ -24,6 +24,8 @@ import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
 import { DeskModal } from "../components/desk-modal";
 import { ConsultScribe } from "../components/consult-scribe";
+import { fetchRegimen, suggestSyndromes } from "../lib/cds-api";
+import type { WireCard, WireRegimen, WireSyndromeHit } from "../lib/cds-api";
 import { TabStrip } from "../components/desk-fields";
 
 /**
@@ -175,6 +177,14 @@ export function OpdConsult(): React.ReactElement {
 
   const [active, setActive] = useState<Active | null>(null);
   const [tab, setTab] = useState<"note" | "rx" | "history">("note");
+  /*
+    ═══ THE CO-PILOT (owner, 2026-09-14) ═══
+    *"when doctor starts to write chief complaints, he don't need to type much, just tap and select"*
+    — so the suggestions live UNDER the complaint field, appear as it is typed, and decide nothing.
+  */
+  const [hits, setHits] = useState<WireSyndromeHit[]>([]);
+  const [regimen, setRegimen] = useState<WireRegimen | null>(null);
+  const [cdsError, setCdsError] = useState<string | null>(null);
   // THE SKIP DIALOG — open on the entry being skipped, because a reason belongs to one token.
   const [skipping, setSkipping] = useState<WireQueueEntryView | null>(null);
   const [skipReason, setSkipReason] = useState<WireSkipReason>("absent");
@@ -394,6 +404,57 @@ export function OpdConsult(): React.ReactElement {
   });
   const lines = useFieldArray({ control: rxForm.control, name: "lines" });
 
+  /**
+   * ONE READ PER PAUSE, NOT ONE PER KEYSTROKE. The route is a keyword match over eight syndromes
+   * and costs nothing, but a request per character would still put the network in front of a
+   * doctor's typing — 250 ms after they stop is invisible to a human and is one call.
+   *
+   * It sends the complaint and NOTHING about the patient: this read sees no PHI at all, which is
+   * why it can be this eager in the first place.
+   */
+  useEffect(() => {
+    const q = note.chiefComplaint.trim();
+    if (q.length < 3) { setHits([]); return; }
+    const timer = setTimeout(() => {
+      void suggestSyndromes(q)
+        .then((r) => { setHits(r.items); })
+        .catch(() => { setHits([]); }); // an advisor that fails is silent, never an error the doctor must dismiss
+    }, 250);
+    return () => { clearTimeout(timer); };
+  }, [note.chiefComplaint]);
+
+  /** Tapping a syndrome asks the server to build it FOR THIS PATIENT — weight, age, allergies and all. */
+  const openRegimen = async (key: string, pregnant?: boolean): Promise<void> => {
+    if (active === null) return;
+    setCdsError(null);
+    try {
+      setRegimen(await fetchRegimen(key, active.encounterId, pregnant));
+    } catch (e) {
+      setRegimen(null);
+      setCdsError(opdErrorMessage(e));
+    }
+  };
+
+  /**
+   * ═══ 1-TAP: THE FORM IS FILLED, THE PRESCRIPTION IS NOT ISSUED ═══
+   *
+   * It writes the draft into the prescription form and moves the doctor to it. Nothing is sent:
+   * `issuePrescription` still runs every allergy, interaction and duplicate check at issue time,
+   * and a line the co-pilot refused to dose carries the REASON in its dose field rather than a
+   * number — so a doctor who taps fill and issues without reading still cannot print a dose that
+   * nobody stands behind.
+   */
+  const fillFromRegimen = (): void => {
+    if (regimen === null) return;
+    const lines = regimen.regimen.lines.map((l) => ({
+      drug: l.rx.drug, dose: l.rx.dose, route: l.rx.route, frequency: l.rx.frequency,
+      durationDays: l.rx.durationDays === null ? "" : String(l.rx.durationDays),
+      instructions: l.rx.instructions, noSubstitution: l.rx.noSubstitution, medicineId: null,
+    }));
+    rxForm.reset({ lines: lines.length === 0 ? [EMPTY_LINE] : lines });
+    setTab("rx");
+  };
+
   const resetPanel = (): void => {
     loadedNoteFor.current = null;
     lastSavedNote.current = JSON.stringify(noteBodyOf(EMPTY_NOTE));
@@ -429,6 +490,9 @@ export function OpdConsult(): React.ReactElement {
     setReferralTo("");
     setReferralNote("");
     setTab("note");
+    setHits([]);
+    setRegimen(null);
+    setCdsError(null);
     rxForm.reset({ lines: [EMPTY_LINE] });
   };
 
@@ -1306,6 +1370,89 @@ export function OpdConsult(): React.ReactElement {
                         onChange={(e) => setNote((n) => ({ ...n, chiefComplaint: e.target.value }))}
                         className="in" style={{ width: "100%", height: "auto", padding: "7px 9px", fontSize: 13 }}
                       />
+                      {/*
+                        THE SUGGESTIONS SIT UNDER THE FIELD THEY CAME FROM, and they are chips
+                        rather than a dropdown: a dropdown steals the caret and a doctor mid-sentence
+                        loses their place. Tapping decides nothing — it opens a card to be read.
+                      */}
+                      {hits.length > 0 && (
+                        <div data-testid="cds-hits" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                          <span className="tag" style={{ alignSelf: "center" }}>{t("cds.suggests")}</span>
+                          {hits.map((h) => (
+                            <button
+                              key={h.key} type="button" className="sec" data-testid={`cds-hit-${h.key}`}
+                              style={{ padding: "3px 10px", fontSize: 12 }}
+                              onClick={() => void openRegimen(h.key)}
+                            >
+                              {h.name}
+                              <span className="mo" style={{ marginLeft: 6, fontSize: 10, color: "var(--faint)" }}>{h.icd10 ?? ""}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <ErrorLine message={cdsError} />
+                      {regimen !== null && (
+                        <div data-testid="cds-regimen" className="box" style={{ marginTop: 8, padding: "11px 13px", display: "flex", flexDirection: "column", gap: 9 }}>
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                            <strong style={{ fontSize: 13.5 }}>{regimen.regimen.syndrome.name}</strong>
+                            <span className="pill" data-testid="cds-band">{t(`cds.band.${regimen.regimen.band}`)}</span>
+                            {/*
+                              THE FACTS THE DOSES WERE COMPUTED FROM, ON SCREEN. A millilitre with no
+                              visible weight beside it is a number a doctor cannot check, and this is
+                              the one screen where checking it matters.
+                            */}
+                            <span className="mo" data-testid="cds-facts" style={{ fontSize: 10.5, color: "var(--faint)" }}>
+                              {regimen.facts.weightKg === null ? t("cds.noWeight") : `${regimen.facts.weightKg} kg`}
+                              {regimen.facts.ageYears === null ? "" : ` · ${regimen.facts.ageYears}y`}
+                            </span>
+                            <button type="button" className="sec" style={{ marginLeft: "auto", padding: "2px 9px", fontSize: 11.5 }} onClick={() => { setRegimen(null); }}>
+                              {t("opdConsult.dismiss")}
+                            </button>
+                          </div>
+
+                          {regimen.cards.map((c: WireCard, i) => (
+                            <div
+                              key={`${c.kind}-${String(i)}`} data-testid={`cds-card-${c.kind}`} role={c.severity === "red" ? "alert" : undefined}
+                              style={{
+                                padding: "7px 9px", borderRadius: 6, fontSize: 12,
+                                background: c.severity === "red" ? "var(--red-soft)" : c.severity === "amber" ? "var(--gold-soft)" : "var(--paper-2, transparent)",
+                                border: `1px solid ${c.severity === "red" ? "var(--red)" : c.severity === "amber" ? "var(--gold-line)" : "var(--line)"}`,
+                              }}
+                            >
+                              <strong>{c.title}</strong>
+                              <div style={{ color: "var(--dim)" }}>{c.detail}</div>
+                              {c.kind === "pregnancy_unknown" && (
+                                <div style={{ display: "flex", gap: 6, marginTop: 5 }}>
+                                  <button type="button" className="sec" data-testid="cds-pregnant-yes" style={{ padding: "2px 9px", fontSize: 11.5 }}
+                                    onClick={() => void openRegimen(regimen.regimen.syndrome.key, true)}>{t("cds.pregnantYes")}</button>
+                                  <button type="button" className="sec" data-testid="cds-pregnant-no" style={{ padding: "2px 9px", fontSize: 11.5 }}
+                                    onClick={() => void openRegimen(regimen.regimen.syndrome.key, false)}>{t("cds.pregnantNo")}</button>
+                                </div>
+                              )}
+                              {c.alternatives.length > 0 && (
+                                <div className="mo" style={{ fontSize: 10.5, color: "var(--faint)" }}>{t("cds.instead")}: {c.alternatives.join(", ")}</div>
+                              )}
+                            </div>
+                          ))}
+
+                          <ul data-testid="cds-lines" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 5 }}>
+                            {regimen.regimen.lines.map((l) => (
+                              <li key={`${l.band}-${String(l.seq)}`} data-testid={`cds-line-${String(l.seq)}`} style={{ display: "flex", flexWrap: "wrap", gap: 7, alignItems: "baseline", fontSize: 12.5 }}>
+                                <span style={{ fontWeight: 600 }}>{l.drugLabel}</span>
+                                <span className="mo" data-testid={`cds-dose-${String(l.seq)}`} style={{ color: l.dose.state === "computed" ? "var(--green)" : "var(--gold)" }}>
+                                  {l.rx.dose}
+                                </span>
+                                <span style={{ color: "var(--faint)", fontSize: 11.5 }}>{l.rx.frequency}{l.rx.durationDays === null ? "" : ` · ${l.rx.durationDays}d`}</span>
+                                {l.substitutedFor !== undefined && <span className="pill rd" data-testid={`cds-swap-${String(l.seq)}`}>{t("cds.swapped")}</span>}
+                              </li>
+                            ))}
+                          </ul>
+
+                          <button type="button" className="pri" data-testid="cds-fill" style={{ alignSelf: "flex-start", padding: "4px 13px", fontSize: 12.5 }} onClick={() => { fillFromRegimen(); }}>
+                            {t("cds.fill", { n: regimen.regimen.lines.length })}
+                          </button>
+                        </div>
+                      )}
                     </div>
                     <div>
                       <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="note-diagnosis">{t("opdConsult.diagnosis")}</label>

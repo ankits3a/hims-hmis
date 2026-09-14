@@ -3696,5 +3696,18 @@
       "dues_one": "{{count}} unpaid bill on their account. It is listed in the rail. — from the dues poll.",
       "dues_other": "{{count}} unpaid bills on their account. They are listed in the rail. — from the dues poll."
     }
+  },
+  "cds": {
+    "suggests": "Suggests",
+    "band": {
+      "adult": "Adult regimen",
+      "pediatric": "Child regimen"
+    },
+    "noWeight": "no weight on file",
+    "instead": "Instead",
+    "swapped": "Swapped",
+    "pregnantYes": "Yes, pregnant",
+    "pregnantNo": "No, not pregnant",
+    "fill": "Fill prescription ({{n}} lines)"
   }
 }
