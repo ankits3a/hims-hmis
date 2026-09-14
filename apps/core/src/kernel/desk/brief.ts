@@ -31,24 +31,75 @@ import type { DayFacts } from "./rollup";
  */
 export const MIN_BASELINE_DAYS = 14;
 
-export type Period = "day" | "week" | "month" | "quarter" | "half";
+/**
+ * THE PERIODS, AS A TUPLE, because two controllers build a `z.enum` from it. They each carried their
+ * own hand-written copy of this list, which is two places for a sixth period to be forgotten — and
+ * `year` was going to be the sixth. A literal tuple is the one spelling zod can consume directly.
+ */
+export const PERIODS = ["day", "week", "month", "quarter", "half", "year"] as const;
 
-export const PERIODS: readonly Period[] = ["day", "week", "month", "quarter", "half"];
+export type Period = (typeof PERIODS)[number];
 
 /** How many days each period spans, ending today (inclusive). */
-const SPAN: Record<Period, number> = { day: 1, week: 7, month: 30, quarter: 91, half: 183 };
+const SPAN: Record<Period, number> = { day: 1, week: 7, month: 30, quarter: 91, half: 183, year: 365 };
+
+/**
+ * How many days each period's BASELINE window covers, ending the day before the window opens.
+ *
+ * ═══ `day` IS THE EXCEPTION, AND IT IS THE EXCEPTION BECAUSE OF A DEFECT ═══
+ *
+ * This used to be derived — `span * 2 - 1` back from today — which gave the DAY period a baseline
+ * of exactly one day: yesterday. `sameWeekdayBaseline` then filters that window to the days sharing
+ * today's weekday, and yesterday never does. The sample was always empty, `medianOf(sample, 4)`
+ * always returned null, and **the same-weekday comparison this file's header argues for at length
+ * could not fire in production, ever.**
+ *
+ * A day needs SAME-WEEKDAY candidates, so its baseline is measured in WEEKS. Eight of them: the
+ * floor is four samples, and four candidates would mean one missed Tuesday silently costs a clerk
+ * their comparison for a month. Eight candidates tolerate half the days being absent and still
+ * speak — which is DD8 the right way round, refusing on thin evidence rather than on thin windows.
+ *
+ * 56 days sits inside the 3-month floor of every history tier, so the shortest-horizon caller can
+ * still be told how their Tuesday compares.
+ */
+const BASELINE_SPAN: Record<Period, number> = { day: 56, week: 7, month: 30, quarter: 91, half: 183, year: 365 };
 
 export function windowFor(period: Period, today: string): { from: string; to: string } {
   return { from: addDays(today, -(SPAN[period] - 1)), to: today };
 }
 
 /**
- * The BASELINE window for a period: the stretch immediately before it, of the same length. For a
- * DAY this is deliberately not "yesterday" — see `sameWeekdayBaseline`.
+ * The BASELINE window for a period: the stretch immediately before it. For a DAY this is
+ * deliberately not "yesterday" — see `BASELINE_SPAN` and `sameWeekdayBaseline`.
  */
 export function baselineWindowFor(period: Period, today: string): { from: string; to: string } {
-  const span = SPAN[period];
-  return { from: addDays(today, -(span * 2 - 1)), to: addDays(today, -span) };
+  const to = addDays(today, -SPAN[period]);
+  return { from: addDays(to, -(BASELINE_SPAN[period] - 1)), to };
+}
+
+/**
+ * WHETHER A PERIOD READS ITS BASELINE AT ALL — stated once, because three places must agree.
+ *
+ * Short periods compare against a prior stretch; long ones carry DRIFT computed from the window
+ * itself and never look at the baseline. Both controllers fetched it unconditionally anyway, so a
+ * three-month brief read 182 days and showed 91 — 91 days of facts summed and thrown away on every
+ * request.
+ *
+ * It is also what makes the history horizon simple: with the dead fetch gone, a long period reaches
+ * back exactly as far as it displays, and a cap can bind the period the caller ASKED for rather
+ * than an invisible window behind it.
+ */
+export function needsBaseline(period: Period): boolean {
+  return period === "day" || period === "week";
+}
+
+/**
+ * The furthest-back IST day a brief for this period will actually READ — what the history horizon
+ * is enforced against. For a long period that is the window's own first day; for a short one the
+ * baseline reaches further, and it is the baseline that decides.
+ */
+export function oldestDayRead(period: Period, today: string): string {
+  return needsBaseline(period) ? baselineWindowFor(period, today).from : windowFor(period, today).from;
 }
 
 export type Clause = {
@@ -131,7 +182,7 @@ export function buildBrief(
     if (total === undefined) continue; // no module contributed it — say nothing at all
     const values: Record<string, string> = { total: show(total, spec.money) };
 
-    if (period === "day" || period === "week") {
+    if (needsBaseline(period)) {
       /*
        * SHORT PERIODS CARRY A COMPARISON. The baseline is per-day for a day and per-window for a
        * week; either way `medianOf` returns null when the evidence is thin, and the clause then

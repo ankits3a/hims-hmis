@@ -1,4 +1,7 @@
-import { MIN_BASELINE_DAYS, baselineWindowFor, buildBrief, medianOf, windowFor } from "./brief";
+import {
+  MIN_BASELINE_DAYS, PERIODS, baselineWindowFor, buildBrief, medianOf, needsBaseline,
+  oldestDayRead, windowFor,
+} from "./brief";
 import { addDays, sumWindow } from "./rollup";
 import type { DayFacts } from "./rollup";
 
@@ -14,6 +17,13 @@ import type { DayFacts } from "./rollup";
  * supervisor cannot tell them apart. A4's mutant is precisely that line.
  */
 const TODAY = "2026-08-17"; // a Monday
+
+/** How many IST days a `{from,to}` window covers, inclusive at both ends. */
+function spanOf(w: { from: string; to: string }): number {
+  return Math.round(
+    (Date.parse(`${w.to}T00:00:00.000Z`) - Date.parse(`${w.from}T00:00:00.000Z`)) / 86_400_000,
+  ) + 1;
+}
 
 /** `n` days ending at `end`, each carrying the same bag. */
 function run(end: string, n: number, facts: Record<string, number>): DayFacts[] {
@@ -156,5 +166,81 @@ describe("07c T8 — summing a window", () => {
 
   it("MIN_BASELINE_DAYS is a fortnight — stated once, so a clause cannot quietly use its own", () => {
     expect(MIN_BASELINE_DAYS).toBe(14);
+  });
+});
+
+/**
+ * PHASE STAFF-REPORTS T0 — THE YEAR PERIOD, AND THE DAY BASELINE THAT COULD NEVER FIRE.
+ *
+ * ═══ THE DEFECT THESE TESTS WERE WRITTEN AGAINST ═══
+ *
+ * `baselineWindowFor("day")` returned a ONE-DAY window — yesterday. `sameWeekdayBaseline` then
+ * filters that window to the days sharing today's weekday, and yesterday never does, so the sample
+ * was ALWAYS empty and `medianOf(sample, 4)` always returned null. The same-weekday comparison that
+ * this file's header spends a paragraph justifying — "a Tuesday counter and a Saturday counter are
+ * different jobs at an Indian hospital" — could not fire in production, ever.
+ *
+ * It survived because `baselineWindowFor` was exercised for `"week"` only, and the day-period tests
+ * hand `buildBrief` a baseline array they built themselves. Calling the function with an input the
+ * real caller would never produce cannot detect that the real caller produces a different one: the
+ * seam between "which days the controller FETCHES" and "which days `buildBrief` NEEDS" had no test
+ * standing on it. So the tests below go through `baselineWindowFor` rather than around it.
+ */
+describe("staff-reports T0 — the year period and the day baseline", () => {
+  it("a year is a period, spanning 365 days ending today", () => {
+    expect(PERIODS).toContain("year");
+    expect(windowFor("year", TODAY)).toEqual({ from: "2025-08-18", to: TODAY });
+  });
+
+  /**
+   * THE REGRESSION TEST FOR THE DEFECT, and it is built the way the controller builds it: take the
+   * window `baselineWindowFor` actually returns, fill it, and ask whether the brief can speak.
+   */
+  it("the day baseline carries enough same-weekday candidates for a comparison to be possible", () => {
+    const b = baselineWindowFor("day", TODAY);
+    const days = run(b.to, spanOf(b), { "opd.visitsOpened": 10 });
+    const sameWeekday = days.filter(
+      (d) => new Date(`${d.day}T00:00:00.000Z`).getUTCDay()
+        === new Date(`${TODAY}T00:00:00.000Z`).getUTCDay(),
+    );
+    // Four is `medianOf`'s floor for a day. A window that cannot hold four same-weekdays makes the
+    // comparison unreachable no matter how diligently the person worked.
+    expect(sameWeekday.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("a day IS compared against the same weekday, end to end through the real baseline window", () => {
+    const b = baselineWindowFor("day", TODAY);
+    const baseline = run(b.to, spanOf(b), { "opd.visitsOpened": 10 });
+    const brief = buildBrief(
+      "day", TODAY, [{ day: TODAY, facts: { "opd.visitsOpened": 12 }, provisional: true }], baseline,
+    );
+    const visits = brief.clauses.find((c) => c.key.startsWith("brief.visits"));
+    expect(visits?.key).toBe("brief.visits.compared");
+    expect(visits?.values.median).toBe("10");
+  });
+
+  /**
+   * `needsBaseline` is the single fact both controllers and `buildBrief` must agree on. The long
+   * periods carry DRIFT computed from the window itself and never read the baseline — fetching it
+   * for them read 91 extra days for a quarter and threw every one away.
+   */
+  it("only the short periods need a baseline; the long ones drift within their own window", () => {
+    expect(needsBaseline("day")).toBe(true);
+    expect(needsBaseline("week")).toBe(true);
+    expect(needsBaseline("month")).toBe(false);
+    expect(needsBaseline("quarter")).toBe(false);
+    expect(needsBaseline("half")).toBe(false);
+    expect(needsBaseline("year")).toBe(false);
+  });
+
+  /**
+   * What the horizon is enforced against. For a long period it is the window's own first day; for a
+   * short one the baseline reaches further back and IT is the oldest day the request will read.
+   */
+  it("oldestDayRead is the furthest back a period actually reaches", () => {
+    expect(oldestDayRead("quarter", TODAY)).toBe(windowFor("quarter", TODAY).from);
+    expect(oldestDayRead("year", TODAY)).toBe(windowFor("year", TODAY).from);
+    expect(oldestDayRead("day", TODAY)).toBe(baselineWindowFor("day", TODAY).from);
+    expect(oldestDayRead("week", TODAY)).toBe(baselineWindowFor("week", TODAY).from);
   });
 });

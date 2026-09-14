@@ -1,4 +1,6 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { backupDrillRehearsed } from "../src/kernel/retention/events";
@@ -915,6 +917,122 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
         const r = spawnSync("bash", ["-n", script], { encoding: "utf8" });
         expect({ script, status: r.status, stderr: r.stderr }).toEqual({ script, status: 0, stderr: "" });
       }
+    });
+  });
+
+  /**
+   * THE CIPHER PASSPHRASE — the only UNRECOVERABLE failure the 2026-09-13 deploy-safety audit found.
+   *
+   * `deploy.sh` derives `$DEPLOY_DIR/.env.pgbackrest` on every production deploy. It used to
+   * `cat >` that path — a truncate in place — with `PGBACKREST_REPO1_CIPHER_PASS` as the LAST line
+   * written, and upstream it minted a fresh passphrase whenever it read that key back empty. The
+   * two compose:
+   *
+   *   kill the deploy inside the heredoc  ->  the file exists and has no passphrase
+   *   the next deploy reads it back empty ->  mints a NEW one, silently, reports success
+   *   every backup already in the object store is ciphertext nobody can read, including us
+   *
+   * ═══ THESE TESTS RUN THE REAL LINES, THEY DO NOT RE-IMPLEMENT THEM ═══
+   *
+   * The block is EXTRACTED from `deploy.sh` by text and executed against stubs. A test that
+   * re-implemented the logic would pass against a `deploy.sh` that had been reverted — it would be
+   * asserting about its own copy. Extracting means the assertion is about the shipped script, and
+   * it fails the day somebody puts `cat > "$PGBR_ENV"` back.
+   *
+   * === WHICH OF THESE FIVE ACTUALLY BITE - MEASURED, NOT ASSUMED ===
+   *
+   * The pre-fix behaviour was restored (truncate in place, mint on an empty read) and the suite
+   * re-run. **Two of the five go red**: "REFUSES to mint" and "writes through a .tmp". The other
+   * three pass against the defect, and that is recorded here rather than left to be rediscovered:
+   *
+   *   PRESERVES an existing passphrase   the old code preserved a PRESENT passphrase too, so this
+   *                                      pins the property without discriminating
+   *   mints exactly once, no file        identical on both sides - a first deploy was never the bug
+   *   leaves no .tmp behind              passes TRIVIALLY against the defect, which creates no .tmp
+   *                                      at all; it guards the new path's own litter
+   *
+   * Keeping all five is right - three pin properties that must not regress for other reasons - but
+   * only two are evidence that the fix is present.
+   */
+  describe("the backup cipher passphrase is never absent from a file that exists", () => {
+    /** Pull the derivation out of the shipped script and make it runnable in isolation. */
+    function harness(): string {
+      const from = deploySource.indexOf('CIPHER_PASS=""');
+      const to = deploySource.indexOf("unset CIPHER_PASS R2_KEY_V R2_SECRET_V");
+      expect(from).toBeGreaterThan(0);
+      expect(to).toBeGreaterThan(from);
+      const block = deploySource.slice(from, to);
+      // Everything the block reads from its surroundings, stubbed — and `die` made observable.
+      return [
+        "set -euo pipefail",
+        'die() { printf "DIED: %s\n" "$*" >&2; exit 9; }',
+        'note() { :; }',
+        'PGBR_ENV="$1"',
+        'R2_ENV="/dev/null"',
+        "R2_ENDPOINT_HOST=e; R2_BUCKET_V=b; R2_REGION_V=r; R2_KEY_V=k; R2_SECRET_V=s",
+        block,
+        'echo "OK"',
+      ].join("\n");
+    }
+
+    function run(envPath: string): { status: number | null; stdout: string; stderr: string } {
+      const r = spawnSync("bash", ["-c", harness(), "bash", envPath], { encoding: "utf8" });
+      return { status: r.status, stdout: r.stdout, stderr: r.stderr };
+    }
+
+    let dir: string;
+    beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "pgbr-")); });
+    afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+    it("PRESERVES an existing passphrase — the property every backup depends on", () => {
+      const f = join(dir, ".env.pgbackrest");
+      writeFileSync(f, "PGBACKREST_REPO1_CIPHER_PASS=keepme0123456789\n");
+      const r = run(f);
+      expect(r.status).toBe(0);
+      expect(readFileSync(f, "utf8")).toContain("PGBACKREST_REPO1_CIPHER_PASS=keepme0123456789");
+    });
+
+    it("REFUSES to mint when the file exists but carries no passphrase — it does not 'repair' it", () => {
+      // This is the damaged-file case: a killed deploy, a corrupt write, a hand edit. Minting here
+      // is the unrecoverable act, and it used to be the default.
+      const f = join(dir, ".env.pgbackrest");
+      writeFileSync(f, "PGBACKREST_REPO1_S3_BUCKET=b\n");
+      const r = run(f);
+      expect(r.status).toBe(9);
+      expect(r.stderr).toContain("REFUSING TO MINT A NEW ONE");
+      // ...and it left the damaged file alone rather than overwriting the evidence.
+      expect(readFileSync(f, "utf8")).toBe("PGBACKREST_REPO1_S3_BUCKET=b\n");
+    });
+
+    it("mints exactly once, when there is NO file at all", () => {
+      const f = join(dir, ".env.pgbackrest");
+      const r = run(f);
+      expect(r.status).toBe(0);
+      const first = readFileSync(f, "utf8").match(/^PGBACKREST_REPO1_CIPHER_PASS=(.+)$/m)?.[1];
+      expect(first).toMatch(/^[0-9a-f]{64}$/);
+      // Re-running must preserve it, not mint a second one.
+      expect(run(f).status).toBe(0);
+      expect(readFileSync(f, "utf8")).toContain(`PGBACKREST_REPO1_CIPHER_PASS=${first!}`);
+    });
+
+    it("writes through a .tmp and renames — $PGBR_ENV is never the target of the heredoc", () => {
+      // The atomic property, asserted where it lives. `mv` within one directory is a rename, so a
+      // reader sees the whole old file or the whole new one and never a half-written one.
+      const block = deploySource.slice(
+        deploySource.indexOf('CIPHER_PASS=""'),
+        deploySource.indexOf("unset CIPHER_PASS R2_KEY_V R2_SECRET_V"),
+      );
+      expect(block).toContain('cat > "$PGBR_ENV.tmp"');
+      expect(block).not.toMatch(/cat > "\$PGBR_ENV"\s/);
+      expect(block).toContain('mv -f "$PGBR_ENV.tmp" "$PGBR_ENV"');
+      // A .tmp holding a live credential must not outlive a failure.
+      expect(block).toContain(`trap 'rm -f "$PGBR_ENV.tmp"' EXIT`);
+    });
+
+    it("leaves no .tmp behind on the success path", () => {
+      const f = join(dir, ".env.pgbackrest");
+      expect(run(f).status).toBe(0);
+      expect(existsSync(`${f}.tmp`)).toBe(false);
     });
   });
 

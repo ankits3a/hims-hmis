@@ -3,6 +3,8 @@ import {
   activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, openOpdVisit, seedOpdBase, seedOpdMasters,
 } from "../../../test/helpers/opd";
 import { opdDeskProvider } from "./desk-provider";
+import { eq, inArray } from "drizzle-orm";
+import { opdEncounters } from "../../kernel/db/schema";
 import type { DeskProviderCtx } from "../../kernel/desk/types";
 import type { Db } from "../../kernel/db/client";
 
@@ -136,4 +138,92 @@ describe("opd desk provider (07c)", () => {
     expect(section!.rows).toEqual([]);
     expect(section!.totals?.[5]).toBe("0");
   });
+
+  /**
+   * ═══ STAFF-REPORTS T1 — new / revisit / renewal, AS COUNTABLE FACTS ═══
+   *
+   * `opd_encounters.visit_type` has carried `'new' | 'revisit' | 'renewal'` on every visit since
+   * Plan 08's fee branch, and nothing ever summed it. The owner's front-desk report asks how many
+   * of a clerk's day was each, so these three keys are that column reduced to counters.
+   *
+   * NO MIGRATION: facts are a JSONB bag, and `types.ts` argues at length for why that is the point
+   * — a `user_day_facts` table with a column per counter would make every new module a schema
+   * review.
+   *
+   * ═══ WHAT THESE TESTS DO NOT TEST, DELIBERATELY ═══
+   *
+   * They do not re-test `classifyVisit`. Which bucket a visit lands in is `kernel/report/visit-type`
+   * and its own tests; T1's job is to COUNT what the column says. So the fixtures open real visits
+   * through `openVisit` — which classifies them — and then set the column directly to get a mixed
+   * day, because a test that spent forty lines manufacturing a genuine renewal would be testing the
+   * classifier a second time and the counting not at all.
+   */
+  describe("T1 — the visit-type facts", () => {
+    /** Open `n` real visits as `u`, then stamp the given types onto them in order. */
+    async function openWithTypes(
+      u: Awaited<ReturnType<typeof mkUser>>, types: ("new" | "revisit" | "renewal")[],
+    ): Promise<void> {
+      for (const [i, type] of types.entries()) {
+        const p = await mkPatient(db, u.actor, { phone: `98765411${String(i).padStart(2, "0")}` });
+        const { encounterId } = await openOpdVisit(
+          db, { clerk: u.actor, patientId: p.id, departmentId: deptId, doctorId: dra.doctorId }, T0,
+        );
+        await db.update(opdEncounters).set({ visitType: type }).where(eq(opdEncounters.id, encounterId));
+      }
+    }
+
+    it("counts each bucket for the person who OPENED the visit", async () => {
+      await openWithTypes(clerk, ["new", "new", "revisit", "renewal"]);
+      const facts = await opdDeskProvider.facts!(ctxFor(clerk));
+      expect(facts["opd.visitsNew"]).toBe(2);
+      expect(facts["opd.visitsRevisit"]).toBe(1);
+      expect(facts["opd.visitsRenewal"]).toBe(1);
+    });
+
+    /**
+     * THE PARTITION, AND IT IS THE ASSERTION THAT MATTERS. The three are a slice of the SAME rows
+     * `opd.visitsOpened` counts, so they must add up to it exactly. A fourth `visit_type` value, a
+     * NULL, or a filter that drifts from `visitsOpened`'s would all show up here and nowhere else —
+     * and would reach the owner as a report whose columns do not sum to its own total.
+     */
+    it("the three partition opd.visitsOpened exactly", async () => {
+      await openWithTypes(clerk, ["new", "revisit", "renewal", "new", "renewal"]);
+      const f = await opdDeskProvider.facts!(ctxFor(clerk));
+      expect(f["opd.visitsNew"]! + f["opd.visitsRevisit"]! + f["opd.visitsRenewal"]!)
+        .toBe(f["opd.visitsOpened"]);
+      expect(f["opd.visitsOpened"]).toBe(5);
+    });
+
+    /** Scoped to the person, exactly as `visitsOpened` is — a colleague's renewals are not yours. */
+    it("counts only what THIS person opened", async () => {
+      await openWithTypes(clerk, ["renewal"]);
+      await openWithTypes(other, ["renewal", "renewal"]);
+      expect((await opdDeskProvider.facts!(ctxFor(clerk)))["opd.visitsRenewal"]).toBe(1);
+      expect((await opdDeskProvider.facts!(ctxFor(other)))["opd.visitsRenewal"]).toBe(2);
+    });
+
+    /**
+     * A DAY WITH NOTHING ON IT REPORTS ZEROS, NOT ABSENCE. `rollup.ts` treats a missing KEY and a
+     * zero differently — an absent day is "never rolled", a zero is "worked and did none" — so a
+     * provider that omitted a key on a quiet day would make a working Sunday indistinguishable from
+     * a broken job.
+     */
+    it("a quiet day carries the keys at zero rather than dropping them", async () => {
+      const f = await opdDeskProvider.facts!(ctxFor(clerk));
+      expect(f["opd.visitsNew"]).toBe(0);
+      expect(f["opd.visitsRevisit"]).toBe(0);
+      expect(f["opd.visitsRenewal"]).toBe(0);
+    });
+
+    /** Every fact must survive `rollupUserDay`'s refusal: finite, non-negative integers. */
+    it("all three are non-negative integers", async () => {
+      await openWithTypes(clerk, ["new", "revisit"]);
+      const f = await opdDeskProvider.facts!(ctxFor(clerk));
+      for (const k of ["opd.visitsNew", "opd.visitsRevisit", "opd.visitsRenewal"]) {
+        expect(Number.isInteger(f[k])).toBe(true);
+        expect(f[k]).toBeGreaterThanOrEqual(0);
+      }
+    });
+  });
+
 });

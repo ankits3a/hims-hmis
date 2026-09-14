@@ -7,12 +7,19 @@ import { users } from "../db/schema";
 import { appendEvent } from "../events/append";
 import { withTx } from "../db/client";
 import { collectDeskProviders, loadReport } from "./registry";
-import { baselineWindowFor, buildBrief, windowFor } from "./brief";
+import {
+  PERIODS, baselineWindowFor, buildBrief, needsBaseline, oldestDayRead, windowFor,
+} from "./brief";
+import { assertWithinHorizon, horizonFor } from "./horizon";
+import { RANGE_DIMENSIONS } from "./range";
+import { loadRange } from "./registry";
+import { usersHoldingRole } from "../workflow/roles";
+import type { RangeDimension, RangeRow } from "./range";
 import { factsForWindow, sumWindow } from "./rollup";
 import { staffReportDrilled } from "./events";
 import { DeskError } from "./types";
 import { parsed, toHttp } from "./http";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { Brief } from "./brief";
 import type { ReportSection } from "./types";
 import type { ModuleRegistry } from "../modules/loader";
@@ -43,8 +50,41 @@ import type { Db } from "../db/client";
  */
 const briefQuery = z.object({
   date: z.string().length(10).optional(),
-  period: z.enum(["day", "week", "month", "quarter", "half"]).optional(),
+  period: z.enum(PERIODS).optional(),
 });
+/**
+ * PHASE STAFF-REPORTS T3 — the breakdown request. `groupBy` is a comma list so the whole query is
+ * a URL a person can bookmark, mail, and paste into a bug report.
+ */
+const csvList = (max: number) => z.string().transform((v) => v.split(",").map((x) => x.trim()).filter((x) => x !== ""))
+  .refine((v) => v.length > 0 && v.length <= max, `expected 1..${String(max)} comma-separated values`);
+
+const rangeQuery = z.object({
+  from: z.string().length(10),
+  to: z.string().length(10),
+  groupBy: csvList(RANGE_DIMENSIONS.length)
+    .refine((v): v is RangeDimension[] => v.every((d) => (RANGE_DIMENSIONS as readonly string[]).includes(d)),
+      `each groupBy must be one of ${RANGE_DIMENSIONS.join(", ")}`)
+    .optional(),
+  userIds: csvList(200).optional(),
+  /** PHASE STAFF-REPORTS T4 / D3 — a TEAM, named by the role that defines it. */
+  roleKey: z.string().min(1).optional(),
+  departmentId: z.string().optional(),
+  doctorId: z.string().optional(),
+  visitType: z.enum(["new", "revisit", "renewal"]).optional(),
+});
+
+/** What `GET /staff/range` answers with. `team` is null unless the request named a role (T4). */
+type RangeResponse = {
+  from: string;
+  to: string;
+  groupBy: RangeDimension[];
+  rows: RangeRow[];
+  totals: Record<string, number>;
+  users: Record<string, string>;
+  team: string[] | null;
+};
+
 const drillBody = z.object({
   date: z.string().length(10),
   /** A reason box that can be satisfied by pressing Enter is a control nobody has thought about. */
@@ -79,24 +119,155 @@ export class StaffController {
    * integers, and `DeskProvider.facts` cannot return anything else — `liveFactsFor` refuses a value
    * that is not a non-negative integer.
    */
+  /**
+   * ═══ PHASE STAFF-REPORTS T3 — THE BREAKDOWN. THE SECOND INSTRUMENT, OVER HTTP ═══
+   *
+   * `:userId/brief` answers "how did this person's month go" from the cached pulse. This answers
+   * "who registered how many, for which department, under which doctor, split new / revisit /
+   * renewal" — live, across people, over a range the caller picked. `range.ts` carries the argument
+   * for why those are two instruments rather than one.
+   *
+   * DECLARED BEFORE THE `:userId` ROUTES so a literal path segment can never be read as an id.
+   *
+   * ═══ IT RETURNS IDS FOR DEPARTMENT AND DOCTOR, AND NAMES ONLY FOR PEOPLE ═══
+   *
+   * The kernel owns `users`, so it can label a person. It does NOT own `opd_departments` or
+   * `opd_doctors`, and reaching into a module's tables to pretty-print a heading would invert the
+   * dependency the whole `DeskProvider` seam exists to keep pointing one way. The client already
+   * holds those masters for its own pickers, and labelling is its job.
+   *
+   * ═══ NO `report.exported` EVENT HERE, AND THAT IS NOT AN OVERSIGHT ═══
+   *
+   * This route returns COUNTS — `mergeBuckets` refuses anything that is not a non-negative integer,
+   * so there is no field in the response that could carry a patient. It is the same reasoning DD14
+   * applies to the brief: the figures need no audit row because they cannot name anybody. The CSV
+   * (T6) and the MRD register (T7) are a different matter and carry their own.
+   */
+  @Get("range")
+  @RequirePermission("staff.reports.read", "hospital")
+  async range(
+    @CurrentActor() reader: Actor, @Query() query: unknown,
+  ): Promise<RangeResponse> {
+    const q = parsed(rangeQuery, query);
+    const now = new Date();
+    const groupBy: RangeDimension[] = q.groupBy ?? ["userId"];
+    const team = await this.resolveTeam(q.roleKey, q.userIds).catch(toHttp);
+    /*
+     * THE HORIZON BINDS `from` — the oldest day this request will read. A range route without this
+     * would be the widest hole in the ruling: every other door is capped by a PERIOD, and this one
+     * lets the caller name any date they like.
+     */
+    await this.assertMayReach(reader, q.from, now);
+
+    const { rows, totals } = await loadRange(collectDeskProviders(this.registry), {
+      db: this.db, reader, now, groupBy,
+      filters: {
+        from: q.from, to: q.to, userIds: team ?? q.userIds,
+        departmentId: q.departmentId, doctorId: q.doctorId, visitType: q.visitType,
+      },
+    }).catch(toHttp);
+
+    return {
+      from: q.from, to: q.to, groupBy, rows, totals,
+      users: await this.userNames(rows),
+      /* The team this report was scoped to, so the screen can say WHO it covered — including the
+       * people on it who did nothing, who are absent from `rows` by construction. */
+      team: team ?? null,
+    };
+  }
+
+  /**
+   * ═══ PHASE STAFF-REPORTS T4 / D3 — A TEAM IS DERIVED FROM A ROLE, NEVER STORED ═══
+   *
+   * "The whole front desk" is everyone holding `front_office`. No new table, and a new hire appears
+   * in the team report the moment their role is granted rather than when somebody remembers a
+   * group — which is the second place a membership list goes wrong.
+   *
+   * ═══ AN EMPTY TEAM REFUSES — AND THE REASON IS NOT THE ONE THIS COMMENT FIRST GAVE ═══
+   *
+   * The guard was written against a danger that does not exist here. The worry was that an absent
+   * `userIds` filter means EVERYONE, so an empty team would vanish into "no filter" and turn *"show
+   * me the front desk"* into *"show me the whole hospital"*.
+   *
+   * **MEASURED, by removing the guard and probing the route: it returns 200 with zero rows and
+   * empty totals.** Drizzle renders `inArray(col, [])` as a false predicate rather than dropping
+   * it, so the unguarded answer is a silent ZERO, not a silent everything.
+   *
+   * The guard is still right, for the reason this phase keeps meeting rather than the dramatic one:
+   * an empty report reads as *"the front desk did nothing all month"*, which is indistinguishable
+   * from a desk that was genuinely idle — `requireSubject`'s own comment calls that the one answer a
+   * supervisor must never be given by accident. A role nobody holds is a configuration mistake, and
+   * it is named so somebody fixes the grant instead of believing the number.
+   *
+   * ONE GUARD, AFTER RESOLVING ACTIVE HOLDERS. There were two; the first (on the raw holder list)
+   * was redundant — a mutant that deleted it left every test green, because the second catches the
+   * same case. Two guards for one condition is one more place for the reason to drift.
+   *
+   * ═══ ACTIVE HOLDERS ONLY ═══
+   *
+   * `GET /staff` excludes deactivated accounts from the picker for the reason its own comment
+   * gives — a leaver's day is a historical question, not a supervision one. A team roll-up that
+   * counted leavers would disagree with the very list the supervisor picked the role from.
+   */
+  private async resolveTeam(roleKey?: string, userIds?: string[]): Promise<string[] | undefined> {
+    if (roleKey === undefined) return undefined;
+    if (userIds !== undefined) {
+      throw new DeskError(
+        "ambiguous_subjects",
+        "pass roleKey (a team) or userIds (named people), not both — two ways to name the same axis is two ways to disagree about it",
+      );
+    }
+    /*
+     * `usersHoldingRole` takes a Tx rather than a Db — it is the workflow kernel's resolver and
+     * every other caller already holds one. A read-only transaction is the honest way to borrow it;
+     * re-implementing the query here would be a second answer to "who holds this role", which is
+     * exactly the divergence `roles.ts` exists to prevent.
+     */
+    const holders = await withTx(this.db, (tx) => usersHoldingRole(tx, roleKey));
+    const active = holders.length === 0 ? [] : await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(inArray(users.id, holders), eq(users.active, true)));
+    if (active.length === 0) throw new DeskError("empty_team", `no active user holds "${roleKey}"`);
+    return active.map((u) => u.id).sort();
+  }
+
+  /**
+   * The people named in the rows, by id. Only the ones the report actually mentions — a hospital's
+   * whole staff list is `GET /staff`, and a report should not become a second directory.
+   */
+  private async userNames(rows: readonly RangeRow[]): Promise<Record<string, string>> {
+    const ids = [...new Set(rows.map((r) => r.key.userId).filter((v): v is string => v !== undefined))];
+    if (ids.length === 0) return {};
+    const found = await this.db
+      .select({ id: users.id, fullName: users.fullName })
+      .from(users)
+      .where(inArray(users.id, ids));
+    return Object.fromEntries(found.map((u) => [u.id, u.fullName]));
+  }
+
   @Get(":userId/brief")
   @RequirePermission("staff.reports.read", "hospital")
   async brief(
-    @Param("userId") userId: string, @Query() query: unknown,
+    @CurrentActor() reader: Actor, @Param("userId") userId: string, @Query() query: unknown,
   ): Promise<Brief & { subjectUserId: string; totalsToday: Record<string, number> }> {
     const q = parsed(briefQuery, query);
     const now = new Date();
     const today = q.date ?? istDay(now);
     const period = q.period ?? "week";
     await this.requireSubject(userId).catch(toHttp);
+    await this.assertMayReach(reader, oldestDayRead(period, today), now);
 
     const subject: Actor = { type: "user", id: userId };
     const providers = collectDeskProviders(this.registry);
     const w = windowFor(period, today);
-    const b = baselineWindowFor(period, today);
+    /* T0 — read the baseline only where it is consumed; see `needsBaseline` and `DeskController`. */
+    const b = needsBaseline(period) ? baselineWindowFor(period, today) : null;
     const [days, baseline] = await Promise.all([
       factsForWindow(this.db, providers, subject, w.from, w.to, today, now),
-      factsForWindow(this.db, providers, subject, b.from, b.to, today, now),
+      b === null
+        ? Promise.resolve([])
+        : factsForWindow(this.db, providers, subject, b.from, b.to, today, now),
     ]);
     const todayFacts = days.find((d) => d.day === today);
     return {
@@ -127,6 +298,12 @@ export class StaffController {
     const now = new Date();
     await this.requireSubject(userId).catch(toHttp);
     if (actor.type !== "user") toHttp(new DeskError("user_actor_required", "a drill is a person's act"));
+    /*
+     * THE DRILL IS ONE DAY, AND THAT DAY CAN BE ANY DAY. A route that reads a single date looks
+     * bounded and is not: `date` is a free parameter, so without this a capped supervisor reaches
+     * four years back one day at a time.
+     */
+    await this.assertMayReach(actor, b.date, now);
     /**
      * A SUPERVISOR DRILLING THEMSELVES IS NOT A DRILL, and it must not be refused either: it is
      * their own day, which `/me/report` already serves. Refusing would be a puzzle; logging it as a
@@ -146,6 +323,23 @@ export class StaffController {
         payload: { subjectUserId: userId, date: b.date, reason: b.reason, sections: sections.length, rows },
       })));
     return { subjectUserId: userId, date: b.date, sections };
+  }
+
+  /**
+   * T0 — THE HISTORY HORIZON, READ OFF THE CALLER AND NEVER OFF THE SUBJECT.
+   *
+   * This is the same split `DeskProviderCtx` draws between `actor` (whose rows) and `reader` (whose
+   * visibility), for the same reason its header gives: collapse them and the reader inherits the
+   * subject's clearance. A supervisor capped at a year must not reach two years back merely because
+   * the clerk they are reading holds `staff.reports.history.full` themselves.
+   */
+  private async assertMayReach(reader: Actor, oldestDay: string, now: Date): Promise<void> {
+    const horizon = await horizonFor(this.db, reader, istDay(now));
+    try {
+      assertWithinHorizon(oldestDay, horizon);
+    } catch (e) {
+      toHttp(e);
+    }
   }
 
   /**
