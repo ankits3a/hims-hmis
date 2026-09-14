@@ -1,5 +1,6 @@
 import { KNOWLEDGE, rulesOf, syndromeByKey } from "./knowledge";
 import { rankSyndromes } from "./matcher";
+import { cardsFor } from "./guardrails";
 import { bandFor, buildRegimen, doseFor } from "./regimen";
 import type { PatientFacts } from "./regimen";
 
@@ -169,5 +170,64 @@ describe("CDS dose verdicts in isolation", () => {
   it("D1: mg is rounded to 0.1 and mL to the nearest half — a carer measures with a spoon", () => {
     const v = doseFor({ kind: "stated", mgPerKg: 12.5, per: "dose", concentrationMgPerMl: 50 }, { ...CHILD_14, weightKg: 13.3 }, "x");
     expect(v).toMatchObject({ state: "computed", mg: 166.3, ml: 3.5 });
+  });
+});
+
+describe("CDS guardrails — the dangers the owner asked to be automatic", () => {
+  const FEMALE = "female";
+
+  it("G1: pregnancy is NOT on file anywhere, so an unanswered woman gets the QUESTION, not a silence", () => {
+    const r = buildRegimen("SYN_MSK_07", { ...ADULT, ageYears: 28 })!;
+    const cards = cardsFor(r, { ...ADULT, ageYears: 28 }, FEMALE);
+    const ask = cards.find((c) => c.kind === "pregnancy_unknown")!;
+    expect(ask).toBeDefined();
+    // MSK carries an NSAID, which the bundle flags in the third trimester — so the ask is RED
+    expect(ask.severity).toBe("red");
+    expect(ask.drugs.length).toBeGreaterThan(0);
+  });
+
+  it("G2: a man is not asked, and an answered pregnancy fires the real rule with its own id", () => {
+    const male = cardsFor(buildRegimen("SYN_MSK_07", ADULT)!, ADULT, "male");
+    expect(male.some((c) => c.kind === "pregnancy_unknown")).toBe(false);
+
+    const pregnant = { ...ADULT, ageYears: 26, pregnant: true };
+    const cards = cardsFor(buildRegimen("SYN_MSK_07", pregnant)!, pregnant, FEMALE);
+    const hit = cards.find((c) => c.kind === "pregnancy")!;
+    expect(hit.severity).toBe("red");
+    expect(hit.ruleKeys[0]).toMatch(/^PREG_/);
+    expect(hit.detail.length).toBeGreaterThan(0);
+  });
+
+  it("G3: a child with no weight on file gets a RED card, not a silently uncalculated line", () => {
+    const p: PatientFacts = { ageYears: 4, weightKg: null, allergies: [], pregnant: false };
+    const cards = cardsFor(buildRegimen("SYN_URI_01", p)!, p, FEMALE);
+    const ped = cards.find((c) => c.kind === "pediatric" && c.severity === "red")!;
+    expect(ped.title).toContain("No weight on file");
+    expect(ped.drugs.length).toBeGreaterThan(0);
+  });
+
+  it("G4: the allergy card reports what was actually changed, with the substitution named", () => {
+    const p: PatientFacts = { ...ADULT, allergies: ["Penicillin"] };
+    const cards = cardsFor(buildRegimen("SYN_URI_01", p)!, p, FEMALE);
+    const a = cards.find((c) => c.kind === "allergy")!;
+    expect(a.severity).toBe("red");
+    expect(a.detail).toMatch(/Amoxicillin.*→.*Azithromycin/);
+  });
+
+  it("G5: stewardship names the AWaRe tier and the day cap for an antibiotic regimen", () => {
+    const cards = cardsFor(buildRegimen("SYN_URI_01", ADULT)!, ADULT, FEMALE);
+    const s = cards.find((c) => c.kind === "stewardship")!;
+    expect(s.title).toMatch(/AWaRe (Access|Watch|Reserve)/);
+    expect(s.detail).toMatch(/Empirical cap \d+ days/);
+  });
+
+  it("G6: every card carries the rule id that produced it — a card with no provenance is an opinion", () => {
+    for (const key of ["SYN_URI_01", "SYN_UTI_08", "SYN_ASTHMA_06"]) {
+      const p: PatientFacts = { ...ADULT, allergies: ["Penicillin"] };
+      for (const c of cardsFor(buildRegimen(key, p)!, p, FEMALE)) {
+        expect(c.ruleKeys.length).toBeGreaterThan(0);
+        expect(c.title.length).toBeGreaterThan(0);
+      }
+    }
   });
 });

@@ -67,31 +67,57 @@ const PEDIATRIC: Record<string, Dosing> = {
   "SYN_UTI_08|Oral Fluids Hydration": { kind: "non_drug" },
 };
 
+/**
+ * THE BUNDLE'S OWN SHAPE, declared rather than `any`: this file reads a FOREIGN document, and the
+ * fields it reaches for are exactly the contract it depends on. A bundle that changes shape should
+ * fail here, at build time, with a type error naming the field — not silently produce a corpus with
+ * empty regimens.
+ */
+type BundleRegimenRow = { drug: string; sig: string; duration?: string; purpose?: string };
+type BundleSubstitution = { substitute_for?: string; drug_adult?: string; drug_child?: string; reason?: string };
+type BundleSyndrome = {
+  id: string; name: string; keywords?: string[]; icd10?: string; clinical_description?: string;
+  adult_regimen?: BundleRegimenRow[]; pediatric_regimen?: BundleRegimenRow[];
+  allergy_substitutions?: Record<string, BundleSubstitution[]>;
+};
+type BundleRule = Record<string, unknown> & { id?: string | number; drug?: string };
+type Bundle = { syndromes?: BundleSyndrome[] } & Record<string, unknown>;
+
 type Line = {
   band: "adult" | "pediatric"; seq: number; drugLabel: string; purpose: string | null;
   sig: string; duration: string | null; dosing: Dosing | null;
 };
 
+/** The first of `keys` this rule actually carries — the bundle names the same idea differently per domain. */
+function pick(r: BundleRule, keys: string[]): string | string[] | null {
+  for (const k of keys) {
+    const v = r[k];
+    if (typeof v === "string" && v !== "") return v;
+    if (Array.isArray(v)) return v.map(String);
+  }
+  return null;
+}
+
 function main(): void {
   const [, , inPath, outPath] = process.argv;
   if (!inPath || !outPath) throw new Error("usage: build-cds-knowledge.ts <bundle.json> <out.json>");
   const raw = readFileSync(inPath, "utf8");
-  const b = JSON.parse(raw) as Record<string, any[]>;
+  const b = JSON.parse(raw) as Bundle;
 
   const unclassified: string[] = [];
-  const syndromes = (b["syndromes"] ?? []).map((s: any) => {
+  const syndromes = (b.syndromes ?? []).map((s: BundleSyndrome) => {
     const lines: Line[] = [];
-    (s.adult_regimen ?? []).forEach((r: any, i: number) => {
+    (s.adult_regimen ?? []).forEach((r: BundleRegimenRow, i: number) => {
       lines.push({ band: "adult", seq: i + 1, drugLabel: r.drug, purpose: r.purpose ?? null, sig: r.sig, duration: r.duration ?? null, dosing: null });
     });
-    (s.pediatric_regimen ?? []).forEach((r: any, i: number) => {
+    (s.pediatric_regimen ?? []).forEach((r: BundleRegimenRow, i: number) => {
       const key = `${s.id}|${r.drug}`;
       const d = PEDIATRIC[key];
       if (d === undefined) unclassified.push(key);
       lines.push({ band: "pediatric", seq: i + 1, drugLabel: r.drug, purpose: r.purpose ?? null, sig: r.sig, duration: r.duration ?? null, dosing: d ?? null });
     });
     const subs = Object.entries(s.allergy_substitutions ?? {}).flatMap(([condition, arr]) =>
-      (arr as any[]).map((x) => ({
+      arr.map((x: BundleSubstitution) => ({
         condition, substituteFor: x.substitute_for ?? null,
         drugAdult: x.drug_adult ?? null, drugChild: x.drug_child ?? null, reason: x.reason ?? null,
       })));
@@ -118,13 +144,13 @@ function main(): void {
     "symptom_mappings", "radiology_rules",
   ] as const;
   const rules = DOMAINS.flatMap((domain) =>
-    (b[domain] ?? []).map((r: any) => ({
+    ((b[domain] as BundleRule[] | undefined) ?? []).map((r: BundleRule) => ({
       domain,
       ruleKey: String(r.id ?? ""),
-      subject: r.drug ?? r.allergen ?? r.vital ?? r.symptom ?? r.subclass ?? r.analyte ?? null,
-      severity: r.sev ?? r.severity ?? r.category ?? null,
-      message: r.msg ?? r.message ?? r.hazard ?? r.warning ?? r.rationale ?? null,
-      action: r.alternative ?? r.safe_alternatives ?? r.de_escalation ?? r.action ?? null,
+      subject: pick(r, ["drug", "allergen", "vital", "symptom", "subclass", "analyte"]),
+      severity: pick(r, ["sev", "severity", "category"]),
+      message: pick(r, ["msg", "message", "hazard", "warning", "rationale"]),
+      action: pick(r, ["alternative", "safe_alternatives", "de_escalation", "action"]),
       payload: r,
     })));
 
