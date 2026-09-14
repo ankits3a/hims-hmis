@@ -48,6 +48,7 @@ const REPO_ROOT = resolve(__dirname, "..", "..", "..");
 const DEPLOY_SH = resolve(REPO_ROOT, "docker", "prod", "deploy.sh");
 const DRILL_SH = resolve(REPO_ROOT, "docker", "prod", "drill", "restore-drill.sh");
 const UAT_COMPOSE = resolve(REPO_ROOT, "docker", "prod", "docker-compose.uat.yml");
+const UAT_CADDYFILE = resolve(REPO_ROOT, "docker", "prod", "Caddyfile.uat");
 const UAT_RESET_SH = resolve(REPO_ROOT, "docker", "prod", "uat-reset.sh");
 const ENV_EXAMPLE = resolve(REPO_ROOT, "docker", "prod", ".env.prod.example");
 const COMPOSE_YML = resolve(REPO_ROOT, "docker", "prod", "docker-compose.prod.yml");
@@ -810,9 +811,58 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
       expect(uatCompose).not.toMatch(/external:\s*true/);
       expect(uatCompose).not.toMatch(/^\s+name:\s/m);
       // The two ports production holds, replaced rather than merged — compose APPENDS port lists.
-      expect(uatCompose).toMatch(/ports: !override \["8443:443"\]/);
+      // 8443 ON BOTH SIDES: this assertion used to pin `8443:443`, which is the inverted map that
+      // kept UAT from ever answering — `Caddyfile.uat`'s site address is `:8443`, so caddy binds
+      // 8443 INSIDE the container and publishing host 8443 to container 443 pointed at nothing.
+      // The test agreed with the bug, which is why nothing was red.
+      expect(uatCompose).toMatch(/ports: !override \["8443:8443"\]/);
       expect(uatCompose).toMatch(/ports: !override \["127\.0\.0\.1:5435:5432"\]/);
       expect(uatCompose).not.toMatch(/"80:80"|"443:443"|5434/);
+    });
+
+    /**
+     * ═══ THE ONE THAT SUCCEEDS, WHICH IS WHY IT NEEDS A TEST ═══
+     *
+     * The overlay declared no `image:` at all, so every service inherited the base file's
+     * `hmis-prod/*:latest` — PRODUCTION'S CURRENTLY-DEPLOYED BUILD — while the `hmis-uat/*` images
+     * `deploy.sh` had just built sat on the daemon unused.
+     *
+     * Every other UAT defect failed loudly: an unbound `$R2_ENV`, an empty site address, a port
+     * nothing listened on, a reload with no admin API to reach. **This one brings a stack up,
+     * serves it, and rehearses the wrong code** — and a rehearsal on a different build proves
+     * nothing about the build that ships, which is the overlay's own stated purpose.
+     *
+     * Pinned both directions: every runtime service names an `hmis-uat/` image, and no
+     * `hmis-prod/` image name survives anywhere in the overlay.
+     */
+    it("UAT runs the images UAT built, not production's — every runtime service overrides `image:`", () => {
+      for (const [svc, img] of [
+        ["db", "hmis-uat/db:latest"],
+        ["api", "hmis-uat/server:latest"],
+        ["worker", "hmis-uat/server:latest"],
+        ["caddy", "hmis-uat/web:latest"],
+      ] as const) {
+        expect(uatCompose).toMatch(new RegExp(`${svc}:\\n\\s+image: ${img.replace("/", "\\/")}`));
+      }
+      // `deploy.sh`'s uat target builds into this namespace; if IMAGE_NS and the overlay ever
+      // disagree again, UAT silently runs whatever production last deployed.
+      expect(deploySource).toMatch(/IMAGE_NS="hmis-uat"/);
+      expect(uatCompose).not.toMatch(/hmis-prod\//);
+    });
+
+    /**
+     * `Caddyfile.uat` reads `{$HMIS_UAT_SITE}` and `{$HMIS_UAT_BASIC_AUTH_HASH}` from caddy's OWN
+     * process environment. Neither the base file nor the overlay gave the caddy service any, so
+     * both expanded to empty: an edge with no site address and — the part that matters — no
+     * basic-auth hash. The `:?` form makes compose refuse by name rather than serve UAT open.
+     */
+    it("UAT's caddy is handed the two variables its Caddyfile expands, and refuses without them", () => {
+      expect(uatCompose).toMatch(/HMIS_UAT_SITE: \$\{HMIS_UAT_SITE:\?/);
+      expect(uatCompose).toMatch(/HMIS_UAT_BASIC_AUTH_HASH: \$\{HMIS_UAT_BASIC_AUTH_HASH:\?/);
+      // And the Caddyfile must keep its admin endpoint: `deploy.sh` step 6 reloads caddy on BOTH
+      // targets and `caddy reload` is a client of that API. `admin off` made the deploy unable to
+      // finish, after migrating and seeding.
+      expect(readFileSync(UAT_CADDYFILE, "utf8")).not.toMatch(/^\s*admin off/m);
     });
 
     it("UAT's database archives nothing and mounts no pgBackRest anything — §2b row 23", () => {
