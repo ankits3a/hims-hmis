@@ -136,3 +136,9 @@ The typing half shipped; the image half never existed, which is why this lane ex
 - **Adding an SPA route moves `caddyfile-parity`'s count** — 53 → 54 here. Measure it from the
   failure, never increment it on the way past.
 - **An `eslint-disable` for a rule the project does not configure is itself an error.**
+- **A Nest provider that is not EXPORTED resolves in one module only.** `AppModule` is `@Global()`
+  and exports its tokens; `DOCUMENT_STORE` was added to `providers` and not to `exports`, and five
+  e2e suites (78 tests) refused to boot. **No narrow run could see it** — every suite under
+  `src/modules/patients` calls the service functions directly and never builds the module graph, so
+  19 suites and 217 tests were green against a controller that could not be instantiated. Same shape
+  as [[printing-verification-scope]]. Run the full core suite before believing a controller change.
