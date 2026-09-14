@@ -1,9 +1,25 @@
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 # PHASE 11i T3 — THE UAT OVERLAY. `docker compose -f docker-compose.prod.yml -f this`.
 #
-# UAT runs THE PRODUCTION IMAGE against its own database, in its own compose project, on this same
-# box. That is the whole design: a rehearsal on a different build proves nothing about the build
-# that ships. What this file changes is only what MUST differ — the ports (production holds
+# UAT runs THE SAME BUILD THAT WILL SHIP, against its own database, in its own compose project, on
+# this same box. That is the whole design: a rehearsal on a different build proves nothing about the
+# build that ships.
+#
+# ═══ "THE SAME BUILD" MEANS `hmis-uat/*`, NOT `hmis-prod/*`, AND THIS FILE ONCE SAID OTHERWISE ═══
+#
+# `deploy.sh`'s uat target sets `IMAGE_NS=hmis-uat` and builds `hmis-uat/{server,web,db}:latest`
+# from the checkout. This overlay declared no `image:` at all, so every service inherited the base
+# file's `hmis-prod/*:latest` — **production's currently-deployed build** — and the freshly built
+# candidate sat on the daemon unused. The header's old wording, "UAT runs THE PRODUCTION IMAGE",
+# reads as though that were the intent. It is not: the sentence means the artefact that will ship,
+# not the artefact production happens to be running.
+#
+# **This was the worst of the five defects that kept UAT from standing up, because it is the only
+# one that SUCCEEDS.** The other four fail loudly — an unbound variable, an empty site address, a
+# port nothing listens on, a reload that cannot connect. This one brings a stack up, serves it, and
+# rehearses the wrong code.
+#
+# What this file changes is only what MUST differ — the images, the ports (production holds
 # 80/443/5434), the memory (this box has 15 GB and production must never be starved by a training
 # session), the archiving (there is no backup repository and there must not be one), and which
 # services run at all.
@@ -30,6 +46,7 @@
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 services:
   db:
+    image: hmis-uat/db:latest
     # NO ARCHIVING. `archive_command` would run `pgbackrest` against a stanza that does not exist,
     # and a failing archive_command does not fail loudly — it fills pg_wal until the disk does.
     command: !override ["postgres"]
@@ -49,6 +66,7 @@ services:
           memory: "256m"
 
   api:
+    image: hmis-uat/server:latest
     deploy:
       resources:
         limits:
@@ -58,6 +76,7 @@ services:
           memory: "128m"
 
   worker:
+    image: hmis-uat/server:latest
     deploy:
       resources:
         limits:
@@ -67,10 +86,24 @@ services:
           memory: "128m"
 
   caddy:
-    # 8443 ONLY. 80 and 443 belong to production and taking either would be an outage, not a
-    # collision — this is the single most dangerous line in the file and it is an `!override`
+    image: hmis-uat/web:latest
+    # 8443 ON BOTH SIDES. 80 and 443 belong to production and taking either would be an outage, not
+    # a collision — this is the single most dangerous line in the file and it is an `!override`
     # precisely because compose MERGES port lists by default.
-    ports: !override ["8443:443"]
+    #
+    # IT READ `8443:443` AND NOTHING LISTENED ON 443. `Caddyfile.uat`'s site address is
+    # `https://{$HMIS_UAT_SITE}:8443`, so caddy binds 8443 INSIDE the container; publishing host
+    # 8443 to container 443 pointed at a port nothing was on. Container-side 8443 also keeps the
+    # site address honest for URL generation, because it is the port a client actually connects to.
+    ports: !override ["8443:8443"]
+    # WITHOUT THIS, `Caddyfile.uat`'s `{$HMIS_UAT_SITE}` AND `{$HMIS_UAT_BASIC_AUTH_HASH}` EXPAND TO
+    # EMPTY — caddy reads them from its own process environment and neither the base file nor this
+    # one gave it any. The `:?` form makes compose refuse with the variable's name rather than
+    # starting an edge with no site address and no basic-auth hash, which is the failure that would
+    # have served UAT unauthenticated.
+    environment:
+      HMIS_UAT_SITE: ${HMIS_UAT_SITE:?set HMIS_UAT_SITE in the UAT .env — the address UAT answers on}
+      HMIS_UAT_BASIC_AUTH_HASH: ${HMIS_UAT_BASIC_AUTH_HASH:?set HMIS_UAT_BASIC_AUTH_HASH in the UAT .env — mint with `docker run --rm caddy:2-alpine caddy hash-password --plaintext '<pw>'`}
     deploy:
       resources:
         limits:

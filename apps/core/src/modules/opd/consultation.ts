@@ -2,11 +2,14 @@ import { and, count, desc, eq, gte, lt } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
+import { isNull } from "drizzle-orm";
 import { opdDoctors, opdEncounters, opdPrescriptions, opdQueueEntries, opdQueueSessions } from "../../kernel/db/schema";
 import { loadOpdConfig } from "./config";
 import { getEncounter, moveEncounter } from "./encounters";
 import { OpdError } from "./errors";
-import { admissionRequested, consultationCompleted, consultationStarted, referralIssued } from "./events";
+import {
+  admissionRequested, consultationCompleted, consultationParked, consultationResumed, consultationStarted, referralIssued,
+} from "./events";
 import { doctorForUser } from "./masters";
 import { markDone, markInConsult } from "./queue";
 import { istMonthBounds } from "./time";
@@ -144,6 +147,116 @@ export async function startConsultation(
       },
     }));
     return { encounter, queueEntry };
+  });
+}
+
+/**
+ * ═══ PARK — THE PATIENT WHO STEPPED OUT, AND THE ONE WHO VANISHED (owner report, 2026-09-13) ═══
+ *
+ * *"in between the patient decide to stop and he gets outside for 15 minutes … Since I don't have
+ * hold/park patient option/button, I simply clicked on call next button. Now the issue is that old
+ * patient gets invisible in the dashboard."*
+ *
+ * Both halves were real and they are one defect. `callNext` never refused a doctor with somebody in
+ * the chair, so the previous patient stayed `in_consult` — correctly, their visit is not over — and
+ * **no screen rendered `in_consult` rows**, so a half-seen patient disappeared from the rail with
+ * their note half written and their token still live. Nothing was lost; nothing could be found.
+ *
+ * A PARK IS NOT A STATE MOVE, and that is the whole design:
+ *   · the encounter stays `in_consultation`, so the note, the prescription draft and the vitals
+ *     stay exactly where the doctor left them and `saveConsultNote` keeps accepting writes;
+ *   · the queue entry stays `in_consult`, the value every callable filter already excludes — a
+ *     parked patient who became callable again is precisely the accident this prevents (the
+ *     `bench_state` precedent, one seat upstream, records the same reasoning);
+ *   · so it emits neither a completion nor a second `consultation.started`: the day-report counts
+ *     one consultation, and the wait-time figures measured from the start keep their baseline.
+ *
+ * What changes is one timestamp, and with it what the rail can say: "with you now" against "held
+ * aside since 11:20".
+ */
+export async function parkConsultation(
+  db: Db, actor: Actor, encounterId: string, now: Date = new Date(),
+): Promise<{ encounter: EncounterRow; queueEntry: QueueEntryRow }> {
+  const current = await getEncounter(db, encounterId);
+  if (!current) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
+  const doctor = await requireTreatingDoctor(db, actor, current);
+  if (current.status !== "in_consultation") {
+    throw new OpdError("encounter_state_conflict", `a park needs in_consultation, not ${current.status}`);
+  }
+  return withTx(db, async (tx) => {
+    const entry = (await tx
+      .select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, encounterId))
+      .orderBy(desc(opdQueueEntries.seq)).limit(1))[0];
+    if (!entry) throw new OpdError("unknown_queue_entry", `no queue entry for encounter ${encounterId}`);
+    if (entry.status !== "in_consult") {
+      throw new OpdError("queue_entry_state_conflict", `a park needs an in-consult entry, not ${entry.status}`);
+    }
+    if (entry.parkedAt !== null) throw new OpdError("queue_entry_state_conflict", "this patient is already parked");
+    // The belt, and the same shape every other writer here uses: a second click that lost the race
+    // finds `parked_at` already set and answers the state conflict rather than restamping the clock.
+    const updated = await tx
+      .update(opdQueueEntries)
+      .set({ parkedAt: now, parkedBy: actor.id })
+      .where(and(eq(opdQueueEntries.id, entry.id), eq(opdQueueEntries.status, "in_consult"), isNull(opdQueueEntries.parkedAt)))
+      .returning();
+    if (updated.length === 0) throw new OpdError("queue_entry_state_conflict", "entry moved concurrently");
+    const queueEntry = updated[0]!;
+    const session = (await tx.select().from(opdQueueSessions).where(eq(opdQueueSessions.id, queueEntry.sessionId)))[0]!;
+    await appendEvent(tx, consultationParked.make({
+      actor, patientId: current.patientId, encounterId, correlationId: current.workflowInstanceId,
+      payload: {
+        encounterId, patientId: current.patientId, entryId: queueEntry.id,
+        doctorId: doctor.id, serviceDate: current.serviceDate,
+        sessionId: session.id, roomId: session.roomId, tokenNo: queueEntry.tokenNo,
+        parkedAt: now.toISOString(),
+      },
+    }));
+    return { encounter: current, queueEntry };
+  });
+}
+
+/**
+ * The patient came back. One column write and no re-queue — *"her turn was held, not lost"* — and
+ * `parkedMs` on the event is the honest measure of the fifteen minutes the owner described.
+ *
+ * It is the exact inverse of `parkConsultation` and refuses the same way: an entry that is not
+ * parked has nothing to resume, and saying so is better than silently succeeding on a row whose
+ * consultation never stopped.
+ */
+export async function resumeConsultation(
+  db: Db, actor: Actor, encounterId: string, now: Date = new Date(),
+): Promise<{ encounter: EncounterRow; queueEntry: QueueEntryRow }> {
+  const current = await getEncounter(db, encounterId);
+  if (!current) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
+  const doctor = await requireTreatingDoctor(db, actor, current);
+  if (current.status !== "in_consultation") {
+    throw new OpdError("encounter_state_conflict", `a resume needs in_consultation, not ${current.status}`);
+  }
+  return withTx(db, async (tx) => {
+    const entry = (await tx
+      .select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, encounterId))
+      .orderBy(desc(opdQueueEntries.seq)).limit(1))[0];
+    if (!entry) throw new OpdError("unknown_queue_entry", `no queue entry for encounter ${encounterId}`);
+    const parkedAt = entry.parkedAt;
+    if (parkedAt === null) throw new OpdError("queue_entry_state_conflict", "this patient is not parked");
+    const updated = await tx
+      .update(opdQueueEntries)
+      .set({ parkedAt: null, parkedBy: null })
+      .where(and(eq(opdQueueEntries.id, entry.id), eq(opdQueueEntries.parkedAt, parkedAt)))
+      .returning();
+    if (updated.length === 0) throw new OpdError("queue_entry_state_conflict", "entry moved concurrently");
+    const queueEntry = updated[0]!;
+    const session = (await tx.select().from(opdQueueSessions).where(eq(opdQueueSessions.id, queueEntry.sessionId)))[0]!;
+    await appendEvent(tx, consultationResumed.make({
+      actor, patientId: current.patientId, encounterId, correlationId: current.workflowInstanceId,
+      payload: {
+        encounterId, patientId: current.patientId, entryId: queueEntry.id,
+        doctorId: doctor.id, serviceDate: current.serviceDate,
+        sessionId: session.id, roomId: session.roomId, tokenNo: queueEntry.tokenNo,
+        parkedAt: parkedAt.toISOString(), parkedMs: Math.max(0, now.getTime() - parkedAt.getTime()),
+      },
+    }));
+    return { encounter: current, queueEntry };
   });
 }
 
