@@ -1,10 +1,19 @@
 # The catch-up deploy — production, September 2026
 
-**Written for `origin/main` @ `dc2bedc` on 2026-09-06 (Phase 11i T7). Every number below was
-measured, not remembered.** The owner runs this. No agent deploys production and none ever will:
-the classifier blocks it and `CLAUDE.md` forbids it.
+**Status: EXECUTED 2026-09-14. Production is live on `8fe7a78c`, migrations 78 → 85. See §11 for
+what actually happened** — including the rehearsal that passed, the two near-misses worth knowing,
+and the one `deploy.sh` fix still open.
 
-**Status: NOT YET RUN.** When it is run, date this line and fill in §11.
+Written for `origin/main` @ `dc2bedc` on 2026-09-06 (Phase 11i T7); the run went out at a much later
+tip. The owner runs this. No agent deploys production and none ever will: the classifier blocks it
+and `CLAUDE.md` forbids it.
+
+**IF YOU ARE HERE FOR A LATER DEPLOY: no number on this page is yours.** Re-read production's
+watermark at §1 and the candidate's journal out of the image at §2a. This page once carried an
+acceptance gate stated as an equality against a remembered count, and a `docker run` naming a
+prebuilt image — an operator following it after the September train would have deployed a tip from
+before fourteen merged PRs with every gate reading green. Both lines are gone; the habit that
+produced them is what §1's **MEASURE, DO NOT ASSUME** is for.
 
 ---
 
@@ -15,18 +24,23 @@ an unmerged commissioning branch. The 2 September `c11833d` deploy this runbook 
 written against **is no longer what is running, and its images no longer exist on the daemon.**
 Since then:
 
-> **THE NUMBERS BELOW WERE MEASURED AT `dc2bedc` ON 2026-09-06 AND THE TIP HAS MOVED.** The
-> candidate's journal is now **82**, read out of the image itself (see §2a). Production's `56` was
-> read BEFORE the accidental deploy of 2026-09-06 12:35, which applied migrations of its own — so
-> **`§1` is not a formality on this run: production's watermark must be re-read, not carried down
-> from this table.** A runbook figure is a measurement with a date on it.
+> **THIS RUN IS DONE — see §11. The table below is HISTORY, not instructions.** It was measured at
+> `dc2bedc` on 2026-09-06, and the deploy actually executed on 2026-09-14 at `8fe7a78c`, taking
+> production 78 → 85.
+>
+> **If you are here for a LATER deploy, every number on this page is a measurement with a date on
+> it and none of them is yours.** Re-read production's watermark at §1 and the candidate's journal
+> out of the image at §2a. That is not caution, it is the defect this page shipped with: it once
+> carried an equality gate against a remembered count and a `docker run` naming a prebuilt image,
+> and an operator following it would have deployed a tip from before fourteen merged PRs with every
+> gate reading green.
 
-| | measured at `dc2bedc`, 2026-09-06 — **candidate column refreshed 2026-09-12 at `0960ca6`** |
+| | measured at `dc2bedc`, 2026-09-06 — **superseded by §11, which records the run** |
 |---|---|
 | commits | **82** |
 | migrations applied on production | **56** as of 2026-09-05 — **STALE, re-read it at §1**: the 12:35 deploy on 09-06 applied more |
-| migrations in the candidate's journal | **82** (`0960ca6`, read from the image) |
-| pending | **whatever §1 reads, subtracted from 82** — do not carry a number down from here |
+| migrations in the candidate's journal | read it from the image — it was **85** at `8fe7a78c` on the day |
+| pending | **whatever §1 reads, subtracted from the image's own journal length** — do not carry a number down from here |
 | whole modules production has never had | **pharmacy**, **aerb** |
 | SPA routes | **47 → 53**: six added, **none deleted** |
 | environment keys added | **none** — `docker/prod/.env.prod.example` declares the same keys at the tip, at `399f92c` (what is running) and at `c11833d`; verified against both bases |
@@ -107,8 +121,8 @@ Created 2026-09-06 by 11i T7; if it is missing, `gh label create deploy-blocker 
 
 **MEASURE, DO NOT ASSUME.** This runbook's original `56` was read on 2026-09-05, *before* the
 accidental deploy of 09-06 applied migrations of its own. Whatever this query answers is the
-watermark; subtract it from the candidate's **82** to get what is pending. **Do not carry a number
-down from this page.**
+watermark; subtract it from **the candidate image's own journal length** to get what is pending.
+**Do not carry a number down from this page.** On 2026-09-14 that arithmetic was 85 − 78 = 7.
 
     docker exec hmis-prod-db-1 psql -U hmis -d hmis -qAt \
       -c "select created_at from drizzle.__drizzle_migrations order by created_at desc limit 1"
@@ -148,12 +162,6 @@ copy of production with the candidate's migrator:
     HMIS_DRILL_SERVER_IMAGE="hmis-candidate/server:$SHA" HMIS_DRILL_REHEARSAL=1 \
       bash /opt/hmis-prod/drill/restore-drill.sh
 
-> **ALREADY BUILT FOR `0960ca6`:** `hmis-candidate/server:0960ca6` is on the daemon (2026-09-12,
-> 439 MB), built from `/opt/hmis` clean at `origin/main`, and it declares **82** migrations —
-> verified with
-> `docker run --rm --entrypoint node hmis-candidate/server:0960ca6 -e 'console.log(require("/app/apps/core/drizzle/meta/_journal.json").entries.length)'`.
-> If the tip has not moved, the build line above is done and only the drill line remains.
->
 > **`hmis-candidate/`, not `hmis-prod/`.** Nothing enforces this — a candidate in the prod namespace
 > is *not* rollback-targetable, because `HMIS_DEPLOY_ROLLBACK_TO` requires **all three** of
 > `server`, `web` and `db` at that tag and this builds only `server`, so a rollback to it refuses by
@@ -172,9 +180,12 @@ copy of production with the candidate's migrator:
   — twelve `rehearsing seed-*.js` lines, then `seed:roles`, then
   `config-present: ok=true problems=0`
 - `standup:check all` printing its rows — **its RED lines are a preview of step 3's**
-- `candidate image <tag> declares 82 migrations in its journal` — 82 measured at `0960ca6`
-- `rehearsal: all 82 of the candidate's migrations are applied on the restored copy` — an
-  **equality**, not a `>=`: a half-applied journal must not pass a rehearsal
+- `candidate image <tag> declares N migrations in its journal` — **N is whatever the image says.**
+  This line used to name a number measured at a SHA, and a number in a runbook is a claim about a
+  moment. Read it from the image you just built and compare it to nothing in this file.
+- `rehearsal: all N of the candidate's migrations are applied on the restored copy` — an
+  **equality**, not a `>=`: a half-applied journal must not pass a rehearsal. The equality is the
+  gate; the number is not.
 - `7/7 drop the scratch database` … `DRILL PASSED`
 - `verdict: passed — appending backup.drill_rehearsed (a rehearsal is not a drill)`
 
@@ -368,8 +379,14 @@ And the migration count:
     docker exec hmis-prod-db-1 psql -U hmis -d hmis -qAt \
       -c "select count(*) from drizzle.__drizzle_migrations"
 
-**Expected: `82`** — equal to the candidate's journal at `0960ca6`, the same equality step 2a
-rehearsed. If the tip has moved again, read it from the image rather than from this line.
+**Expected: equal to the candidate image's own journal length** — the same equality step 2a
+rehearsed, and **read from the image, never from this page**:
+
+    docker run --rm --entrypoint node "$CANDIDATE_IMAGE" \
+      -e 'console.log(require("/app/apps/core/drizzle/meta/_journal.json").entries.length)'
+
+*(On 2026-09-14 that was 85 and production went 78 → 85. Recorded in §11, not to be reused: the
+next operator's answer is whatever their image says.)*
 
 ---
 
@@ -410,8 +427,9 @@ three, per repository). There is then no way back through this path; say so imme
 improvising a tag from `:latest`, which is how this step was wrong in the first place.
 
 **What a rollback cannot undo:** the rows in §4's list, written by the new code while it was
-serving. The schema stays at the candidate's 82 migrations — that is the design, and it is why the backout is
-*old code on the new schema* rather than a downgrade.
+serving. The schema stays where the deploy left it — 85 after this run — because these migrations
+are additive. That is the design, and it is why the backout is *old code on the new schema* rather
+than a downgrade.
 
 ---
 
@@ -427,27 +445,67 @@ serving. The schema stays at the candidate's 82 migrations — that is the desig
 
 ---
 
-## 11. Executed on — **NOT YET RUN**
+## 11. Executed — 2026-09-14
 
-Fill this in as you go. A step performed and not recorded is a step nobody can check.
+**This deploy ran and production is live on `8fe7a78c`.** Everything below is what happened, not
+what was expected. The section above it is preserved as the procedure; this is the record.
 
-| step | what you saw | when |
-|---|---|---|
-| (0) tip SHA | | |
-| (0) `deploy-blocker` open PRs | | |
-| (0c) env diff | | |
-| (1) applied count / watermark | | |
-| (2) drill log date | | |
-| (2a) rehearsal: restored = candidate journal | | |
-| (2b) `docker images \| grep 399f92c` shows three rows (no tagging by hand) | | |
-| (2c) 18c bench: refusal, then gaps empty | | |
-| (3) census before — RED rows | | |
-| (4) window declared / deploy 8/8 / gaps empty / mode normal | | |
-| (5) desk told: bookmarks, `/opd/vitals`, UHID series | | |
-| (6) census after / `gst_config` **row by row**, pre-existing rows unmoved / next invoice no. / migrations = 82 | | |
-| (7) #73 closed | | |
-| (8) edge gate | | |
-| (9) rollback needed? | | |
+### Provenance, because a runbook that does not say where its numbers came from is how this page
+### acquired a stale one in the first place
+
+| source | which figures |
+|---|---|
+| **verified in this repository** by the lane that wrote this page | the pinned tip, the journal length at that tip, which migrations are new |
+| **recorded from the deploy transcript** run by the operating session | production's applied count, the edge gate, service count, image tags, backup label, census counts |
+
+Nothing in the second row was re-measured by the author of this page, who held no production
+access. If you need to re-confirm any of it, §1, §6 and §8 are the live queries.
+
+### What ran
+
+| step | what was seen |
+|---|---|
+| (0) tip | **`8fe7a78c`**, CI green on that exact commit. Fourteen PRs landed ahead of it |
+| (2a) **rehearsal** | **PASSED** — `85 == 85` against the restored copy, `backup.drill_rehearsed` appended. **The first migration rehearsal this project has ever run** |
+| (2b) way back | `399f92c` server/web/db — all three still on the daemon, none tagged by hand |
+| recovery point | full backup **`20260914-083547F`**, taken **08:35:54**, minutes before the deploy |
+| (4) deploy | 8/8, all **9** services up, `hmis-prod/server:8fe7a78c` == `:latest` |
+| (1)/(6) migrations | **78 → 85**, watermark **`1789367343208`** |
+| schema after | **7/7** `opd_queue_entries` parked/skip columns · **3/3** formulary release-tier tables |
+| (8) edge gate | HTTP **200** `{"status":"ok","db":"ok","worker":"ok"}` through Caddy on the real host |
+| (3)/(6) census | **55 rows, 29 red, 6 not modelled** — see below |
+| (9) rollback | not needed |
+
+### The census printed 29 red rows and that is correct
+
+`standup:check`'s grammar is **every row is RED until an act makes it green**. 29 red on the day
+after a deploy is a commissioning to-do list, not a fault list — the deploy establishes the G2 rows
+and nothing else, and G3 (master data) and G4 (people) are hospital acts. **Do not read the red as
+a failed deploy**, and do not let anyone roll back a healthy build over it.
+
+### The two things that nearly went wrong, recorded because they will recur
+
+1. **`HMIS_DRILL_REHEARSAL`, not `HMIS_DRILL_REHEARSAL_MODE`.** The plan wrote the longer name. The
+   wrong name does **not** error — it runs an ordinary drill, which asserts `>=` and appends
+   `drill_passed`. That would have produced a green transcript proving nothing, because `>=` also
+   passes a half-applied journal. §2a has the correct name; do not "fix" it.
+2. **The scratch-prefix instruction in `restore-drill.sh`'s own header is aimed at a LANE, not at
+   this operator.** Line 301 takes an *incremental* backup, which needs a prior full in the same
+   repository; a scratch prefix has none and fails. Run here, against production's own repository,
+   the rehearsal restores the same backup the weekly drill does — which is the point.
+
+### The mitigation that was applied, and why it should become code
+
+`/opt/hmis-prod/.env.pgbackrest.pre-deploy-20260913` was taken before the run. `deploy.sh:542`
+derives that file with `cat > "$PGBR_ENV" <<EOF` — **truncate in place** — and
+`PGBACKREST_REPO1_CIPHER_PASS` is the **last line written**, while the code re-mints a passphrase
+whenever it reads that key back empty. A kill inside that window leaves the file without the
+passphrase, and the next deploy mints a new one, at which point **every backup already in the object
+store is unreadable ciphertext, including by us.** The script's own comment calls it "the worst
+failure shape available here" and truncates in place anyway.
+
+The copy fully mitigated it for this run. **The code fix — write `.tmp`, then `mv` — is still open**
+and is the single highest-value change to `deploy.sh`.
 
 ---
 
