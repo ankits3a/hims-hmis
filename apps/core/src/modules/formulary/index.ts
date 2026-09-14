@@ -24,3 +24,6 @@ export type { InteractionPair, ResolvedDrug, SaltRef } from "./resolve";
 /** T7 — staging admission. `searchStaging` may match generously; nothing here resolves anything. */
 export { admitStaging, getStagingRow, rejectStaging, searchStaging } from "./staging";
 export type { StagingRow } from "./staging";
+
+export { searchMedicines } from "./search";
+export type { MedicineHit } from "./search";

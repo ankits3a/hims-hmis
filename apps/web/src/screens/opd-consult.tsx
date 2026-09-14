@@ -23,6 +23,7 @@ import { PaperScreen, ScreenTitle } from "../components/paper-screen";
 import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
 import { DeskModal } from "../components/desk-modal";
+import { DrugField } from "../components/drug-field";
 import { TagField } from "../components/tag-field";
 import { ConsultScribe } from "../components/consult-scribe";
 import { completeComplaint, fetchRegimen, suggestSyndromes } from "../lib/cds-api";
@@ -146,10 +147,6 @@ type WirePrecheck = {
   notices: WireRxNotice[];
   unresolvedLineIndexes: number[];
 };
-type WireMedicine = {
-  id: string; brandName: string; routeClass: string;
-  salts: { saltId: string; strength: string | null }[];
-};
 type WireCoverage = { coverage: number; noticeEnabled: boolean };
 
 
@@ -248,12 +245,11 @@ export function OpdConsult(): React.ReactElement {
    * ever answers 403 the picker is simply empty and free typing is unaffected, which is design
    * law 1 holding at the transport layer too.
    */
-  const formulary = useQuery({
-    queryKey: ["formulary", "medicines"],
-    queryFn: () => api<{ items: WireMedicine[] }>("GET", "/formulary/medicines?active=true"),
-    retry: false,
-  });
-  const medicines = formulary.data?.items ?? [];
+  /*
+    THE WHOLE-CATALOGUE READ IS GONE. It fetched every medicine so a `<select>` could list them;
+    after the owner's catalogue import that is 103,383 rows and ~15 MB on every load of this screen.
+    `DrugField` asks for ten rows when the doctor has typed three letters, and nothing before that.
+  */
   /**
    * DD5 — the client NEVER re-derives the threshold. It reads `noticeEnabled` and nothing else, and
    * a 404 (T8 not deployed yet) means OFF, which is also the correct long-term degrade: silence
@@ -1579,38 +1575,37 @@ export function OpdConsult(): React.ReactElement {
                               The server now cross-checks the brand name too; this is the half that
                               keeps the two honest in the first place.
                             */}
-                            <TextField
-                              name={`lines.${String(i)}.drug`}
-                              label={t("opdConsult.drug")}
-                              onChange={() => {
+                            {/*
+                              ═══ THE TYPEAHEAD REPLACED A `<select>` OF THE WHOLE CATALOGUE ═══
+
+                              Owner, 2026-09-14: autocomplete must work whether or not the co-pilot
+                              is on. It also HAD to replace the picker: after the catalogue import
+                              that dropdown is 103,383 options and a 15 MB payload on every load of
+                              this screen — measured, not feared.
+
+                              Free typing is untouched and always legal (16a design law 1). Picking
+                              a row fills the name AND the id, which is what turns a line into one
+                              the interaction and duplicate checks can reason about; typing over it
+                              clears the id again, exactly as the old field did.
+                            */}
+                            <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor={`rx-drug-${String(i)}`}>
+                              {t("opdConsult.drug")}
+                            </label>
+                            <DrugField
+                              inputId={`rx-drug-${String(i)}`}
+                              value={rxForm.watch(`lines.${i}.drug`)}
+                              placeholder={t("opdConsult.drugPlaceholder")}
+                              onText={(text) => {
+                                rxForm.setValue(`lines.${i}.drug`, text, { shouldDirty: true });
                                 if (rxForm.getValues(`lines.${i}.medicineId`) !== null) {
                                   rxForm.setValue(`lines.${i}.medicineId`, null);
                                 }
                               }}
-                            />
-                            {/*
-                              PLAN 16a T6 — the formulary picker. Free typing in the field above is
-                              untouched and always legal (design law 1); picking fills the name AND
-                              the id, which is what turns a line into a checked one.
-                            */}
-                            <select
-                              data-testid={`rx-formulary-${String(i)}`}
-                              aria-label={t("opdConsult.pickFromFormulary")}
-                              value={rxForm.watch(`lines.${i}.medicineId`) ?? ""}
-                              onChange={(e) => {
-                                const picked = medicines.find((m) => m.id === e.target.value);
-                                rxForm.setValue(`lines.${i}.medicineId`, picked?.id ?? null);
-                                if (picked !== undefined) rxForm.setValue(`lines.${i}.drug`, picked.brandName);
+                              onPick={(hit) => {
+                                rxForm.setValue(`lines.${i}.drug`, hit.name, { shouldDirty: true });
+                                rxForm.setValue(`lines.${i}.medicineId`, hit.id);
                               }}
-                              className="in" style={{ width: "100%", height: 32, fontSize: 12 }}
-                            >
-                              <option value="">{t("opdConsult.pickFromFormulary")}</option>
-                              {medicines.map((m) => (
-                                <option key={m.id} value={m.id}>
-                                  {m.salts.length > 0 ? `${m.brandName} — ${String(m.salts.length)}` : m.brandName}
-                                </option>
-                              ))}
-                            </select>
+                            />
                             {/*
                               DD5 — the hint renders ONLY when the server says coverage is high
                               enough. Below the threshold it would fire on almost every line and

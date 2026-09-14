@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  boolean, check, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex,
+  boolean, check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -74,6 +74,22 @@ export const formularySalts = pgTable(
     aliases: jsonb("aliases").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     drugClass: text("drug_class"),
     atcCode: text("atc_code"),
+    /** The bundle's `substance_sctid` — see `formulary_medicines.source_ref`. */
+    sourceRef: text("source_ref"),
+    /**
+     * ═══ HOW MANY PRODUCTS THE MARKET MAKES OF THIS MOIETY — THE TYPEAHEAD'S RANKING SIGNAL ═══
+     *
+     * Measured, and it is why this column exists rather than a query: ranking `amox` by trigram
+     * similarity put **Amoxapine** (an antidepressant, 14 products) above **Amoxicillin** (3,830),
+     * because the shorter word scores higher. A doctor typing three letters means the molecule the
+     * market is built around. Computing it per keystroke costs 2 SECONDS over 142,759 composition
+     * rows; stored, it is free.
+     *
+     * DERIVED AND OWNED BY THE IMPORT — refreshed whenever the catalogue is loaded, never edited by
+     * hand. It is a popularity proxy and nothing more: it must never decide what is SAFE, only what
+     * is offered first.
+     */
+    productCount: integer("product_count").notNull().default(0),
     active: boolean("active").notNull().default(true),
     ...auditColumns,
   },
@@ -81,6 +97,8 @@ export const formularySalts = pgTable(
     // Case-insensitive uniqueness: "Amoxicillin" and "amoxicillin" are one moiety, and two rows
     // for one moiety would split every check that groups by it.
     uniqueIndex("formulary_salts_name_lower_ux").using("btree", sql`lower(${t.name})`),
+    /** The same trigram instrument for the moiety: a doctor searching `amox` must reach the salt. */
+    index("formulary_salts_name_trgm_idx").using("gin", sql`lower(${t.name}) gin_trgm_ops`),
   ],
 );
 
@@ -99,6 +117,31 @@ export const formularyMedicines = pgTable(
     strengthLabel: text("strength_label"),
     /** 'H' | 'H1' | 'X' | 'OTC' — the Drugs and Cosmetics Rules schedule, null when unclassified. */
     scheduleFlag: text("schedule_flag"),
+    /**
+     * ═══ THE HOSPITAL'S OWN CATALOGUE CODE (owner's bundle, 2026-09-14) — `D0230` ═══
+     *
+     * What the doctor's autocomplete shows beside the name and what a storekeeper reads off a
+     * shelf. It is the bundle's `hmis_code`, and it is NOT an identity: only the 10,303 generics
+     * carry one, a branded row does not, and nothing here may assume it is present or unique.
+     */
+    code: text("code"),
+    /**
+     * ═══ THE TYPEAHEAD'S SORT KEY, DENORMALISED ONTO THE PRODUCT ═══
+     *
+     * The largest `product_count` among this row's moieties. It belongs here rather than being
+     * joined at query time for one measured reason: ranking through a correlated subquery over
+     * 142,759 composition rows costs **800 ms per keystroke**, and as a plain column read it costs
+     * nothing. Set by the catalogue import, beside the count it is derived from.
+     *
+     * A popularity proxy, never a safety signal — it decides what is offered FIRST and nothing else.
+     */
+    saltRank: integer("salt_rank").notNull().default(0),
+    /**
+     * WHERE THIS ROW CAME FROM, so a re-import updates rather than duplicates: the SNOMED CT
+     * concept id from the owner's bundle (`generic_sctid` or `medicine_sctid`). Null on every row
+     * a human entered through the masters screen, which is the honest answer for those.
+     */
+    sourceRef: text("source_ref"),
     /** Provenance back-link, not a foreign key — see the header. */
     stagingId: text("staging_id"),
     active: boolean("active").notNull().default(true),
@@ -106,6 +149,15 @@ export const formularyMedicines = pgTable(
   },
   (t) => [
     uniqueIndex("formulary_medicines_brand_lower_ux").using("btree", sql`lower(${t.brandName})`),
+    /*
+      THE DOCTOR TYPES `par` AND MEANS A WORD THAT STARTS `par`, but they also type `clav` and mean
+      Augmentin — so the picker matches anywhere in the name, and an anywhere-match cannot use the
+      btree above. `gin_trgm_ops` is the same instrument migration 0021 installed for patient names
+      and 0024 for UHIDs, now over a catalogue of a hundred thousand rows where it stops being a
+      nicety: a leading-wildcard LIKE across that table is a sequential scan on every keystroke.
+    */
+    index("formulary_medicines_brand_trgm_idx").using("gin", sql`lower(${t.brandName}) gin_trgm_ops`),
+    index("formulary_medicines_code_idx").using("btree", sql`lower(${t.code})`),
     check("formulary_medicines_route_class_ck", sql`${t.routeClass} in ('systemic', 'topical')`),
     check(
       "formulary_medicines_schedule_flag_ck",
@@ -123,7 +175,16 @@ export const formularyMedicineSalts = pgTable(
     /** Per-salt strength, e.g. '500 mg' on the amoxicillin row of an Augmentin 625. */
     strength: text("strength"),
   },
-  (t) => [primaryKey({ columns: [t.medicineId, t.saltId] })],
+  (t) => [
+    primaryKey({ columns: [t.medicineId, t.saltId] }),
+    /*
+      THE PRIMARY KEY LEADS WITH `medicine_id`, so "which products contain this moiety" — the
+      direction the drug typeahead asks in — had no index at all and scanned all 142,759 rows on
+      every keystroke. Measured in the plan, not guessed: `Seq Scan on formulary_medicine_salts
+      (rows=142759)` inside the hash join.
+    */
+    index("formulary_medicine_salts_salt_idx").on(t.saltId),
+  ],
 );
 
 /** MOIETY-level interaction pairs. Ordered, unique, provenanced, optionally route-scoped. */
