@@ -26,3 +26,6 @@ export { MAX_SUGGESTIONS, MIN_QUERY_CHARS, suggestDrugs } from "./suggest";
 export type { DrugSuggestion } from "./suggest";
 export { admitStaging, getStagingRow, rejectStaging, searchStaging } from "./staging";
 export type { StagingRow } from "./staging";
+
+export { searchMedicines } from "./search";
+export type { MedicineHit } from "./search";

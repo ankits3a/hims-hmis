@@ -10,6 +10,8 @@ import {
   addInteraction, addMedicine, addSalt, listInteractions, listMedicines, listSalts,
   updateInteraction, updateMedicine, updateSalt,
 } from "./masters";
+import { searchMedicines } from "./search";
+import type { MedicineHit } from "./search";
 import { admitStaging, getStagingRow, rejectStaging, searchStaging } from "./staging";
 import { MAX_SUGGESTIONS, suggestDrugs } from "./suggest";
 import type { DrugSuggestion } from "./suggest";
@@ -54,6 +56,7 @@ function parsed<T>(schema: z.ZodType<T>, body: unknown): T {
 
 /** Query flags arrive as strings; never z.coerce.boolean() — it reads "false" as true (§3.19). */
 const flagQuery = z.enum(["true", "false"]).optional();
+const medicineSearchQuery = z.object({ q: z.string().max(120), limit: z.string().max(3).optional() });
 const activeQuery = z.object({ active: flagQuery });
 
 /**
@@ -166,6 +169,24 @@ export class FormularyController {
   async suggest(@Query() query: unknown): Promise<{ items: DrugSuggestion[] }> {
     const q = parsed(suggestQuery, query);
     return { items: await suggestDrugs(this.db, q.q, { limit: q.limit }) };
+  }
+
+  /**
+   * ═══ THE TYPEAHEAD — AND IT MUST SIT ABOVE `@Get("medicines")` ═══
+   *
+   * Nest matches in declaration order, so a literal segment declared after `medicines` would still
+   * be reached, but the pair reads as one thing here: `medicines` is the WHOLE catalogue and is now
+   * the wrong instrument for a screen — 103,383 rows, 15 MB, measured after the owner's bundle
+   * landed. Everything interactive uses this route and takes ten rows.
+   *
+   * `formulary.read` and no new grant: the doctor has held it since 16a, precisely so the consult
+   * screen could name a medicine.
+   */
+  @RequirePermission("formulary.read", "hospital")
+  @Get("medicines/search")
+  async searchMedicinesRoute(@Query() query: unknown): Promise<{ items: MedicineHit[] }> {
+    const q = parsed(medicineSearchQuery, query);
+    return { items: await searchMedicines(this.db, q.q, q.limit === undefined ? 10 : Number(q.limit)) };
   }
 
   @RequirePermission("formulary.read", "hospital")

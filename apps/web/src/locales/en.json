@@ -711,6 +711,7 @@
     "queueRail": "The queue",
     "noPatientTitle": "Nobody is in the chair",
     "noPatientBody": "Call the next token, or press Enter. The queue on the left is live.",
+    "drugPlaceholder": "type 3 letters — e.g. par, amox, clav",
     "complaintPlaceholder": "type a symptom, press Enter to add it",
     "complaintHint": "Enter adds exactly what you typed · → completes the suggestion · × removes a tag",
     "addAllergy": "+ Add allergy",

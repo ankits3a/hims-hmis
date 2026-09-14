@@ -19,11 +19,11 @@ import { useRealtime } from "../lib/realtime";
 import { RxPrint } from "../components/rx-print";
 import { flagTone, provisionalResultsForEncounter, resultsForEncounter } from "../lib/lab-api";
 import { CheckboxField, FormKit, SelectField, TextField } from "../components/form-kit";
-import { DrugCombobox } from "../components/drug-combobox";
 import { PaperScreen, ScreenTitle } from "../components/paper-screen";
 import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
 import { DeskModal } from "../components/desk-modal";
+import { DrugField } from "../components/drug-field";
 import { TagField } from "../components/tag-field";
 import { ConsultScribe } from "../components/consult-scribe";
 import { completeComplaint, fetchRegimen, suggestSyndromes } from "../lib/cds-api";
@@ -241,10 +241,20 @@ export function OpdConsult(): React.ReactElement {
 
   const config = useQuery({ queryKey: ["opd", "config"], queryFn: () => api<WireOpdConfig>("GET", "/opd/config") });
   /*
-   * PLAN 16a T6's whole-formulary fetch is GONE. It pulled every branded medicine, unpaginated,
-   * on every consultation — safe only while the table was empty. The drug field now queries
-   * `/formulary/suggest` for what the doctor is actually typing (`DrugCombobox`), and design law 1
-   * still holds at the transport layer: if that request fails, the field is a plain text box.
+   * PLAN 16a T6's whole-formulary fetch is GONE. It pulled every branded medicine, unpaginated, on
+   * every consultation — safe only while the table was empty. After the owner's catalogue import
+   * that is 103,383 rows and ~15 MB on every load of this screen: measured, not feared.
+   *
+   * TWO SEARCH ROUTES NOW EXIST AND THIS SCREEN USES ONE. `/formulary/suggest` (#186) reads the
+   * NRCeS generic tier and deliberately fills the NAME only; `/formulary/medicines/search` reads
+   * the imported catalogue — brands included — and fills the name AND the `medicineId` that the
+   * interaction, duplicate and allergy checks need in order to say anything at all. The owner's
+   * ruling of 2026-09-14 is one drug list feeding one safety layer, so the field is `DrugField`
+   * over the second. `DrugCombobox` and its suite stay in the tree, unwired, until that
+   * duplication is settled deliberately rather than by a rebase.
+   *
+   * Design law 1 still holds at the transport layer: if that request fails, the field is a plain
+   * text box and free typing is legal.
    */
   /**
    * DD5 — the client NEVER re-derives the threshold. It reads `noticeEnabled` and nothing else, and
@@ -1576,11 +1586,36 @@ export function OpdConsult(): React.ReactElement {
                               `modules/formulary/suggest.ts` for why that is the safe choice while
                               the catalogue is uncurated.
                             */}
-                            <DrugCombobox
-                              name={`lines.${String(i)}.drug`}
-                              medicineIdName={`lines.${String(i)}.medicineId`}
-                              label={t("opdConsult.drug")}
-                              testId={`rx-drug-${String(i)}`}
+                            {/*
+                              ═══ THE TYPEAHEAD REPLACED A `<select>` OF THE WHOLE CATALOGUE ═══
+
+                              Owner, 2026-09-14: autocomplete must work whether or not the co-pilot
+                              is on. It also HAD to replace the picker: after the catalogue import
+                              that dropdown is 103,383 options and a 15 MB payload on every load of
+                              this screen — measured, not feared.
+
+                              Free typing is untouched and always legal (16a design law 1). Picking
+                              a row fills the name AND the id, which is what turns a line into one
+                              the interaction and duplicate checks can reason about; typing over it
+                              clears the id again, exactly as the old field did.
+                            */}
+                            <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor={`rx-drug-${String(i)}`}>
+                              {t("opdConsult.drug")}
+                            </label>
+                            <DrugField
+                              inputId={`rx-drug-${String(i)}`}
+                              value={rxForm.watch(`lines.${i}.drug`)}
+                              placeholder={t("opdConsult.drugPlaceholder")}
+                              onText={(text) => {
+                                rxForm.setValue(`lines.${i}.drug`, text, { shouldDirty: true });
+                                if (rxForm.getValues(`lines.${i}.medicineId`) !== null) {
+                                  rxForm.setValue(`lines.${i}.medicineId`, null);
+                                }
+                              }}
+                              onPick={(hit) => {
+                                rxForm.setValue(`lines.${i}.drug`, hit.name, { shouldDirty: true });
+                                rxForm.setValue(`lines.${i}.medicineId`, hit.id);
+                              }}
                             />
                             {/*
                               DD5 — the hint renders ONLY when the server says coverage is high

@@ -602,6 +602,12 @@ describe("OpdConsult", () => {
       },
     ],
   };
+  /* The typeahead's own shape — ten rows for a prefix, not the catalogue. */
+  const DRUG_HITS = {
+    items: [
+      { id: "m-warf", name: "Warf 5", form: "Oral tablet", strength: "5 mg", code: "D0001", routeClass: "systemic", salts: ["Warfarin sodium"], prefix: true },
+    ],
+  };
   const SEVERE_HIT = {
     severity: "severe", lineIndex: 0, note: "bleeding risk — avoid or monitor INR closely",
     // C5 — the client echoes this on the override so the server knows which hit was cleared.
@@ -613,7 +619,8 @@ describe("OpdConsult", () => {
     let rxCalls = 0;
     mockRoutes({
       ...baseRoutes(),
-      "GET /api/formulary/suggest": { status: 200, body: SUGGEST },
+      "GET /api/formulary/medicines": { status: 200, body: FORMULARY },
+      "GET /api/formulary/medicines/search": { status: 200, body: DRUG_HITS },
       "GET /api/formulary/coverage": { status: 200, body: { coverage: 0.92, noticeEnabled: true } },
       "POST /api/opd/visits/enc-1/rx-precheck": {
         status: 201,
@@ -638,10 +645,12 @@ describe("OpdConsult", () => {
     await user.click(screen.getByRole("tab", { name: "Prescription" }));
     await screen.findByLabelText("Drug");
 
-    // Picking from the formulary fills the NAME. It no longer carries an id — see below.
-    await user.type(screen.getByTestId("rx-drug-0"), "warfarin");
-    await user.click(await screen.findByTestId("rx-drug-0-opt-0"));
-    expect(screen.getByLabelText("Drug")).toHaveValue("Warfarin sodium 5 mg oral tablet");
+    // Picking from the formulary fills the NAME and carries the id (DD9).
+    /* THE PICKER IS A TYPEAHEAD SINCE 2026-09-14 — a `<select>` of the whole catalogue became
+       103,383 options once the owner's bundle landed. Three letters, then tap the row. */
+    await user.type(screen.getByLabelText("Drug"), "warf");
+    await user.click(await screen.findByTestId("rx-drug-0-hit-m-warf"));
+    expect(screen.getByLabelText("Drug")).toHaveValue("Warf 5");
     await user.type(screen.getByLabelText("Dose"), "1 tab");
     await user.click(screen.getByRole("button", { name: "Issue & print" }));
 
@@ -696,7 +705,8 @@ describe("OpdConsult", () => {
   it("16a: starting the next patient clears every trace of the last one's checks", async () => {
     mockRoutes({
       ...baseRoutes(),
-      "GET /api/formulary/suggest": { status: 200, body: SUGGEST },
+      "GET /api/formulary/medicines": { status: 200, body: FORMULARY },
+      "GET /api/formulary/medicines/search": { status: 200, body: DRUG_HITS },
       "GET /api/formulary/coverage": { status: 200, body: { coverage: 0.92, noticeEnabled: true } },
       "POST /api/opd/visits/enc-1/rx-precheck": {
         status: 201,
@@ -711,8 +721,10 @@ describe("OpdConsult", () => {
     await openPanel(user);
 
     await user.click(screen.getByRole("tab", { name: "Prescription" }));
-    await user.type(screen.getByTestId("rx-drug-0"), "warfarin");
-    await user.click(await screen.findByTestId("rx-drug-0-opt-0"));
+    /* THE PICKER IS A TYPEAHEAD SINCE 2026-09-14 — a `<select>` of the whole catalogue became
+       103,383 options once the owner's bundle landed. Three letters, then tap the row. */
+    await user.type(screen.getByLabelText("Drug"), "warf");
+    await user.click(await screen.findByTestId("rx-drug-0-hit-m-warf"));
     await user.type(screen.getByLabelText("Dose"), "1 tab");
     await user.click(screen.getByRole("button", { name: "Issue & print" }));
 
@@ -764,7 +776,8 @@ describe("OpdConsult", () => {
     };
     mockRoutes({
       ...baseRoutes(),
-      "GET /api/formulary/suggest": { status: 200, body: SUGGEST },
+      "GET /api/formulary/medicines": { status: 200, body: FORMULARY },
+      "GET /api/formulary/medicines/search": { status: 200, body: DRUG_HITS },
       // T8 is not deployed in this scenario: a 404 means the hint stays OFF, which is also the
       // correct long-term degrade (DD5).
       "GET /api/formulary/coverage": { status: 404, body: { message: "not found" } },
@@ -1025,7 +1038,8 @@ describe("OpdConsult", () => {
   it("CLOSE PASS 2: Ctrl+Enter does not complete the visit while the override dialog is open", async () => {
     mockRoutes({
       ...baseRoutes(),
-      "GET /api/formulary/suggest": { status: 200, body: SUGGEST },
+      "GET /api/formulary/medicines": { status: 200, body: FORMULARY },
+      "GET /api/formulary/medicines/search": { status: 200, body: DRUG_HITS },
       "POST /api/opd/visits/enc-1/prescriptions": {
         status: 409,
         body: { statusCode: 409, code: "allergy_conflict", message: "allergy", detail: { matches: [{ lineIndex: 0, substance: "Penicillin" }] } },
@@ -1058,7 +1072,8 @@ describe("OpdConsult", () => {
   it("CLOSE PASS 2: typing inside a dialog disarms the two-stage Escape — one press afterwards does not release the patient", async () => {
     mockRoutes({
       ...baseRoutes(),
-      "GET /api/formulary/suggest": { status: 200, body: SUGGEST },
+      "GET /api/formulary/medicines": { status: 200, body: FORMULARY },
+      "GET /api/formulary/medicines/search": { status: 200, body: DRUG_HITS },
       "POST /api/opd/visits/enc-1/prescriptions": {
         status: 409,
         body: { statusCode: 409, code: "allergy_conflict", message: "allergy", detail: { matches: [{ lineIndex: 0, substance: "Penicillin" }] } },
@@ -1989,5 +2004,103 @@ describe("OpdConsult — the complaint tags and the allergy the doctor learns in
       .toEqual({ substance: "Penicillin", severity: "severe", source: "consult" });
     // and the chip the guardrails read is on screen without a reload
     expect(await screen.findByTestId("allergy-chip-al-9")).toHaveTextContent("Penicillin");
+  });
+});
+
+/**
+ * ═══ THE DRUG FIELD (owner, 2026-09-14) ═══
+ *
+ * *"even though the doctor doesn't enable AI suggestion in the prescription tab, auto complete will
+ * work if doctor starts to type drug name … 'par' → Paracetamol …"*
+ */
+describe("OpdConsult — the drug typeahead", () => {
+  const PAR = {
+    items: [
+      { id: "m-pcm500", name: "Paracetamol 500 mg oral capsule", form: "Oral capsule", strength: "500 mg", code: "D7611", routeClass: "systemic", salts: ["Paracetamol"], prefix: true },
+      { id: "m-pcm1g", name: "Paracetamol 1 g oral tablet", form: "Oral tablet", strength: "1 g", code: "D10146", routeClass: "systemic", salts: ["Paracetamol"], prefix: true },
+    ],
+  };
+  function drugRoutes(over: Record<string, Handler> = {}): Record<string, Handler> {
+    return {
+      ...baseRoutes(),
+      "GET /api/formulary/medicines/search": { status: 200, body: PAR },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+      ...over,
+    };
+  }
+
+  it("D1: three letters fetch the catalogue — two do not, so it is not called per keystroke", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+
+    await user.type(screen.getByLabelText("Drug"), "pa");
+    await waitFor(() => { expect(callsTo("GET", "/api/formulary/medicines/search")).toHaveLength(0); });
+
+    await user.type(screen.getByLabelText("Drug"), "r");
+    expect(await screen.findByTestId("rx-drug-0-hits")).toBeInTheDocument();
+    expect(callsTo("GET", "/api/formulary/medicines/search").at(-1)!.url).toContain("q=par");
+  });
+
+  it("D2: the row shows the moiety, strength and the hospital's own code — not just a name", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(screen.getByLabelText("Drug"), "par");
+
+    const row = await screen.findByTestId("rx-drug-0-hit-m-pcm500");
+    expect(row).toHaveTextContent("Paracetamol 500 mg oral capsule");
+    expect(row).toHaveTextContent("Paracetamol · 500 mg · D7611");
+    expect(row).toHaveTextContent("Oral capsule");
+  });
+
+  it("D3: tapping a row fills the name AND the id — which is what makes the line checkable", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(screen.getByLabelText("Drug"), "par");
+    await user.click(await screen.findByTestId("rx-drug-0-hit-m-pcm1g"));
+
+    expect(screen.getByLabelText("Drug")).toHaveValue("Paracetamol 1 g oral tablet");
+    // the list closes, and the id rides the line into the prescription POST
+    expect(screen.queryByTestId("rx-drug-0-hits")).toBeNull();
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions").length).toBeGreaterThan(0); });
+    const body = bodiesOf("POST", "/api/opd/visits/enc-1/prescriptions")[0] as { lines: { medicineId: string | null }[] };
+    expect(body.lines[0]!.medicineId).toBe("m-pcm1g");
+  });
+
+  /** 16a design law 1: free typing is always legal, and typing over a pick un-links it. */
+  it("D4: typing over a chosen drug clears its id — the line stops claiming to be that medicine", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(screen.getByLabelText("Drug"), "par");
+    await user.click(await screen.findByTestId("rx-drug-0-hit-m-pcm500"));
+    await user.clear(screen.getByLabelText("Drug"));
+    await user.type(screen.getByLabelText("Drug"), "Tab Crocin 650 (hand written)");
+
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions").length).toBeGreaterThan(0); });
+    const body = bodiesOf("POST", "/api/opd/visits/enc-1/prescriptions")[0] as { lines: { drug: string; medicineId: string | null }[] };
+    expect(body.lines[0]!.drug).toBe("Tab Crocin 650 (hand written)");
+    expect(body.lines[0]!.medicineId).toBeNull();
+  });
+
+  it("D5: the screen no longer fetches the whole catalogue — 103,383 rows is not a dropdown", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(screen.getByLabelText("Drug"), "par");
+    await screen.findByTestId("rx-drug-0-hits");
+
+    expect(callsTo("GET", "/api/formulary/medicines")).toHaveLength(0);
   });
 });
