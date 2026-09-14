@@ -228,7 +228,24 @@ describe("lab results — verification, SoD and reflex (17b T6)", () => {
   });
 
   it("A4b: no consent ⇒ no reflex; and a re-examined trigger does not place it twice", async () => {
-    await activateTshReflex(db);
+    /*
+      ═══ THE REFLEX TARGET IS REPOINTED, AND THAT IS WHAT MAKES THIS TEST STABLE ═══
+
+      The catalogue's rule is `TSH > 6.0 adds TFT`, and leg 2 below orders **TFT** — so the panel's
+      own TSH reflexed to a second TFT on the same visit. The owner ruled on 2026-09-13 that a
+      hospital must not charge the same service twice in one visit, so once FD-27's duplicate-invoice
+      guard lands that reflex is correctly REFUSED and this leg would assert one thing before that
+      merge and another after it.
+
+      Pointing the rule at a service this visit has not billed makes the leg say the same thing in
+      both worlds, which is what lets it sit on `main` ahead of the guard. It also happens to be the
+      clinically sensible shape: a panel reflexing to a DIFFERENT test.
+
+      The catalogue rule itself is left alone and the finding is recorded in
+      `verify.test.helpers.ts` — whether `TSH -> TFT` should be scoped to standalone TSH orders is
+      the lab head's call, not a fixture's.
+    */
+    await activateTshReflex(db, "CRP");
 
     /** Leg 1 — the rule fires and the ITEM carries no order-time consent. */
     const noConsent = await resultable(["TSH"], { reflexConsent: false });
@@ -247,7 +264,9 @@ describe("lab results — verification, SoD and reflex (17b T6)", () => {
     await verifyResult(db, fx.pathologist.actor, fx.decls, { resultId: tsh.resultId }, DAY);
     const second = await verifyResult(db, fx.pathologist.actor, fx.decls, { resultId: ft3.resultId }, DAY);
     expect(second.reflex).toEqual([]);
+    /** Placed ONCE by the TSH's signature, and NOT again when a second analyte of the panel is signed. */
     expect(await eventsNamed("lab.reflex_added")).toHaveLength(1);
+    expect(await eventsNamed("lab.reflex_refused")).toHaveLength(0);
   });
 
   it("an INACTIVE rule places nothing, whatever the value — the catalogue ships all three off", async () => {

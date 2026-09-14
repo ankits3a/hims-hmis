@@ -5,11 +5,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../lib/api";
-import { isInteractionHit, opdErrorMessage, todayIst } from "../lib/opd-api";
+import { SKIP_REASONS, isInteractionHit, opdErrorMessage, todayIst } from "../lib/opd-api";
 import type {
   WireDoctor, WireEncounter, WireOpdConfig, WirePatientSummary, WirePrescription, WireQueueEntry,
   WireQueueEntryView, WireQueueView, WireRxPrint, WireTimelineItem, WireVitals,
-  WireDuplicateHit, WireInteractionHit, WireRxNotice,
+  WireDuplicateHit, WireInteractionHit, WireRxNotice, WireSkipReason,
   WireRxHistoryItem, WireVitalsHistoryItem,
   WireAdvisedTest, WirePriceListRow,
 } from "../lib/opd-api";
@@ -172,6 +172,10 @@ export function OpdConsult(): React.ReactElement {
 
   const [active, setActive] = useState<Active | null>(null);
   const [tab, setTab] = useState<"note" | "rx" | "history">("note");
+  // THE SKIP DIALOG — open on the entry being skipped, because a reason belongs to one token.
+  const [skipping, setSkipping] = useState<WireQueueEntryView | null>(null);
+  const [skipReason, setSkipReason] = useState<WireSkipReason>("absent");
+  const [skipNote, setSkipNote] = useState("");
   const [note, setNote] = useState<NoteState>(EMPTY_NOTE);
   const [noteSaved, setNoteSaved] = useState(false);
   const [noteError, setNoteError] = useState<string | null>(null);
@@ -244,6 +248,31 @@ export function OpdConsult(): React.ReactElement {
   const view: WireQueueView | null = queue.data !== undefined && queue.data.session !== null ? queue.data : null;
   const current = view?.current ?? null;
   const ordered = view?.ordered ?? [];
+  /*
+    ═══ THE ROWS THE RAIL NEVER RENDERED (owner report, 2026-09-13) ═══
+
+    `inConsult` has been on this wire since the queue view existed and NOTHING read it. So a doctor
+    who called the next token while somebody was still with them — the only way to move on, there
+    being no park button — watched that patient disappear: the encounter was open, the token was
+    live, the half-written note was on the server, and no screen in the building showed a way back
+    to them. Both halves of the fix meet here. The list below renders these rows, and each one is a
+    door back into the consultation.
+  */
+  const inConsult = view?.inConsult ?? [];
+  /*
+    THE TOKENS THAT FELL OUT. Three skips and a patient is `left` — and `left` was rendered by no
+    screen in this application, so the owner's own afternoon produced a patient whose ENTRY said she
+    had gone and whose VISIT said she was waiting, callable by nobody and findable by nobody. The
+    rail carries them now, because the doctor who lost her is the one standing next to her.
+  */
+  const leftQueue = view?.left ?? [];
+  /*
+    A ROW IS HELD ONLY IF THE SERVER SAID SO, IN WORDS. The field is typed `string | null`, and the
+    one moment it is neither is the deploy window: a tab talking to the previous build gets a queue
+    view with no `parkedAt` at all, and `!== null` would read every patient in consultation as
+    parked — a wrong statement about where a patient is, on the screen that answers that question.
+  */
+  const parkedSince = (e: WireQueueEntryView): string | null => (typeof e.parkedAt === "string" ? e.parkedAt : null);
 
   // D6: a frame on my queue topic (or on the open encounter) is a HINT to re-read.
   const topics = doctorId === ""
@@ -412,14 +441,50 @@ export function OpdConsult(): React.ReactElement {
     }
   };
 
-  const skipCurrent = async (): Promise<void> => {
+  /**
+   * ═══ SKIP ASKS WHY, AND THAT IS THE WHOLE CHANGE HERE (owner, 2026-09-13) ═══
+   *
+   * *"doctors do not have any input box or pre-identified reason to select … it should be
+   * auditable. right?"* The button no longer posts: it opens the dialog on the token in the chair,
+   * and the post happens when a reason has been picked. The default is `absent` because that is
+   * what a skip usually means — a default that is right most of the time is what keeps a reason
+   * field from becoming a shrug — and every other reason is one click away.
+   */
+  const skipCurrent = (): void => {
     if (current === null) return;
     setQueueError(null);
+    setSkipReason("absent");
+    setSkipNote("");
+    setSkipping(current);
+  };
+
+  const confirmSkip = async (): Promise<void> => {
+    if (skipping === null) return;
+    setQueueError(null);
     try {
-      await api("POST", `/opd/queues/entries/${current.id}/skip`);
+      await api("POST", `/opd/queues/entries/${skipping.id}/skip`, {
+        reason: skipReason, note: skipNote.trim() === "" ? null : skipNote.trim(),
+      });
+      setSkipping(null);
       await invalidateQueue();
     } catch (e) {
       setQueueError(opdErrorMessage(e));
+      setSkipping(null); // the refusal belongs on the rail, where the token is
+    }
+  };
+
+  /**
+   * THE WAY BACK FROM A MIS-CLICK. It restores the turn, not merely the row — the server writes back
+   * the `eligible_at` the patient had — so a patient skipped by accident is in front of the walk-in
+   * who arrived while the doctor was clicking, which is where they were.
+   */
+  const undoSkipOf = async (e: WireQueueEntryView): Promise<void> => {
+    setQueueError(null);
+    try {
+      await api("POST", `/opd/queues/entries/${e.id}/undo-skip`);
+      await invalidateQueue();
+    } catch (err) {
+      setQueueError(opdErrorMessage(err));
     }
   };
 
@@ -433,6 +498,48 @@ export function OpdConsult(): React.ReactElement {
       await invalidateQueue();
     } catch (e) {
       setQueueError(opdErrorMessage(e));
+    }
+  };
+
+  /**
+   * PARK — *"the patient decide to stop and he gets outside for 15 minutes"* (owner, 2026-09-13).
+   *
+   * The panel is cleared because the chair is empty, and NOTHING ELSE MOVES: the encounter stays in
+   * consultation on the server, so the note, the prescription lines and the advised tests the
+   * doctor has already saved are exactly where they were when `openEntry` brings them back.
+   * `resetPanel` is the same call `startConsult` makes, for the same reason — unsaved 16a state
+   * belongs to the patient it was typed for (C7).
+   */
+  const parkActive = async (): Promise<void> => {
+    if (active === null) return;
+    setQueueError(null);
+    try {
+      await api("POST", `/opd/visits/${active.encounterId}/consult/park`);
+      resetPanel();
+      setActive(null);
+      await invalidateQueue();
+    } catch (e) {
+      setQueueError(opdErrorMessage(e));
+    }
+  };
+
+  /**
+   * THE DOOR BACK IN, and it is ONE door for both kinds of row on purpose. A parked patient is
+   * resumed on the server first (the hold is a fact, and clearing it is the server's act); a
+   * patient who is merely in consultation — because the doctor called the next token without
+   * parking, which is exactly how the report was filed — needs no write at all, only the panel.
+   * A screen that offered two different buttons would be asking the doctor to know which of the two
+   * states they are looking at before they can get back to their patient.
+   */
+  const openEntry = async (e: WireQueueEntryView): Promise<void> => {
+    setQueueError(null);
+    try {
+      if (parkedSince(e) !== null) await api("POST", `/opd/visits/${e.encounter.id}/consult/resume`);
+      resetPanel();
+      setActive({ encounterId: e.encounter.id, patientId: e.encounter.patientId, summary: e.patient });
+      await invalidateQueue();
+    } catch (err) {
+      setQueueError(opdErrorMessage(err));
     }
   };
 
@@ -866,7 +973,30 @@ export function OpdConsult(): React.ReactElement {
     );
   }
 
-  const queueRow = (e: WireQueueEntryView, isCurrent: boolean): React.ReactElement => (
+  /**
+   * FOUR KINDS OF ROW, ONE LIST, in the order the doctor's attention travels: the token that has
+   * been called, then the people already in consultation (in the chair, or held), then the queue.
+   *
+   * `called` keeps the green bar it has always had — the row a doctor finds with their peripheral
+   * vision. A held row is GOLD rather than green or red: it is neither the patient in front of them
+   * nor an alarm, it is a thing left half-done, and the palette already uses gold for exactly that.
+   */
+  const parkedMinutes = (iso: string): number => Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 60_000));
+
+  const queueRow = (e: WireQueueEntryView, mode: "called" | "seated" | "parked" | "waiting" | "left"): React.ReactElement => {
+    const isCurrent = mode === "called";
+    const isActive = active !== null && e.encounterId === active.encounterId;
+    const held = mode === "parked" ? parkedMinutes(parkedSince(e) ?? new Date().toISOString()) : 0;
+    // A skip counts as STANDING only while the token can still be given its turn back: once it is
+    // called again the mark is history, and the server refuses the undo for the same reason.
+    const skipMark = (mode === "waiting" || mode === "left") && typeof e.skipReason === "string" ? e.skipReason : null;
+    /*
+      THE BUTTON FOLLOWS RECOVERABILITY, NOT THE REASON. A token that fell out is recoverable
+      whether or not it says why — the patient this was written for was skipped before the reason
+      column existed, and keying the button to `skipMark` hid the way back from exactly her.
+    */
+    const recoverable = mode === "left" || skipMark !== null;
+    return (
     <li
       key={e.id}
       data-testid={`queue-row-${e.id}`}
@@ -879,9 +1009,13 @@ export function OpdConsult(): React.ReactElement {
       */
       style={{
         display: "flex", flexWrap: "wrap", alignItems: "center", gap: 7, padding: "8px 10px", fontSize: 12.5,
-        ...(isCurrent
+        ...(isCurrent || isActive
           ? { background: "var(--green-soft)", boxShadow: "inset 3px 0 0 var(--green)" }
-          : {}),
+          : mode === "parked"
+            ? { background: "var(--gold-soft)", boxShadow: "inset 3px 0 0 var(--gold)" }
+            : mode === "left"
+              ? { opacity: 0.72 }
+              : {}),
       }}
     >
       <span data-testid={`queue-position-${e.id}`} className="mo" style={{ fontSize: 10, color: "var(--faint)" }}>
@@ -894,8 +1028,54 @@ export function OpdConsult(): React.ReactElement {
         <span data-testid={`queue-danger-${e.id}`} aria-label={t("opdConsult.danger")} style={{ color: "var(--red)", fontWeight: 700 }}>⚠</span>
       )}
       {e.reEntry && <span className="pill" data-testid={`queue-reentry-${e.id}`}>{t("opdConsult.reEntry")}</span>}
+      {mode === "parked" && (
+        <span data-testid={`queue-parked-${e.id}`} className="pill" style={{ color: "var(--gold)", fontWeight: 600 }}>
+          {held === 0 ? t("opdConsult.parkedJustNow") : t("opdConsult.parkedFor", { minutes: held })}
+        </span>
+      )}
+      {mode === "seated" && isActive && <span data-testid={`queue-seated-${e.id}`} className="pill">{t("opdConsult.inChair")}</span>}
+      {/*
+        A SKIP THAT IS STILL STANDING SAYS SO, ON THE ROW. Before this a skipped patient went back
+        among the waiting with their turn moved and NOTHING marked it — the doctor's own mis-click
+        was invisible to them one second later, which is the half of the report that was not about
+        `left` at all.
+      */}
+      {skipMark !== null && (
+        <span data-testid={`queue-skipped-${e.id}`} className="pill" style={{ color: "var(--gold)", fontWeight: 600 }}>
+          {t(`opdConsult.skipReason.${skipMark}`)}
+        </span>
+      )}
+      {e.skipNote !== null && e.skipNote !== "" && (
+        <span data-testid={`queue-skipnote-${e.id}`} style={{ fontSize: 11, color: "var(--faint)" }}>{e.skipNote}</span>
+      )}
+      {recoverable && (
+        <button
+          type="button" className="sec" data-testid={`queue-undoskip-${e.id}`}
+          style={{ padding: "1px 9px", fontSize: 11.5 }}
+          onClick={() => void undoSkipOf(e)}
+        >
+          {mode === "left" ? t("opdConsult.bringBack") : t("opdConsult.undoSkip")}
+        </button>
+      )}
+      {/*
+        THE WAY BACK, on the row itself. It is rendered for every patient in consultation who is
+        not the one in the chair — parked or simply left behind by a call-next — because those are
+        the two ways a doctor arrives at this screen looking for somebody they have already seen
+        half of. A `waiting` row has no button: its way in is Call next, which is where the token
+        order is decided.
+      */}
+      {(mode === "parked" || (mode === "seated" && !isActive)) && (
+        <button
+          type="button" className="sec" data-testid={`queue-open-${e.id}`}
+          style={{ padding: "1px 9px", fontSize: 11.5 }}
+          onClick={() => void openEntry(e)}
+        >
+          {mode === "parked" ? t("opdConsult.resume") : t("opdConsult.openPatient")}
+        </button>
+      )}
     </li>
-  );
+    );
+  };
 
   return (
     <PaperScreen testId="opd-consult" style={{ padding: "16px 20px 0", gap: 13 }}>
@@ -944,8 +1124,14 @@ export function OpdConsult(): React.ReactElement {
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             <button type="button" className="pri" style={{ padding: "3px 11px", fontSize: 12 }} onClick={() => void callNext()}>{t("opdConsult.callNext")}</button>
-            <button type="button" className="sec" style={{ padding: "3px 11px", fontSize: 12 }} onClick={() => void skipCurrent()}>{t("opdConsult.skip")}</button>
+            <button type="button" className="sec" style={{ padding: "3px 11px", fontSize: 12 }} onClick={() => { skipCurrent(); }}>{t("opdConsult.skip")}</button>
             <button type="button" className="sec grn" style={{ padding: "3px 11px", fontSize: 12 }} onClick={() => void startConsult()}>{t("opdConsult.start")}</button>
+            {/*
+              PARK sits with the other three because it answers the same question they do — what
+              happens to the chair next — and because the alternative the owner was left with was
+              Call next, which is how a half-seen patient went missing in the first place.
+            */}
+            <button type="button" className="sec" style={{ padding: "3px 11px", fontSize: 12 }} onClick={() => void parkActive()}>{t("opdConsult.park")}</button>
           </div>
           <ErrorLine message={queueError} />
 
@@ -971,13 +1157,36 @@ export function OpdConsult(): React.ReactElement {
           {view === null && queue.data !== undefined && (
             <p style={{ margin: 0, fontSize: 12, color: "var(--dim)" }}>{t("opdConsult.noSession")}</p>
           )}
-          {view !== null && current === null && ordered.length === 0 && (
+          {view !== null && current === null && ordered.length === 0 && inConsult.length === 0 && (
             <p style={{ margin: 0, fontSize: 12, color: "var(--dim)" }}>{t("opdConsult.emptyQueue")}</p>
           )}
+          {inConsult.some((e) => parkedSince(e) !== null) && (
+            <p data-testid="parked-hint" style={{ margin: 0, fontSize: 11, color: "var(--faint)" }}>{t("opdConsult.parkedHint")}</p>
+          )}
           <ul data-testid="consult-queue" style={{ listStyle: "none", margin: 0, padding: 0 }}>
-            {current !== null && queueRow(current, true)}
-            {ordered.map((e) => queueRow(e, false))}
+            {current !== null && queueRow(current, "called")}
+            {inConsult.map((e) => queueRow(e, parkedSince(e) === null ? "seated" : "parked"))}
+            {ordered.map((e) => queueRow(e, "waiting"))}
           </ul>
+          {/*
+            ═══ LEFT THE QUEUE — THE GROUP THAT DID NOT EXIST ═══
+
+            Three skips and the token is `left`, which until now meant gone from every screen in the
+            building while the VISIT stayed open. They sit below the live queue, dimmed, because
+            they are not waiting for anything — and each carries the one button that matters, which
+            puts the patient back where they were.
+          */}
+          {leftQueue.length > 0 && (
+            <>
+              <h2 className="tag" data-testid="left-queue-title" style={{ margin: "8px 0 0" }}>
+                {t("opdConsult.leftQueue", { n: leftQueue.length })}
+              </h2>
+              <p style={{ margin: 0, fontSize: 11, color: "var(--faint)" }}>{t("opdConsult.leftQueueHint")}</p>
+              <ul data-testid="left-queue" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                {leftQueue.map((e) => queueRow(e, "left"))}
+              </ul>
+            </>
+          )}
         </aside>
 
         {/* (b) the patient panel */}
@@ -1549,6 +1758,66 @@ export function OpdConsult(): React.ReactElement {
       </DeskModal>
 
       {/* THE ONLY `.print-doc` RENDER SITE ON THIS SCREEN — one nullable state, one mount. */}
+      {/*
+        ═══ THE SKIP DIALOG — SIX BUTTONS AND A BOX, AND IT IS NOT OPTIONAL ═══
+
+        A reason field a doctor can leave empty is a reason field that is always empty, so there is
+        no "skip anyway": one of the six is always selected, `absent` to begin with, because that is
+        what a skip usually means. `other` is the only one that demands the box, and the button
+        stays disabled until it has something — the server refuses it too (`reason_required`), and
+        the disabled button is only so the doctor learns that from the screen and not from an error.
+      */}
+      <DeskModal
+        open={skipping !== null}
+        title={t("opdConsult.skipTitle", { token: skipping?.tokenNo ?? "" })}
+        titleId="skip-title" testId="skip-dialog" width={460}
+        onClose={() => { setSkipping(null); }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+          <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{t("opdConsult.skipHint")}</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {SKIP_REASONS.map((r) => (
+              <button
+                key={r} type="button" data-testid={`skip-reason-${r}`}
+                aria-pressed={skipReason === r}
+                className={skipReason === r ? "pri" : "sec"}
+                style={{ padding: "4px 11px", fontSize: 12 }}
+                onClick={() => { setSkipReason(r); }}
+              >
+                {t(`opdConsult.skipReason.${r}`)}
+              </button>
+            ))}
+          </div>
+          <div>
+            <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="skip-note">
+              {skipReason === "other" ? t("opdConsult.skipNoteRequired") : t("opdConsult.skipNote")}
+            </label>
+            <input
+              id="skip-note" value={skipNote} onChange={(ev) => { setSkipNote(ev.target.value); }}
+              className="in" style={{ width: "100%", height: 34, fontSize: 13 }}
+            />
+          </div>
+          {/*
+            THE MIS-CLICK IS NAMED HERE, where a doctor reaching for a reason will read it — the one
+            answer that is not a reason, because it must cost the patient nothing.
+          */}
+          <p style={{ margin: 0, fontSize: 11.5, color: "var(--faint)" }}>{t("opdConsult.skipMistakeHint")}</p>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 7 }}>
+            <button type="button" className="sec" style={{ padding: "4px 13px", fontSize: 12.5 }} onClick={() => { setSkipping(null); }}>
+              {t("opdConsult.cancel")}
+            </button>
+            <button
+              type="button" className="pri" data-testid="skip-confirm"
+              style={{ padding: "4px 13px", fontSize: 12.5 }}
+              disabled={skipReason === "other" && skipNote.trim() === ""}
+              onClick={() => void confirmSkip()}
+            >
+              {t("opdConsult.skip")}
+            </button>
+          </div>
+        </div>
+      </DeskModal>
+
       <DeskModal
         open={rxPrint !== null} title={t("opdConsult.tabs.rx")} titleId="rx-print-title" testId="rx-print-dialog"
         width={780} onClose={() => { setRxPrint(null); }}

@@ -64,12 +64,26 @@ describe("the lab delivery interlock (17b T7)", () => {
     await settleInvoice(db, cashier, fx.patientId, run.invoiceId, run.netPayablePaise, AT);
     expect((await deliveryAllowed(db, run.orderId)).allowed).toBe(true);
 
+    /*
+      ═══ THE SECOND DOCUMENT CARRIES A DIFFERENT SERVICE, AND THE CLAIM NEVER DEPENDED ON WHICH ═══
+
+      This used to re-bill GLUF — the service the desk's invoice already charged — on the same visit.
+      The owner ruled on 2026-09-13 that a hospital must not charge the same service twice in one
+      visit, and FD-27's guard now refuses it, correctly: the remedy for a bill that is wrong is a
+      credit note, not a second one beside it.
+
+      **`deliveryAllowed` keys on `lab_items.invoice_id` and never reads the line's service**, so the
+      claim A1 makes — one order's items can sit on two invoices, and the interlock must ask about
+      every one of them — is untouched. The repoint below was always the artificial half of this
+      fixture (the comment above says no shipped writer produces a two-invoice order); this only
+      stops the fixture also asserting a billing state the hospital is not allowed to be in.
+    */
     const second = await issueInvoice(db, fx.desk.actor, {
       draftId: newId(),
       patientId: fx.patientId,
       encounterId: fx.encounterNo,
-      lines: [{ lineId: newId(), serviceId: serviceIdForLabCode("GLUF"), qty: 1 }],
-      credit: { reason: "re-billed to the patient after the corporate cover was refused" },
+      lines: [{ lineId: newId(), serviceId: serviceIdForLabCode("CRP"), qty: 1 }],
+      credit: { reason: "a second counter document on the same visit" },
     }, AT);
     const [secondLine] = await db.select().from(invoiceLines)
       .where(eq(invoiceLines.invoiceId, second.invoiceId));
@@ -145,13 +159,21 @@ describe("the lab delivery interlock (17b T7)", () => {
       encounterId: fx.encounterNo,
       lines: [
         { lineId: newId(), serviceId: consult!.id, qty: 1 },
-        { lineId: newId(), serviceId: serviceIdForLabCode("TSH"), qty: 1 },
+        /*
+          A LAB LINE THE DESK DID NOT ALREADY BILL. This was `TSH` — the service `runLabOrder` above
+          has already charged on this visit — so the mixed invoice was the same test billed twice on
+          one visit, which the owner ruled out on 2026-09-13 and FD-27's guard refuses. What A1b
+          needs is a document carrying a CONSULTATION and a LAB line together, and any lab line does
+          that; the repoint below is what attaches this order's item to it, and `deliveryAllowed`
+          reads `lab_items.invoice_id` rather than the line's service.
+        */
+        { lineId: newId(), serviceId: serviceIdForLabCode("CRP"), qty: 1 },
       ],
       credit: { reason: "billed as one document at the counter" },
     }, AT);
     const mixedLines = await db.select().from(invoiceLines)
       .where(eq(invoiceLines.invoiceId, mixed.invoiceId));
-    const labLine = mixedLines.find((l) => l.serviceId === serviceIdForLabCode("TSH"))!;
+    const labLine = mixedLines.find((l) => l.serviceId === serviceIdForLabCode("CRP"))!;
     await db.update(labItems)
       .set({ invoiceId: mixed.invoiceId, invoiceLineId: labLine.id })
       .where(eq(labItems.orderItemId, run.itemIds[0]!));

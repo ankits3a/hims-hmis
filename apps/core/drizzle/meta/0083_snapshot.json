@@ -1,6 +1,6 @@
 {
-  "id": "d54ff104-81e4-496c-9a38-5dc7048b846f",
-  "prevId": "2413543d-ee2d-497d-8fa0-94c4073ba01f",
+  "id": "d92aaf16-6904-4e14-8f57-e8f6f67162d5",
+  "prevId": "d54ff104-81e4-496c-9a38-5dc7048b846f",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5694,6 +5694,36 @@
         "parked_by": {
           "name": "parked_by",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "skip_reason": {
+          "name": "skip_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "skip_note": {
+          "name": "skip_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "skipped_at": {
+          "name": "skipped_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "skipped_by": {
+          "name": "skipped_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pre_skip_eligible_at": {
+          "name": "pre_skip_eligible_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },

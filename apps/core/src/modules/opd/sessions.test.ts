@@ -1,8 +1,10 @@
 import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
-import { activateOpdVisitDefinition, mkDoctor, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
+import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
 import { withTx } from "../../kernel/db/client";
-import { events, opdQueueSessions } from "../../kernel/db/schema";
+import { events, opdQueueEntries, opdQueueSessions } from "../../kernel/db/schema";
+import { openVisit } from "./encounters";
+import { callNext } from "./queue";
 import { getOrCreateSession, roomForDoctorDay, setSessionStatus } from "./sessions";
 import { opdTopicsFor } from "./realtime";
 import type { Db } from "../../kernel/db/client";
@@ -142,5 +144,121 @@ describe("opd queue sessions — attribution (07c T6)", () => {
 
     const [e] = await named("queue_session.opened");
     expect(e!.payload).toMatchObject({ serviceDate: sun, scheduledStart: null });
+  });
+});
+
+/**
+ * ═══ THE DAY CLOSED BY MISTAKE (owner report, 2026-09-13) ═══
+ *
+ * `closed` was a TERMINAL state: the first line of `setSessionStatus` refused every move out of it,
+ * so one wrong pick on a dropdown the doctor uses all day ended the clinic. `callNext` refuses a
+ * closed session, so every patient still holding a token became uncallable, and no act in the
+ * system could put the doctor-day back.
+ *
+ * The reopen is deliberately NARROW: to `in` only (a reopened day whose doctor is "out" says
+ * nothing anyone can act on), and only on the session's OWN service date — yesterday's clinic is
+ * history, its `seen` count has been read, and reopening it would put a stale doctor-day back on
+ * today's corridor board.
+ */
+describe("opd queue sessions — reopening a day closed by mistake", () => {
+  let db: Db;
+  let teardown: () => Promise<void>;
+  let dra: Awaited<ReturnType<typeof mkDoctor>>;
+  let nurse: Awaited<ReturnType<typeof mkUser>>;
+  let clerk: Awaited<ReturnType<typeof mkUser>>;
+  let deptId: string;
+  let sessionId: string;
+
+  beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
+  afterAll(async () => teardown());
+
+  beforeEach(async () => {
+    await truncateAll(db);
+    await seedOpdBase(db);
+    await activateOpdVisitDefinition(db);
+    const masters = await seedOpdMasters(db);
+    deptId = masters.deptId;
+    dra = await mkDoctor(db, { username: "dra", departmentId: deptId, roomId: masters.roomId });
+    nurse = await mkUser(db, "nurse1", ["front_office_t"]);
+    clerk = await mkUser(db, "clerk", ["front_office"]);
+    const room = await withTx(db, (tx) => roomForDoctorDay(tx, dra.doctorId, MON));
+    const s = await withTx(db, (tx) => getOrCreateSession(tx, dra.doctorId, MON, room));
+    sessionId = s.id;
+  });
+
+  const row = async () => (await db.select().from(opdQueueSessions).where(eq(opdQueueSessions.id, sessionId)))[0]!;
+  const named = async (name: string) => db.select().from(events).where(eq(events.name, name));
+
+  const closeIt = async (): Promise<void> => {
+    await withTx(db, (tx) => setSessionStatus(tx, nurse.actor, sessionId, "in", T("09:40")));
+    await withTx(db, (tx) => setSessionStatus(tx, dra.actor, sessionId, "closed", T("13:10")));
+  };
+
+  it("R1: a day closed by mistake goes back to `in`, and the close stamp is cleared with it", async () => {
+    await closeIt();
+    await withTx(db, (tx) => setSessionStatus(tx, dra.actor, sessionId, "in", T("13:12")));
+
+    const s = await row();
+    expect({ status: s.status, closedAt: s.closedAt, closedBy: s.closedBy })
+      .toEqual({ status: "in", closedAt: null, closedBy: null });
+  });
+
+  /** The morning had ONE opener and still does: a reopen is a correction, not a second morning. */
+  it("R2: the reopen does not rewrite who opened the day, and mints no second `opened` event", async () => {
+    await closeIt();
+    await withTx(db, (tx) => setSessionStatus(tx, dra.actor, sessionId, "in", T("13:12")));
+
+    const s = await row();
+    expect({ openedBy: s.openedBy, openedAt: s.openedAt?.toISOString() })
+      .toEqual({ openedBy: nurse.id, openedAt: T("09:40").toISOString() });
+    expect(await named("queue_session.opened")).toHaveLength(1);
+  });
+
+  it("R3: it appends `queue_session.reopened` naming who did it and how long the day was shut", async () => {
+    await closeIt();
+    await withTx(db, (tx) => setSessionStatus(tx, dra.actor, sessionId, "in", T("13:12")));
+
+    const [e] = await named("queue_session.reopened");
+    expect(e).toBeDefined();
+    expect(e!.actorId).toBe(dra.userId);
+    expect(e!.payload).toMatchObject({
+      sessionId, doctorId: dra.doctorId, serviceDate: MON,
+      closedAt: T("13:10").toISOString(), closedMs: 120_000,
+    });
+    // The close it corrects stays in the log — a reopen adds a fact, it does not delete one.
+    expect(await named("queue_session.closed")).toHaveLength(1);
+  });
+
+  /** The point of the whole fix: the patients still holding tokens can be called again. */
+  it("R4: calling the next token works again once the day is reopened", async () => {
+    const patient = await mkPatient(db, clerk.actor);
+    const visit = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, T("09:50"));
+    await db.update(opdQueueEntries).set({ status: "waiting", eligibleAt: T("09:50") }).where(eq(opdQueueEntries.id, visit.queueEntry.id));
+    await closeIt();
+
+    await expect(callNext(db, dra.actor, sessionId, T("13:11"))).rejects.toMatchObject({ code: "session_closed" });
+    await withTx(db, (tx) => setSessionStatus(tx, dra.actor, sessionId, "in", T("13:12")));
+    const called = await callNext(db, dra.actor, sessionId, T("13:13"));
+    expect(called.entry?.id).toBe(visit.queueEntry.id);
+  });
+
+  it("R5: yesterday's clinic stays closed — a reopen is same-day only", async () => {
+    const SUN = "2026-08-16";
+    const s = await withTx(db, (tx) => getOrCreateSession(tx, dra.doctorId, SUN, null));
+    await withTx(db, (tx) => setSessionStatus(tx, dra.actor, s.id, "in", new Date(`${SUN}T04:10:00.000Z`)));
+    await withTx(db, (tx) => setSessionStatus(tx, dra.actor, s.id, "closed", new Date(`${SUN}T08:10:00.000Z`)));
+
+    await expect(withTx(db, (tx) => setSessionStatus(tx, dra.actor, s.id, "in", T("13:12"))))
+      .rejects.toMatchObject({ code: "session_closed" });
+    expect(await named("queue_session.reopened")).toHaveLength(0);
+  });
+
+  it("R6: a closed day reopens to `in` and to nothing else", async () => {
+    await closeIt();
+    await expect(withTx(db, (tx) => setSessionStatus(tx, dra.actor, sessionId, "out", T("13:12"))))
+      .rejects.toMatchObject({ code: "session_closed" });
+    await expect(withTx(db, (tx) => setSessionStatus(tx, dra.actor, sessionId, "closed", T("13:12"))))
+      .rejects.toMatchObject({ code: "session_closed" });
+    expect((await row()).status).toBe("closed");
   });
 });
