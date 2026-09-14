@@ -11,11 +11,14 @@ import {
   PERIODS, baselineWindowFor, buildBrief, needsBaseline, oldestDayRead, windowFor,
 } from "./brief";
 import { assertWithinHorizon, horizonFor } from "./horizon";
+import { RANGE_DIMENSIONS } from "./range";
+import { loadRange } from "./registry";
+import type { RangeDimension, RangeRow } from "./range";
 import { factsForWindow, sumWindow } from "./rollup";
 import { staffReportDrilled } from "./events";
 import { DeskError } from "./types";
 import { parsed, toHttp } from "./http";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type { Brief } from "./brief";
 import type { ReportSection } from "./types";
 import type { ModuleRegistry } from "../modules/loader";
@@ -48,6 +51,26 @@ const briefQuery = z.object({
   date: z.string().length(10).optional(),
   period: z.enum(PERIODS).optional(),
 });
+/**
+ * PHASE STAFF-REPORTS T3 — the breakdown request. `groupBy` is a comma list so the whole query is
+ * a URL a person can bookmark, mail, and paste into a bug report.
+ */
+const csvList = (max: number) => z.string().transform((v) => v.split(",").map((x) => x.trim()).filter((x) => x !== ""))
+  .refine((v) => v.length > 0 && v.length <= max, `expected 1..${String(max)} comma-separated values`);
+
+const rangeQuery = z.object({
+  from: z.string().length(10),
+  to: z.string().length(10),
+  groupBy: csvList(RANGE_DIMENSIONS.length)
+    .refine((v): v is RangeDimension[] => v.every((d) => (RANGE_DIMENSIONS as readonly string[]).includes(d)),
+      `each groupBy must be one of ${RANGE_DIMENSIONS.join(", ")}`)
+    .optional(),
+  userIds: csvList(200).optional(),
+  departmentId: z.string().optional(),
+  doctorId: z.string().optional(),
+  visitType: z.enum(["new", "revisit", "renewal"]).optional(),
+});
+
 const drillBody = z.object({
   date: z.string().length(10),
   /** A reason box that can be satisfied by pressing Enter is a control nobody has thought about. */
@@ -82,6 +105,70 @@ export class StaffController {
    * integers, and `DeskProvider.facts` cannot return anything else — `liveFactsFor` refuses a value
    * that is not a non-negative integer.
    */
+  /**
+   * ═══ PHASE STAFF-REPORTS T3 — THE BREAKDOWN. THE SECOND INSTRUMENT, OVER HTTP ═══
+   *
+   * `:userId/brief` answers "how did this person's month go" from the cached pulse. This answers
+   * "who registered how many, for which department, under which doctor, split new / revisit /
+   * renewal" — live, across people, over a range the caller picked. `range.ts` carries the argument
+   * for why those are two instruments rather than one.
+   *
+   * DECLARED BEFORE THE `:userId` ROUTES so a literal path segment can never be read as an id.
+   *
+   * ═══ IT RETURNS IDS FOR DEPARTMENT AND DOCTOR, AND NAMES ONLY FOR PEOPLE ═══
+   *
+   * The kernel owns `users`, so it can label a person. It does NOT own `opd_departments` or
+   * `opd_doctors`, and reaching into a module's tables to pretty-print a heading would invert the
+   * dependency the whole `DeskProvider` seam exists to keep pointing one way. The client already
+   * holds those masters for its own pickers, and labelling is its job.
+   *
+   * ═══ NO `report.exported` EVENT HERE, AND THAT IS NOT AN OVERSIGHT ═══
+   *
+   * This route returns COUNTS — `mergeBuckets` refuses anything that is not a non-negative integer,
+   * so there is no field in the response that could carry a patient. It is the same reasoning DD14
+   * applies to the brief: the figures need no audit row because they cannot name anybody. The CSV
+   * (T6) and the MRD register (T7) are a different matter and carry their own.
+   */
+  @Get("range")
+  @RequirePermission("staff.reports.read", "hospital")
+  async range(
+    @CurrentActor() reader: Actor, @Query() query: unknown,
+  ): Promise<{ from: string; to: string; groupBy: RangeDimension[]; rows: RangeRow[]; totals: Record<string, number>; users: Record<string, string> }> {
+    const q = parsed(rangeQuery, query);
+    const now = new Date();
+    const groupBy: RangeDimension[] = q.groupBy ?? ["userId"];
+    /*
+     * THE HORIZON BINDS `from` — the oldest day this request will read. A range route without this
+     * would be the widest hole in the ruling: every other door is capped by a PERIOD, and this one
+     * lets the caller name any date they like.
+     */
+    await this.assertMayReach(reader, q.from, now);
+
+    const { rows, totals } = await loadRange(collectDeskProviders(this.registry), {
+      db: this.db, reader, now, groupBy,
+      filters: {
+        from: q.from, to: q.to, userIds: q.userIds,
+        departmentId: q.departmentId, doctorId: q.doctorId, visitType: q.visitType,
+      },
+    }).catch(toHttp);
+
+    return { from: q.from, to: q.to, groupBy, rows, totals, users: await this.userNames(rows) };
+  }
+
+  /**
+   * The people named in the rows, by id. Only the ones the report actually mentions — a hospital's
+   * whole staff list is `GET /staff`, and a report should not become a second directory.
+   */
+  private async userNames(rows: readonly RangeRow[]): Promise<Record<string, string>> {
+    const ids = [...new Set(rows.map((r) => r.key.userId).filter((v): v is string => v !== undefined))];
+    if (ids.length === 0) return {};
+    const found = await this.db
+      .select({ id: users.id, fullName: users.fullName })
+      .from(users)
+      .where(inArray(users.id, ids));
+    return Object.fromEntries(found.map((u) => [u.id, u.fullName]));
+  }
+
   @Get(":userId/brief")
   @RequirePermission("staff.reports.read", "hospital")
   async brief(

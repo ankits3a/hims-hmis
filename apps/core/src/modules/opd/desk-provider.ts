@@ -5,6 +5,7 @@ import {
 
 import { summaryByDoctor } from "./queue";
 import { doctorForUser } from "./masters";
+import { opdRange } from "./range";
 import { istDateTimeToUtc, istHourMinute } from "./time";
 import { getPatientSummaries } from "../patients";
 import type { DeskCard, DeskProvider, DeskProviderCtx, ReportSection } from "../../kernel/desk/types";
@@ -288,6 +289,8 @@ export const opdDeskProvider: DeskProvider = {
   },
   report: async (ctx) => [await myVisitsSection(ctx)],
   facts: opdFacts,
+  /* T3 — the same events at a fourth grain: a range, sliced by the dimensions the reader chose. */
+  range: opdRange,
 };
 
 /**

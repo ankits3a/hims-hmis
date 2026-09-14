@@ -341,4 +341,46 @@ wrapped in the lock. **Recommend CLAUDE.md's Verify section name the lock and `l
 its holder** — a lane following the documented check collides every time and finds out by killing
 someone's run.
 
-### T3–T8 — filled at execution end
+### T3 — DONE 2026-09-14
+
+D4's second instrument. `kernel/desk/range.ts` (the merge), `modules/opd/range.ts` (OPD's buckets),
+`loadRange` in the registry, a `range` seam on `DeskProvider`, and `GET /staff/range`.
+
+**The shape is the fact bag with a key attached.** A module returns named numbers PER DIMENSION KEY;
+the kernel merges bags sharing a key. That keeps `types.ts`'s property — *the kernel adds numbers and
+never learns what they mean* — and means the kernel never writes a join across another module's
+tables. Billing's money and OPD's visits will meet in a `Map`, on a key each side computed from its
+own tables, rather than in SQL.
+
+**The visit-type split comes free** by grouping the SQL on `visit_type` always, whether or not the
+caller asked. Grouped by user it is three columns; grouped by user AND visit type it is rows as
+well, and the two agree because they came from one query — the drift argument T1 already made.
+
+**Three things this task found.**
+
+**1. The reconciliation test earned itself on its first run.** Its dimension-invariance assertion —
+*the total must not depend on how the table is grouped* — went red, and the cause was a SQL fact
+rather than a typo: **an aggregate with no `GROUP BY` returns one row with a count of 0, not no
+rows.** A booking carries no visit type, so grouping by visit type left the booking query with
+nothing to group on, and a quiet day asserted `opd.appointmentsBooked: 0` — a zero nobody measured,
+which made the report's SHAPE depend on its grouping. `dropEmptyBuckets` is the fix and it carries
+the argument; it is the same absent-versus-zero line `rollup.ts` draws for days.
+
+**2. The permission gate was wrong, and it was fixed rather than worked around.** `loadRange` was
+first written by copying `loadDesk`'s per-module gate. That would have given any supervisor holding
+`staff.reports.read` but not `opd.queue.read` — which is most of them, since supervising is not
+working a counter — **a report with no OPD rows at all. Not an error: an empty table, which reads as
+a quiet month.** The gate is the route's `staff.reports.read`, which `desk/manifest.ts` already
+defines as *"may read ANY active user's figures"*. Three composers now have three different gates
+because they answer three different questions, and `registry.ts` records which is which and why.
+
+**3. The horizon census caught the new route on the very next task.** `GET /staff/range` reads
+`q.from`, a spelling the detector did not know, so it arrived guarded but unrecognised and the
+CONVERSE assertion went red — a handler carrying the guard while appearing to need none. That is the
+leg a one-directional census would have slept through. The detector's weakness (it matches parameter
+NAMES) is now stated in the file rather than left implicit.
+
+**Verified:** typecheck 0 · lint 0 (3 pre-existing warnings) · **full core 426 suites / 4453 tests,
+exit 0**, run under `test-lock.sh`. Up from 423/4407 at T2.
+
+### T4–T8 — filled at execution end

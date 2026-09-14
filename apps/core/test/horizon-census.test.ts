@@ -31,10 +31,21 @@ import { resolve } from "node:path";
  *   StaffController  GET  /staff/:id/brief `period` — a colleague's window
  *   StaffController  POST /staff/:id/drill `date`   — ONE day, and it can be ANY day
  *
- * The last is the one worth naming. A route that reads a single date LOOKS bounded and is not:
- * `date` is a free parameter, so an unguarded drill reaches four years back one day at a time.
+ * That last is worth naming. A route that reads a single date LOOKS bounded and is not: `date` is a
+ * free parameter, so an unguarded drill reaches four years back one day at a time.
  *
- * T3's range route joins this census when it lands. It will fail here first, which is the point.
+ * ═══ AND THE CENSUS EARNED ITSELF ON THE VERY NEXT TASK, 2026-09-14 ═══
+ *
+ * T3's `GET /staff/range` is the SEVENTH. It reads `q.from` — a spelling the detector below did not
+ * know — so it arrived guarded but unrecognised, and this file went red on the CONVERSE assertion:
+ * a handler carrying the guard while appearing to need none. That is the failure a one-directional
+ * test would have slept through, and it is why the converse leg is here rather than only the
+ * obvious one.
+ *
+ * The lesson is about the detector, not the route: `readsHistory` recognises a fixed set of
+ * parameter NAMES, so a future route that takes a date under a name not listed there would pass
+ * this census while reaching back for ever. The converse leg is what makes that survivable —
+ * a new date-taking route that IS guarded reddens here and gets its name added deliberately.
  */
 const CONTROLLERS = [
   "apps/core/src/kernel/desk/desk.controller.ts",
@@ -73,9 +84,17 @@ function handlersOf(file: string): Handler[] {
   }));
 }
 
-/** A handler is a historical read if it takes a day or a window from the caller. */
+/**
+ * A handler is a historical read if it takes a day or a window from the caller.
+ *
+ * THIS IS A LIST OF SPELLINGS, which is this test's one weakness and is stated rather than hidden:
+ * a route taking a date under a name absent from this list reads as "no date" and would pass. The
+ * converse assertion below is the compensation — such a route, if it is guarded, reddens and gets
+ * added here on purpose; if it is NOT guarded, nothing here catches it, and that is the residual
+ * risk a reviewer should know about.
+ */
 function readsHistory(h: Handler): boolean {
-  return /\b(?:q\.date|q\.period|b\.date)\b/.test(h.body);
+  return /\b(?:q\.date|q\.period|q\.from|b\.date)\b/.test(h.body);
 }
 
 describe("staff-reports T0 — the horizon census", () => {
@@ -84,12 +103,13 @@ describe("staff-reports T0 — the horizon census", () => {
   it("parses every route handler out of both desk controllers", () => {
     // Pinned so a refactor that hides a route from the parser cannot quietly shrink the census.
     expect(all.map((h) => h.method).sort()).toEqual(
-      ["brief", "brief", "desk", "drill", "report", "reportCsv", "staff"].sort(),
+      // T3 added `range`; `userNames` is a private helper and correctly not a handler.
+      ["brief", "brief", "desk", "drill", "range", "report", "reportCsv", "staff"].sort(),
     );
   });
 
-  it("SIX handlers read a past day, and that is the census", () => {
-    expect(all.filter(readsHistory)).toHaveLength(6);
+  it("SEVEN handlers read a past day, and that is the census", () => {
+    expect(all.filter(readsHistory)).toHaveLength(7); // T3: 6 -> 7, GET /staff/range
   });
 
   /**

@@ -247,6 +247,66 @@ describe("staff reports e2e — 07c T9 (DD14: what, not whom)", () => {
   });
 
   /**
+   * ═══ STAFF-REPORTS T3 — THE BREAKDOWN, OVER HTTP ═══
+   *
+   * The second instrument: live, across people, sliced by the dimensions the caller picked. The
+   * arithmetic agreeing with the pulse is `range-parity.test.ts`'s job; what only shows up at the
+   * route is the gate, the horizon, and the refusals.
+   */
+  describe("T3 — GET /staff/range", () => {
+    const RANGE = `from=${DATE}&to=${DATE}`;
+
+    it("returns the day's visits, keyed by the person who opened them", async () => {
+      const res = await get(`/staff/range?${RANGE}&groupBy=userId`, viewer.token).expect(200);
+      const mine = res.body.rows.find((r: { key: { userId: string } }) => r.key.userId === clerk.id);
+      expect(mine.measures["opd.visitsOpened"]).toBe(1);
+      expect(res.body.totals["opd.visitsOpened"]).toBe(1);
+    });
+
+    /** Ids are for machines. A report of raw uuids is one nobody can read. */
+    it("names the people it mentions, and only those", async () => {
+      const res = await get(`/staff/range?${RANGE}&groupBy=userId`, viewer.token).expect(200);
+      expect(res.body.users[clerk.id]).toBeDefined();
+      expect(Object.keys(res.body.users)).toHaveLength(res.body.rows.length);
+    });
+
+    it("is gated: holding neither reporting string is a refusal, not an empty table", async () => {
+      await get(`/staff/range?${RANGE}`, outsider.token).expect(403);
+    });
+
+    /**
+     * THE WIDEST HOLE THE HORIZON COULD HAVE HAD. Every other door is capped by a PERIOD; this one
+     * lets the caller name any date they like, so `from` is what must be bound.
+     */
+    it("the horizon binds `from`", async () => {
+      const old = new Date(Date.now() + 330 * 60_000 - 200 * 86_400_000).toISOString().slice(0, 10);
+      const res = await get(`/staff/range?from=${old}&to=${DATE}&groupBy=userId`, floorViewer.token).expect(400);
+      expect(JSON.stringify(res.body)).toContain("history_horizon_exceeded");
+    });
+
+    /** An inverted range returns nothing, and nothing reads as a quiet year. So it refuses. */
+    it("REFUSES an inverted range rather than reporting an empty one", async () => {
+      const res = await get(`/staff/range?from=${DATE}&to=2026-01-01&groupBy=userId`, viewer.token).expect(400);
+      expect(JSON.stringify(res.body)).toContain("bad_range");
+    });
+
+    it("refuses a groupBy that is not a dimension", async () => {
+      await get(`/staff/range?${RANGE}&groupBy=salary`, viewer.token).expect(400);
+    });
+
+    /** The totals row is summed from the rows shown, so a table cannot disagree with its footer. */
+    it("the totals equal the rows on screen, whatever the grouping", async () => {
+      for (const groupBy of ["userId", "departmentId", "doctorId", "visitType", "userId,visitType"]) {
+        const res = await get(`/staff/range?${RANGE}&groupBy=${groupBy}`, viewer.token).expect(200);
+        const summed = res.body.rows.reduce(
+          (n: number, r: { measures: Record<string, number> }) => n + (r.measures["opd.visitsOpened"] ?? 0), 0,
+        );
+        expect([groupBy, summed]).toEqual([groupBy, res.body.totals["opd.visitsOpened"]]);
+      }
+    });
+  });
+
+  /**
    * ═══ STAFF-REPORTS T0 — THE HISTORY HORIZON, owner ruling 2026-09-14 ═══
    *
    * Three tiers: the floor is three months and is the ABSENCE of a grant,

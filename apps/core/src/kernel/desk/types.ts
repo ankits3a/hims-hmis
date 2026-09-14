@@ -1,5 +1,6 @@
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
+import type { RangeProvider } from "./range";
 
 /**
  * PLAN 07c T1 — THE DESK: WHAT A PERSON IS FOR TODAY, NOT WHICH MODULE THEY ARE IN.
@@ -185,6 +186,28 @@ export type DeskProvider = {
    *   whole subject.
    */
   facts?(ctx: DeskProviderCtx): Promise<Record<string, number>>;
+  /**
+   * PHASE STAFF-REPORTS T3 — THIS MODULE'S CONTRIBUTION TO A BREAKDOWN OVER A RANGE.
+   *
+   * The third grain, and the last: the card is a picture of now, the report lists a day's rows,
+   * `facts` reduces a day to summable counters — and this slices a RANGE by dimensions the caller
+   * chose (user, department, doctor, visit type, day).
+   *
+   * It rides the same declaration as the other three for the reason `report` already gives: a
+   * second registry would be a second thing to gate and a second place for the two to disagree
+   * about which permission guards the module.
+   *
+   * ═══ WHY NOT JUST ADD DIMENSIONS TO `facts` ═══
+   *
+   * Because `facts` is STORED. Its keys are a schema wearing a string's clothes, so a key per
+   * department would orphan that department's history the day somebody renames it. `range.ts`
+   * carries the full argument; the short version is that the pulse is cached and flat, and the
+   * breakdown is live and dimensional, and they are different instruments on purpose.
+   *
+   * The value contract is `facts`' own — finite, non-negative integers, money in paise —
+   * enforced by `mergeBuckets` rather than trusted.
+   */
+  range?: RangeProvider;
 };
 
 export class DeskError extends Error {
