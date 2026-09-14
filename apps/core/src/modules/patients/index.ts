@@ -29,6 +29,9 @@ export type { MatchLane, PatientSearchResult } from "./search";
 /** FD-8 — the near-match probe, shared by `POST /patients` and the walk-in. */
 export { nearMatches } from "./duplicates";
 export type { DuplicateCandidate } from "./duplicates";
+/** FD-34 — the family a shared mobile makes: derived, symmetric, never a stored household. */
+export { LINKED_CAP, linkedPatients } from "./linked";
+export type { LinkedPatientRow, LinkedPatients } from "./linked";
 export { NO_AUTHORITY, effectiveGuardianAuthority, guardiansWithAuthority, sweepGuardianMajority } from "./guardians";
 export type { GuardianAuthority, GuardianRow } from "./guardians";
 /**
