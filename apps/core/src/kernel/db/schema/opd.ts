@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  bigserial, boolean, date, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, primaryKey,
+  bigserial, boolean, check, date, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, primaryKey,
 } from "drizzle-orm/pg-core";
 import { patients } from "./patients";
 import { resources } from "./resources";
@@ -359,6 +359,71 @@ export const opdEncounters = pgTable(
     index("opd_encounters_doctor_date_idx").on(t.doctorId, t.serviceDate),
     index("opd_encounters_patient_opened_idx").on(t.patientId, t.openedAt),
     index("opd_encounters_status_idx").on(t.status),
+  ],
+);
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * THE ADVICE LIBRARY — THE ONE FIELD THE PATIENT READS
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner's own idea, 2026-09-14: *"a prefilled template saved as a module."* Every other field on
+ * the consult screen is read by staff. Advice is read by the patient, at home, tomorrow morning —
+ * it prints on the e-Rx (`rx-print.tsx`) — and that is what shapes this table.
+ *
+ * ═══ WHO OWNS A TEMPLATE: THE HOSPITAL, AND ALSO EACH DOCTOR ═══
+ *
+ * Owner ruling: a shared library with the doctor's own favourites floated to the top. So
+ * `owner_user_id` is NULL for a hospital row and the doctor's id for their own — one table, two
+ * scopes, and the list a doctor sees is their rows first and then everyone's. A per-doctor-only
+ * design was rejected for a measured reason and not a taste: the list is empty on day one and
+ * every new doctor starts cold.
+ *
+ * ═══ BOTH SCRIPTS ARE STORED; THE DOCTOR CHOOSES WHICH ONE GOES ON THE SLIP ═══
+ *
+ * Owner ruling: *"Doctor chooses the language per template"* — each template offers its English and
+ * its Hindi side by side and tapping inserts only the one tapped. So both live on the row and
+ * NEITHER is a translation performed at print time.
+ *
+ * The i18n layer cannot help here and it is worth being exact about why: `rx.advice` translates the
+ * LABEL, and `encounter.advice` is printed verbatim as the value. A patient who reads only
+ * Devanagari gets nothing from a translated label above English prose. The script has to be in the
+ * stored string, which is why it is in this table.
+ *
+ * Either column may be null and at least one must not be: a doctor's own template may be written
+ * in one script only, and a half-filled row is more useful than no row. The field then offers one
+ * button instead of two. What is refused is a row with no text in either script.
+ */
+export const opdAdviceTemplates = pgTable(
+  "opd_advice_templates",
+  {
+    id: text("id").primaryKey(),
+    /** NULL = the hospital's shared library. Otherwise the `users.id` who saved it. */
+    ownerUserId: text("owner_user_id"),
+    /** The short label on the chip — what the doctor scans for, never what is printed. */
+    title: text("title").notNull(),
+    /**
+     * BOTH ARE NULLABLE AND AT LEAST ONE MUST BE PRESENT — see the CHECK below.
+     *
+     * The first cut had `text_en NOT NULL`, which quietly asserted that every template is written
+     * in English first. A doctor who writes their advice in Hindi — for a field the PATIENT reads,
+     * in a hospital where most patients read Devanagari — would have had it stored in the English
+     * column and offered back under an "English" button. The column would have been lying about
+     * its own contents, and nothing would ever have said so.
+     */
+    textEn: text("text_en"),
+    textHi: text("text_hi"),
+    active: boolean("active").notNull().default(true),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: text("updated_by").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    /** The list is read as "mine, then the hospital's", which is this index in that order. */
+    index("opd_advice_templates_owner_idx").on(t.ownerUserId, t.title),
+    /** A template with no text at all is not a template. One script is enough; none is not. */
+    check("opd_advice_templates_text_ck", sql`${t.textEn} is not null or ${t.textHi} is not null`),
   ],
 );
 

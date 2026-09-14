@@ -69,6 +69,10 @@ type VisitDetail = {
   patient: WirePatientSummary | null;
 };
 type PatientDetailRow = { uhid: string; name: string | null; alias: string | null; dob: string | null; administrativeGender: string };
+/** `GET /opd/advice-templates` — the hospital's library, with this doctor's own on top. */
+type WireAdviceTemplate = {
+  id: string; title: string; textEn: string | null; textHi: string | null; mine: boolean;
+};
 /** `GET /opd/cds/complete/allergen` — a rule class, or a moiety out of the formulary. */
 type WireAllergenHit = {
   term: string; kind: "class" | "moiety"; allergenClass: string | null; saltId: string | null; blocks: string[];
@@ -230,6 +234,10 @@ export function OpdConsult(): React.ReactElement {
     stay so — "the red syrup gave him a rash" is worth recording — but a doctor who writes
     `pencilin` and is told nothing has no way to know the penicillin block will never fire.
   */
+  /* The advice library. Fetched once per panel — it is the hospital's list, not the patient's. */
+  const [adviceSaveOpen, setAdviceSaveOpen] = useState(false);
+  const [adviceSaveTitle, setAdviceSaveTitle] = useState("");
+  const [adviceSaveError, setAdviceSaveError] = useState<string | null>(null);
   const [allergyPick, setAllergyPick] = useState<WireAllergenHit | null>(null);
   const [allergyHits, setAllergyHits] = useState<WireAllergenHit[]>([]);
   const [allergyKnown, setAllergyKnown] = useState(true);
@@ -377,6 +385,17 @@ export function OpdConsult(): React.ReactElement {
   });
   // §14 / D-37: a hidden confidential record answers 404 — restricted mode, never a crash.
   const restricted = patient.isError && patient.error instanceof ApiError && patient.error.status === 404;
+  /*
+    THE ADVICE LIBRARY. No patient in the key and no patient in the request: a template is the
+    doctor's words about a CONDITION, not about a person, so this is cached for the session rather
+    than refetched per patient.
+  */
+  const adviceTemplates = useQuery({
+    queryKey: ["opd", "advice-templates"],
+    queryFn: () => api<{ items: WireAdviceTemplate[] }>("GET", "/opd/advice-templates"),
+    staleTime: 5 * 60 * 1000,
+  });
+
   const allergies = useQuery({
     queryKey: ["patient-allergies", patientId ?? ""],
     queryFn: () => api<{ items: AllergyRow[] }>("GET", `/patients/${patientId ?? ""}/allergies`),
@@ -620,6 +639,48 @@ export function OpdConsult(): React.ReactElement {
     }, 120);
     return () => { live = false; clearTimeout(timer); };
   }, [allergyText, allergyOpen]);
+
+  /**
+   * ═══ TAPPING A TEMPLATE APPENDS; IT NEVER REPLACES ═══
+   *
+   * A doctor builds advice out of two or three of these plus a line of their own, so the text lands
+   * at the end of what is already there. Replacing would throw away typing on a mis-tap, and this
+   * box is the one the patient reads.
+   *
+   * The SCRIPT is the doctor's choice per template (owner ruling, 2026-09-14) — whichever button
+   * they press is the string that goes in, and it goes in verbatim. Nothing translates at print
+   * time: `rx-print.tsx` prints `encounter.advice` exactly as stored, so the script has to be in
+   * the stored value or it never reaches the patient.
+   */
+  const appendAdvice = (text: string): void => {
+    setNote((n) => ({ ...n, advice: n.advice.trim() === "" ? text : `${n.advice.trim()}\n${text}` }));
+  };
+
+  /**
+   * Save what is in the box as one of MY templates. The script is decided by what was written, not
+   * by a dropdown: Devanagari goes to the Hindi column and anything else to the English one. A
+   * doctor who writes their advice in Hindi must not have it filed under an English button — the
+   * first cut of this table had `text_en NOT NULL` and would have done exactly that.
+   */
+  const saveAdviceTemplate = async (): Promise<void> => {
+    const title = adviceSaveTitle.trim();
+    const text = note.advice.trim();
+    if (title === "" || text === "") return;
+    setAdviceSaveError(null);
+    try {
+      const devanagari = /[\u0900-\u097F]/.test(text);
+      await api("POST", "/opd/advice-templates", {
+        title,
+        textEn: devanagari ? null : text,
+        textHi: devanagari ? text : null,
+      });
+      setAdviceSaveTitle("");
+      setAdviceSaveOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ["opd", "advice-templates"] });
+    } catch (e) {
+      setAdviceSaveError(opdErrorMessage(e));
+    }
+  };
 
   const addAllergy = async (): Promise<void> => {
     const substance = allergyText.trim();
@@ -1762,11 +1823,85 @@ export function OpdConsult(): React.ReactElement {
                     <div>
                       <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="note-advice">{t("opdConsult.advice")}</label>
                       <textarea
-                        id="note-advice" rows={2}
+                        id="note-advice" rows={3}
                         value={note.advice}
                         onChange={(e) => setNote((n) => ({ ...n, advice: e.target.value }))}
                         className="in" style={{ width: "100%", height: "auto", padding: "7px 9px", fontSize: 13 }}
                       />
+                      {/*
+                        ═══════════════════════════════════════════════════════════════════════════
+                        THE ADVICE LIBRARY — AND THE ONLY FIELD ON THIS SCREEN THE PATIENT READS
+                        ═══════════════════════════════════════════════════════════════════════════
+
+                        Owner's own idea, 2026-09-14: *"a prefilled template saved as a module"*, in
+                        a shared library with the doctor's own favourites on top.
+
+                        TWO BUTTONS PER TEMPLATE, NOT ONE. Owner ruling: the doctor chooses the
+                        language per template. Whichever they press is the string that is stored and
+                        the string that prints — `rx-print.tsx` prints `encounter.advice` verbatim,
+                        so a translated LABEL above English prose gives a patient who reads only
+                        Devanagari nothing at all. The script has to be in the value.
+
+                        Tapping APPENDS. A doctor builds advice from two or three of these plus a
+                        line of their own, and replacing would throw away typing on a mis-tap.
+                      */}
+                      <div data-testid="advice-library" style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6, alignItems: "center" }}>
+                        {(adviceTemplates.data?.items ?? []).map((tpl) => (
+                          <span
+                            key={tpl.id} data-testid={`advice-tpl-${tpl.id}`}
+                            style={{
+                              display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 4px 2px 8px",
+                              border: `1px solid ${tpl.mine ? "var(--green)" : "var(--line)"}`, borderRadius: 999, fontSize: 11.5,
+                            }}
+                          >
+                            <span style={{ color: "var(--dim)" }}>{tpl.title}</span>
+                            {tpl.textEn !== null && (
+                              <button
+                                type="button" data-testid={`advice-tpl-${tpl.id}-en`}
+                                onClick={() => { appendAdvice(tpl.textEn!); }}
+                                className="sec" style={{ height: 21, padding: "0 7px", fontSize: 10.5 }}
+                              >
+                                EN
+                              </button>
+                            )}
+                            {tpl.textHi !== null && (
+                              <button
+                                type="button" data-testid={`advice-tpl-${tpl.id}-hi`}
+                                onClick={() => { appendAdvice(tpl.textHi!); }}
+                                className="sec" style={{ height: 21, padding: "0 7px", fontSize: 10.5 }}
+                              >
+                                हिं
+                              </button>
+                            )}
+                          </span>
+                        ))}
+                        {!adviceSaveOpen && note.advice.trim() !== "" && (
+                          <button
+                            type="button" className="sec" data-testid="advice-save-open"
+                            style={{ height: 23, fontSize: 11 }}
+                            onClick={() => { setAdviceSaveOpen(true); setAdviceSaveError(null); }}
+                          >
+                            {t("opdConsult.adviceSaveAsTemplate")}
+                          </button>
+                        )}
+                      </div>
+                      {adviceSaveOpen && (
+                        <div data-testid="advice-save-form" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6, alignItems: "center" }}>
+                          <input
+                            id="advice-title" aria-label={t("opdConsult.adviceTemplateTitle")}
+                            value={adviceSaveTitle} onChange={(e) => { setAdviceSaveTitle(e.target.value); }}
+                            className="in" style={{ width: 200, height: 28, fontSize: 12 }}
+                            placeholder={t("opdConsult.adviceTemplateTitlePlaceholder")}
+                          />
+                          <button type="button" className="sec grn" data-testid="advice-save" style={{ height: 28, fontSize: 11.5 }} onClick={() => void saveAdviceTemplate()}>
+                            {t("opdConsult.adviceSave")}
+                          </button>
+                          <button type="button" className="sec" style={{ height: 28, fontSize: 11.5 }} onClick={() => { setAdviceSaveOpen(false); setAdviceSaveTitle(""); setAdviceSaveError(null); }}>
+                            {t("opdConsult.cancel")}
+                          </button>
+                          <ErrorLine message={adviceSaveError} />
+                        </div>
+                      )}
                     </div>
                     {noteSaved && <p data-testid="note-saved" style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "var(--green)" }}>{t("opdConsult.noteSaved")}</p>}
                     <ErrorLine message={noteError} />

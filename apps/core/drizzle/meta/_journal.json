@@ -624,6 +624,13 @@
       "when": 1789391215049,
       "tag": "0088_patient_allergy_coded",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1789392339293,
+      "tag": "0089_opd_advice_templates",
+      "breakpoints": true
     }
   ]
 }

@@ -501,6 +501,132 @@ describe("OpdConsult — recording an allergy in the room", () => {
   });
 });
 
+/**
+ * ═══ THE ADVICE LIBRARY — TWO BUTTONS PER TEMPLATE, AND THE SCRIPT IS THE DOCTOR'S CHOICE ═══
+ *
+ * This is the one field the patient reads. `rx-print.tsx` prints `encounter.advice` VERBATIM, so a
+ * translated label above English prose gives a Devanagari reader nothing — the script has to be in
+ * the stored value. Owner ruling, 2026-09-14: the doctor picks the language per template.
+ */
+const ADVICE_TEMPLATES = {
+  items: [
+    {
+      id: "adv_mine", title: "My asthma advice", mine: true,
+      textEn: "Use the inhaler as shown.", textHi: "इनहेलर बताए अनुसार लें।",
+    },
+    {
+      id: "adv_seed_rest_fluids", title: "Rest and fluids", mine: false,
+      textEn: "Take rest. Drink plenty of fluids.", textHi: "आराम करें। खूब तरल पिएं।",
+    },
+    { id: "adv_en_only", title: "English only", mine: false, textEn: "Only English here.", textHi: null },
+  ],
+};
+
+describe("OpdConsult — the advice library", () => {
+  beforeEach(() => { vi.restoreAllMocks(); });
+
+  it("W1: tapping the Hindi button stores the DEVANAGARI, which is what prints", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/advice-templates": { status: 200, body: ADVICE_TEMPLATES },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(await screen.findByTestId("advice-tpl-adv_seed_rest_fluids-hi"));
+    await user.click(screen.getByRole("heading", { name: "Consultation" }));
+
+    await waitFor(() => {
+      const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { advice: string };
+      expect(body.advice).toBe("आराम करें। खूब तरल पिएं।");
+    });
+  });
+
+  it("W2: the English button on the SAME template stores English — one row, two choices", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/advice-templates": { status: 200, body: ADVICE_TEMPLATES },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(await screen.findByTestId("advice-tpl-adv_seed_rest_fluids-en"));
+    await user.click(screen.getByRole("heading", { name: "Consultation" }));
+
+    await waitFor(() => {
+      const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { advice: string };
+      expect(body.advice).toBe("Take rest. Drink plenty of fluids.");
+    });
+  });
+
+  it("W3: tapping APPENDS — a doctor builds advice out of several, and never loses typing", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/advice-templates": { status: 200, body: ADVICE_TEMPLATES },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const advice = await screen.findByLabelText("Advice");
+    await user.click(advice);
+    await user.type(advice, "Review Friday.");
+    await user.click(screen.getByTestId("advice-tpl-adv_seed_rest_fluids-en"));
+    await user.click(screen.getByTestId("advice-tpl-adv_mine-hi"));
+    await user.click(screen.getByRole("heading", { name: "Consultation" }));
+
+    await waitFor(() => {
+      const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { advice: string };
+      expect(body.advice).toBe("Review Friday.\nTake rest. Drink plenty of fluids.\nइनहेलर बताए अनुसार लें।");
+    });
+  });
+
+  it("W4: a template with only one script offers only one button", async () => {
+    mockRoutes({ ...baseRoutes(), "GET /api/opd/advice-templates": { status: 200, body: ADVICE_TEMPLATES } });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await screen.findByTestId("advice-tpl-adv_en_only-en");
+    // Half a row beats no row; what it must not do is offer a Hindi button that inserts nothing.
+    expect(screen.queryByTestId("advice-tpl-adv_en_only-hi")).toBeNull();
+  });
+
+  it("W5: saving DEVANAGARI advice files it as Hindi, not under an English button", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/advice-templates": { status: 200, body: ADVICE_TEMPLATES },
+      "POST /api/opd/advice-templates": { status: 201, body: { templateId: "adv-new" } },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const advice = await screen.findByLabelText("Advice");
+    await user.click(advice);
+    await user.type(advice, "रोज़ टहलें।");
+    await user.click(screen.getByTestId("advice-save-open"));
+    await user.type(screen.getByLabelText("Template name"), "Walking");
+    await user.click(screen.getByTestId("advice-save"));
+
+    await waitFor(() => {
+      expect(bodiesOf("POST", "/api/opd/advice-templates").at(-1)).toEqual({
+        title: "Walking", textEn: null, textHi: "रोज़ टहलें।",
+      });
+    });
+  });
+
+  it("W6: there is nothing to save while the box is empty", async () => {
+    mockRoutes({ ...baseRoutes(), "GET /api/opd/advice-templates": { status: 200, body: ADVICE_TEMPLATES } });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await screen.findByTestId("advice-library");
+    expect(screen.queryByTestId("advice-save-open")).toBeNull();
+  });
+});
+
 function fetchCalls(): { url: string; path: string; method: string; body: string }[] {
   return vi.mocked(fetch).mock.calls.map(([input, init]) => {
     const url = String(input);

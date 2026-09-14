@@ -753,7 +753,11 @@
     "diagnosisHint": "Enter adds your own words. Tap a suggestion to take its ICD-10 code.",
     "icd10Hint": "Set by the diagnoses above — tap a suggestion to attach its code.",
     "allergyBlocks": "blocks {{list}}",
-    "allergyUnknown": "Saved as written — the prescription check knows no rule for this, so it will not warn on it."
+    "allergyUnknown": "Saved as written — the prescription check knows no rule for this, so it will not warn on it.",
+    "adviceSaveAsTemplate": "+ Save as my template",
+    "adviceTemplateTitle": "Template name",
+    "adviceTemplateTitlePlaceholder": "Name this template…",
+    "adviceSave": "Save template"
   },
   "rx": {
     "regNo": "Reg. No.",
