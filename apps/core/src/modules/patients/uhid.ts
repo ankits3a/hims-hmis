@@ -41,7 +41,16 @@ export type PatientErrorCode =
    * FD-8 — registration now ENDS AT THE UHID, so `POST /patients` is a counter act and must carry
    * the near-match warning the walk-in has always had. A WARNING a human may override, never a gate.
    */
-  | "duplicate_suspected";
+  | "duplicate_suspected"
+  /**
+   * The desk's photograph of a paper slip. `document_too_large` maps to 413 beside `photo_too_large`
+   * for the same reason: the client must downscale, and a 400 reads as "your request was malformed"
+   * when the request was fine and the file was big. `document_corrupt` is the integrity check —
+   * stored bytes that no longer match the hash taken at capture — and it is a CONFLICT rather than a
+   * 500 because the record is wrong, not the server.
+   */
+  | "unsupported_document_type" | "document_too_large" | "document_empty"
+  | "document_not_found" | "document_corrupt";
 
 export class PatientError extends Error {
   constructor(

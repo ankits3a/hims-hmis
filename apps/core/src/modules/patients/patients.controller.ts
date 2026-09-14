@@ -32,7 +32,7 @@ import { createMergeRequest, executeMerge, executeUnmerge, getMergeRequest, requ
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
 
-const NOT_FOUND_CODES = new Set(["patient_not_found", "unknown_merge_request", "allergy_not_found", "guardian_not_found"]);
+const NOT_FOUND_CODES = new Set(["patient_not_found", "unknown_merge_request", "allergy_not_found", "guardian_not_found", "document_not_found"]);
 /**
  * PLAN 22c-A — CLOSE REVIEW m8. The two privacy-write denials are FORBIDDEN, not BAD REQUEST.
  * They fell through `toHttp`'s default and arrived as 400s, indistinguishable — to a client or to
@@ -44,6 +44,9 @@ const CONFLICT_CODES = new Set([
   "patient_not_active", "merge_same_patient", "merge_already_requested", "merge_not_requested",
   "merge_not_executed", "approval_not_granted", "unmerge_already_requested", "unmerge_not_requested",
   "allergy_not_active", "guardian_not_active",
+  /* The stored bytes no longer match the hash taken at capture. The RECORD is wrong, not the
+     server, so this is a conflict a human must resolve rather than a 500 to page somebody with. */
+  "document_corrupt",
   // PLAN 22c-A T7 — an assurance move that is not an increase is a STATE conflict, not a malformed
   // body: the caller asked for a level the record is already at or above. Found by the full core
   // suite, which the narrow runs had not reached.
@@ -67,7 +70,9 @@ function toHttp(e: unknown): never {
     }
     if (NOT_FOUND_CODES.has(e.code)) throw new NotFoundException(e.message);
     if (FORBIDDEN_CODES.has(e.code)) throw new ForbiddenException(e.message);
-    if (e.code === "photo_too_large") throw new PayloadTooLargeException(e.message);
+    /* 413 beside the photo's, and for the same reason: the request was fine and the FILE was big.
+       A 400 tells a client to fix its body when what it must fix is its downscaling. */
+    if (e.code === "photo_too_large" || e.code === "document_too_large") throw new PayloadTooLargeException(e.message);
     if (CONFLICT_CODES.has(e.code)) throw new ConflictException(e.message);
     throw new BadRequestException(e.message);
   }
