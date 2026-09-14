@@ -114,7 +114,7 @@ const THE_EIGHTEEN = [
   "runNotifyPump",
   "createEventPartitions",
   // PLAN 07c T8 — the THIRTEENTH, a `dailyIst("02:00")` job: the per-user daily rollup the
-  // five-period briefs are served from. Registered between the partition creator and the retention
+  // six-period briefs are served from. Registered between the partition creator and the retention
   // sweep, which is where `jobs.ts` puts it, so it sits there here too — this array is the
   // REGISTRATION order. This census is one of the FOUR places a new job has to be admitted, and the
   // count is worth stating because a `toHaveLength(12)` grep finds only two of them: this file and

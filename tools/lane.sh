@@ -107,7 +107,20 @@ cmd_list() {
 
 cmd_status() {
   echo "claude sessions on a terminal: $(ps -eo comm,tty | awk '$1=="claude" && $2!="?"' | wc -l)"
-  echo "test runners:"; pgrep -af "bin/jest|vitest" | grep -v pgrep | cut -c1-120 | sed 's/^/  /' || true
+  # THE LOCK IS THE ARBITER AND THE RUNNER LIST IS ONLY A SNAPSHOT, so the lock prints first.
+  #
+  # This command used to report `test runners:` and nothing else, which reads as permission to start
+  # when it comes back empty. It is not: it is a point-in-time look that can be honest when you read
+  # it and wrong by the time you run, because a peer starts in between. On 2026-09-14 a lane did
+  # exactly that — clean status, full core suite, and a peer's run died of memory partway through.
+  # Take the lock (`test-lock.sh run <lane> <cmd>`); it blocks until the box is free.
+  local lock=/opt/hmis-lanes/.orchestrator/bin/test-lock.sh
+  if [ -x "$lock" ]; then
+    echo "test lock: $("$lock" status 2>/dev/null | head -1)  <- the arbiter; the list below is only a snapshot"
+  else
+    echo "test lock: MISSING at $lock — nothing is serialising the pools on this box"
+  fi
+  echo "test runners:"; pgrep -af "bin/jest|jest-worker|vitest" | grep -vE "pgrep|test-lock|lane\.sh" | cut -c1-120 | sed 's/^/  /' || true
   free -g | awk 'NR==2{printf "memory: %s GB used, %s GB available of %s\n",$3,$7,$2}'
   echo "lanes:"; cmd_list | sed 's/^/  /'
 }
