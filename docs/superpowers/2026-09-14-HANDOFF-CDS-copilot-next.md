@@ -14,7 +14,7 @@ and built. What follows is the state after that.
 | lane | `/opt/hmis-lanes/cds/hmis` |
 | branch | **`lane/cds-dx-advice-allergy`** on the remote, **no PR yet**, 11 commits ahead of `origin/main` |
 | ⚠ `lane/cds` | the remote branch is the PRE-REBASE history (`f7b969c1`) and is now dead. Do not build on it. |
-| migrations | **0085–0089** (0085 is the regenerated catalogue-codes; 0086 ICD-10; 0087 diagnoses; 0088 coded allergen; 0089 advice library) |
+| migrations | **0085–0091** (0085 is the regenerated catalogue-codes; 0086 ICD-10; 0087 diagnoses; 0088 coded allergen; 0089 advice library) |
 | preview | web **:5195** → api **:3013** → db **`hmis_cds_dev`**, `demo.desai` / `DoctorDesk!Preview2026` |
 | tunnel | `ssh -N -L 5195:127.0.0.1:5195 root@62.238.106.231` then `http://localhost:5195/opd/consult` |
 | source data | `/opt/hmis-context/cds-bundle/` — now also `icd10-catalog.sql` (25 MB), sha256 in `SHA256SUMS` |
@@ -53,6 +53,15 @@ provisional/final diagnosis flag.
 3. `5039887f` — **diagnosis as tags**, each keeping its own code (`opd_encounter_diagnoses`).
 4. `73e17fe6` — **the coded allergen**, which repairs a guard a typo could silence.
 5. `52a51f01` — **the advice library**, bilingual, hospital + per-doctor.
+6. `f964581c` — **a wrong allergy can be taken back in the room** — the E-8 correction, which
+   existed on `patient-detail` and not where the mistake is made.
+7. `63ca381f` — **a held backspace ate committed tags.** `Enter` commits, `×` removes, nothing else
+   destroys. It was worse on diagnosis, where a lost chip lost its ICD-10 code with it.
+8. `150d48e8` — **snippets**: a keyword, auto-expansion, Tab through the blanks, placeholders filled
+   from the patient in the chair. Nothing with braces is ever stored.
+9. `c57f7710` — **the complaint vocabulary**: 118 surface forms over 13 concepts in three scripts,
+   usage learning at completion, an unmapped worklist, and a LOCAL proposer.
+10. `8a5e56ed` — **the curator's screen**, a fifth tab on `/opd/admin`.
 
 Green at the last run: web **107 files / 972 tests**; core opd+cds+patients+formulary+schema+parity
 **96 suites / 980 tests**; typecheck clean; lint 0 errors (4 pre-existing warnings).
@@ -90,6 +99,13 @@ status** — the co-pilot ASKS.
   id) both live in the tree; only `DrugField` is wired. The owner should settle which survives —
   it is a real product question, not a merge artefact, and the rebase deliberately did not decide it.
 - **The co-pilot toggle.** Nothing gates the AI-only fields yet (ruling 3).
+- **`complete()` on the inference kernel is Plan 12a's.** The complaint proposer runs on the box
+  (pg_trgm + a shared-word test) precisely because `kernel/inference/types.ts` defers text
+  completion and says a stub written a phase early guesses at somebody else's contract. Swapping the
+  proposer for a model later changes ONE function — and is the moment the DPDP question about
+  sending complaint text off the box has to be decided deliberately.
+- **No cardiac syndrome exists among the eight.** `chest pain` is recognised, grouped and learnt,
+  and reaches no regimen — correctly. Extending the knowledge base is a clinician's call.
 - **A clinician signing the 3 unreviewed paediatric rates.** Until then those lines show the 14 kg
   example and no number, by design.
 - **Usage-ranked diagnoses.** The structural ranking gets the right code into the visible list but
