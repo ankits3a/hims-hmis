@@ -13,12 +13,13 @@ import {
 import { assertWithinHorizon, horizonFor } from "./horizon";
 import { RANGE_DIMENSIONS } from "./range";
 import { loadRange } from "./registry";
+import { usersHoldingRole } from "../workflow/roles";
 import type { RangeDimension, RangeRow } from "./range";
 import { factsForWindow, sumWindow } from "./rollup";
 import { staffReportDrilled } from "./events";
 import { DeskError } from "./types";
 import { parsed, toHttp } from "./http";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { Brief } from "./brief";
 import type { ReportSection } from "./types";
 import type { ModuleRegistry } from "../modules/loader";
@@ -66,10 +67,23 @@ const rangeQuery = z.object({
       `each groupBy must be one of ${RANGE_DIMENSIONS.join(", ")}`)
     .optional(),
   userIds: csvList(200).optional(),
+  /** PHASE STAFF-REPORTS T4 / D3 — a TEAM, named by the role that defines it. */
+  roleKey: z.string().min(1).optional(),
   departmentId: z.string().optional(),
   doctorId: z.string().optional(),
   visitType: z.enum(["new", "revisit", "renewal"]).optional(),
 });
+
+/** What `GET /staff/range` answers with. `team` is null unless the request named a role (T4). */
+type RangeResponse = {
+  from: string;
+  to: string;
+  groupBy: RangeDimension[];
+  rows: RangeRow[];
+  totals: Record<string, number>;
+  users: Record<string, string>;
+  team: string[] | null;
+};
 
 const drillBody = z.object({
   date: z.string().length(10),
@@ -133,10 +147,11 @@ export class StaffController {
   @RequirePermission("staff.reports.read", "hospital")
   async range(
     @CurrentActor() reader: Actor, @Query() query: unknown,
-  ): Promise<{ from: string; to: string; groupBy: RangeDimension[]; rows: RangeRow[]; totals: Record<string, number>; users: Record<string, string> }> {
+  ): Promise<RangeResponse> {
     const q = parsed(rangeQuery, query);
     const now = new Date();
     const groupBy: RangeDimension[] = q.groupBy ?? ["userId"];
+    const team = await this.resolveTeam(q.roleKey, q.userIds).catch(toHttp);
     /*
      * THE HORIZON BINDS `from` — the oldest day this request will read. A range route without this
      * would be the widest hole in the ruling: every other door is capped by a PERIOD, and this one
@@ -147,12 +162,74 @@ export class StaffController {
     const { rows, totals } = await loadRange(collectDeskProviders(this.registry), {
       db: this.db, reader, now, groupBy,
       filters: {
-        from: q.from, to: q.to, userIds: q.userIds,
+        from: q.from, to: q.to, userIds: team ?? q.userIds,
         departmentId: q.departmentId, doctorId: q.doctorId, visitType: q.visitType,
       },
     }).catch(toHttp);
 
-    return { from: q.from, to: q.to, groupBy, rows, totals, users: await this.userNames(rows) };
+    return {
+      from: q.from, to: q.to, groupBy, rows, totals,
+      users: await this.userNames(rows),
+      /* The team this report was scoped to, so the screen can say WHO it covered — including the
+       * people on it who did nothing, who are absent from `rows` by construction. */
+      team: team ?? null,
+    };
+  }
+
+  /**
+   * ═══ PHASE STAFF-REPORTS T4 / D3 — A TEAM IS DERIVED FROM A ROLE, NEVER STORED ═══
+   *
+   * "The whole front desk" is everyone holding `front_office`. No new table, and a new hire appears
+   * in the team report the moment their role is granted rather than when somebody remembers a
+   * group — which is the second place a membership list goes wrong.
+   *
+   * ═══ AN EMPTY TEAM REFUSES — AND THE REASON IS NOT THE ONE THIS COMMENT FIRST GAVE ═══
+   *
+   * The guard was written against a danger that does not exist here. The worry was that an absent
+   * `userIds` filter means EVERYONE, so an empty team would vanish into "no filter" and turn *"show
+   * me the front desk"* into *"show me the whole hospital"*.
+   *
+   * **MEASURED, by removing the guard and probing the route: it returns 200 with zero rows and
+   * empty totals.** Drizzle renders `inArray(col, [])` as a false predicate rather than dropping
+   * it, so the unguarded answer is a silent ZERO, not a silent everything.
+   *
+   * The guard is still right, for the reason this phase keeps meeting rather than the dramatic one:
+   * an empty report reads as *"the front desk did nothing all month"*, which is indistinguishable
+   * from a desk that was genuinely idle — `requireSubject`'s own comment calls that the one answer a
+   * supervisor must never be given by accident. A role nobody holds is a configuration mistake, and
+   * it is named so somebody fixes the grant instead of believing the number.
+   *
+   * ONE GUARD, AFTER RESOLVING ACTIVE HOLDERS. There were two; the first (on the raw holder list)
+   * was redundant — a mutant that deleted it left every test green, because the second catches the
+   * same case. Two guards for one condition is one more place for the reason to drift.
+   *
+   * ═══ ACTIVE HOLDERS ONLY ═══
+   *
+   * `GET /staff` excludes deactivated accounts from the picker for the reason its own comment
+   * gives — a leaver's day is a historical question, not a supervision one. A team roll-up that
+   * counted leavers would disagree with the very list the supervisor picked the role from.
+   */
+  private async resolveTeam(roleKey?: string, userIds?: string[]): Promise<string[] | undefined> {
+    if (roleKey === undefined) return undefined;
+    if (userIds !== undefined) {
+      throw new DeskError(
+        "ambiguous_subjects",
+        "pass roleKey (a team) or userIds (named people), not both — two ways to name the same axis is two ways to disagree about it",
+      );
+    }
+    /*
+     * `usersHoldingRole` takes a Tx rather than a Db — it is the workflow kernel's resolver and
+     * every other caller already holds one. A read-only transaction is the honest way to borrow it;
+     * re-implementing the query here would be a second answer to "who holds this role", which is
+     * exactly the divergence `roles.ts` exists to prevent.
+     */
+    const holders = await withTx(this.db, (tx) => usersHoldingRole(tx, roleKey));
+    const active = holders.length === 0 ? [] : await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(inArray(users.id, holders), eq(users.active, true)));
+    if (active.length === 0) throw new DeskError("empty_team", `no active user holds "${roleKey}"`);
+    return active.map((u) => u.id).sort();
   }
 
   /**

@@ -38,6 +38,8 @@ describe("staff reports e2e — 07c T9 (DD14: what, not whom)", () => {
   let outsider: Awaited<ReturnType<typeof mkUser>>; // holds neither
   let floorViewer: Awaited<ReturnType<typeof mkUser>>; // reads figures, three-month floor
   let yearViewer: Awaited<ReturnType<typeof mkUser>>;  // reads figures, one-year tier
+  let deptId: string;
+  let draId: string;
 
   const T0 = new Date("2026-08-17T04:00:00.000Z");
   const DATE = "2026-08-17";
@@ -59,8 +61,10 @@ describe("staff reports e2e — 07c T9 (DD14: what, not whom)", () => {
     await syncPermissions(db, registry);
     await seedOpdBase(db);
     await activateOpdVisitDefinition(db);
-    const { deptId, roomId } = await seedOpdMasters(db);
-    const dra = await mkDoctor(db, { username: "dra", departmentId: deptId, roomId });
+    const masters = await seedOpdMasters(db);
+    deptId = masters.deptId;
+    const dra = await mkDoctor(db, { username: "dra", departmentId: deptId, roomId: masters.roomId });
+    draId = dra.doctorId;
 
     await ensureRole(db, "desk_clerk");
     await grantPermissionToRole(db, registry, "desk_clerk", "opd.queue.read");
@@ -292,6 +296,72 @@ describe("staff reports e2e — 07c T9 (DD14: what, not whom)", () => {
 
     it("refuses a groupBy that is not a dimension", async () => {
       await get(`/staff/range?${RANGE}&groupBy=salary`, viewer.token).expect(400);
+    });
+
+    /**
+     * ═══ STAFF-REPORTS T4 — THE TEAM, DERIVED FROM A ROLE (D3) ═══
+     *
+     * "The whole front desk" is not a stored group. It is everyone holding `front_office`, so a new
+     * hire appears in the team report the moment their role is granted rather than when somebody
+     * remembers to add them to a list — and there is no second place for the membership to be
+     * wrong.
+     */
+    it("a team is everyone holding the role, and the totals are the team's", async () => {
+      await ensureRole(db, "desk_team");
+      await grantPermissionToRole(db, registry, "desk_team", "opd.queue.read");
+      const a = await mkUser(db, "team_a", ["desk_team", "desk_clerk"]);
+      const p1 = await mkPatient(db, a.actor, { name: "Team One", phone: "9876541201" });
+      await openOpdVisit(db, { clerk: a.actor, patientId: p1.id, departmentId: deptId, doctorId: draId }, T0);
+
+      const res = await get(`/staff/range?${RANGE}&groupBy=userId&roleKey=desk_team`, viewer.token).expect(200);
+      expect(res.body.totals["opd.visitsOpened"]).toBe(1);
+      expect(res.body.rows.map((r: { key: { userId: string } }) => r.key.userId)).toEqual([a.id]);
+      // `clerk` opened a visit the same day and is NOT on this team — a team report that quietly
+      // included them would look identical to a correct one on a day everybody worked.
+      expect(res.body.rows.map((r: { key: { userId: string } }) => r.key.userId)).not.toContain(clerk.id);
+    });
+
+    /**
+     * ═══ A ROLE NOBODY HOLDS REFUSES, AND THE MEASURED REASON IS THE QUIET ONE ═══
+     *
+     * The guard was written against a louder danger: that an empty team would vanish into "no
+     * filter" and silently report the whole hospital. **Removing the guard and probing the route
+     * measured otherwise — 200, zero rows, empty totals.** Drizzle renders `inArray(col, [])` as a
+     * false predicate rather than dropping it.
+     *
+     * So the unguarded answer is a silent ZERO, and that is why the refusal matters: an empty
+     * report reads as "the front desk did nothing all month", which is indistinguishable from a
+     * desk that was idle. A role nobody holds is a configuration mistake, and it gets named so
+     * somebody fixes the grant rather than believing the number.
+     */
+    it("a role nobody holds REFUSES rather than reporting a silent zero", async () => {
+      await ensureRole(db, "empty_team");
+      const res = await get(`/staff/range?${RANGE}&groupBy=userId&roleKey=empty_team`, viewer.token).expect(400);
+      const body = JSON.stringify(res.body);
+      expect(body).toContain("empty_team");
+      expect(body).toContain("no active user holds");
+    });
+
+    /** Two ways to name the same axis is two ways to disagree about it. */
+    it("refuses roleKey and userIds together rather than guessing which wins", async () => {
+      await get(`/staff/range?${RANGE}&roleKey=desk_clerk&userIds=${clerk.id}`, viewer.token).expect(400);
+    });
+
+    /**
+     * A DEACTIVATED ACCOUNT IS NOT ON THE TEAM. `GET /staff` already excludes leavers from the
+     * picker for the reason its comment gives — a leaver's day is a historical question, not a
+     * supervision one — and a team roll-up that still counted them would disagree with the very
+     * list the supervisor picked from.
+     */
+    it("excludes a deactivated holder of the role", async () => {
+      await ensureRole(db, "leaver_team");
+      await grantPermissionToRole(db, registry, "leaver_team", "opd.queue.read");
+      const gone = await mkUser(db, "gone", ["leaver_team", "desk_clerk"]);
+      const stay = await mkUser(db, "stay", ["leaver_team", "desk_clerk"]);
+      await db.update(users).set({ active: false }).where(eq(users.id, gone.id));
+
+      const res = await get(`/staff/range?${RANGE}&groupBy=userId&roleKey=leaver_team`, viewer.token).expect(200);
+      expect(res.body.team).toEqual([stay.id]);
     });
 
     /** The totals row is summed from the rows shown, so a table cannot disagree with its footer. */

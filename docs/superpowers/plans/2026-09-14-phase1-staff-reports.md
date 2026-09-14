@@ -383,4 +383,31 @@ NAMES) is now stated in the file rather than left implicit.
 **Verified:** typecheck 0 · lint 0 (3 pre-existing warnings) · **full core 426 suites / 4453 tests,
 exit 0**, run under `test-lock.sh`. Up from 423/4407 at T2.
 
-### T4–T8 — filled at execution end
+### T4 — DONE 2026-09-14
+
+D3's role-derived team, as a `roleKey` filter on T3's range route. **No new grant:**
+`front_office_supervisor` already holds `staff.reports.read`, exactly as the brainstorm measured.
+The response carries `team` — the member ids — so a screen can say who the report covered,
+including members who did nothing and are therefore absent from `rows` by construction.
+
+**A comment claimed a failure mode that does not exist, and a mutant found it.** The empty-team
+guard was written against the fear that an absent `userIds` filter means EVERYONE, so a role nobody
+holds would vanish into "no filter" and silently report the whole hospital. Removing the guard and
+probing the route **measured 200, zero rows, empty totals** — drizzle renders `inArray(col, [])` as
+a false predicate rather than dropping it. The unguarded answer is a silent ZERO, not a silent
+everything.
+
+The guard stays, for the quieter reason: an empty report reads as *"the front desk did nothing all
+month"*, indistinguishable from a desk that was idle. Both the code comment and the test name now
+say the measured thing rather than the dramatic one.
+
+**And the same mutant found a redundant guard.** There were two — one on the raw holder list, one on
+the active holders. Deleting the first left every test green, because the second catches the same
+case. Two guards for one condition is one more place for the reason to drift, so there is now one.
+A mutant on it kills exactly one test, the right one.
+
+**Verified:** typecheck 0 · lint 0 (3 pre-existing warnings) · desk + opd + the five affected
+suites, **52 suites / 526 tests, exit 0**, under the lock. Full core was green at T3 (426/4453) and
+CI is the gate for this increment, per CLAUDE.md.
+
+### T5–T8 — filled at execution end
