@@ -9,6 +9,9 @@ export type OpdErrorCode =
   | "invalid_slot" | "slot_taken" | "slot_in_past" | "doctor_on_leave" | "unknown_appointment"
   | "appointment_state_conflict" | "appointment_not_today"
   | "unknown_encounter" | "encounter_state_conflict" | "consult_gate_refused" | "unknown_session" | "session_closed" | "doctor_out"
+  // The co-pilot's syndrome key. A key the knowledge file does not hold is a CLIENT error with a
+  // domain name, not a 500 — the screen sends what a previous build's suggest route gave it.
+  | "unknown_syndrome"
   | "call_conflict" | "unknown_queue_entry" | "queue_entry_state_conflict" | "invalid_transfer"
   | "invalid_vitals" | "vitals_incomplete"
   // VD-1 T2 — the sanity gates. `vitals_gate` carries `detail.gates[]` (key, kind, value, and a
