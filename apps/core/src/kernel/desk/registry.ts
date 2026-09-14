@@ -1,6 +1,8 @@
 import { hasPermission } from "../auth/permissions";
 import { DeskError } from "./types";
 import type { DeskCard, DeskProvider, DeskProviderCtx, ReportSection } from "./types";
+import { assertRange, mergeBuckets, totalsOf } from "./range";
+import type { RangeCtx, RangeRow } from "./range";
 import type { ModuleRegistry } from "../modules/loader";
 
 /** One provider's share of the desk's budget. The desk is a home screen, not a report. */
@@ -104,4 +106,53 @@ export async function loadReport(
     }
   }
   return { sections };
+}
+
+
+/**
+ * PHASE STAFF-REPORTS T3 — THE BREAKDOWN, COMPOSED ACROSS MODULES.
+ *
+ * Same gate as `loadDesk` and `loadReport`, applied the same way: a module's provider is RUN only
+ * if the caller holds its permission, never run-then-filtered — which would read the data for a
+ * module the person may not see and then discard it.
+ *
+ * ═══ THE GATE IS THE ROUTE'S, NOT THE MODULE'S — AND THAT IS A DELIBERATE DIVERGENCE ═══
+ *
+ * `loadDesk` runs a provider only if the caller holds that MODULE's permission, and `loadReport`
+ * only if the SUBJECT does. This one runs every provider that declares a range, and the gate is
+ * `staff.reports.read` on the route above it. Three composers, three gates, because they answer
+ * three different questions:
+ *
+ *   - the desk asks *"what may I do"* — a projection of the caller's own permissions;
+ *   - the report asks *"what did this person do"* — correctly limited to what that person could do;
+ *   - this asks *"what did the hospital do"*, and `desk/manifest.ts` already rules on who may ask:
+ *     **"a holder of `staff.reports.read` may read ANY active user's figures."**
+ *
+ * Gating this one on the READER's module permissions was the first thing written here, by copying
+ * `loadDesk`, and it is wrong in a way worth recording: a supervisor who holds `staff.reports.read`
+ * but not `opd.queue.read` — which is most of them, since supervising is not working a counter —
+ * would get a report with NO OPD ROWS AT ALL. Not an error. An empty table, which reads as a quiet
+ * month. That is the same silent-zero failure `requireSubject` and `rollup.ts` both already refuse,
+ * arriving through a permission check that looked like prudence.
+ *
+ * What keeps it safe is the response shape rather than a second gate: `mergeBuckets` refuses any
+ * value that is not a non-negative integer, so nothing here can carry a patient, a name or a note.
+ * Whose rows come back is a FILTER (`filters.userIds`), never an identity.
+ *
+ * ═══ A PROVIDER THAT THROWS IS NOT SWALLOWED HERE ═══
+ *
+ * `loadDesk` swallows, and its doc explains why: the desk is the front door and a broken module
+ * must not blank it. A REPORT is the opposite bargain. A total silently missing one module's
+ * contribution is a wrong number that looks like a right one — it will be exported, mailed and
+ * reconciled — so this lets the failure out and the caller sees an error instead of an
+ * understatement.
+ */
+export async function loadRange(
+  providers: DeskProvider[], ctx: RangeCtx,
+): Promise<{ rows: RangeRow[]; totals: Record<string, number> }> {
+  assertRange(ctx.filters);
+  const contributing = providers.filter((p) => p.range !== undefined);
+  const buckets = (await Promise.all(contributing.map((p) => p.range!(ctx)))).flat();
+  const rows = mergeBuckets(buckets, ctx.groupBy);
+  return { rows, totals: totalsOf(rows) };
 }

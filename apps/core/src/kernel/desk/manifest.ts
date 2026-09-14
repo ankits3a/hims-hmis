@@ -10,7 +10,18 @@ import type { ModuleManifest } from "../modules/manifest";
  * `grantPermissionToRole` would refuse them and no role could ever hold them, which is the same
  * refusal `collectDeskProviders` makes about a card gated on an undeclared permission.
  *
- * ═══ TWO PERMISSIONS, AND THE SPLIT IS THE WHOLE OF DD14 ═══
+ * ═══ FOUR PERMISSIONS: TWO FOR WHAT YOU MAY SEE, TWO FOR HOW FAR BACK ═══
+ *
+ * The first pair is DD14's. The second is the owner's ruling of 2026-09-14 and answers a different
+ * question — not WHOSE figures, but HOW MANY MONTHS OF THEM. `staff.reports.history.year` lifts the
+ * three-month floor to a year; `staff.reports.history.full` removes it. Holding neither IS the
+ * floor, so a role gains history by being granted rather than by being exempted.
+ *
+ * They are permissions rather than a role-to-horizon table because ROLES COMBINE — `types.ts` says
+ * so in its own header — and a table needs a `max()` across the caller's holdings that will be
+ * written without one. Two strings union for free. `horizon.ts` carries the full argument.
+ *
+ * ═══ THE FIRST TWO, AND THE SPLIT IS THE WHOLE OF DD14 ═══
  *
  * `staff.reports.read` buys the counts: what a named person did, how much they collected, how
  * their week compares to their own median. `staff.reports.drill` buys the rows behind one of those
@@ -32,6 +43,9 @@ export const deskManifest: ModuleManifest = {
   key: "desk",
   title: "Desk — the home screen, the daily report and the staff view",
   menu: [{ label: "Staff reports", path: "/staff", permission: "staff.reports.read" }],
-  permissions: ["staff.reports.read", "staff.reports.drill"],
+  permissions: [
+    "staff.reports.read", "staff.reports.drill",
+    "staff.reports.history.year", "staff.reports.history.full",
+  ],
   subscriptions: [],
 };

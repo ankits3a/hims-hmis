@@ -9,7 +9,9 @@ import { ALL_MANIFESTS } from "../modules/manifests";
 import { userDayFacts, users } from "../db/schema";
 import { collectDeskProviders } from "./registry";
 import { DeskError } from "./types";
-import { addDays, factsForWindow, liveFactsFor, rollupAll, rollupUserDay, sumWindow } from "./rollup";
+import {
+  LOOKBACK_DAYS, addDays, factsForWindow, liveFactsFor, rollupAll, rollupUserDay, sumWindow,
+} from "./rollup";
 import { buildBrief, windowFor } from "./brief";
 import type { DeskProvider } from "./types";
 import type { Db } from "../db/client";
@@ -183,6 +185,50 @@ describe("07c T8 — the user-day rollup", () => {
     expect(res.days).toBe(3);
     // Every ACTIVE user is rolled — the fixture's clerks, the doctor and the definition users.
     expect(res.users).toBe((await db.select().from(users).where(eq(users.active, true))).length);
+  });
+
+  /**
+   * ═══ STAFF-REPORTS T2 — THE BACKFILL IS THIS FUNCTION WITH A BIGGER `lookback` ═══
+   *
+   * A fact key added by a deploy is ABSENT for every day the nightly job's three-day window has
+   * already passed over, and an absent key renders as nothing rather than as a zero. So T1's three
+   * visit-type keys need history filled in, and `scripts/backfill-facts.ts` is a CLI over exactly
+   * this call rather than a second loop — because a second loop would have to re-earn A2, A3 and
+   * A5, and could then drift from the nightly job one day at a time, invisibly.
+   *
+   * This pins the two properties the CLI depends on and the default-lookback tests above do not
+   * reach: that a LARGE window writes the whole range, and that it still refuses to write today.
+   */
+  it("T2: a large lookback backfills the whole range and STILL never writes today", async () => {
+    const res = await rollupAll(db, providers, DAY, T0, 30);
+    const days = [...new Set((await db.select({ day: userDayFacts.day }).from(userDayFacts)).map((r) => r.day))];
+
+    expect(res.days).toBe(30);
+    expect(days).not.toContain(DAY);
+    expect(days).toHaveLength(30);
+    expect(days.sort()[0]).toBe(addDays(DAY, -30));
+    expect(days.sort()[29]).toBe(addDays(DAY, -1));
+  });
+
+  /**
+   * AND IT REACHES PAST `LOOKBACK_DAYS`, which is the whole point of the task. A day older than the
+   * nightly window is exactly the day a new key is missing from, and a backfill that quietly
+   * stopped at three days would leave the gap it was written to close.
+   */
+  it("T2: a day older than LOOKBACK_DAYS is recomputed, not skipped", async () => {
+    const old = addDays(DAY, -LOOKBACK_DAYS - 5);
+    await openOne(clerk, new Date(`${old}T04:00:00.000Z`), "9876540077");
+
+    await rollupAll(db, providers, DAY, T0, LOOKBACK_DAYS);
+    const before = await db.select({ facts: userDayFacts.facts }).from(userDayFacts)
+      .where(and(eq(userDayFacts.userId, clerk.id), eq(userDayFacts.day, old)));
+    expect(before).toHaveLength(0); // outside the nightly window — never rolled at all
+
+    await rollupAll(db, providers, DAY, T0, LOOKBACK_DAYS + 10);
+    const after = await db.select({ facts: userDayFacts.facts }).from(userDayFacts)
+      .where(and(eq(userDayFacts.userId, clerk.id), eq(userDayFacts.day, old)));
+    expect(after).toHaveLength(1);
+    expect((after[0]!.facts as Record<string, number>)["opd.visitsOpened"]).toBe(1);
   });
 
   it("A3: today comes back from the window reader LIVE and marked provisional", async () => {

@@ -4,8 +4,11 @@ import { DB, MODULE_REGISTRY } from "../tokens";
 import { istDayString as istDay } from "../approvals/cumulative";
 import { CurrentActor } from "../auth/decorators";
 import { collectDeskProviders, loadDesk, loadReport } from "./registry";
-import { parsed } from "./http";
-import { baselineWindowFor, buildBrief, windowFor } from "./brief";
+import { parsed, toHttp } from "./http";
+import {
+  PERIODS, baselineWindowFor, buildBrief, needsBaseline, oldestDayRead, windowFor,
+} from "./brief";
+import { assertWithinHorizon, horizonFor } from "./horizon";
 import { factsForWindow } from "./rollup";
 import type { Brief } from "./brief";
 import { contentDisposition, toCsv } from "../report/csv";
@@ -38,7 +41,7 @@ function isProvisional(date: string, now: Date): boolean {
 const deskQuery = z.object({ date: z.string().length(10).optional() });
 const briefQuery = z.object({
   date: z.string().length(10).optional(),
-  period: z.enum(["day", "week", "month", "quarter", "half"]).optional(),
+  period: z.enum(PERIODS).optional(),
 });
 
 /**
@@ -61,11 +64,31 @@ export class DeskController {
     @Inject(MODULE_REGISTRY) private readonly registry: ModuleRegistry,
   ) {}
 
+  /**
+   * T0 — THE HISTORY HORIZON, AT EVERY DOOR THAT TAKES A DATE OR A PERIOD.
+   *
+   * Every route on this controller is self-scoped, so the caller and the subject are the same
+   * person — but the cap is still read off the CALLER, because that is the rule the staff
+   * controller must follow and one rule is cheaper to keep than two.
+   *
+   * `horizon-census.test.ts` pins the set of routes that reach this, and reddens on a new one that
+   * does not. A control that depends on the next author remembering is not a control.
+   */
+  private async assertMayReach(actor: Actor, oldestDay: string, now: Date): Promise<void> {
+    const horizon = await horizonFor(this.db, actor, istDay(now));
+    try {
+      assertWithinHorizon(oldestDay, horizon);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
   @Get("desk")
   async desk(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ date: string; cards: DeskCard[] }> {
     const q = parsed(deskQuery, query);
     const now = new Date();
     const date = q.date ?? istDay(now);
+    await this.assertMayReach(actor, date, now);
     /**
      * An AGENT gets an empty desk rather than an error, matching `/auth/me`'s own reasoning: agents
      * hold no permissions at all, so "what is on this actor's desk" has the answer `nothing`, and
@@ -89,13 +112,14 @@ export class DeskController {
     const now = new Date();
     const date = q.date ?? istDay(now);
     const provisional = isProvisional(date, now);
+    await this.assertMayReach(actor, date, now);
     if (actor.type !== "user") return { date, provisional, sections: [] };
     const providers = collectDeskProviders(this.registry);
     return { date, provisional, ...(await loadReport(providers, { db: this.db, actor, reader: actor, date, now })) };
   }
 
   /**
-   * PLAN 07c T8 — THE FIVE-PERIOD BRIEF, and it is `/me/…` for the same reason the report is:
+   * PLAN 07c T8 — THE BRIEF (five periods, six since the horizon added `year`), and it is `/me/…` for the same reason the report is:
    * there is no `userId`, so there is no version of this route that reads a colleague's history.
    *
    * The long windows are summed from `user_day_facts`; TODAY is computed live and marked
@@ -108,19 +132,26 @@ export class DeskController {
     const now = new Date();
     const today = q.date ?? istDay(now);
     const period = q.period ?? "week";
+    await this.assertMayReach(actor, oldestDayRead(period, today), now);
     if (actor.type !== "user") return buildBrief(period, today, [], []);
 
     const providers = collectDeskProviders(this.registry);
     const w = windowFor(period, today);
-    const b = baselineWindowFor(period, today);
+    /*
+     * THE BASELINE IS READ FROM THE ROLLUP ONLY — it ends strictly before the window starts, so it
+     * contains no "today" and needs no live leg. Passing `today` through would make the function
+     * look for a live day that cannot be inside this range.
+     *
+     * AND IT IS READ ONLY WHEN IT IS CONSUMED (T0). The long periods carry drift computed from the
+     * window itself and never look at the baseline; fetching it for them summed 91 extra days for a
+     * quarter and discarded every one. `needsBaseline` is the single place that decision is made.
+     */
+    const b = needsBaseline(period) ? baselineWindowFor(period, today) : null;
     const [days, baseline] = await Promise.all([
       factsForWindow(this.db, providers, actor, w.from, w.to, today, now),
-      /*
-       * THE BASELINE IS READ FROM THE ROLLUP ONLY — it ends strictly before the window starts, so
-       * it contains no "today" and needs no live leg. Passing `today` through would make the
-       * function look for a live day that cannot be inside this range.
-       */
-      factsForWindow(this.db, providers, actor, b.from, b.to, today, now),
+      b === null
+        ? Promise.resolve([])
+        : factsForWindow(this.db, providers, actor, b.from, b.to, today, now),
     ]);
     return buildBrief(period, today, days, baseline);
   }
@@ -141,6 +172,7 @@ export class DeskController {
     const q = parsed(deskQuery, query);
     const now = new Date();
     const date = q.date ?? istDay(now);
+    await this.assertMayReach(actor, date, now);
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", contentDisposition(`my-day-${date}.csv`));
     if (actor.type !== "user") return toCsv([]);
