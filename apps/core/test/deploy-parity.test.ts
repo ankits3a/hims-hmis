@@ -938,6 +938,21 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
    * re-implemented the logic would pass against a `deploy.sh` that had been reverted — it would be
    * asserting about its own copy. Extracting means the assertion is about the shipped script, and
    * it fails the day somebody puts `cat > "$PGBR_ENV"` back.
+   *
+   * === WHICH OF THESE FIVE ACTUALLY BITE - MEASURED, NOT ASSUMED ===
+   *
+   * The pre-fix behaviour was restored (truncate in place, mint on an empty read) and the suite
+   * re-run. **Two of the five go red**: "REFUSES to mint" and "writes through a .tmp". The other
+   * three pass against the defect, and that is recorded here rather than left to be rediscovered:
+   *
+   *   PRESERVES an existing passphrase   the old code preserved a PRESENT passphrase too, so this
+   *                                      pins the property without discriminating
+   *   mints exactly once, no file        identical on both sides - a first deploy was never the bug
+   *   leaves no .tmp behind              passes TRIVIALLY against the defect, which creates no .tmp
+   *                                      at all; it guards the new path's own litter
+   *
+   * Keeping all five is right - three pin properties that must not regress for other reasons - but
+   * only two are evidence that the fix is present.
    */
   describe("the backup cipher passphrase is never absent from a file that exists", () => {
     /** Pull the derivation out of the shipped script and make it runnable in isolation. */
