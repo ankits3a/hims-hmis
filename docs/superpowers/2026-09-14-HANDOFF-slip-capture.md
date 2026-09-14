@@ -16,8 +16,8 @@
 
 | | |
 |---|---|
-| **`lane/cds-dx-advice-allergy`** | **PR #197 OPEN**, 18 commits, migrations 0085–0091. The doctor's consult screen: ICD-10 diagnosis tags, the advice library, the coded allergen, snippets, the complaint vocabulary. CI was running when the session ended — **check it first**. |
-| **`lane/slip-capture`** | This lane. 3 commits, migration 0085. Prescription capture. PR state is in §② — it was being opened as the session ended. |
+| **`lane/cds-dx-advice-allergy`** | **PR #197 OPEN and CI GREEN** (all 8 checks, both twin runs), 18 commits, migrations 0085–0091. The doctor's consult screen: ICD-10 diagnosis tags, the advice library, the coded allergen, snippets, the complaint vocabulary. |
+| **`lane/slip-capture`** | This lane. **PR #198 OPEN**, 6 commits, migration 0085. Prescription capture. Full core suite GREEN on the pushed tip: 432 suites / 4,507 tests. |
 
 **The two lanes both took migration 0085** — they were cut from the same `main`. Whichever merges
 second must REGENERATE (never renumber) its migrations above the new tip. See
@@ -82,7 +82,9 @@ lab_reception, mrd_officer, vitals_desk — exactly the seats that might hold th
 
 ## ④ WHAT IS OPEN, IN ORDER
 
-1. **Check PR #197's CI**, and this lane's PR (§②). A red `main` freezes merges.
+1. **Merge order.** #197 is green; #198's CI should be checked. **Both take 0085** — whichever
+   merges SECOND must regenerate (never renumber) above the new tip, then drop that lane's test
+   databases before believing any green. A red `main` freezes merges.
 2. **A browser walk of `/opd/slips` with a real camera.** Nothing has been driven in Chromium —
    jsdom proved the wiring and the sums, not the lens. `getUserMedia` needs a secure context, so
    the preview must be `localhost` (which counts) or HTTPS. See [[how-to-see-what-the-user-sees]].
