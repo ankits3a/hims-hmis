@@ -203,7 +203,8 @@ quietly convert a supervision tool into a bulk PHI export, and every supervisor 
 
 - **D6 — the year period.** `Period` gains `"year"`, `SPAN.year = 365`. It carries DRIFT (window's
   own first half against its second half) like `quarter` and `half`, not a prior-period baseline;
-  `brief.ts` already documents why, and already handles the odd-length split correctly.
+  `brief.ts` already documents why, and already handles the odd-length split correctly. Reaching it
+  needs `staff.reports.history.year` — see `02-history-horizon.md`.
 - **D7 — arbitrary date ranges** live on the range instrument (§4 Option B), NOT on the brief. The
   brief's comparison is DEFINED by its span — an arbitrary window has no honest baseline, and
   07c DD8 already rules that a figure with no honest baseline shows none rather than a bad one.
@@ -223,9 +224,15 @@ quietly convert a supervision tool into a bulk PHI export, and every supervisor 
 
 ## 8. Shape of the work
 
+**T0 — the history horizon** comes first and has its own doc: `02-history-horizon.md`. The owner
+ruled 2026-09-14 that how far back a person may look depends on who they are — 3 months for
+`front_office`, 1 year for `front_office_supervisor`, unbounded for `medical_superintendent`,
+`staff_auditor` and `owner`. It carries D6's `year` period (same files), and it lands first because
+every task below adds a surface that must call the check.
+
 1. **T1 — the three visit-type facts.** `opd.visitsNew`, `opd.visitsRevisit`, `opd.visitsRenewal`
    in `opdFacts`. No migration. Redden first against the current provider.
-2. **T2 — the year period.** `Period`, `SPAN`, `BRIEF_PERIODS`, and the web picker.
+2. **T2 — folded into T0.** The `year` period and the horizon touch the same files.
 3. **T3 — the backfill runner.** One-off, idempotent, over an explicit range. §3.1.
 4. **T4 — the range instrument.** The live query path of §4 Option B: filters (from, to, users,
    team, department, doctor, visitType, payer), breakdowns, and the reconciliation test of D5.
@@ -234,7 +241,7 @@ quietly convert a supervision tool into a bulk PHI export, and every supervisor 
 7. **T7 — the MRD register.** New permission, new surface, audit event, aliasing, range export.
 8. **T8 — CSV on every surface.** D10, D11.
 
-T1, T2 and T5 are on the existing pulse and are cheap. T4 is the architectural piece and everything
+T1 and T5 are on the existing pulse and are cheap. T4 is the architectural piece and everything
 after it leans on it. T7 is independent of all of them and could fork to its own lane.
 
 ## 9. The roles already exist — both open items close
@@ -257,9 +264,12 @@ Measured in `apps/core/scripts/seed-roles.ts`:
 `mrd.register.read` is a NEW permission string, and that touches two files CLAUDE.md names as
 shared: `scripts/seed-roles.ts` and `test/seed-roles.test.ts`, which pins permission counts. T7
 must therefore be sequenced against whatever else is editing those files, and its PR will move a
-pinned count on purpose. That is the only cross-lane coordination this whole feature needs —
-everything else lives in `kernel/desk`, `kernel/report`, and the `opd`/`billing`/`patients`
-providers.
+pinned count on purpose.
+
+**T0 adds two more strings** (`staff.reports.history.year`, `staff.reports.history.full`) and moves
+the same pinned count — see `02-history-horizon.md` §6.1. T0 and T7 must not be in flight against
+each other. Everything else lives in `kernel/desk`, `kernel/report`, and the
+`opd`/`billing`/`patients` providers.
 
 ## 10. Still open
 
