@@ -3,7 +3,8 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import {
   grantLabResultPermissions, seedLabDeskBase, serviceIdForLabCode, uhidOf,
 } from "../../../test/helpers/lab";
-import { mkUser } from "../../../test/helpers/opd";
+import { ensureRole, mkUser } from "../../../test/helpers/opd";
+import { grantPermissionToRole } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
 import { events, labAnalytes, labCriticalCalls } from "../../kernel/db/schema";
 import { receive } from "./accession";
@@ -12,7 +13,7 @@ import {
   acknowledgeCritical, CRITICAL_CALL_TARGET_MINUTES, nextRung, openCriticalCalls, RUNGS,
 } from "./criticals";
 import { deskOrder } from "./desk";
-import { enterResult } from "./results";
+import { chooseReportedResult, enterResult, LAB_RESULTS_INTERFACE } from "./results";
 import { printLabels } from "./specimens";
 import type { CriticalAttempt } from "./criticals";
 import type { LabDeskFixture } from "../../../test/helpers/lab";
@@ -42,8 +43,8 @@ describe("lab critical calls (17b T6)", () => {
   });
   afterEach(() => { fx.unregister(); });
 
-  /** A potassium of 6.8 at 02:00 IST, keyed by the technologist who is alone (E34 / 02 F1). */
-  async function criticalCall(): Promise<{ callId: string; resultId: string }> {
+  /** An RFT tube received and ready for a potassium, and the `K` analyte it reports. */
+  async function receivedRftItem(): Promise<{ orderItemId: string; analyteId: string }> {
     const serviceIds = [serviceIdForLabCode("RFT")];
     const placed = await withTx(db, (tx) => deskOrder(tx, fx.desk.actor, fx.decls, {
       patientId: fx.patientId, encounterNo: fx.encounterNo, serviceDate: fx.serviceDate,
@@ -59,8 +60,14 @@ describe("lab critical calls (17b T6)", () => {
       await withTx(db, (tx) => receive(tx, fx.bench.actor, fx.decls, { specimenNo: s.specimenNo }, AT));
     }
     const [k] = await db.select({ id: labAnalytes.id }).from(labAnalytes).where(eq(labAnalytes.code, "K"));
+    return { orderItemId: placed.itemIds[0]!, analyteId: k!.id };
+  }
+
+  /** A potassium of 6.8 at 02:00 IST, keyed by the technologist who is alone (E34 / 02 F1). */
+  async function criticalCall(): Promise<{ callId: string; resultId: string }> {
+    const { orderItemId, analyteId } = await receivedRftItem();
     const entered = await enterResult(db, fx.bench.actor, {
-      orderItemId: placed.itemIds[0]!, analyteId: k!.id, value: "6.8", entryMode: "manual",
+      orderItemId, analyteId, value: "6.8", entryMode: "manual",
     }, AT);
     return { callId: entered.criticalCallId!, resultId: entered.resultId };
   }
@@ -204,5 +211,76 @@ describe("lab critical calls (17b T6)", () => {
       readback: "six point eight, coming to casualty now",
     }, late));
     expect(out.closed).toBe(true); // THE KILL: a clock that became a gate
+  });
+
+  /* ──────── 17-E T7 — the SECOND way a ladder value stops being current ──────── */
+
+  /**
+   * **F17 READS SUPERSESSION, AND A MACHINE'S RERUN NEVER SUPERSEDES.**
+   *
+   * `openCriticalCalls` computes its retraction from `supersedes_result_id` alone. That was complete
+   * when the only way to replace a value was a human re-keying it. 17-E T7 added a second way and it
+   * writes NULL in that column on purpose: an analyser re-running a tube leaves both runs live, and
+   * the bench chooses between them with a reason.
+   *
+   * So against the code this assertion guards: a call opens on a potassium of 6.8, the analyser
+   * re-runs at 4.2, the bench formally chooses the 4.2 — and the ladder still shows 6.8 with
+   * `supersededBy: null`. **The person on the telephone reports a number the laboratory has decided
+   * the report will not carry**, which is the exact failure F17 exists to prevent, reached by a path
+   * F17 cannot see.
+   *
+   * The retraction is rendered (`lab-bench.tsx`, `lab.bench.retracted`), so this is a gap in the
+   * computation and not a missing surface.
+   */
+  it("17-E T7: a call on the run the bench REJECTED shows the chosen value as its retraction", async () => {
+    await ensureRole(db, "lab_bridge");
+    await grantPermissionToRole(db, fx.registry, "lab_bridge", LAB_RESULTS_INTERFACE);
+    await grantPermissionToRole(db, fx.registry, "lab_bridge", "lab.criticals.close");
+    const bridge = await mkUser(db, "lab.bridge", ["lab_bridge"]);
+    const { orderItemId, analyteId } = await receivedRftItem();
+
+    /** The machine's first run — critical, so the ladder opens on it. */
+    const first = await enterResult(db, bridge.actor, {
+      orderItemId, analyteId, value: "6.8", entryMode: "interface",
+    }, AT);
+    expect(first.criticalCallId).not.toBeNull();
+
+    /** The repeat. No supersession: both runs live, which is D9/Q5 and is asserted in rerun-choice. */
+    const second = await enterResult(db, bridge.actor, {
+      orderItemId, analyteId, value: "4.2", entryMode: "interface",
+    }, new Date(AT.getTime() + 600_000));
+
+    /**
+     * BEFORE THE CHOICE THERE IS NO RETRACTION, and that is right: both runs are candidates and the
+     * laboratory has not rejected either. A ladder that cried "retracted" here would be telling the
+     * caller to stand down on a decision nobody had made.
+     */
+    const before = await openCriticalCalls(db, fx.bench.actor);
+    expect(before).toHaveLength(1);
+    expect({ value: before[0]!.value, retracted: before[0]!.supersededBy }).toEqual({
+      value: "6.8000", retracted: null,
+    });
+
+    /** The bench chooses the repeat, with the reason the server requires. */
+    await chooseReportedResult(db, fx.bench.actor, {
+      resultId: second.resultId,
+      reason: "first run drawn from the cannulated arm, repeat from the other side",
+    });
+
+    /**
+     * **THE KILL.** The ladder must now say the value it is about is not the one being reported.
+     *
+     * `flag: null` on the retraction is the SEED's range book, not a lost flag: `flagFor` returns
+     * null when a range carries no low/high, and the catalogue gives `K` critical bands without a
+     * reference band — which is also why 6.8 reads `HH` and 4.2 reads nothing. The VALUE is the
+     * load-bearing half here; the flag is asserted so a successor who gives `K` a reference range
+     * sees this line rather than discovering the coupling from a mystery failure.
+     */
+    const after = await openCriticalCalls(db, fx.bench.actor);
+    expect(after).toHaveLength(1);
+    expect({ value: after[0]!.value, retracted: after[0]!.supersededBy }).toEqual({
+      value: "6.8000",
+      retracted: { value: "4.2000", flag: null },
+    });
   });
 });

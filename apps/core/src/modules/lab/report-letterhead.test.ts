@@ -63,8 +63,16 @@ describe("the signed lab report names the laboratory and the person who signed i
     return row!.snapshot as ReportSnapshot;
   }
 
+  /**
+   * **A VISIT OF ITS OWN EACH TIME.** L5 publishes two TSH reports to compare a stored snapshot
+   * against a later one, and both used to sit on `fx.encounterNo` — the same patient charged for the
+   * same TSH twice on one visit, which the owner ruled out on 2026-09-13 and which FD-27's guard
+   * refuses. Two reports signed at different times are two visits in any hospital, so the fixture is
+   * more truthful for the change, and every letterhead assertion is indifferent to which visit
+   * produced the report.
+   */
   async function publishOne(): Promise<ReportSnapshot> {
-    const run = await runLabOrder(db, fx, ["TSH"], { at: AT });
+    const run = await runLabOrder(db, fx, ["TSH"], { at: AT, encounterNo: fx.newVisit() });
     const report = await publishReport(db, fx.pathologist.actor, { orderId: run.orderId }, AT);
     return await snapshotOf(report.reportId);
   }

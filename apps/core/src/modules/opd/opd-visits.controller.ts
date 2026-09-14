@@ -34,6 +34,7 @@ import type { EscalationView } from "./escalation";
 import type { PreStage } from "./prestage";
 import type { AppointmentRow } from "./appointments";
 import type { CounterState, EncounterRow, JoinQueueResult, OpenVisitResult, QueueEntryRow, TimelineItem, VitalsRow } from "./encounters";
+import type { VitalsRowWithRecorder } from "./vitals";
 import type { Slot } from "./slots";
 import type { PatientSummary } from "../patients";
 import type { Db } from "../../kernel/db/client";
@@ -497,7 +498,7 @@ export class OpdVisitsController {
    */
   @RequirePermission("opd.vitals.record", "hospital")
   @Get("vitals/:vitalsId")
-  async getVitalsRow(@CurrentActor() actor: Actor, @Param("vitalsId") vitalsId: string): Promise<{ vitals: VitalsRow }> {
+  async getVitalsRow(@CurrentActor() actor: Actor, @Param("vitalsId") vitalsId: string): Promise<{ vitals: VitalsRowWithRecorder }> {
     try {
       const vitals = await getVitalsForAmend(this.db, actor, vitalsId);
       if (vitals === null) throw new OpdError("unknown_vitals", `unknown vitals ${vitalsId}`);

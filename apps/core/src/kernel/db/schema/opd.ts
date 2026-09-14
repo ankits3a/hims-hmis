@@ -383,6 +383,56 @@ export const opdQueueEntries = pgTable(
     skips: integer("skips").notNull().default(0),
     doneAt: timestamp("done_at", { withTimezone: true }),
     /**
+     * ═══ THE PARKED CONSULTATION — the patient who stepped out mid-consultation ═══
+     *
+     * Owner, 2026-09-13: *"in between the patient decide to stop and he gets outside for 15
+     * minutes … I need to have an option to park that patient on dashboard and call next patient."*
+     *
+     * Set when the doctor parks; null the rest of the time. **NOT A `status` VALUE, for the same
+     * reason `bench_state` is not one** (D3, above): the row must stay `in_consult`, because that
+     * is the value every callable filter in this module already excludes and the value that keeps
+     * the encounter's own workflow state at `in_consultation` — a parked patient's half-written
+     * note, prescription and vitals stay exactly where the doctor left them, and resuming is one
+     * column write rather than a second consultation.
+     *
+     * It is what separates "with the doctor now" from "held aside, gone for a cup of tea", and
+     * before it the two were the same row: the doctor called the next token, the previous patient
+     * stayed `in_consult` and **no screen rendered `in_consult` rows at all**, so a patient who had
+     * been half-seen vanished from the hall with their visit still open.
+     *
+     * `parked_by` is plain text and no FK — this file's header rule for actor columns.
+     */
+    parkedAt: timestamp("parked_at", { withTimezone: true }),
+    parkedBy: text("parked_by"),
+    /**
+     * ═══ THE SKIP, AND WHY IT NOW SAYS WHAT IT WAS FOR ═══
+     *
+     * Owner, 2026-09-13: *"doctors do not have any input box or pre-identified reason to select as
+     * a reason to why the doctor has to skip the patient … it should be auditable. right?"*
+     *
+     * It should, and it was not. `skips` counted and `queue.skipped` recorded WHO and WHEN, and the
+     * one question a skip exists to answer — why is this patient not being seen — was recorded
+     * nowhere. Measured the same day in the owner's own data: one patient reached the three-skip cap
+     * and left the queue with her visit still `waiting`, and no row in this database could say
+     * whether she had gone to pay a bill or gone home.
+     *
+     * `skip_reason` is a CODED value from `SKIP_REASONS` (queue.ts) and never free text, for the
+     * reason `unlock_reason` is: a coded reason can be counted, and "how many patients missed their
+     * turn because billing was slow" is a question a hospital gets to ask. `skip_note` is the free
+     * text that rides beside it, mandatory only under `other`.
+     *
+     * `pre_skip_eligible_at` IS THE UNDO, and it is the whole reason this is four columns and not
+     * two. A skip moves `eligible_at` to now — that is what losing your turn MEANS here — so an undo
+     * that did not restore it would hand the patient back a place at the end of the queue and call
+     * it a correction. The column holds the turn the patient had before the most recent skip; one
+     * undo restores it, and a second has nothing left to restore and says so.
+     */
+    skipReason: text("skip_reason"),
+    skipNote: text("skip_note"),
+    skippedAt: timestamp("skipped_at", { withTimezone: true }),
+    skippedBy: text("skipped_by"),
+    preSkipEligibleAt: timestamp("pre_skip_eligible_at", { withTimezone: true }),
+    /**
      * ═══ VD-1 T1 / D3 — THE BENCH, AND WHY IT IS NOT A STATUS ═══
      *
      * `null` | `'resting'` | `'away'`. Where a patient physically is between arriving at the bay

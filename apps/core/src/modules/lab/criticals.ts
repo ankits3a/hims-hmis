@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { hasPermission } from "../../kernel/auth/permissions";
 import {
   labAnalytes, labCriticalCalls, labResults, orderItems, orders, patients,
@@ -6,6 +6,7 @@ import {
 import { appendEvent } from "../../kernel/events/append";
 import { displayName, resolvePatientId } from "../patients";
 import { LabError } from "./errors";
+import { currentValue } from "./results";
 import { labCriticalAcknowledged } from "./events";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -336,6 +337,43 @@ export async function openCriticalCalls(
     value: x.value ?? x.valueText ?? x.valueCoded ?? "", flag: x.flag,
   }] as const));
 
+  /**
+   * ═══ 17-E T7 — THE SECOND WAY A LADDER VALUE STOPS BEING CURRENT ═══
+   *
+   * F17 above reads `supersedes_result_id`, which was the only way a value could be replaced when it
+   * was written. **A machine's rerun never supersedes** (D9 / ROADMAP v2 Q5): an analyser re-running a
+   * tube leaves both runs live and the bench CHOOSES between them with a reason, leaving that column
+   * null on both rows. So a call opened on a potassium of 6.8 that the bench then rejected in favour
+   * of a 4.2 showed no retraction at all, and whoever was on the telephone reported a number the
+   * laboratory had formally decided the report would not carry.
+   *
+   * Read from `currentValue`, the same helper the writer, the verifier and both worklists use, so
+   * "the value now" cannot mean one thing on the ladder and another on the report. It is additive:
+   * a row F17 already explains keeps F17's answer.
+   *
+   * **An UNCHOSEN pair is deliberately not a retraction.** `currentValue` returns undefined for two
+   * live rows and no decision, and a ladder that cried "retracted" there would tell the caller to
+   * stand down on a judgement nobody had made.
+   */
+  const ladderItemIds = [...new Set(rows.map((r) => r.result.orderItemId))];
+  const siblingResults = await db
+    .select().from(labResults)
+    .where(inArray(labResults.orderItemId, ladderItemIds))
+    .orderBy(asc(labResults.enteredAt), asc(labResults.id));
+  const chosenInstead = new Map<string, { value: string; flag: string | null }>();
+  for (const r of rows) {
+    if (supersededBy.has(r.call.resultId)) continue;
+    const current = currentValue(
+      siblingResults.filter((x) => x.orderItemId === r.result.orderItemId),
+      r.result.analyteId,
+    );
+    if (current === undefined || current.id === r.call.resultId) continue;
+    chosenInstead.set(r.call.resultId, {
+      value: current.valueNumeric ?? current.valueText ?? current.valueCoded ?? "",
+      flag: current.flag,
+    });
+  }
+
   return rows.map((r) => ({
     id: r.call.id,
     resultId: r.call.resultId,
@@ -350,7 +388,7 @@ export async function openCriticalCalls(
     value: r.result.valueNumeric ?? r.result.valueText ?? r.result.valueCoded ?? "",
     unit: r.result.unit,
     flag: r.result.flag,
-    supersededBy: supersededBy.get(r.call.resultId) ?? null,
+    supersededBy: supersededBy.get(r.call.resultId) ?? chosenInstead.get(r.call.resultId) ?? null,
     nextRung: nextRung(r.call.attempts as CriticalAttempt[]),
     minutesOpen: Math.max(0, Math.floor((now.getTime() - r.call.openedAt.getTime()) / 60_000)),
     targetMinutes: CRITICAL_CALL_TARGET_MINUTES,

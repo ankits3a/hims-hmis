@@ -1,7 +1,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
-import { events, opdQueueEntries, opdVitals, phiAccessLog, workflowInstances, workflowTimers } from "../../kernel/db/schema";
+import { events, opdQueueEntries, opdVitals, phiAccessLog, users, workflowInstances, workflowTimers } from "../../kernel/db/schema";
 import { abandonVisit, getEncounter, openVisit } from "./encounters";
 import { amendVitals, getVitalsForAmend, recordVitals } from "./vitals";
 import { setBenchState } from "./bench";
@@ -41,6 +41,33 @@ describe("opd vitals (recording, danger flags, the registered→waiting move)", 
     vd = await mkUser(db, "vd", ["vitals_desk"]);
     patient = await mkPatient(db, clerk.actor, { ageYears: undefined, dob: DOB_ADULT });
     childPatient = await mkPatient(db, clerk.actor, { ageYears: undefined, dob: DOB_CHILD, guardian: { name: "G", relationship: "mother" } });
+  });
+
+  /**
+   * 2026-09-13, from the bay: the amendment trail printed `by 01M1R6FXR0AQN3BNA8Q8K0ESM6` at a
+   * nurse. The kernel hands no caller a display name, so the row carries the recorder's — and it
+   * falls back to the username before it ever falls back to the id.
+   */
+  it("every vitals row names its recorder: full name, then username, and the id only when no user row exists at all", async () => {
+    const opened = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    const r = await recordVitals(db, vd.actor, opened.encounter.id, adultOk, MON);
+    expect(r.vitals.recordedByName).toBe("vd");                       // mkUser sets fullName = username
+    expect(r.vitals.recordedByName).not.toBe(vd.id);
+
+    await db.update(users).set({ fullName: "Anjali Kujur" }).where(eq(users.id, vd.id));
+    const read = await getVitalsForAmend(db, vd.actor, r.vitals.id);
+    expect(read!.recordedByName).toBe("Anjali Kujur");
+
+    // `fullName` is NOT NULL, so BLANK is the reachable case — and a blank name still names a person
+    await db.update(users).set({ fullName: "   " }).where(eq(users.id, vd.id));
+    expect((await getVitalsForAmend(db, vd.actor, r.vitals.id))!.recordedByName).toBe("vd");
+
+    // and the amended row names whoever amended it, not whoever recorded it
+    await db.update(users).set({ fullName: "Anjali Kujur" }).where(eq(users.id, vd.id));
+    const vd2 = await mkUser(db, "sister.kavita", ["vitals_desk"]);
+    await db.update(users).set({ fullName: "Kavita Toppo" }).where(eq(users.id, vd2.id));
+    const amended = await amendVitals(db, vd2.actor, r.vitals.id, { ...adultOk, pulse: 74 }, "Typing error — wrong number keyed", MON, {});
+    expect(amended.vitals.recordedByName).toBe("Kavita Toppo");
   });
 
   it("normal recording moves registered → waiting", async () => {
