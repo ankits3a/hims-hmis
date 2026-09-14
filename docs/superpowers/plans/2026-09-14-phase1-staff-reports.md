@@ -83,13 +83,19 @@ and T7 each owe one.
 2. **What does `loadReport` already return for the front-desk providers?** T7's MRD register must
    not duplicate a section the drill already produces. Read the `report()` implementations before
    writing new SQL.
-3. **Is `receipts.service_day` or `receipts.created_at` the money axis?** A receipt taken at 00:30
+3. **ANSWERED AT T5:** `service_day`, and the bigger trap was elsewhere — `cashierDay` EXCLUDES
+   entered-in-error documents (`enteredInErrorDocIds`), so a range query that counted voided
+   receipts would break parity for a reason the failure output would not explain. Original question
+   kept below.
+
+   **Is `receipts.service_day` or `receipts.created_at` the money axis?** A receipt taken at 00:30
    for the previous service day answers differently. The existing `receipts_day_cashier_idx` is on
    `(service_day, received_by)`, which is a strong hint — but `billing.collectedPaise` must be read
    to see which one it actually used, because the reconciliation test of T3 fails on this and
    nothing else will explain why.
-4. **Does a tariff service carry a CATEGORY?** T5's service-head bifurcation needs one. If it must be
-   derived from the service name, that is a different task and the owner should see it named.
+4. **ANSWERED AT T5: yes, and better than hoped.** `services.category` exists (notNull, indexed:
+   `consultation/procedure/room_rent/pharmacy/device/…`) — **and `invoice_lines.category` is
+   denormalised onto the line**, so the service head needs no join to the tariff at all.
 
 ---
 
@@ -116,6 +122,17 @@ Carried from the brainstorm, restated so this doc stands alone.
 - **D7 — Collection is NET.** Gross receipts minus credit notes and refund vouchers in the window.
   A collection figure that ignores them overstates the desk and will not reconcile against the day
   book that already exists.
+
+  **D7 CORRECTED AT T5, 2026-09-14 — NET IS DERIVED, NOT MEASURED.** Measured at kickoff:
+  `cashierDay` (which `billing.collectedPaise` is computed from) sums the totals of LIVE receipts
+  and subtracts no credit note and no refund. So a range query that netted them out would disagree
+  with six months of stored facts **by design**, and T3's reconciliation test would fail on a
+  divergence that was deliberate — the worst kind, because it trains people to ignore the test.
+
+  So the measures stay PRIMITIVE — `collectedPaise`, `creditedPaise`, `refundedPaise` as separate
+  columns — and net is a subtraction the screen and the CSV perform. D7 was right as a
+  PRESENTATION rule and wrong as a MEASUREMENT rule. It is also the better report: a hospital
+  wants to see what was refunded, not a single number that has quietly absorbed it.
 - **D8 — Export is CSV and only CSV.** The kernel writer already handles RFC-4180 quoting (a name
   with a comma) and the BOM (Devanagari names in Excel). No XLSX, no PDF.
 - **D9 — Every surface exports on its own route with its own filters**, so the file cannot disagree
@@ -410,4 +427,36 @@ A mutant on it kills exactly one test, the right one.
 suites, **52 suites / 526 tests, exit 0**, under the lock. Full core was green at T3 (426/4453) and
 CI is the gate for this increment, per CLAUDE.md.
 
-### T5–T8 — filled at execution end
+### T5 — DONE 2026-09-14 (lane `staff-money`, stacked on `staff-reports`)
+
+Money bifurcation. Two new dimensions (`payer`, `serviceCategory`) and a billing range provider
+delivering four of D9's five axes: tender mode (as measures), service head, payer, and the cashier
+and day. Plus `billing.creditedPaise`, so net is derivable.
+
+**D7 was corrected rather than implemented** — see §7. `cashierDay` sums LIVE receipts and subtracts
+no credit note, so a range query that netted refunds out would disagree with six months of stored
+facts *by design*, and T3's parity test would fail on a deliberate divergence — worse than no test,
+because it teaches people to ignore it. Measures stay primitive; net is the reader's subtraction.
+
+**The trap was not the date axis.** Spike 3 asked `service_day` versus `created_at`; the answer was
+documented in the file. **The undocumented one was that `cashierDay` EXCLUDES entered-in-error
+documents** — a voided receipt is not money. Missing it makes every figure slightly too big, which
+reads as a busy month rather than a bug. There is now a test that voids a receipt mid-window and
+asserts both instruments drop it; a mutant removing the filter kills exactly that test.
+
+**Three things the type system and the existing tests caught, none of which needed debugging.**
+Adding two dimensions broke OPD's exhaustive `switch` — so a new dimension cannot be introduced
+without every provider stating whether it carries it. And T3's *"every dimension is projectable"*
+test went red because its fixture predated them, which is precisely the drift it exists to catch.
+The third was a fixture gap, not a defect: `seedBillingBase` does not seed `registration_config`.
+
+**Named, not faked: money by clinical DEPARTMENT and DOCTOR is not delivered.** A receipt carries a
+cashier and a day; an invoice adds a payer and an encounter id. Neither carries a department, and
+the route there runs through OPD's tables. It is reachable — billing already imports from `../opd` —
+but it is real work, and the approximation available (attribute a whole invoice to one department)
+is wrong whenever an invoice carries lines from several. **It is T9.**
+
+**Verified:** typecheck 0 · lint 0 (3 pre-existing warnings) · **82 suites / 770 tests, exit 0**
+under `test-lock.sh`.
+
+### T6–T9 — filled at execution end
