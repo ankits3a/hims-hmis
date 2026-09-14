@@ -2777,9 +2777,9 @@
       }
     },
     "upcoming": {
-      "title": "next appointment",
+      "title": "upcoming appointments",
       "reading": "reading their book…",
-      "none": "No appointment booked — nothing is scheduled after today.",
+      "none": "No appointment booked — nothing standing from today on.",
       "unknownDoctor": "doctor not on today's board",
       "rowOpensBook": "open the appointment book to move or cancel this booking",
       "state": {
