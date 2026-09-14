@@ -168,9 +168,16 @@ const PATIENT_DETAIL = {
   patient: { uhid: "HMS0000000020", name: "Asha Devi", alias: null, dob: "1992-03-04", administrativeGender: "female" },
   resolvedFrom: null,
 };
+/* The provenance columns were always on the wire — `listAllergies` selects the whole row. */
 const ALLERGIES = [
-  { id: "al-1", substance: "Penicillin", severity: "severe", status: "active" },
-  { id: "al-2", substance: "Sulfa", severity: "mild", status: "entered_in_error" },
+  {
+    id: "al-1", substance: "Penicillin", severity: "severe", status: "active",
+    source: "consult", recordedAt: "2026-08-17T04:05:00.000Z", correctionReason: null,
+  },
+  {
+    id: "al-2", substance: "Sulfa", severity: "mild", status: "entered_in_error",
+    source: "registration", recordedAt: "2026-08-17T03:00:00.000Z", correctionReason: "wrong patient",
+  },
 ];
 const TIMELINE = [
   {
@@ -624,6 +631,90 @@ describe("OpdConsult — the advice library", () => {
 
     await screen.findByTestId("advice-library");
     expect(screen.queryByTestId("advice-save-open")).toBeNull();
+  });
+});
+
+/**
+ * ═══ A WRONG ALLERGY, AND WHY REMOVING IT IS NOT DELETING IT ═══
+ *
+ * Owner, 2026-09-14: *"I added a wrong allergy to the patient. Now I cannot delete it."* The route
+ * has existed since E-8 and lives on `patient-detail.tsx`; what was missing was the button on the
+ * screen where the mistake is MADE. The asymmetry arrived with "record an allergy in the room" —
+ * the writer shipped without its corrector.
+ *
+ * It stays a CORRECTION. `patient-detail.tsx` already rules it: allergies are append-only. The
+ * doctor loses nothing by that — a struck row stops warning at once — and the record keeps what a
+ * later clinician would need if the patient turns out to have reacted after all.
+ */
+describe("OpdConsult — removing an allergy recorded in error", () => {
+  beforeEach(() => { vi.restoreAllMocks(); });
+
+  it("Y1: removing posts the E-8 correction with the reason — it never DELETEs", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "POST /api/patients/p-1/allergies/al-1/entered-in-error": { status: 201, body: { ok: true } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(await screen.findByTestId("allergy-strike-al-1"));
+    await user.type(screen.getByLabelText("Reason"), "wrong patient — meant the next chart");
+    await user.click(screen.getByTestId("allergy-strike-confirm"));
+
+    await waitFor(() => {
+      expect(bodiesOf("POST", "/api/patients/p-1/allergies/al-1/entered-in-error").at(-1)).toEqual({
+        reason: "wrong patient — meant the next chart",
+      });
+    });
+    /* Not a DELETE anywhere. A clinical safety record that can vanish tells the next clinician
+       nothing; one that was claimed and withdrawn tells them a great deal. */
+    expect(fetchCalls().filter((c) => c.method === "DELETE")).toHaveLength(0);
+  });
+
+  it("Y2: the reason is mandatory — the button will not act without one", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "POST /api/patients/p-1/allergies/al-1/entered-in-error": { status: 201, body: { ok: true } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(await screen.findByTestId("allergy-strike-al-1"));
+    const confirm = screen.getByTestId("allergy-strike-confirm");
+    expect(confirm).toBeDisabled();
+    await user.click(confirm);
+    expect(callsTo("POST", "/api/patients/p-1/allergies/al-1/entered-in-error")).toHaveLength(0);
+
+    // Whitespace is not a reason either — the server refuses it and the button agrees.
+    await user.type(screen.getByLabelText("Reason"), "   ");
+    expect(screen.getByTestId("allergy-strike-confirm")).toBeDisabled();
+  });
+
+  it("Y3: the confirmation names WHERE the allergy came from", async () => {
+    /* Undoing your own mis-tap and striking a contrast reaction radiology recorded from a real
+       administration are different acts, and only this line tells them apart. */
+    mockRoutes({ ...baseRoutes() });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(await screen.findByTestId("allergy-strike-al-1"));
+    expect(screen.getByTestId("allergy-strike-provenance")).toHaveTextContent(/this consultation/);
+  });
+
+  it("Y5: struck allergies are hidden but reachable, with the reason they were struck", async () => {
+    /* Default-hidden keeps the chip row clean; reachable stops the next person re-recording the
+       same wrong allergy having no way to know it was considered and withdrawn. */
+    mockRoutes({ ...baseRoutes() });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await screen.findByTestId("allergy-chips");
+    expect(screen.queryByTestId("allergy-corrected")).toBeNull();
+    expect(screen.queryByTestId("allergy-chip-al-2")).toBeNull();
+
+    await user.click(screen.getByTestId("allergy-corrected-toggle"));
+    expect(await screen.findByTestId("allergy-corrected-al-2")).toHaveTextContent(/Sulfa/);
+    expect(screen.getByTestId("allergy-corrected-al-2")).toHaveTextContent(/wrong patient/);
   });
 });
 
@@ -2200,6 +2291,34 @@ describe("OpdConsult — the clinical co-pilot", () => {
       ...over,
     };
   }
+
+  it("Y4: the co-pilot's danger cards are recomputed, never left naming a struck allergy", async () => {
+    /*
+      THE SEAM `addAllergy` ALREADY HAD. The cards are computed FROM the allergy list, so a strike
+      that did not re-ask would leave a red card on screen naming an allergy the record no longer
+      holds — and the doctor would read it as current.
+    */
+    mockRoutes({
+      ...cdsRoutes(),
+      "POST /api/patients/p-1/allergies/al-1/entered-in-error": { status: 201, body: { ok: true } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    /* The syndrome read fires on COMMITTED tags, so the complaint has to be entered first. */
+    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat{Enter}");
+    await user.click(await screen.findByTestId("cds-hit-SYN_URI_01"));
+    await screen.findByTestId("cds-regimen");
+    const before = callsTo("GET", "/api/opd/cds/regimen").length;
+
+    await user.click(screen.getByTestId("allergy-strike-al-1"));
+    await user.type(screen.getByLabelText("Reason"), "not penicillin, it was a rash from something else");
+    await user.click(screen.getByTestId("allergy-strike-confirm"));
+
+    await waitFor(() => {
+      expect(callsTo("GET", "/api/opd/cds/regimen").length).toBeGreaterThan(before);
+    });
+  });
 
   it("P1: typing the complaint offers syndromes — and three characters is the floor, so it is not called per keystroke", async () => {
     mockRoutes(cdsRoutes());

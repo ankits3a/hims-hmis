@@ -757,7 +757,21 @@
     "adviceSaveAsTemplate": "+ Save as my template",
     "adviceTemplateTitle": "Template name",
     "adviceTemplateTitlePlaceholder": "Name this template…",
-    "adviceSave": "Save template"
+    "adviceSave": "Save template",
+    "allergyRemoveOne": "Remove {{substance}}",
+    "allergyRemoveTitle": "Remove {{substance}} from this patient's allergies?",
+    "allergyRemoveProvenance": "Recorded at {{source}}, {{when}}.",
+    "allergyRemoveKept": "It is marked entered-in-error, not deleted: it stops warning immediately, and the record keeps who removed it and why.",
+    "allergyRemoveReason": "Reason",
+    "allergyRemoveReasonPlaceholder": "Why is this wrong?",
+    "allergyRemoveConfirm": "Remove it",
+    "allergyCorrectedToggle": "{{count}} removed earlier",
+    "allergySource": {
+      "registration": "registration",
+      "vitals": "the vitals bay",
+      "consult": "this consultation",
+      "radiology": "radiology, from a contrast reaction"
+    }
   },
   "rx": {
     "regNo": "Reg. No.",

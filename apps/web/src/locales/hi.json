@@ -757,7 +757,21 @@
     "adviceSaveAsTemplate": "+ मेरे टेम्पलेट में सहेजें",
     "adviceTemplateTitle": "टेम्पलेट का नाम",
     "adviceTemplateTitlePlaceholder": "इस टेम्पलेट को नाम दें…",
-    "adviceSave": "टेम्पलेट सहेजें"
+    "adviceSave": "टेम्पलेट सहेजें",
+    "allergyRemoveOne": "{{substance}} हटाएँ",
+    "allergyRemoveTitle": "क्या {{substance}} को इस मरीज़ की एलर्जी सूची से हटाना है?",
+    "allergyRemoveProvenance": "{{source}} में दर्ज, {{when}}।",
+    "allergyRemoveKept": "यह मिटाया नहीं जाता, ग़लती से दर्ज के रूप में चिह्नित होता है: चेतावनी तुरंत बंद हो जाती है, और रिकॉर्ड में रहता है कि किसने और क्यों हटाया।",
+    "allergyRemoveReason": "कारण",
+    "allergyRemoveReasonPlaceholder": "यह ग़लत क्यों है?",
+    "allergyRemoveConfirm": "हटाएँ",
+    "allergyCorrectedToggle": "{{count}} पहले हटाई गईं",
+    "allergySource": {
+      "registration": "पंजीकरण",
+      "vitals": "वाइटल्स बे",
+      "consult": "इसी परामर्श",
+      "radiology": "रेडियोलॉजी, कॉन्ट्रास्ट प्रतिक्रिया से"
+    }
   },
   "rx": {
     "regNo": "पंजीकरण सं.",

@@ -79,7 +79,16 @@ type WireAllergenHit = {
 };
 /** `GET /opd/cds/complete/diagnosis` — one row of the ICD-10 typeahead. */
 type WireIcd10Hit = { code: string; description: string; chapterNo: number; codeMatch: boolean };
-type AllergyRow = { id: string; substance: string; severity: "mild" | "moderate" | "severe" | null; status: string };
+type AllergyRow = {
+  id: string; substance: string; severity: "mild" | "moderate" | "severe" | null; status: string;
+  /**
+   * The PROVENANCE, and it was on the wire all along — `listAllergies` selects the whole row and
+   * this type simply never declared these. Striking a contrast reaction radiology recorded from an
+   * actual administration is a different act from striking your own mis-tap of thirty seconds ago,
+   * and the confirmation says which one the doctor is about to do.
+   */
+  source: string; recordedAt: string; correctionReason: string | null;
+};
 type AllergyMatch = { lineIndex: number; substance: string };
 type AllergyOverride = AllergyMatch & { reason: string };
 type Active = { encounterId: string; patientId: string; summary: WirePatientSummary | null };
@@ -238,6 +247,11 @@ export function OpdConsult(): React.ReactElement {
   const [adviceSaveOpen, setAdviceSaveOpen] = useState(false);
   const [adviceSaveTitle, setAdviceSaveTitle] = useState("");
   const [adviceSaveError, setAdviceSaveError] = useState<string | null>(null);
+  /* The allergy being struck, and the reason the correction requires (E-8). */
+  const [allergyStriking, setAllergyStriking] = useState<AllergyRow | null>(null);
+  const [allergyStrikeReason, setAllergyStrikeReason] = useState("");
+  const [allergyStrikeError, setAllergyStrikeError] = useState<string | null>(null);
+  const [showCorrectedAllergies, setShowCorrectedAllergies] = useState(false);
   const [allergyPick, setAllergyPick] = useState<WireAllergenHit | null>(null);
   const [allergyHits, setAllergyHits] = useState<WireAllergenHit[]>([]);
   const [allergyKnown, setAllergyKnown] = useState(true);
@@ -458,6 +472,7 @@ export function OpdConsult(): React.ReactElement {
   const vitalsRows = visit.data?.vitals ?? [];
   const latestVitals: WireVitals | null = vitalsRows.length === 0 ? null : vitalsRows[vitalsRows.length - 1]!;
   const activeAllergies = (allergies.data?.items ?? []).filter((a) => a.status === "active");
+  const correctedAllergies = (allergies.data?.items ?? []).filter((a) => a.status === "entered_in_error");
   const dob = patient.data?.patient.dob ?? null;
   const ageYears = dob !== null ? ageYearsAt(dob, new Date()) : null;
   const timelineItems = timeline.data?.items ?? [];
@@ -679,6 +694,50 @@ export function OpdConsult(): React.ReactElement {
       await queryClient.invalidateQueries({ queryKey: ["opd", "advice-templates"] });
     } catch (e) {
       setAdviceSaveError(opdErrorMessage(e));
+    }
+  };
+
+  /**
+   * ═══ STRIKING A WRONG ALLERGY — A CORRECTION, NOT A DELETE ═══
+   *
+   * Owner, 2026-09-14: *"I added a wrong allergy to the patient. Now I cannot delete it."* The
+   * route to fix it has existed since E-8 and is on `patient-detail.tsx` — it was simply not on the
+   * screen where the mistake is MADE, so a doctor had to leave a consultation to undo a mis-tap.
+   * That asymmetry arrived with "record an allergy in the room": the writer shipped and the
+   * corrector did not.
+   *
+   * IT IS NOT A DELETE AND MUST NOT BECOME ONE. `patient-detail.tsx` already states the rule —
+   * allergies are append-only with an entered-in-error correction. The row keeps who struck it,
+   * when and why, and an allergy that was claimed and withdrawn is exactly what the next clinician
+   * needs to see if the patient turns out to have reacted after all. A row that can vanish tells
+   * them nothing at all.
+   *
+   * The doctor loses nothing by it: `activeAllergies` and the co-pilot's own read both filter on
+   * `status === "active"`, so a struck allergy stops warning immediately — which is the whole of
+   * what "delete" was being asked for.
+   *
+   * The REASON is mandatory server-side (E-8) and the button stays disabled without one. No new
+   * permission: `patients.update` is the same grant that let the doctor add it.
+   */
+  const strikeAllergy = async (): Promise<void> => {
+    const target = allergyStriking;
+    const reason = allergyStrikeReason.trim();
+    if (target === null || reason === "" || patientId === null) return;
+    setAllergyStrikeError(null);
+    try {
+      await api("POST", `/patients/${patientId}/allergies/${target.id}/entered-in-error`, { reason });
+      setAllergyStriking(null);
+      setAllergyStrikeReason("");
+      await queryClient.invalidateQueries({ queryKey: ["patient-allergies", patientId] });
+      /*
+        THE SAME SEAM `addAllergy` HAS. The co-pilot's danger cards are computed FROM the allergy
+        list, so a strike that did not re-ask would leave a red card on screen naming an allergy
+        the record no longer holds — and the doctor would be reading a warning about nothing while
+        believing it current.
+      */
+      if (regimen !== null) await openRegimen(regimen.regimen.syndrome.key, regimen.facts.pregnant ?? undefined);
+    } catch (e) {
+      setAllergyStrikeError(opdErrorMessage(e));
     }
   };
 
@@ -1499,9 +1558,32 @@ export function OpdConsult(): React.ReactElement {
                       {activeAllergies.length === 0 && (
                         <span style={{ fontSize: 12, color: "var(--dim)" }}>{t("opdConsult.noAllergies")}</span>
                       )}
+                      {/*
+                        ═══ EVERY CHIP CAN BE STRUCK, AND STRIKING IS NOT DELETING ═══
+
+                        The ✕ reads as "remove" to the doctor and behaves like it — the chip goes,
+                        the warnings stop. What it actually posts is the E-8 entered-in-error
+                        correction, so the row keeps who struck it, when and why. `patient-detail`
+                        has had this since E-8; the consult screen is where the mistake is MADE.
+                      */}
                       {activeAllergies.map((a) => (
-                        <span key={a.id} data-testid={`allergy-chip-${a.id}`} className="pill rd" style={{ fontWeight: 600 }}>
+                        <span key={a.id} data-testid={`allergy-chip-${a.id}`} className="pill rd" style={{ fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4 }}>
                           {a.substance}
+                          <button
+                            type="button" data-testid={`allergy-strike-${a.id}`}
+                            aria-label={t("opdConsult.allergyRemoveOne", { substance: a.substance })}
+                            onClick={() => {
+                              setAllergyStriking(a);
+                              setAllergyStrikeReason("");
+                              setAllergyStrikeError(null);
+                            }}
+                            style={{
+                              border: "none", background: "none", cursor: "pointer", padding: 0,
+                              lineHeight: 1, fontSize: 13, color: "inherit", opacity: 0.7,
+                            }}
+                          >
+                            ×
+                          </button>
                         </span>
                       ))}
                       {!allergyOpen && (
@@ -1597,6 +1679,91 @@ export function OpdConsult(): React.ReactElement {
                           <p data-testid="allergy-unknown" style={{ margin: 0, flexBasis: "100%", fontSize: 11.5, color: "var(--gold)" }}>
                             {t("opdConsult.allergyUnknown")}
                           </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/*
+                      ═══ THE CONFIRMATION SAYS WHAT IS BEING STRUCK AND WHERE IT CAME FROM ═══
+
+                      A doctor undoing their own mis-tap of thirty seconds ago and a doctor striking
+                      a contrast reaction radiology recorded from an actual administration are doing
+                      two very different things, and only the provenance line tells them apart. Both
+                      are allowed and both are audited — `patient-detail` has never restricted this
+                      either — but the second one should not happen by accident.
+
+                      The reason is mandatory (E-8) and the button is disabled without it. Typing
+                      three words is cheap; a struck safety record with no stated reason is not.
+                    */}
+                    {allergyStriking !== null && (
+                      <div
+                        data-testid="allergy-strike-form" role="alertdialog" aria-label={t("opdConsult.allergyRemoveTitle", { substance: allergyStriking.substance })}
+                        style={{
+                          marginTop: 7, padding: "8px 10px", borderRadius: 6,
+                          border: "1px solid var(--red)", background: "var(--red-soft)",
+                          display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center",
+                        }}
+                      >
+                        <p style={{ margin: 0, flexBasis: "100%", fontSize: 12.5, fontWeight: 600 }}>
+                          {t("opdConsult.allergyRemoveTitle", { substance: allergyStriking.substance })}
+                        </p>
+                        <p data-testid="allergy-strike-provenance" style={{ margin: 0, flexBasis: "100%", fontSize: 11.5, color: "var(--dim)" }}>
+                          {t("opdConsult.allergyRemoveProvenance", {
+                            source: t(`opdConsult.allergySource.${allergyStriking.source}`, { defaultValue: allergyStriking.source }),
+                            when: new Date(allergyStriking.recordedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }),
+                          })}
+                        </p>
+                        <p style={{ margin: 0, flexBasis: "100%", fontSize: 11.5, color: "var(--dim)" }}>
+                          {t("opdConsult.allergyRemoveKept")}
+                        </p>
+                        <input
+                          id="allergy-strike-reason" aria-label={t("opdConsult.allergyRemoveReason")}
+                          value={allergyStrikeReason} onChange={(e) => { setAllergyStrikeReason(e.target.value); }}
+                          className="in" style={{ width: 260, height: 28, fontSize: 12 }}
+                          placeholder={t("opdConsult.allergyRemoveReasonPlaceholder")}
+                        />
+                        <button
+                          type="button" className="sec rd" data-testid="allergy-strike-confirm"
+                          style={{ height: 28, fontSize: 11.5 }}
+                          disabled={allergyStrikeReason.trim() === ""}
+                          onClick={() => void strikeAllergy()}
+                        >
+                          {t("opdConsult.allergyRemoveConfirm")}
+                        </button>
+                        <button
+                          type="button" className="sec" style={{ height: 28, fontSize: 11.5 }}
+                          onClick={() => { setAllergyStriking(null); setAllergyStrikeReason(""); setAllergyStrikeError(null); }}
+                        >
+                          {t("opdConsult.cancel")}
+                        </button>
+                        <ErrorLine message={allergyStrikeError} />
+                      </div>
+                    )}
+
+                    {/*
+                      STRUCK ONES ARE HIDDEN, NOT GONE. Default-hidden keeps the chip row clean; the
+                      toggle exists so a doctor can see that a correction happened — otherwise the
+                      next person re-records the same wrong allergy, having no way to know it was
+                      considered and withdrawn.
+                    */}
+                    {correctedAllergies.length > 0 && (
+                      <div style={{ marginTop: 5 }}>
+                        <button
+                          type="button" data-testid="allergy-corrected-toggle"
+                          onClick={() => { setShowCorrectedAllergies((v) => !v); }}
+                          style={{ border: "none", background: "none", padding: 0, cursor: "pointer", fontSize: 11, color: "var(--faint)", textDecoration: "underline" }}
+                        >
+                          {t("opdConsult.allergyCorrectedToggle", { count: correctedAllergies.length })}
+                        </button>
+                        {showCorrectedAllergies && (
+                          <ul data-testid="allergy-corrected" style={{ listStyle: "none", margin: "4px 0 0", padding: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+                            {correctedAllergies.map((a) => (
+                              <li key={a.id} data-testid={`allergy-corrected-${a.id}`} style={{ fontSize: 11.5, color: "var(--faint)" }}>
+                                <s>{a.substance}</s>
+                                {a.correctionReason !== null && <span> — {a.correctionReason}</span>}
+                              </li>
+                            ))}
+                          </ul>
                         )}
                       </div>
                     )}
