@@ -579,14 +579,25 @@ describe("OpdConsult", () => {
   /**
    * PLAN 16a T6 — the formulary picker and the two new hard warnings.
    *
-   * The four acceptance points, in order: picking sets `medicineId`; a severe interaction needs a
-   * reason before the submit proceeds; a soft notice never blocks; and the "not in formulary" hint
-   * is COVERAGE-GATED, absent even for an unresolved line while coverage is low.
+   * The four acceptance points, in order: picking fills the drug NAME and leaves `medicineId` null;
+   * a severe interaction needs a reason before the submit proceeds; a soft notice never blocks; and
+   * the "not in formulary" hint is COVERAGE-GATED, absent even for an unresolved line while
+   * coverage is low.
    */
-  const FORMULARY = {
+  /**
+   * THE PICKER IS NOW A COMBOBOX OVER THE CLINICAL DRUG TIER, and the fixture changed with it.
+   *
+   * 16a's picker was a `<select>` fed by the whole medicine table, and picking wrote `medicineId`.
+   * Both are gone: the table now holds a national release of 93,905 brands (so the control cannot
+   * mount it) and setting `medicineId` on a 97.7%-uncurated catalogue makes coverage report a
+   * working formulary while nothing is checked. The suggestion carries no medicine id at all.
+   */
+  const SUGGEST = {
     items: [
-      { id: "m-warf", brandName: "Warf 5", routeClass: "systemic", salts: [{ saltId: "s-warf", strength: "5 mg" }] },
-      { id: "m-asa", brandName: "Ecosprin 75", routeClass: "systemic", salts: [{ saltId: "s-asa", strength: "75 mg" }] },
+      {
+        genericId: "g-warf", name: "Warfarin sodium 5 mg oral tablet", doseForm: "Oral tablet",
+        route: "Oral route", composition: "Warfarin sodium (5/1 mg/Tablet)", matchedOn: "prefix",
+      },
     ],
   };
   const SEVERE_HIT = {
@@ -596,11 +607,11 @@ describe("OpdConsult", () => {
     against: { scope: "prior", prescriptionId: "rx-old", issuedAt: "2026-08-08T04:00:00.000Z", assumedCurrent: false },
   };
 
-  it("16a: the picker sets medicineId, and a severe interaction needs a reason before it will issue", async () => {
+  it("16a: the picker fills the NAME and leaves medicineId null, and a severe interaction needs a reason before it will issue", async () => {
     let rxCalls = 0;
     mockRoutes({
       ...baseRoutes(),
-      "GET /api/formulary/medicines": { status: 200, body: FORMULARY },
+      "GET /api/formulary/suggest": { status: 200, body: SUGGEST },
       "GET /api/formulary/coverage": { status: 200, body: { coverage: 0.92, noticeEnabled: true } },
       "POST /api/opd/visits/enc-1/rx-precheck": {
         status: 201,
@@ -625,9 +636,10 @@ describe("OpdConsult", () => {
     await user.click(screen.getByRole("tab", { name: "Prescription" }));
     await screen.findByLabelText("Drug");
 
-    // Picking from the formulary fills the NAME and carries the id (DD9).
-    await user.selectOptions(await screen.findByTestId("rx-formulary-0"), "m-warf");
-    expect(screen.getByLabelText("Drug")).toHaveValue("Warf 5");
+    // Picking from the formulary fills the NAME. It no longer carries an id — see below.
+    await user.type(screen.getByTestId("rx-drug-0"), "warfarin");
+    await user.click(await screen.findByTestId("rx-drug-0-opt-0"));
+    expect(screen.getByLabelText("Drug")).toHaveValue("Warfarin sodium 5 mg oral tablet");
     await user.type(screen.getByLabelText("Dose"), "1 tab");
     await user.click(screen.getByRole("button", { name: "Issue & print" }));
 
@@ -654,7 +666,16 @@ describe("OpdConsult", () => {
       lines: { medicineId: string | null }[];
       interactionOverrides: { lineIndex: number; reason: string }[];
     };
-    expect(body.lines[0]!.medicineId).toBe("m-warf");
+    /*
+     * DD9 INVERTED, DELIBERATELY, AND THIS LINE IS THE RECORD OF IT.
+     *
+     * It read `toBe("m-warf")`: picking carried the medicine id to the server. A pick now carries
+     * NO id, because the catalogue it picks from is 97.7% uncurated and an id is what tells every
+     * downstream guard the line was checked. Asserting `null` is not a weakened assertion — it
+     * pins the safety property that replaced the old one, and it fails the day a pick starts
+     * setting an id again without that decision being made on purpose.
+     */
+    expect(body.lines[0]!.medicineId).toBeNull();
     expect(body.interactionOverrides).toEqual([{
       lineIndex: 0, reason: "cardiology advised dual therapy", saltPair: ["s-asa", "s-warf"],
     }]);
@@ -673,7 +694,7 @@ describe("OpdConsult", () => {
   it("16a: starting the next patient clears every trace of the last one's checks", async () => {
     mockRoutes({
       ...baseRoutes(),
-      "GET /api/formulary/medicines": { status: 200, body: FORMULARY },
+      "GET /api/formulary/suggest": { status: 200, body: SUGGEST },
       "GET /api/formulary/coverage": { status: 200, body: { coverage: 0.92, noticeEnabled: true } },
       "POST /api/opd/visits/enc-1/rx-precheck": {
         status: 201,
@@ -688,7 +709,8 @@ describe("OpdConsult", () => {
     await openPanel(user);
 
     await user.click(screen.getByRole("tab", { name: "Prescription" }));
-    await user.selectOptions(await screen.findByTestId("rx-formulary-0"), "m-warf");
+    await user.type(screen.getByTestId("rx-drug-0"), "warfarin");
+    await user.click(await screen.findByTestId("rx-drug-0-opt-0"));
     await user.type(screen.getByLabelText("Dose"), "1 tab");
     await user.click(screen.getByRole("button", { name: "Issue & print" }));
 
@@ -740,7 +762,7 @@ describe("OpdConsult", () => {
     };
     mockRoutes({
       ...baseRoutes(),
-      "GET /api/formulary/medicines": { status: 200, body: FORMULARY },
+      "GET /api/formulary/suggest": { status: 200, body: SUGGEST },
       // T8 is not deployed in this scenario: a 404 means the hint stays OFF, which is also the
       // correct long-term degrade (DD5).
       "GET /api/formulary/coverage": { status: 404, body: { message: "not found" } },
@@ -1001,7 +1023,7 @@ describe("OpdConsult", () => {
   it("CLOSE PASS 2: Ctrl+Enter does not complete the visit while the override dialog is open", async () => {
     mockRoutes({
       ...baseRoutes(),
-      "GET /api/formulary/medicines": { status: 200, body: FORMULARY },
+      "GET /api/formulary/suggest": { status: 200, body: SUGGEST },
       "POST /api/opd/visits/enc-1/prescriptions": {
         status: 409,
         body: { statusCode: 409, code: "allergy_conflict", message: "allergy", detail: { matches: [{ lineIndex: 0, substance: "Penicillin" }] } },
@@ -1034,7 +1056,7 @@ describe("OpdConsult", () => {
   it("CLOSE PASS 2: typing inside a dialog disarms the two-stage Escape — one press afterwards does not release the patient", async () => {
     mockRoutes({
       ...baseRoutes(),
-      "GET /api/formulary/medicines": { status: 200, body: FORMULARY },
+      "GET /api/formulary/suggest": { status: 200, body: SUGGEST },
       "POST /api/opd/visits/enc-1/prescriptions": {
         status: 409,
         body: { statusCode: 409, code: "allergy_conflict", message: "allergy", detail: { matches: [{ lineIndex: 0, substance: "Penicillin" }] } },
