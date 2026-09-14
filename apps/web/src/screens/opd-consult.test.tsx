@@ -151,7 +151,17 @@ const VITALS_LATEST = vitals({
 
 const VISIT = {
   encounter: ENCOUNTER, queueEntries: [CURRENT], vitals: [VITALS_FIRST, VITALS_LATEST], prescriptions: [],
+  /* The CODED diagnoses. `encounter.diagnosis` is a display string and carries no codes. */
+  diagnoses: [] as { text: string; icd10Code: string | null }[],
   patient: summary("p-1", "HMS0000000020", "Asha Devi"),
+};
+
+/** `GET /opd/cds/complete/diagnosis` — real rows from the ICD-10-CM tabular list. */
+const ICD10_HITS = {
+  items: [
+    { code: "J06.9", description: "Acute upper respiratory infection, unspecified", chapterNo: 10, codeMatch: false },
+    { code: "J06.0", description: "Acute laryngopharyngitis", chapterNo: 10, codeMatch: false },
+  ],
 };
 
 const PATIENT_DETAIL = {
@@ -233,6 +243,142 @@ function baseRoutes(): Record<string, Handler> {
     "POST /api/opd/visits/enc-1/consult/start": { status: 201, body: { encounter: ENCOUNTER, queueEntry: CURRENT } },
   };
 }
+
+/**
+ * ═══ THE DIAGNOSIS FIELD — TAGS, AND A CODE THAT STAYS MARRIED TO ITS OWN WORDS ═══
+ *
+ * Owner, 2026-09-14, chose several tags over one value and a real ICD-10 catalogue over completing
+ * from the eight syndromes. The field is `TagField` with the same keystroke contract as the
+ * complaint, so a doctor learns Enter once; what is new is that a TAPPED row brings a code with it.
+ */
+describe("OpdConsult — the diagnosis tags and their ICD-10 codes", () => {
+  beforeEach(() => { vi.restoreAllMocks(); });
+
+  it("N1: tapping a suggestion takes its words AND its code, and the note PUTs both", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/cds/complete/diagnosis": { status: 200, body: ICD10_HITS },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const diagnosis = await screen.findByLabelText("Diagnosis");
+    await user.click(diagnosis);
+    await user.type(diagnosis, "acute upper");
+    await user.click(await screen.findByText("Acute upper respiratory infection, unspecified"));
+    await user.click(screen.getByRole("heading", { name: "Consultation" }));
+
+    await waitFor(() => {
+      const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { diagnoses: unknown };
+      expect(body.diagnoses).toEqual([
+        { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9" },
+      ]);
+    });
+  });
+
+  it("N2: the doctor's own words stay uncoded beside a picked one, in the order written", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/cds/complete/diagnosis": { status: 200, body: ICD10_HITS },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const diagnosis = await screen.findByLabelText("Diagnosis");
+    await user.click(diagnosis);
+    /* Enter commits verbatim — including the comma, which is why " · " is the separator. */
+    await user.type(diagnosis, "?dengue, review in 48h{Enter}");
+    await user.type(diagnosis, "acute upper");
+    await user.click(await screen.findByText("Acute upper respiratory infection, unspecified"));
+    await user.click(screen.getByRole("heading", { name: "Consultation" }));
+
+    await waitFor(() => {
+      const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { diagnoses: unknown };
+      expect(body.diagnoses).toEqual([
+        { text: "?dengue, review in 48h", icd10Code: null },
+        { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9" },
+      ]);
+    });
+  });
+
+  it("N3: REOPENING a coded note and editing something else does not strip the codes", async () => {
+    /*
+      ═══ THE SEAM, AND IT IS THE ONE THIS FEATURE WOULD HAVE LOST DATA ON ═══
+
+      `encounter.diagnosis` is the display string and carries no codes. A screen that loaded only
+      that, then saved after the doctor touched the ADVICE box, would send back uncoded tags and
+      replace the coded rows with uncoded ones. Both ends individually correct, the coding gone on
+      an ordinary edit, and nothing anywhere saying so. The visit read returns the coded rows and
+      the screen seeds its map from them; this is the test that fails if either half is removed.
+    */
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/visits/enc-1": { status: 200, body: {
+        ...VISIT,
+        encounter: { ...ENCOUNTER, diagnosis: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9" },
+        diagnoses: [{ text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9" }],
+      } },
+      "GET /api/opd/cds/complete/diagnosis": { status: 200, body: ICD10_HITS },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const advice = await screen.findByLabelText("Advice");
+    await user.click(advice);
+    await user.type(advice, "steam inhalation");
+    await user.click(screen.getByRole("heading", { name: "Consultation" }));
+
+    await waitFor(() => {
+      const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { diagnoses: unknown };
+      expect(body.diagnoses).toEqual([
+        { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9" },
+      ]);
+    });
+  });
+
+  it("N4: the ICD-10 box is a READING of the tags, not a second place to type", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/cds/complete/diagnosis": { status: 200, body: ICD10_HITS },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const icd10 = await screen.findByTestId("note-icd10");
+    expect(icd10).toHaveAttribute("readonly");
+    expect(icd10).toHaveValue("");
+
+    const diagnosis = screen.getByLabelText("Diagnosis");
+    await user.click(diagnosis);
+    await user.type(diagnosis, "acute upper");
+    await user.click(await screen.findByText("Acute upper respiratory infection, unspecified"));
+
+    // A code typed here and a code carried by a tag would be two statements of one fact.
+    await waitFor(() => { expect(screen.getByTestId("note-icd10")).toHaveValue("J06.9"); });
+  });
+
+  it("N5: a note coded BEFORE this table existed still shows its code", async () => {
+    /* No diagnosis rows, an `icd10Code` on the encounter. Showing an empty box would report a
+       coded note as uncoded — the fallback is the honest rendering of an older record. */
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/visits/enc-1": { status: 200, body: {
+        ...VISIT,
+        encounter: { ...ENCOUNTER, diagnosis: "Acute pharyngitis", icd10Code: "J02.9" },
+        diagnoses: [],
+      } },
+      "GET /api/opd/cds/complete/diagnosis": { status: 200, body: { items: [] } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await waitFor(() => { expect(screen.getByTestId("note-icd10")).toHaveValue("J02.9"); });
+  });
+});
 
 function fetchCalls(): { url: string; path: string; method: string; body: string }[] {
   return vi.mocked(fetch).mock.calls.map(([input, init]) => {
@@ -470,18 +616,15 @@ describe("OpdConsult", () => {
     await openPanel(user);
     const path = "/api/opd/visits/enc-1/consult/note";
 
+    /* DIAGNOSIS IS A TAG FIELD SINCE 2026-09-14 and its keystroke contract is the complaint's:
+       typing holds a draft, Enter commits the doctor's own words verbatim as a tag. */
     const diagnosis = await screen.findByLabelText("Diagnosis");
     await user.click(diagnosis);
     await user.type(diagnosis, "Acute pharyngitis");
     // typing is NOT the trigger — a screen saving on change would already have posted here
     expect(callsTo("PUT", path)).toHaveLength(0);
+    await user.type(diagnosis, "{Enter}");
 
-    const icd10 = screen.getByLabelText("ICD-10 code");
-    await user.click(icd10);
-    await waitFor(() => expect(callsTo("PUT", path)).toHaveLength(1));
-    await user.type(icd10, "J02.9");
-    /* The complaint is a TAG FIELD since 2026-09-14: typing holds a draft, Enter commits it as a
-       tag, and the stored value is the tags joined — which is what the note still PUTs. */
     const chief = screen.getByLabelText("Chief complaint");
     await user.click(chief);
     await user.type(chief, "fever 3d{Enter}");
@@ -490,8 +633,16 @@ describe("OpdConsult", () => {
     await user.type(advice, "warm fluids");
     await user.click(screen.getByRole("heading", { name: "Consultation" }));
 
+    /*
+      `diagnoses`, and NO `diagnosis` / `icd10Code`. The server derives both display columns from
+      this list, so the screen sends the fact once instead of three times in shapes that can
+      disagree. `icd10Code` is null because these are the doctor's own words — a tag only carries a
+      code when it came from the catalogue, which the ICD-10 tests below cover.
+    */
     await waitFor(() => expect(bodiesOf("PUT", path).at(-1)).toEqual({
-      chiefComplaint: "fever 3d", diagnosis: "Acute pharyngitis", icd10Code: "J02.9", advice: "warm fluids",
+      chiefComplaint: "fever 3d",
+      diagnoses: [{ text: "Acute pharyngitis", icd10Code: null }],
+      advice: "warm fluids",
     }));
     expect(await screen.findByTestId("note-saved")).toBeInTheDocument();
 
@@ -871,7 +1022,9 @@ describe("OpdConsult", () => {
     const refused = bodiesOf("POST", path)[0]!;
     expect(refused).toEqual({
       note: {
-        chiefComplaint: null, diagnosis: null, icd10Code: null, advice: null,
+        /* An empty diagnosis field is an empty LIST, not a null string — the server reads `[]` as
+           "the doctor cleared it" and writes null to both display columns from that one fact. */
+        chiefComplaint: null, diagnoses: [], advice: null,
         admissionAdvised: true, referralTo: "AIIMS Patna", referralNote: "cardiac eval",
       },
       testsOrderedReturnToday: true,

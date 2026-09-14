@@ -362,6 +362,57 @@ export const opdEncounters = pgTable(
   ],
 );
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * THE DIAGNOSES OF ONE ENCOUNTER — ONE ROW EACH, AND EACH ONE KEEPS ITS OWN CODE
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner, 2026-09-14: the diagnosis field takes SEVERAL tags — a primary diagnosis and the
+ * comorbidities beside it, which is how an OPD note actually reads ("Acute URI · Type 2 DM · HTN").
+ *
+ * ═══ WHY THIS IS A TABLE WHEN CHIEF COMPLAINT IS NOT ═══
+ *
+ * `TagField` deliberately changed no schema for chief complaint: the tags join with " · " into the
+ * column that was already there, and nothing downstream — the print, the e-Rx, the timeline, the
+ * MRD coder's screen — learns a new shape. That works because a complaint is only ever WORDS.
+ *
+ * A diagnosis is words AND A CODE, and the two must stay married. Three tags of which the second
+ * and third carry codes cannot be stored as two parallel " · " strings: the moment one tag is
+ * free-typed the lists are different lengths and every reader has to guess the pairing. That is
+ * the parallel-array defect this tree keeps finding, and here it would put one patient's ICD-10
+ * code against another patient's diagnosis on a claim.
+ *
+ * So the structured truth lives here, one row per diagnosis, `seq` in the order the doctor wrote
+ * them — and `opd_encounters.diagnosis` / `.icd10_code` are still written as the de-normalised
+ * DISPLAY values, so every existing reader is untouched. Normalise for the data, de-normalise for
+ * the document: the reader that needs the pairing joins this table, and the print does not have to.
+ *
+ * ═══ NO FOREIGN KEY TO `icd10_codes`, ON PURPOSE ═══
+ *
+ * `icd10_code` is nullable and unconstrained. A doctor may write a diagnosis this catalogue has
+ * never heard of — the same law the drug field keeps — and a reference table able to REFUSE one
+ * would turn a foreign standard's coverage into a clinical constraint. Null is the ordinary case
+ * for a free-typed tag, not an error.
+ */
+export const opdEncounterDiagnoses = pgTable(
+  "opd_encounter_diagnoses",
+  {
+    encounterId: text("encounter_id").notNull().references(() => opdEncounters.id),
+    /** 0-based, the order the doctor committed them. `seq` 0 is the primary diagnosis. */
+    seq: integer("seq").notNull(),
+    /** EXACTLY what the doctor committed — the field never rewrites the doctor's words. */
+    text: text("text").notNull(),
+    /** The catalogue code when the tag was PICKED; null when it was typed. */
+    icd10Code: text("icd10_code"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.encounterId, t.seq] }),
+    /** MRD and every claim count by code, so the code is the one thing read across encounters. */
+    index("opd_encounter_diagnoses_code_idx").on(t.icd10Code),
+  ],
+);
+
+
 /** Queue rows. seq is the arrival order (bigserial — never the ULID id). One live row per encounter at a time. */
 export const opdQueueEntries = pgTable(
   "opd_queue_entries",

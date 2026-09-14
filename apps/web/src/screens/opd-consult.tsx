@@ -24,7 +24,7 @@ import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
 import { DeskModal } from "../components/desk-modal";
 import { DrugField } from "../components/drug-field";
-import { TagField } from "../components/tag-field";
+import { TagField, splitTags } from "../components/tag-field";
 import { ConsultScribe } from "../components/consult-scribe";
 import { completeComplaint, fetchRegimen, suggestSyndromes } from "../lib/cds-api";
 import type { WireCard, WireRegimen, WireSyndromeHit } from "../lib/cds-api";
@@ -64,9 +64,13 @@ type VisitDetail = {
   queueEntries: WireQueueEntry[];
   vitals: WireVitals[];
   prescriptions: WirePrescription[];
+  /** The CODED diagnoses. `encounter.diagnosis` is the display string and carries no codes. */
+  diagnoses: { text: string; icd10Code: string | null }[];
   patient: WirePatientSummary | null;
 };
 type PatientDetailRow = { uhid: string; name: string | null; alias: string | null; dob: string | null; administrativeGender: string };
+/** `GET /opd/cds/complete/diagnosis` — one row of the ICD-10 typeahead. */
+type WireIcd10Hit = { code: string; description: string; chapterNo: number; codeMatch: boolean };
 type AllergyRow = { id: string; substance: string; severity: "mild" | "moderate" | "severe" | null; status: string };
 type AllergyMatch = { lineIndex: number; substance: string };
 type AllergyOverride = AllergyMatch & { reason: string };
@@ -154,11 +158,27 @@ type WireCoverage = { coverage: number; noticeEnabled: boolean };
 type NoteState = { chiefComplaint: string; diagnosis: string; icd10Code: string; advice: string };
 const EMPTY_NOTE: NoteState = { chiefComplaint: "", diagnosis: "", icd10Code: "", advice: "" };
 
-function noteBodyOf(n: NoteState): Record<string, string | null> {
+/**
+ * ═══ THE DIAGNOSIS GOES UP AS A LIST, AND THE CODES RIDE WITH THEIR OWN WORDS ═══
+ *
+ * `TagField` hands back one joined string, which is all a complaint ever needs. A diagnosis needs
+ * the code too, so the screen keeps a term -> code map of every suggestion it has been SHOWN
+ * (`icdByTerm`) and pairs them back up here.
+ *
+ * Matching on the text rather than on "which row was tapped" is deliberate and is the more correct
+ * of the two: a doctor who types "Fever, unspecified" in full has named exactly the code a doctor
+ * who tapped it named, and there is no reason the record should say otherwise. A tag the map does
+ * not know is uncoded — which is the ordinary case for a doctor's own words, not a failure.
+ *
+ * `diagnosis` and `icd10Code` are NOT sent: the server derives both from this list, so there is one
+ * statement of the fact rather than three that can disagree.
+ */
+function noteBodyOf(n: NoteState, icdByTerm: Map<string, string>): Record<string, unknown> {
   return {
     chiefComplaint: orNull(n.chiefComplaint),
-    diagnosis: orNull(n.diagnosis),
-    icd10Code: orNull(n.icd10Code),
+    diagnoses: splitTags(n.diagnosis).map((text) => ({
+      text, icd10Code: icdByTerm.get(text.toLowerCase()) ?? null,
+    })),
     advice: orNull(n.advice),
   };
 }
@@ -198,6 +218,13 @@ export function OpdConsult(): React.ReactElement {
   const [skipReason, setSkipReason] = useState<WireSkipReason>("absent");
   const [skipNote, setSkipNote] = useState("");
   const [note, setNote] = useState<NoteState>(EMPTY_NOTE);
+  /*
+    Every ICD-10 row the diagnosis field has offered, by its description. A ref rather than state:
+    nothing renders from it, and re-rendering the consult panel on every keystroke of a typeahead
+    is exactly the cost the typeahead exists to avoid. It grows for the life of the panel and is
+    cleared with it — a few hundred short strings at the very most.
+  */
+  const icdByTerm = useRef(new Map<string, string>());
   const [noteSaved, setNoteSaved] = useState(false);
   const [noteError, setNoteError] = useState<string | null>(null);
   const [queueError, setQueueError] = useState<string | null>(null);
@@ -223,7 +250,7 @@ export function OpdConsult(): React.ReactElement {
   const [referralTo, setReferralTo] = useState("");
   const [referralNote, setReferralNote] = useState("");
 
-  const lastSavedNote = useRef<string>(JSON.stringify(noteBodyOf(EMPTY_NOTE)));
+  const lastSavedNote = useRef<string>(JSON.stringify(noteBodyOf(EMPTY_NOTE, new Map())));
   /** The PARSED lines of a refused submission — never `getValues()`, whose durationDays is a string (§3.19). */
   const pendingLines = useRef<RxLineValues[]>([]);
   const loadedNoteFor = useRef<string | null>(null);
@@ -407,9 +434,18 @@ export function OpdConsult(): React.ReactElement {
       icd10Code: encounter.icd10Code ?? "",
       advice: encounter.advice ?? "",
     };
+    /*
+      REHYDRATE THE CODES BEFORE THE NOTE IS TOUCHED. `encounter.diagnosis` is the display string
+      and carries no codes; the visit read returns the coded rows beside it precisely so that
+      reopening a note and changing one word does not send back uncoded tags and replace the
+      coding. Seeding the map here is the client half of that seam.
+    */
+    for (const d of visit.data?.diagnoses ?? []) {
+      if (d.icd10Code !== null) icdByTerm.current.set(d.text.toLowerCase(), d.icd10Code);
+    }
     setNote(next);
-    lastSavedNote.current = JSON.stringify(noteBodyOf(next));
-  }, [encounter]);
+    lastSavedNote.current = JSON.stringify(noteBodyOf(next, icdByTerm.current));
+  }, [encounter, visit.data]);
 
   const rxForm = useForm<RxFormInput, unknown, RxFormValues>({
     resolver: zodResolver(rxSchema),
@@ -470,7 +506,11 @@ export function OpdConsult(): React.ReactElement {
 
   const resetPanel = (): void => {
     loadedNoteFor.current = null;
-    lastSavedNote.current = JSON.stringify(noteBodyOf(EMPTY_NOTE));
+    /* The map is the PATIENT'S, not the screen's — carrying it to the next patient would attach one
+       patient's ICD-10 code to another's identically-worded diagnosis. `resetPanel` has forgotten
+       newly-added state before (the T6 allergy fields); this is the line that stops it happening. */
+    icdByTerm.current = new Map();
+    lastSavedNote.current = JSON.stringify(noteBodyOf(EMPTY_NOTE, new Map()));
     setNote(EMPTY_NOTE);
     setNoteSaved(false);
     setNoteError(null);
@@ -670,7 +710,7 @@ export function OpdConsult(): React.ReactElement {
     if (active === null) return;
     setNoteError(null);
     try {
-      await api("PUT", `/opd/visits/${active.encounterId}/consult/note`, { ...noteBodyOf(note), advisedTests: next });
+      await api("PUT", `/opd/visits/${active.encounterId}/consult/note`, { ...noteBodyOf(note, icdByTerm.current), advisedTests: next });
     } catch (e) {
       setNoteError(opdErrorMessage(e));
     }
@@ -678,7 +718,7 @@ export function OpdConsult(): React.ReactElement {
 
   const saveNote = async (): Promise<void> => {
     if (active === null) return;
-    const body = noteBodyOf(note);
+    const body = noteBodyOf(note, icdByTerm.current);
     const key = JSON.stringify(body);
     if (key === lastSavedNote.current) return;
     setNoteError(null);
@@ -870,7 +910,7 @@ export function OpdConsult(): React.ReactElement {
     setCompleteError(null);
     const body: Record<string, unknown> = {
       note: {
-        ...noteBodyOf(note),
+        ...noteBodyOf(note, icdByTerm.current),
         admissionAdvised,
         referralTo: orNull(referralTo),
         referralNote: orNull(referralNote),
@@ -1533,23 +1573,73 @@ export function OpdConsult(): React.ReactElement {
                         </div>
                       )}
                     </div>
+                    {/*
+                      ═══ THE DIAGNOSIS IS TAGS, AND ITS CODE COMES FROM THE CATALOGUE ═══
+
+                      Owner, 2026-09-14, chose SEVERAL tags over one value: an OPD note reads
+                      "Acute URI · Type 2 DM · HTN", and a primary diagnosis with its comorbidities
+                      beside it is what a coder, a claim and the next doctor all need.
+
+                      The suggester is the ICD-10-CM tabular list the owner supplied — 74,044
+                      assignable codes — and it completes what is TYPED, so it works whether or not
+                      the co-pilot is on, exactly as the drug field does. What the co-pilot gates is
+                      the syndrome chips above, which propose a diagnosis nobody typed.
+
+                      The same keystroke contract as the complaint: Enter commits the doctor's own
+                      words verbatim, the forward key accepts the completion, a tap chooses the row.
+                      A doctor's own phrase is a legal diagnosis and always was.
+                    */}
+                    <TagField
+                      id="note-diagnosis"
+                      label={t("opdConsult.diagnosis")}
+                      value={note.diagnosis}
+                      onChange={(next) => { setNote((n) => ({ ...n, diagnosis: next })); }}
+                      suggest={async (q) => {
+                        const r = await api<{ items: WireIcd10Hit[] }>(
+                          "GET", `/opd/cds/complete/diagnosis?q=${encodeURIComponent(q)}`,
+                        );
+                        /* Remember what was OFFERED, so the tag can be paired with its code on save. */
+                        for (const i of r.items) icdByTerm.current.set(i.description.toLowerCase(), i.code);
+                        /*
+                          NO GHOST. The complaint field ghosts the remainder of a prefix match
+                          because its vocabulary is seventy short words. A ghost of "Acute upper
+                          respiratory infection, unspecified" behind three typed letters is a line
+                          of text the doctor did not write, arriving under their cursor.
+                        */
+                        return { items: r.items.map((i) => ({ term: i.description, hint: i.code })), ghost: null };
+                      }}
+                      placeholder={t("opdConsult.diagnosisPlaceholder")}
+                      hint={t("opdConsult.diagnosisHint")}
+                    />
                     <div>
-                      <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="note-diagnosis">{t("opdConsult.diagnosis")}</label>
-                      <textarea
-                        id="note-diagnosis" rows={2}
-                        value={note.diagnosis}
-                        onChange={(e) => setNote((n) => ({ ...n, diagnosis: e.target.value }))}
-                        className="in" style={{ width: "100%", height: "auto", padding: "7px 9px", fontSize: 13 }}
-                      />
-                    </div>
-                    <div>
+                      {/*
+                        THE CODE FIELD STAYS, AND IS NOW A READING RATHER THAN A SECOND PLACE TO TYPE.
+
+                        Owner ruling 1: sharpen the screen the doctor has, do not replace it — so the
+                        field does not vanish. But a code typed here and a code carried by a tag are
+                        two statements of one fact, and the day they disagree nothing would say which
+                        is the diagnosis. A doctor who knows the code types it into the field ABOVE:
+                        the typeahead matches codes as well as prose, so `J06.9` finds its own row.
+                      */}
                       <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="note-icd10">{t("opdConsult.icd10Code")}</label>
                       <input
-                        id="note-icd10"
-                        value={note.icd10Code}
-                        onChange={(e) => setNote((n) => ({ ...n, icd10Code: e.target.value }))}
-                        className="in mo" style={{ width: "100%", height: 34, fontSize: 13 }}
+                        id="note-icd10" readOnly data-testid="note-icd10"
+                        /*
+                          THE FALLBACK IS FOR NOTES WRITTEN BEFORE THIS TABLE EXISTED. An encounter
+                          coded by the old single input has `icd10Code` on the row and no diagnosis
+                          rows at all, so the map yields nothing for its tags. Showing the stored
+                          code is the honest rendering of that record; showing an empty box would
+                          report a note as uncoded when it is not.
+                        */
+                        value={(() => {
+                          const fromTags = splitTags(note.diagnosis)
+                            .map((x) => icdByTerm.current.get(x.toLowerCase()))
+                            .filter((c): c is string => c !== undefined);
+                          return fromTags.length > 0 ? fromTags.join(" · ") : note.icd10Code;
+                        })()}
+                        className="in mo" style={{ width: "100%", height: 34, fontSize: 13, background: "var(--paper-2, transparent)", color: "var(--dim)" }}
                       />
+                      <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "var(--faint)" }}>{t("opdConsult.icd10Hint")}</p>
                     </div>
                     <div>
                       <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="note-advice">{t("opdConsult.advice")}</label>

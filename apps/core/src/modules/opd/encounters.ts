@@ -5,7 +5,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { EPISODE_SERIAL_DIGITS, EPISODE_SERIES, nextEpisodeNo } from "../../kernel/episodes/series";
 import { withTx } from "../../kernel/db/client";
 import {
-  opdDepartments, opdDoctors, opdEncounters, opdPrescriptions, opdQueueEntries, opdQueueSessions, opdVitals,
+  opdDepartments, opdDoctors, opdEncounterDiagnoses, opdEncounters, opdPrescriptions, opdQueueEntries, opdQueueSessions, opdVitals,
 } from "../../kernel/db/schema";
 import { startInstance, transition, WorkflowError } from "../../kernel/workflow/instances";
 import { getPatient, listMergedLoserIds, resolvePatientId } from "../patients";
@@ -837,7 +837,10 @@ export async function getVisit(
   db: Db,
   actor: Actor,
   encounterId: string,
-): Promise<{ encounter: EncounterRow; queueEntries: QueueEntryRow[]; vitals: VitalsRow[]; prescriptions: PrescriptionRow[] } | null> {
+): Promise<{
+  encounter: EncounterRow; queueEntries: QueueEntryRow[]; vitals: VitalsRow[];
+  prescriptions: PrescriptionRow[]; diagnoses: { text: string; icd10Code: string | null }[];
+} | null> {
   // PLAN 07a T1 FOLLOW-UP — this route was the FOURTH instance of the same hole and the first fix
   // missed it. It returns the encounter's diagnosis and ICD-10 code AND the visit's vitals AND its
   // prescriptions; only the patient's NAME was protected, by `getPatientSummaries` aliasing it in
@@ -854,7 +857,21 @@ export async function getVisit(
   const queueEntries = await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, encounterId)).orderBy(asc(opdQueueEntries.seq));
   const vitals = await db.select().from(opdVitals).where(eq(opdVitals.encounterId, encounterId)).orderBy(asc(opdVitals.recordedAt));
   const prescriptions = await db.select().from(opdPrescriptions).where(eq(opdPrescriptions.encounterId, encounterId)).orderBy(asc(opdPrescriptions.version));
-  return { encounter, queueEntries, vitals, prescriptions };
+  /*
+    ═══ THE DIAGNOSES COME BACK CODED, OR REOPENING THE NOTE SILENTLY STRIPS THE CODES ═══
+
+    `encounter.diagnosis` is the de-normalised display string and the codes are not in it. A screen
+    that loaded only that string, then saved the note again after the doctor changed one word,
+    would send back tags with no codes and the coded rows would be REPLACED by uncoded ones. Both
+    ends would be individually correct and the record would lose the coding on an ordinary edit.
+    Returning the rows is what closes that seam.
+  */
+  const diagnoses = (await db
+    .select({ text: opdEncounterDiagnoses.text, icd10Code: opdEncounterDiagnoses.icd10Code })
+    .from(opdEncounterDiagnoses)
+    .where(eq(opdEncounterDiagnoses.encounterId, encounterId))
+    .orderBy(asc(opdEncounterDiagnoses.seq)));
+  return { encounter, queueEntries, vitals, prescriptions, diagnoses };
 }
 
 /**

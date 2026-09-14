@@ -748,7 +748,10 @@
       "at_investigation": "Gone for vitals or a test",
       "not_ready": "Patient or attendant not ready",
       "other": "Other"
-    }
+    },
+    "diagnosisPlaceholder": "Type a diagnosis or an ICD-10 code…",
+    "diagnosisHint": "Enter adds your own words. Tap a suggestion to take its ICD-10 code.",
+    "icd10Hint": "Set by the diagnoses above — tap a suggestion to attach its code."
   },
   "rx": {
     "regNo": "Reg. No.",

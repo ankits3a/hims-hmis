@@ -610,6 +610,13 @@
       "when": 1789389553535,
       "tag": "0086_icd10_catalogue",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1789390191973,
+      "tag": "0087_opd_encounter_diagnoses",
+      "breakpoints": true
     }
   ]
 }
