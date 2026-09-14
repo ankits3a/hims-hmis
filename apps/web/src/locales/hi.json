@@ -703,6 +703,18 @@
     "queueRail": "कतार",
     "noPatientTitle": "कुर्सी पर कोई नहीं",
     "noPatientBody": "अगला टोकन बुलाएँ, या Enter दबाएँ। बाईं ओर की कतार जीवित है।",
+    "complaintPlaceholder": "लक्षण लिखें, जोड़ने के लिए Enter दबाएँ",
+    "complaintHint": "Enter वही जोड़ता है जो आपने लिखा · → सुझाव पूरा करता है · × टैग हटाता है",
+    "addAllergy": "+ एलर्जी जोड़ें",
+    "allergySubstance": "एलर्जी — पदार्थ",
+    "allergyPlaceholder": "जैसे पेनिसिलिन",
+    "allergySeverity": "गंभीरता",
+    "allergySave": "एलर्जी दर्ज करें",
+    "severity": {
+      "mild": "हल्की",
+      "moderate": "मध्यम",
+      "severe": "गंभीर"
+    },
     "park": "मरीज़ को होल्ड करें",
     "resume": "फिर से शुरू करें",
     "openPatient": "खोलें",

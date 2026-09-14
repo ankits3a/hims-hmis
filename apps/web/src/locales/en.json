@@ -703,6 +703,18 @@
     "queueRail": "The queue",
     "noPatientTitle": "Nobody is in the chair",
     "noPatientBody": "Call the next token, or press Enter. The queue on the left is live.",
+    "complaintPlaceholder": "type a symptom, press Enter to add it",
+    "complaintHint": "Enter adds exactly what you typed · → completes the suggestion · × removes a tag",
+    "addAllergy": "+ Add allergy",
+    "allergySubstance": "Allergy — substance",
+    "allergyPlaceholder": "e.g. Penicillin",
+    "allergySeverity": "Severity",
+    "allergySave": "Record allergy",
+    "severity": {
+      "mild": "Mild",
+      "moderate": "Moderate",
+      "severe": "Severe"
+    },
     "park": "Park patient",
     "resume": "Resume",
     "openPatient": "Open",

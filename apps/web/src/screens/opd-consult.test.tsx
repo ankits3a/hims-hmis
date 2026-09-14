@@ -480,9 +480,11 @@ describe("OpdConsult", () => {
     await user.click(icd10);
     await waitFor(() => expect(callsTo("PUT", path)).toHaveLength(1));
     await user.type(icd10, "J02.9");
+    /* The complaint is a TAG FIELD since 2026-09-14: typing holds a draft, Enter commits it as a
+       tag, and the stored value is the tags joined — which is what the note still PUTs. */
     const chief = screen.getByLabelText("Chief complaint");
     await user.click(chief);
-    await user.type(chief, "fever 3d");
+    await user.type(chief, "fever 3d{Enter}");
     const advice = screen.getByLabelText("Advice");
     await user.click(advice);
     await user.type(advice, "warm fluids");
@@ -1116,8 +1118,9 @@ describe("OpdConsult", () => {
     expect(callsTo("POST", "/api/opd/visits/enc-1/consult/start")).toHaveLength(0);
     expect(callsTo("POST", "/api/opd/queues/sess-1/call-next")).toHaveLength(0);
 
-    // (b) BARE ENTER WHERE A DOCTOR ACTUALLY TYPES IT. Inside the chief complaint it is a newline,
-    // and it must reach none of this screen's lanes — `inField()`.
+    // (b) BARE ENTER WHERE A DOCTOR ACTUALLY TYPES IT. Since the complaint became a tag field it
+    // COMMITS A TAG there — a local act — and it must still reach none of this screen's lanes.
+    // `inField()` covers INPUT, which is what the tag field's editor is.
     await user.click(screen.getByRole("button", { name: "Start consultation" }));
     await screen.findByTestId("patient-panel");
     await user.type(screen.getByLabelText("Chief complaint"), "ks");
@@ -1128,8 +1131,9 @@ describe("OpdConsult", () => {
     expect(callsTo("POST", "/api/opd/queues/entries/qe-cur/skip")).toHaveLength(0);
     expect(callsTo("POST", "/api/opd/visits/enc-1/consult/complete")).toHaveLength(0);
     expect(callsTo("POST", "/api/opd/queues/sess-1/call-next")).toHaveLength(0);
-    // Enter landed in the note as a NEWLINE — the keystroke was text, exactly as it should be.
-    expect(screen.getByLabelText("Chief complaint")).toHaveValue("ks\n");
+    // The keystroke was TEXT: it made a tag and cleared the editor, and no lane fired.
+    expect(screen.getByTestId("note-chief-tag-0")).toHaveTextContent("ks");
+    expect(screen.getByLabelText("Chief complaint")).toHaveValue("");
 
     // (b2) THE CHORD IS NOT GUARDED THE SAME WAY, and that is the point of it being a chord: the
     // cursor is still inside the note, and Ctrl+Enter commits from there.
@@ -1764,10 +1768,12 @@ describe("OpdConsult — the clinical co-pilot", () => {
     const user = userEvent.setup();
     await openPanel(user);
 
-    await user.type(screen.getByLabelText("Chief complaint"), "fe");
+    /* A DRAFT IS NOT A COMPLAINT. The syndrome read fires on the tags the doctor has COMMITTED —
+       typing alone must not send anything, which is also what keeps it off the network per key. */
+    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat");
     await waitFor(() => { expect(callsTo("GET", "/api/opd/cds/suggest")).toHaveLength(0); });
 
-    await user.type(screen.getByLabelText("Chief complaint"), "ver and sore throat");
+    await user.keyboard("{Enter}");
     expect(await screen.findByTestId("cds-hit-SYN_URI_01")).toHaveTextContent("Acute Upper Respiratory Infection");
     // the complaint travels; the patient does NOT — this read sees no PHI
     const url = callsTo("GET", "/api/opd/cds/suggest").at(-1)!.url;
@@ -1779,7 +1785,7 @@ describe("OpdConsult — the clinical co-pilot", () => {
     mockRoutes(cdsRoutes());
     const user = userEvent.setup();
     await openPanel(user);
-    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat");
+    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat{Enter}");
     await user.click(await screen.findByTestId("cds-hit-SYN_URI_01"));
 
     const card = await screen.findByTestId("cds-regimen");
@@ -1797,7 +1803,7 @@ describe("OpdConsult — the clinical co-pilot", () => {
     mockRoutes(cdsRoutes());
     const user = userEvent.setup();
     await openPanel(user);
-    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat");
+    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat{Enter}");
     await user.click(await screen.findByTestId("cds-hit-SYN_URI_01"));
 
     const allergy = await screen.findByTestId("cds-card-allergy");
@@ -1815,7 +1821,7 @@ describe("OpdConsult — the clinical co-pilot", () => {
     mockRoutes(cdsRoutes());
     const user = userEvent.setup();
     await openPanel(user);
-    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat");
+    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat{Enter}");
     await user.click(await screen.findByTestId("cds-hit-SYN_URI_01"));
     await user.click(await screen.findByTestId("cds-fill"));
 
@@ -1833,7 +1839,7 @@ describe("OpdConsult — the clinical co-pilot", () => {
     mockRoutes(cdsRoutes());
     const user = userEvent.setup();
     await openPanel(user);
-    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat");
+    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat{Enter}");
     await user.click(await screen.findByTestId("cds-hit-SYN_URI_01"));
     expect(screen.getByTestId("cds-dose-2")).toHaveTextContent("— dose needs review");
 
@@ -1841,5 +1847,125 @@ describe("OpdConsult — the clinical co-pilot", () => {
     const doses = await screen.findAllByLabelText("Dose");
     expect((doses[1] as HTMLInputElement).value).toBe("— dose needs review");
     expect((doses[1] as HTMLInputElement).value).not.toMatch(/\d\s*m[lg]/i);
+  });
+});
+
+/**
+ * ═══ THE FIELDS THE DOCTOR ALREADY HAS, SHARPENED (owner, 2026-09-14) ═══
+ *
+ * *"The doctor must have the fields that he already have now. Doctor must be able to add ALLERGIES
+ * if there's no allergy already recorded … if doctor start writing 'fev' and auto suggestion will
+ * appear as 'fever' … If doctor types 'fever' and presses enter, 'fever' will be added a tag
+ * exactly as the doctor wrote. The doctor could simply click on 'x' cross to delete the tag."*
+ */
+describe("OpdConsult — the complaint tags and the allergy the doctor learns in the room", () => {
+  function fieldRoutes(over: Record<string, Handler> = {}): Record<string, Handler> {
+    return {
+      ...baseRoutes(),
+      "GET /api/opd/cds/complete/complaint": { status: 200, body: { items: [{ term: "fever", from: "syndrome" }, { term: "high grade fever", from: "symptom" }], ghost: "er" } },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+      "POST /api/patients/p-1/allergies": { status: 201, body: { allergyId: "al-9" } },
+      ...over,
+    };
+  }
+
+  it("F1: typing 'fev' offers 'fever' and ghosts the remainder — the input still holds only what was typed", async () => {
+    mockRoutes(fieldRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.type(screen.getByLabelText("Chief complaint"), "fev");
+
+    expect(await screen.findByTestId("note-chief-ghost")).toHaveTextContent("er");
+    expect(screen.getByTestId("note-chief-suggest-fever")).toBeInTheDocument();
+    expect(screen.getByLabelText("Chief complaint")).toHaveValue("fev");
+  });
+
+  it("F2: → accepts the ghost into the input, and does NOT commit it — the doctor keeps typing", async () => {
+    mockRoutes(fieldRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    const input = screen.getByLabelText("Chief complaint");
+
+    await user.type(input, "fev");
+    await screen.findByTestId("note-chief-ghost");
+    await user.keyboard("{ArrowRight}");
+
+    expect(input).toHaveValue("fever");
+    expect(screen.queryByTestId("note-chief-tag-0")).toBeNull();
+  });
+
+  /** THE RULE: Enter commits the doctor's own words, whatever the suggestion list is showing. */
+  it("F3: Enter commits EXACTLY what was typed, even when it is nothing the vocabulary knows", async () => {
+    mockRoutes(fieldRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.type(screen.getByLabelText("Chief complaint"), "fever since 3 days, worse at night{Enter}");
+
+    expect(screen.getByTestId("note-chief-tag-0")).toHaveTextContent("fever since 3 days, worse at night");
+    expect(screen.getByLabelText("Chief complaint")).toHaveValue("");
+  });
+
+  it("F4: many tags, a tap adds the suggestion, × removes one, and the stored value is what the note PUTs", async () => {
+    mockRoutes(fieldRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    const input = screen.getByLabelText("Chief complaint");
+
+    await user.type(input, "fever{Enter}");
+    await user.type(input, "dry cough{Enter}");
+    await user.type(input, "fev");
+    await user.click(await screen.findByTestId("note-chief-suggest-high grade fever"));
+    expect(screen.getAllByTestId(/note-chief-tag-\d/)).toHaveLength(3);
+
+    await user.click(screen.getByTestId("note-chief-remove-1"));
+    expect(screen.getAllByTestId(/note-chief-tag-\d/)).toHaveLength(2);
+
+    await user.click(screen.getByRole("heading", { name: "Consultation" }));
+    await waitFor(() => {
+      expect(bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1)?.chiefComplaint)
+        .toBe("fever · high grade fever");
+    });
+  });
+
+  it("F5: backspace on an empty input removes the last tag — the standard chip gesture", async () => {
+    mockRoutes(fieldRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    const input = screen.getByLabelText("Chief complaint");
+
+    await user.type(input, "fever{Enter}");
+    await user.type(input, "cough{Enter}");
+    await user.keyboard("{Backspace}");
+
+    expect(screen.getAllByTestId(/note-chief-tag-\d/)).toHaveLength(1);
+    expect(screen.getByTestId("note-chief-tag-0")).toHaveTextContent("fever");
+  });
+
+  /** The allergy panel could only ever SHOW. It is the one fact every guardrail on this screen reads. */
+  it("F6: with nothing on file the doctor can record an allergy, and it posts as learnt AT THE CONSULT", async () => {
+    let allergies: Record<string, unknown>[] = [];
+    mockRoutes(fieldRoutes({
+      "GET /api/patients/p-1/allergies": () => ({ status: 200, body: { items: allergies } }),
+      "POST /api/patients/p-1/allergies": () => {
+        allergies = [{ id: "al-9", substance: "Penicillin", severity: "severe", status: "active" }];
+        return { status: 201, body: { allergyId: "al-9" } };
+      },
+    }));
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    expect(await screen.findByText("No allergy recorded")).toBeInTheDocument();
+    await user.click(screen.getByTestId("allergy-add"));
+    await user.type(screen.getByLabelText("Allergy — substance"), "Penicillin");
+    await user.selectOptions(screen.getByLabelText("Severity"), "severe");
+    await user.click(screen.getByTestId("allergy-save"));
+
+    await waitFor(() => { expect(callsTo("POST", "/api/patients/p-1/allergies")).toHaveLength(1); });
+    expect(bodiesOf("POST", "/api/patients/p-1/allergies")[0])
+      .toEqual({ substance: "Penicillin", severity: "severe", source: "consult" });
+    // and the chip the guardrails read is on screen without a reload
+    expect(await screen.findByTestId("allergy-chip-al-9")).toHaveTextContent("Penicillin");
   });
 });

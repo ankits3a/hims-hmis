@@ -15,3 +15,5 @@ export { cardsFor } from "./guardrails";
 export type { Card } from "./guardrails";
 export { durationDaysOf, frequencyOf, toRxDraft } from "./rx";
 export type { RxDraftLine } from "./rx";
+export { completeComplaint, complaintVocabulary, ghostFor } from "./vocabulary";
+export type { ComplaintTerm } from "./vocabulary";

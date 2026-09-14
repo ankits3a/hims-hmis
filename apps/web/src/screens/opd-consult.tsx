@@ -23,8 +23,9 @@ import { PaperScreen, ScreenTitle } from "../components/paper-screen";
 import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
 import { DeskModal } from "../components/desk-modal";
+import { TagField } from "../components/tag-field";
 import { ConsultScribe } from "../components/consult-scribe";
-import { fetchRegimen, suggestSyndromes } from "../lib/cds-api";
+import { completeComplaint, fetchRegimen, suggestSyndromes } from "../lib/cds-api";
 import type { WireCard, WireRegimen, WireSyndromeHit } from "../lib/cds-api";
 import { TabStrip } from "../components/desk-fields";
 
@@ -186,6 +187,16 @@ export function OpdConsult(): React.ReactElement {
   const [regimen, setRegimen] = useState<WireRegimen | null>(null);
   const [cdsError, setCdsError] = useState<string | null>(null);
   // THE SKIP DIALOG — open on the entry being skipped, because a reason belongs to one token.
+  /*
+    ═══ THE ALLERGY THE DOCTOR LEARNS IN THE ROOM (owner, 2026-09-14) ═══
+    The panel could only ever SHOW allergies. A doctor who is told "penicillin gave him a rash"
+    mid-consultation had nowhere to put it — and it is the one fact every guardrail on this screen
+    reads. `patients.update` is already the doctor's grant, so this adds a field, not an authority.
+  */
+  const [allergyOpen, setAllergyOpen] = useState(false);
+  const [allergyText, setAllergyText] = useState("");
+  const [allergySeverity, setAllergySeverity] = useState<"mild" | "moderate" | "severe">("moderate");
+  const [allergyError, setAllergyError] = useState<string | null>(null);
   const [skipping, setSkipping] = useState<WireQueueEntryView | null>(null);
   const [skipReason, setSkipReason] = useState<WireSkipReason>("absent");
   const [skipNote, setSkipNote] = useState("");
@@ -522,6 +533,24 @@ export function OpdConsult(): React.ReactElement {
    * what a skip usually means — a default that is right most of the time is what keeps a reason
    * field from becoming a shrug — and every other reason is one click away.
    */
+  const addAllergy = async (): Promise<void> => {
+    const substance = allergyText.trim();
+    if (substance === "" || patientId === null) return;
+    setAllergyError(null);
+    try {
+      /* `source: "consult"` is one of the three the route accepts, and it is the true one: this
+         allergy was learnt at the consultation, not at registration and not at the bay. */
+      await api("POST", `/patients/${patientId}/allergies`, { substance, severity: allergySeverity, source: "consult" });
+      setAllergyText("");
+      setAllergyOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ["patient-allergies", patientId] });
+      /* The co-pilot's cards are computed FROM the allergy list, so a new allergy re-asks for them. */
+      if (regimen !== null) await openRegimen(regimen.regimen.syndrome.key, regimen.facts.pregnant ?? undefined);
+    } catch (e) {
+      setAllergyError(opdErrorMessage(e));
+    }
+  };
+
   const skipCurrent = (): void => {
     if (current === null) return;
     setQueueError(null);
@@ -1304,7 +1333,7 @@ export function OpdConsult(): React.ReactElement {
                 {!restricted && (
                   <div style={{ paddingTop: 7 }}>
                     <h3 className="tag" style={{ margin: "0 0 5px" }}>{t("opdConsult.allergies")}</h3>
-                    <div data-testid="allergy-chips" style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                    <div data-testid="allergy-chips" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 5 }}>
                       {activeAllergies.length === 0 && (
                         <span style={{ fontSize: 12, color: "var(--dim)" }}>{t("opdConsult.noAllergies")}</span>
                       )}
@@ -1313,7 +1342,43 @@ export function OpdConsult(): React.ReactElement {
                           {a.substance}
                         </span>
                       ))}
+                      {!allergyOpen && (
+                        <button
+                          type="button" className="sec" data-testid="allergy-add"
+                          style={{ height: 25, fontSize: 11.5, padding: "0 9px" }}
+                          onClick={() => { setAllergyOpen(true); setAllergyError(null); }}
+                        >
+                          {t("opdConsult.addAllergy")}
+                        </button>
+                      )}
                     </div>
+                    {allergyOpen && (
+                      <div data-testid="allergy-form" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 6 }}>
+                        <input
+                          id="allergy-substance" aria-label={t("opdConsult.allergySubstance")}
+                          value={allergyText} onChange={(e) => { setAllergyText(e.target.value); }}
+                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void addAllergy(); } }}
+                          className="in" style={{ width: 220, height: 30, fontSize: 12.5 }}
+                          placeholder={t("opdConsult.allergyPlaceholder")}
+                        />
+                        <select
+                          aria-label={t("opdConsult.allergySeverity")} value={allergySeverity}
+                          onChange={(e) => { setAllergySeverity(e.target.value as "mild" | "moderate" | "severe"); }}
+                          className="in" style={{ width: 120, height: 30, fontSize: 12.5 }}
+                        >
+                          <option value="mild">{t("opdConsult.severity.mild")}</option>
+                          <option value="moderate">{t("opdConsult.severity.moderate")}</option>
+                          <option value="severe">{t("opdConsult.severity.severe")}</option>
+                        </select>
+                        <button type="button" className="sec grn" data-testid="allergy-save" style={{ height: 30, fontSize: 12 }} onClick={() => void addAllergy()}>
+                          {t("opdConsult.allergySave")}
+                        </button>
+                        <button type="button" className="sec" style={{ height: 30, fontSize: 12 }} onClick={() => { setAllergyOpen(false); setAllergyText(""); setAllergyError(null); }}>
+                          {t("opdConsult.cancel")}
+                        </button>
+                        <ErrorLine message={allergyError} />
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1363,12 +1428,24 @@ export function OpdConsult(): React.ReactElement {
                       setNote((n) => ({ ...n, chiefComplaint: n.chiefComplaint.trim() === "" ? text : `${n.chiefComplaint.trim()} ${text}` }));
                     }} />
                     <div>
-                      <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="note-chief">{t("opdConsult.chiefComplaint")}</label>
-                      <textarea
-                        id="note-chief" rows={2}
+                      {/*
+                        THE COMPLAINT IS TAGS NOW (owner, 2026-09-14), and the stored value is still
+                        a plain comma-joined string — `opd_encounters.chief_complaint`, the printed
+                        slip, the timeline and the MRD coder's screen all see exactly what they saw
+                        before. `Enter` commits the doctor's own words verbatim; `→` accepts the
+                        ghost; a tap takes the suggestion; `×` removes a tag.
+                      */}
+                      <TagField
+                        id="note-chief"
+                        label={t("opdConsult.chiefComplaint")}
                         value={note.chiefComplaint}
-                        onChange={(e) => setNote((n) => ({ ...n, chiefComplaint: e.target.value }))}
-                        className="in" style={{ width: "100%", height: "auto", padding: "7px 9px", fontSize: 13 }}
+                        onChange={(next) => { setNote((n) => ({ ...n, chiefComplaint: next })); }}
+                        suggest={async (q) => {
+                          const r = await completeComplaint(q);
+                          return { items: r.items.map((i) => ({ term: i.term })), ghost: r.ghost };
+                        }}
+                        placeholder={t("opdConsult.complaintPlaceholder")}
+                        hint={t("opdConsult.complaintHint")}
                       />
                       {/*
                         THE SUGGESTIONS SIT UNDER THE FIELD THEY CAME FROM, and they are chips
