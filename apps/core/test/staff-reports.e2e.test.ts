@@ -36,6 +36,8 @@ describe("staff reports e2e — 07c T9 (DD14: what, not whom)", () => {
   let viewer: Awaited<ReturnType<typeof mkUser>>;   // reads figures only
   let auditor: Awaited<ReturnType<typeof mkUser>>;  // may also drill
   let outsider: Awaited<ReturnType<typeof mkUser>>; // holds neither
+  let floorViewer: Awaited<ReturnType<typeof mkUser>>; // reads figures, three-month floor
+  let yearViewer: Awaited<ReturnType<typeof mkUser>>;  // reads figures, one-year tier
 
   const T0 = new Date("2026-08-17T04:00:00.000Z");
   const DATE = "2026-08-17";
@@ -62,17 +64,42 @@ describe("staff reports e2e — 07c T9 (DD14: what, not whom)", () => {
 
     await ensureRole(db, "desk_clerk");
     await grantPermissionToRole(db, registry, "desk_clerk", "opd.queue.read");
+    /*
+     * ═══ STAFF-REPORTS T0 — WHY THESE TWO HOLD `history.full` ═══
+     *
+     * Every DD14 assertion below reads `date=2026-08-17`, a fixed day. The history horizon is
+     * measured from the REAL today, so a 91-day window anchored 28 days in the past reaches 119 days
+     * back — and these tests would have started failing about a week after they were written, for a
+     * reason nobody would have connected to this commit.
+     *
+     * The fix is not to loosen the horizon but to say which question each test asks. DD14's tests
+     * are about WHAT a supervisor may see, so their fixtures are unbounded and time-independent. The
+     * horizon's own tests are the block at the end of this file, and they use RELATIVE dates.
+     */
     await ensureRole(db, "supervisor");
     await grantPermissionToRole(db, registry, "supervisor", "staff.reports.read");
+    await grantPermissionToRole(db, registry, "supervisor", "staff.reports.history.full");
     await ensureRole(db, "supervisor_auditor");
     await grantPermissionToRole(db, registry, "supervisor_auditor", "staff.reports.read");
     await grantPermissionToRole(db, registry, "supervisor_auditor", "staff.reports.drill");
+    await grantPermissionToRole(db, registry, "supervisor_auditor", "staff.reports.history.full");
     await grantPermissionToRole(db, registry, "supervisor_auditor", "opd.queue.read");
+
+    // The three horizon tiers, as roles, so a test can name the one it is about.
+    await ensureRole(db, "sup_floor");
+    await grantPermissionToRole(db, registry, "sup_floor", "staff.reports.read");
+    await ensureRole(db, "sup_year");
+    await grantPermissionToRole(db, registry, "sup_year", "staff.reports.read");
+    await grantPermissionToRole(db, registry, "sup_year", "staff.reports.history.year");
+    await ensureRole(db, "clerk_unbounded");
+    await grantPermissionToRole(db, registry, "clerk_unbounded", "staff.reports.history.full");
 
     clerk = await mkUser(db, "clerk_a", ["desk_clerk"]);
     viewer = await mkUser(db, "viewer", ["supervisor"]);
     auditor = await mkUser(db, "auditor", ["supervisor_auditor"]);
     outsider = await mkUser(db, "outsider", []);
+    floorViewer = await mkUser(db, "sup_floor_u", ["sup_floor"]);
+    yearViewer = await mkUser(db, "sup_year_u", ["sup_year"]);
 
     const p = await mkPatient(db, clerk.actor, { name: "Ramesh Kale", phone: "9876540099" });
     await openOpdVisit(db, { clerk: clerk.actor, patientId: p.id, departmentId: deptId, doctorId: dra.doctorId }, T0);
@@ -218,4 +245,68 @@ describe("staff reports e2e — 07c T9 (DD14: what, not whom)", () => {
     expect(body).not.toContain("Priya Confidential");
     expect(body).toContain("Guest Two");
   });
+
+  /**
+   * ═══ STAFF-REPORTS T0 — THE HISTORY HORIZON, owner ruling 2026-09-14 ═══
+   *
+   * Three tiers: the floor is three months and is the ABSENCE of a grant,
+   * `staff.reports.history.year` lifts it to a year, `staff.reports.history.full` removes it.
+   *
+   * EVERY DATE HERE IS RELATIVE — these assertions are about a window measured from the real today,
+   * so a fixed anchor would give them an expiry date. That is the trap the fixture comment above
+   * records, met once already while writing this file.
+   */
+  describe("T0 — the history horizon", () => {
+    it("the floor reaches a quarter", async () => {
+      await get(`/staff/${clerk.id}/brief?period=quarter`, floorViewer.token).expect(200);
+    });
+
+    it("and refuses six months, naming the cap rather than returning an empty brief", async () => {
+      const res = await get(`/staff/${clerk.id}/brief?period=half`, floorViewer.token).expect(400);
+      const body = JSON.stringify(res.body);
+      expect(body).toContain("history_horizon_exceeded");
+      expect(body).toContain("91");
+    });
+
+    it("the year tier reaches a year", async () => {
+      await get(`/staff/${clerk.id}/brief?period=year`, yearViewer.token).expect(200);
+    });
+
+    /**
+     * ═══ THE LEAK THIS DESIGN EXISTS TO PREVENT ═══
+     *
+     * The horizon is read off the CALLER and never off the SUBJECT. Collapse the two — the obvious
+     * shortcut, since the brief already has the subject's id in hand — and a capped supervisor
+     * reaches two years back merely because the clerk they are reading holds the unbounded string
+     * themselves. It is the same trap `DeskProviderCtx` documents for `actor` versus `reader`, and
+     * it is invisible in every test where one person plays both roles.
+     */
+    it("the SUBJECT's own unbounded history does not widen what the CALLER may read", async () => {
+      // A SUBJECT who holds the unbounded string themselves.
+      const subject = await mkUser(db, "clerk_unbounded_u", ["desk_clerk", "clerk_unbounded"]);
+
+      const res = await get(`/staff/${subject.id}/brief?period=half`, floorViewer.token).expect(400);
+      expect(JSON.stringify(res.body)).toContain("history_horizon_exceeded");
+    });
+
+    /**
+     * A ROUTE THAT READS ONE DAY LOOKS BOUNDED AND IS NOT. `date` is a free parameter, so an
+     * unguarded drill walks back a year at a rate of one request per day.
+     */
+    it("the drill's date is bound by the horizon too", async () => {
+      const old = new Date(Date.now() + 330 * 60_000 - 200 * 86_400_000).toISOString().slice(0, 10);
+      const res = await post(`/staff/${clerk.id}/drill`, auditor.token, { date: old, reason: "a stated reason" })
+        .expect(201); // a POST that appends an audit row — 201, like every other drill test here
+      expect(res.body.date).toBe(old); // the auditor is unbounded
+
+      await ensureRole(db, "drill_floor");
+      await grantPermissionToRole(db, registry, "drill_floor", "staff.reports.read");
+      await grantPermissionToRole(db, registry, "drill_floor", "staff.reports.drill");
+      const capped = await mkUser(db, "drill_floor_u", ["drill_floor"]);
+      const refused = await post(`/staff/${clerk.id}/drill`, capped.token, { date: old, reason: "a stated reason" })
+        .expect(400);
+      expect(JSON.stringify(refused.body)).toContain("history_horizon_exceeded");
+    });
+  });
+
 });

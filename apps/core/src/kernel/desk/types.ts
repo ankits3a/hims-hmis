@@ -162,7 +162,7 @@ export type DeskProvider = {
    * PLAN 07c T8 — THIS MODULE'S CONTRIBUTION TO ONE PERSON'S DAY, AS NAMED NUMBERS.
    *
    * The card is a picture of now and the report is a list of rows; FACTS are the same day reduced
-   * to counters that can be SUMMED ACROSS DAYS. That is what a five-period brief needs and what
+   * to counters that can be SUMMED ACROSS DAYS. That is what a six-period brief needs and what
    * neither of the other two shapes can give: you cannot add up six months of card renderings.
    *
    * ═══ WHY A BAG OF NAMED NUMBERS AND NOT A TABLE OF COLUMNS ═══

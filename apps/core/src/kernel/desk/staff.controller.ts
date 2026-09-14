@@ -7,7 +7,10 @@ import { users } from "../db/schema";
 import { appendEvent } from "../events/append";
 import { withTx } from "../db/client";
 import { collectDeskProviders, loadReport } from "./registry";
-import { baselineWindowFor, buildBrief, windowFor } from "./brief";
+import {
+  PERIODS, baselineWindowFor, buildBrief, needsBaseline, oldestDayRead, windowFor,
+} from "./brief";
+import { assertWithinHorizon, horizonFor } from "./horizon";
 import { factsForWindow, sumWindow } from "./rollup";
 import { staffReportDrilled } from "./events";
 import { DeskError } from "./types";
@@ -43,7 +46,7 @@ import type { Db } from "../db/client";
  */
 const briefQuery = z.object({
   date: z.string().length(10).optional(),
-  period: z.enum(["day", "week", "month", "quarter", "half"]).optional(),
+  period: z.enum(PERIODS).optional(),
 });
 const drillBody = z.object({
   date: z.string().length(10),
@@ -82,21 +85,25 @@ export class StaffController {
   @Get(":userId/brief")
   @RequirePermission("staff.reports.read", "hospital")
   async brief(
-    @Param("userId") userId: string, @Query() query: unknown,
+    @CurrentActor() reader: Actor, @Param("userId") userId: string, @Query() query: unknown,
   ): Promise<Brief & { subjectUserId: string; totalsToday: Record<string, number> }> {
     const q = parsed(briefQuery, query);
     const now = new Date();
     const today = q.date ?? istDay(now);
     const period = q.period ?? "week";
     await this.requireSubject(userId).catch(toHttp);
+    await this.assertMayReach(reader, oldestDayRead(period, today), now);
 
     const subject: Actor = { type: "user", id: userId };
     const providers = collectDeskProviders(this.registry);
     const w = windowFor(period, today);
-    const b = baselineWindowFor(period, today);
+    /* T0 — read the baseline only where it is consumed; see `needsBaseline` and `DeskController`. */
+    const b = needsBaseline(period) ? baselineWindowFor(period, today) : null;
     const [days, baseline] = await Promise.all([
       factsForWindow(this.db, providers, subject, w.from, w.to, today, now),
-      factsForWindow(this.db, providers, subject, b.from, b.to, today, now),
+      b === null
+        ? Promise.resolve([])
+        : factsForWindow(this.db, providers, subject, b.from, b.to, today, now),
     ]);
     const todayFacts = days.find((d) => d.day === today);
     return {
@@ -127,6 +134,12 @@ export class StaffController {
     const now = new Date();
     await this.requireSubject(userId).catch(toHttp);
     if (actor.type !== "user") toHttp(new DeskError("user_actor_required", "a drill is a person's act"));
+    /*
+     * THE DRILL IS ONE DAY, AND THAT DAY CAN BE ANY DAY. A route that reads a single date looks
+     * bounded and is not: `date` is a free parameter, so without this a capped supervisor reaches
+     * four years back one day at a time.
+     */
+    await this.assertMayReach(actor, b.date, now);
     /**
      * A SUPERVISOR DRILLING THEMSELVES IS NOT A DRILL, and it must not be refused either: it is
      * their own day, which `/me/report` already serves. Refusing would be a puzzle; logging it as a
@@ -146,6 +159,23 @@ export class StaffController {
         payload: { subjectUserId: userId, date: b.date, reason: b.reason, sections: sections.length, rows },
       })));
     return { subjectUserId: userId, date: b.date, sections };
+  }
+
+  /**
+   * T0 — THE HISTORY HORIZON, READ OFF THE CALLER AND NEVER OFF THE SUBJECT.
+   *
+   * This is the same split `DeskProviderCtx` draws between `actor` (whose rows) and `reader` (whose
+   * visibility), for the same reason its header gives: collapse them and the reader inherits the
+   * subject's clearance. A supervisor capped at a year must not reach two years back merely because
+   * the clerk they are reading holds `staff.reports.history.full` themselves.
+   */
+  private async assertMayReach(reader: Actor, oldestDay: string, now: Date): Promise<void> {
+    const horizon = await horizonFor(this.db, reader, istDay(now));
+    try {
+      assertWithinHorizon(oldestDay, horizon);
+    } catch (e) {
+      toHttp(e);
+    }
   }
 
   /**

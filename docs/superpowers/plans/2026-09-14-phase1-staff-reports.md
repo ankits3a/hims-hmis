@@ -254,4 +254,47 @@ the register exists without changing its shape.
 
 ---
 
-## 8. CLOSE — filled at execution end
+## 8. CLOSE
+
+### T0 — DONE 2026-09-14
+
+**Verified:** `pnpm typecheck` exit 0 · `pnpm lint` exit 0 (3 warnings, all pre-existing and in
+files this task did not touch) · full core **423 suites / 4407 tests, exit 0** · full web
+**107 files / 930 tests, exit 0**. Desk suites went 4/40 to 7/78; `seed-roles` 16/16;
+`staff-reports.e2e` 8 to 13; `me.e2e` 12 to 13; `my-day` 11 to 14.
+
+**Counts, read off a red run and not from the plan's arithmetic** — every predicted figure held:
+`allPermissions` 161 → 163 · `modelPairs` 308 → 313 · `modelPermissions` 141 → 143 ·
+`heldPermissions` 147 → 149 · `NON_TABLE_PAIRS` 134 → 139 · `first.held` 141 → 143.
+
+**Two things found while building that were not in the plan.**
+
+**1. The `day` period's same-weekday comparison could never fire.** `baselineWindowFor("day")`
+returned a ONE-DAY window — yesterday — and `sameWeekdayBaseline` filters that to days sharing
+today's weekday, which yesterday never is. The sample was always empty and `medianOf(sample, 4)`
+always null, so the comparison `brief.ts` spends a paragraph justifying was unreachable in
+production. It survived because `baselineWindowFor` was exercised for `"week"` only and the
+day-period tests hand `buildBrief` a baseline array they build themselves — **a test that calls the
+function with an input the real caller never produces cannot detect that the real caller produces a
+different one.** Fixed here because T0 was already deciding what each period reads: the day baseline
+is now eight weeks, giving eight same-weekday candidates against a floor of four, so one missed
+Tuesday no longer costs a clerk their comparison for a month. 56 days sits inside the 3-month floor,
+so the shortest-horizon caller keeps it.
+
+**2. Two fixed-date e2e tests were about to expire.** `staff-reports.e2e.test.ts` anchors on
+`2026-08-17` while the horizon measures from the real today, so a 91-day window from a date 28 days
+past reaches 119 days back — those assertions would have started failing roughly a week after they
+were written, for a reason nobody would have connected to this commit. Resolved by saying which
+question each test asks: DD14's tests are about WHAT a supervisor may see and now hold
+`history.full` so they are time-independent; the horizon's own tests use relative dates. The same
+correction was applied to `me.e2e`'s A3 test, whose `2020-01-01` is no longer an empty day but a
+refusal.
+
+**What changes for a user — the release note.** `/me/brief`'s period picker offered all five periods
+to every signed-in user; a `front_office` clerk could pull six months of their own day and now stops
+at three. **This is the only capability in the phase that narrows**, and it is the ruling working as
+intended rather than a regression. `front_office_supervisor` gains a year, the three hospital-level
+roles are unbounded, and **the `owner` role — which held no staff-report permission at all and could
+not open `/staff` — gains the read.**
+
+### T1–T8 — filled at execution end

@@ -149,6 +149,15 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * three people; that one is one person. The split is DD14 working.
        */
       "staff.reports.read",
+      /**
+       * OWNER RULING 2026-09-14 — THE FRONT DESK'S SUPERVISOR REACHES BACK ONE YEAR.
+       *
+       * The floor is three months and it is the ABSENCE of a string, so this grant is the whole of
+       * the difference between a clerk's own view and the person who runs the counter. A year is
+       * what a supervisor needs to answer "is this month normal for September" — a question three
+       * months of history cannot be asked.
+       */
+      "staff.reports.history.year",
     ],
   },
   {
@@ -594,6 +603,25 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "billing.reports.read",
       "billing.invoice.read",
       "billing.session.read",
+      /**
+       * ═══ OWNER RULING 2026-09-14 — AND THE FIRST HALF OF IT IS A DEFECT, NOT A DECISION ═══
+       *
+       * This role held NO staff-report string at all. Not the read, not the drill. The person who
+       * carries the hospital's risk could not open `/staff` — the same shape of gap GROUP B found
+       * above, where the owner could not open an invoice, and found the same way: by someone asking
+       * for a report and the measurement coming back empty.
+       *
+       * `staff.reports.read` is the figures. `staff.reports.history.full` is the horizon, unbounded,
+       * because a governance question about a seasonal pattern is a multi-year question.
+       *
+       * `staff.reports.drill` IS DELIBERATELY ABSENT, on exactly the reasoning `patients.read`'s
+       * absence above records: the drill returns PATIENT ROWS, the owner is an administrative
+       * principal rather than a clinical one, and the 2026-08-29 ruling put that string with
+       * `staff_auditor` and nobody else. The horizon widens how far back the owner may look; it
+       * does not widen what they may look AT.
+       */
+      "staff.reports.read",
+      "staff.reports.history.full",
     ],
   },
   {
@@ -628,6 +656,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * to look without borrowing the technical administrator's account.
        */
       "staff.reports.read",
+      /** OWNER RULING 2026-09-14 — hospital-level governance is not a one-year question. */
+      "staff.reports.history.full",
       "auth.elevation.review",
       // ─── The merge approver's kit, owner ruling 2026-08-26 ───
       //
@@ -696,7 +726,17 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * `seed:roles` mints the role and assigns NOBODY (this file's own header rule). Handing it to a
    * human is a separate, deliberate act — the runbook records who.
    */
-  { roleKey: "staff_auditor", permissions: ["staff.reports.read", "staff.reports.drill"] },
+  {
+    roleKey: "staff_auditor",
+    permissions: [
+      "staff.reports.read", "staff.reports.drill",
+      /**
+       * OWNER RULING 2026-09-14 — unbounded, because an audit that stops at a year is an audit with
+       * a date the subject can wait out.
+       */
+      "staff.reports.history.full",
+    ],
+  },
   // ------------------------------------------------------------------------------------------
   // GROUP A, owner ruling 2026-08-26 — THREE ROLES FOR PERMISSIONS THAT HAD NO HOLDER AT ALL.
   //

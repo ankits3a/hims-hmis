@@ -57,7 +57,7 @@ const RADIOLOGY_UNREAD_WATCHMAN_IST = "08:00";
 // is configurable (and off by default), WHEN it runs is a design decision.
 const RETENTION_SWEEP_IST = "01:15";
 /**
- * PLAN 07c T8 / DD13 — the per-user daily rollup that the five-period briefs are served from.
+ * PLAN 07c T8 / DD13 — the per-user daily rollup that the six-period briefs are served from.
  *
  * 02:00 IST, and the position in the grid is the reasoning. It must run AFTER the daily close
  * (23:59) so the day it rolls is settled, and after the retention sweep (01:15) because that one
