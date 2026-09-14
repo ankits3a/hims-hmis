@@ -215,7 +215,15 @@
       "merge_reconciliation": "Settled while resolving a duplicate"
     },
     "askPlaceholder": "ask — \"what is their ABHA?\"",
-    "agentIdle": "I read this patient's record only — UHID, date of birth, contact, ABHA. I cannot look anything else up."
+    "agentIdle": "I read this patient's record only — UHID, date of birth, contact, ABHA. I cannot look anything else up.",
+    "linked": {
+      "title": "Linked patients",
+      "basis": "same contact number",
+      "none": "No other patient is registered on this number.",
+      "shares": "shares {{number}}",
+      "more_one": "{{count}} more record shares this number, {{total}} in all — a number on this many records is usually a shop or a shared line, not one household.",
+      "more_other": "{{count}} more records share this number, {{total}} in all — a number on this many records is usually a shop or a shared line, not one household."
+    }
   },
   "merge": {
     "title": "Merge review",
@@ -2181,7 +2189,15 @@
       "tryNext": "Try next: {{rung}}",
       "openFor": "Open {{minutes}} min · target {{target}} min",
       "kitSerial": "Downtime kit serial on the tube",
-      "kitSerialHint": "e.g. DK-0241"
+      "kitSerialHint": "e.g. DK-0241",
+      "rerunOwed": "run choice owed ({{count}})",
+      "rerunFirst": "first run",
+      "rerunRepeat": "repeat run",
+      "rerunDelta": "delta",
+      "rerunPick": "{{run}}, {{value}}",
+      "rerunReason": "Why this run",
+      "rerunReasonHint": "Why this run — e.g. repeat QC failed",
+      "rerunChoose": "Use this run"
     },
     "verify": {
       "title": "Verify & report",

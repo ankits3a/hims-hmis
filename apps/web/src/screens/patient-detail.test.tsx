@@ -470,4 +470,108 @@ describe("22c-A T7 — the amendment surface", () => {
     // it names its source rather than sounding omniscient
     expect(dock.getByText(/from the patient row/)).toBeInTheDocument();
   });
+
+  /**
+   * ═════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-34 — THE FAMILY A SHARED MOBILE MAKES
+   * ═════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Owner, 2026-09-13: Ankit's record must name Sunil when the two share a number, and Sunil's must
+   * name Ankit. The symmetry is the SERVER's (`modules/patients/linked.ts` derives it from one
+   * predicate, and `linked.test.ts` pins both directions); what these three cases pin is that the
+   * screen renders what it is handed and says nothing it was not told.
+   */
+  const LINKED = {
+    numbers: ["9876543210"],
+    total: 2,
+    items: [
+      {
+        id: "p-2", uhid: "HMS0000001235", name: "Sunil Kumar", phone: "9876543210", altPhone: null,
+        administrativeGender: "male", dob: "1988-06-11T00:00:00.000Z", isConfidential: false,
+        registeredOn: "2026-02-02T00:00:00.000Z", sharedOn: ["9876543210"],
+      },
+      {
+        id: "p-3", uhid: "HMS0000001236", name: "Bimla Devi", phone: "9000000000", altPhone: "9876543210",
+        administrativeGender: "female", dob: "1962-01-09T00:00:00.000Z", isConfidential: false,
+        registeredOn: "2026-02-03T00:00:00.000Z", sharedOn: ["9876543210"],
+      },
+    ],
+  };
+
+  it("lists the patients who share this mobile, and opens the one that is clicked", async () => {
+    stubFetch({
+      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: [] },
+      "GET /api/patients/p-1/guardians": { items: [] },
+      "GET /api/patients/p-1/qr": QR,
+      "GET /api/patients/p-1/linked": LINKED,
+    });
+    renderWithProviders(<PatientDetail />);
+
+    // The section paints before its query answers, so the ROW is what to wait for — not the heading.
+    const section = within(await screen.findByTestId("linked-patients"));
+    expect(await section.findByText("Sunil Kumar")).toBeInTheDocument();
+    expect(section.getByText("Bimla Devi")).toBeInTheDocument();
+    /*
+      THE SECOND ROW IS THE TEETH. Bimla's PRIMARY number is a different one and she is family
+      through her ALTERNATE — a row rendered from `phone` rather than from the server's `sharedOn`
+      would print 9000000000 here and tell the clerk the two share a number they do not.
+    */
+    expect(section.getByTestId("linked-HMS0000001236")).toHaveTextContent("shares 9876543210");
+    // …and it says what it knows: a shared number, never an invented relationship.
+    expect(screen.getByText("same contact number")).toBeInTheDocument();
+
+    fireEvent.click(section.getByTestId("linked-HMS0000001235"));
+    expect(navigate).toHaveBeenCalledWith({ to: "/patients/$patientId", params: { patientId: "p-2" } });
+  });
+
+  it("says so plainly when nobody else is on the number", async () => {
+    stubFetch({
+      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: [] },
+      "GET /api/patients/p-1/guardians": { items: [] },
+      "GET /api/patients/p-1/qr": QR,
+      "GET /api/patients/p-1/linked": { numbers: ["9876543210"], items: [], total: 0 },
+    });
+    renderWithProviders(<PatientDetail />);
+
+    expect(await screen.findByTestId("linked-empty")).toHaveTextContent(
+      "No other patient is registered on this number.",
+    );
+  });
+
+  /**
+   * A NUMBER ON THIRTY RECORDS IS A SHOP, NOT A HOUSEHOLD — and the screen has to say it, because
+   * twenty names under the heading "Linked patients" read as a family to the clerk who is looking
+   * at them. The server caps the list; this line is what stops the cap from being a silent lie.
+   */
+  it("warns when the number is on more records than a household has", async () => {
+    stubFetch({
+      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: [] },
+      "GET /api/patients/p-1/guardians": { items: [] },
+      "GET /api/patients/p-1/qr": QR,
+      "GET /api/patients/p-1/linked": { ...LINKED, total: 30 },
+    });
+    renderWithProviders(<PatientDetail />);
+
+    expect(await screen.findByTestId("linked-beyond-cap")).toHaveTextContent(
+      "28 more records share this number, 30 in all",
+    );
+  });
+
+  /* D-34 — a phoneless record is a designed path, and there is nothing to ask about it. */
+  it("draws no family section at all for a patient with no number", async () => {
+    stubFetch({
+      "GET /api/patients/p-1": { patient: { ...PATIENT, phone: null, altPhone: null }, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: [] },
+      "GET /api/patients/p-1/guardians": { items: [] },
+      "GET /api/patients/p-1/qr": QR,
+      "GET /api/patients/p-1/linked": { numbers: [], items: [], total: 0 },
+    });
+    renderWithProviders(<PatientDetail />);
+    await screen.findByText("Asha Devi");
+
+    expect(screen.queryByTestId("linked-patients")).toBeNull();
+  });
 });

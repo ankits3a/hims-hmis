@@ -27,6 +27,17 @@ export type WireAnalyteRow = {
   pathologistReviewPending: boolean;
   /** 17c T4 / D11 — the last VERIFIED value of this analyte on the canonical patient, or null. */
   previous: { resultId: string; value: string; flag: string | null; at: string } | null;
+  /**
+   * 17-E T7 / D18 — **the runs nobody has chosen between**, oldest first; empty for almost every
+   * analyte. Two entries means an analyser re-ran the tube and `value` above is null: the analyte
+   * has no reportable value until the bench says which run the report carries, and **this list is
+   * non-empty exactly when a signature would be refused `rerun_unchosen`.** Not a history — a
+   * superseded row (a human's re-key) never appears here and was never choosable.
+   */
+  rerunChoice: {
+    resultId: string; value: string; flag: string | null; deltaFlag: boolean;
+    at: string; entryMode: string; isRerun: boolean;
+  }[];
 };
 
 export type WireWorklistRow = {
@@ -354,6 +365,16 @@ export function labRefusal(e: unknown): LabRefusal {
 export const enterResult = (body: EnterResultRequest, key: string): Promise<{
   resultId: string; flag: string | null; deltaFlagged: boolean; criticalCallId: string | null;
 }> => api("POST", "/lab/bench/results", body, key);
+
+/**
+ * 17-E T7 / D18 — WHICH RUN THE REPORT CARRIES. `lab.results.enter`, so the bench makes it and the
+ * pathologist (who holds that grant too) may make it at the verify seat. **The reason is not
+ * optional and is not decoration:** the server refuses `rerun_choice_reason_required` on a blank
+ * one, because a choice without a reason is exactly the auto-supersession D9 removed.
+ */
+export const chooseResult = (body: { resultId: string; reason: string }): Promise<{
+  resultId: string; analyteId: string; supersededResultIds: string[];
+}> => api("POST", "/lab/bench/results/choose", body);
 
 export const openCriticals = (): Promise<WireCriticalCall[]> => api("GET", "/lab/bench/criticals");
 

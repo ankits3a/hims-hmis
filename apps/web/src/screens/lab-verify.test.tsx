@@ -33,7 +33,7 @@ function mockRoutes(handlers: Record<string, Reply | (() => Reply)>): Seen {
 const analyte = (code: string, over: Partial<WireWorklistRow["analytes"][number]> = {}): WireWorklistRow["analytes"][number] => ({
   analyteId: `a-${code}`, code, nameEn: code, unit: "mg/dL", resultType: "numeric", resultId: `r-${code}`, value: "1",
   flag: "N", refLow: "0", refHigh: "10", refText: null, verificationStatus: "unverified", enteredById: "u-tech",
-  pathologistReviewPending: false, previous: null, ...over,
+  pathologistReviewPending: false, previous: null, rerunChoice: [], ...over,
 });
 const row = (over: Partial<WireWorklistRow>): WireWorklistRow => ({
   orderItemId: "i-1", orderId: "o-1", orderNo: "L2608300001", encounterNo: "V2608290001",
@@ -237,4 +237,80 @@ it("a settled report prints, and the A4 document renders from the snapshot", asy
   expect(screen.getByRole("button", { name: "Print and hand over" })).toBeEnabled();
   await userEvent.click(screen.getByRole("button", { name: "Print and hand over" }));
   await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+});
+
+/* ───────────────────── 17-E T7 / D18 — which run the report carries ───────────────────── */
+
+/** The two runs an analyser's repeat leaves live, with the CRITICAL one unchosen. */
+const K_PAIR = [
+  { resultId: "r-k1", value: "6.8000", flag: "HH", deltaFlag: false, at: "2026-08-30T06:00:00.000Z", entryMode: "interface", isRerun: false },
+  { resultId: "r-k2", value: "4.2000", flag: "N", deltaFlag: true, at: "2026-08-30T06:10:00.000Z", entryMode: "interface", isRerun: true },
+];
+
+it("17-E T7 — orderQueue ranks an order whose only critical is an UNCHOSEN run with the criticals", () => {
+  const now = new Date("2026-08-30T10:00:00Z").getTime();
+  /**
+   * **OLDER than the pair, deliberately.** The first cut of this fixture made the critical order the
+   * older one too, so age alone put it first and the ordering assertion passed against a
+   * `hasCritical` that could not see the pair at all — an assertion that looked like the
+   * discriminator and was not. Now only criticality can lift `L-k` above this.
+   */
+  const routineOld = row({ orderItemId: "i-a", orderId: "o-a", orderNo: "L-a", tatStartedAt: "2026-08-30T06:00:00.000Z" });
+  /**
+   * `a.flag` is NULL here — there is no reportable value to flag while two runs are live. Ranking on
+   * the analyte's flag alone therefore sorted a 6.8 potassium as routine, and it dropped below a
+   * freshly-started ordinary order: **the one order needing a decision fell to the bottom of the
+   * queue precisely because a decision was needed.**
+   */
+  const unchosenCritical = row({
+    orderItemId: "i-k", orderId: "o-k", orderNo: "L-k", tatStartedAt: "2026-08-30T09:55:00.000Z",
+    analytes: [analyte("K", { value: null, resultId: null, flag: null, rerunChoice: K_PAIR })],
+  });
+  const out = orderQueue([routineOld, unchosenCritical], [], now);
+  expect(out.map((r) => r.orderNo)).toEqual(["L-k", "L-a"]);
+  expect(out[0]!.hasCritical).toBe(true);
+});
+
+it("17-E T7 — an unchosen pair is NOT dropped from the grid, and the pathologist can resolve it here", async () => {
+  const k = row({
+    orderItemId: "i-k", orderId: "o-k", orderNo: "L2608300009", orderableCode: "K", orderableName: "Potassium",
+    patientDisplay: "Shanti Devi",
+    analytes: [
+      analyte("K", { value: null, resultId: null, flag: null, rerunChoice: K_PAIR }),
+      analyte("NA", { value: "138", flag: "N" }),
+    ],
+  });
+  const seen = mockRoutes({
+    "GET /api/lab/verify/worklist": { status: 200, body: [k] },
+    "GET /api/lab/bench/criticals": { status: 200, body: [] },
+    "GET /api/lab/reports/publishable": { status: 200, body: [] },
+    "POST /api/lab/bench/results/choose": { status: 200, body: { resultId: "r-k1", analyteId: "a-K", supersededResultIds: [] } },
+  });
+  renderWithProviders(<LabVerify />);
+  await waitFor(() => expect(screen.getByText("Shanti Devi")).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: /Shanti Devi/ }));
+
+  /**
+   * **THE REGRESSION THIS PINS.** The grid filtered on `resultId !== null`, and an analyte awaiting a
+   * choice has none — so the row vanished. The pathologist saw a one-analyte panel that looked
+   * complete, pressed sign, and met `rerun_unchosen` about a potassium that was not on the screen.
+   */
+  const kRow = screen.getByTestId("row-K");
+  expect(kRow).toHaveTextContent("6.8000");
+  expect(kRow).toHaveTextContent("4.2000");
+
+  /** And it is resolvable from THIS seat: the pathologist holds `lab.results.enter` too. */
+  await userEvent.click(within(kRow).getByRole("radio", { name: "first run, 6.8000" }));
+  await userEvent.type(within(kRow).getByLabelText("K K — Why this run"), "repeat drawn from a running drip line");
+  await userEvent.click(within(kRow).getByRole("button", { name: "Use this run" }));
+
+  await waitFor(() => expect(seen.find((s) => s.path === "/api/lab/bench/results/choose")).toBeDefined());
+  expect(seen.find((s) => s.path === "/api/lab/bench/results/choose")!.body).toEqual({
+    resultId: "r-k1", reason: "repeat drawn from a running drip line",
+  });
+
+  /** The pair carries no Sign button: a row nobody has chosen cannot be signed, and the server agrees. */
+  expect(within(kRow).queryByRole("button", { name: "Sign" })).toBeNull();
+  /** Sign-all counts only the signable one — the sodium — not the pair. */
+  expect(screen.getByRole("button", { name: "Sign 1 result" })).toBeInTheDocument();
 });
