@@ -21,7 +21,9 @@ import { useEffect, useRef, useState } from "react";
  *   · `→`      — accepts the ghost completion INTO the input (still not committed; the doctor can
  *                keep typing). Only ever a PREFIX remainder, so no letters appear behind the caret.
  *   · a tap    — commits that suggestion, because tapping it IS choosing it.
- *   · `⌫`      — on an empty input, removes the last tag: the standard chip-field gesture.
+ *   · `⌫`      — edits the draft and ONLY the draft. It never takes back a committed tag, however
+ *                long it is held; see the block on `onKeyDown` for the held-key failure that rule
+ *                exists to prevent (owner, 2026-09-14).
  *
  * ═══ WHY A COMPONENT RATHER THAN A FIELD ═══
  *
@@ -134,10 +136,34 @@ export function TagField({
       }
       return;
     }
-    if (e.key === "Backspace" && draft === "" && tags.length > 0) {
-      e.preventDefault();
-      remove(tags.length - 1);
-    }
+    /*
+      ═══ THERE IS DELIBERATELY NO `Backspace` BRANCH HERE ═══
+
+      There was one, and it removed the last tag on an empty input — "the standard chip gesture",
+      borrowed from the way Gmail treats recipient chips. Owner, 2026-09-14: *"if the backspace is
+      pressed for little longer the earlier chip also gets removed. This is not good. Because of
+      this doctor has to retype again and again."*
+
+      THE MECHANISM, because it is the general lesson: there was no `e.repeat` guard. One held key
+      deleted the draft character by character and then — with no pause and no boundary — carried
+      straight on into the committed tags at the keyboard's repeat rate, thirty a second. Deleting
+      TEXT YOU ARE TYPING and deleting DATA YOU COMMITTED are different acts, and auto-repeat walked
+      from one into the other without the doctor doing anything new.
+
+      THE BORROWING WAS WRONG ON ITS OWN TERMS TOO. A recipient chip is `bob@x.com` and costs three
+      seconds to retype. A chip here is *"fever since 3 days, worse at night"* — and on the
+      diagnosis field it carries an ICD-10 code, so losing the chip loses `J06.9` and the doctor has
+      to find it through the typeahead again. This field exists because the owner asked that the
+      doctor *"not need to type much"*; a gesture that makes him retype defeats the field.
+
+      A GUARD ON `e.repeat` WOULD HAVE FIXED THE HELD KEY AND NOT THE RULE. One deliberate press
+      would still take back a committed phrase, and the doctor would still have to know that an
+      empty input changes what Backspace means. So the rule has one meaning per gesture instead:
+      **Enter commits, × removes.** Nothing on this field can destroy a committed tag by accident.
+
+      Removal stays reachable without the mouse: each × is a real button sitting before the input in
+      tab order, so Shift+Tab lands on the last one (`F5c`).
+    */
   };
 
   return (

@@ -346,6 +346,38 @@ describe("OpdConsult — the diagnosis tags and their ICD-10 codes", () => {
     });
   });
 
+  it("N6: a held backspace cannot cost a coded diagnosis its ICD-10 code", async () => {
+    /*
+      The complaint field's held-backspace defect (F5b) is worse here and the same component causes
+      both. Losing "Acute upper respiratory infection, unspecified" does not merely lose words — it
+      loses J06.9 with them, and the doctor has to find the code through the typeahead again. This
+      is the reason the rule is "Enter commits, × removes" rather than a guard on `e.repeat`.
+    */
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/cds/complete/diagnosis": { status: 200, body: ICD10_HITS },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const diagnosis = await screen.findByLabelText("Diagnosis");
+    await user.click(diagnosis);
+    await user.type(diagnosis, "acute upper");
+    await user.click(await screen.findByText("Acute upper respiratory infection, unspecified"));
+
+    await user.type(diagnosis, "typ");
+    await user.keyboard("{Backspace>20/}");
+    await user.click(screen.getByRole("heading", { name: "Consultation" }));
+
+    await waitFor(() => {
+      const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { diagnoses: unknown };
+      expect(body.diagnoses).toEqual([
+        { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9" },
+      ]);
+    });
+  });
+
   it("N4: the ICD-10 box is a READING of the tags, not a second place to type", async () => {
     mockRoutes({
       ...baseRoutes(),
@@ -2486,7 +2518,25 @@ describe("OpdConsult — the complaint tags and the allergy the doctor learns in
     });
   });
 
-  it("F5: backspace on an empty input removes the last tag — the standard chip gesture", async () => {
+  /**
+   * ═══ BACKSPACE EDITS WHAT IS BEING TYPED. IT NEVER TAKES BACK WHAT WAS COMMITTED ═══
+   *
+   * Owner, 2026-09-14: *"if the backspace is pressed for little longer the earlier chip also gets
+   * removed. This is not good. Because of this doctor has to retype again and again."*
+   *
+   * This test asserted the OPPOSITE until then — "the standard chip gesture", as Gmail does it with
+   * recipient chips. It is the wrong borrowing. A recipient chip is `bob@x.com` and costs three
+   * seconds to retype; a chip here is *"fever since 3 days, worse at night"*, and on the diagnosis
+   * field it carries an ICD-10 code that has to be found through the typeahead again.
+   *
+   * The mechanism is the part worth keeping in mind: there was no `e.repeat` guard, so ONE held key
+   * deleted the draft character by character and then — with no pause and no boundary — kept firing
+   * into the committed tags at the keyboard's repeat rate. Deleting text you are typing and
+   * deleting data you committed are different acts, and auto-repeat walked from one to the other.
+   *
+   * The rule now has one meaning per gesture: **Enter commits, × removes.**
+   */
+  it("F5: backspace on an empty input leaves the committed tags alone", async () => {
     mockRoutes(fieldRoutes());
     const user = userEvent.setup();
     await openPanel(user);
@@ -2495,6 +2545,48 @@ describe("OpdConsult — the complaint tags and the allergy the doctor learns in
     await user.type(input, "fever{Enter}");
     await user.type(input, "cough{Enter}");
     await user.keyboard("{Backspace}");
+
+    expect(screen.getAllByTestId(/note-chief-tag-\d/)).toHaveLength(2);
+    expect(screen.getByTestId("note-chief-tag-1")).toHaveTextContent("cough");
+  });
+
+  it("F5b: a HELD backspace clears the draft and stops dead at the chips", async () => {
+    mockRoutes(fieldRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    const input = screen.getByLabelText("Chief complaint");
+
+    await user.type(input, "fever since 3 days{Enter}");
+    await user.type(input, "worse at night{Enter}");
+    /* A draft, then the key held down long past the end of it — the doctor's actual gesture. */
+    await user.type(input, "coug");
+    await user.keyboard("{Backspace>20/}");
+
+    expect(input).toHaveValue("");
+    expect(screen.getAllByTestId(/note-chief-tag-\d/)).toHaveLength(2);
+    expect(screen.getByTestId("note-chief-tag-0")).toHaveTextContent("fever since 3 days");
+    expect(screen.getByTestId("note-chief-tag-1")).toHaveTextContent("worse at night");
+  });
+
+  it("F5c: × still removes a tag, and it is reachable without the mouse", async () => {
+    /* The one thing the new rule costs is a keyboard path to removal — and it does not, because the
+       × is a real button sitting before the input in tab order. Shift+Tab reaches the last one. */
+    mockRoutes(fieldRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    const input = screen.getByLabelText("Chief complaint");
+
+    await user.type(input, "fever{Enter}");
+    await user.type(input, "cough{Enter}");
+
+    await user.tab({ shift: true });
+    expect(screen.getByTestId("note-chief-remove-1")).toHaveFocus();
+    /*
+      SPACE, not Enter, and the reason is the test environment rather than the product: a real
+      browser activates a focused button on either key, and jsdom implements only Space. Asserting
+      Enter here would be asserting jsdom's gap rather than what the doctor's keyboard does.
+    */
+    await user.keyboard(" ");
 
     expect(screen.getAllByTestId(/note-chief-tag-\d/)).toHaveLength(1);
     expect(screen.getByTestId("note-chief-tag-0")).toHaveTextContent("fever");
