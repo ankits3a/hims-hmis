@@ -5,8 +5,8 @@ import { opdDoctorSchedules, opdEncounters, opdQueueSessions, opdDepartmentToken
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { OpdError } from "./errors";
-import { queueSessionClosed, queueSessionOpened } from "./events";
-import { istWeekday } from "./time";
+import { queueSessionClosed, queueSessionOpened, queueSessionReopened } from "./events";
+import { istDate, istWeekday } from "./time";
 import type { Tx } from "../../kernel/db/client";
 
 export type SessionRow = typeof opdQueueSessions.$inferSelect;
@@ -178,7 +178,27 @@ export async function setSessionStatus(tx: Tx, actor: Actor, sessionId: string, 
   const rows = await tx.select().from(opdQueueSessions).where(eq(opdQueueSessions.id, sessionId));
   const s = rows[0];
   if (!s) throw new OpdError("unknown_session");
-  if (s.status === "closed") throw new OpdError("session_closed");
+  /*
+    ═══ CLOSED IS A CORRECTABLE STATE, AND ONLY IN ONE DIRECTION (owner report, 2026-09-13) ═══
+
+    `closed` used to be terminal — this line refused every move out of it — so one wrong pick on a
+    dropdown a doctor touches all day ENDED THE CLINIC: `callNext` refuses a closed session, and
+    every patient still holding a token became uncallable with no act in the system able to undo it.
+
+    The reopen is narrow by construction, because a wide one is a different feature:
+      · TO `in` ONLY. A day reopened to `out` states nothing anybody can act on, and reopening to
+        `closed` is the no-op that would let a second close event overwrite the first one's `seen`.
+      · ON ITS OWN SERVICE DATE ONLY. Yesterday's clinic is history: its `seen` count has been read
+        into somebody's report, and putting it back would hang a stale doctor-day on TODAY's
+        corridor board (`boardSnapshot` filters on `status <> 'closed'`, never on the date).
+
+    What it is NOT: a second morning. `openedBy`/`openedAt` are untouched below (the `firstOpen`
+    guard already reads `openedAt`, which a reopened day has), the `queue_session.closed` it
+    corrects stays in the log, and the correction appends a fact of its own.
+  */
+  const reopening = s.status === "closed";
+  if (reopening && (status !== "in" || s.serviceDate !== istDate(now))) throw new OpdError("session_closed");
+  const closedAt = s.closedAt;
   const firstOpen = status === "in" && s.openedAt === null;
   const updated = await tx
     .update(opdQueueSessions)
@@ -206,6 +226,22 @@ export async function setSessionStatus(tx: Tx, actor: Actor, sessionId: string, 
         sessionId: row.id, doctorId: row.doctorId, serviceDate: row.serviceDate, roomId: row.roomId,
         openedAt: (row.openedAt ?? now).toISOString(),
         scheduledStart: await scheduledStartFor(tx, row.doctorId, row.serviceDate),
+      },
+    }));
+  }
+  /*
+    APPENDED AFTER THE COMPARE-AND-SET, like the opened event above it: a losing concurrent caller
+    has already thrown and cannot record a correction it did not make. `closedMs` is how long the
+    day was shut — the figure that tells a misclick (seconds) from a clinic somebody restarted.
+  */
+  if (reopening) {
+    await appendEvent(tx, queueSessionReopened.make({
+      actor,
+      payload: {
+        sessionId: row.id, doctorId: row.doctorId, serviceDate: row.serviceDate, roomId: row.roomId,
+        reopenedAt: now.toISOString(),
+        closedAt: closedAt?.toISOString() ?? null,
+        closedMs: closedAt === null ? null : Math.max(0, now.getTime() - closedAt.getTime()),
       },
     }));
   }
