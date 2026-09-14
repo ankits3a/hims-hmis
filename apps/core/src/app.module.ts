@@ -110,7 +110,11 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
       },
     },
   ],
-  exports: [DB, DB_POOL, CONFIG, MODULE_REGISTRY],
+  /* DOCUMENT_STORE is EXPORTED, not merely provided. AppModule is @Global(), and a token that is
+     provided without being exported resolves in this module and nowhere else — PatientsController
+     lives in PatientsModule, so it failed to construct the moment anything booted the real graph.
+     Every narrow suite passed: they call the service functions directly and never build it. */
+  exports: [DB, DB_POOL, CONFIG, DOCUMENT_STORE, MODULE_REGISTRY],
 })
 export class AppModule implements OnModuleDestroy {
   private poolClosed = false;
