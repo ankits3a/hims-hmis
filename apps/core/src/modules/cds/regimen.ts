@@ -28,6 +28,13 @@ export type PatientFacts = {
   weightKg: number | null;
   /** Documented allergies, as free text from the patient record — matched case-insensitively. */
   allergies: string[];
+  /**
+   * The allergen CLASSES of those allergies that were PICKED rather than typed
+   * (`patient_allergies.allergen_class`). A class found here fires its rule by identity, so a
+   * misspelt substance no longer silences the block — which is the whole reason the column exists.
+   * Empty is the ordinary case for records written before the field could be picked from.
+   */
+  allergenClasses: string[];
   pregnant: boolean;
 };
 
@@ -111,21 +118,39 @@ export function doseFor(dosing: Dosing | null, p: PatientFacts, sig: string): Do
  */
 const tokens = (s: string): string[] => s.toLowerCase().split(/[^a-z]+/).filter((w) => w.length >= 5);
 
-/** The allergy rules that this patient's recorded allergies trigger. */
-function rulesForAllergies(allergies: string[]): { allergen: string; blocked: string[]; safe: string[] }[] {
+/**
+ * The allergy rules that this patient's recorded allergies trigger.
+ *
+ * ═══ TWO WAYS IN, AND THE CODED ONE CANNOT BE MISSPELT ═══
+ *
+ * BY CLASS first: an allergy the doctor PICKED carries the rule's own class name, so the rule is
+ * found by identity. This is what `pencilin` needed — the token pass below cannot match it against
+ * `penicillin`, and the block went silent for the life of that record.
+ *
+ * BY TOKEN second, exactly as before, for every row written as free text — which is every row
+ * recorded before the field could be picked from, and every one a doctor still chooses to type.
+ * Neither path is weakened by the other: a rule fires if EITHER finds it.
+ */
+function rulesForAllergies(
+  allergies: string[], allergenClasses: string[] = [],
+): { allergen: string; blocked: string[]; safe: string[] }[] {
+  const coded = new Set(allergenClasses.map((c) => c.trim().toLowerCase()).filter((c) => c !== ""));
   const out: { allergen: string; blocked: string[]; safe: string[] }[] = [];
   for (const r of rulesOf("allergy_rules")) {
     const p = r.payload as { allergen?: string; allergen_class?: string; blocked_classes?: string[]; safe_alternatives?: string[] };
+    const byClass = p.allergen_class !== undefined && coded.has(p.allergen_class.trim().toLowerCase());
     const names = tokens(`${p.allergen ?? ""} ${p.allergen_class ?? ""}`);
-    const hit = allergies.some((a) => tokens(a).some((t) => names.includes(t)));
-    if (hit) out.push({ allergen: p.allergen ?? "", blocked: p.blocked_classes ?? [], safe: p.safe_alternatives ?? [] });
+    const byToken = allergies.some((a) => tokens(a).some((t) => names.includes(t)));
+    if (byClass || byToken) out.push({ allergen: p.allergen ?? "", blocked: p.blocked_classes ?? [], safe: p.safe_alternatives ?? [] });
   }
   return out;
 }
 
-function blockedBy(drugLabel: string, allergies: string[]): { allergen: string; safe: string[] } | null {
+function blockedBy(
+  drugLabel: string, allergies: string[], allergenClasses: string[] = [],
+): { allergen: string; safe: string[] } | null {
   const label = tokens(drugLabel);
-  for (const r of rulesForAllergies(allergies)) {
+  for (const r of rulesForAllergies(allergies, allergenClasses)) {
     if (r.blocked.some((b) => tokens(b).some((t) => label.includes(t)))) return { allergen: r.allergen, safe: r.safe };
   }
   return null;
@@ -151,7 +176,7 @@ export function buildRegimen(syndromeKey: string, p: PatientFacts): BuiltRegimen
   const lines: BuiltLine[] = s.lines
     .filter((l) => l.band === band)
     .map((l): BuiltLine => {
-      const block = blockedBy(l.drugLabel, p.allergies);
+      const block = blockedBy(l.drugLabel, p.allergies, p.allergenClasses);
       if (block === null) return { ...l, dose: doseFor(l.dosing, p, l.sig) };
       if (!applied.includes(block.allergen)) applied.push(block.allergen);
       const sub = substitutionFor(s, block.allergen);

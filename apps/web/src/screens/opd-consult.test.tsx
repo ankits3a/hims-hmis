@@ -380,6 +380,127 @@ describe("OpdConsult — the diagnosis tags and their ICD-10 codes", () => {
   });
 });
 
+/**
+ * ═══ THE ALLERGY FIELD, WHICH IS A GUARD AND NOT A CONVENIENCE ═══
+ *
+ * The prescription block matches a recorded allergy on word tokens of five letters or more, so a
+ * misspelt substance matches no rule and the block goes silent for the life of the record. Picking
+ * records the CLASS and fires the rule by identity; typing still saves, and now says so.
+ */
+const ALLERGEN_HITS = {
+  items: [
+    {
+      term: "Penicillins / Beta-Lactams", kind: "class", allergenClass: "Penicillins / Beta-Lactams",
+      saltId: null, blocks: ["Amoxicillin", "Ampicillin", "Cephalexin"],
+    },
+    { term: "Penicillin", kind: "moiety", allergenClass: null, saltId: "S1", blocks: [] },
+  ],
+  known: true,
+};
+
+describe("OpdConsult — recording an allergy in the room", () => {
+  beforeEach(() => { vi.restoreAllMocks(); });
+
+  it("R1: picking an allergen posts its CLASS, so a block cannot be lost to spelling", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/cds/complete/allergen": { status: 200, body: ALLERGEN_HITS },
+      "POST /api/patients/p-1/allergies": { status: 201, body: { allergyId: "al-9" } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(await screen.findByTestId("allergy-add"));
+    await user.type(screen.getByLabelText("Allergy — substance"), "pencil");
+    await user.click(await screen.findByTestId("allergy-hit-Penicillins / Beta-Lactams"));
+    await user.click(screen.getByTestId("allergy-save"));
+
+    await waitFor(() => {
+      expect(bodiesOf("POST", "/api/patients/p-1/allergies").at(-1)).toEqual({
+        substance: "Penicillins / Beta-Lactams", severity: "moderate", source: "consult",
+        saltId: null, allergenClass: "Penicillins / Beta-Lactams",
+      });
+    });
+  });
+
+  it("R2: editing after a pick DROPS the code — it belonged to the old words", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/cds/complete/allergen": { status: 200, body: ALLERGEN_HITS },
+      "POST /api/patients/p-1/allergies": { status: 201, body: { allergyId: "al-9" } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(await screen.findByTestId("allergy-add"));
+    await user.type(screen.getByLabelText("Allergy — substance"), "pencil");
+    await user.click(await screen.findByTestId("allergy-hit-Penicillin"));
+    /*
+      A code left behind after the words changed is a block recorded against a substance nobody
+      named — the same defect the drug field's `medicineId` had and fixed.
+
+      TWO INDEPENDENT DEFENCES ENFORCE THIS, and neither mutant kills this test on its own:
+      `onChange` clears the pick, AND `addAllergy` refuses a pick whose term is not the text being
+      saved. Measured — removing either leaves R2 green, removing BOTH turns it red and nothing
+      else. That is not a weak test; it is a test of the BEHAVIOUR over two mechanisms that each
+      suffice. Worth writing down because a surviving mutant usually means the opposite, and the
+      next person to run one here should not go looking for the hole.
+    */
+    await user.type(screen.getByLabelText("Allergy — substance"), " (child only)");
+    await user.click(screen.getByTestId("allergy-save"));
+
+    await waitFor(() => {
+      expect(bodiesOf("POST", "/api/patients/p-1/allergies").at(-1)).toEqual({
+        substance: "Penicillin (child only)", severity: "moderate", source: "consult",
+      });
+    });
+  });
+
+  it("R3: free text the guard knows no rule for WARNS, and still saves", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/cds/complete/allergen": { status: 200, body: { items: [], known: false } },
+      "POST /api/patients/p-1/allergies": { status: 201, body: { allergyId: "al-9" } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(await screen.findByTestId("allergy-add"));
+    await user.type(screen.getByLabelText("Allergy — substance"), "the red syrup");
+
+    // It WARNS — a doctor told nothing has no way to know the check will stay quiet.
+    expect(await screen.findByTestId("allergy-unknown")).toBeInTheDocument();
+
+    // ...and it never REFUSES. Free text is legal on this field and always was.
+    await user.click(screen.getByTestId("allergy-save"));
+    await waitFor(() => {
+      expect(bodiesOf("POST", "/api/patients/p-1/allergies").at(-1)).toEqual({
+        substance: "the red syrup", severity: "moderate", source: "consult",
+      });
+    });
+  });
+
+  it("R4: a suggester that is DOWN leaves a plain box that saves, and warns about nothing", async () => {
+    /* Design law 1 at the transport layer. A field that started warning about every allergy
+       because a route returned 500 would teach a doctor to ignore the warning. */
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/cds/complete/allergen": { status: 500, body: { message: "boom" } },
+      "POST /api/patients/p-1/allergies": { status: 201, body: { allergyId: "al-9" } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(await screen.findByTestId("allergy-add"));
+    await user.type(screen.getByLabelText("Allergy — substance"), "penicillin");
+    await waitFor(() => { expect(screen.queryByTestId("allergy-hits")).toBeNull(); });
+    expect(screen.queryByTestId("allergy-unknown")).toBeNull();
+
+    await user.click(screen.getByTestId("allergy-save"));
+    await waitFor(() => { expect(callsTo("POST", "/api/patients/p-1/allergies")).toHaveLength(1); });
+  });
+});
+
 function fetchCalls(): { url: string; path: string; method: string; body: string }[] {
   return vi.mocked(fetch).mock.calls.map(([input, init]) => {
     const url = String(input);

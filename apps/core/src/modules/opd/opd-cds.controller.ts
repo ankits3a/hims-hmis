@@ -4,8 +4,8 @@ import type { Actor } from "@hmis/contracts";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { getPatient, listAllergies } from "../patients";
-import { buildRegimen, cardsFor, completeComplaint, rankSyndromes, searchIcd10, toRxDraft } from "../cds";
-import type { BuiltLine, BuiltRegimen, Card, ComplaintTerm, Icd10Hit, PatientFacts, RxDraftLine, SyndromeHit } from "../cds";
+import { buildRegimen, cardsFor, completeComplaint, matchesAKnownAllergen, rankSyndromes, searchAllergens, searchIcd10, toRxDraft } from "../cds";
+import type { AllergenHit, BuiltLine, BuiltRegimen, Card, ComplaintTerm, Icd10Hit, PatientFacts, RxDraftLine, SyndromeHit } from "../cds";
 import { getEncounter } from "./encounters";
 import { OpdError } from "./errors";
 import { parsed, toHttp } from "./opd-masters.controller";
@@ -109,6 +109,26 @@ export class OpdCdsController {
   }
 
   /**
+   * ═══ THE ALLERGY FIELD'S OWN COMPLETION, AND IT IS A SAFETY ROUTE ═══
+   *
+   * The doctor could already TYPE an allergy in the room. What they could not do was pick one — and
+   * `blockedBy` matches free text on tokens of five letters or more, so `pencilin` matches nothing
+   * and the penicillin block stays silent for the life of that record. A picked allergen carries
+   * its class and fires the rule by identity.
+   *
+   * `known` is the other half and is why the answer is not just a list: it says whether the text as
+   * TYPED reaches any rule at all, using the same token test the guard itself uses. The field warns
+   * on false — it never refuses. Free text is legal here and must stay so; a patient who says "the
+   * red syrup gave him a rash" has told the doctor something worth keeping.
+   */
+  @RequirePermission("opd.consult", "hospital")
+  @Get("complete/allergen")
+  async completeAllergen(@Query() query: unknown): Promise<{ items: AllergenHit[]; known: boolean }> {
+    const q = parsed(completeQuery, query);
+    return { items: await searchAllergens(this.db, q.q), known: matchesAKnownAllergen(q.q) };
+  }
+
+  /**
    * A syndrome + the patient actually in the chair → the regimen with the doses computed for them,
    * and the danger cards. One call, because the screen needs both to render a single decision and
    * a doctor should not watch two spinners resolve at different times.
@@ -139,12 +159,20 @@ export class OpdCdsController {
       const dob = detail?.patient.dob ?? null;
       const ageYears = dob === null ? null : ageYearsAt(new Date(dob), new Date());
       const sex = detail?.patient.administrativeGender ?? null;
-      const allergies = (await listAllergies(this.db, encounter.patientId))
-        .filter((a) => a.status === "active")
-        .map((a) => a.substance);
+      const activeAllergies = (await listAllergies(this.db, encounter.patientId))
+        .filter((a) => a.status === "active");
+      const allergies = activeAllergies.map((a) => a.substance);
+      /*
+        THE CODED CLASSES RIDE BESIDE THE WORDS. An allergy the doctor PICKED carries its rule class
+        and fires the block by identity; one that was typed is still matched by token exactly as
+        before. Sending only the words is how `pencilin` silenced a penicillin block.
+      */
+      const allergenClasses = activeAllergies
+        .map((a) => a.allergenClass)
+        .filter((c): c is string => c !== null && c !== "");
 
       const pregnant = q.pregnant === undefined ? null : q.pregnant === "true";
-      const facts: PatientFacts = { ageYears, weightKg, allergies, pregnant: pregnant === true };
+      const facts: PatientFacts = { ageYears, weightKg, allergies, allergenClasses, pregnant: pregnant === true };
       const regimen = buildRegimen(q.syndromeKey, facts);
       if (regimen === null) throw new OpdError("unknown_syndrome", `unknown syndrome ${q.syndromeKey}`);
       /* The prescription draft rides the line it came from, so the screen fills a form rather than

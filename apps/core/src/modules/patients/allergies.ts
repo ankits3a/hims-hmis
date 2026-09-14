@@ -30,6 +30,20 @@ export async function addAllergy(
      * derives the substance from the administration row rather than from anything a human typed.
      */
     source: "registration" | "vitals" | "consult" | "radiology";
+    /**
+     * ═══ THE CODED ALLERGEN — SET WHEN THE ALLERGY WAS PICKED, NEVER INFERRED HERE ═══
+     *
+     * `allergenClass` is the CDS rule's own class name and is what lets the prescription block fire
+     * by identity instead of by spelling: `blockedBy` matches free text on five-letter tokens, so a
+     * misspelt `pencilin` matches nothing and the penicillin block goes silent for the life of the
+     * record. `saltId` names one moiety exactly when the allergy is not one of the six classes.
+     *
+     * Both are OPTIONAL and this function never derives them from `substance`. Guessing a class
+     * from typed words is exactly the judgement the picker exists to make explicit — a wrong guess
+     * here would record a block the patient's history does not support.
+     */
+    saltId?: string | null;
+    allergenClass?: string | null;
   },
 ): Promise<{ allergyId: string }> {
   if (actor.type !== "user") throw new PatientError("user_actor_required");
@@ -45,6 +59,8 @@ export async function addAllergy(
     reaction: input.reaction ?? null,
     severity: input.severity ?? null,
     source: input.source,
+    saltId: input.saltId ?? null,
+    allergenClass: input.allergenClass ?? null,
     recordedBy: actor.id,
   });
   await appendEvent(

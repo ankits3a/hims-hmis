@@ -19,3 +19,5 @@ export { completeComplaint, complaintVocabulary, ghostFor } from "./vocabulary";
 export type { ComplaintTerm } from "./vocabulary";
 export { MIN_QUERY_CHARS as ICD10_MIN_QUERY_CHARS, searchIcd10 } from "./icd10";
 export type { Icd10Hit } from "./icd10";
+export { ALLERGEN_MIN_CHARS, matchesAKnownAllergen, searchAllergens } from "./allergens";
+export type { AllergenHit } from "./allergens";

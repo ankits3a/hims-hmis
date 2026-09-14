@@ -69,6 +69,10 @@ type VisitDetail = {
   patient: WirePatientSummary | null;
 };
 type PatientDetailRow = { uhid: string; name: string | null; alias: string | null; dob: string | null; administrativeGender: string };
+/** `GET /opd/cds/complete/allergen` — a rule class, or a moiety out of the formulary. */
+type WireAllergenHit = {
+  term: string; kind: "class" | "moiety"; allergenClass: string | null; saltId: string | null; blocks: string[];
+};
 /** `GET /opd/cds/complete/diagnosis` — one row of the ICD-10 typeahead. */
 type WireIcd10Hit = { code: string; description: string; chapterNo: number; codeMatch: boolean };
 type AllergyRow = { id: string; substance: string; severity: "mild" | "moderate" | "severe" | null; status: string };
@@ -214,6 +218,21 @@ export function OpdConsult(): React.ReactElement {
   const [allergyText, setAllergyText] = useState("");
   const [allergySeverity, setAllergySeverity] = useState<"mild" | "moderate" | "severe">("moderate");
   const [allergyError, setAllergyError] = useState<string | null>(null);
+  /*
+    ═══ THE PICKED ALLERGEN, AND THE WARNING WHEN NOTHING WAS PICKED ═══
+
+    `allergyPick` is the coded allergen the doctor chose; it is CLEARED the moment they type again,
+    exactly as the drug field clears `medicineId` — a code left behind after the words changed is a
+    block recorded against a substance nobody named.
+
+    `allergyKnown` is the server's answer about the TYPED text: false means the prescription guard
+    will find no rule for it. The field says so and saves anyway. Free text is legal here and must
+    stay so — "the red syrup gave him a rash" is worth recording — but a doctor who writes
+    `pencilin` and is told nothing has no way to know the penicillin block will never fire.
+  */
+  const [allergyPick, setAllergyPick] = useState<WireAllergenHit | null>(null);
+  const [allergyHits, setAllergyHits] = useState<WireAllergenHit[]>([]);
+  const [allergyKnown, setAllergyKnown] = useState(true);
   const [skipping, setSkipping] = useState<WireQueueEntryView | null>(null);
   const [skipReason, setSkipReason] = useState<WireSkipReason>("absent");
   const [skipNote, setSkipNote] = useState("");
@@ -575,6 +594,33 @@ export function OpdConsult(): React.ReactElement {
    * what a skip usually means — a default that is right most of the time is what keeps a reason
    * field from becoming a shrug — and every other reason is one click away.
    */
+  /*
+    THE ALLERGY TYPEAHEAD'S ONE REQUEST, DEBOUNCED. Same shape as `TagField`'s: a 120 ms pause, and
+    a guard on `asked` so a slow answer to an old prefix cannot overwrite a newer one. Three
+    characters is the floor — `pe` would return a fifth of the moiety table.
+  */
+  const allergyAsked = useRef("");
+  useEffect(() => {
+    const q = allergyText.trim();
+    allergyAsked.current = q;
+    if (!allergyOpen || q.length < 3) { setAllergyHits([]); setAllergyKnown(true); return; }
+    let live = true;
+    const timer = setTimeout(() => {
+      void api<{ items: WireAllergenHit[]; known: boolean }>(
+        "GET", `/opd/cds/complete/allergen?q=${encodeURIComponent(q)}`,
+      )
+        .then((r) => {
+          if (!live || allergyAsked.current !== q) return;
+          setAllergyHits(r.items);
+          setAllergyKnown(r.known);
+        })
+        /* Design law 1 at the transport layer: a field whose suggester is down is a plain text box
+           that still saves. It must NOT start warning about every allergy because a route is 500. */
+        .catch(() => { if (live) { setAllergyHits([]); setAllergyKnown(true); } });
+    }, 120);
+    return () => { live = false; clearTimeout(timer); };
+  }, [allergyText, allergyOpen]);
+
   const addAllergy = async (): Promise<void> => {
     const substance = allergyText.trim();
     if (substance === "" || patientId === null) return;
@@ -582,8 +628,21 @@ export function OpdConsult(): React.ReactElement {
     try {
       /* `source: "consult"` is one of the three the route accepts, and it is the true one: this
          allergy was learnt at the consultation, not at registration and not at the bay. */
-      await api("POST", `/patients/${patientId}/allergies`, { substance, severity: allergySeverity, source: "consult" });
+      /*
+        THE CODE RIDES ONLY WHEN IT BELONGS TO THESE WORDS. `allergyPick` is cleared on every
+        keystroke, so a doctor who picks "Penicillins / Beta-Lactams" and then edits the text saves
+        free text — never the class they had stopped agreeing with.
+      */
+      const picked = allergyPick !== null && allergyPick.term.toLowerCase() === substance.toLowerCase()
+        ? { saltId: allergyPick.saltId, allergenClass: allergyPick.allergenClass }
+        : {};
+      await api("POST", `/patients/${patientId}/allergies`, {
+        substance, severity: allergySeverity, source: "consult", ...picked,
+      });
       setAllergyText("");
+      setAllergyPick(null);
+      setAllergyHits([]);
+      setAllergyKnown(true);
       setAllergyOpen(false);
       await queryClient.invalidateQueries({ queryKey: ["patient-allergies", patientId] });
       /* The co-pilot's cards are computed FROM the allergy list, so a new allergy re-asks for them. */
@@ -1396,13 +1455,67 @@ export function OpdConsult(): React.ReactElement {
                     </div>
                     {allergyOpen && (
                       <div data-testid="allergy-form" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 6 }}>
-                        <input
-                          id="allergy-substance" aria-label={t("opdConsult.allergySubstance")}
-                          value={allergyText} onChange={(e) => { setAllergyText(e.target.value); }}
-                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void addAllergy(); } }}
-                          className="in" style={{ width: 220, height: 30, fontSize: 12.5 }}
-                          placeholder={t("opdConsult.allergyPlaceholder")}
-                        />
+                        {/*
+                          ═══ AUTOCOMPLETE, AUTOCORRECT, AND A WARNING — BECAUSE A TYPO IS SILENT ═══
+
+                          Owner, 2026-09-14, asked for autocomplete and autocorrect on the field the
+                          doctor can already type into. It is more than convenience: the prescription
+                          guard matches a recorded allergy on word tokens, so `pencilin` matches no
+                          rule and the penicillin block never fires for that patient again.
+
+                          Picking records the CLASS, which fires the rule by identity. Typing still
+                          saves — free text is legal on this field and must stay so — but the line
+                          under the box says when the guard will find nothing.
+                        */}
+                        <div style={{ position: "relative", width: 220 }}>
+                          <input
+                            id="allergy-substance" aria-label={t("opdConsult.allergySubstance")}
+                            value={allergyText} autoComplete="off"
+                            onChange={(e) => {
+                              setAllergyText(e.target.value);
+                              setAllergyPick(null); // the code belonged to the OLD words
+                            }}
+                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void addAllergy(); } }}
+                            className="in" style={{ width: "100%", height: 30, fontSize: 12.5 }}
+                            placeholder={t("opdConsult.allergyPlaceholder")}
+                          />
+                          {allergyHits.length > 0 && (
+                            <ul
+                              data-testid="allergy-hits"
+                              style={{
+                                position: "absolute", zIndex: 5, top: 32, left: 0, right: 0, margin: 0,
+                                padding: 0, listStyle: "none", background: "var(--paper)",
+                                border: "1px solid var(--line)", borderRadius: 5, maxHeight: 180, overflowY: "auto",
+                              }}
+                            >
+                              {allergyHits.map((h) => (
+                                <li key={`${h.kind}-${h.term}`}>
+                                  <button
+                                    type="button" data-testid={`allergy-hit-${h.term}`}
+                                    onMouseDown={(e) => { e.preventDefault(); }}
+                                    onClick={() => {
+                                      setAllergyText(h.term);
+                                      setAllergyPick(h);
+                                      setAllergyHits([]);
+                                      setAllergyKnown(true);
+                                    }}
+                                    style={{
+                                      display: "block", width: "100%", textAlign: "left", padding: "4px 7px",
+                                      border: "none", background: "none", cursor: "pointer", fontSize: 12,
+                                    }}
+                                  >
+                                    <span style={{ fontWeight: 600 }}>{h.term}</span>
+                                    {h.blocks.length > 0 && (
+                                      <span className="mo" style={{ display: "block", fontSize: 10.5, color: "var(--faint)" }}>
+                                        {t("opdConsult.allergyBlocks", { list: h.blocks.slice(0, 4).join(", ") })}
+                                      </span>
+                                    )}
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
                         <select
                           aria-label={t("opdConsult.allergySeverity")} value={allergySeverity}
                           onChange={(e) => { setAllergySeverity(e.target.value as "mild" | "moderate" | "severe"); }}
@@ -1419,6 +1532,11 @@ export function OpdConsult(): React.ReactElement {
                           {t("opdConsult.cancel")}
                         </button>
                         <ErrorLine message={allergyError} />
+                        {!allergyKnown && allergyText.trim() !== "" && (
+                          <p data-testid="allergy-unknown" style={{ margin: 0, flexBasis: "100%", fontSize: 11.5, color: "var(--gold)" }}>
+                            {t("opdConsult.allergyUnknown")}
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>

@@ -14,9 +14,9 @@ import type { PatientFacts } from "./regimen";
  * "it suggests something" but "it never suggests a number it cannot source", so that is what these
  * assert.
  */
-const ADULT: PatientFacts = { ageYears: 34, weightKg: 62, allergies: [], pregnant: false };
-const CHILD_14: PatientFacts = { ageYears: 3, weightKg: 14, allergies: [], pregnant: false };
-const CHILD_7: PatientFacts = { ageYears: 1, weightKg: 7, allergies: [], pregnant: false };
+const ADULT: PatientFacts = { ageYears: 34, weightKg: 62, allergies: [], allergenClasses: [], pregnant: false };
+const CHILD_14: PatientFacts = { ageYears: 3, weightKg: 14, allergies: [], allergenClasses: [], pregnant: false };
+const CHILD_7: PatientFacts = { ageYears: 1, weightKg: 7, allergies: [], allergenClasses: [], pregnant: false };
 
 describe("CDS knowledge", () => {
   it("K1: the committed corpus parses, and carries the bundle it was built from", () => {
@@ -70,10 +70,10 @@ describe("CDS regimen — the dose for the child in the chair", () => {
   it("R1: the band is the bundle's own 40 kg rule, and age stands in when no weight is recorded", () => {
     expect(bandFor(ADULT)).toBe("adult");
     expect(bandFor(CHILD_14)).toBe("pediatric");
-    expect(bandFor({ ageYears: 6, weightKg: null, allergies: [], pregnant: false })).toBe("pediatric");
-    expect(bandFor({ ageYears: null, weightKg: null, allergies: [], pregnant: false })).toBe("adult");
+    expect(bandFor({ ageYears: 6, weightKg: null, allergies: [], allergenClasses: [], pregnant: false })).toBe("pediatric");
+    expect(bandFor({ ageYears: null, weightKg: null, allergies: [], allergenClasses: [], pregnant: false })).toBe("adult");
     // a small adult is still an adult by age, but the bundle blocks solid tablets under 40 kg
-    expect(bandFor({ ageYears: 30, weightKg: 38, allergies: [], pregnant: false })).toBe("pediatric");
+    expect(bandFor({ ageYears: 30, weightKg: 38, allergies: [], allergenClasses: [], pregnant: false })).toBe("pediatric");
   });
 
   /** THE DEFECT THIS MODULE EXISTS FOR: the bundle's 3.5 mL is for a 14 kg child and nobody else. */
@@ -99,7 +99,7 @@ describe("CDS regimen — the dose for the child in the chair", () => {
   });
 
   it("R4: a stated rate with no weight on file refuses rather than assuming one", () => {
-    const noWeight: PatientFacts = { ageYears: 3, weightKg: null, allergies: [], pregnant: false };
+    const noWeight: PatientFacts = { ageYears: 3, weightKg: null, allergies: [], allergenClasses: [], pregnant: false };
     const r = buildRegimen("SYN_URI_01", noWeight)!;
     const para = r.lines.find((l) => l.drugLabel.startsWith("Paracetamol"))!;
     expect(para.dose.state).toBe("no_weight");
@@ -115,7 +115,7 @@ describe("CDS regimen — the dose for the child in the chair", () => {
   });
 
   it("R6: a documented penicillin allergy swaps the beta-lactam out and names the reason", () => {
-    const allergic: PatientFacts = { ...ADULT, allergies: ["Penicillin"] };
+    const allergic: PatientFacts = { ...ADULT, allergies: ["Penicillin"], allergenClasses: [] };
     const r = buildRegimen("SYN_URI_01", allergic)!;
     const swapped = r.lines.find((l) => l.substitutedFor !== undefined)!;
     expect(swapped.substitutedFor).toContain("Amoxicillin");
@@ -133,7 +133,7 @@ describe("CDS regimen — the dose for the child in the chair", () => {
    * adult.
    */
   it("R7: the allergic CHILD is covered too — no beta-lactam survives, and the swap carries no computed dose", () => {
-    const allergicChild: PatientFacts = { ...CHILD_14, allergies: ["penicillin"] };
+    const allergicChild: PatientFacts = { ...CHILD_14, allergies: ["penicillin"], allergenClasses: [] };
     const r = buildRegimen("SYN_URI_01", allergicChild)!;
     expect(r.lines.some((l) => /amoxicillin|ampicillin|clavulan/i.test(l.drugLabel))).toBe(false);
     const swapped = r.lines.find((l) => l.substitutedFor !== undefined)!;
@@ -144,7 +144,7 @@ describe("CDS regimen — the dose for the child in the chair", () => {
 
   /** A blocked drug with nothing to put in its place must not survive as itself. */
   it("R7b: an allergen the syndrome has no substitute for leaves a refusal, never the original drug", () => {
-    const nsaid: PatientFacts = { ...ADULT, allergies: ["Ibuprofen"] };
+    const nsaid: PatientFacts = { ...ADULT, allergies: ["Ibuprofen"], allergenClasses: [] };
     const r = buildRegimen("SYN_MSK_07", nsaid)!;
     const blocked = r.lines.filter((l) => l.dose.state === "blocked");
     expect(blocked.length).toBeGreaterThan(0);
@@ -201,7 +201,7 @@ describe("CDS guardrails — the dangers the owner asked to be automatic", () =>
   });
 
   it("G3: a child with no weight on file gets a RED card, not a silently uncalculated line", () => {
-    const p: PatientFacts = { ageYears: 4, weightKg: null, allergies: [], pregnant: false };
+    const p: PatientFacts = { ageYears: 4, weightKg: null, allergies: [], allergenClasses: [], pregnant: false };
     const cards = cardsFor(buildRegimen("SYN_URI_01", p)!, p, FEMALE);
     const ped = cards.find((c) => c.kind === "pediatric" && c.severity === "red")!;
     expect(ped.title).toContain("No weight on file");
@@ -209,7 +209,7 @@ describe("CDS guardrails — the dangers the owner asked to be automatic", () =>
   });
 
   it("G4: the allergy card reports what was actually changed, with the substitution named", () => {
-    const p: PatientFacts = { ...ADULT, allergies: ["Penicillin"] };
+    const p: PatientFacts = { ...ADULT, allergies: ["Penicillin"], allergenClasses: [] };
     const cards = cardsFor(buildRegimen("SYN_URI_01", p)!, p, FEMALE);
     const a = cards.find((c) => c.kind === "allergy")!;
     expect(a.severity).toBe("red");
@@ -225,7 +225,7 @@ describe("CDS guardrails — the dangers the owner asked to be automatic", () =>
 
   it("G6: every card carries the rule id that produced it — a card with no provenance is an opinion", () => {
     for (const key of ["SYN_URI_01", "SYN_UTI_08", "SYN_ASTHMA_06"]) {
-      const p: PatientFacts = { ...ADULT, allergies: ["Penicillin"] };
+      const p: PatientFacts = { ...ADULT, allergies: ["Penicillin"], allergenClasses: [] };
       for (const c of cardsFor(buildRegimen(key, p)!, p, FEMALE)) {
         expect(c.ruleKeys.length).toBeGreaterThan(0);
         expect(c.title.length).toBeGreaterThan(0);
