@@ -22,8 +22,15 @@ import type { Db } from "../../kernel/db/client";
  * a salt match qualifies a row. Within each band, trigram similarity orders and the shorter name
  * wins ties: `Paracetamol Tablets IP 500mg` before `Paracetamol + Caffeine + Domperidone …`.
  *
- * `lower(brand_name) gin_trgm_ops` (migration 0084) is what keeps the anywhere-match off a
+ * `lower(brand_name) gin_trgm_ops` (migration 0085) is what keeps the anywhere-match off a
  * sequential scan of a hundred thousand rows on every keystroke.
+ *
+ * ═══ AND IT NEVER OFFERS A ROW THE SAFETY LAYER CANNOT READ ═══
+ *
+ * Both branches require a composition. The moiety branch did so already, by construction; the
+ * brand-name branch did not, and could hand back one of the eight uncomposed rows. Picking one set
+ * a `medicineId` that `getCoverage` counts as resolved while no check can fire on it — the exact
+ * failure #186 refused to set the id for. The filter answers that instead of arguing with it.
  */
 export type MedicineHit = {
   id: string;
@@ -33,7 +40,12 @@ export type MedicineHit = {
   /** The hospital's own catalogue code — `D0230`. Null on a branded row; only generics carry one. */
   code: string | null;
   routeClass: string;
-  /** The moieties, for the line under the name. Empty for the eight rows the bundle left uncomposed. */
+  /**
+   * The moieties, for the line under the name — and NEVER empty, because a row with no moiety is
+   * not offered at all (`search.test.ts` S1). That is what lets the screen fill `medicineId` on a
+   * pick: every id this route hands out is one the interaction, duplicate and allergy checks can
+   * reason about. Measured on the imported catalogue, 8 of 103,383 active medicines are uncomposed.
+   */
   salts: string[];
   /** True when the name itself starts with what was typed — the screen bolds that prefix. */
   prefix: boolean;
@@ -86,6 +98,7 @@ export async function searchMedicines(db: Db, query: string, limit = 10): Promis
         from formulary_medicines m
        where m.active
          and (lower(m.brand_name) like ${like} or lower(coalesce(m.code, '')) like ${starts})
+         and exists (select 1 from formulary_medicine_salts l where l.medicine_id = m.id)
       union
       select m.id, m.brand_name, m.form, m.strength_label, m.code, m.route_class, m.salt_rank
         from formulary_medicines m
