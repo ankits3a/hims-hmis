@@ -4,7 +4,7 @@ import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
-import { completeConsultation, saveConsultNote, startConsultation } from "./consultation";
+import { completeConsultation, parkConsultation, resumeConsultation, saveConsultNote, startConsultation } from "./consultation";
 import { transferQueue } from "./encounters";
 import { parsed, toHttp } from "./opd-masters.controller";
 import {
@@ -193,6 +193,34 @@ export class OpdQueueController {
   async start(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ encounter: EncounterRow; queueEntry: QueueEntryRow }> {
     try {
       return await startConsultation(this.db, actor, id);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * PARK / RESUME (owner report, 2026-09-13) — the patient who stepped out mid-consultation.
+   *
+   * `opd.consult` and no new permission, because this is not a new authority: both acts are
+   * refused by `requireTreatingDoctor` to anybody but the encounter's own doctor, exactly like the
+   * note and the completion beside them. A permission of their own would be a second name for a
+   * grant every doctor already holds, and `seed-roles.ts` pins the count.
+   */
+  @RequirePermission("opd.consult", "hospital")
+  @Post("visits/:id/consult/park")
+  async park(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ encounter: EncounterRow; queueEntry: QueueEntryRow }> {
+    try {
+      return await parkConsultation(this.db, actor, id);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("opd.consult", "hospital")
+  @Post("visits/:id/consult/resume")
+  async resume(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ encounter: EncounterRow; queueEntry: QueueEntryRow }> {
+    try {
+      return await resumeConsultation(this.db, actor, id);
     } catch (e) {
       toHttp(e);
     }

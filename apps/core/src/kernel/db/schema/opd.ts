@@ -383,6 +383,28 @@ export const opdQueueEntries = pgTable(
     skips: integer("skips").notNull().default(0),
     doneAt: timestamp("done_at", { withTimezone: true }),
     /**
+     * ═══ THE PARKED CONSULTATION — the patient who stepped out mid-consultation ═══
+     *
+     * Owner, 2026-09-13: *"in between the patient decide to stop and he gets outside for 15
+     * minutes … I need to have an option to park that patient on dashboard and call next patient."*
+     *
+     * Set when the doctor parks; null the rest of the time. **NOT A `status` VALUE, for the same
+     * reason `bench_state` is not one** (D3, above): the row must stay `in_consult`, because that
+     * is the value every callable filter in this module already excludes and the value that keeps
+     * the encounter's own workflow state at `in_consultation` — a parked patient's half-written
+     * note, prescription and vitals stay exactly where the doctor left them, and resuming is one
+     * column write rather than a second consultation.
+     *
+     * It is what separates "with the doctor now" from "held aside, gone for a cup of tea", and
+     * before it the two were the same row: the doctor called the next token, the previous patient
+     * stayed `in_consult` and **no screen rendered `in_consult` rows at all**, so a patient who had
+     * been half-seen vanished from the hall with their visit still open.
+     *
+     * `parked_by` is plain text and no FK — this file's header rule for actor columns.
+     */
+    parkedAt: timestamp("parked_at", { withTimezone: true }),
+    parkedBy: text("parked_by"),
+    /**
      * ═══ VD-1 T1 / D3 — THE BENCH, AND WHY IT IS NOT A STATUS ═══
      *
      * `null` | `'resting'` | `'away'`. Where a patient physically is between arriving at the bay

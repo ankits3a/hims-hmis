@@ -141,6 +141,12 @@ export type WireQueueEntry = {
   danger: boolean; reEntry: boolean; perk: boolean;
   eligibleAt: string | null; calledAt: string | null; callCount: number; skips: number;
   doneAt: string | null; createdAt: string;
+  /**
+   * THE PARKED CONSULTATION (2026-09-13) — set while the patient has stepped out mid-consultation,
+   * null the rest of the time. It is a mark on an `in_consult` row and NOT a status of its own, so
+   * a reader asks both questions: a held patient is `status === "in_consult" && parkedAt !== null`.
+   */
+  parkedAt: string | null; parkedBy: string | null;
 };
 
 /** A queue row as the desk and the consultation screen read it: the row plus the engine's verdict. */

@@ -13,6 +13,13 @@ export const OPD_REALTIME_NAMES = [
   // topic as everything else in the hall, which is what makes the desk's hall card go live on the
   // one fact it most needs: a session that has not opened yet.
   "queue_session.opened", "queue_session.closed",
+  // A day closed by mistake and put back (2026-09-13): the corridor board dropped the doctor-day on
+  // the close and must pick it up again on the correction, without waiting for a poll.
+  "queue_session.reopened",
+  // The parked consultation (2026-09-13): the rail repaints for every screen watching this
+  // doctor-day, so a patient held aside is visible to the desk that is about to be asked where
+  // they went — and to the doctor's own second tab.
+  "consultation.parked", "consultation.resumed",
   // RC-1 T3 — the board flip: UNPAID → PAID on the seat and the hall, without a poll.
   "queue.fee_status_changed",
   // VD-1 T3 — the danger protocol. `queue.escalated` IS the doctor-board flash: it rides the same
