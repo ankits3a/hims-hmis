@@ -56,3 +56,13 @@ export const suggestSyndromes = (complaint: string): Promise<{ items: WireSyndro
 
 export const fetchRegimen = (syndromeKey: string, encounterId: string, pregnant?: boolean): Promise<WireRegimen> =>
   api("GET", `/opd/cds/regimen?syndromeKey=${encodeURIComponent(syndromeKey)}&encounterId=${encodeURIComponent(encounterId)}${pregnant === undefined ? "" : `&pregnant=${String(pregnant)}`}`);
+
+/**
+ * The complaint field's own autocomplete — the hospital's vocabulary, no model, no patient. `ghost`
+ * is the remainder of the best PREFIX match (null when there is none), which is what the `→` key
+ * accepts; `items` is what the doctor can tap instead.
+ */
+export type WireComplete = { items: { term: string; from: "syndrome" | "symptom" }[]; ghost: string | null };
+
+export const completeComplaint = (q: string): Promise<WireComplete> =>
+  api("GET", `/opd/cds/complete/complaint?q=${encodeURIComponent(q)}`);

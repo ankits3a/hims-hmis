@@ -4,8 +4,8 @@ import type { Actor } from "@hmis/contracts";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { getPatient, listAllergies } from "../patients";
-import { buildRegimen, cardsFor, rankSyndromes, toRxDraft } from "../cds";
-import type { BuiltLine, BuiltRegimen, Card, PatientFacts, RxDraftLine, SyndromeHit } from "../cds";
+import { buildRegimen, cardsFor, completeComplaint, rankSyndromes, toRxDraft } from "../cds";
+import type { BuiltLine, BuiltRegimen, Card, ComplaintTerm, PatientFacts, RxDraftLine, SyndromeHit } from "../cds";
 import { getEncounter } from "./encounters";
 import { OpdError } from "./errors";
 import { parsed, toHttp } from "./opd-masters.controller";
@@ -38,6 +38,7 @@ import type { Db } from "../../kernel/db/client";
  * question rather than assuming the answer when it is absent.
  */
 const suggestQuery = z.object({ complaint: z.string().max(500) });
+const completeQuery = z.object({ q: z.string().max(120) });
 const regimenQuery = z.object({
   syndromeKey: z.string().min(1).max(64),
   encounterId: z.string().min(1).max(64),
@@ -59,6 +60,28 @@ export class OpdCdsController {
   suggest(@Query() query: unknown): { items: SyndromeHit[] } {
     const q = parsed(suggestQuery, query);
     return { items: rankSyndromes(q.complaint) };
+  }
+
+  /**
+   * ═══ THE COMPLAINT FIELD'S OWN AUTOCOMPLETE — NO AI, NO PATIENT, NO STATE ═══
+   *
+   * Owner, 2026-09-14: the doctor types `fev`, sees `fever`, and either completes it with the
+   * forward key or types their own words and presses enter. This route serves the first half; the
+   * second half is the field's, and the field always wins — nothing here rewrites what was typed.
+   *
+   * It reads the hospital's own vocabulary (the syndromes' keywords and the bundle's symptom map),
+   * so it answers in microseconds and is safe to call on a keystroke. `ghost` is the remainder of
+   * the best PREFIX match and is null unless one exists, because an inline completion that inserts
+   * letters BEFORE the cursor is a keystroke the doctor did not make.
+   */
+  @RequirePermission("opd.consult", "hospital")
+  @Get("complete/complaint")
+  completeComplaint(@Query() query: unknown): { items: ComplaintTerm[]; ghost: string | null } {
+    const q = parsed(completeQuery, query);
+    const items = completeComplaint(q.q);
+    const needle = q.q.trim().toLowerCase();
+    const best = items.find((i) => i.term.startsWith(needle) && i.term !== needle);
+    return { items, ghost: best === undefined ? null : best.term.slice(needle.length) };
   }
 
   /**

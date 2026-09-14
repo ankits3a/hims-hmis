@@ -2,6 +2,7 @@ import { KNOWLEDGE, rulesOf, syndromeByKey } from "./knowledge";
 import { rankSyndromes } from "./matcher";
 import { cardsFor } from "./guardrails";
 import { durationDaysOf, frequencyOf, toRxDraft } from "./rx";
+import { completeComplaint, complaintVocabulary, ghostFor } from "./vocabulary";
 import { bandFor, buildRegimen, doseFor } from "./regimen";
 import type { PatientFacts } from "./regimen";
 
@@ -278,5 +279,38 @@ describe("CDS → the prescription form", () => {
         expect(d.durationDays === null || (d.durationDays > 0 && d.durationDays <= 365)).toBe(true);
       }
     }
+  });
+});
+
+describe("CDS complaint vocabulary — the field's own autocomplete", () => {
+  it("V1: 'fev' offers fever, and the ghost is only ever the REMAINDER of a prefix match", () => {
+    const items = completeComplaint("fev");
+    expect(items.map((i) => i.term)).toContain("fever");
+    expect(ghostFor("fev")).toBe("er");
+    // a word that is already complete has nothing to ghost
+    expect(ghostFor("fever")).toBeNull();
+  });
+
+  it("V2: a LATER-WORD match is offered but never ghosted — completing behind the caret is a keystroke nobody made", () => {
+    /* "nose" starts the second word of "runny nose", so it is worth offering and impossible to
+       ghost: the completion would have to insert "runny " in front of what the doctor typed. */
+    const items = completeComplaint("nose");
+    expect(items.map((i) => i.term)).toContain("runny nose");
+    expect(ghostFor("nose")).toBeNull();
+    /* And where the needle IS a prefix, the ghost is the rest of it — "throat" → "throat pain". */
+    expect(ghostFor("throat")).toBe(" pain");
+  });
+
+  it("V3: one letter offers nothing, and an unknown word offers nothing rather than a guess", () => {
+    expect(completeComplaint("f")).toEqual([]);
+    expect(completeComplaint("qwerty")).toEqual([]);
+    expect(ghostFor("q")).toBeNull();
+  });
+
+  it("V4: the vocabulary is the hospital's own — every term traces to a syndrome keyword or a symptom map", () => {
+    const vocab = complaintVocabulary();
+    expect(vocab.length).toBeGreaterThan(30);
+    for (const v of vocab) expect(["syndrome", "symptom"]).toContain(v.from);
+    expect(vocab.map((v) => v.term)).toContain("fever");
   });
 });
