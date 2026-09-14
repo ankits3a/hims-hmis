@@ -1,6 +1,7 @@
 import { KNOWLEDGE, rulesOf, syndromeByKey } from "./knowledge";
 import { rankSyndromes } from "./matcher";
 import { cardsFor } from "./guardrails";
+import { durationDaysOf, frequencyOf, toRxDraft } from "./rx";
 import { bandFor, buildRegimen, doseFor } from "./regimen";
 import type { PatientFacts } from "./regimen";
 
@@ -227,6 +228,54 @@ describe("CDS guardrails — the dangers the owner asked to be automatic", () =>
       for (const c of cardsFor(buildRegimen(key, p)!, p, FEMALE)) {
         expect(c.ruleKeys.length).toBeGreaterThan(0);
         expect(c.title.length).toBeGreaterThan(0);
+      }
+    }
+  });
+});
+
+describe("CDS → the prescription form", () => {
+  it("X1: the Indian slip's own notation decides the frequency", () => {
+    expect(frequencyOf("1-0-1 After Food")).toBe("BD");
+    expect(frequencyOf("1-0-0 30 min Before Breakfast")).toBe("OD");
+    expect(frequencyOf("0-0-1 At Bedtime")).toBe("HS");
+    expect(frequencyOf("1-1-1 After Food")).toBe("TDS");
+    expect(frequencyOf("Every 6h SOS")).toBe("SOS");
+    expect(frequencyOf("Every 8 hours")).toBe("TDS");
+    expect(frequencyOf("3.5 mL Every 12h PC")).toBe("BD");
+  });
+
+  it("X2: an unrecognised sig is 'other' and a missing duration is null — never a plausible guess", () => {
+    expect(frequencyOf("apply as the physiotherapist advises")).toBe("other");
+    expect(durationDaysOf(null, "Apply cold pack for 15 min TID")).toBeNull();
+    expect(durationDaysOf("5 Days", "x")).toBe(5);
+    expect(durationDaysOf(null, "for 3 days")).toBe(3);
+  });
+
+  it("X3: a computed line fills a real dose; a refused line fills the REASON, never a number", () => {
+    const child = buildRegimen("SYN_URI_01", CHILD_14)!;
+    const para = toRxDraft(child.lines.find((l) => l.drugLabel.startsWith("Paracetamol"))!);
+    expect(para.dose).toBe("3.5 mL (175 mg)");
+    expect(para.route).toBe("oral");
+    expect(para.durationDays).toBe(3);
+
+    const amox = toRxDraft(child.lines.find((l) => l.drugLabel.includes("Amoxicillin"))!);
+    expect(amox.dose).toBe("— dose needs review");
+    expect(amox.instructions).toContain("not yet clinically reviewed");
+  });
+
+  it("X4: an inhaler is inhaled and a cold compress is topical — the route is not always oral", () => {
+    const asthma = buildRegimen("SYN_ASTHMA_06", CHILD_14)!;
+    expect(toRxDraft(asthma.lines.find((l) => /Inhaler/i.test(l.drugLabel))!).route).toBe("inhaled");
+    const msk = buildRegimen("SYN_MSK_07", CHILD_14)!;
+    expect(toRxDraft(msk.lines.find((l) => /Cold Compress/i.test(l.drugLabel))!).route).toBe("topical");
+  });
+
+  it("X5: every line of every syndrome drafts without throwing, and no draft invents a duration", () => {
+    for (const s of KNOWLEDGE.syndromes) {
+      for (const l of buildRegimen(s.key, ADULT)!.lines) {
+        const d = toRxDraft(l);
+        expect(d.drug.length).toBeGreaterThan(0);
+        expect(d.durationDays === null || (d.durationDays > 0 && d.durationDays <= 365)).toBe(true);
       }
     }
   });

@@ -1729,3 +1729,139 @@ describe("OpdConsult — skipping a token, and taking it back", () => {
     await waitFor(() => { expect(screen.queryByTestId("skip-dialog")).toBeNull(); });
   });
 });
+
+/**
+ * ═══ THE CO-PILOT ON THE DESK (owner, 2026-09-14) ═══
+ *
+ * *"when doctor starts to write chief complaints, he don't need to type much, just tap and select
+ * … automatically highlight dangers … if the patient is a child, pregnant or has an allergy."*
+ */
+describe("OpdConsult — the clinical co-pilot", () => {
+  const HITS = {
+    items: [
+      { key: "SYN_URI_01", name: "Acute Upper Respiratory Infection (URI)", icd10: "J06.9", score: 4, matched: ["fever", "sore throat"] },
+      { key: "SYN_BRONCH_04", name: "Acute Bronchitis", icd10: "J20.9", score: 1, matched: ["cough"] },
+    ],
+  };
+  const line = (over: Record<string, unknown>) => ({
+    band: "pediatric", seq: 1, drugLabel: "Paracetamol Oral Suspension 250mg/5ml", purpose: "Antipyresis",
+    sig: "3.5 mL (for 14kg: 12.5 mg/kg) Every 6h SOS", duration: "3 Days",
+    dose: { state: "computed", mg: 87.5, ml: 2, basis: "12.5 mg/kg per dose × 7 kg ÷ 50 mg/mL" },
+    rx: { drug: "Paracetamol Oral Suspension 250mg/5ml", dose: "2 mL (87.5 mg)", route: "oral", frequency: "SOS", durationDays: 3, instructions: "3.5 mL example · Antipyresis", noSubstitution: false },
+    ...over,
+  });
+  const REGIMEN = {
+    regimen: {
+      syndrome: { key: "SYN_URI_01", name: "Acute Upper Respiratory Infection (URI)", icd10: "J06.9" },
+      band: "pediatric",
+      lines: [
+        line({}),
+        line({
+          seq: 2, drugLabel: "Azithromycin Oral Suspension 100mg/5ml", substitutedFor: "Amoxicillin and Clavulanate Syrup",
+          dose: { state: "needs_review", basis: "substituted for Penicillin allergy", example: "7 mL Day 1" },
+          rx: { drug: "Azithromycin Oral Suspension 100mg/5ml", dose: "— dose needs review", route: "oral", frequency: "OD", durationDays: 5, instructions: "substituted for Penicillin allergy", noSubstitution: false },
+        }),
+      ],
+      appliedConditions: ["Penicillin"],
+    },
+    cards: [
+      { kind: "allergy", severity: "red", title: "Allergy on file — 1 line(s) changed", detail: "Amoxicillin and Clavulanate Syrup → Azithromycin Oral Suspension 100mg/5ml", drugs: ["Amoxicillin and Clavulanate Syrup"], alternatives: [], ruleKeys: ["Penicillin"] },
+      { kind: "pregnancy_unknown", severity: "info", title: "Is she pregnant?", detail: "This hospital records no pregnancy status.", drugs: [], alternatives: [], ruleKeys: ["NO_PREGNANCY_FIELD"] },
+    ],
+    facts: { weightKg: 7, ageYears: 1, allergies: ["Penicillin"], pregnant: null },
+  };
+
+  function cdsRoutes(over: Record<string, Handler> = {}): Record<string, Handler> {
+    return {
+      ...baseRoutes(),
+      "GET /api/opd/cds/suggest": { status: 200, body: HITS },
+      "GET /api/opd/cds/regimen": { status: 200, body: REGIMEN },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+      ...over,
+    };
+  }
+
+  it("P1: typing the complaint offers syndromes — and three characters is the floor, so it is not called per keystroke", async () => {
+    mockRoutes(cdsRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.type(screen.getByLabelText("Chief complaint"), "fe");
+    await waitFor(() => { expect(callsTo("GET", "/api/opd/cds/suggest")).toHaveLength(0); });
+
+    await user.type(screen.getByLabelText("Chief complaint"), "ver and sore throat");
+    expect(await screen.findByTestId("cds-hit-SYN_URI_01")).toHaveTextContent("Acute Upper Respiratory Infection");
+    // the complaint travels; the patient does NOT — this read sees no PHI
+    const url = callsTo("GET", "/api/opd/cds/suggest").at(-1)!.url;
+    expect(url).toContain("complaint=");
+    expect(url).not.toContain("enc-1");
+  });
+
+  it("P2: tapping a syndrome shows the dose computed for THIS child, with the weight it used on screen", async () => {
+    mockRoutes(cdsRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat");
+    await user.click(await screen.findByTestId("cds-hit-SYN_URI_01"));
+
+    const card = await screen.findByTestId("cds-regimen");
+    expect(within(card).getByTestId("cds-band")).toHaveTextContent("Child regimen");
+    expect(within(card).getByTestId("cds-facts")).toHaveTextContent("7 kg");
+    expect(within(card).getByTestId("cds-dose-1")).toHaveTextContent("2 mL (87.5 mg)");
+    // the syndrome and the encounter travel; a WEIGHT never does
+    const url = callsTo("GET", "/api/opd/cds/regimen").at(-1)!.url;
+    expect(url).toContain("syndromeKey=SYN_URI_01");
+    expect(url).toContain("encounterId=enc-1");
+    expect(url).not.toMatch(/weight/i);
+  });
+
+  it("P3: the allergy danger is an ALERT and names the swap; the pregnancy question can be answered on the card", async () => {
+    mockRoutes(cdsRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat");
+    await user.click(await screen.findByTestId("cds-hit-SYN_URI_01"));
+
+    const allergy = await screen.findByTestId("cds-card-allergy");
+    expect(allergy).toHaveAttribute("role", "alert");
+    expect(allergy).toHaveTextContent("→ Azithromycin");
+    expect(screen.getByTestId("cds-swap-2")).toBeInTheDocument();
+
+    await user.click(screen.getByTestId("cds-pregnant-yes"));
+    await waitFor(() => {
+      expect(callsTo("GET", "/api/opd/cds/regimen").at(-1)!.url).toContain("pregnant=true");
+    });
+  });
+
+  it("P4: one tap fills the prescription form and moves to it — and issues nothing", async () => {
+    mockRoutes(cdsRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat");
+    await user.click(await screen.findByTestId("cds-hit-SYN_URI_01"));
+    await user.click(await screen.findByTestId("cds-fill"));
+
+    // the form is now the Rx tab, carrying both lines
+    const drugs = await screen.findAllByLabelText("Drug");
+    expect(drugs).toHaveLength(2);
+    expect((drugs[0] as HTMLInputElement).value).toContain("Paracetamol");
+    expect((drugs[1] as HTMLInputElement).value).toContain("Azithromycin");
+    // NOTHING was prescribed by filling
+    expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions")).toHaveLength(0);
+  });
+
+  /** The line the server refused to dose must arrive as the REASON, never as a number. */
+  it("P5: a dose that needs review fills the reason into the form, not a millilitre", async () => {
+    mockRoutes(cdsRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat");
+    await user.click(await screen.findByTestId("cds-hit-SYN_URI_01"));
+    expect(screen.getByTestId("cds-dose-2")).toHaveTextContent("— dose needs review");
+
+    await user.click(screen.getByTestId("cds-fill"));
+    const doses = await screen.findAllByLabelText("Dose");
+    expect((doses[1] as HTMLInputElement).value).toBe("— dose needs review");
+    expect((doses[1] as HTMLInputElement).value).not.toMatch(/\d\s*m[lg]/i);
+  });
+});
