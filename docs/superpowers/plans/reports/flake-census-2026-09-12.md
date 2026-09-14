@@ -121,6 +121,37 @@ It is also not the two-token change it looks like: `truncateAll` in `beforeEach`
 `beforeAll` seeded, so hoisting means moving the truncate too and **proving no test reads state the
 previous one left.**
 
+### COSTED 2026-09-14, and the answer is DO NOT TAKE IT
+
+The tempting fix was raised, measured and declined. Numbers from a quiet box (no jest pool, load 1.44,
+9 GB free), five rounds, medians, timing each group of `queue.test.ts`'s `beforeEach`:
+
+    truncateAll                  184 ms   60%     <- NOT hoistable: it IS the isolation
+    activateOpdVisitDefinition    61 ms
+    mkDoctor x3                   33 ms
+    mkUser + mkPatient            18 ms   16%     <- per-test fixtures the tests mutate
+    seedOpdMasters                 4 ms
+    seedOpdBase                    3 ms
+    ----------------------------------------
+    per test                     304 ms
+
+**What hoisting would actually save is the invariant seeding: 68 ms, 22% of the hook.** Over the
+file's sixteen tests that is **1.1 seconds**, while `truncateAll` — which hoisting cannot remove,
+because it is the thing providing isolation — keeps costing 2.9 s. And it was never a hoist in the
+first place: those sixteen tests mutate queue state heavily (12 `callNext`, 3 `skipCalled`) and create
+doctors, users and patients inside the tests, so moving `truncateAll` to `beforeAll` leaks state
+across all of them. It is a change to truncation semantics in `test/helpers/db.ts`, **which every
+suite on this box shares.** Blast radius: everything. Payoff: about a second.
+
+**And the same number settles the class.** 304 ms against a 15 000 ms hook budget is **2%** — the
+timeout fired at **49x the measured cost of the work it was timing.** A hook does not overrun its
+budget by fifty times because of how it is structured. That is load, and the runner is GitHub's
+(§0's correction), so the lever is the budget and not the fixture.
+
+Recorded so the next person to propose this finds it already costed. **If the number ever comes back
+far larger than this, that is a different conversation and worth reopening** — but it should be
+reopened by a measurement, not by the argument, which is exactly as available now as it was before.
+
 **Logged as census item 9: the runner's load — not a fixture, and not a timeout number.** Raising
 `jest.config.cjs:27` globally is the wrong lever: that file is a shared surface, line 33's
 `maxWorkers: 2` carries an owner ruling, and a bigger number hides every other slow-hook problem
