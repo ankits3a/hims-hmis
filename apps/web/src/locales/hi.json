@@ -781,7 +781,9 @@
     "snippetStops": "भरने के लिए Tab: {{label}} ({{n}} और)",
     "snippetReference": "उपलब्ध प्लेसहोल्डर",
     "snippetReferenceHint": "इन्हें टेम्पलेट में लिखें। स्निपेट खुलते ही ये इसी मरीज़ से भर जाते हैं — ब्रेस कभी सहेजे नहीं जाते।",
-    "snippetUnknownTokens": "यह प्लेसहोल्डर नहीं है: {{list}} — यह भरने की जगह बनेगा, टेक्स्ट नहीं।"
+    "snippetUnknownTokens": "यह प्लेसहोल्डर नहीं है: {{list}} — यह भरने की जगह बनेगा, टेक्स्ट नहीं।",
+    "complaintUsedByYou_one": "आपने यह एक बार लिखा है",
+    "complaintUsedByYou_other": "आपने यह {{count}} बार लिखा है"
   },
   "rx": {
     "regNo": "पंजीकरण सं.",

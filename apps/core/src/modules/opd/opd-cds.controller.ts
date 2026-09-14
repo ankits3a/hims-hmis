@@ -4,9 +4,12 @@ import type { Actor } from "@hmis/contracts";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { getPatient, listAllergies } from "../patients";
-import { buildRegimen, cardsFor, completeComplaint, matchesAKnownAllergen, rankSyndromes, searchAllergens, searchIcd10, toRxDraft } from "../cds";
-import type { AllergenHit, BuiltLine, BuiltRegimen, Card, ComplaintTerm, Icd10Hit, PatientFacts, RxDraftLine, SyndromeHit } from "../cds";
+import { buildRegimen, cardsFor, matchesAKnownAllergen, rankSyndromes, searchAllergens, searchIcd10, toRxDraft } from "../cds";
+import type { AllergenHit, BuiltLine, BuiltRegimen, Card, Icd10Hit, PatientFacts, RxDraftLine, SyndromeHit } from "../cds";
 import { getEncounter } from "./encounters";
+import { expandComplaintForMatching, suggestComplaints } from "./complaints";
+import { doctorForUser } from "./masters";
+import type { ComplaintSuggestion } from "./complaints";
 import { OpdError } from "./errors";
 import { parsed, toHttp } from "./opd-masters.controller";
 import { ageYearsAt } from "./time";
@@ -58,9 +61,14 @@ export class OpdCdsController {
    */
   @RequirePermission("opd.consult", "hospital")
   @Get("suggest")
-  suggest(@Query() query: unknown): { items: SyndromeHit[] } {
+  async suggest(@Query() query: unknown): Promise<{ items: SyndromeHit[] }> {
     const q = parsed(suggestQuery, query);
-    return { items: rankSyndromes(q.complaint) };
+    /*
+      ENRICHED FIRST. `rankSyndromes` matches English keywords, so a Hindi or romanised complaint
+      reaches a syndrome only through its concept's English forms. The matcher itself is unchanged
+      and still a pure function over words — see `expandComplaintForMatching`.
+    */
+    return { items: rankSyndromes(await expandComplaintForMatching(this.db, q.complaint)) };
   }
 
   /**
@@ -77,11 +85,26 @@ export class OpdCdsController {
    */
   @RequirePermission("opd.consult", "hospital")
   @Get("complete/complaint")
-  completeComplaint(@Query() query: unknown): { items: ComplaintTerm[]; ghost: string | null } {
+  async completeComplaint(
+    @CurrentActor() actor: Actor, @Query() query: unknown,
+  ): Promise<{ items: ComplaintSuggestion[]; ghost: string | null }> {
     const q = parsed(completeQuery, query);
-    const items = completeComplaint(q.q);
+    /*
+      ═══ THE DOCTOR'S OWN HABITS RANK FIRST, WHICH IS WHY THIS READS WHO IS ASKING ═══
+
+      A complaint field is a personal shorthand before it is a shared vocabulary. Resolving the
+      doctor from the actor rather than taking a parameter keeps that honest: a caller cannot ask
+      for somebody else's habits, and there is nothing to get wrong at the call site.
+
+      A user who is not a doctor still gets the hospital's vocabulary — `doctorForUser` answering
+      null is an ordinary state here, not a refusal.
+    */
+    const doctor = actor.type === "user" ? await doctorForUser(this.db, actor.id) : null;
+    const items = await suggestComplaints(this.db, doctor?.id ?? null, q.q);
     const needle = q.q.trim().toLowerCase();
-    const best = items.find((i) => i.term.startsWith(needle) && i.term !== needle);
+    /* The ghost is still only ever a PREFIX remainder — letters appearing behind the caret are a
+       keystroke the doctor did not make. */
+    const best = items.find((i) => i.term.toLowerCase().startsWith(needle) && i.term.toLowerCase() !== needle);
     return { items, ghost: best === undefined ? null : best.term.slice(needle.length) };
   }
 

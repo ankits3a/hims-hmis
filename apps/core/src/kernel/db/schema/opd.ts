@@ -364,6 +364,120 @@ export const opdEncounters = pgTable(
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * THE COMPLAINT VOCABULARY — MANY PHRASINGS, ONE MEANING, AND THE DOCTOR'S WORDS UNTOUCHED
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner, 2026-09-14: *"how are we tackling 'chest pain', 'pain in chest', 'tight chest', 'heavy
+ * chest', 'seene me dard', 'chhaati me dard'? Are we mapping different phrases with common meaning?
+ * And is our system learning vocabulary of doctor?"*
+ *
+ * Measured before any of this: the answer was NO to both. The suggester read 64 English strings
+ * built at module load from `knowledge.json` — zero Devanagari, zero romanised Hindi, no synonyms —
+ * and nothing ever wrote to it. A doctor typing `seene me dard` five hundred times got no
+ * suggestion on the five hundred and first.
+ *
+ * ═══ THE SHAPE IS THE ONE THIS LANE HAS USED THREE TIMES ═══
+ *
+ * Diagnosis keeps the doctor's words AND an ICD-10 code. An allergy keeps the words and an allergen
+ * class. A prescription line keeps the words and a medicine id. In every case the free text is what
+ * is stored and shown, and the code is what a machine may reason about. A complaint gets the same
+ * treatment: `opd_encounters.chief_complaint` still holds exactly what the doctor typed — nothing
+ * here changes that, and `TagField`'s law is untouched — and a CONCEPT is what the syndrome matcher
+ * and the worklist read.
+ *
+ * ═══ THE CONCEPT IS NOT STORED ON THE ENCOUNTER, AND THAT IS DELIBERATE ═══
+ *
+ * It is RESOLVED from the term wherever it is needed. Storing it would freeze a mapping that is
+ * still being learnt: map `seene me dard` next month and every note written before it would
+ * silently disagree with every note written after. Resolution at read time means a mapping improves
+ * the past as well as the future, which is what a vocabulary that is still growing requires.
+ */
+export const opdComplaintConcepts = pgTable(
+  "opd_complaint_concepts",
+  {
+    /** A stable key, e.g. `chest_pain`. Referenced by terms and by nothing that a doctor types. */
+    key: text("key").primaryKey(),
+    /** What a human calls it on the mapping screen. Never shown in place of the doctor's words. */
+    label: text("label").notNull(),
+    active: boolean("active").notNull().default(true),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: text("updated_by").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+
+/**
+ * One surface form. `chest pain`, `seene me dard` and `सीने में दर्द` are three rows of one concept.
+ *
+ * ═══ ROMANISED HINDI IS STORED, NOT TRANSLITERATED ═══
+ *
+ * There is no standard romanisation: `seene`, `sine` and `seenay` are all things a doctor types,
+ * and an algorithm that mapped one would miss the others while inventing forms nobody uses. So each
+ * spelling is a ROW, and the ones that matter are discovered from what doctors actually type
+ * (`opd_complaint_term_usage`) rather than imagined in advance.
+ */
+export const opdComplaintTerms = pgTable(
+  "opd_complaint_terms",
+  {
+    id: text("id").primaryKey(),
+    conceptKey: text("concept_key").notNull().references(() => opdComplaintConcepts.key),
+    term: text("term").notNull(),
+    /** `en` | `hi` (Devanagari) | `hinglish` (Hindi in Latin letters). Shown on the mapping screen. */
+    script: text("script").notNull(),
+    /** `seed` — shipped; `mapped` — a human mapped it off the worklist. Never a machine alone. */
+    source: text("source").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    /** One surface form means ONE thing. Two concepts claiming `cough` is a coin toss at every keystroke. */
+    uniqueIndex("opd_complaint_terms_term_ux").using("btree", sql`lower(${t.term})`),
+    index("opd_complaint_terms_concept_idx").on(t.conceptKey),
+    check("opd_complaint_terms_script_ck", sql`${t.script} in ('en', 'hi', 'hinglish')`),
+    check("opd_complaint_terms_source_ck", sql`${t.source} in ('seed', 'mapped')`),
+  ],
+);
+
+/**
+ * ═══ WHAT THIS HOSPITAL ACTUALLY TYPES — THE LEARNING, AND IT NEEDS NO MODEL ═══
+ *
+ * `curation.ts` already states the philosophy this tree believes in: *the prescribing stream is the
+ * worklist* — coverage grows along the path of actual use rather than by somebody trying to type an
+ * entire pharmacopoeia in. The same move here. Every complaint tag on a COMPLETED consultation is
+ * counted, and the suggester ranks by it.
+ *
+ * Two things follow, and the second is the one that answers the owner's question:
+ *
+ *   · A phrase a doctor uses is offered back to them, whether or not anyone has mapped it. That is
+ *     the vocabulary learning, with no NLP at all — `seene me dard` is suggested on the 51st use
+ *     because it was used fifty times, not because a machine understood it.
+ *   · The most-used terms with NO concept become a ranked worklist. The synonym sets then grow from
+ *     real use, most-frequent first, exactly as `unresolvedTop` grows the formulary.
+ *
+ * COUNTED ON COMPLETION, ONCE. The note autosaves on every blur, so counting there would inflate a
+ * phrase by however many times the doctor tabbed out of the box. A completed consultation happens
+ * once per encounter and is the honest unit.
+ */
+export const opdComplaintTermUsage = pgTable(
+  "opd_complaint_term_usage",
+  {
+    /** Lower-cased surface form, exactly as the doctor committed it apart from case. */
+    term: text("term").notNull(),
+    /** Whose habit this is. The hospital's total is the sum across doctors. */
+    doctorId: text("doctor_id").notNull().references(() => opdDoctors.id),
+    uses: integer("uses").notNull().default(0),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.term, t.doctorId] }),
+    /** The worklist reads "most used across the hospital", which is this index. */
+    index("opd_complaint_term_usage_uses_idx").on(t.uses),
+  ],
+);
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
  * THE ADVICE LIBRARY — THE ONE FIELD THE PATIENT READS
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
  *

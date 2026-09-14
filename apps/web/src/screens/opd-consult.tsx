@@ -1892,7 +1892,19 @@ export function OpdConsult(): React.ReactElement {
                         onChange={(next) => { setNote((n) => ({ ...n, chiefComplaint: next })); }}
                         suggest={async (q) => {
                           const r = await completeComplaint(q);
-                          return { items: r.items.map((i) => ({ term: i.term })), ghost: r.ghost };
+                          /*
+                            THE HINT SAYS WHERE A SUGGESTION CAME FROM, which is how a doctor sees
+                            the field learning rather than being told it does. A phrase they have
+                            written before is marked with how often; one nobody has mapped yet shows
+                            nothing, and is offered anyway — that is the point of counting use.
+                          */
+                          return {
+                            items: r.items.map((i) => ({
+                              term: i.term,
+                              hint: i.mine > 0 ? t("opdConsult.complaintUsedByYou", { count: i.mine }) : null,
+                            })),
+                            ghost: r.ghost,
+                          };
                         }}
                         placeholder={t("opdConsult.complaintPlaceholder")}
                         hint={t("opdConsult.complaintHint")}

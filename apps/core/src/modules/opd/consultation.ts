@@ -6,6 +6,7 @@ import { isNull } from "drizzle-orm";
 import { opdDoctors, opdEncounterDiagnoses, opdEncounters, opdPrescriptions, opdQueueEntries, opdQueueSessions } from "../../kernel/db/schema";
 import { loadOpdConfig } from "./config";
 import { getEncounter, moveEncounter } from "./encounters";
+import { recordComplaintUsage } from "./complaints";
 import { OpdError } from "./errors";
 import {
   admissionRequested, consultationCompleted, consultationParked, consultationResumed, consultationStarted, referralIssued,
@@ -426,6 +427,22 @@ export async function completeConsultation(
       from the same list, so the event and the record agree by construction.
     */
     await writeDiagnosisRows(tx, encounterId, input.note);
+    /*
+      ═══ THE VOCABULARY LEARNS HERE, AND ONLY HERE ═══
+
+      Every complaint phrase on a COMPLETED consultation is counted, mapped or not — which is what
+      makes a doctor's own shorthand start being offered back to them, and what builds the worklist
+      of phrases nobody has mapped yet.
+
+      At completion rather than at save: the note autosaves on every blur, so counting there would
+      score a phrase by how often the doctor tabbed out of the box. A completion happens once per
+      encounter and is the honest unit. The same reasoning `curation.ts` gives for counting the
+      PRESCRIBING stream rather than every keystroke that touched a prescription.
+    */
+    const complaint = encounter.chiefComplaint ?? "";
+    if (complaint.trim() !== "") {
+      await recordComplaintUsage(tx, doctor.id, complaint.split(" · ").map((x) => x.trim()), now);
+    }
     await markDone(tx, encounterId, now);
     const where = await entryWhere(tx, encounterId);
     const issued = await tx

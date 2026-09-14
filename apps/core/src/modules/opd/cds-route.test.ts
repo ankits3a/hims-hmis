@@ -57,8 +57,8 @@ describe("GET /opd/cds — suggest, regimen and the diagnosis catalogue", () => 
     return { patientId: patient.id, encounterId: opened.encounter.id };
   }
 
-  it("C1: the complaint the owner wrote on the whiteboard ranks URI first, with no patient involved", () => {
-    const { items } = ctl.suggest({ complaint: "Fever + Sore Throat + Dry Cough" });
+  it("C1: the complaint the owner wrote on the whiteboard ranks URI first, with no patient involved", async () => {
+    const { items } = await ctl.suggest({ complaint: "Fever + Sore Throat + Dry Cough" });
     expect(items[0]!.key).toBe("SYN_URI_01");
     expect(items[0]!.matched).toContain("sore throat");
   });

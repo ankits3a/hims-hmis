@@ -61,8 +61,19 @@ export const fetchRegimen = (syndromeKey: string, encounterId: string, pregnant?
  * The complaint field's own autocomplete — the hospital's vocabulary, no model, no patient. `ghost`
  * is the remainder of the best PREFIX match (null when there is none), which is what the `→` key
  * accepts; `items` is what the doctor can tap instead.
+ *
+ * ═══ `from` BECAME `conceptKey` AND A USE COUNT, 2026-09-14 ═══
+ *
+ * The old shape said which half of `knowledge.json` a term came from, and the vocabulary was 64
+ * frozen English strings. It is now a table: `conceptKey` is the meaning several phrasings share
+ * (`seene me dard` and `chest pain` are one), null when nobody has mapped that phrase yet — which
+ * is ordinary, not an error. `mine` and `hospital` are how often it has actually been written, and
+ * they are why a doctor's own shorthand climbs to the top of their own list.
  */
-export type WireComplete = { items: { term: string; from: "syndrome" | "symptom" }[]; ghost: string | null };
+export type WireComplaintSuggestion = {
+  term: string; conceptKey: string | null; mine: number; hospital: number;
+};
+export type WireComplete = { items: WireComplaintSuggestion[]; ghost: string | null };
 
 export const completeComplaint = (q: string): Promise<WireComplete> =>
   api("GET", `/opd/cds/complete/complaint?q=${encodeURIComponent(q)}`);

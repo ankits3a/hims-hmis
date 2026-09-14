@@ -781,7 +781,9 @@
     "snippetStops": "Tab to fill: {{label}} ({{n}} more)",
     "snippetReference": "Placeholders you can use",
     "snippetReferenceHint": "Type these inside a template. They fill from this patient the moment the snippet expands — nothing with braces is ever saved.",
-    "snippetUnknownTokens": "Not a placeholder: {{list}} — it will become a blank to fill, not text."
+    "snippetUnknownTokens": "Not a placeholder: {{list}} — it will become a blank to fill, not text.",
+    "complaintUsedByYou_one": "you have written this once",
+    "complaintUsedByYou_other": "you have written this {{count}} times"
   },
   "rx": {
     "regNo": "Reg. No.",
