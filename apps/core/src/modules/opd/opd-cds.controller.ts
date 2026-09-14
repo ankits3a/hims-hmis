@@ -4,8 +4,8 @@ import type { Actor } from "@hmis/contracts";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { getPatient, listAllergies } from "../patients";
-import { buildRegimen, cardsFor, completeComplaint, rankSyndromes, toRxDraft } from "../cds";
-import type { BuiltLine, BuiltRegimen, Card, ComplaintTerm, PatientFacts, RxDraftLine, SyndromeHit } from "../cds";
+import { buildRegimen, cardsFor, completeComplaint, rankSyndromes, searchIcd10, toRxDraft } from "../cds";
+import type { BuiltLine, BuiltRegimen, Card, ComplaintTerm, Icd10Hit, PatientFacts, RxDraftLine, SyndromeHit } from "../cds";
 import { getEncounter } from "./encounters";
 import { OpdError } from "./errors";
 import { parsed, toHttp } from "./opd-masters.controller";
@@ -39,6 +39,7 @@ import type { Db } from "../../kernel/db/client";
  */
 const suggestQuery = z.object({ complaint: z.string().max(500) });
 const completeQuery = z.object({ q: z.string().max(120) });
+const diagnosisQuery = z.object({ q: z.string().max(120), limit: z.coerce.number().int().min(1).max(25).optional() });
 const regimenQuery = z.object({
   syndromeKey: z.string().min(1).max(64),
   encounterId: z.string().min(1).max(64),
@@ -82,6 +83,29 @@ export class OpdCdsController {
     const needle = q.q.trim().toLowerCase();
     const best = items.find((i) => i.term.startsWith(needle) && i.term !== needle);
     return { items, ghost: best === undefined ? null : best.term.slice(needle.length) };
+  }
+
+  /**
+   * ═══ THE DIAGNOSIS TYPEAHEAD — ICD-10, AND NOT GATED ON THE CO-PILOT ═══
+   *
+   * The owner's two rulings of 2026-09-14 draw their line in different places, and this route is on
+   * the permissive side of it: *"Diagnosis, Advice and Advised investigations suggest only when the
+   * AI co-pilot is enabled"*, but *"even though the doctor doesn't enable AI suggestion … auto
+   * complete will work if doctor starts to type drug name."*
+   *
+   * Completing a word the doctor is TYPING against a published catalogue is the second kind — no
+   * model, no patient, no inference, exactly what the drug field does. What the co-pilot gates is
+   * proposing a diagnosis the doctor has NOT typed, inferred from the complaint; that is `suggest`
+   * above, and it stays behind the switch.
+   *
+   * NO PATIENT AND NO PHI, so nothing here writes an access-log row: it reads a published
+   * international standard, and the only thing it learns about the doctor is what they typed.
+   */
+  @RequirePermission("opd.consult", "hospital")
+  @Get("complete/diagnosis")
+  async completeDiagnosis(@Query() query: unknown): Promise<{ items: Icd10Hit[] }> {
+    const q = parsed(diagnosisQuery, query);
+    return { items: await searchIcd10(this.db, q.q, q.limit ?? 10) };
   }
 
   /**

@@ -1,4 +1,6 @@
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
+import { icd10Codes } from "../../kernel/db/schema";
+import { generalityOf } from "../../../scripts/import-icd10-catalogue";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
 import { addAllergy } from "../patients";
 import { withTx } from "../../kernel/db/client";
@@ -19,7 +21,7 @@ import type { Db } from "../../kernel/db/client";
 const NOW = new Date("2026-08-17T04:00:00.000Z");
 const adultOk = { heightCm: 165, weightKg: 62, sbp: 120, dbp: 80, pulse: 72, spo2: 98, tempC: 37.0 };
 
-describe("GET /opd/cds — suggest and regimen", () => {
+describe("GET /opd/cds — suggest, regimen and the diagnosis catalogue", () => {
   let db: Db;
   let teardown: () => Promise<void>;
   let ctl: OpdCdsController;
@@ -107,6 +109,45 @@ describe("GET /opd/cds — suggest and regimen", () => {
     expect(r.facts.weightKg).toBeNull();
     expect(r.regimen.lines.every((l) => l.dose.state !== "computed")).toBe(true);
     expect(r.cards.find((c) => c.kind === "pediatric")!.title).toContain("No weight on file");
+  });
+
+  /**
+   * ═══ THE DIAGNOSIS COMPLETION IS NOT GATED ON THE CO-PILOT, AND TAKES NO PATIENT ═══
+   *
+   * It completes what the doctor is TYPING against a published catalogue, which is the same thing
+   * the drug field does and what the owner asked to work co-pilot or not. The route therefore takes
+   * no encounter and no patient id at all — which is also what makes it safe to call on a keystroke
+   * without an access-log row per letter.
+   */
+  it("C7: completing a diagnosis needs no encounter, no patient and no co-pilot", async () => {
+    const rows = [
+      ["J45.909", 1, "Unspecified asthma, uncomplicated", 10],
+      ["J45.20", 2, "Mild intermittent asthma, uncomplicated", 10],
+      ["J45", 0, "Asthma", 10],
+    ] as const;
+    await db.insert(icd10Codes).values(rows.map(([code, order, desc, ch]) => ({
+      code, rawCode: code.replace(".", ""), orderNumber: order,
+      billable: code !== "J45", shortDescription: desc, longDescription: desc,
+      chapterNo: ch, chapterName: `Chapter ${String(ch)}: …`, generality: generalityOf(code, desc),
+    })));
+
+    const out = await ctl.completeDiagnosis({ q: "asthma" });
+    expect(out.items[0]!.code).toBe("J45.909");
+    /* The header that may never be assigned is absent even though it is named exactly "Asthma". */
+    expect(out.items.map((i) => i.code)).not.toContain("J45");
+  });
+
+  it("C8: the diagnosis completion caps its own limit, whatever the caller asks for", async () => {
+    /*
+      `limit` is parsed by the route's own schema, so a caller asking for the catalogue is refused
+      at the edge rather than trusted and capped later.
+
+      `rejects`, not `toThrow`: the route is async, so a schema failure arrives as a REJECTED
+      PROMISE and a synchronous `expect(() => …).toThrow()` passes over it — and then leaves the
+      rejection floating, which is what failed the NEXT test in this file rather than this one.
+    */
+    await expect(ctl.completeDiagnosis({ q: "asthma", limit: "5000" })).rejects.toThrow();
+    await expect(ctl.completeDiagnosis({ q: "asthma", limit: "25" })).resolves.toBeDefined();
   });
 
   it("C6: an unknown encounter and an unknown syndrome both answer 404, never a 500", async () => {

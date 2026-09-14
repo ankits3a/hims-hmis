@@ -603,6 +603,13 @@
       "when": 1789388006095,
       "tag": "0085_formulary_catalogue_codes",
       "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1789389553535,
+      "tag": "0086_icd10_catalogue",
+      "breakpoints": true
     }
   ]
 }
