@@ -7,6 +7,7 @@ import {
 } from "../../kernel/db/schema";
 import { listMergedLoserIds } from "../patients";
 import { canonicalNames } from "./criticals";
+import { currentValue, liveRowsFor } from "./results";
 import { LabError } from "./errors";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -64,6 +65,25 @@ export type WorklistRow = {
      * nobody signed is not a number a pathologist compares against.
      */
     previous: { resultId: string; value: string; flag: string | null; at: string } | null;
+    /**
+     * 17-E T7 / D18 — **THE RUNS NOBODY HAS CHOSEN BETWEEN.** Empty for almost every analyte. Two
+     * entries when an analyser re-ran the same tube and no human has yet said which run the report
+     * carries: a machine never supersedes, so both rows are live and `value` above is **null**,
+     * because the analyte genuinely has no reportable value until the bench decides.
+     *
+     * **This is the pair, not a history.** A superseded row — a human's re-key — is not here and
+     * never was choosable; `liveRowsFor` is the same filter `assertReportable` refuses on, so this
+     * list is non-empty exactly when that refusal is what the verifier would hit.
+     */
+    rerunChoice: {
+      resultId: string; value: string; flag: string | null; deltaFlag: boolean;
+      /** `entered_at`, ISO — which run came first, which is half of how a bench judges a pair. */
+      at: string;
+      /** `interface` for a machine's run. A pair can only arise from runs no human superseded. */
+      entryMode: string;
+      /** This row repeats an earlier one (`rerun_of`), rather than being the first measurement. */
+      isRerun: boolean;
+    }[];
   }[];
 };
 
@@ -129,8 +149,11 @@ export async function labWorklist(
       .from(labSpecimenItems)
       .innerJoin(labSpecimens, eq(labSpecimens.id, labSpecimenItems.specimenId))
       .where(and(inArray(labSpecimenItems.orderItemId, itemIds), eq(labSpecimenItems.active, true))),
+    /** `id` breaks the `entered_at` tie: ULIDs, so the order still reads oldest-first, and the
+     *  rerun PAIR below renders in a stable order instead of whatever physical order a row update
+     *  happened to leave behind. */
     db.select().from(labResults).where(inArray(labResults.orderItemId, itemIds))
-      .orderBy(asc(labResults.enteredAt)),
+      .orderBy(asc(labResults.enteredAt), asc(labResults.id)),
   ]);
   const tubeBy = new Map(tubes.map((t) => [t.orderItemId, t.specimenNo] as const));
 
@@ -169,10 +192,19 @@ export async function labWorklist(
     analytes: joins
       .filter((j) => j.serviceId === r.serviceId)
       .map((j) => {
-        /** The LATEST row per analyte: a rerun writes a new one rather than editing the old. */
-        const value = results.filter(
-          (x) => x.orderItemId === r.orderItemId && x.analyteId === j.analyte.id,
-        ).at(-1);
+        /**
+         * **THE ONE VALUE THIS ANALYTE HAS — and `undefined` when it has two that nobody has
+         * chosen between.** This was `.at(-1)`, the latest row, which is the auto-supersession D9
+         * forbids performed by the VIEW: the bench saw the second run silently, believed it, and
+         * `assertReportable` refused `rerun_unchosen` two seats later at a signature, for a state
+         * the bench could neither see nor resolve. `currentValue` is the same helper the writer and
+         * the verifier read, so all three seats now agree about what is reportable.
+         */
+        const forAnalyte = results.filter((x) => x.orderItemId === r.orderItemId);
+        const value = currentValue(forAnalyte, j.analyte.id);
+        const live = liveRowsFor(forAnalyte, j.analyte.id);
+        /** Non-empty ONLY while a choice is owed — one live row, or a chosen one, owes nothing. */
+        const owed = value === undefined && live.length > 1 ? live : [];
         return {
           analyteId: j.analyte.id,
           code: j.analyte.code,
@@ -196,6 +228,15 @@ export async function labWorklist(
            */
           previous: (previous.get(`${canonical.get(r.patientId)?.id ?? r.patientId}|${j.analyte.id}`) ?? [])
             .find((p) => p.orderItemId !== r.orderItemId) ?? null,
+          rerunChoice: owed.map((c) => ({
+            resultId: c.id,
+            value: c.valueNumeric ?? c.valueText ?? c.valueCoded ?? "",
+            flag: c.flag,
+            deltaFlag: c.deltaFlag,
+            at: c.enteredAt.toISOString(),
+            entryMode: c.entryMode,
+            isRerun: c.rerunOf !== null,
+          })),
         };
       }),
   }));

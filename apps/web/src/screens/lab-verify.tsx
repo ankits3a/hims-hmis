@@ -3,11 +3,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { newIdempotencyKey } from "../lib/api";
 import {
-  amendReport, flagTone, getReport, LAB_BENCH_TOPIC, LAB_CRITICAL_TOPIC, labErrorText, nightReleases,
+  amendReport, chooseResult, flagTone, getReport, LAB_BENCH_TOPIC, LAB_CRITICAL_TOPIC, labErrorText, nightReleases,
   openCriticals, printReport, publishableOrders, publishReport, requestRerun, reviewNightRelease,
   verifyResult, verifyWorklist,
 } from "../lib/lab-api";
 import { useRealtime } from "../lib/realtime";
+import { RerunChoicePair } from "../components/lab-rerun-choice";
 import { LabReportPrint } from "../components/lab-report-print";
 import { Button } from "@/components/ui/button";
 import { LabSeatFrame } from "./lab-seat";
@@ -47,7 +48,13 @@ export function orderQueue(rows: readonly WireWorklistRow[], calls: readonly Wir
   return rows
     .map((r) => ({
       ...r,
-      hasCritical: r.analytes.some((a) => flagTone(a.flag) === "critical"),
+      /**
+       * 17-E T7 — **THE PAIR'S FLAGS COUNT.** `a.flag` is null while two runs are live, so an order
+       * whose only critical is a re-run potassium would otherwise sort as routine — losing its place
+       * at the top of the pathologist's queue precisely because it needs a decision.
+       */
+      hasCritical: r.analytes.some((a) =>
+        flagTone(a.flag) === "critical" || a.rerunChoice.some((c) => flagTone(c.flag) === "critical")),
       openCall: callOrders.has(r.orderNo),
       ageMinutes: r.tatStartedAt === null ? 0 : Math.max(0, Math.floor((now - new Date(r.tatStartedAt).getTime()) / 60_000)),
     }))
@@ -130,6 +137,18 @@ export function LabVerify(): React.ReactElement {
   });
   const rerun = useMutation({
     mutationFn: (resultId: string) => requestRerun(resultId, t("lab.verify.rerunReason"), newIdempotencyKey()),
+    onSuccess: () => { setError(null); refresh(); },
+    onError: (e: unknown) => setError(labErrorText(e)),
+  });
+
+  /**
+   * 17-E T7 / D18 — the pathologist holds `lab.results.enter` too (`seed-roles.ts`: "may key a
+   * number in a small lab"), and `rerun_unchosen` is raised at the SIGNATURE — this seat's own act.
+   * Showing the refusal here without the control is the defect moved one seat over: at 02:00 with
+   * nobody at the bench, the only remaining answer would be to curl.
+   */
+  const choose = useMutation({
+    mutationFn: (v: { resultId: string; reason: string }) => chooseResult(v),
     onSuccess: () => { setError(null); refresh(); },
     onError: (e: unknown) => setError(labErrorText(e)),
   });
@@ -316,9 +335,31 @@ export function LabVerify(): React.ReactElement {
                       </tr>
                     </thead>
                     <tbody>
-                      {row.analytes.filter((a) => a.resultId !== null).map((a) => {
+                      {/*
+                        17-E T7 — `resultId` is null for an analyte awaiting a rerun choice, so this
+                        filter USED TO DROP THE ROW ENTIRELY: the pathologist saw a complete-looking
+                        panel, pressed sign, and met `rerun_unchosen` about an analyte that was not on
+                        the screen. An unchosen pair is kept and given its own row below.
+                      */}
+                      {row.analytes.filter((a) => a.resultId !== null || a.rerunChoice.length > 0).map((a) => {
                         const tone = flagTone(a.flag);
                         const delta = deltaText(a.value, a.previous?.value ?? null);
+                        if (a.rerunChoice.length > 0) {
+                          return (
+                            <tr key={a.analyteId} className="border-t border-border" data-testid={`row-${a.code}`}>
+                              <td className="py-1 pr-2">{a.nameEn}</td>
+                              <td colSpan={6} className="py-1">
+                                <RerunChoicePair
+                                  runs={a.rerunChoice}
+                                  name={`rerun-${row.orderItemId}-${a.analyteId}`}
+                                  analyteLabel={`${row.orderableCode} ${a.code}`}
+                                  pending={choose.isPending}
+                                  onChoose={(v) => choose.mutate(v)}
+                                />
+                              </td>
+                            </tr>
+                          );
+                        }
                         return (
                           <tr key={a.analyteId} className="border-t border-border" data-testid={`row-${a.code}`}>
                             <td className="py-1 pr-2">{a.nameEn}</td>

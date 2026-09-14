@@ -340,6 +340,11 @@ Stated here so nobody discovers it at a counter:
   What is still true: **no hospital has connected one**, so nothing has ever written `interface` on
   a real deployment — and the two acts that make it reachable, registering an instrument and
   creating a `lab_bridge` account, are deliberate human ones.
+- **No seed produces a rerun pair, and none can.** The unchosen-pair state of §13 step 3b is
+  reachable only through an analyser's own ingest route, because a human re-key *supersedes* rather
+  than creating a choice. `seed:lab-demo` writes no results at all — it stops at received tubes — but
+  it registers the demo analysers and maps their codes, so it leaves the lab one post away from a
+  pair. A rehearsal of that step needs the two posts §13 step 3b names.
 - **No auto-verification.** The engine ships with zero rules and a `system` actor is refused at
   verify outright.
 - **No QC, no reagent lots, no cultures, no send-outs, no histology** (17-E, 17-M, 17-H).
@@ -419,6 +424,57 @@ behind it that the walk exercises, so a step that fails here is a configuration 
    needs a NAMED re-checker before **Receive** (which starts the TAT clock). Key every analyte; a
    value outside the absurd envelope needs a second named enterer; a critical opens the call by
    itself. **Save & complete** posts one record per value.
+3b. **The analyser re-ran the tube — WHICH RUN DOES THE REPORT CARRY? (17-E T7 / D18.)** Skip this
+   step only if no analyser is connected. **A repeat run does not overwrite the first one.** An
+   analyser that reports the same analyte for the same tube twice leaves **both values live**, because
+   a machine never supersedes and a human always does: both are legitimate measurements, and
+   auto-choosing the later one is how a bad second run silently replaces a good first one.
+
+   So the analyte has **no reportable value** until somebody says which run the report carries. On
+   `/lab/bench` that analyte shows **both numbers, each with its own flag**, and asks for a reason
+   rather than offering a keying box — there is nothing to key; the measurements already exist. Pick
+   the run, **type why**, **Use this run**. The reason is not a formality: it is the record of the
+   judgement, the server refuses a blank one, and an auditor reading `reported_choice_reason` six
+   months later is the person it is written for.
+
+   **Do this before the signature, or the signature is refused.** `assertReportable` raises
+   `rerun_unchosen` at verify, not at entry — so an unchosen pair looks like ordinary unfinished work
+   right up to the moment the pathologist tries to sign it. `/lab/verify` therefore shows the pair and
+   the same control, and the pathologist may resolve it there: they hold `lab.results.enter` too, and
+   at 02:00 there may be nobody at the bench.
+
+   **Two things to check while you are here**, both of which have been wrong before:
+
+   - the order keeps its place at the TOP of the verify queue when the unchosen value is critical. A
+     6.8 potassium nobody has chosen is still a 6.8 potassium.
+   - the moved choice. Pick one run, then pick the other with a different reason: the first choice is
+     cleared and the second stands, with **one** chosen row. Both reasons survive, but **in the event
+     stream and not on the row**: `lab.result_chosen` carries each choice's reason and the id of the
+     choice it replaced, while `reported_choice_reason` on the row holds only the standing one. An
+     auditor reading the column alone sees the decision; the history is in the events. A
+     technologist who chose the repeat and then saw that run's QC fail must be able to change their
+     mind — until it is signed, after which `rerun_choice_final` refuses, and the correction is a
+     superseding row and a new report version.
+
+   **YOU CANNOT PRODUCE THIS STATE FROM A SCREEN, AND THAT IS THE DESIGN.** A human re-keying a value
+   *supersedes* it — one live row, no choice owed — so a pair only ever comes from a machine. To
+   rehearse it, post the same analyte twice through the analyser's own route as the bridge account:
+
+   ```
+   POST /lab/instruments/:instrumentId/results     # on `lab.results.interface`, the bridge's grant
+   { "transmissionRef": "run-1", "rows": [{ "position": 1, "sampleId": "<S-number>", "code": "<machine code>", "value": "6.8" }] }
+   POST /lab/instruments/:instrumentId/results
+   { "transmissionRef": "run-2", "rows": [{ "position": 1, "sampleId": "<S-number>", "code": "<machine code>", "value": "4.2" }] }
+   ```
+
+   **`seed:lab-demo` leaves you one step from this**, which is the cheapest way to rehearse it. The
+   seed writes no results at all — it stops at received tubes — but it registers the three demo
+   analysers and maps their machine codes, so the two posts have somewhere to land. Measured from
+   the seed itself: **Deepak Yadav's LFT tube is received**, and `CHEM-1` is a **barcode**-mode
+   analyser whose mapped code `SGPT` points at that panel's first analyte. So `sampleId` is that
+   tube's `S` number, `code` is `SGPT`, and no plate or run sheet is needed — unlike `ELISA-1`, whose
+   plate-map mode wants a plate laid out first.
+
 4. **Verify (`/lab/verify`).** Criticals and STAT first. Each result sits against its range, the
    last SIGNED previous value and the delta, and the clock against its target. **Sign N results**
    is N signatures; a result you keyed yourself is refused (DD11). **Publish report.**

@@ -2181,7 +2181,15 @@
       "tryNext": "Try next: {{rung}}",
       "openFor": "Open {{minutes}} min · target {{target}} min",
       "kitSerial": "Downtime kit serial on the tube",
-      "kitSerialHint": "e.g. DK-0241"
+      "kitSerialHint": "e.g. DK-0241",
+      "rerunOwed": "run choice owed ({{count}})",
+      "rerunFirst": "first run",
+      "rerunRepeat": "repeat run",
+      "rerunDelta": "delta",
+      "rerunPick": "{{run}}, {{value}}",
+      "rerunReason": "Why this run",
+      "rerunReasonHint": "Why this run — e.g. repeat QC failed",
+      "rerunChoose": "Use this run"
     },
     "verify": {
       "title": "Verify & report",
