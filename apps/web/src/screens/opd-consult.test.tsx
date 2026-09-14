@@ -920,6 +920,113 @@ describe("OpdConsult — snippets in the advice box", () => {
   });
 });
 
+/**
+ * ═══ THE SLIP IN THE DOCTOR'S HISTORY ═══
+ *
+ * Owner, 2026-09-14: *"can the doctor see the old prescription inside the history tab?"* Now yes —
+ * the desk outside the room photographs it and it lands here.
+ *
+ * The two requests are the design, not an accident: the LIST is metadata, and OPENING one fetches
+ * the bytes. Scrolling past a list of slips and reading a patient's prescription are different acts
+ * and the access log is kept to answer which happened, so they are different surfaces on the server
+ * and different requests from here.
+ */
+const DOCUMENTS = {
+  items: [
+    {
+      id: "doc-1", encounterId: "enc-1", kind: "outside_prescription", mimeType: "image/jpeg",
+      byteSize: 290_114, note: "brought from Medanta", capturedBy: "u-desk",
+      capturedAt: "2026-08-18T05:10:00.000Z",
+    },
+    {
+      id: "doc-2", encounterId: null, kind: "outside_report", mimeType: "application/pdf",
+      byteSize: 88_010, note: null, capturedBy: "u-desk", capturedAt: "2026-08-17T09:00:00.000Z",
+    },
+  ],
+};
+const ONE_PIXEL = "/9j/4AAQSkZJRg==";
+
+describe("OpdConsult — the slips a desk photographed", () => {
+  beforeEach(() => { vi.restoreAllMocks(); });
+
+  const docRoutes = (): Record<string, Handler> => ({
+    ...baseRoutes(),
+    "GET /api/patients/p-1/documents": { status: 200, body: DOCUMENTS },
+    "GET /api/patients/documents/doc-1": { status: 200, body: { mimeType: "image/jpeg", imageBase64: ONE_PIXEL } },
+  });
+
+  async function openSlips(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await openPanel(user);
+    /* The view toggle lives inside the History TAB, so that is opened first. */
+    await user.click(await screen.findByRole("tab", { name: "History" }));
+    await user.click(await screen.findByRole("button", { name: "Slips" }));
+  }
+
+  it("Z1: the history lists what was photographed, newest first, WITHOUT fetching any bytes", async () => {
+    mockRoutes(docRoutes());
+    const user = userEvent.setup();
+    await openSlips(user);
+
+    expect(await screen.findByTestId("document-doc-1")).toHaveTextContent("Outside prescription");
+    expect(screen.getByTestId("document-doc-1")).toHaveTextContent("brought from Medanta");
+    expect(screen.getByTestId("document-doc-2")).toHaveTextContent("Outside report");
+
+    /* A doctor scanning for "did they bring the outside prescription" must not pull four megabytes
+       of JPEG for every visit — and the bytes are a second PHI read that has not happened yet. */
+    expect(callsTo("GET", "/api/patients/documents/doc-1")).toHaveLength(0);
+  });
+
+  it("Z2: opening one fetches the bytes and renders the photograph", async () => {
+    mockRoutes(docRoutes());
+    const user = userEvent.setup();
+    await openSlips(user);
+
+    await user.click(await screen.findByTestId("document-open-doc-1"));
+    const img = await screen.findByTestId("document-image-doc-1");
+    expect(img).toHaveAttribute("src", `data:image/jpeg;base64,${ONE_PIXEL}`);
+    expect(callsTo("GET", "/api/patients/documents/doc-1")).toHaveLength(1);
+  });
+
+  it("Z3: a slip whose bytes no longer match its hash SAYS SO — it does not render blank", async () => {
+    /*
+      The server refuses with `document_corrupt` rather than handing back whatever is on disk. A
+      blank image would read as a bad photograph; this reads as a broken record, which is what it is,
+      and tells the doctor who can do something about it.
+    */
+    mockRoutes({
+      ...docRoutes(),
+      "GET /api/patients/documents/doc-1": { status: 409, body: { message: "hash mismatch", code: "document_corrupt" } },
+    });
+    const user = userEvent.setup();
+    await openSlips(user);
+
+    await user.click(await screen.findByTestId("document-open-doc-1"));
+    expect(await screen.findByTestId("document-error-doc-1")).toHaveTextContent(/cannot be opened/);
+    expect(screen.queryByTestId("document-image-doc-1")).toBeNull();
+  });
+
+  it("Z4: a PDF is offered as a link rather than jammed into an <img>", async () => {
+    mockRoutes({
+      ...docRoutes(),
+      "GET /api/patients/documents/doc-2": { status: 200, body: { mimeType: "application/pdf", imageBase64: "JVBERi0=" } },
+    });
+    const user = userEvent.setup();
+    await openSlips(user);
+
+    await user.click(await screen.findByTestId("document-open-doc-2"));
+    expect(await screen.findByTestId("document-pdf-doc-2")).toHaveAttribute("href", "data:application/pdf;base64,JVBERi0=");
+    expect(screen.queryByTestId("document-image-doc-2")).toBeNull();
+  });
+
+  it("Z5: a patient with no slips says so, rather than rendering an empty strip", async () => {
+    mockRoutes({ ...docRoutes(), "GET /api/patients/p-1/documents": { status: 200, body: { items: [] } } });
+    const user = userEvent.setup();
+    await openSlips(user);
+
+    expect(await screen.findByTestId("no-documents")).toBeInTheDocument();
+  });
+});
+
 function fetchCalls(): { url: string; path: string; method: string; body: string }[] {
   return vi.mocked(fetch).mock.calls.map(([input, init]) => {
     const url = String(input);

@@ -2,7 +2,9 @@ import { Module, Global, Inject, OnModuleDestroy } from "@nestjs/common";
 import type { Pool } from "pg";
 import { createDb, Db } from "./kernel/db/client";
 import { loadConfig, AppConfig } from "./kernel/config";
-import { DB, DB_POOL, CONFIG, MODULE_REGISTRY } from "./kernel/tokens";
+import { DiskDocumentStore } from "./kernel/documents/disk";
+import type { DocumentStore } from "./kernel/documents/store";
+import { DB, DB_POOL, CONFIG, DOCUMENT_STORE, MODULE_REGISTRY } from "./kernel/tokens";
 import { ModuleRegistry } from "./kernel/modules/loader";
 import { ALL_MANIFESTS } from "./kernel/modules/manifests"; // ← PLAN 11d D2: the ONE manifest list
 import { PatientsModule } from "./modules/patients"; // ← imports the module's index — spec §4
@@ -52,6 +54,16 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
     },
     { provide: DB, useFactory: (b: DbBundle): Db => b.db, inject: [DB_BUNDLE] },
     { provide: DB_POOL, useFactory: (b: DbBundle): Pool => b.pool, inject: [DB_BUNDLE] },
+    /*
+      THE DOCUMENT STORE — one provider, so the owner's "R2 or S3 later" is a change to this line
+      and to nothing that injects it. Constructed from config rather than reading the env directly,
+      on the same reasoning as every other provider here: one place parses the environment.
+    */
+    {
+      provide: DOCUMENT_STORE,
+      useFactory: (cfg: AppConfig): DocumentStore => new DiskDocumentStore(cfg.documentStorePath),
+      inject: [CONFIG],
+    },
     {
       provide: MODULE_REGISTRY,
       useFactory: (): ModuleRegistry => {

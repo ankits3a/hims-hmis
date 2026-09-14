@@ -7,7 +7,9 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { opdQueueEntries } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { bookAppointment, cancelAppointment, checkInAppointment, listAppointments, rescheduleAppointment } from "./appointments";
-import { abandonVisit, counterState, getVisit, joinQueue, listVisits, openVisit, patientTimeline, reEnterVisit, reclassifyVisit,
+import {
+  abandonVisit, counterState, getEncounterByVisitNo, getVisit, joinQueue, listVisits, openVisit,
+  patientTimeline, reEnterVisit, reclassifyVisit,
 } from "./encounters";
 import { patientRxHistory, patientVitalsHistory } from "./history";
 import { listDepartments } from "./masters";
@@ -386,6 +388,37 @@ export class OpdVisitsController {
     } catch (e) {
       toHttp(e);
     }
+  }
+
+  /**
+   * ═══ A SCANNED VISIT NUMBER → WHO IT IS, SO A HUMAN CAN CHECK BEFORE FILING ═══
+   *
+   * The desk outside the consultation room scans the QR in the slip's footer, which encodes exactly
+   * the visit number. Before anything is photographed against that visit, the operator must SEE who
+   * it matched — a slip filed against the wrong visit is a clinical-record error, and "the staff
+   * only ever press capture or retake" needs this one control more than the description implies.
+   *
+   * IT MUST BE DECLARED ABOVE `@Get("visits/:id")`. Nest matches in declaration order and `:id`
+   * would otherwise swallow `by-number` — the same trap `formulary/medicines/search` documents.
+   *
+   * `opd.visits.read` and no new permission: the front office, its supervisor, the vitals bay and
+   * the doctor all hold it, which is exactly the set of seats that might hold the paper.
+   */
+  @RequirePermission("opd.visits.read", "hospital")
+  @Get("visits/by-number/:visitNo")
+  async visitByNumber(
+    @CurrentActor() actor: Actor, @Param("visitNo") visitNo: string,
+  ): Promise<{ encounterId: string; patientId: string; visitNo: string; serviceDate: string; patient: unknown }> {
+    const encounter = await getEncounterByVisitNo(this.db, visitNo.trim());
+    if (!encounter) toHttp(new OpdError("unknown_encounter", `no visit numbered ${visitNo}`));
+    const [summary] = await getPatientSummaries(this.db, actor, [encounter.patientId]);
+    /* A sealed patient the caller may not see answers exactly as a visit that does not exist: a
+       visit number must not be a way to learn that a record exists. */
+    if (summary === undefined) toHttp(new OpdError("unknown_encounter", `no visit numbered ${visitNo}`));
+    return {
+      encounterId: encounter.id, patientId: encounter.patientId, visitNo: encounter.visitNo,
+      serviceDate: encounter.serviceDate, patient: summary,
+    };
   }
 
   @RequirePermission("opd.visits.read", "hospital")

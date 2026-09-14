@@ -670,7 +670,8 @@
     "history": {
       "visits": "विज़िट",
       "rx": "नुस्खे",
-      "vitals": "वाइटल्स"
+      "vitals": "वाइटल्स",
+      "documents": "पर्चियाँ"
     },
     "noRxHistory": "इस सिस्टम में इस मरीज़ को कोई नुस्खा जारी नहीं हुआ है।",
     "noVitalsHistory": "इस सिस्टम में इस मरीज़ के वाइटल्स दर्ज नहीं हैं।",
@@ -806,7 +807,18 @@
     "snippetReferenceHint": "इन्हें टेम्पलेट में लिखें। स्निपेट खुलते ही ये इसी मरीज़ से भर जाते हैं — ब्रेस कभी सहेजे नहीं जाते।",
     "snippetUnknownTokens": "यह प्लेसहोल्डर नहीं है: {{list}} — यह भरने की जगह बनेगा, टेक्स्ट नहीं।",
     "complaintUsedByYou_one": "आपने यह एक बार लिखा है",
-    "complaintUsedByYou_other": "आपने यह {{count}} बार लिखा है"
+    "complaintUsedByYou_other": "आपने यह {{count}} बार लिखा है",
+    "noDocuments": "इस मरीज़ की कोई पर्ची की तस्वीर नहीं ली गई है।",
+    "documentOpen": "खोलें",
+    "documentHide": "छिपाएँ",
+    "documentOpenPdf": "पीडीएफ़ खोलें",
+    "documentAlt": "पर्चे की तस्वीर",
+    "documentUnreadable": "यह पर्ची नहीं खुल सकती — सहेजी गई तस्वीर कैप्चर के समय वाली से मेल नहीं खाती। डेस्क को बताएँ।",
+    "documentKind": {
+      "outside_prescription": "बाहर का पर्चा",
+      "consult_prescription": "इसी विज़िट का पर्चा",
+      "outside_report": "बाहर की रिपोर्ट"
+    }
   },
   "rx": {
     "regNo": "पंजीकरण सं.",

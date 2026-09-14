@@ -670,7 +670,8 @@
     "history": {
       "visits": "Visits",
       "rx": "Prescriptions",
-      "vitals": "Vitals"
+      "vitals": "Vitals",
+      "documents": "Slips"
     },
     "noRxHistory": "No prescription has been issued to this patient in this system.",
     "noVitalsHistory": "No vitals have been recorded for this patient in this system.",
@@ -806,7 +807,18 @@
     "snippetReferenceHint": "Type these inside a template. They fill from this patient the moment the snippet expands — nothing with braces is ever saved.",
     "snippetUnknownTokens": "Not a placeholder: {{list}} — it will become a blank to fill, not text.",
     "complaintUsedByYou_one": "you have written this once",
-    "complaintUsedByYou_other": "you have written this {{count}} times"
+    "complaintUsedByYou_other": "you have written this {{count}} times",
+    "noDocuments": "No slips have been photographed for this patient.",
+    "documentOpen": "Open",
+    "documentHide": "Hide",
+    "documentOpenPdf": "Open the PDF",
+    "documentAlt": "Photograph of the prescription slip",
+    "documentUnreadable": "This slip cannot be opened — the stored image does not match what was captured. Tell the desk.",
+    "documentKind": {
+      "outside_prescription": "Outside prescription",
+      "consult_prescription": "Prescription from this visit",
+      "outside_report": "Outside report"
+    }
   },
   "rx": {
     "regNo": "Reg. No.",

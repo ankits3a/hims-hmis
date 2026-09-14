@@ -45,6 +45,18 @@ const configSchema = z.object({
   // run since yesterday must never make the worker read stale (D7/D9). Defaulted here so no
   // .env changes anywhere — the hard-fail-on-missing rule is untouched, nothing new is required.
   WORKER_STALE_AFTER_MS: z.coerce.number().int().positive().default(60000),
+  /**
+   * ═══ WHERE A PHOTOGRAPHED SLIP'S BYTES LIVE ═══
+   *
+   * Owner ruling, 2026-09-14: disk now, Cloudflare R2 or S3 later. The DEFAULT is a path beside the
+   * database's own data rather than inside the repo, because a document written into a checkout is
+   * a document lost at the next deploy — and it is a path an operator can mount, back up and move,
+   * which is the whole point of it not being in Postgres.
+   *
+   * This is NOT a secret and belongs in the deploy environment. When the object-store adapter
+   * arrives it takes its own keys; this one stays for the disk fallback.
+   */
+  DOCUMENT_STORE_PATH: z.string().trim().min(1).default("/var/lib/hmis/documents"),
   // D9: the six sweeps' cadences. Every key defaults in this schema, so no .env change is
   // needed anywhere (server or CI) — Plan 08.5 flag 8. The daily jobs' IST clock instants
   // (guardians 00:05 / no-shows 23:55 / daily-close 23:59) are CODE CONSTANTS beside their
@@ -252,6 +264,7 @@ export type AppConfig = {
   breakGlassTtlMinutes: number;
   tempRoleMaxTtlMinutes: number;
   workerStaleAfterMs: number;
+  documentStorePath: string;
   workerDispatchIntervalMs: number;
   workerTimersIntervalMs: number;
   workerTempRolesIntervalMs: number;
@@ -310,6 +323,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     breakGlassTtlMinutes: parsed.BREAK_GLASS_TTL_MINUTES,
     tempRoleMaxTtlMinutes: parsed.TEMP_ROLE_MAX_TTL_MINUTES,
     workerStaleAfterMs: parsed.WORKER_STALE_AFTER_MS,
+    documentStorePath: parsed.DOCUMENT_STORE_PATH,
     environmentLabel: parsed.HMIS_ENVIRONMENT_LABEL === "" ? null : parsed.HMIS_ENVIRONMENT_LABEL,
     workerDispatchIntervalMs: parsed.WORKER_DISPATCH_INTERVAL_MS,
     workerTimersIntervalMs: parsed.WORKER_TIMERS_INTERVAL_MS,
