@@ -30,6 +30,28 @@ import { istClock } from "./vitals-bay-capture";
  */
 export const AMEND_KEYS: readonly WireVitalKey[] = ["heightCm", "weightKg", "sbp", "dbp", "pulse", "rr", "spo2", "tempC", "muacCm"];
 
+/**
+ * ═══ THE REASONS A VITAL IS ACTUALLY CORRECTED, AS ONE TAP ═══
+ *
+ * DECIDED (standard Indian corporate-hospital practice; not a money, procurement or law question,
+ * so not an owner ruling). A nurse at the bay corrects a chart for a small, closed set of reasons,
+ * and making her type one of them every time is the kind of friction that ends in "correction" and
+ * "x" being the two most common entries in an audit column. The presets fill the box; anything
+ * genuinely different is still typed, and the box stays the source of truth.
+ *
+ * `text` is stored, and it is ENGLISH ON PURPOSE. The label a nurse reads is translated; the
+ * sentence the audit keeps must mean the same thing to whoever opens it later, which a string that
+ * silently changes language with the browser does not.
+ */
+export const AMEND_REASONS: readonly { key: string; text: string }[] = [
+  { key: "otherArm", text: "Rechecked on the other arm" },
+  { key: "remeasured", text: "Re-measured at the bay" },
+  { key: "keyed", text: "Typing error — wrong number keyed" },
+  { key: "device", text: "Device misread — taken again" },
+  { key: "wrongVital", text: "Entered against the wrong vital" },
+  { key: "wrongChart", text: "Entered on the wrong patient's chart" },
+];
+
 export type Change = { key: WireVitalKey; from: number | null; to: number | null };
 export function diffOf(prior: Pick<WireVitals, WireVitalKey>, next: Pick<WireVitals, WireVitalKey>): Change[] {
   const out: Change[] = [];
@@ -178,23 +200,60 @@ export function AmendPanel({ row, onAmended }: { row: WireBenchRow; onAmended: (
           <button type="button" data-testid={`amend-gate-confirm-${g.key}`} className="rounded border px-2" onClick={() => confirmGate(g)}>{t("vitalsBay.gate.confirm")}</button>
         </div>
       ))}
-      <label className="flex flex-col gap-0.5 text-xs">
-        <span className="text-muted-foreground">{t("vitalsBay.amend.reason")}</span>
-        <input data-testid="amend-reason" className="rounded border border-input bg-card px-2 py-1 text-sm" value={reason} onChange={(e) => setReason(e.target.value)} />
-      </label>
+      <div className="flex flex-col gap-1">
+        <span style={{ fontSize: 11, color: "var(--dim)" }}>{t("vitalsBay.amend.reason")}</span>
+        {/*
+          One tap, not a sentence. The chip WRITES the box rather than replacing it, so the nurse
+          can tap the near-miss and edit the last two words — and a mis-tap is undone by tapping
+          again, which clears it, exactly like the context chips upstairs.
+        */}
+        <div data-testid="amend-reason-presets" style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+          {AMEND_REASONS.map((r) => {
+            const on = reason === r.text;
+            return (
+              <button
+                key={r.key} type="button" data-testid={`amend-reason-${r.key}`} data-on={on ? "true" : "false"}
+                className={on ? "pri" : "sec"} style={{ padding: "2px 8px", fontSize: 11.5 }}
+                onClick={() => { setReason(on ? "" : r.text); setError(null); }}
+              >
+                {t(`vitalsBay.amend.reasonPreset.${r.key}`)}
+              </button>
+            );
+          })}
+        </div>
+        <input
+          aria-label={t("vitalsBay.amend.reason")} data-testid="amend-reason" className="in" style={{ fontSize: 13, padding: "4px 7px" }}
+          placeholder={t("vitalsBay.amend.reasonPlaceholder")}
+          value={reason} onChange={(e) => setReason(e.target.value)}
+        />
+      </div>
       {error !== null && <p role="alert" data-testid="amend-error">{error}</p>}
-      <div className="flex items-center gap-2">
-        <button type="button" data-testid="amend-save" disabled={busy || changed.length === 0} className="rounded bg-primary px-3 py-1 text-primary-foreground" onClick={() => { void submit(); }}>
+      {/*
+        THE SAVE WAS A BUTTON THAT LOOKED LIKE A SENTENCE. It carried `bg-primary px-3 py-1`, and
+        under this seat those tokens resolve to nothing — the owner measured it at the bay:
+        `background: rgba(0,0,0,0)`, `border: 0px none`, `padding: 0px`. A control that commits a
+        correction to a clinical chart must look like a control, so it wears the same `pri` the
+        bay's own "Save & send" wears, and the panel stops speaking a second dialect of CSS.
+      */}
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+        <button type="button" data-testid="amend-save" disabled={busy || changed.length === 0} className="pri" onClick={() => { void submit(); }}>
           {t("vitalsBay.amend.save", { count: changed.length })}
         </button>
-        <span className="text-xs text-muted-foreground">{t("vitalsBay.amend.escHint")}</span>
+        <span style={{ fontSize: 11, color: "var(--dim)" }}>{t("vitalsBay.amend.escHint")}</span>
       </div>
     </div>
   );
 }
 
-export function AmendTrail({ amended, by }: { amended: Amended; by: string }): React.ReactElement {
+/**
+ * WHO CHANGED IT, BY NAME. The trail used to be handed `by={actor?.id}` — the signed-in ULID — and
+ * printed `by 01M1R6FXR0AQN3BNA8Q8K0ESM6` at a nurse. The name now comes off the SAVED ROW, which
+ * is the only thing that knows whose amendment this was: a prop the caller derives is a prop the
+ * next caller derives differently, and this one had already gone wrong once.
+ */
+export function AmendTrail({ amended }: { amended: Amended }): React.ReactElement {
   const { t } = useTranslation();
+  const by = amended.result.vitals.recordedByName;
   const at = istClock(amended.result.vitals.recordedAt);
   return (
     <ul data-testid="amend-trail" className="text-sm">

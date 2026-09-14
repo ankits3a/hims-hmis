@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cancelEscalation, demandRecheck, escalateVisit, opdErrorMessage } from "../lib/opd-api";
-import type { WireBandConfig, WireEscalationReading, WireEscalationView, WirePreStage } from "../lib/opd-api";
+import type { WireBandConfig, WireEscalationReading, WireEscalationView, WirePreStage, WireVitals } from "../lib/opd-api";
 import { operative } from "./vitals-bay-capture";
 import type { Take, TileKey, Tiles } from "./vitals-bay-capture";
 
@@ -62,6 +62,21 @@ export function isElevated(take: Take, band: WireBandConfig | null, last: WirePr
 }
 
 /** The numbers on the tiles right now, in the wire's vocabulary, for the protocol's routes. */
+/**
+ * The same reading, taken off a SAVED chart instead of the tiles — what an amendment has to hand
+ * the protocol. A corrected BP is the answer to "the other arm, now" as surely as a second take
+ * typed at the bay is, and the server judges both by the same rule.
+ */
+export function readingFromVitals(v: Pick<WireVitals, "sbp" | "dbp" | "pulse" | "rr" | "spo2" | "tempC" | "muacCm">): WireEscalationReading {
+  const r: WireEscalationReading = {};
+  if (v.sbp !== null && v.dbp !== null) { r.sbp = v.sbp; r.dbp = v.dbp; }
+  for (const k of ["pulse", "rr", "spo2", "tempC", "muacCm"] as const) {
+    const x = v[k];
+    if (typeof x === "number") r[k] = x;
+  }
+  return r;
+}
+
 export function readingFrom(tiles: Tiles): WireEscalationReading {
   const r: WireEscalationReading = {};
   const bp = operative(tiles.bp);
