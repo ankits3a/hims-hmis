@@ -297,4 +297,48 @@ intended rather than a regression. `front_office_supervisor` gains a year, the t
 roles are unbounded, and **the `owner` role — which held no staff-report permission at all and could
 not open `/staff` — gains the read.**
 
-### T1–T8 — filled at execution end
+### T1 + T2 — DONE 2026-09-14
+
+**T1 — the three visit-type facts.** `opd.visitsNew`, `opd.visitsRevisit`, `opd.visitsRenewal`, no
+migration. Counted in ONE grouped query rather than three filtered ones — three would read the same
+rows three times and, the reason that matters, could DRIFT from `visitsOpened`'s predicate one edit
+at a time until the columns stopped summing to the total beside them on the same screen. Grouping
+makes the partition structural. Two mutants, both killing exactly the predicted tests and no others:
+dropping the `opened_by` filter killed only "counts only what THIS person opened"; dropping the zero
+default killed "a quiet day carries the keys at zero" and "all three are non-negative integers".
+
+The three facts are NOT added to `brief.ts`'s `SPOKEN` list. The brief is a summary in prose and the
+split is detail; the numbers reach the API through `totalsToday` regardless, and T8's screen is
+where they are shown. Adding three clauses to everyone's brief is a separate decision.
+
+**T2 — the backfill.** **Not a new function.** The plan asked for a runner over an explicit
+`--from`/`--to`; measured at kickoff, `rollupAll` already takes a `lookback` and already rolls that
+many days ending YESTERDAY, which is the only shape a backfill needs — and its properties are
+already proven: A2 (a second roll writes one row and changes nothing), A5 (a day that gained a visit
+is correct again on the next roll) and A3 (**today is never written**).
+
+A separate loop would have to re-earn all three and could then drift from the nightly job one day at
+a time, invisibly — which is the pair `rollup.ts`'s own header warns about. So
+`scripts/backfill-facts.ts` is argument parsing, a progress line and an exit code; the work is
+`rollupAll`. `--days` has NO DEFAULT, because the failure mode is an operator starting a
+tens-of-thousands-of-rollups job by pressing enter on a script whose name sounds harmless.
+
+Two new tests pin what the CLI depends on and the existing default-lookback tests did not reach: a
+large window writes the whole range and still refuses today, and a day older than `LOOKBACK_DAYS` is
+recomputed rather than skipped.
+
+**Backfill depth: 365 days**, matching the `year` period T0 added. It is a runtime argument, so the
+decision costs nothing to revisit.
+
+**Verified:** typecheck 0 · lint 0 (same 3 pre-existing warnings) · desk + opd + backfill suites
+**47 suites / 445 tests, exit 0**, run under `test-lock.sh` (see below).
+
+**Process correction.** T0's full-suite run was taken after `tools/lane.sh status` reported no
+runners — the gate CLAUDE.md names — but the box has a real mutex at
+`/opt/hmis-lanes/.orchestrator/bin/test-lock.sh` that `lane.sh status` does not surface and CLAUDE.md
+does not mention, and that run OOM-killed a peer lane's full suite. Every pool from T1 onward is
+wrapped in the lock. **Recommend CLAUDE.md's Verify section name the lock and `lane.sh status` print
+its holder** — a lane following the documented check collides every time and finds out by killing
+someone's run.
+
+### T3–T8 — filled at execution end

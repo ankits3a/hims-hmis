@@ -208,7 +208,37 @@ async function opdFacts(ctx: DeskProviderCtx): Promise<Record<string, number>> {
   const to = new Date(from.getTime() + 86_400_000);
   const one = async (rows: Promise<{ n: number }[]>): Promise<number> => (await rows)[0]?.n ?? 0;
 
-  const [opened, registered, vitals, consults, bookings, prescriptions] = await Promise.all([
+  /**
+   * ═══ STAFF-REPORTS T1 — THE VISIT-TYPE SPLIT, COUNTED IN ONE PASS ═══
+   *
+   * `visit_type` has been on every encounter since Plan 08's fee branch and nothing summed it. The
+   * owner's front-desk report wants the day split three ways, so these are that column reduced to
+   * counters the rollup can add across months.
+   *
+   * ONE GROUPED QUERY RATHER THAN THREE FILTERED ONES. Three `count()` calls would read the same
+   * rows three times and — the reason that actually matters — could DRIFT from `opened`'s predicate
+   * one edit at a time, until the three stopped summing to the total sitting beside them on the
+   * same screen. Grouping makes the partition structural: the same `where` produces both.
+   *
+   * A bucket with no rows is absent from the grouped result and must still be reported as ZERO.
+   * `rollup.ts` distinguishes a missing KEY (the day was never rolled) from a zero (worked, did
+   * none), so dropping a key on a quiet day would make a working Sunday look like a broken job.
+   */
+  const byType = async (): Promise<Record<string, number>> => {
+    const rows = await ctx.db
+      .select({ visitType: opdEncounters.visitType, n: count() })
+      .from(opdEncounters)
+      .where(and(eq(opdEncounters.openedBy, ctx.actor.id), eq(opdEncounters.serviceDate, ctx.date)))
+      .groupBy(opdEncounters.visitType);
+    const seen = new Map(rows.map((r) => [r.visitType, r.n]));
+    return {
+      "opd.visitsNew": seen.get("new") ?? 0,
+      "opd.visitsRevisit": seen.get("revisit") ?? 0,
+      "opd.visitsRenewal": seen.get("renewal") ?? 0,
+    };
+  };
+
+  const [opened, registered, vitals, consults, bookings, prescriptions, visitTypes] = await Promise.all([
     one(ctx.db.select({ n: count() }).from(opdEncounters)
       .where(and(eq(opdEncounters.openedBy, ctx.actor.id), eq(opdEncounters.serviceDate, ctx.date)))),
     one(ctx.db.select({ n: count() }).from(patients)
@@ -233,9 +263,11 @@ async function opdFacts(ctx: DeskProviderCtx): Promise<Record<string, number>> {
       .where(and(eq(opdAppointments.bookedBy, ctx.actor.id), gte(opdAppointments.bookedAt, from), lt(opdAppointments.bookedAt, to)))),
     one(ctx.db.select({ n: count() }).from(opdPrescriptions)
       .where(and(eq(opdPrescriptions.issuedBy, ctx.actor.id), gte(opdPrescriptions.issuedAt, from), lt(opdPrescriptions.issuedAt, to)))),
+    byType(),
   ]);
 
   return {
+    ...visitTypes,
     "opd.visitsOpened": opened,
     "opd.patientsRegistered": registered,
     "opd.vitalsRecorded": vitals,
