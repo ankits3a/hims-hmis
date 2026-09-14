@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineEvent } from "@hmis/contracts";
+import { SKIP_REASONS } from "./skip-reasons";
 
 /**
  * The OPD module's complete event surface (Plan 07): seventeen §10.6 P1 names plus qr.signature_failed
@@ -328,6 +329,34 @@ export const queueSkipped = defineEvent("queue.skipped", MODULE, z.object({
   encounterId: id, patientId: id, entryId: id, ...where,
   skips: z.number().int().positive(),
   left: z.boolean(), // true when max_skips_before_left was reached and the entry left the queue
+  /**
+   * WHY, ADDED 2026-09-13 — the one question a skip exists to answer and the one this event could
+   * not. It is REQUIRED rather than optional: an optional reason is a reason the busy path omits,
+   * and the busy path is every skip. The coded value is what makes "how many turns were lost to
+   * the billing queue this month" answerable; `note` is the free text and is non-null only when it
+   * was typed (mandatory under `other`, allowed beside any of them).
+   */
+  reason: z.enum(SKIP_REASONS),
+  note: z.string().nullable(),
+}));
+
+/**
+ * ═══ THE SKIP TAKEN BACK ═══
+ *
+ * A correction, and like every correction in this tree it ADDS a fact rather than deleting one: the
+ * `queue.skipped` it undoes stays in the log with its reason, and this row says who took it back,
+ * when, and what the patient's state was — `wasLeft` marks the ones that had already fallen out of
+ * the queue entirely, which is the population worth counting. If that number is not small, the
+ * three-skip cap is set wrong for this hospital and the log is where that shows.
+ */
+export const queueSkipUndone = defineEvent("queue.skip_undone", MODULE, z.object({
+  encounterId: id, patientId: id, entryId: id, ...where,
+  skips: z.number().int().nonnegative(), // the counter AFTER the undo
+  reason: z.enum(SKIP_REASONS).nullable(), // what the skip being undone had said
+  /** Null when the skip predates `skipped_at` — a `left` row is its own evidence that one happened. */
+  skippedAt: iso.nullable(),
+  undoneAt: iso,
+  wasLeft: z.boolean(),
 }));
 
 export const consultationStarted = defineEvent("consultation.started", MODULE, z.object({

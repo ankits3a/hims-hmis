@@ -36,6 +36,8 @@ export type { VisitType } from "./visit-type";
 export { loadOpdConfig } from "./config";
 export type { OpdConfig } from "./config";
 export { orderQueue, nextInQueue, classOf } from "./queue-engine";
+export { SKIP_REASONS } from "./skip-reasons";
+export type { SkipReason } from "./skip-reasons";
 export type { QueueEntryState, QueuePolicy, QueueClass } from "./queue-engine";
 export * from "./events";
 export { walkIn } from "./walk-in";

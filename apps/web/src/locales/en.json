@@ -709,7 +709,25 @@
     "inChair": "In consultation",
     "parkedFor": "Parked {{minutes}} min",
     "parkedJustNow": "Parked just now",
-    "parkedHint": "Parked patients keep their turn, their note and their token. Pick one to carry on."
+    "parkedHint": "Parked patients keep their turn, their note and their token. Pick one to carry on.",
+    "cancel": "Cancel",
+    "skipTitle": "Skip token {{token}}",
+    "skipHint": "Why is this patient not being seen now? It goes on the visit's record.",
+    "skipNote": "Note (optional)",
+    "skipNoteRequired": "Say what the reason was (required)",
+    "skipMistakeHint": "Clicked it by mistake? Press Undo skip on their row — their turn comes back.",
+    "undoSkip": "Undo skip",
+    "bringBack": "Bring back",
+    "leftQueue": "Left the queue ({{n}})",
+    "leftQueueHint": "Three skips takes a token out of the queue. The visit is still open — bring them back and they keep their turn.",
+    "skipReason": {
+      "absent": "Not at the door when called",
+      "stepped_out": "Stepped out, back shortly",
+      "at_billing": "At the billing counter",
+      "at_investigation": "Gone for vitals or a test",
+      "not_ready": "Patient or attendant not ready",
+      "other": "Other"
+    }
   },
   "rx": {
     "regNo": "Reg. No.",
