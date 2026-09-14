@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bookCounts, bookOrder, rebookingToday, rowStateOf } from "./appointment-view";
+import { bookCounts, bookOrder, rebookingToday, rowStateOf, upcomingFor } from "./appointment-view";
 import type { WireAppointment } from "./opd-api";
 
 /**
@@ -119,5 +119,80 @@ describe("rebookingToday — the rail is today forward, not every row ever", () 
       apt({ id: "needs", status: "needs_rebooking", serviceDate: "2026-09-06" }),
     ];
     expect(rebookingToday(rows, "2026-09-05").map((a) => a.id)).toEqual(["needs"]);
+  });
+});
+
+describe("upcomingFor — what this patient still has standing, which no rail could see", () => {
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * THE DEFECT THIS EXISTS TO PREVENT
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Owner, 2026-09-14: *"while booking an appointment for a patient, when I future book an
+   * appointment for the patient, then I can definitely see list of appointments in history in the
+   * left lane of the dashboard, but I can't see any future appointment(s) on the left lane."*
+   *
+   * The rail's history is `patientTimeline`, which reads `opd_encounters`. A future booking has NO
+   * encounter until somebody checks it in — that is the whole design of `POST /opd/appointments` —
+   * so a booked slot is invisible to that query BY CONSTRUCTION, not by a bug in it. The rail
+   * needed a second read, and this is the derivation over it.
+   */
+  it("lists a booking made for a later day, which the timeline read can never contain", () => {
+    const rows = [apt({ id: "next-week", serviceDate: "2026-09-11", slotStart: "2026-09-11T04:00:00.000Z" })];
+    expect(upcomingFor(rows, "2026-09-05").map((a) => a.id)).toEqual(["next-week"]);
+  });
+
+  it("is ordered by the clock — the next appointment is the first row", () => {
+    const rows = [
+      apt({ id: "later", serviceDate: "2026-09-20", slotStart: "2026-09-20T04:00:00.000Z" }),
+      apt({ id: "sooner", serviceDate: "2026-09-11", slotStart: "2026-09-11T04:00:00.000Z" }),
+      apt({ id: "soonest", serviceDate: "2026-09-06", slotStart: "2026-09-06T04:00:00.000Z" }),
+    ];
+    expect(upcomingFor(rows, "2026-09-05").map((a) => a.id)).toEqual(["soonest", "sooner", "later"]);
+  });
+
+  /**
+   * ═══ A STRANDED BOOKING IS STILL A COMMITMENT THE PATIENT IS HOLDING ═══
+   *
+   * When a doctor's leave is scheduled over a booked day the row becomes `needs_rebooking`. The
+   * patient was never told: as far as they know they have an appointment. Dropping it here would
+   * make the rail say "none booked" to the face of somebody standing at the counter holding a slip
+   * — and `rescheduleAppointment` accepts `booked` AND `needs_rebooking` precisely because moving
+   * one is the act the counter is for.
+   */
+  it("keeps a stranded needs_rebooking row — the patient still thinks they have an appointment", () => {
+    const rows = [apt({ id: "stranded", status: "needs_rebooking", serviceDate: "2026-09-11" })];
+    expect(upcomingFor(rows, "2026-09-05").map((a) => a.id)).toEqual(["stranded"]);
+  });
+
+  /**
+   * ═══ THE BOUND IS THE CALENDAR DAY, NOT THE CLOCK, AND THAT IS DELIBERATE ═══
+   *
+   * The no-show sweep runs at 23:55 IST, so between a slot passing and midnight the row is still
+   * `booked`. Bounding on the clock would delete today's missed 09:40 from the rail at 09:41 — the
+   * one row a patient standing there at 14:00 is asking about. It stays, and `rowStateOf` tags it
+   * `missed`, so the rail says what happened rather than nothing at all.
+   */
+  it("keeps today's already-passed slot, for rowStateOf to tag as missed", () => {
+    const rows = [apt({ id: "this-morning", serviceDate: "2026-09-05", slotEnd: "2026-09-05T04:10:00.000Z" })];
+    expect(upcomingFor(rows, "2026-09-05").map((a) => a.id)).toEqual(["this-morning"]);
+    expect(rowStateOf(rows[0]!, NOW)).toBe("missed");
+  });
+
+  it("drops a booking from a day that has already gone — that is history, not a commitment", () => {
+    const rows = [apt({ id: "last-week", serviceDate: "2026-08-28" })];
+    expect(upcomingFor(rows, "2026-09-05")).toEqual([]);
+  });
+
+  /** Whatever else a widened read returns, a cancelled or spent row is not something still standing. */
+  it("drops cancelled, rescheduled, no-show and checked-in rows", () => {
+    const rows = [
+      apt({ id: "cancelled", status: "cancelled", serviceDate: "2026-09-11" }),
+      apt({ id: "rescheduled", status: "rescheduled", serviceDate: "2026-09-11" }),
+      apt({ id: "no-show", status: "no_show", serviceDate: "2026-09-11" }),
+      apt({ id: "arrived", status: "checked_in", serviceDate: "2026-09-11" }),
+      apt({ id: "standing", status: "booked", serviceDate: "2026-09-11" }),
+    ];
+    expect(upcomingFor(rows, "2026-09-05").map((a) => a.id)).toEqual(["standing"]);
   });
 });

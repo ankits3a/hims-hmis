@@ -459,3 +459,51 @@ describe("FD-28 · the history rail", () => {
     expect(screen.queryByTestId("history-see-more")).not.toBeInTheDocument();
   });
 });
+
+describe("the upcoming-appointments rail, across the seats", () => {
+  const STANDING = {
+    items: [{
+      id: "a-1", patientId: "p-1", doctorId: "doc-1", departmentId: "d-1",
+      serviceDate: "2099-09-11", slotStart: "2099-09-11T05:00:00.000Z", slotEnd: "2099-09-11T05:15:00.000Z",
+      status: "booked", source: "desk", note: null, encounterId: null,
+      rescheduledToId: null, rescheduledFromId: null, cancelReason: null, leaveId: null,
+      bookedBy: "u1", bookedAt: "2026-09-10T00:00:00.000Z", updatedBy: "u1", updatedAt: "2026-09-10T00:00:00.000Z",
+    }],
+  };
+
+  async function holdAt(seat: string): Promise<void> {
+    mount(seat, { "GET /api/opd/appointments": STANDING });
+    await go(seat);
+    await waitFor(() => expect(screen.getByTestId("desk-one")).toBeInTheDocument());
+    await hold(userEvent.setup({ delay: null }));
+    await waitFor(() => expect(screen.getAllByTestId("upcoming-row").length).toBeGreaterThan(0), { timeout: 3000 });
+  }
+
+  /**
+   * Every seat is the same Desk One with a different flow strip (FD-26), so the rail arrives on all
+   * three at once. The registration chair is the one the owner books from most, and it must carry
+   * what the counter carries.
+   */
+  it("draws a standing booking on the registration seat, not only on the counter", async () => {
+    await holdAt("/registration");
+    expect(screen.getAllByTestId("upcoming-row")).toHaveLength(1);
+  });
+
+  /**
+   * ═══ THE ROW IS ONLY A BUTTON WHERE THE BUTTON HAS SOMEWHERE TO GO ═══
+   *
+   * A row opens the appointment book so the clerk can move or cancel the booking. `/registration`
+   * has no appointment stage: `stageForSeat("registration", "appointment")` lands on `done`, so an
+   * ungated row would take a registration clerk off the patient entirely — the desk's worst move,
+   * and the one FD-2 was written to stop. `seatHasStage` is what keeps it a line of text there.
+   */
+  it("is inert on a seat with no appointment stage — a row that cannot open the book is not a button", async () => {
+    await holdAt("/registration");
+    expect(screen.getByTestId("upcoming-row").tagName).toBe("DIV");
+  });
+
+  it("is a button on the booking seat, which does have the book to open", async () => {
+    await holdAt("/appointment");
+    expect(screen.getByTestId("upcoming-row").tagName).toBe("BUTTON");
+  });
+});

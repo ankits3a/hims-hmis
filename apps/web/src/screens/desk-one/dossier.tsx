@@ -1,9 +1,10 @@
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../lib/auth";
 import { useQuery } from "@tanstack/react-query";
-import { patientTimeline } from "../../lib/opd-api";
+import { listPatientAppointments, patientTimeline } from "../../lib/opd-api";
+import { rowStateOf, slotClock, upcomingFor } from "../../lib/appointment-view";
 import { dayMonthIst } from "../../lib/format";
-import { ageOf, initialsOf, rs, SEAT_STEPS, seatStepIndex, sexLetter, tokenLabel, tokenStateOf } from "./model";
+import { ageOf, initialsOf, rs, SEAT_STEPS, seatHasStage, seatStepIndex, sexLetter, tokenLabel, tokenStateOf } from "./model";
 import { useDesk } from "./session";
 import { PhotoPanel } from "./photo";
 
@@ -132,6 +133,117 @@ function History({ patientId }: { patientId: string }): React.ReactElement | nul
               {t("registrationCounter.history.seeMore")} · {all.length}
             </button>
           )}
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * WHAT THEY ARE COMING BACK FOR — the half of the rail that was never drawn
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner, 2026-09-14: *"while booking an appointment for a patient, when I future book an
+ * appointment for the patient, then I can definitely see list of appointments in history in the
+ * left lane of the dashboard, but I can't see any future appointment(s) on the left lane."*
+ *
+ * ═══ WHY NO AMOUNT OF FIXING `History` WOULD HAVE DONE IT ═══
+ *
+ * The rail above reads `GET /opd/patients/:id/timeline`, which selects from `opd_encounters`. A
+ * future booking is a row in `opd_appointments` and has NO encounter until somebody checks it in.
+ * So the timeline could not contain the slot the clerk had just booked no matter how far back it
+ * reached — the two live in different tables on purpose, and the rail was reading one of them.
+ *
+ * ═══ THE SAME QUERY KEY AS THE APPOINTMENT STAGE, WHICH IS THE POINT ═══
+ *
+ * `FutureTab` already reads this list as its duplicate-booking guard and as the rows a clerk moves
+ * or cancels. Keyed identically, the rail and the stage are ONE cached read: the rail costs no
+ * extra request, and a move, a cancellation or a check-in made on the stage refetches the query
+ * both are watching, so the two cannot show a patient different answers about the same booking.
+ *
+ * ═══ IT SAYS "NONE BOOKED" RATHER THAN DISAPPEARING ═══
+ *
+ * A section that renders nothing when there is nothing makes an empty rail and a broken rail look
+ * identical — which is exactly the report above: the owner could not tell whether the desk had no
+ * booking or was simply not showing it. Stating the absence is what makes the presence trustworthy.
+ */
+function Upcoming({ patientId }: { patientId: string }): React.ReactElement {
+  const { t } = useTranslation();
+  const d = useDesk();
+  const appointments = useQuery({
+    queryKey: ["d1", "their-appointments", patientId],
+    queryFn: () => listPatientAppointments(patientId),
+    staleTime: 30_000,
+    retry: false,
+  });
+  const rows = upcomingFor(appointments.data?.items ?? [], d.serviceDate);
+  /*
+    The row opens the stage that can DO something about it — the owner's own first route in FD-19,
+    "search the patient and look at the scheduled appointment and select the appointment the patient
+    wants to reschedule". Only where that stage exists: `/billing` has no appointment step, and a
+    button that lands a cashier on `done` is worse than a line of text.
+  */
+  const canOpen = seatHasStage(d.seat, "appointment");
+  const open = (): void => { d.patch({ tab: "future" }); d.goto("appointment"); };
+
+  return (
+    <>
+      <div className="tag" style={{ marginTop: 20 }}>{t("registrationCounter.upcoming.title")}</div>
+      {appointments.isPending ? (
+        <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 7 }}>{t("registrationCounter.upcoming.reading")}</div>
+      ) : rows.length === 0 ? (
+        <div data-testid="upcoming-none" style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 7, lineHeight: "16px" }}>
+          {t("registrationCounter.upcoming.none")}
+        </div>
+      ) : (
+        <div data-testid="upcoming-list" style={{ marginTop: 7 }}>
+          {rows.map((a) => {
+            const state = rowStateOf(a);
+            const doctor = d.summaries.find((x) => x.doctor.id === a.doctorId)?.doctor.displayName ?? null;
+            const body = (
+              <>
+                <span className="mo" style={{ fontSize: 10.5, color: "var(--dim)", width: 62, flexShrink: 0 }}>
+                  {dayMonthIst(a.serviceDate)}
+                </span>
+                <span className="mo" style={{ fontSize: 10.5, color: "var(--dim)", width: 34, flexShrink: 0 }}>
+                  {slotClock(a.slotStart)}
+                </span>
+                <span style={{ fontSize: 11.5, minWidth: 0, flexGrow: 1, lineHeight: "15px" }}>
+                  {doctor === null
+                    ? t("registrationCounter.upcoming.unknownDoctor")
+                    : doctor.replace(/^Dr\.\s*/, "")}
+                </span>
+                <span
+                  className="tag"
+                  style={{
+                    flexShrink: 0,
+                    color: state === "needs_rebooking" ? "var(--gold)" : state === "missed" ? "var(--red)" : "var(--green)",
+                  }}
+                >
+                  {t(`registrationCounter.upcoming.state.${state}`, { defaultValue: state })}
+                </span>
+              </>
+            );
+            const row = {
+              display: "flex", gap: 8, alignItems: "baseline", padding: "6px 0", width: "100%",
+              borderBottom: "1px solid var(--line2)",
+            } as const;
+            return canOpen ? (
+              <button
+                key={a.id}
+                type="button"
+                data-testid="upcoming-row"
+                title={t("registrationCounter.upcoming.rowOpensBook")}
+                onClick={open}
+                style={{ ...row, background: "none", border: 0, borderRadius: 0, cursor: "pointer", textAlign: "left" }}
+              >
+                {body}
+              </button>
+            ) : (
+              <div key={a.id} data-testid="upcoming-row" style={row}>{body}</div>
+            );
+          })}
         </div>
       )}
     </>
@@ -380,6 +492,13 @@ export function Dossier(): React.ReactElement {
         of `opd.visits.read`. So the rail says WHEN, WHERE and HOW IT ENDED, which is what a booking
         decision actually needs, and the clinical detail stays on the clinical screens.
       */}
+      {/*
+        THE FUTURE SITS ABOVE THE PAST, because that is the order a counter reads them in: "when are
+        you next due" is a question about the person standing there, "when were you last here" is
+        background to it. Both are drawn from the id in hand, so neither costs a lookup.
+      */}
+      {p === null ? null : <Upcoming patientId={p.id} />}
+
       {p === null ? null : <History patientId={p.id} />}
 
       {/* ── benefits & links, as the SERVER recognises them ── */}

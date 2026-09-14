@@ -99,3 +99,39 @@ export function slotClock(iso: string): string {
     timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: false,
   }).format(new Date(iso));
 }
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * WHAT THIS PATIENT STILL HAS STANDING — THE READ THE LEFT RAIL NEVER HAD
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner, 2026-09-14: *"when I future book an appointment for the patient, then I can definitely see
+ * list of appointments in history in the left lane of the dashboard, but I can't see any future
+ * appointment(s) on the left lane."*
+ *
+ * The rail's history is `patientTimeline`, and that route reads `opd_encounters`. A future booking
+ * has NO encounter until somebody checks it in — that is the design of `POST /opd/appointments`,
+ * not an omission in it — so a booked slot is invisible to the history query BY CONSTRUCTION. No
+ * amount of fixing the timeline would have shown it; the rail needed a second read, and this is the
+ * derivation over it.
+ *
+ * ═══ "STANDING" IS TWO STATUSES, BECAUSE THE SERVER SAYS SO ═══
+ *
+ * `booked` and `needs_rebooking` are exactly the two `rescheduleAppointment` accepts
+ * (`appointments.ts`), and that is the right definition of a live commitment: a stranded booking —
+ * one whose doctor went on leave after it was made — is a slot the PATIENT still believes they
+ * have. Dropping it would make the rail say "none booked" to somebody standing at the counter
+ * holding a slip, which is the one answer worse than showing nothing at all.
+ *
+ * ═══ THE BOUND IS THE CALENDAR DAY, NOT THE CLOCK ═══
+ *
+ * The no-show sweep claims rows with `serviceDate < today` at 23:55 IST, so between a slot passing
+ * and midnight the row still reads `booked`. Bounding on the clock would drop today's 09:40 from
+ * the rail at 09:41 — the very row a patient arriving at 14:00 is asking about. It stays, and
+ * `rowStateOf` above tags it `missed`, so the rail says what happened instead of falling silent.
+ */
+export function upcomingFor(rows: readonly WireAppointment[], todayIsoDate: string): WireAppointment[] {
+  return rows
+    .filter((a) => (a.status === "booked" || a.status === "needs_rebooking") && a.serviceDate >= todayIsoDate)
+    .sort((a, b) => a.slotStart.localeCompare(b.slotStart));
+}

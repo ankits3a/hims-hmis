@@ -2776,6 +2776,22 @@
         "awaiting_results": "awaiting results"
       }
     },
+    "upcoming": {
+      "title": "upcoming appointments",
+      "reading": "reading their book…",
+      "none": "No appointment booked — nothing standing from today on.",
+      "unknownDoctor": "doctor not on today's board",
+      "rowOpensBook": "open the appointment book to move or cancel this booking",
+      "state": {
+        "booked": "booked",
+        "needs_rebooking": "rebook",
+        "missed": "missed",
+        "waiting": "arrived",
+        "in_consult": "with doctor",
+        "seen": "seen",
+        "cancelled": "cancelled"
+      }
+    },
     "visitType": {
       "revisit": "Revisit — no consultation fee",
       "revisitWhy": "Within the {{days}}-day follow-up the doctor set; the window runs to {{until}}.",

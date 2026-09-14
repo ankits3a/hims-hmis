@@ -166,16 +166,22 @@ function mount(opts: {
     ),
     "POST /api/opd/appointments": (init?: RequestInit) => {
       opts.booked?.push({ body: JSON.parse(String(init?.body ?? "{}")) });
-      return {
-        appointment: {
-          id: "a-new", patientId: "p-1", doctorId: "doc-1", departmentId: "d-1",
-          serviceDate: tomorrowIst(), slotStart: `${tomorrowIst()}T10:30:00.000Z`,
-          slotEnd: `${tomorrowIst()}T10:45:00.000Z`, status: "booked", source: "desk",
-          note: null, encounterId: null, rescheduledToId: null, rescheduledFromId: null,
-          cancelReason: null, leaveId: null, bookedBy: "u1", bookedAt: "2026-09-04T00:00:00.000Z",
-          updatedBy: "u1", updatedAt: "2026-09-04T00:00:00.000Z",
-        },
+      const appointment = {
+        id: "a-new", patientId: "p-1", doctorId: "doc-1", departmentId: "d-1",
+        serviceDate: tomorrowIst(), slotStart: `${tomorrowIst()}T10:30:00.000Z`,
+        slotEnd: `${tomorrowIst()}T10:45:00.000Z`, status: "booked", source: "desk",
+        note: null, encounterId: null, rescheduledToId: null, rescheduledFromId: null,
+        cancelReason: null, leaveId: null, bookedBy: "u1", bookedAt: "2026-09-04T00:00:00.000Z",
+        updatedBy: "u1", updatedAt: "2026-09-04T00:00:00.000Z",
       };
+      /*
+        A booking BECOMES a row in this patient's list — that is all `POST /opd/appointments` does,
+        and a fixture that returns the appointment without adding it to the list the screen reads
+        cannot tell a refreshed rail from a stale one. Every read after this one sees it, exactly as
+        the server would; tests that pass no `theirs` are untouched.
+      */
+      opts.theirs?.push(appointment);
+      return { appointment };
     },
     "GET /api/billing/session/current": { session: null },
     "GET /api/billing/patients/p-1/dues": { items: [] },
@@ -695,5 +701,125 @@ describe("FD-22: refusals land inline, cancelling confirms, and every doctor is 
     // the doctor comes from the MASTER, so an empty board does not empty the picker
     expect(screen.getByTestId("book-doctor")).toHaveTextContent("Dr. Verma");
     expect(screen.getAllByTestId("slot-free").length).toBeGreaterThan(0);
+  });
+});
+
+describe("their next appointment, in the left rail", () => {
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * THE OWNER'S REPORT, 2026-09-14
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * *"while booking an appointment for a patient, when I future book an appointment for the patient,
+   * then I can definitely see list of appointments in history in the left lane of the dashboard, but
+   * I can't see any future appointment(s) on the left lane."*
+   *
+   * Both halves are here: the rail had no such section at all, and `holdFutureSlot` left the cached
+   * read alone, so even once it had one the column would have gone on showing the answer from
+   * before the booking for thirty seconds.
+   */
+  const PAST_VISIT = {
+    encounterId: "e-9", serviceDate: "2026-03-14", openedAt: "2026-03-14T04:00:00.000Z",
+    status: "completed", visitType: "walk_in",
+    doctorId: "doc-9", doctorName: "Dr. Sharma", departmentId: "d-1", departmentName: "Cardiology",
+    diagnosis: null, icd10Code: null, prescriptionLineCount: 0, dangerFlagged: false,
+  };
+
+  const booking = (over: Record<string, unknown> = {}): unknown => ({
+    id: "a-1", patientId: "p-1", doctorId: "doc-1", departmentId: "d-1",
+    serviceDate: "2026-09-11", slotStart: "2026-09-11T05:00:00.000Z", slotEnd: "2026-09-11T05:15:00.000Z",
+    status: "booked", source: "desk", note: null, encounterId: null,
+    rescheduledToId: null, rescheduledFromId: null, cancelReason: null, leaveId: null,
+    bookedBy: "u1", bookedAt: "2026-08-29T00:00:00.000Z", updatedBy: "u1", updatedAt: "2026-08-29T00:00:00.000Z",
+    ...over,
+  });
+
+  /**
+   * THE DEFECT, STATED AS A TEST: the timeline is full and the rail still cannot say when this
+   * patient is next due, because a booking has no encounter and `patientTimeline` reads encounters.
+   */
+  it("shows a future booking beside the history, which the timeline read can never contain", async () => {
+    mount({ timeline: [PAST_VISIT], theirs: [booking()] });
+    await holdPatient();
+
+    await screen.findAllByTestId("history-row"); // the half that already worked
+    const rows = await screen.findAllByTestId("upcoming-row");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent("11 Sep");
+    expect(rows[0]).toHaveTextContent("10:30"); // 05:00 UTC, in IST
+    expect(rows[0]).toHaveTextContent("Verma");
+  });
+
+  /**
+   * ═══ THE OWNER'S SCENARIO, END TO END ═══
+   *
+   * Book the slot at the counter and look left. Without the invalidation in `holdFutureSlot` the
+   * rail answers from a thirty-second cache filled when the patient was picked — it says "none
+   * booked" underneath a booking the clerk made a second ago, which is precisely the report.
+   */
+  it("a slot booked at the counter appears in the rail immediately", async () => {
+    const theirs: unknown[] = [];
+    const booked: { body: unknown }[] = [];
+    mount({ slots: [slot("10:30")], theirs, booked });
+    await openFutureTab();
+    const user = userEvent.setup({ delay: null });
+
+    expect(screen.getByTestId("upcoming-none")).toBeInTheDocument();
+
+    await user.click(screen.getAllByTestId("slot-free")[0]!);
+    await user.click(screen.getByTestId("confirm-slot"));
+    await waitFor(() => expect(booked).toHaveLength(1));
+
+    const rows = await screen.findAllByTestId("upcoming-row");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent("30 Aug");
+    expect(screen.queryByTestId("upcoming-none")).not.toBeInTheDocument();
+  });
+
+  /**
+   * ═══ ABSENCE IS STATED, NOT IMPLIED BY A MISSING SECTION ═══
+   *
+   * A section that vanishes when it is empty makes "no booking" and "the rail is not drawing them"
+   * look identical from the clerk's chair — which is the position the owner was in when they filed
+   * the report. The rail has to be able to say no.
+   */
+  it("says plainly when nothing is booked", async () => {
+    mount({ timeline: [PAST_VISIT], theirs: [] });
+    await holdPatient();
+    expect(await screen.findByTestId("upcoming-none")).toBeInTheDocument();
+  });
+
+  /**
+   * ═══ A STRANDED BOOKING IS NOT AN ABSENT ONE ═══
+   *
+   * A doctor's leave flips the row to `needs_rebooking` and nobody tells the patient. Reading only
+   * `status=booked` made the rail — and the stage's duplicate guard with it — say "none booked" to
+   * somebody standing at the counter holding a slip for that very slot.
+   */
+  it("shows a booking stranded by the doctor's leave, and names it as one to rebook", async () => {
+    mount({ theirs: [booking({ status: "needs_rebooking" })] });
+    await holdPatient();
+
+    const rows = await screen.findAllByTestId("upcoming-row");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent(/rebook/i);
+  });
+
+  /** A day that has gone is history; it belongs to the rail above, not to "what are they due". */
+  it("leaves a booking from a day that has already passed out of the rail", async () => {
+    mount({ theirs: [booking({ serviceDate: "2026-08-01", slotStart: "2026-08-01T05:00:00.000Z" })] });
+    await holdPatient();
+    expect(await screen.findByTestId("upcoming-none")).toBeInTheDocument();
+  });
+
+  /** The owner's FD-19 route one: see the booking on the patient, open the book that can move it. */
+  it("a row opens the appointment book, where the booking can be moved or cancelled", async () => {
+    mount({ theirs: [booking()], slots: [slot("10:30")] });
+    await holdPatient();
+    const user = userEvent.setup({ delay: null });
+
+    await user.click((await screen.findAllByTestId("upcoming-row"))[0]!);
+    await waitFor(() => expect(screen.getByText("The day's book")).toBeInTheDocument());
+    expect(screen.getByTestId("their-bookings")).toBeInTheDocument();
   });
 });

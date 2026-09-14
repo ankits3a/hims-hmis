@@ -806,6 +806,21 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
     patch({ busy: "future", error: null });
     try {
       const { appointment } = await bookAppointment({ patientId: person.id, doctorId, slotStart: slot.start });
+      /*
+        ═══ THE BOOKING JUST MADE IS PART OF WHAT THIS PATIENT HAS STANDING ═══
+
+        Owner, 2026-09-14: *"when I future book an appointment … I can't see any future
+        appointment(s) on the left rail."* Half of that was the rail having no such section at all;
+        this is the other half. `["d1", "their-appointments", id]` is cached for 30 s and the rail
+        fetched it the moment the patient was picked, so without this the clerk books a slot and the
+        column keeps showing the answer from BEFORE the booking — the one state in which the desk
+        contradicts something the clerk did ten seconds ago and is still technically "fresh".
+
+        Everything else that moves a booking (`reschedule`, `cancel`, `check-in`) already refetches
+        this query from the stage. Only the booking itself did not, because until now nothing but
+        the stage was watching it.
+      */
+      await qc.invalidateQueries({ queryKey: ["d1", "their-appointments"] });
       setS((prev) => ({
         ...prev,
         busy: null,
@@ -819,7 +834,7 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
         log: logged(prev.log, `slot REFUSED — ${opdErrorMessage(e)}`, "err"),
       }));
     }
-  }, [s.person, patch]);
+  }, [s.person, patch, qc]);
 
   const presentCoupon = useCallback((code: string) => {
     const clean = code.trim().toUpperCase();

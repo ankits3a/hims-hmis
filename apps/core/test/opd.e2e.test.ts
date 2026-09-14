@@ -537,6 +537,23 @@ describe("opd e2e", () => {
       .send({ patientId, doctorId: dra.doctorId, slotStart }).expect(201);
     expect(booked.body.appointment.serviceDate).toBe(tomorrow);
     expect(new Date(booked.body.appointment.slotStart).toISOString()).toBe(new Date(slotStart).toISOString());
+
+    /*
+      ═══ THE LEFT RAIL'S READ, AS THE STRING THE CLIENT ACTUALLY SENDS ═══
+
+      `listPatientAppointments` asks for `status=booked,needs_rebooking` — the two statuses
+      `rescheduleAppointment` will move a booking from, and therefore the definition of one that
+      still stands. The controller splits that on commas into an `inArray`; `appointmentsQuery`
+      declares `status` as a bare string for exactly this reason.
+
+      The web tests CANNOT see this contract: `stubFetch` keys on the path with the query string
+      stripped, so a parameter the server would refuse is indistinguishable there from one it
+      accepts. This is the only place the comma reaches a real zod schema and a real WHERE clause.
+    */
+    const standing = await request(app.getHttpServer())
+      .get("/opd/appointments").query({ patientId, status: "booked,needs_rebooking" })
+      .set(...auth(supervisor.token)).expect(200);
+    expect(standing.body.items.map((a: { id: string }) => a.id)).toEqual([booked.body.appointment.id]);
   });
 
   /**

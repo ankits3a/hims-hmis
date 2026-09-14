@@ -536,9 +536,19 @@ export function bookAppointment(
   return api("POST", "/opd/appointments", body);
 }
 
-/** What this patient already has booked — the seat's third door, and its duplicate-booking guard. */
+/**
+ * What this patient already has standing — the seat's third door, its duplicate-booking guard, and
+ * (since the left rail started drawing it) the only read anywhere that answers "what is this person
+ * coming back for". `patientTimeline` cannot: a booking has no encounter until it is checked in.
+ *
+ * `needs_rebooking` travels WITH `booked`. Those are exactly the two statuses the server will
+ * reschedule from (`rescheduleAppointment` in `appointments.ts`), which makes them the definition of
+ * a commitment that still stands. Asking for `booked` alone hid the stranded ones — a doctor going
+ * on leave silently emptied this list for every patient booked into that day, and the desk had no
+ * way to see, move or even mention the slot the patient was still holding a slip for.
+ */
 export function listPatientAppointments(patientId: string): Promise<{ items: WireAppointment[] }> {
-  return api("GET", `/opd/appointments?patientId=${encodeURIComponent(patientId)}&status=booked`);
+  return api("GET", `/opd/appointments?patientId=${encodeURIComponent(patientId)}&status=booked,needs_rebooking`);
 }
 
 /** An arrival: the booking becomes a visit. Same `OpenVisitResult` the walk-in returns. */
