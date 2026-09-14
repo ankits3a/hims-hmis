@@ -269,11 +269,67 @@ export async function mapComplaintTerm(
     .where(and(eq(opdComplaintConcepts.key, conceptKey), eq(opdComplaintConcepts.active, true)));
   if (concept.length === 0) throw new OpdError("unknown_complaint_concept", `unknown concept ${conceptKey}`);
 
+  /*
+    ═══ ALREADY MAPPED IS AN ANSWER, NOT A CRASH ═══
+
+    `opd_complaint_terms_term_ux` is the real guard and it stays. Reaching it raised a bare Postgres
+    unique violation, which leaves the curator a 500 — and the two ways to get there are ordinary:
+    a double-click, and a worklist read a minute before somebody else mapped the same phrase.
+    Found by walking the loop on real data, not by a test, because the seeded vocabulary already
+    contained the phrase the walk tried to map.
+
+    Same concept is IDEMPOTENT: the curator wanted this phrase to mean this thing and it does.
+    A DIFFERENT concept is refused and says which one already claims it, because one surface form
+    meaning two things is the coin toss the unique index exists to prevent.
+  */
+  const [already] = await tx
+    .select({ conceptKey: opdComplaintTerms.conceptKey })
+    .from(opdComplaintTerms)
+    .where(sql`lower(${opdComplaintTerms.term}) = ${t.toLowerCase()}`);
+  if (already !== undefined) {
+    if (already.conceptKey === conceptKey) {
+      const [row] = await tx.select({ id: opdComplaintTerms.id }).from(opdComplaintTerms)
+        .where(sql`lower(${opdComplaintTerms.term}) = ${t.toLowerCase()}`);
+      return { termId: row!.id };
+    }
+    throw new OpdError(
+      "complaint_term_already_mapped",
+      `"${t}" already means ${already.conceptKey}; unmap it before giving it another meaning`,
+    );
+  }
+
   const id = newId();
   await tx.insert(opdComplaintTerms).values({
     id, conceptKey, term: t, script, source: "mapped", createdBy: actor.id,
   });
   return { termId: id };
+}
+
+/**
+ * A new meaning, created by the curator who is looking at a phrase that fits none of the existing
+ * ones. Without this the worklist would be a screen that can show work and not finish it.
+ *
+ * The KEY is derived from the label rather than typed: a curator should be naming a meaning, not
+ * inventing an identifier, and two people typing `chest_pain` and `chestPain` for the same thing is
+ * how a vocabulary grows two words for one concept.
+ */
+export async function createComplaintConcept(
+  tx: Tx, actor: Actor, label: string,
+): Promise<{ key: string }> {
+  if (actor.type !== "user") throw new OpdError("user_actor_required", "curating the vocabulary is a desk action");
+  const clean = label.trim();
+  if (clean === "") throw new OpdError("complaint_term_invalid", "a concept needs a label");
+  const key = clean.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 60);
+  if (key === "") throw new OpdError("complaint_term_invalid", "a label must contain a letter or a digit");
+
+  const existing = await tx.select().from(opdComplaintConcepts).where(eq(opdComplaintConcepts.key, key));
+  /* Idempotent by key: a curator who creates "Chest pain" twice gets the concept, not an error. */
+  if (existing.length > 0) return { key };
+
+  await tx.insert(opdComplaintConcepts).values({
+    key, label: clean, createdBy: actor.id, updatedBy: actor.id,
+  });
+  return { key };
 }
 
 export async function listComplaintConcepts(db: Db): Promise<{ key: string; label: string }[]> {

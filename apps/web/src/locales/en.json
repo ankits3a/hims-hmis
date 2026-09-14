@@ -335,7 +335,8 @@
       "departments": "Departments",
       "rooms": "Rooms",
       "doctors": "Doctors",
-      "schedules": "Schedules & leaves"
+      "schedules": "Schedules & leaves",
+      "vocabulary": "Complaint words"
     },
     "newDepartment": "New department",
     "addDepartment": "Add department",
@@ -388,6 +389,28 @@
       "inactive": "Deactivated and still on file: {{list}}. A deactivated master stops being offered at the counter; it is never deleted, because past visits point at it.",
       "allActive": "Everything here is active.",
       "cannot": "I cannot answer that from this screen. I can tell you about the departments, rooms and doctors on this deployment, and which are deactivated."
+    },
+    "vocabulary": {
+      "intro": "Phrases doctors have written that the co-pilot does not recognise yet, most used first. Mapping one groups it with the phrasings that mean the same thing — in any script.",
+      "empty": "Nothing to map. Every phrase written so far is already in the vocabulary.",
+      "phrase": "Phrase",
+      "uses": "Written",
+      "map": "Map",
+      "mapping": "What does “{{term}}” mean?",
+      "maybe": "Perhaps:",
+      "concept": "Existing meaning",
+      "chooseConcept": "Choose an existing meaning…",
+      "newConcept": "New meaning",
+      "newConceptPlaceholder": "…or name a new one",
+      "script": "Script",
+      "scripts": {
+        "en": "English",
+        "hi": "Hindi (Devanagari)",
+        "hinglish": "Hindi in English letters"
+      },
+      "confirm": "Map it",
+      "pickAConcept": "Choose a meaning, or name a new one.",
+      "cancel": "Cancel"
     }
   },
   "opdAppt": {

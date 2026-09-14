@@ -39,6 +39,197 @@ function ErrorLine({ message }: { message: string | null }): React.ReactElement 
   return <p role="alert" style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: "var(--red)" }}>{message}</p>;
 }
 
+/** `GET /opd/vocabulary/*` — the curator's three reads and the phrase they are looking at. */
+type WireUnmapped = { term: string; uses: number; lastUsedAt: string };
+type WireConcept = { key: string; label: string };
+type WireProposal = { conceptKey: string; label: string; score: number; because: string };
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * THE COMPLAINT VOCABULARY — WHAT THIS HOSPITAL TYPES THAT THE MACHINE DOES NOT KNOW
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner, 2026-09-14, asked whether phrasings of one meaning are mapped together and whether the
+ * system learns the doctor's vocabulary. Both now happen; this is where the second feeds the first.
+ *
+ * Every complaint written on a completed consultation is counted. The phrases nobody has mapped
+ * arrive here, most used first, so the vocabulary grows along the path of actual use rather than by
+ * somebody trying to imagine every phrasing in advance — the same shape as the formulary's
+ * unresolved worklist, and for the same reason.
+ *
+ * ═══ THE PROPOSAL IS A SUGGESTION AND THE MAPPING IS A DECISION ═══
+ *
+ * `/propose` runs pg_trgm and a shared-word test ON THE BOX — no model, no outbound call, and no
+ * patient phrase leaving the machine. It fills the form in; it never submits it. What is stored
+ * carries `source: "mapped"` and the curator's id, because a mapping changes what the co-pilot
+ * considers for every doctor from then on: `chest_tightness` reaching asthma while `chest_pain`
+ * reaches nothing is a CLINICAL distinction, and the seed's own header records what happened the
+ * one time that was got wrong by treating a synonym list as a linguistic exercise.
+ */
+function VocabularyTab({ queryClient }: { queryClient: QueryClient }): React.ReactElement {
+  const { t } = useTranslation();
+  const [picked, setPicked] = useState<string | null>(null);
+  const [conceptKey, setConceptKey] = useState("");
+  const [script, setScript] = useState<"en" | "hi" | "hinglish">("hinglish");
+  const [newLabel, setNewLabel] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const unmapped = useQuery({
+    queryKey: ["opd", "vocabulary", "unmapped"],
+    queryFn: () => api<{ items: WireUnmapped[] }>("GET", "/opd/vocabulary/unmapped"),
+  });
+  const concepts = useQuery({
+    queryKey: ["opd", "vocabulary", "concepts"],
+    queryFn: () => api<{ items: WireConcept[] }>("GET", "/opd/vocabulary/concepts"),
+  });
+  const proposals = useQuery({
+    queryKey: ["opd", "vocabulary", "propose", picked ?? ""],
+    queryFn: () => api<{ items: WireProposal[] }>("GET", `/opd/vocabulary/propose?term=${encodeURIComponent(picked ?? "")}`),
+    enabled: picked !== null,
+  });
+
+  const open = (term: string): void => {
+    setPicked(term);
+    setConceptKey("");
+    setNewLabel("");
+    setError(null);
+    /* Devanagari is detectable; the other two are not, so the default is the one a curator on this
+       screen types most and they change it when it is wrong. */
+    setScript(/[\u0900-\u097F]/.test(term) ? "hi" : "hinglish");
+  };
+
+  const mapIt = async (): Promise<void> => {
+    if (picked === null) return;
+    setError(null);
+    try {
+      let key = conceptKey;
+      if (key === "" && newLabel.trim() !== "") {
+        const made = await api<{ key: string }>("POST", "/opd/vocabulary/concepts", { label: newLabel.trim() });
+        key = made.key;
+      }
+      if (key === "") { setError(t("opdAdmin.vocabulary.pickAConcept")); return; }
+      await api("POST", "/opd/vocabulary/map", { term: picked, conceptKey: key, script });
+      setPicked(null);
+      await queryClient.invalidateQueries({ queryKey: ["opd", "vocabulary"] });
+    } catch (e) {
+      setError(opdErrorMessage(e));
+    }
+  };
+
+  const rows = unmapped.data?.items ?? [];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{t("opdAdmin.vocabulary.intro")}</p>
+
+      {rows.length === 0 && (
+        <p data-testid="vocab-empty" style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>
+          {t("opdAdmin.vocabulary.empty")}
+        </p>
+      )}
+
+      {rows.length > 0 && (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t("opdAdmin.vocabulary.phrase")}</TableHead>
+              <TableHead>{t("opdAdmin.vocabulary.uses")}</TableHead>
+              <TableHead>{t("opd.labels.actions")}</TableHead>
+            </TableRow>
+          </TableHeader>
+          {/*
+            NO `data-testid` ON THE ROW. `DeskTR` renders only its children, so one put there is
+            dropped without a word — a test written against it looks for an element that never
+            existed. The map button below carries the id, and it is what a test acts on anyway.
+          */}
+          <TableBody>
+            {rows.map((r) => (
+              <TableRow key={r.term}>
+                <TableCell>{r.term}</TableCell>
+                <TableCell className="mo">{r.uses}</TableCell>
+                <TableCell>
+                  <button
+                    type="button" className="sec" data-testid={`vocab-map-${r.term}`}
+                    style={{ height: 26, fontSize: 11.5 }}
+                    onClick={() => { open(r.term); }}
+                  >
+                    {t("opdAdmin.vocabulary.map")}
+                  </button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+
+      {picked !== null && (
+        <div
+          data-testid="vocab-form"
+          style={{ border: "1px solid var(--line)", borderRadius: 6, padding: "9px 11px", display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}
+        >
+          <p style={{ margin: 0, flexBasis: "100%", fontSize: 13, fontWeight: 600 }}>
+            {t("opdAdmin.vocabulary.mapping", { term: picked })}
+          </p>
+
+          {/* THE PROPOSALS FILL THE FORM IN. They never submit it. */}
+          {(proposals.data?.items ?? []).length > 0 && (
+            <div data-testid="vocab-proposals" style={{ flexBasis: "100%", display: "flex", flexWrap: "wrap", gap: 5, alignItems: "center" }}>
+              <span style={{ fontSize: 11.5, color: "var(--faint)" }}>{t("opdAdmin.vocabulary.maybe")}</span>
+              {(proposals.data?.items ?? []).map((pr) => (
+                <button
+                  key={pr.conceptKey} type="button" className="sec" data-testid={`vocab-proposal-${pr.conceptKey}`}
+                  style={{ height: 24, fontSize: 11 }}
+                  onClick={() => { setConceptKey(pr.conceptKey); setNewLabel(""); }}
+                >
+                  {pr.label}
+                  <span className="mo" style={{ fontSize: 10, color: "var(--faint)" }}> · {pr.because}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <select
+            aria-label={t("opdAdmin.vocabulary.concept")} value={conceptKey}
+            onChange={(e) => { setConceptKey(e.target.value); if (e.target.value !== "") setNewLabel(""); }}
+            className="in" style={{ width: 220, height: 30, fontSize: 12.5 }}
+          >
+            <option value="">{t("opdAdmin.vocabulary.chooseConcept")}</option>
+            {(concepts.data?.items ?? []).map((c) => (
+              <option key={c.key} value={c.key}>{c.label}</option>
+            ))}
+          </select>
+
+          <input
+            aria-label={t("opdAdmin.vocabulary.newConcept")} value={newLabel}
+            onChange={(e) => { setNewLabel(e.target.value); if (e.target.value !== "") setConceptKey(""); }}
+            className="in" style={{ width: 200, height: 30, fontSize: 12.5 }}
+            placeholder={t("opdAdmin.vocabulary.newConceptPlaceholder")}
+          />
+
+          <select
+            aria-label={t("opdAdmin.vocabulary.script")} value={script}
+            onChange={(e) => { setScript(e.target.value as "en" | "hi" | "hinglish"); }}
+            className="in" style={{ width: 150, height: 30, fontSize: 12.5 }}
+          >
+            <option value="en">{t("opdAdmin.vocabulary.scripts.en")}</option>
+            <option value="hi">{t("opdAdmin.vocabulary.scripts.hi")}</option>
+            <option value="hinglish">{t("opdAdmin.vocabulary.scripts.hinglish")}</option>
+          </select>
+
+          <button type="button" className="pri" data-testid="vocab-confirm" style={{ height: 30, fontSize: 12 }} onClick={() => void mapIt()}>
+            {t("opdAdmin.vocabulary.confirm")}
+          </button>
+          <button type="button" className="sec" style={{ height: 30, fontSize: 12 }} onClick={() => { setPicked(null); setError(null); }}>
+            {t("opdAdmin.vocabulary.cancel")}
+          </button>
+          <ErrorLine message={error} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function ActiveToggle({ active, onToggle }: { active: boolean; onToggle: () => void }): React.ReactElement {
   const { t } = useTranslation();
   return (
@@ -540,7 +731,7 @@ function SchedulesAndLeavesTab({
 export function OpdAdmin(): React.ReactElement {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<"departments" | "rooms" | "doctors" | "schedules">("departments");
+  const [tab, setTab] = useState<"departments" | "rooms" | "doctors" | "schedules" | "vocabulary">("departments");
   const [agentAnswer, setAgentAnswer] = useState<string | null>(null);
   const [agentLog, setAgentLog] = useState<AgentLine[]>([]);
 
@@ -587,6 +778,7 @@ export function OpdAdmin(): React.ReactElement {
           ["rooms", t("opdAdmin.tabs.rooms")],
           ["doctors", t("opdAdmin.tabs.doctors")],
           ["schedules", t("opdAdmin.tabs.schedules")],
+          ["vocabulary", t("opdAdmin.tabs.vocabulary")],
         ] as const}
       />
       {/*
@@ -599,6 +791,7 @@ export function OpdAdmin(): React.ReactElement {
         {tab === "rooms" && <RoomsTab items={roomItems} queryClient={queryClient} />}
         {tab === "doctors" && <DoctorsTab items={doctorItems} departments={departmentItems} queryClient={queryClient} />}
         {tab === "schedules" && <SchedulesAndLeavesTab doctors={doctorItems} rooms={roomItems} queryClient={queryClient} />}
+        {tab === "vocabulary" && <VocabularyTab queryClient={queryClient} />}
       </div>
 
       <AgentDock

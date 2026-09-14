@@ -5,7 +5,7 @@ import { opdComplaintConcepts, opdComplaintTerms } from "../../kernel/db/schema"
 import { withTx } from "../../kernel/db/client";
 import { rankSyndromes } from "../cds";
 import {
-  conceptsForTerms, expandComplaintForMatching, mapComplaintTerm, proposeConceptFor,
+  conceptsForTerms, createComplaintConcept, expandComplaintForMatching, mapComplaintTerm, proposeConceptFor,
   recordComplaintUsage, suggestComplaints, unmappedComplaintTerms,
 } from "./complaints";
 import type { Db } from "../../kernel/db/client";
@@ -210,6 +210,44 @@ describe("the complaint vocabulary", () => {
     const [row] = await db.select().from(opdComplaintTerms).where(eq(opdComplaintTerms.term, "gala pak gaya"));
     /* `mapped`, never `proposed`: the table cannot represent a machine's opinion as a fact. */
     expect(row).toMatchObject({ source: "mapped", createdBy: clerk.actor.id });
+  });
+
+  it("Q14: a curator can create the meaning a phrase needs, and the key is derived not typed", async () => {
+    /* Without this the worklist would show work it cannot finish. The key comes from the label
+       because two curators typing `chest_pain` and `chestPain` is how one meaning becomes two. */
+    const { key } = await withTx(db, (tx) => createComplaintConcept(tx, clerk.actor, "Giddiness / vertigo"));
+    expect(key).toBe("giddiness_vertigo");
+
+    await withTx(db, (tx) => mapComplaintTerm(tx, clerk.actor, "chakkar aa raha hai", key, "hinglish"));
+    expect((await conceptsForTerms(db, ["chakkar aa raha hai"])).get("chakkar aa raha hai")).toBe(key);
+  });
+
+  it("Q15: creating the same meaning twice is the concept, not an error", async () => {
+    const a = await withTx(db, (tx) => createComplaintConcept(tx, clerk.actor, "Giddiness"));
+    const b = await withTx(db, (tx) => createComplaintConcept(tx, clerk.actor, "giddiness"));
+    expect(b.key).toBe(a.key);
+    await expect(withTx(db, (tx) => createComplaintConcept(tx, clerk.actor, "   ")))
+      .rejects.toThrow(/a concept needs a label/);
+    /* A label with no letter or digit yields an empty key and is refused rather than stored blank. */
+    await expect(withTx(db, (tx) => createComplaintConcept(tx, clerk.actor, "???")))
+      .rejects.toThrow(/must contain a letter/);
+  });
+
+  it("Q16: mapping a phrase twice is idempotent; giving it a SECOND meaning is refused", async () => {
+    /*
+      Found by walking the loop on the preview database rather than by a test: the walk tried to map
+      a phrase the seed already contained and got a bare Postgres unique violation — a 500 for the
+      curator. Both ways to reach it are ordinary: a double-click, and a worklist read a minute
+      before a colleague mapped the same phrase.
+    */
+    const first = await withTx(db, (tx) => mapComplaintTerm(tx, clerk.actor, "gabrahat", "chest_pain", "hinglish"));
+    const again = await withTx(db, (tx) => mapComplaintTerm(tx, clerk.actor, "Gabrahat", "chest_pain", "hinglish"));
+    expect(again.termId).toBe(first.termId);
+
+    /* A different meaning is the coin toss the unique index exists to prevent, and it says which
+       concept already claims the phrase rather than just refusing. */
+    await expect(withTx(db, (tx) => mapComplaintTerm(tx, clerk.actor, "gabrahat", "cough", "hinglish")))
+      .rejects.toThrow(/already means chest_pain/);
   });
 
   /* ────────────────────────── the proposer ────────────────────────── */

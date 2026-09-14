@@ -5,7 +5,8 @@ import { DB } from "../../kernel/tokens";
 import { withTx } from "../../kernel/db/client";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import {
-  listComplaintConcepts, mapComplaintTerm, proposeConceptFor, unmappedComplaintTerms,
+  createComplaintConcept, listComplaintConcepts, mapComplaintTerm, proposeConceptFor,
+  unmappedComplaintTerms,
 } from "./complaints";
 import { parsed, toHttp } from "./opd-masters.controller";
 import type { ConceptProposal, UnmappedTerm } from "./complaints";
@@ -31,6 +32,7 @@ import type { Db } from "../../kernel/db/client";
  */
 const unmappedQuery = z.object({ limit: z.coerce.number().int().min(1).max(100).optional() });
 const proposeQuery = z.object({ term: z.string().min(1).max(200) });
+const conceptBody = z.object({ label: z.string().min(1).max(80) });
 const mapBody = z.object({
   term: z.string().min(1).max(200),
   conceptKey: z.string().min(1).max(64),
@@ -65,6 +67,18 @@ export class OpdVocabularyController {
   async propose(@Query() query: unknown): Promise<{ items: ConceptProposal[] }> {
     const q = parsed(proposeQuery, query);
     return { items: await proposeConceptFor(this.db, q.term) };
+  }
+
+  /** A new meaning, for a phrase that fits none of the existing ones. Idempotent by derived key. */
+  @RequirePermission("opd.masters.manage", "hospital")
+  @Post("concepts")
+  async createConcept(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ key: string }> {
+    const b = parsed(conceptBody, body);
+    try {
+      return await withTx(this.db, (tx) => createComplaintConcept(tx, actor, b.label));
+    } catch (e) {
+      toHttp(e);
+    }
   }
 
   /** A human accepting a mapping. `source` on the stored row says so. */
