@@ -31,7 +31,15 @@ pnpm --filter @hmis/web exec vitest run                  # full web
 
 Never run `pnpm verify` on this box with a peer's suite running: two jest pools plus vitest OOM
 a 15 GB host. `maxWorkers: 2` in `apps/core/jest.config.cjs` is an owner ruling. The full suite
-belongs to CI; run it locally only when `tools/lane.sh status` shows no other runner.
+belongs to CI. **Take the mutex — do not merely look:**
+
+    /opt/hmis-lanes/.orchestrator/bin/test-lock.sh run <lane> -- pnpm ...
+
+`tools/lane.sh status` reports what is running *at that instant*; it cannot stop two lanes that
+look at the same moment from both starting. The lock is the arbitration and it blocks until the box
+is free. A run that skips it does not merely risk itself — a suite killed for memory looks nothing
+like a suite that failed, so it makes every other lane's result unreliable, and the cost lands on
+whoever cannot see the cause.
 
 ## Files that belong to everyone — coordinate before editing
 

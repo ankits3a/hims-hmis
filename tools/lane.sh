@@ -107,6 +107,14 @@ cmd_list() {
 
 cmd_status() {
   echo "claude sessions on a terminal: $(ps -eo comm,tty | awk '$1=="claude" && $2!="?"' | wc -l)"
+  # THE LOCK FIRST, because `pgrep` answers a different question. A running pool is a fact about
+  # this instant; the lock is the arbitration. Two lanes can both see an empty `test runners:` and
+  # both start — which is exactly how a peer's full-suite run was OOM-killed on 2026-09-14.
+  if [ -s /opt/hmis-lanes/.orchestrator/state/test.holder ]; then
+    echo "test lock: HELD by $(cat /opt/hmis-lanes/.orchestrator/state/test.holder)"
+  else
+    echo "test lock: FREE  (take it: /opt/hmis-lanes/.orchestrator/bin/test-lock.sh run <lane> -- <cmd>)"
+  fi
   echo "test runners:"; pgrep -af "bin/jest|vitest" | grep -v pgrep | cut -c1-120 | sed 's/^/  /' || true
   free -g | awk 'NR==2{printf "memory: %s GB used, %s GB available of %s\n",$3,$7,$2}'
   echo "lanes:"; cmd_list | sed 's/^/  /'
