@@ -1,4 +1,4 @@
-import { mkdtemp, chmod, rm, readdir, writeFile } from "node:fs/promises";
+import { mkdtemp, chmod, mkdir, rm, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { documentRootUnwritable, warnIfDocumentRootUnwritable } from "./boot-check";
@@ -68,6 +68,29 @@ describe("the document root boot check", () => {
     expect(log.messages[0]).toContain(root);
     expect(log.messages[0]).toContain("/opd/slips");
     expect(log.messages[0]).toContain("chown");
+  });
+
+  it("B6: a root that EXISTS but will not take a write still warns — the probe is a write, not a stat", async () => {
+    /*
+      ═══ THE ROW THAT MAKES "IT PROBES A WRITE" MEAN SOMETHING ═══
+
+      Added after a mutation SURVIVED: deleting the write probe and leaving only `mkdir` kept all
+      five earlier rows green, because B3's fixture (a file in the way) fails at mkdir. So nothing
+      pinned the check's whole reason for existing — the production case is a root that exists and
+      is owned by somebody else, where mkdir succeeds and the write is refused.
+
+      That case cannot be built as root, which is what this suite runs as. Occupying the probe path
+      with a DIRECTORY reaches the same branch for every user: mkdir(root) succeeds, writeFile is
+      refused EISDIR. It stands in for foreign ownership, and it is honest that it is a stand-in.
+    */
+    const dir = await mkdtemp(join(tmpdir(), "hmis-docroot-"));
+    made.push(dir);
+    await mkdir(join(dir, `.hmis-write-probe-${String(process.pid)}`));
+    const log = recorder();
+
+    expect(await warnIfDocumentRootUnwritable(dir, log)).toBe(true);
+    expect(log.messages).toHaveLength(1);
+    expect(log.messages[0]).toContain(dir);
   });
 
   it("B4: leaves no probe file behind on the path that succeeds", async () => {
