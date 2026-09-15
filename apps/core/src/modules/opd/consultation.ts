@@ -3,9 +3,10 @@ import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
 import { isNull } from "drizzle-orm";
-import { opdDoctors, opdEncounters, opdPrescriptions, opdQueueEntries, opdQueueSessions } from "../../kernel/db/schema";
+import { opdDoctors, opdEncounterDiagnoses, opdEncounters, opdPrescriptions, opdQueueEntries, opdQueueSessions } from "../../kernel/db/schema";
 import { loadOpdConfig } from "./config";
 import { getEncounter, moveEncounter } from "./encounters";
+import { recordComplaintUsage } from "./complaints";
 import { OpdError } from "./errors";
 import {
   admissionRequested, consultationCompleted, consultationParked, consultationResumed, consultationStarted, referralIssued,
@@ -32,8 +33,26 @@ export type AdvisedTest = {
   pricePaise: number;
 };
 
+/** One diagnosis as the doctor committed it: their words, and the catalogue code if they picked one. */
+export type NoteDiagnosis = { text: string; icd10Code: string | null };
+
+/**
+ * THE TAG SEPARATOR, AND IT IS NOT A COMMA. `tag-field.tsx` learned this on the first realistic
+ * complaint: "fever since 3 days, worse at night" split into two tags, one of them a fragment.
+ * A doctor writes commas; nobody types " · ".
+ */
+export const DIAGNOSIS_SEPARATOR = " · ";
+
 export type ConsultNote = {
   chiefComplaint?: string | null;
+  /**
+   * THE STRUCTURED DIAGNOSES. When present they are the TRUTH and `diagnosis` / `icd10Code` are
+   * derived from them here — never sent by the client — so the display string and the coded rows
+   * cannot disagree with each other. A caller that sends `diagnosis` on its own still works and
+   * writes one uncoded row per tag; that is the older shape, not a second way to say the same
+   * thing in a different order.
+   */
+  diagnoses?: NoteDiagnosis[] | null;
   diagnosis?: string | null;
   icd10Code?: string | null; // §11.19-E fix 31: capturable at consult, not only at MRD coding
   advice?: string | null;
@@ -54,12 +73,66 @@ type NoteColumns = Partial<Pick<EncounterRow,
   "chiefComplaint" | "diagnosis" | "icd10Code" | "advice" | "admissionAdvised" | "referralTo" | "referralNote"
   | "advisedTests">>;
 
+/**
+ * The structured list a note writes, or null when the note says nothing about diagnoses at all.
+ * `[]` is a real answer — the doctor cleared the field — and must not be confused with "unchanged".
+ */
+export function diagnosesOf(note: ConsultNote | undefined): NoteDiagnosis[] | null {
+  if (note === undefined) return null;
+  if (note.diagnoses !== undefined && note.diagnoses !== null) return note.diagnoses;
+  if (note.diagnoses === null) return [];
+  if (note.diagnosis === undefined) return null;
+  if (note.diagnosis === null) return [];
+  /* The older shape: tags, no codes. Splitting here rather than at the call site means one reader. */
+  return note.diagnosis
+    .split(DIAGNOSIS_SEPARATOR).map((t) => t.trim()).filter((t) => t !== "")
+    .map((text) => ({ text, icd10Code: null }));
+}
+
+/**
+ * Rewrite one encounter's diagnosis rows to match the note. A REPLACE, not a merge: the field is a
+ * list the doctor edits whole, and a merge would leave a tag on the record that the doctor had
+ * deleted from the screen. Called inside the same transaction as the encounter update, so the
+ * display column and the coded rows can never land apart.
+ */
+async function writeDiagnosisRows(
+  tx: Tx, encounterId: string, note: ConsultNote | undefined,
+): Promise<void> {
+  /*
+    `diagnosesOf` — not a check on `diagnoses` alone. A caller that sends only the prose `diagnosis`
+    must still get rows, or the structured table quietly misses those encounters and every reader
+    that joins it (MRD, a claim, a diagnosis census) reports a blank where a diagnosis was written.
+    A table with readers and a path that does not write to it is the same defect in reverse.
+  */
+  const rows = diagnosesOf(note);
+  if (rows === null) return; // the note said nothing about diagnoses; leave what is there
+  await tx.delete(opdEncounterDiagnoses).where(eq(opdEncounterDiagnoses.encounterId, encounterId));
+  if (rows.length === 0) return;
+  await tx.insert(opdEncounterDiagnoses).values(rows.map((d, seq) => ({
+    encounterId, seq, text: d.text, icd10Code: d.icd10Code,
+  })));
+}
+
 function noteColumns(note: ConsultNote | undefined): NoteColumns {
   const patch: NoteColumns = {};
   if (note === undefined) return patch;
   if (note.chiefComplaint !== undefined) patch.chiefComplaint = note.chiefComplaint;
-  if (note.diagnosis !== undefined) patch.diagnosis = note.diagnosis;
-  if (note.icd10Code !== undefined) patch.icd10Code = note.icd10Code;
+  /*
+    ═══ THE DISPLAY COLUMNS ARE DERIVED, NEVER TAKEN FROM THE CALLER ═══
+
+    When the note carries structured diagnoses they decide both columns: `diagnosis` is the tags
+    joined, and `icd10Code` is the FIRST code present — the primary diagnosis, which is the one a
+    claim carries. A client that could send all three could send three that disagree, and the one a
+    reader believed would depend on which reader it was.
+  */
+  const structured = note.diagnoses === undefined ? null : diagnosesOf(note);
+  if (structured !== null) {
+    patch.diagnosis = structured.length === 0 ? null : structured.map((d) => d.text).join(DIAGNOSIS_SEPARATOR);
+    patch.icd10Code = structured.find((d) => d.icd10Code !== null)?.icd10Code ?? null;
+  } else {
+    if (note.diagnosis !== undefined) patch.diagnosis = note.diagnosis;
+    if (note.icd10Code !== undefined) patch.icd10Code = note.icd10Code;
+  }
   if (note.advice !== undefined) patch.advice = note.advice;
   if (note.admissionAdvised !== undefined) patch.admissionAdvised = note.admissionAdvised;
   if (note.referralTo !== undefined) patch.referralTo = note.referralTo;
@@ -270,13 +343,21 @@ export async function saveConsultNote(
   if (current.status !== "in_consultation") {
     throw new OpdError("encounter_state_conflict", `the consult note needs in_consultation, not ${current.status}`);
   }
-  const rows = await db
-    .update(opdEncounters)
-    .set({ ...noteColumns(note), updatedBy: actor.id, updatedAt: now })
-    .where(and(eq(opdEncounters.id, encounterId), eq(opdEncounters.status, "in_consultation")))
-    .returning();
-  if (rows.length === 0) throw new OpdError("encounter_state_conflict", "encounter moved concurrently");
-  return { encounter: rows[0]! };
+  /*
+    ONE TRANSACTION, because the de-normalised `diagnosis` string on the encounter and the coded
+    rows beside it are two statements of the same fact. A note that wrote one and not the other
+    would leave a claim quoting a code the note does not carry, and nothing would ever say so.
+  */
+  return withTx(db, async (tx) => {
+    const rows = await tx
+      .update(opdEncounters)
+      .set({ ...noteColumns(note), updatedBy: actor.id, updatedAt: now })
+      .where(and(eq(opdEncounters.id, encounterId), eq(opdEncounters.status, "in_consultation")))
+      .returning();
+    if (rows.length === 0) throw new OpdError("encounter_state_conflict", "encounter moved concurrently");
+    await writeDiagnosisRows(tx, encounterId, note);
+    return { encounter: rows[0]! };
+  });
 }
 
 export type CompleteConsultationInput = {
@@ -309,6 +390,7 @@ export async function completeConsultation(
   if (input.testsOrderedReturnToday) {
     return withTx(db, async (tx) => {
       const encounter = await moveEncounter(tx, actor, current, "awaiting_results", patch, now);
+      await writeDiagnosisRows(tx, encounterId, input.note);
       await markDone(tx, encounterId, now);
       return { encounter };
     });
@@ -339,6 +421,28 @@ export async function completeConsultation(
     const encounter = await moveEncounter(
       tx, actor, current, "completed", { ...patch, consultCompletedAt: now, followUpDays, followUpExtended }, now,
     );
+    /*
+      BEFORE the event is appended, not after: `consultationCompleted` carries `icd10Code`, and that
+      value comes off the encounter row this patch just wrote. The rows and the column are derived
+      from the same list, so the event and the record agree by construction.
+    */
+    await writeDiagnosisRows(tx, encounterId, input.note);
+    /*
+      ═══ THE VOCABULARY LEARNS HERE, AND ONLY HERE ═══
+
+      Every complaint phrase on a COMPLETED consultation is counted, mapped or not — which is what
+      makes a doctor's own shorthand start being offered back to them, and what builds the worklist
+      of phrases nobody has mapped yet.
+
+      At completion rather than at save: the note autosaves on every blur, so counting there would
+      score a phrase by how often the doctor tabbed out of the box. A completion happens once per
+      encounter and is the honest unit. The same reasoning `curation.ts` gives for counting the
+      PRESCRIBING stream rather than every keystroke that touched a prescription.
+    */
+    const complaint = encounter.chiefComplaint ?? "";
+    if (complaint.trim() !== "") {
+      await recordComplaintUsage(tx, doctor.id, complaint.split(" · ").map((x) => x.trim()), now);
+    }
     await markDone(tx, encounterId, now);
     const where = await entryWhere(tx, encounterId);
     const issued = await tx

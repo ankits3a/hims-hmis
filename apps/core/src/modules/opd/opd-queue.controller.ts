@@ -44,6 +44,19 @@ const sessionStatusBody = z.object({ status: z.enum(["in", "out", "closed"]) });
 const skipBody = z.object({ reason: z.enum(SKIP_REASONS), note: z.string().max(500).nullish() });
 const consultNoteBody = z.object({
   chiefComplaint: z.string().max(2000).nullable().optional(),
+  /**
+   * THE DIAGNOSES, AS A LIST. Bounded for the same reason `advisedTests` is: an unbounded array on
+   * a request body is a body somebody can make arbitrarily large. Twelve is a consultation's worth
+   * of a primary diagnosis and its comorbidities.
+   *
+   * `diagnosis` and `icd10Code` below are still accepted — an older caller writing prose is a
+   * caller that still works — but when `diagnoses` is present the server DERIVES both from it and
+   * ignores what was sent, so the display string and the coded rows cannot be made to disagree.
+   */
+  diagnoses: z.array(z.object({
+    text: z.string().min(1).max(300),
+    icd10Code: z.string().max(20).nullable(),
+  })).max(12).nullable().optional(),
   diagnosis: z.string().max(2000).nullable().optional(),
   icd10Code: z.string().max(20).nullable().optional(),
   advice: z.string().max(4000).nullable().optional(),

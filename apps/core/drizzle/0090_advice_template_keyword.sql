@@ -1,0 +1,2 @@
+ALTER TABLE "opd_advice_templates" ADD COLUMN "keyword" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "opd_advice_templates_keyword_ux" ON "opd_advice_templates" USING btree ("owner_user_id",lower("keyword")) WHERE "opd_advice_templates"."keyword" is not null;

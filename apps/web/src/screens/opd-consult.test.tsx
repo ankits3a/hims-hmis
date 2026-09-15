@@ -151,16 +151,33 @@ const VITALS_LATEST = vitals({
 
 const VISIT = {
   encounter: ENCOUNTER, queueEntries: [CURRENT], vitals: [VITALS_FIRST, VITALS_LATEST], prescriptions: [],
+  /* The CODED diagnoses. `encounter.diagnosis` is a display string and carries no codes. */
+  diagnoses: [] as { text: string; icd10Code: string | null }[],
   patient: summary("p-1", "HMS0000000020", "Asha Devi"),
+};
+
+/** `GET /opd/cds/complete/diagnosis` — real rows from the ICD-10-CM tabular list. */
+const ICD10_HITS = {
+  items: [
+    { code: "J06.9", description: "Acute upper respiratory infection, unspecified", chapterNo: 10, codeMatch: false },
+    { code: "J06.0", description: "Acute laryngopharyngitis", chapterNo: 10, codeMatch: false },
+  ],
 };
 
 const PATIENT_DETAIL = {
   patient: { uhid: "HMS0000000020", name: "Asha Devi", alias: null, dob: "1992-03-04", administrativeGender: "female" },
   resolvedFrom: null,
 };
+/* The provenance columns were always on the wire — `listAllergies` selects the whole row. */
 const ALLERGIES = [
-  { id: "al-1", substance: "Penicillin", severity: "severe", status: "active" },
-  { id: "al-2", substance: "Sulfa", severity: "mild", status: "entered_in_error" },
+  {
+    id: "al-1", substance: "Penicillin", severity: "severe", status: "active",
+    source: "consult", recordedAt: "2026-08-17T04:05:00.000Z", correctionReason: null,
+  },
+  {
+    id: "al-2", substance: "Sulfa", severity: "mild", status: "entered_in_error",
+    source: "registration", recordedAt: "2026-08-17T03:00:00.000Z", correctionReason: "wrong patient",
+  },
 ];
 const TIMELINE = [
   {
@@ -233,6 +250,675 @@ function baseRoutes(): Record<string, Handler> {
     "POST /api/opd/visits/enc-1/consult/start": { status: 201, body: { encounter: ENCOUNTER, queueEntry: CURRENT } },
   };
 }
+
+/**
+ * ═══ THE DIAGNOSIS FIELD — TAGS, AND A CODE THAT STAYS MARRIED TO ITS OWN WORDS ═══
+ *
+ * Owner, 2026-09-14, chose several tags over one value and a real ICD-10 catalogue over completing
+ * from the eight syndromes. The field is `TagField` with the same keystroke contract as the
+ * complaint, so a doctor learns Enter once; what is new is that a TAPPED row brings a code with it.
+ */
+describe("OpdConsult — the diagnosis tags and their ICD-10 codes", () => {
+  beforeEach(() => { vi.restoreAllMocks(); });
+
+  it("N1: tapping a suggestion takes its words AND its code, and the note PUTs both", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/cds/complete/diagnosis": { status: 200, body: ICD10_HITS },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const diagnosis = await screen.findByLabelText("Diagnosis");
+    await user.click(diagnosis);
+    await user.type(diagnosis, "acute upper");
+    await user.click(await screen.findByText("Acute upper respiratory infection, unspecified"));
+    await user.click(screen.getByRole("heading", { name: "Consultation" }));
+
+    await waitFor(() => {
+      const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { diagnoses: unknown };
+      expect(body.diagnoses).toEqual([
+        { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9" },
+      ]);
+    });
+  });
+
+  it("N2: the doctor's own words stay uncoded beside a picked one, in the order written", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/cds/complete/diagnosis": { status: 200, body: ICD10_HITS },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const diagnosis = await screen.findByLabelText("Diagnosis");
+    await user.click(diagnosis);
+    /* Enter commits verbatim — including the comma, which is why " · " is the separator. */
+    await user.type(diagnosis, "?dengue, review in 48h{Enter}");
+    await user.type(diagnosis, "acute upper");
+    await user.click(await screen.findByText("Acute upper respiratory infection, unspecified"));
+    await user.click(screen.getByRole("heading", { name: "Consultation" }));
+
+    await waitFor(() => {
+      const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { diagnoses: unknown };
+      expect(body.diagnoses).toEqual([
+        { text: "?dengue, review in 48h", icd10Code: null },
+        { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9" },
+      ]);
+    });
+  });
+
+  it("N3: REOPENING a coded note and editing something else does not strip the codes", async () => {
+    /*
+      ═══ THE SEAM, AND IT IS THE ONE THIS FEATURE WOULD HAVE LOST DATA ON ═══
+
+      `encounter.diagnosis` is the display string and carries no codes. A screen that loaded only
+      that, then saved after the doctor touched the ADVICE box, would send back uncoded tags and
+      replace the coded rows with uncoded ones. Both ends individually correct, the coding gone on
+      an ordinary edit, and nothing anywhere saying so. The visit read returns the coded rows and
+      the screen seeds its map from them; this is the test that fails if either half is removed.
+    */
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/visits/enc-1": { status: 200, body: {
+        ...VISIT,
+        encounter: { ...ENCOUNTER, diagnosis: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9" },
+        diagnoses: [{ text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9" }],
+      } },
+      "GET /api/opd/cds/complete/diagnosis": { status: 200, body: ICD10_HITS },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const advice = await screen.findByLabelText("Advice");
+    await user.click(advice);
+    await user.type(advice, "steam inhalation");
+    await user.click(screen.getByRole("heading", { name: "Consultation" }));
+
+    await waitFor(() => {
+      const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { diagnoses: unknown };
+      expect(body.diagnoses).toEqual([
+        { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9" },
+      ]);
+    });
+  });
+
+  it("N6: a held backspace cannot cost a coded diagnosis its ICD-10 code", async () => {
+    /*
+      The complaint field's held-backspace defect (F5b) is worse here and the same component causes
+      both. Losing "Acute upper respiratory infection, unspecified" does not merely lose words — it
+      loses J06.9 with them, and the doctor has to find the code through the typeahead again. This
+      is the reason the rule is "Enter commits, × removes" rather than a guard on `e.repeat`.
+    */
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/cds/complete/diagnosis": { status: 200, body: ICD10_HITS },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const diagnosis = await screen.findByLabelText("Diagnosis");
+    await user.click(diagnosis);
+    await user.type(diagnosis, "acute upper");
+    await user.click(await screen.findByText("Acute upper respiratory infection, unspecified"));
+
+    await user.type(diagnosis, "typ");
+    await user.keyboard("{Backspace>20/}");
+    await user.click(screen.getByRole("heading", { name: "Consultation" }));
+
+    await waitFor(() => {
+      const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { diagnoses: unknown };
+      expect(body.diagnoses).toEqual([
+        { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9" },
+      ]);
+    });
+  });
+
+  it("N4: the ICD-10 box is a READING of the tags, not a second place to type", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/cds/complete/diagnosis": { status: 200, body: ICD10_HITS },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const icd10 = await screen.findByTestId("note-icd10");
+    expect(icd10).toHaveAttribute("readonly");
+    expect(icd10).toHaveValue("");
+
+    const diagnosis = screen.getByLabelText("Diagnosis");
+    await user.click(diagnosis);
+    await user.type(diagnosis, "acute upper");
+    await user.click(await screen.findByText("Acute upper respiratory infection, unspecified"));
+
+    // A code typed here and a code carried by a tag would be two statements of one fact.
+    await waitFor(() => { expect(screen.getByTestId("note-icd10")).toHaveValue("J06.9"); });
+  });
+
+  it("N5: a note coded BEFORE this table existed still shows its code", async () => {
+    /* No diagnosis rows, an `icd10Code` on the encounter. Showing an empty box would report a
+       coded note as uncoded — the fallback is the honest rendering of an older record. */
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/visits/enc-1": { status: 200, body: {
+        ...VISIT,
+        encounter: { ...ENCOUNTER, diagnosis: "Acute pharyngitis", icd10Code: "J02.9" },
+        diagnoses: [],
+      } },
+      "GET /api/opd/cds/complete/diagnosis": { status: 200, body: { items: [] } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await waitFor(() => { expect(screen.getByTestId("note-icd10")).toHaveValue("J02.9"); });
+  });
+});
+
+/**
+ * ═══ THE ALLERGY FIELD, WHICH IS A GUARD AND NOT A CONVENIENCE ═══
+ *
+ * The prescription block matches a recorded allergy on word tokens of five letters or more, so a
+ * misspelt substance matches no rule and the block goes silent for the life of the record. Picking
+ * records the CLASS and fires the rule by identity; typing still saves, and now says so.
+ */
+const ALLERGEN_HITS = {
+  items: [
+    {
+      term: "Penicillins / Beta-Lactams", kind: "class", allergenClass: "Penicillins / Beta-Lactams",
+      saltId: null, blocks: ["Amoxicillin", "Ampicillin", "Cephalexin"],
+    },
+    { term: "Penicillin", kind: "moiety", allergenClass: null, saltId: "S1", blocks: [] },
+  ],
+  known: true,
+};
+
+describe("OpdConsult — recording an allergy in the room", () => {
+  beforeEach(() => { vi.restoreAllMocks(); });
+
+  it("R1: picking an allergen posts its CLASS, so a block cannot be lost to spelling", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/cds/complete/allergen": { status: 200, body: ALLERGEN_HITS },
+      "POST /api/patients/p-1/allergies": { status: 201, body: { allergyId: "al-9" } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(await screen.findByTestId("allergy-add"));
+    await user.type(screen.getByLabelText("Allergy — substance"), "pencil");
+    await user.click(await screen.findByTestId("allergy-hit-Penicillins / Beta-Lactams"));
+    await user.click(screen.getByTestId("allergy-save"));
+
+    await waitFor(() => {
+      expect(bodiesOf("POST", "/api/patients/p-1/allergies").at(-1)).toEqual({
+        substance: "Penicillins / Beta-Lactams", severity: "moderate", source: "consult",
+        saltId: null, allergenClass: "Penicillins / Beta-Lactams",
+      });
+    });
+  });
+
+  it("R2: editing after a pick DROPS the code — it belonged to the old words", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/cds/complete/allergen": { status: 200, body: ALLERGEN_HITS },
+      "POST /api/patients/p-1/allergies": { status: 201, body: { allergyId: "al-9" } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(await screen.findByTestId("allergy-add"));
+    await user.type(screen.getByLabelText("Allergy — substance"), "pencil");
+    await user.click(await screen.findByTestId("allergy-hit-Penicillin"));
+    /*
+      A code left behind after the words changed is a block recorded against a substance nobody
+      named — the same defect the drug field's `medicineId` had and fixed.
+
+      TWO INDEPENDENT DEFENCES ENFORCE THIS, and neither mutant kills this test on its own:
+      `onChange` clears the pick, AND `addAllergy` refuses a pick whose term is not the text being
+      saved. Measured — removing either leaves R2 green, removing BOTH turns it red and nothing
+      else. That is not a weak test; it is a test of the BEHAVIOUR over two mechanisms that each
+      suffice. Worth writing down because a surviving mutant usually means the opposite, and the
+      next person to run one here should not go looking for the hole.
+    */
+    await user.type(screen.getByLabelText("Allergy — substance"), " (child only)");
+    await user.click(screen.getByTestId("allergy-save"));
+
+    await waitFor(() => {
+      expect(bodiesOf("POST", "/api/patients/p-1/allergies").at(-1)).toEqual({
+        substance: "Penicillin (child only)", severity: "moderate", source: "consult",
+      });
+    });
+  });
+
+  it("R3: free text the guard knows no rule for WARNS, and still saves", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/cds/complete/allergen": { status: 200, body: { items: [], known: false } },
+      "POST /api/patients/p-1/allergies": { status: 201, body: { allergyId: "al-9" } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(await screen.findByTestId("allergy-add"));
+    await user.type(screen.getByLabelText("Allergy — substance"), "the red syrup");
+
+    // It WARNS — a doctor told nothing has no way to know the check will stay quiet.
+    expect(await screen.findByTestId("allergy-unknown")).toBeInTheDocument();
+
+    // ...and it never REFUSES. Free text is legal on this field and always was.
+    await user.click(screen.getByTestId("allergy-save"));
+    await waitFor(() => {
+      expect(bodiesOf("POST", "/api/patients/p-1/allergies").at(-1)).toEqual({
+        substance: "the red syrup", severity: "moderate", source: "consult",
+      });
+    });
+  });
+
+  it("R4: a suggester that is DOWN leaves a plain box that saves, and warns about nothing", async () => {
+    /* Design law 1 at the transport layer. A field that started warning about every allergy
+       because a route returned 500 would teach a doctor to ignore the warning. */
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/cds/complete/allergen": { status: 500, body: { message: "boom" } },
+      "POST /api/patients/p-1/allergies": { status: 201, body: { allergyId: "al-9" } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(await screen.findByTestId("allergy-add"));
+    await user.type(screen.getByLabelText("Allergy — substance"), "penicillin");
+    await waitFor(() => { expect(screen.queryByTestId("allergy-hits")).toBeNull(); });
+    expect(screen.queryByTestId("allergy-unknown")).toBeNull();
+
+    await user.click(screen.getByTestId("allergy-save"));
+    await waitFor(() => { expect(callsTo("POST", "/api/patients/p-1/allergies")).toHaveLength(1); });
+  });
+});
+
+/**
+ * ═══ THE ADVICE LIBRARY — TWO BUTTONS PER TEMPLATE, AND THE SCRIPT IS THE DOCTOR'S CHOICE ═══
+ *
+ * This is the one field the patient reads. `rx-print.tsx` prints `encounter.advice` VERBATIM, so a
+ * translated label above English prose gives a Devanagari reader nothing — the script has to be in
+ * the stored value. Owner ruling, 2026-09-14: the doctor picks the language per template.
+ */
+const ADVICE_TEMPLATES = {
+  items: [
+    {
+      id: "adv_mine", title: "My asthma advice", mine: true, keyword: ";asth",
+      textEn: "Use the inhaler as shown.", textHi: "इनहेलर बताए अनुसार लें।",
+    },
+    {
+      id: "adv_seed_rest_fluids", title: "Rest and fluids", mine: false, keyword: null,
+      textEn: "Take rest. Drink plenty of fluids.", textHi: "आराम करें। खूब तरल पिएं।",
+    },
+    { id: "adv_en_only", title: "English only", mine: false, keyword: null, textEn: "Only English here.", textHi: null },
+    {
+      id: "adv_rx", title: "Review with weight", mine: true, keyword: ";rev",
+      textEn: "For {name}, {weight} kg. Take {?one tablet} {?} after food. Review on {date+7}.",
+      textHi: null,
+    },
+  ],
+};
+
+describe("OpdConsult — the advice library", () => {
+  beforeEach(() => { vi.restoreAllMocks(); });
+
+  it("W1: tapping the Hindi button stores the DEVANAGARI, which is what prints", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/advice-templates": { status: 200, body: ADVICE_TEMPLATES },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(await screen.findByTestId("advice-tpl-adv_seed_rest_fluids-hi"));
+    await user.click(screen.getByRole("heading", { name: "Consultation" }));
+
+    await waitFor(() => {
+      const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { advice: string };
+      expect(body.advice).toBe("आराम करें। खूब तरल पिएं।");
+    });
+  });
+
+  it("W2: the English button on the SAME template stores English — one row, two choices", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/advice-templates": { status: 200, body: ADVICE_TEMPLATES },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(await screen.findByTestId("advice-tpl-adv_seed_rest_fluids-en"));
+    await user.click(screen.getByRole("heading", { name: "Consultation" }));
+
+    await waitFor(() => {
+      const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { advice: string };
+      expect(body.advice).toBe("Take rest. Drink plenty of fluids.");
+    });
+  });
+
+  it("W3: tapping APPENDS — a doctor builds advice out of several, and never loses typing", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/advice-templates": { status: 200, body: ADVICE_TEMPLATES },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const advice = await screen.findByLabelText("Advice");
+    await user.click(advice);
+    await user.type(advice, "Review Friday.");
+    await user.click(screen.getByTestId("advice-tpl-adv_seed_rest_fluids-en"));
+    await user.click(screen.getByTestId("advice-tpl-adv_mine-hi"));
+    await user.click(screen.getByRole("heading", { name: "Consultation" }));
+
+    await waitFor(() => {
+      const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { advice: string };
+      expect(body.advice).toBe("Review Friday.\nTake rest. Drink plenty of fluids.\nइनहेलर बताए अनुसार लें।");
+    });
+  });
+
+  it("W4: a template with only one script offers only one button", async () => {
+    mockRoutes({ ...baseRoutes(), "GET /api/opd/advice-templates": { status: 200, body: ADVICE_TEMPLATES } });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await screen.findByTestId("advice-tpl-adv_en_only-en");
+    // Half a row beats no row; what it must not do is offer a Hindi button that inserts nothing.
+    expect(screen.queryByTestId("advice-tpl-adv_en_only-hi")).toBeNull();
+  });
+
+  it("W5: saving DEVANAGARI advice files it as Hindi, not under an English button", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/advice-templates": { status: 200, body: ADVICE_TEMPLATES },
+      "POST /api/opd/advice-templates": { status: 201, body: { templateId: "adv-new" } },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const advice = await screen.findByLabelText("Advice");
+    await user.click(advice);
+    await user.type(advice, "रोज़ टहलें।");
+    await user.click(screen.getByTestId("advice-save-open"));
+    await user.type(screen.getByLabelText("Template name"), "Walking");
+    await user.click(screen.getByTestId("advice-save"));
+
+    await waitFor(() => {
+      expect(bodiesOf("POST", "/api/opd/advice-templates").at(-1)).toEqual({
+        /* `keyword: null` — this template is TAPPED, not typed. A snippet keyword is optional. */
+        title: "Walking", keyword: null, textEn: null, textHi: "रोज़ टहलें।",
+      });
+    });
+  });
+
+  it("W6: there is nothing to save while the box is empty", async () => {
+    mockRoutes({ ...baseRoutes(), "GET /api/opd/advice-templates": { status: 200, body: ADVICE_TEMPLATES } });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await screen.findByTestId("advice-library");
+    expect(screen.queryByTestId("advice-save-open")).toBeNull();
+  });
+});
+
+/**
+ * ═══ A WRONG ALLERGY, AND WHY REMOVING IT IS NOT DELETING IT ═══
+ *
+ * Owner, 2026-09-14: *"I added a wrong allergy to the patient. Now I cannot delete it."* The route
+ * has existed since E-8 and lives on `patient-detail.tsx`; what was missing was the button on the
+ * screen where the mistake is MADE. The asymmetry arrived with "record an allergy in the room" —
+ * the writer shipped without its corrector.
+ *
+ * It stays a CORRECTION. `patient-detail.tsx` already rules it: allergies are append-only. The
+ * doctor loses nothing by that — a struck row stops warning at once — and the record keeps what a
+ * later clinician would need if the patient turns out to have reacted after all.
+ */
+describe("OpdConsult — removing an allergy recorded in error", () => {
+  beforeEach(() => { vi.restoreAllMocks(); });
+
+  it("Y1: removing posts the E-8 correction with the reason — it never DELETEs", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "POST /api/patients/p-1/allergies/al-1/entered-in-error": { status: 201, body: { ok: true } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(await screen.findByTestId("allergy-strike-al-1"));
+    await user.type(screen.getByLabelText("Reason"), "wrong patient — meant the next chart");
+    await user.click(screen.getByTestId("allergy-strike-confirm"));
+
+    await waitFor(() => {
+      expect(bodiesOf("POST", "/api/patients/p-1/allergies/al-1/entered-in-error").at(-1)).toEqual({
+        reason: "wrong patient — meant the next chart",
+      });
+    });
+    /* Not a DELETE anywhere. A clinical safety record that can vanish tells the next clinician
+       nothing; one that was claimed and withdrawn tells them a great deal. */
+    expect(fetchCalls().filter((c) => c.method === "DELETE")).toHaveLength(0);
+  });
+
+  it("Y2: the reason is mandatory — the button will not act without one", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "POST /api/patients/p-1/allergies/al-1/entered-in-error": { status: 201, body: { ok: true } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(await screen.findByTestId("allergy-strike-al-1"));
+    const confirm = screen.getByTestId("allergy-strike-confirm");
+    expect(confirm).toBeDisabled();
+    await user.click(confirm);
+    expect(callsTo("POST", "/api/patients/p-1/allergies/al-1/entered-in-error")).toHaveLength(0);
+
+    // Whitespace is not a reason either — the server refuses it and the button agrees.
+    await user.type(screen.getByLabelText("Reason"), "   ");
+    expect(screen.getByTestId("allergy-strike-confirm")).toBeDisabled();
+  });
+
+  it("Y3: the confirmation names WHERE the allergy came from", async () => {
+    /* Undoing your own mis-tap and striking a contrast reaction radiology recorded from a real
+       administration are different acts, and only this line tells them apart. */
+    mockRoutes({ ...baseRoutes() });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(await screen.findByTestId("allergy-strike-al-1"));
+    expect(screen.getByTestId("allergy-strike-provenance")).toHaveTextContent(/this consultation/);
+  });
+
+  it("Y5: struck allergies are hidden but reachable, with the reason they were struck", async () => {
+    /* Default-hidden keeps the chip row clean; reachable stops the next person re-recording the
+       same wrong allergy having no way to know it was considered and withdrawn. */
+    mockRoutes({ ...baseRoutes() });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await screen.findByTestId("allergy-chips");
+    expect(screen.queryByTestId("allergy-corrected")).toBeNull();
+    expect(screen.queryByTestId("allergy-chip-al-2")).toBeNull();
+
+    await user.click(screen.getByTestId("allergy-corrected-toggle"));
+    expect(await screen.findByTestId("allergy-corrected-al-2")).toHaveTextContent(/Sulfa/);
+    expect(screen.getByTestId("allergy-corrected-al-2")).toHaveTextContent(/wrong patient/);
+  });
+});
+
+/**
+ * ═══ SNIPPETS ON THE ADVICE BOX ═══
+ *
+ * Owner, 2026-09-14, asked for Raycast-style snippets: a keyword, auto-expansion, Tab, and a
+ * reference of the placeholder vocabulary. The part that is not Raycast is where the values come
+ * from — the patient in the chair rather than the machine.
+ *
+ * Nothing with braces is ever stored: expansion happens at insert time, and what the note carries
+ * is ordinary text. That is what keeps the print path, the e-Rx and the relay out of this feature.
+ */
+describe("OpdConsult — snippets in the advice box", () => {
+  beforeEach(() => { vi.restoreAllMocks(); });
+
+  const snippetRoutes = (): Record<string, Handler> => ({
+    ...baseRoutes(),
+    "GET /api/opd/advice-templates": { status: 200, body: ADVICE_TEMPLATES },
+    "POST /api/opd/advice-templates": { status: 201, body: { templateId: "adv-new" } },
+    "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+  });
+
+  it("T1: typing a keyword expands it in place, filled from THIS patient", async () => {
+    mockRoutes(snippetRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const advice = await screen.findByLabelText("Advice");
+    await user.click(advice);
+    await user.type(advice, ";asth");
+
+    // The keyword is gone and the template is in its place — no Enter, no menu, no click.
+    await waitFor(() => { expect(advice).toHaveValue("Use the inhaler as shown."); });
+  });
+
+  it("T2: placeholders resolve from the record — the name and the charted weight", async () => {
+    mockRoutes(snippetRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const advice = await screen.findByLabelText("Advice");
+    await user.click(advice);
+    await user.type(advice, ";rev");
+
+    /* VITALS_LATEST is the chart this panel already shows — 60 kg — and the snippet reads that
+       same number rather than a second one from anywhere else. */
+    await waitFor(() => {
+      expect(String((advice as HTMLTextAreaElement).value)).toContain("For Asha Devi, 60 kg.");
+    });
+    // And no placeholder survives into the field — braces never reach the record or the slip.
+    expect(String((advice as HTMLTextAreaElement).value)).not.toContain("{");
+  });
+
+  it("T3: Tab walks the blanks the snippet left, and the last one LEAVES the field", async () => {
+    mockRoutes(snippetRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const advice = await screen.findByLabelText("Advice");
+    await user.click(advice);
+    await user.type(advice, ";rev");
+    await screen.findByTestId("advice-stops");
+
+    /* The first blank arrives SELECTED, so typing replaces its default rather than appending. */
+    await user.keyboard("2 tablets");
+    expect(String((advice as HTMLTextAreaElement).value)).toContain("Take 2 tablets");
+
+    await user.tab();
+    await user.keyboard("twice daily");
+    expect(String((advice as HTMLTextAreaElement).value)).toContain("Take 2 tablets twice daily after food");
+
+    /* Blanks exhausted: the next Tab is NOT swallowed, so a keyboard user is never stranded. */
+    await user.tab();
+    await waitFor(() => { expect(screen.queryByTestId("advice-stops")).toBeNull(); });
+    expect(advice).not.toHaveFocus();
+  });
+
+  it("T4: Escape abandons the blanks and gives Tab straight back", async () => {
+    mockRoutes(snippetRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const advice = await screen.findByLabelText("Advice");
+    await user.click(advice);
+    await user.type(advice, ";rev");
+    await screen.findByTestId("advice-stops");
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => { expect(screen.queryByTestId("advice-stops")).toBeNull(); });
+    await user.tab();
+    expect(advice).not.toHaveFocus();
+  });
+
+  it("T5: a TAPPED template resolves its placeholders the same way a typed one does", async () => {
+    /* One engine for both paths. A template that behaved differently depending on how it was
+       reached is a difference nobody discovers until a slip is wrong. */
+    mockRoutes(snippetRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(await screen.findByTestId("advice-tpl-adv_rx-en"));
+    const advice = screen.getByLabelText("Advice");
+    await waitFor(() => { expect(String((advice as HTMLTextAreaElement).value)).toContain("For Asha Devi, 60 kg."); });
+    expect(String((advice as HTMLTextAreaElement).value)).not.toContain("{");
+  });
+
+  it("T6: the saved note is plain text — no placeholder is ever stored", async () => {
+    mockRoutes(snippetRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const advice = await screen.findByLabelText("Advice");
+    await user.click(advice);
+    await user.type(advice, ";asth");
+    await user.click(screen.getByRole("heading", { name: "Consultation" }));
+
+    await waitFor(() => {
+      const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { advice: string };
+      expect(body.advice).toBe("Use the inhaler as shown.");
+      expect(body.advice).not.toContain("{");
+    });
+  });
+
+  it("T7: a keyword that would fire inside a word is refused before it can be saved", async () => {
+    mockRoutes(snippetRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const advice = await screen.findByLabelText("Advice");
+    await user.click(advice);
+    await user.type(advice, "Take rest.");
+    await user.click(screen.getByTestId("advice-save-open"));
+    await user.type(screen.getByLabelText("Template name"), "Rest");
+    await user.type(screen.getByLabelText("Keyword"), "rest");
+
+    expect(await screen.findByTestId("advice-keyword-problem")).toBeInTheDocument();
+    expect(screen.getByTestId("advice-save")).toBeDisabled();
+    expect(callsTo("POST", "/api/opd/advice-templates")).toHaveLength(0);
+
+    await user.clear(screen.getByLabelText("Keyword"));
+    await user.type(screen.getByLabelText("Keyword"), ";rest");
+    expect(screen.queryByTestId("advice-keyword-problem")).toBeNull();
+    await user.click(screen.getByTestId("advice-save"));
+
+    await waitFor(() => {
+      expect(bodiesOf("POST", "/api/opd/advice-templates").at(-1)).toMatchObject({
+        title: "Rest", keyword: ";rest", textEn: "Take rest.",
+      });
+    });
+  });
+
+  it("T8: the reference is built FROM the resolver, and previews this patient", async () => {
+    /* A panel hand-written beside the engine drifts from it. This one renders the same list the
+       resolver runs, and shows what each token would produce right now. */
+    mockRoutes(snippetRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(await screen.findByTestId("snippet-ref-toggle"));
+    const ref = await screen.findByTestId("snippet-ref");
+    expect(within(ref).getByTestId("snippet-ref-weight")).toHaveTextContent("→ 60");
+    expect(within(ref).getByTestId("snippet-ref-name")).toHaveTextContent("→ Asha Devi");
+    expect(within(ref).getByTestId("snippet-ref-bp")).toHaveTextContent("→ 190/80");
+  });
+});
 
 function fetchCalls(): { url: string; path: string; method: string; body: string }[] {
   return vi.mocked(fetch).mock.calls.map(([input, init]) => {
@@ -470,26 +1156,33 @@ describe("OpdConsult", () => {
     await openPanel(user);
     const path = "/api/opd/visits/enc-1/consult/note";
 
+    /* DIAGNOSIS IS A TAG FIELD SINCE 2026-09-14 and its keystroke contract is the complaint's:
+       typing holds a draft, Enter commits the doctor's own words verbatim as a tag. */
     const diagnosis = await screen.findByLabelText("Diagnosis");
     await user.click(diagnosis);
     await user.type(diagnosis, "Acute pharyngitis");
     // typing is NOT the trigger — a screen saving on change would already have posted here
     expect(callsTo("PUT", path)).toHaveLength(0);
+    await user.type(diagnosis, "{Enter}");
 
-    const icd10 = screen.getByLabelText("ICD-10 code");
-    await user.click(icd10);
-    await waitFor(() => expect(callsTo("PUT", path)).toHaveLength(1));
-    await user.type(icd10, "J02.9");
     const chief = screen.getByLabelText("Chief complaint");
     await user.click(chief);
-    await user.type(chief, "fever 3d");
+    await user.type(chief, "fever 3d{Enter}");
     const advice = screen.getByLabelText("Advice");
     await user.click(advice);
     await user.type(advice, "warm fluids");
     await user.click(screen.getByRole("heading", { name: "Consultation" }));
 
+    /*
+      `diagnoses`, and NO `diagnosis` / `icd10Code`. The server derives both display columns from
+      this list, so the screen sends the fact once instead of three times in shapes that can
+      disagree. `icd10Code` is null because these are the doctor's own words — a tag only carries a
+      code when it came from the catalogue, which the ICD-10 tests below cover.
+    */
     await waitFor(() => expect(bodiesOf("PUT", path).at(-1)).toEqual({
-      chiefComplaint: "fever 3d", diagnosis: "Acute pharyngitis", icd10Code: "J02.9", advice: "warm fluids",
+      chiefComplaint: "fever 3d",
+      diagnoses: [{ text: "Acute pharyngitis", icd10Code: null }],
+      advice: "warm fluids",
     }));
     expect(await screen.findByTestId("note-saved")).toBeInTheDocument();
 
@@ -579,25 +1272,28 @@ describe("OpdConsult", () => {
   /**
    * PLAN 16a T6 — the formulary picker and the two new hard warnings.
    *
-   * The four acceptance points, in order: picking fills the drug NAME and leaves `medicineId` null;
+   * The four acceptance points, in order: picking fills the drug NAME and the `medicineId` with it;
    * a severe interaction needs a reason before the submit proceeds; a soft notice never blocks; and
    * the "not in formulary" hint is COVERAGE-GATED, absent even for an unresolved line while
    * coverage is low.
    */
   /**
-   * THE PICKER IS NOW A COMBOBOX OVER THE CLINICAL DRUG TIER, and the fixture changed with it.
+   * THE PICKER IS A TYPEAHEAD, AND 16a's `<select>` FIXTURE IS GONE WITH THE CONTROL.
    *
-   * 16a's picker was a `<select>` fed by the whole medicine table, and picking wrote `medicineId`.
-   * Both are gone: the table now holds a national release of 93,905 brands (so the control cannot
-   * mount it) and setting `medicineId` on a 97.7%-uncurated catalogue makes coverage report a
-   * working formulary while nothing is checked. The suggestion carries no medicine id at all.
+   * 16a's picker was a `<select>` fed by the whole medicine table. That control cannot mount a
+   * catalogue of 103,383 rows, so the screen asks for ten rows per prefix instead and no test here
+   * mocks `/formulary/medicines` any more.
+   *
+   * #186 landed a SECOND picker — `DrugCombobox` over `/formulary/suggest`, the NRCeS generic tier,
+   * which fills the name and deliberately leaves `medicineId` null. It is not wired into this
+   * screen and its own suite (`drug-combobox.test.tsx`) covers it; the fixture for it lives there,
+   * not here. What this screen renders is `DrugField`, whose pick carries an id — see the header on
+   * the drug field in `opd-consult.tsx` for why the owner's ruling points that way.
    */
-  const SUGGEST = {
+  /* The typeahead's own shape — ten rows for a prefix, not the catalogue. */
+  const DRUG_HITS = {
     items: [
-      {
-        genericId: "g-warf", name: "Warfarin sodium 5 mg oral tablet", doseForm: "Oral tablet",
-        route: "Oral route", composition: "Warfarin sodium (5/1 mg/Tablet)", matchedOn: "prefix",
-      },
+      { id: "m-warf", name: "Warf 5", form: "Oral tablet", strength: "5 mg", code: "D0001", routeClass: "systemic", salts: ["Warfarin sodium"], prefix: true },
     ],
   };
   const SEVERE_HIT = {
@@ -607,11 +1303,11 @@ describe("OpdConsult", () => {
     against: { scope: "prior", prescriptionId: "rx-old", issuedAt: "2026-08-08T04:00:00.000Z", assumedCurrent: false },
   };
 
-  it("16a: the picker fills the NAME and leaves medicineId null, and a severe interaction needs a reason before it will issue", async () => {
+  it("16a: the picker fills the name AND the id, and a severe interaction needs a reason before it will issue", async () => {
     let rxCalls = 0;
     mockRoutes({
       ...baseRoutes(),
-      "GET /api/formulary/suggest": { status: 200, body: SUGGEST },
+      "GET /api/formulary/medicines/search": { status: 200, body: DRUG_HITS },
       "GET /api/formulary/coverage": { status: 200, body: { coverage: 0.92, noticeEnabled: true } },
       "POST /api/opd/visits/enc-1/rx-precheck": {
         status: 201,
@@ -636,10 +1332,11 @@ describe("OpdConsult", () => {
     await user.click(screen.getByRole("tab", { name: "Prescription" }));
     await screen.findByLabelText("Drug");
 
-    // Picking from the formulary fills the NAME. It no longer carries an id — see below.
-    await user.type(screen.getByTestId("rx-drug-0"), "warfarin");
-    await user.click(await screen.findByTestId("rx-drug-0-opt-0"));
-    expect(screen.getByLabelText("Drug")).toHaveValue("Warfarin sodium 5 mg oral tablet");
+    /* THE PICKER IS A TYPEAHEAD SINCE 2026-09-14 — a `<select>` of the whole catalogue became
+       103,383 options once the owner's bundle landed. Three letters, then tap the row. */
+    await user.type(screen.getByLabelText("Drug"), "warf");
+    await user.click(await screen.findByTestId("rx-drug-0-hit-m-warf"));
+    expect(screen.getByLabelText("Drug")).toHaveValue("Warf 5");
     await user.type(screen.getByLabelText("Dose"), "1 tab");
     await user.click(screen.getByRole("button", { name: "Issue & print" }));
 
@@ -670,12 +1367,22 @@ describe("OpdConsult", () => {
      * DD9 INVERTED, DELIBERATELY, AND THIS LINE IS THE RECORD OF IT.
      *
      * It read `toBe("m-warf")`: picking carried the medicine id to the server. A pick now carries
-     * NO id, because the catalogue it picks from is 97.7% uncurated and an id is what tells every
-     * downstream guard the line was checked. Asserting `null` is not a weakened assertion — it
-     * pins the safety property that replaced the old one, and it fails the day a pick starts
-     * setting an id again without that decision being made on purpose.
+     * THE ID, and #186 asserted `null` here on a premise that has since been measured away.
+     *
+     * Its reasoning was sound and its mechanism is still real: an id is what tells every downstream
+     * guard the line was checked, so setting one on a row nothing can check makes `getCoverage`
+     * report a working formulary over lines no interaction, duplicate or allergy rule can read.
+     * What it rested on was *"the catalogue it picks from is 97.7% uncurated"*. Measured on the
+     * imported catalogue, 2026-09-14: **103,375 of 103,383 active medicines carry a moiety, and 8
+     * do not.**
+     *
+     * So the property is kept where it cannot rot, instead of by refusing the id: `searchMedicines`
+     * no longer OFFERS a row with no moiety (`search.test.ts` S1, mutation-checked). Every id this
+     * field can hand back is therefore one the safety layer can reason about, which is what makes
+     * picking worth more than typing — and what the owner asked for on 2026-09-14: one drug list,
+     * one safety layer. A hand-typed line still carries `null`, pinned two tests below.
      */
-    expect(body.lines[0]!.medicineId).toBeNull();
+    expect(body.lines[0]!.medicineId).toBe("m-warf");
     expect(body.interactionOverrides).toEqual([{
       lineIndex: 0, reason: "cardiology advised dual therapy", saltPair: ["s-asa", "s-warf"],
     }]);
@@ -694,7 +1401,7 @@ describe("OpdConsult", () => {
   it("16a: starting the next patient clears every trace of the last one's checks", async () => {
     mockRoutes({
       ...baseRoutes(),
-      "GET /api/formulary/suggest": { status: 200, body: SUGGEST },
+      "GET /api/formulary/medicines/search": { status: 200, body: DRUG_HITS },
       "GET /api/formulary/coverage": { status: 200, body: { coverage: 0.92, noticeEnabled: true } },
       "POST /api/opd/visits/enc-1/rx-precheck": {
         status: 201,
@@ -709,8 +1416,10 @@ describe("OpdConsult", () => {
     await openPanel(user);
 
     await user.click(screen.getByRole("tab", { name: "Prescription" }));
-    await user.type(screen.getByTestId("rx-drug-0"), "warfarin");
-    await user.click(await screen.findByTestId("rx-drug-0-opt-0"));
+    /* THE PICKER IS A TYPEAHEAD SINCE 2026-09-14 — a `<select>` of the whole catalogue became
+       103,383 options once the owner's bundle landed. Three letters, then tap the row. */
+    await user.type(screen.getByLabelText("Drug"), "warf");
+    await user.click(await screen.findByTestId("rx-drug-0-hit-m-warf"));
     await user.type(screen.getByLabelText("Dose"), "1 tab");
     await user.click(screen.getByRole("button", { name: "Issue & print" }));
 
@@ -762,7 +1471,7 @@ describe("OpdConsult", () => {
     };
     mockRoutes({
       ...baseRoutes(),
-      "GET /api/formulary/suggest": { status: 200, body: SUGGEST },
+      "GET /api/formulary/medicines/search": { status: 200, body: DRUG_HITS },
       // T8 is not deployed in this scenario: a 404 means the hint stays OFF, which is also the
       // correct long-term degrade (DD5).
       "GET /api/formulary/coverage": { status: 404, body: { message: "not found" } },
@@ -853,7 +1562,9 @@ describe("OpdConsult", () => {
     const refused = bodiesOf("POST", path)[0]!;
     expect(refused).toEqual({
       note: {
-        chiefComplaint: null, diagnosis: null, icd10Code: null, advice: null,
+        /* An empty diagnosis field is an empty LIST, not a null string — the server reads `[]` as
+           "the doctor cleared it" and writes null to both display columns from that one fact. */
+        chiefComplaint: null, diagnoses: [], advice: null,
         admissionAdvised: true, referralTo: "AIIMS Patna", referralNote: "cardiac eval",
       },
       testsOrderedReturnToday: true,
@@ -1023,7 +1734,7 @@ describe("OpdConsult", () => {
   it("CLOSE PASS 2: Ctrl+Enter does not complete the visit while the override dialog is open", async () => {
     mockRoutes({
       ...baseRoutes(),
-      "GET /api/formulary/suggest": { status: 200, body: SUGGEST },
+      "GET /api/formulary/medicines/search": { status: 200, body: DRUG_HITS },
       "POST /api/opd/visits/enc-1/prescriptions": {
         status: 409,
         body: { statusCode: 409, code: "allergy_conflict", message: "allergy", detail: { matches: [{ lineIndex: 0, substance: "Penicillin" }] } },
@@ -1056,7 +1767,7 @@ describe("OpdConsult", () => {
   it("CLOSE PASS 2: typing inside a dialog disarms the two-stage Escape — one press afterwards does not release the patient", async () => {
     mockRoutes({
       ...baseRoutes(),
-      "GET /api/formulary/suggest": { status: 200, body: SUGGEST },
+      "GET /api/formulary/medicines/search": { status: 200, body: DRUG_HITS },
       "POST /api/opd/visits/enc-1/prescriptions": {
         status: 409,
         body: { statusCode: 409, code: "allergy_conflict", message: "allergy", detail: { matches: [{ lineIndex: 0, substance: "Penicillin" }] } },
@@ -1138,8 +1849,9 @@ describe("OpdConsult", () => {
     expect(callsTo("POST", "/api/opd/visits/enc-1/consult/start")).toHaveLength(0);
     expect(callsTo("POST", "/api/opd/queues/sess-1/call-next")).toHaveLength(0);
 
-    // (b) BARE ENTER WHERE A DOCTOR ACTUALLY TYPES IT. Inside the chief complaint it is a newline,
-    // and it must reach none of this screen's lanes — `inField()`.
+    // (b) BARE ENTER WHERE A DOCTOR ACTUALLY TYPES IT. Since the complaint became a tag field it
+    // COMMITS A TAG there — a local act — and it must still reach none of this screen's lanes.
+    // `inField()` covers INPUT, which is what the tag field's editor is.
     await user.click(screen.getByRole("button", { name: "Start consultation" }));
     await screen.findByTestId("patient-panel");
     await user.type(screen.getByLabelText("Chief complaint"), "ks");
@@ -1150,8 +1862,9 @@ describe("OpdConsult", () => {
     expect(callsTo("POST", "/api/opd/queues/entries/qe-cur/skip")).toHaveLength(0);
     expect(callsTo("POST", "/api/opd/visits/enc-1/consult/complete")).toHaveLength(0);
     expect(callsTo("POST", "/api/opd/queues/sess-1/call-next")).toHaveLength(0);
-    // Enter landed in the note as a NEWLINE — the keystroke was text, exactly as it should be.
-    expect(screen.getByLabelText("Chief complaint")).toHaveValue("ks\n");
+    // The keystroke was TEXT: it made a tag and cleared the editor, and no lane fired.
+    expect(screen.getByTestId("note-chief-tag-0")).toHaveTextContent("ks");
+    expect(screen.getByLabelText("Chief complaint")).toHaveValue("");
 
     // (b2) THE CHORD IS NOT GUARDED THE SAME WAY, and that is the point of it being a chord: the
     // cursor is still inside the note, and Ctrl+Enter commits from there.
@@ -1727,5 +2440,449 @@ describe("OpdConsult — skipping a token, and taking it back", () => {
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     await waitFor(() => { expect(screen.queryByTestId("skip-dialog")).toBeNull(); });
+  });
+});
+
+/**
+ * ═══ THE CO-PILOT ON THE DESK (owner, 2026-09-14) ═══
+ *
+ * *"when doctor starts to write chief complaints, he don't need to type much, just tap and select
+ * … automatically highlight dangers … if the patient is a child, pregnant or has an allergy."*
+ */
+describe("OpdConsult — the clinical co-pilot", () => {
+  const HITS = {
+    items: [
+      { key: "SYN_URI_01", name: "Acute Upper Respiratory Infection (URI)", icd10: "J06.9", score: 4, matched: ["fever", "sore throat"] },
+      { key: "SYN_BRONCH_04", name: "Acute Bronchitis", icd10: "J20.9", score: 1, matched: ["cough"] },
+    ],
+  };
+  const line = (over: Record<string, unknown>) => ({
+    band: "pediatric", seq: 1, drugLabel: "Paracetamol Oral Suspension 250mg/5ml", purpose: "Antipyresis",
+    sig: "3.5 mL (for 14kg: 12.5 mg/kg) Every 6h SOS", duration: "3 Days",
+    dose: { state: "computed", mg: 87.5, ml: 2, basis: "12.5 mg/kg per dose × 7 kg ÷ 50 mg/mL" },
+    rx: { drug: "Paracetamol Oral Suspension 250mg/5ml", dose: "2 mL (87.5 mg)", route: "oral", frequency: "SOS", durationDays: 3, instructions: "3.5 mL example · Antipyresis", noSubstitution: false },
+    ...over,
+  });
+  const REGIMEN = {
+    regimen: {
+      syndrome: { key: "SYN_URI_01", name: "Acute Upper Respiratory Infection (URI)", icd10: "J06.9" },
+      band: "pediatric",
+      lines: [
+        line({}),
+        line({
+          seq: 2, drugLabel: "Azithromycin Oral Suspension 100mg/5ml", substitutedFor: "Amoxicillin and Clavulanate Syrup",
+          dose: { state: "needs_review", basis: "substituted for Penicillin allergy", example: "7 mL Day 1" },
+          rx: { drug: "Azithromycin Oral Suspension 100mg/5ml", dose: "— dose needs review", route: "oral", frequency: "OD", durationDays: 5, instructions: "substituted for Penicillin allergy", noSubstitution: false },
+        }),
+      ],
+      appliedConditions: ["Penicillin"],
+    },
+    cards: [
+      { kind: "allergy", severity: "red", title: "Allergy on file — 1 line(s) changed", detail: "Amoxicillin and Clavulanate Syrup → Azithromycin Oral Suspension 100mg/5ml", drugs: ["Amoxicillin and Clavulanate Syrup"], alternatives: [], ruleKeys: ["Penicillin"] },
+      { kind: "pregnancy_unknown", severity: "info", title: "Is she pregnant?", detail: "This hospital records no pregnancy status.", drugs: [], alternatives: [], ruleKeys: ["NO_PREGNANCY_FIELD"] },
+    ],
+    facts: { weightKg: 7, ageYears: 1, allergies: ["Penicillin"], pregnant: null },
+  };
+
+  function cdsRoutes(over: Record<string, Handler> = {}): Record<string, Handler> {
+    return {
+      ...baseRoutes(),
+      "GET /api/opd/cds/suggest": { status: 200, body: HITS },
+      "GET /api/opd/cds/regimen": { status: 200, body: REGIMEN },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+      ...over,
+    };
+  }
+
+  it("Y4: the co-pilot's danger cards are recomputed, never left naming a struck allergy", async () => {
+    /*
+      THE SEAM `addAllergy` ALREADY HAD. The cards are computed FROM the allergy list, so a strike
+      that did not re-ask would leave a red card on screen naming an allergy the record no longer
+      holds — and the doctor would read it as current.
+    */
+    mockRoutes({
+      ...cdsRoutes(),
+      "POST /api/patients/p-1/allergies/al-1/entered-in-error": { status: 201, body: { ok: true } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    /* The syndrome read fires on COMMITTED tags, so the complaint has to be entered first. */
+    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat{Enter}");
+    await user.click(await screen.findByTestId("cds-hit-SYN_URI_01"));
+    await screen.findByTestId("cds-regimen");
+    const before = callsTo("GET", "/api/opd/cds/regimen").length;
+
+    await user.click(screen.getByTestId("allergy-strike-al-1"));
+    await user.type(screen.getByLabelText("Reason"), "not penicillin, it was a rash from something else");
+    await user.click(screen.getByTestId("allergy-strike-confirm"));
+
+    await waitFor(() => {
+      expect(callsTo("GET", "/api/opd/cds/regimen").length).toBeGreaterThan(before);
+    });
+  });
+
+  it("P1: typing the complaint offers syndromes — and three characters is the floor, so it is not called per keystroke", async () => {
+    mockRoutes(cdsRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    /* A DRAFT IS NOT A COMPLAINT. The syndrome read fires on the tags the doctor has COMMITTED —
+       typing alone must not send anything, which is also what keeps it off the network per key. */
+    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat");
+    await waitFor(() => { expect(callsTo("GET", "/api/opd/cds/suggest")).toHaveLength(0); });
+
+    await user.keyboard("{Enter}");
+    expect(await screen.findByTestId("cds-hit-SYN_URI_01")).toHaveTextContent("Acute Upper Respiratory Infection");
+    // the complaint travels; the patient does NOT — this read sees no PHI
+    const url = callsTo("GET", "/api/opd/cds/suggest").at(-1)!.url;
+    expect(url).toContain("complaint=");
+    expect(url).not.toContain("enc-1");
+  });
+
+  it("P2: tapping a syndrome shows the dose computed for THIS child, with the weight it used on screen", async () => {
+    mockRoutes(cdsRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat{Enter}");
+    await user.click(await screen.findByTestId("cds-hit-SYN_URI_01"));
+
+    const card = await screen.findByTestId("cds-regimen");
+    expect(within(card).getByTestId("cds-band")).toHaveTextContent("Child regimen");
+    expect(within(card).getByTestId("cds-facts")).toHaveTextContent("7 kg");
+    expect(within(card).getByTestId("cds-dose-1")).toHaveTextContent("2 mL (87.5 mg)");
+    // the syndrome and the encounter travel; a WEIGHT never does
+    const url = callsTo("GET", "/api/opd/cds/regimen").at(-1)!.url;
+    expect(url).toContain("syndromeKey=SYN_URI_01");
+    expect(url).toContain("encounterId=enc-1");
+    expect(url).not.toMatch(/weight/i);
+  });
+
+  it("P3: the allergy danger is an ALERT and names the swap; the pregnancy question can be answered on the card", async () => {
+    mockRoutes(cdsRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat{Enter}");
+    await user.click(await screen.findByTestId("cds-hit-SYN_URI_01"));
+
+    const allergy = await screen.findByTestId("cds-card-allergy");
+    expect(allergy).toHaveAttribute("role", "alert");
+    expect(allergy).toHaveTextContent("→ Azithromycin");
+    expect(screen.getByTestId("cds-swap-2")).toBeInTheDocument();
+
+    await user.click(screen.getByTestId("cds-pregnant-yes"));
+    await waitFor(() => {
+      expect(callsTo("GET", "/api/opd/cds/regimen").at(-1)!.url).toContain("pregnant=true");
+    });
+  });
+
+  it("P4: one tap fills the prescription form and moves to it — and issues nothing", async () => {
+    mockRoutes(cdsRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat{Enter}");
+    await user.click(await screen.findByTestId("cds-hit-SYN_URI_01"));
+    await user.click(await screen.findByTestId("cds-fill"));
+
+    // the form is now the Rx tab, carrying both lines
+    const drugs = await screen.findAllByLabelText("Drug");
+    expect(drugs).toHaveLength(2);
+    expect((drugs[0] as HTMLInputElement).value).toContain("Paracetamol");
+    expect((drugs[1] as HTMLInputElement).value).toContain("Azithromycin");
+    // NOTHING was prescribed by filling
+    expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions")).toHaveLength(0);
+  });
+
+  /** The line the server refused to dose must arrive as the REASON, never as a number. */
+  it("P5: a dose that needs review fills the reason into the form, not a millilitre", async () => {
+    mockRoutes(cdsRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat{Enter}");
+    await user.click(await screen.findByTestId("cds-hit-SYN_URI_01"));
+    expect(screen.getByTestId("cds-dose-2")).toHaveTextContent("— dose needs review");
+
+    await user.click(screen.getByTestId("cds-fill"));
+    const doses = await screen.findAllByLabelText("Dose");
+    expect((doses[1] as HTMLInputElement).value).toBe("— dose needs review");
+    expect((doses[1] as HTMLInputElement).value).not.toMatch(/\d\s*m[lg]/i);
+  });
+});
+
+/**
+ * ═══ THE FIELDS THE DOCTOR ALREADY HAS, SHARPENED (owner, 2026-09-14) ═══
+ *
+ * *"The doctor must have the fields that he already have now. Doctor must be able to add ALLERGIES
+ * if there's no allergy already recorded … if doctor start writing 'fev' and auto suggestion will
+ * appear as 'fever' … If doctor types 'fever' and presses enter, 'fever' will be added a tag
+ * exactly as the doctor wrote. The doctor could simply click on 'x' cross to delete the tag."*
+ */
+describe("OpdConsult — the complaint tags and the allergy the doctor learns in the room", () => {
+  function fieldRoutes(over: Record<string, Handler> = {}): Record<string, Handler> {
+    return {
+      ...baseRoutes(),
+      "GET /api/opd/cds/complete/complaint": { status: 200, body: { items: [{ term: "fever", from: "syndrome" }, { term: "high grade fever", from: "symptom" }], ghost: "er" } },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+      "POST /api/patients/p-1/allergies": { status: 201, body: { allergyId: "al-9" } },
+      ...over,
+    };
+  }
+
+  it("F1: typing 'fev' offers 'fever' and ghosts the remainder — the input still holds only what was typed", async () => {
+    mockRoutes(fieldRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.type(screen.getByLabelText("Chief complaint"), "fev");
+
+    expect(await screen.findByTestId("note-chief-ghost")).toHaveTextContent("er");
+    expect(screen.getByTestId("note-chief-suggest-fever")).toBeInTheDocument();
+    expect(screen.getByLabelText("Chief complaint")).toHaveValue("fev");
+  });
+
+  it("F2: → accepts the ghost into the input, and does NOT commit it — the doctor keeps typing", async () => {
+    mockRoutes(fieldRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    const input = screen.getByLabelText("Chief complaint");
+
+    await user.type(input, "fev");
+    await screen.findByTestId("note-chief-ghost");
+    await user.keyboard("{ArrowRight}");
+
+    expect(input).toHaveValue("fever");
+    expect(screen.queryByTestId("note-chief-tag-0")).toBeNull();
+  });
+
+  /** THE RULE: Enter commits the doctor's own words, whatever the suggestion list is showing. */
+  it("F3: Enter commits EXACTLY what was typed, even when it is nothing the vocabulary knows", async () => {
+    mockRoutes(fieldRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.type(screen.getByLabelText("Chief complaint"), "fever since 3 days, worse at night{Enter}");
+
+    expect(screen.getByTestId("note-chief-tag-0")).toHaveTextContent("fever since 3 days, worse at night");
+    expect(screen.getByLabelText("Chief complaint")).toHaveValue("");
+  });
+
+  it("F4: many tags, a tap adds the suggestion, × removes one, and the stored value is what the note PUTs", async () => {
+    mockRoutes(fieldRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    const input = screen.getByLabelText("Chief complaint");
+
+    await user.type(input, "fever{Enter}");
+    await user.type(input, "dry cough{Enter}");
+    await user.type(input, "fev");
+    await user.click(await screen.findByTestId("note-chief-suggest-high grade fever"));
+    expect(screen.getAllByTestId(/note-chief-tag-\d/)).toHaveLength(3);
+
+    await user.click(screen.getByTestId("note-chief-remove-1"));
+    expect(screen.getAllByTestId(/note-chief-tag-\d/)).toHaveLength(2);
+
+    await user.click(screen.getByRole("heading", { name: "Consultation" }));
+    await waitFor(() => {
+      expect(bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1)?.chiefComplaint)
+        .toBe("fever · high grade fever");
+    });
+  });
+
+  /**
+   * ═══ BACKSPACE EDITS WHAT IS BEING TYPED. IT NEVER TAKES BACK WHAT WAS COMMITTED ═══
+   *
+   * Owner, 2026-09-14: *"if the backspace is pressed for little longer the earlier chip also gets
+   * removed. This is not good. Because of this doctor has to retype again and again."*
+   *
+   * This test asserted the OPPOSITE until then — "the standard chip gesture", as Gmail does it with
+   * recipient chips. It is the wrong borrowing. A recipient chip is `bob@x.com` and costs three
+   * seconds to retype; a chip here is *"fever since 3 days, worse at night"*, and on the diagnosis
+   * field it carries an ICD-10 code that has to be found through the typeahead again.
+   *
+   * The mechanism is the part worth keeping in mind: there was no `e.repeat` guard, so ONE held key
+   * deleted the draft character by character and then — with no pause and no boundary — kept firing
+   * into the committed tags at the keyboard's repeat rate. Deleting text you are typing and
+   * deleting data you committed are different acts, and auto-repeat walked from one to the other.
+   *
+   * The rule now has one meaning per gesture: **Enter commits, × removes.**
+   */
+  it("F5: backspace on an empty input leaves the committed tags alone", async () => {
+    mockRoutes(fieldRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    const input = screen.getByLabelText("Chief complaint");
+
+    await user.type(input, "fever{Enter}");
+    await user.type(input, "cough{Enter}");
+    await user.keyboard("{Backspace}");
+
+    expect(screen.getAllByTestId(/note-chief-tag-\d/)).toHaveLength(2);
+    expect(screen.getByTestId("note-chief-tag-1")).toHaveTextContent("cough");
+  });
+
+  it("F5b: a HELD backspace clears the draft and stops dead at the chips", async () => {
+    mockRoutes(fieldRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    const input = screen.getByLabelText("Chief complaint");
+
+    await user.type(input, "fever since 3 days{Enter}");
+    await user.type(input, "worse at night{Enter}");
+    /* A draft, then the key held down long past the end of it — the doctor's actual gesture. */
+    await user.type(input, "coug");
+    await user.keyboard("{Backspace>20/}");
+
+    expect(input).toHaveValue("");
+    expect(screen.getAllByTestId(/note-chief-tag-\d/)).toHaveLength(2);
+    expect(screen.getByTestId("note-chief-tag-0")).toHaveTextContent("fever since 3 days");
+    expect(screen.getByTestId("note-chief-tag-1")).toHaveTextContent("worse at night");
+  });
+
+  it("F5c: × still removes a tag, and it is reachable without the mouse", async () => {
+    /* The one thing the new rule costs is a keyboard path to removal — and it does not, because the
+       × is a real button sitting before the input in tab order. Shift+Tab reaches the last one. */
+    mockRoutes(fieldRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    const input = screen.getByLabelText("Chief complaint");
+
+    await user.type(input, "fever{Enter}");
+    await user.type(input, "cough{Enter}");
+
+    await user.tab({ shift: true });
+    expect(screen.getByTestId("note-chief-remove-1")).toHaveFocus();
+    /*
+      SPACE, not Enter, and the reason is the test environment rather than the product: a real
+      browser activates a focused button on either key, and jsdom implements only Space. Asserting
+      Enter here would be asserting jsdom's gap rather than what the doctor's keyboard does.
+    */
+    await user.keyboard(" ");
+
+    expect(screen.getAllByTestId(/note-chief-tag-\d/)).toHaveLength(1);
+    expect(screen.getByTestId("note-chief-tag-0")).toHaveTextContent("fever");
+  });
+
+  /** The allergy panel could only ever SHOW. It is the one fact every guardrail on this screen reads. */
+  it("F6: with nothing on file the doctor can record an allergy, and it posts as learnt AT THE CONSULT", async () => {
+    let allergies: Record<string, unknown>[] = [];
+    mockRoutes(fieldRoutes({
+      "GET /api/patients/p-1/allergies": () => ({ status: 200, body: { items: allergies } }),
+      "POST /api/patients/p-1/allergies": () => {
+        allergies = [{ id: "al-9", substance: "Penicillin", severity: "severe", status: "active" }];
+        return { status: 201, body: { allergyId: "al-9" } };
+      },
+    }));
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    expect(await screen.findByText("No allergy recorded")).toBeInTheDocument();
+    await user.click(screen.getByTestId("allergy-add"));
+    await user.type(screen.getByLabelText("Allergy — substance"), "Penicillin");
+    await user.selectOptions(screen.getByLabelText("Severity"), "severe");
+    await user.click(screen.getByTestId("allergy-save"));
+
+    await waitFor(() => { expect(callsTo("POST", "/api/patients/p-1/allergies")).toHaveLength(1); });
+    expect(bodiesOf("POST", "/api/patients/p-1/allergies")[0])
+      .toEqual({ substance: "Penicillin", severity: "severe", source: "consult" });
+    // and the chip the guardrails read is on screen without a reload
+    expect(await screen.findByTestId("allergy-chip-al-9")).toHaveTextContent("Penicillin");
+  });
+});
+
+/**
+ * ═══ THE DRUG FIELD (owner, 2026-09-14) ═══
+ *
+ * *"even though the doctor doesn't enable AI suggestion in the prescription tab, auto complete will
+ * work if doctor starts to type drug name … 'par' → Paracetamol …"*
+ */
+describe("OpdConsult — the drug typeahead", () => {
+  const PAR = {
+    items: [
+      { id: "m-pcm500", name: "Paracetamol 500 mg oral capsule", form: "Oral capsule", strength: "500 mg", code: "D7611", routeClass: "systemic", salts: ["Paracetamol"], prefix: true },
+      { id: "m-pcm1g", name: "Paracetamol 1 g oral tablet", form: "Oral tablet", strength: "1 g", code: "D10146", routeClass: "systemic", salts: ["Paracetamol"], prefix: true },
+    ],
+  };
+  function drugRoutes(over: Record<string, Handler> = {}): Record<string, Handler> {
+    return {
+      ...baseRoutes(),
+      "GET /api/formulary/medicines/search": { status: 200, body: PAR },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+      ...over,
+    };
+  }
+
+  it("D1: three letters fetch the catalogue — two do not, so it is not called per keystroke", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+
+    await user.type(screen.getByLabelText("Drug"), "pa");
+    await waitFor(() => { expect(callsTo("GET", "/api/formulary/medicines/search")).toHaveLength(0); });
+
+    await user.type(screen.getByLabelText("Drug"), "r");
+    expect(await screen.findByTestId("rx-drug-0-hits")).toBeInTheDocument();
+    expect(callsTo("GET", "/api/formulary/medicines/search").at(-1)!.url).toContain("q=par");
+  });
+
+  it("D2: the row shows the moiety, strength and the hospital's own code — not just a name", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(screen.getByLabelText("Drug"), "par");
+
+    const row = await screen.findByTestId("rx-drug-0-hit-m-pcm500");
+    expect(row).toHaveTextContent("Paracetamol 500 mg oral capsule");
+    expect(row).toHaveTextContent("Paracetamol · 500 mg · D7611");
+    expect(row).toHaveTextContent("Oral capsule");
+  });
+
+  it("D3: tapping a row fills the name AND the id — which is what makes the line checkable", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(screen.getByLabelText("Drug"), "par");
+    await user.click(await screen.findByTestId("rx-drug-0-hit-m-pcm1g"));
+
+    expect(screen.getByLabelText("Drug")).toHaveValue("Paracetamol 1 g oral tablet");
+    // the list closes, and the id rides the line into the prescription POST
+    expect(screen.queryByTestId("rx-drug-0-hits")).toBeNull();
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions").length).toBeGreaterThan(0); });
+    const body = bodiesOf("POST", "/api/opd/visits/enc-1/prescriptions")[0] as { lines: { medicineId: string | null }[] };
+    expect(body.lines[0]!.medicineId).toBe("m-pcm1g");
+  });
+
+  /** 16a design law 1: free typing is always legal, and typing over a pick un-links it. */
+  it("D4: typing over a chosen drug clears its id — the line stops claiming to be that medicine", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(screen.getByLabelText("Drug"), "par");
+    await user.click(await screen.findByTestId("rx-drug-0-hit-m-pcm500"));
+    await user.clear(screen.getByLabelText("Drug"));
+    await user.type(screen.getByLabelText("Drug"), "Tab Crocin 650 (hand written)");
+
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions").length).toBeGreaterThan(0); });
+    const body = bodiesOf("POST", "/api/opd/visits/enc-1/prescriptions")[0] as { lines: { drug: string; medicineId: string | null }[] };
+    expect(body.lines[0]!.drug).toBe("Tab Crocin 650 (hand written)");
+    expect(body.lines[0]!.medicineId).toBeNull();
+  });
+
+  it("D5: the screen no longer fetches the whole catalogue — 103,383 rows is not a dropdown", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(screen.getByLabelText("Drug"), "par");
+    await screen.findByTestId("rx-drug-0-hits");
+
+    expect(callsTo("GET", "/api/formulary/medicines")).toHaveLength(0);
   });
 });

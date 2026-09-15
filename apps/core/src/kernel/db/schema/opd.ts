@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  bigserial, boolean, date, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, primaryKey,
+  bigserial, boolean, check, date, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, primaryKey,
 } from "drizzle-orm/pg-core";
 import { patients } from "./patients";
 import { resources } from "./resources";
@@ -361,6 +361,259 @@ export const opdEncounters = pgTable(
     index("opd_encounters_status_idx").on(t.status),
   ],
 );
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * THE COMPLAINT VOCABULARY — MANY PHRASINGS, ONE MEANING, AND THE DOCTOR'S WORDS UNTOUCHED
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner, 2026-09-14: *"how are we tackling 'chest pain', 'pain in chest', 'tight chest', 'heavy
+ * chest', 'seene me dard', 'chhaati me dard'? Are we mapping different phrases with common meaning?
+ * And is our system learning vocabulary of doctor?"*
+ *
+ * Measured before any of this: the answer was NO to both. The suggester read 64 English strings
+ * built at module load from `knowledge.json` — zero Devanagari, zero romanised Hindi, no synonyms —
+ * and nothing ever wrote to it. A doctor typing `seene me dard` five hundred times got no
+ * suggestion on the five hundred and first.
+ *
+ * ═══ THE SHAPE IS THE ONE THIS LANE HAS USED THREE TIMES ═══
+ *
+ * Diagnosis keeps the doctor's words AND an ICD-10 code. An allergy keeps the words and an allergen
+ * class. A prescription line keeps the words and a medicine id. In every case the free text is what
+ * is stored and shown, and the code is what a machine may reason about. A complaint gets the same
+ * treatment: `opd_encounters.chief_complaint` still holds exactly what the doctor typed — nothing
+ * here changes that, and `TagField`'s law is untouched — and a CONCEPT is what the syndrome matcher
+ * and the worklist read.
+ *
+ * ═══ THE CONCEPT IS NOT STORED ON THE ENCOUNTER, AND THAT IS DELIBERATE ═══
+ *
+ * It is RESOLVED from the term wherever it is needed. Storing it would freeze a mapping that is
+ * still being learnt: map `seene me dard` next month and every note written before it would
+ * silently disagree with every note written after. Resolution at read time means a mapping improves
+ * the past as well as the future, which is what a vocabulary that is still growing requires.
+ */
+export const opdComplaintConcepts = pgTable(
+  "opd_complaint_concepts",
+  {
+    /** A stable key, e.g. `chest_pain`. Referenced by terms and by nothing that a doctor types. */
+    key: text("key").primaryKey(),
+    /** What a human calls it on the mapping screen. Never shown in place of the doctor's words. */
+    label: text("label").notNull(),
+    active: boolean("active").notNull().default(true),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: text("updated_by").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+
+/**
+ * One surface form. `chest pain`, `seene me dard` and `सीने में दर्द` are three rows of one concept.
+ *
+ * ═══ ROMANISED HINDI IS STORED, NOT TRANSLITERATED ═══
+ *
+ * There is no standard romanisation: `seene`, `sine` and `seenay` are all things a doctor types,
+ * and an algorithm that mapped one would miss the others while inventing forms nobody uses. So each
+ * spelling is a ROW, and the ones that matter are discovered from what doctors actually type
+ * (`opd_complaint_term_usage`) rather than imagined in advance.
+ */
+export const opdComplaintTerms = pgTable(
+  "opd_complaint_terms",
+  {
+    id: text("id").primaryKey(),
+    conceptKey: text("concept_key").notNull().references(() => opdComplaintConcepts.key),
+    term: text("term").notNull(),
+    /** `en` | `hi` (Devanagari) | `hinglish` (Hindi in Latin letters). Shown on the mapping screen. */
+    script: text("script").notNull(),
+    /** `seed` — shipped; `mapped` — a human mapped it off the worklist. Never a machine alone. */
+    source: text("source").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    /** One surface form means ONE thing. Two concepts claiming `cough` is a coin toss at every keystroke. */
+    uniqueIndex("opd_complaint_terms_term_ux").using("btree", sql`lower(${t.term})`),
+    index("opd_complaint_terms_concept_idx").on(t.conceptKey),
+    check("opd_complaint_terms_script_ck", sql`${t.script} in ('en', 'hi', 'hinglish')`),
+    check("opd_complaint_terms_source_ck", sql`${t.source} in ('seed', 'mapped')`),
+  ],
+);
+
+/**
+ * ═══ WHAT THIS HOSPITAL ACTUALLY TYPES — THE LEARNING, AND IT NEEDS NO MODEL ═══
+ *
+ * `curation.ts` already states the philosophy this tree believes in: *the prescribing stream is the
+ * worklist* — coverage grows along the path of actual use rather than by somebody trying to type an
+ * entire pharmacopoeia in. The same move here. Every complaint tag on a COMPLETED consultation is
+ * counted, and the suggester ranks by it.
+ *
+ * Two things follow, and the second is the one that answers the owner's question:
+ *
+ *   · A phrase a doctor uses is offered back to them, whether or not anyone has mapped it. That is
+ *     the vocabulary learning, with no NLP at all — `seene me dard` is suggested on the 51st use
+ *     because it was used fifty times, not because a machine understood it.
+ *   · The most-used terms with NO concept become a ranked worklist. The synonym sets then grow from
+ *     real use, most-frequent first, exactly as `unresolvedTop` grows the formulary.
+ *
+ * COUNTED ON COMPLETION, ONCE. The note autosaves on every blur, so counting there would inflate a
+ * phrase by however many times the doctor tabbed out of the box. A completed consultation happens
+ * once per encounter and is the honest unit.
+ */
+export const opdComplaintTermUsage = pgTable(
+  "opd_complaint_term_usage",
+  {
+    /** Lower-cased surface form, exactly as the doctor committed it apart from case. */
+    term: text("term").notNull(),
+    /** Whose habit this is. The hospital's total is the sum across doctors. */
+    doctorId: text("doctor_id").notNull().references(() => opdDoctors.id),
+    uses: integer("uses").notNull().default(0),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.term, t.doctorId] }),
+    /** The worklist reads "most used across the hospital", which is this index. */
+    index("opd_complaint_term_usage_uses_idx").on(t.uses),
+  ],
+);
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * THE ADVICE LIBRARY — THE ONE FIELD THE PATIENT READS
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner's own idea, 2026-09-14: *"a prefilled template saved as a module."* Every other field on
+ * the consult screen is read by staff. Advice is read by the patient, at home, tomorrow morning —
+ * it prints on the e-Rx (`rx-print.tsx`) — and that is what shapes this table.
+ *
+ * ═══ WHO OWNS A TEMPLATE: THE HOSPITAL, AND ALSO EACH DOCTOR ═══
+ *
+ * Owner ruling: a shared library with the doctor's own favourites floated to the top. So
+ * `owner_user_id` is NULL for a hospital row and the doctor's id for their own — one table, two
+ * scopes, and the list a doctor sees is their rows first and then everyone's. A per-doctor-only
+ * design was rejected for a measured reason and not a taste: the list is empty on day one and
+ * every new doctor starts cold.
+ *
+ * ═══ BOTH SCRIPTS ARE STORED; THE DOCTOR CHOOSES WHICH ONE GOES ON THE SLIP ═══
+ *
+ * Owner ruling: *"Doctor chooses the language per template"* — each template offers its English and
+ * its Hindi side by side and tapping inserts only the one tapped. So both live on the row and
+ * NEITHER is a translation performed at print time.
+ *
+ * The i18n layer cannot help here and it is worth being exact about why: `rx.advice` translates the
+ * LABEL, and `encounter.advice` is printed verbatim as the value. A patient who reads only
+ * Devanagari gets nothing from a translated label above English prose. The script has to be in the
+ * stored string, which is why it is in this table.
+ *
+ * Either column may be null and at least one must not be: a doctor's own template may be written
+ * in one script only, and a half-filled row is more useful than no row. The field then offers one
+ * button instead of two. What is refused is a row with no text in either script.
+ */
+export const opdAdviceTemplates = pgTable(
+  "opd_advice_templates",
+  {
+    id: text("id").primaryKey(),
+    /** NULL = the hospital's shared library. Otherwise the `users.id` who saved it. */
+    ownerUserId: text("owner_user_id"),
+    /** The short label on the chip — what the doctor scans for, never what is printed. */
+    title: text("title").notNull(),
+    /**
+     * ═══ THE TYPED KEYWORD, AND WHY IT MUST NOT START INSIDE A WORD ═══
+     *
+     * Owner, 2026-09-14, asked for Raycast-style snippets: type `;rest` in the advice box and the
+     * template expands where the caret is. Null for a template that is only ever TAPPED, which
+     * every seeded row is.
+     *
+     * Expansion fires WHILE THE DOCTOR TYPES, so a keyword of `rest` would detonate inside "rest
+     * and fluids", "arrest" and "restrict". `keywordProblem` (web `lib/snippets.ts`) requires a
+     * leading `;`, `/` or `\` and the service refuses anything else — the check is on both sides
+     * because the browser's is a courtesy and this one is the rule.
+     *
+     * Unique per owner, case-folded: two of a doctor's own snippets answering to `;uri` is a
+     * coin toss about which one expands, and the doctor would never find out which.
+     */
+    keyword: text("keyword"),
+    /**
+     * BOTH ARE NULLABLE AND AT LEAST ONE MUST BE PRESENT — see the CHECK below.
+     *
+     * The first cut had `text_en NOT NULL`, which quietly asserted that every template is written
+     * in English first. A doctor who writes their advice in Hindi — for a field the PATIENT reads,
+     * in a hospital where most patients read Devanagari — would have had it stored in the English
+     * column and offered back under an "English" button. The column would have been lying about
+     * its own contents, and nothing would ever have said so.
+     */
+    textEn: text("text_en"),
+    textHi: text("text_hi"),
+    active: boolean("active").notNull().default(true),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: text("updated_by").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    /** The list is read as "mine, then the hospital's", which is this index in that order. */
+    index("opd_advice_templates_owner_idx").on(t.ownerUserId, t.title),
+    /** A template with no text at all is not a template. One script is enough; none is not. */
+    check("opd_advice_templates_text_ck", sql`${t.textEn} is not null or ${t.textHi} is not null`),
+    /**
+     * One keyword per owner, case-folded, and NULLs do not collide — Postgres treats them as
+     * distinct, which is what lets every tapped-only template leave the column empty.
+     */
+    uniqueIndex("opd_advice_templates_keyword_ux")
+      .on(t.ownerUserId, sql`lower(${t.keyword})`)
+      .where(sql`${t.keyword} is not null`),
+  ],
+);
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * THE DIAGNOSES OF ONE ENCOUNTER — ONE ROW EACH, AND EACH ONE KEEPS ITS OWN CODE
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner, 2026-09-14: the diagnosis field takes SEVERAL tags — a primary diagnosis and the
+ * comorbidities beside it, which is how an OPD note actually reads ("Acute URI · Type 2 DM · HTN").
+ *
+ * ═══ WHY THIS IS A TABLE WHEN CHIEF COMPLAINT IS NOT ═══
+ *
+ * `TagField` deliberately changed no schema for chief complaint: the tags join with " · " into the
+ * column that was already there, and nothing downstream — the print, the e-Rx, the timeline, the
+ * MRD coder's screen — learns a new shape. That works because a complaint is only ever WORDS.
+ *
+ * A diagnosis is words AND A CODE, and the two must stay married. Three tags of which the second
+ * and third carry codes cannot be stored as two parallel " · " strings: the moment one tag is
+ * free-typed the lists are different lengths and every reader has to guess the pairing. That is
+ * the parallel-array defect this tree keeps finding, and here it would put one patient's ICD-10
+ * code against another patient's diagnosis on a claim.
+ *
+ * So the structured truth lives here, one row per diagnosis, `seq` in the order the doctor wrote
+ * them — and `opd_encounters.diagnosis` / `.icd10_code` are still written as the de-normalised
+ * DISPLAY values, so every existing reader is untouched. Normalise for the data, de-normalise for
+ * the document: the reader that needs the pairing joins this table, and the print does not have to.
+ *
+ * ═══ NO FOREIGN KEY TO `icd10_codes`, ON PURPOSE ═══
+ *
+ * `icd10_code` is nullable and unconstrained. A doctor may write a diagnosis this catalogue has
+ * never heard of — the same law the drug field keeps — and a reference table able to REFUSE one
+ * would turn a foreign standard's coverage into a clinical constraint. Null is the ordinary case
+ * for a free-typed tag, not an error.
+ */
+export const opdEncounterDiagnoses = pgTable(
+  "opd_encounter_diagnoses",
+  {
+    encounterId: text("encounter_id").notNull().references(() => opdEncounters.id),
+    /** 0-based, the order the doctor committed them. `seq` 0 is the primary diagnosis. */
+    seq: integer("seq").notNull(),
+    /** EXACTLY what the doctor committed — the field never rewrites the doctor's words. */
+    text: text("text").notNull(),
+    /** The catalogue code when the tag was PICKED; null when it was typed. */
+    icd10Code: text("icd10_code"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.encounterId, t.seq] }),
+    /** MRD and every claim count by code, so the code is the one thing read across encounters. */
+    index("opd_encounter_diagnoses_code_idx").on(t.icd10Code),
+  ],
+);
+
 
 /** Queue rows. seq is the arrival order (bigserial — never the ULID id). One live row per encounter at a time. */
 export const opdQueueEntries = pgTable(

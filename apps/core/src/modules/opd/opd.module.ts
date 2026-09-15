@@ -10,6 +10,9 @@ import { getEncounter } from "./encounters";
 import { RealtimeGateway } from "../../kernel/realtime/gateway";
 import { RealtimeModule } from "../../kernel/realtime/realtime.module";
 import { OpdMastersController } from "./opd-masters.controller";
+import { OpdVocabularyController } from "./opd-vocabulary.controller";
+import { OpdAdviceController } from "./opd-advice.controller";
+import { OpdCdsController } from "./opd-cds.controller";
 import { OpdQueueController } from "./opd-queue.controller";
 import { OpdVisitsController } from "./opd-visits.controller";
 import { OPD_TOPIC_SPACES, opdTopicRouter } from "./realtime";
@@ -42,7 +45,7 @@ class OpdRealtimeRegistrar implements OnModuleInit {
  */
 @Module({
   imports: [RealtimeModule],
-  controllers: [OpdMastersController, OpdVisitsController, OpdQueueController],
+  controllers: [OpdMastersController, OpdVisitsController, OpdQueueController, OpdCdsController, OpdAdviceController, OpdVocabularyController],
   providers: [OpdRealtimeRegistrar],
 })
 export class OpdModule implements OnModuleInit {

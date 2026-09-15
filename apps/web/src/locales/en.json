@@ -335,7 +335,8 @@
       "departments": "Departments",
       "rooms": "Rooms",
       "doctors": "Doctors",
-      "schedules": "Schedules & leaves"
+      "schedules": "Schedules & leaves",
+      "vocabulary": "Complaint words"
     },
     "newDepartment": "New department",
     "addDepartment": "Add department",
@@ -388,6 +389,28 @@
       "inactive": "Deactivated and still on file: {{list}}. A deactivated master stops being offered at the counter; it is never deleted, because past visits point at it.",
       "allActive": "Everything here is active.",
       "cannot": "I cannot answer that from this screen. I can tell you about the departments, rooms and doctors on this deployment, and which are deactivated."
+    },
+    "vocabulary": {
+      "intro": "Phrases doctors have written that the co-pilot does not recognise yet, most used first. Mapping one groups it with the phrasings that mean the same thing — in any script.",
+      "empty": "Nothing to map. Every phrase written so far is already in the vocabulary.",
+      "phrase": "Phrase",
+      "uses": "Written",
+      "map": "Map",
+      "mapping": "What does “{{term}}” mean?",
+      "maybe": "Perhaps:",
+      "concept": "Existing meaning",
+      "chooseConcept": "Choose an existing meaning…",
+      "newConcept": "New meaning",
+      "newConceptPlaceholder": "…or name a new one",
+      "script": "Script",
+      "scripts": {
+        "en": "English",
+        "hi": "Hindi (Devanagari)",
+        "hinglish": "Hindi in English letters"
+      },
+      "confirm": "Map it",
+      "pickAConcept": "Choose a meaning, or name a new one.",
+      "cancel": "Cancel"
     }
   },
   "opdAppt": {
@@ -711,6 +734,19 @@
     "queueRail": "The queue",
     "noPatientTitle": "Nobody is in the chair",
     "noPatientBody": "Call the next token, or press Enter. The queue on the left is live.",
+    "drugPlaceholder": "type 3 letters — e.g. par, amox, clav",
+    "complaintPlaceholder": "type a symptom, press Enter to add it",
+    "complaintHint": "Enter adds exactly what you typed · → completes the suggestion · × removes a tag",
+    "addAllergy": "+ Add allergy",
+    "allergySubstance": "Allergy — substance",
+    "allergyPlaceholder": "e.g. Penicillin",
+    "allergySeverity": "Severity",
+    "allergySave": "Record allergy",
+    "severity": {
+      "mild": "Mild",
+      "moderate": "Moderate",
+      "severe": "Severe"
+    },
     "park": "Park patient",
     "resume": "Resume",
     "openPatient": "Open",
@@ -735,7 +771,42 @@
       "at_investigation": "Gone for vitals or a test",
       "not_ready": "Patient or attendant not ready",
       "other": "Other"
-    }
+    },
+    "diagnosisPlaceholder": "Type a diagnosis or an ICD-10 code…",
+    "diagnosisHint": "Enter adds your own words. Tap a suggestion to take its ICD-10 code.",
+    "icd10Hint": "Set by the diagnoses above — tap a suggestion to attach its code.",
+    "allergyBlocks": "blocks {{list}}",
+    "allergyUnknown": "Saved as written — the prescription check knows no rule for this, so it will not warn on it.",
+    "adviceSaveAsTemplate": "+ Save as my template",
+    "adviceTemplateTitle": "Template name",
+    "adviceTemplateTitlePlaceholder": "Name this template…",
+    "adviceSave": "Save template",
+    "allergyRemoveOne": "Remove {{substance}}",
+    "allergyRemoveTitle": "Remove {{substance}} from this patient's allergies?",
+    "allergyRemoveProvenance": "Recorded at {{source}}, {{when}}.",
+    "allergyRemoveKept": "It is marked entered-in-error, not deleted: it stops warning immediately, and the record keeps who removed it and why.",
+    "allergyRemoveReason": "Reason",
+    "allergyRemoveReasonPlaceholder": "Why is this wrong?",
+    "allergyRemoveConfirm": "Remove it",
+    "allergyCorrectedToggle": "{{count}} removed earlier",
+    "allergySource": {
+      "registration": "registration",
+      "vitals": "the vitals bay",
+      "consult": "this consultation",
+      "radiology": "radiology, from a contrast reaction"
+    },
+    "adviceKeyword": "Keyword",
+    "adviceKeywordProblem": {
+      "lead": "A keyword must start with ; / or \\ — otherwise it fires inside ordinary words.",
+      "short": "Add a word after the ; — a lead character alone is not a keyword.",
+      "space": "A keyword cannot contain a space."
+    },
+    "snippetStops": "Tab to fill: {{label}} ({{n}} more)",
+    "snippetReference": "Placeholders you can use",
+    "snippetReferenceHint": "Type these inside a template. They fill from this patient the moment the snippet expands — nothing with braces is ever saved.",
+    "snippetUnknownTokens": "Not a placeholder: {{list}} — it will become a blank to fill, not text.",
+    "complaintUsedByYou_one": "you have written this once",
+    "complaintUsedByYou_other": "you have written this {{count}} times"
   },
   "rx": {
     "regNo": "Reg. No.",
@@ -3722,5 +3793,18 @@
       "dues_one": "{{count}} unpaid bill on their account. It is listed in the rail. — from the dues poll.",
       "dues_other": "{{count}} unpaid bills on their account. They are listed in the rail. — from the dues poll."
     }
+  },
+  "cds": {
+    "suggests": "Suggests",
+    "band": {
+      "adult": "Adult regimen",
+      "pediatric": "Child regimen"
+    },
+    "noWeight": "no weight on file",
+    "instead": "Instead",
+    "swapped": "Swapped",
+    "pregnantYes": "Yes, pregnant",
+    "pregnantNo": "No, not pregnant",
+    "fill": "Fill prescription ({{n}} lines)"
   }
 }

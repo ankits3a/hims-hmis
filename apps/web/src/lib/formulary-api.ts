@@ -124,3 +124,32 @@ export function formularyErrorMessage(e: unknown): string {
   }
   return e instanceof Error ? e.message : String(e);
 }
+
+/**
+ * ═══ THE DRUG TYPEAHEAD (owner, 2026-09-14) ═══
+ *
+ * *"even though the doctor doesn't enable AI suggestion in the prescription tab, auto complete will
+ * work if doctor starts to type drug name."* — so this is the always-on road, and it takes ten rows
+ * rather than the catalogue.
+ *
+ * `fetchMedicines()` above is now the WRONG instrument for a screen and stays only for the admin
+ * surfaces that genuinely list everything: after the owner's catalogue landed it returns 103,383
+ * rows and about 15 MB, measured.
+ */
+export type WireMedicineHit = {
+  id: string;
+  name: string;
+  form: string;
+  strength: string | null;
+  /** The hospital's catalogue code — `D0230`. Only generics carry one; a branded row has none. */
+  code: string | null;
+  routeClass: string;
+  salts: string[];
+  /** True when the NAME starts with what was typed — the field bolds that much of it. */
+  prefix: boolean;
+};
+
+export const searchMedicines = async (q: string, limit = 10): Promise<WireMedicineHit[]> =>
+  (await api<{ items: WireMedicineHit[] }>(
+    "GET", `/formulary/medicines/search?q=${encodeURIComponent(q)}&limit=${String(limit)}`,
+  )).items;

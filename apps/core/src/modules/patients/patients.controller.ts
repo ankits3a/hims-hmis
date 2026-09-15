@@ -261,6 +261,14 @@ const allergyBody = z.object({
   reaction: z.string().max(500).optional(),
   severity: severityEnum.optional(),
   source: z.enum(["registration", "vitals", "consult"]),
+  /**
+   * The coded allergen, set only when the seat PICKED one from `/opd/cds/complete/allergen`.
+   * Nullable and optional: free text is legal on this field and always was, and an uncoded row is
+   * still matched by token exactly as before. What the code buys is a block that a typo cannot
+   * silence — see the header on `patient_allergies.allergen_class`.
+   */
+  saltId: z.string().max(64).nullable().optional(),
+  allergenClass: z.string().max(120).nullable().optional(),
 });
 const reasonBody = z.object({ reason: z.string().min(1) });
 const guardianPatchBody = z.object({
