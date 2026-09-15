@@ -415,6 +415,47 @@ function deploySeedOrder(source: string): string[] {
   return names;
 }
 
+/**
+ * ═══ THE SLIP DESK'S BYTES SURVIVE A CONTAINER RECREATE, AND THE API CAN WRITE THEM ═══
+ *
+ * Found on production, 2026-09-15, by the boot check rather than by a test: the api container had
+ * NO mounts and runs as `node`, so `DOCUMENT_STORE_PATH` (/var/lib/hmis/documents) could not even
+ * be created — `EACCES: permission denied, mkdir '/var/lib/hmis'` — and every photograph filed at
+ * /opd/slips would have been refused `unwritable`.
+ *
+ * Two halves, and BOTH are asserted because either alone still loses the documents:
+ *   · the compose mounts a NAMED volume there — an anonymous one is a `compose down` away from
+ *     being unreachable, and these are clinical documents;
+ *   · the image CREATES that path owned by `node` — a volume Docker creates for a path absent
+ *     from the image is root-owned, and the mount would be present and unwritable.
+ *
+ * The boot check reports this at runtime, which is how it was found; it WARNS and does not refuse,
+ * so nothing stops a deploy shipping it again. This row is what makes the regression fail in CI.
+ */
+describe("the document store is mounted and writable (2026-09-15)", () => {
+  const compose = readFileSync(COMPOSE_YML, "utf8");
+  const dockerfile = readFileSync(resolve(REPO_ROOT, "Dockerfile"), "utf8");
+
+  it("the api service mounts a NAMED volume at the document root", () => {
+    const api = compose.slice(compose.indexOf("\n  api:"), compose.indexOf("\n  worker:"));
+    expect(api).toContain("hmis_prod_documents:/var/lib/hmis/documents");
+  });
+
+  it("that volume is DECLARED, so it is named rather than anonymous", () => {
+    const volumes = compose.slice(compose.lastIndexOf("\nvolumes:"));
+    expect(volumes).toMatch(/^\s{2}hmis_prod_documents:/m);
+  });
+
+  it("the image creates the document root owned by node, BEFORE dropping to that user", () => {
+    const mkdir = dockerfile.indexOf("mkdir -p /var/lib/hmis/documents");
+    const userNode = dockerfile.indexOf("\nUSER node");
+    expect(mkdir).toBeGreaterThan(-1);
+    expect(dockerfile).toContain("chown -R node:node /var/lib/hmis");
+    /* Order is the whole point: a chown after USER node is a chown the image cannot perform. */
+    expect(mkdir).toBeLessThan(userNode);
+  });
+});
+
 describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)", () => {
   const deploySource = readFileSync(DEPLOY_SH, "utf8");
   const scriptsDir = resolve(REPO_ROOT, "apps", "core", "scripts");
