@@ -10,6 +10,7 @@ import { enqueuePrintJob } from "./enqueue";
 import { withTx } from "../db/client";
 import { renderDocument } from "./render";
 import { getPatient } from "../../modules/patients";
+import { getEncounter } from "../../modules/opd";
 import { recordPhiAccess } from "../phi/audit";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
@@ -321,10 +322,61 @@ export class PrintingController {
     jobs: { id: string; document: string; status: string; attempts: number; lastError: string | null; printedAt: string | null; createdAt: string }[];
   }> {
     if (typeof encounterId !== "string" || encounterId.trim() === "") return { jobs: [] };
+
+    /**
+     * ═══ THE VISIT NUMBER IS A SPELLING OF THIS KEY, AND IT IS THE ONLY ONE A CASHIER HOLDS ═══
+     *
+     * Owner, 2026-09-15, at `/billing` on a visit reached by typing `V2609150001`: *"I see a popup
+     * with no encounter/visit related files. This visit is paid but I see no related papers."*
+     *
+     * `print_jobs.encounter_id` stores `opd_encounters.id` — a ULID that appears on no screen and
+     * no slip. The number the patient is holding is `visit_no`, so that is what gets typed, and
+     * this route compared it to the stored column directly: two documents were queued for the
+     * visit, and the answer was `{ jobs: [] }`.
+     *
+     * **AN EMPTY LIST IS ALSO THIS ROUTE'S REFUSAL** — a sealed patient and an unknown encounter
+     * both get it (07a DD2, below) — so the wrong answer and the deliberate one are the same bytes.
+     * That is why a green suite never saw this, and it is the reason the repair is a resolution
+     * rather than a new error: nothing about what this route REFUSES changes.
+     *
+     * `getEncounter` is the one implementation of "either spelling of an OPD visit" (it is what
+     * billing's `canonicalEncounterRef` calls, and what OPD's own resolver calls), so the kernel
+     * borrows it rather than growing a second `VISIT_NO_RE` that can drift from it. This file
+     * already reaches into `modules/patients` for `getPatient` for the same reason: the decision
+     * belongs to the module that owns the row, and a copy of it here would be a second authority on
+     * a question that must have one answer.
+     *
+     * ═══ BOTH SPELLINGS, BECAUSE THIS COLUMN ALSO HOLDS THE OLD ONE ═══
+     *
+     * `opd/encounters.ts` has always enqueued with `encounter.id`. **`billing/invoices.ts` has
+     * not:** the payment receipt rides the invoice transaction and takes `input.encounterId`, which
+     * before #200 was whatever the cashier typed. So a receipt queued for a visit billed by its
+     * number carries `V…` here, #200 shipped no backfill, and resolving the caller's reference to
+     * ask only the resolved id would lose exactly the document the owner is looking for on an older
+     * paid visit. Asking both is strictly additive — it can only ever find more rows than the raw
+     * compare did — and both belong to ONE visit, so this widens the answer about a single
+     * encounter and never the set of encounters answerable.
+     *
+     * The pair comes from the RESOLVED ROW (`id` and `visit_no`, both `NOT NULL`), not from
+     * `[resolved, asGiven]`: that second shape is two entries only when the caller spelled it the
+     * old way, so deep-linking this route with the row id — which is what `/billing?encounterId=…`
+     * does — would collapse it to one and hide the legacy row on the commonest road. A visit has
+     * two names whichever of them you called it by.
+     *
+     * RESOLVED FIRST, GATED AFTER. A reference that resolves to nothing is left exactly as it came
+     * and finds no rows, so an unknown visit still gets the refusal shape; the §14 gate below is
+     * UNCHANGED in effect — it reads the subjects of the rows found, so it now decides about the
+     * same visit whichever spelling asked. A resolver placed after a confidentiality check is how a
+     * check stops covering half its callers, and the suite asserts the sealed refusal through the
+     * NEW spelling for exactly that reason.
+     */
+    const encounter = await getEncounter(this.db, encounterId);
+    const encounterKeys = encounter === null ? [encounterId] : [encounter.id, encounter.visitNo];
+
     const rows = await this.db
       .select()
       .from(printJobs)
-      .where(eq(printJobs.encounterId, encounterId))
+      .where(inArray(printJobs.encounterId, encounterKeys))
       .orderBy(desc(printJobs.createdAt));
 
     /**
