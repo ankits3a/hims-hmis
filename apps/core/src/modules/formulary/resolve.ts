@@ -1,8 +1,9 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   formularyInteractions, formularyMedicineSalts, formularyMedicines, formularySalts,
 } from "../../kernel/db/schema";
 import type { Db } from "../../kernel/db/client";
+import { anyOfText } from "../../kernel/db/any-of";
 
 export type SaltRef = { saltId: string; moiety: string; drugClass: string | null };
 export type ResolvedDrug = {
@@ -98,7 +99,7 @@ async function compositionOf(
   if (medicineIds.length === 0) return out;
   const rows = await db.select({
     medicineId: formularyMedicineSalts.medicineId, saltId: formularyMedicineSalts.saltId,
-  }).from(formularyMedicineSalts).where(inArray(formularyMedicineSalts.medicineId, medicineIds));
+  }).from(formularyMedicineSalts).where(anyOfText(formularyMedicineSalts.medicineId, medicineIds));
   // Every referenced moiety, resolved from the WHOLE table rather than the active subset (C3).
   const referenced = [...new Set(rows.map((r) => r.saltId))];
   const allSalts = referenced.length === 0
@@ -106,7 +107,7 @@ async function compositionOf(
     : await db.select({
       id: formularySalts.id, name: formularySalts.name,
       aliases: formularySalts.aliases, drugClass: formularySalts.drugClass,
-    }).from(formularySalts).where(inArray(formularySalts.id, referenced));
+    }).from(formularySalts).where(anyOfText(formularySalts.id, referenced));
   const byId = new Map(allSalts.map((s) => [s.id, s]));
   for (const row of rows) {
     const salt = byId.get(row.saltId) ?? saltsById.get(row.saltId);
@@ -137,7 +138,7 @@ export async function resolveMedicines(db: Db, medicineIds: string[]): Promise<M
     id: formularyMedicines.id, brandName: formularyMedicines.brandName,
     routeClass: formularyMedicines.routeClass,
   }).from(formularyMedicines).where(and(
-    inArray(formularyMedicines.id, wanted),
+    anyOfText(formularyMedicines.id, wanted),
     eq(formularyMedicines.active, true),
   ));
   if (medicines.length === 0) return out;
@@ -239,8 +240,8 @@ export async function listInteractionsAmong(db: Db, saltIds: string[]): Promise<
     routeScope: formularyInteractions.routeScope,
   }).from(formularyInteractions).where(and(
     eq(formularyInteractions.active, true),
-    inArray(formularyInteractions.saltAId, wanted),
-    inArray(formularyInteractions.saltBId, wanted),
+    anyOfText(formularyInteractions.saltAId, wanted),
+    anyOfText(formularyInteractions.saltBId, wanted),
   ));
   return rows.map((r) => ({
     saltAId: r.saltAId, saltBId: r.saltBId,

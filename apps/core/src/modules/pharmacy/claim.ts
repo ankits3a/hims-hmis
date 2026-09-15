@@ -4,7 +4,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { pharmacyDispenseLines, pharmacyDispenses } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { startInstance, transition } from "../../kernel/workflow/instances";
-import { listMedicines, resolveDrugTexts } from "../formulary";
+import { medicinesByIds, resolveDrugTexts } from "../formulary";
 import { findStoreByCode, listItems } from "../materials";
 import { findVisitByToken, getPrescription, getVisit, listVisits, verifyPrescriptionQr } from "../opd";
 import { getPatientSummaries, searchPatients, verifyQrScan } from "../patients";
@@ -135,9 +135,19 @@ export async function claimDispense(
   if (store === undefined) throw new PharmacyError("store_missing", `no materials store "${OPD_PHARMACY_STORE_CODE}" — the go-live runbook creates it`);
 
   const lines = rx.lines as RxLine[];
-  const medicines = new Map((await listMedicines(db)).map((m) => [m.id, m]));
+  /**
+   * THE TWO STATEMENTS SWAPPED ORDER, and the compiler now enforces it: the set of medicines this
+   * claim names is not known until the free-text lines have been resolved, so resolution comes
+   * first and the id-keyed read second. `const`'s temporal dead zone makes the wrong order a
+   * compile error — but only the ORDER, not the COMPLETENESS of the set, which is why the test
+   * beside this pins the brand a claimed line actually renders.
+   */
   const texts = lines.filter((l) => !l.medicineId).map((l) => l.drug);
   const resolved = texts.length === 0 ? new Map<string, { medicineId: string | null } | null>() : await resolveDrugTexts(db, texts);
+  const medicines = await medicinesByIds(db, [
+    ...lines.map((l) => l.medicineId ?? null),
+    ...[...resolved.values()].map((r) => r?.medicineId ?? null),
+  ].filter((x): x is string => x !== null));
   const drugItems = await listItems(db, { class: "drug", active: true });
   const itemByMedicine = new Map(drugItems.filter((i) => i.formularyMedicineId !== null).map((i) => [i.formularyMedicineId as string, i]));
 
