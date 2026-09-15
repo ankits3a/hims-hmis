@@ -57,7 +57,7 @@ describe("FD-24 T2: the print relay's routes", () => {
    * department code and the token from the database — an invented id renders nothing, which is
    * exactly what the "unrenderable document" row below asserts.
    */
-  async function realVisit(): Promise<{ encounterId: string; patientName: string; slipJobId: string }> {
+  async function realVisit(): Promise<{ encounterId: string; visitNo: string; patientName: string; slipJobId: string }> {
     await seedOpdBase(db);
     await activateOpdVisitDefinition(db);
     const { deptId, roomId } = await seedOpdMasters(db);
@@ -73,7 +73,7 @@ describe("FD-24 T2: the print relay's routes", () => {
     */
     const queued = await db.select().from(printJobs).where(eq(printJobs.encounterId, visit.encounter.id));
     const slip = queued.find((j) => j.document === "opd_token_slip")!;
-    return { encounterId: visit.encounter.id, patientName: "Muskan Arora", slipJobId: slip.id };
+    return { encounterId: visit.encounter.id, visitNo: visit.encounter.visitNo, patientName: "Muskan Arora", slipJobId: slip.id };
   }
 
   it("a relay claims with its agent key, prints, and reports — the whole round trip", async () => {
@@ -406,6 +406,101 @@ describe("FD-24 T2: the print relay's routes", () => {
     expect(after).toHaveLength(3);
     expect(after.filter((r) => r.document === "opd_token_slip")).toHaveLength(2);
     expect(new Set(after.map((r) => r.dedupeKey)).size).toBe(3);
+  });
+
+  /**
+   * ═══ THE ONLY SPELLING OF A VISIT A CASHIER IS EVER SHOWN ═══
+   *
+   * Owner, 2026-09-15, on a paid visit reached at `/billing` by typing `V2609150001`: *"when I
+   * clicked on 'Their Papers' … I see a popup with no encounter/visit related files. This visit is
+   * paid but I see no related papers on the screen."*
+   *
+   * The visit NUMBER is what is printed on the slip in the patient's hand, so it is what a cashier
+   * types; `opd_encounters.id` is a ULID nobody is ever shown. `getEncounter` has accepted both
+   * spellings since 17a, and 2026-09-12 made the LEDGER store one canonical reference whichever
+   * came in — but that repair was about what a WRITE stores. This route is a READ, and it compared
+   * the caller's string to `print_jobs.encounter_id` directly. So the papers sheet asked about a
+   * real, paid visit and was told, in a 200, that nothing had ever been printed for it.
+   *
+   * An empty list is also this route's REFUSAL (a sealed patient, an unknown encounter — 07a DD2),
+   * which is precisely why the defect survived: the wrong answer and the deliberate one are the
+   * same bytes. The gate below is unchanged and still decides; only the key it decides about is
+   * resolved first.
+   */
+  it("the visit NUMBER off the patient's slip finds the visit's papers — the cashier holds no other spelling", async () => {
+    const { encounterId, visitNo } = await realVisit();
+    expect(visitNo).not.toBe(encounterId); // the two spellings really are different strings
+
+    const registry = new ModuleRegistry();
+    for (const m of ALL_MANIFESTS) registry.install(m);
+    await syncPermissions(db, registry);
+    await createRole(db, "cashier_print", "Cashier (papers sheet)");
+    await grantPermissionToRole(db, registry, "cashier_print", "opd.paper.reprint");
+    const cashier = await mkUser(db, `cash-${String(Date.now())}`, ["cashier_print"]);
+
+    const byNumber = await request(app.getHttpServer())
+      .get(`/print/jobs?encounterId=${visitNo}`)
+      .set("authorization", `Bearer ${cashier.token}`)
+      .expect(200);
+    expect(byNumber.body.jobs.map((j: { document: string }) => j.document).sort())
+      .toEqual(["opd_prescription", "opd_token_slip"]);
+
+    // ...and it is the SAME answer the row id gives. One visit, one set of papers, two spellings.
+    const byId = await request(app.getHttpServer())
+      .get(`/print/jobs?encounterId=${encounterId}`)
+      .set("authorization", `Bearer ${cashier.token}`)
+      .expect(200);
+    expect(byNumber.body.jobs.map((j: { id: string }) => j.id).sort())
+      .toEqual(byId.body.jobs.map((j: { id: string }) => j.id).sort());
+
+    /*
+      AND THE §14 GATE STILL DECIDES ON THE RESOLVED VISIT, not only on the id road. A resolver in
+      front of a confidentiality check is exactly where a check stops covering half its callers, so
+      the refusal is asserted through the new spelling rather than assumed to have come along.
+    */
+    const stranger = await mkUser(db, `stranger-${String(Date.now())}`, []);
+    await request(app.getHttpServer())
+      .get(`/print/jobs?encounterId=${visitNo}`)
+      .set("authorization", `Bearer ${stranger.token}`)
+      .expect(403);
+  });
+
+  /**
+   * ═══ AND THE JOBS THE OLD WRITER KEYED ON A VISIT NUMBER TOO ═══
+   *
+   * `opd/encounters.ts` has always enqueued with `encounter.id`. **`billing/invoices.ts` has not.**
+   * The payment receipt rides the invoice transaction and takes `input.encounterId`, which before
+   * #200 was whatever the cashier typed — so a receipt queued for a visit billed by its number
+   * carries `V…` in `print_jobs.encounter_id`, and #200 shipped no backfill.
+   *
+   * Resolving the caller's reference and asking ONLY the resolved id would therefore lose exactly
+   * the document the owner is looking for on an older paid visit. The route asks for both, which
+   * can only ever find more rows than the raw compare did — and both spellings are one visit
+   * because one resolved from the other.
+   */
+  it("a receipt queued under the OLD visit-number key is still found, by either spelling", async () => {
+    const { encounterId, visitNo } = await realVisit();
+
+    const registry = new ModuleRegistry();
+    for (const m of ALL_MANIFESTS) registry.install(m);
+    await syncPermissions(db, registry);
+    await createRole(db, "cashier_legacy", "Cashier (legacy papers)");
+    await grantPermissionToRole(db, registry, "cashier_legacy", "opd.paper.reprint");
+    const cashier = await mkUser(db, `cashl-${String(Date.now())}`, ["cashier_legacy"]);
+
+    /* The row put back into the shape the pre-#200 writer left it in; no route can mint one now. */
+    const slip = (await db.select().from(printJobs).where(eq(printJobs.encounterId, encounterId)))
+      .find((j) => j.document === "opd_token_slip")!;
+    await db.update(printJobs).set({ encounterId: visitNo }).where(eq(printJobs.id, slip.id));
+
+    for (const spelling of [visitNo, encounterId]) {
+      const listed = await request(app.getHttpServer())
+        .get(`/print/jobs?encounterId=${spelling}`)
+        .set("authorization", `Bearer ${cashier.token}`)
+        .expect(200);
+      expect(listed.body.jobs.map((j: { id: string }) => j.id).sort())
+        .toEqual([slip.id, ...(await db.select().from(printJobs).where(eq(printJobs.encounterId, encounterId))).map((j) => j.id)].sort());
+    }
   });
 
   it("a relay agent cannot read the desk's status route — it holds no permissions", async () => {
