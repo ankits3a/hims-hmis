@@ -93,6 +93,11 @@ type AllergyRow = {
    */
   source: string; recordedAt: string; correctionReason: string | null;
 };
+/** `GET /patients/:id/documents` — metadata only; the bytes are their own request. */
+type WireDocument = {
+  id: string; encounterId: string | null; kind: string; mimeType: string;
+  byteSize: number; note: string | null; capturedBy: string; capturedAt: string;
+};
 type AllergyMatch = { lineIndex: number; substance: string };
 type AllergyOverride = AllergyMatch & { reason: string };
 type Active = { encounterId: string; patientId: string; summary: WirePatientSummary | null };
@@ -208,7 +213,9 @@ export function OpdConsult(): React.ReactElement {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   /** PLAN 07d T1 — which of the three histories the tab is showing. Drives the lazy fetches below. */
-  const [historyView, setHistoryView] = useState<"visits" | "rx" | "vitals">("visits");
+  const [historyView, setHistoryView] = useState<"visits" | "rx" | "vitals" | "documents">("visits");
+  /** The document the doctor has opened. Null until they ask — the bytes are a second PHI read. */
+  const [openDocumentId, setOpenDocumentId] = useState<string | null>(null);
   /** PLAN 07d T5 — the tests the doctor has advised this consultation. Saved with the note. */
   const [advisedTests, setAdvisedTests] = useState<WireAdvisedTest[]>([]);
   const [testQuery, setTestQuery] = useState("");
@@ -449,6 +456,26 @@ export function OpdConsult(): React.ReactElement {
     queryKey: ["opd", "vitals-history", patientId ?? ""],
     queryFn: () => api<{ items: WireVitalsHistoryItem[] }>("GET", `/opd/patients/${patientId ?? ""}/vitals`),
     enabled: patientId !== null && historyView === "vitals",
+  });
+
+  /*
+    ═══ THE SLIP THE DESK PHOTOGRAPHED ═══
+
+    Owner, 2026-09-14: the desk outside the room photographs the paper prescription, and the doctor
+    sees it here. The LIST is metadata only — what exists, when, and how big; opening one is a
+    separate request because the bytes are a separate PHI read with its own access-log surface.
+    Scrolling past a list of slips and reading a patient's prescription are different acts, and the
+    log is kept to answer which one happened.
+  */
+  const documents = useQuery({
+    queryKey: ["patient-documents", patientId ?? ""],
+    queryFn: () => api<{ items: WireDocument[] }>("GET", `/patients/${patientId ?? ""}/documents`),
+    enabled: patientId !== null && historyView === "documents",
+  });
+  const openDocument = useQuery({
+    queryKey: ["patient-document", openDocumentId ?? ""],
+    queryFn: () => api<{ mimeType: string; imageBase64: string }>("GET", `/patients/documents/${openDocumentId ?? ""}`),
+    enabled: openDocumentId !== null,
   });
 
   /**
@@ -2368,7 +2395,7 @@ export function OpdConsult(): React.ReactElement {
                     has been unable to see since this application shipped.
                   */}
                   <div style={{ marginBottom: 10, display: "flex", gap: 6 }} role="group" aria-label={t("opdConsult.historyView")}>
-                    {(["visits", "rx", "vitals"] as const).map((v) => (
+                    {(["visits", "rx", "vitals", "documents"] as const).map((v) => (
                       <button
                         key={v}
                         type="button"
@@ -2422,6 +2449,69 @@ export function OpdConsult(): React.ReactElement {
                               </li>
                             ))}
                           </ul>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/*
+                    ═══ THE PAPER THE DESK PHOTOGRAPHED, WHERE THE DOCTOR LOOKS FOR IT ═══
+
+                    Owner, 2026-09-14. The list is METADATA — a doctor scanning for "did they bring
+                    the outside prescription" needs when and what, not four megabytes of JPEG for
+                    every visit. Opening one is a deliberate second request, which is also what
+                    keeps the access log honest about who actually read a prescription.
+                  */}
+                  {historyView === "documents" && (
+                    <div data-testid="document-history" style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12.5 }}>
+                      {documents.isPending && <p style={{ margin: 0, color: "var(--dim)" }}>{t("app.loading")}</p>}
+                      {!documents.isPending && (documents.data?.items ?? []).length === 0 && (
+                        <p data-testid="no-documents" style={{ margin: 0, color: "var(--dim)" }}>{t("opdConsult.noDocuments")}</p>
+                      )}
+                      {(documents.data?.items ?? []).map((d) => (
+                        <div key={d.id} data-testid={`document-${d.id}`} style={{ borderBottom: "1px solid var(--line)", paddingBottom: 5 }}>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, alignItems: "baseline" }}>
+                            <span style={{ fontWeight: 600 }}>{t(`opdConsult.documentKind.${d.kind}`, { defaultValue: d.kind })}</span>
+                            <span className="mo" style={{ fontSize: 11, color: "var(--faint)" }}>
+                              {new Date(d.capturedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                            </span>
+                            {d.note !== null && <span style={{ color: "var(--dim)" }}>{d.note}</span>}
+                            <button
+                              type="button" className="sec" data-testid={`document-open-${d.id}`}
+                              style={{ marginLeft: "auto", height: 24, fontSize: 11 }}
+                              onClick={() => { setOpenDocumentId(openDocumentId === d.id ? null : d.id); }}
+                            >
+                              {openDocumentId === d.id ? t("opdConsult.documentHide") : t("opdConsult.documentOpen")}
+                            </button>
+                          </div>
+                          {openDocumentId === d.id && (
+                            <div style={{ marginTop: 6 }}>
+                              {openDocument.isPending && <p style={{ margin: 0, color: "var(--dim)" }}>{t("app.loading")}</p>}
+                              {openDocument.isError && (
+                                <p role="alert" data-testid={`document-error-${d.id}`} style={{ margin: 0, color: "var(--red)", fontWeight: 600 }}>
+                                  {t("opdConsult.documentUnreadable")}
+                                </p>
+                              )}
+                              {openDocument.data !== undefined && openDocument.data.mimeType !== "application/pdf" && (
+                                <img
+                                  data-testid={`document-image-${d.id}`}
+                                  src={`data:${openDocument.data.mimeType};base64,${openDocument.data.imageBase64}`}
+                                  alt={t("opdConsult.documentAlt")}
+                                  style={{ maxWidth: "100%", border: "1px solid var(--line)", borderRadius: 4 }}
+                                />
+                              )}
+                              {openDocument.data !== undefined && openDocument.data.mimeType === "application/pdf" && (
+                                <a
+                                  data-testid={`document-pdf-${d.id}`}
+                                  href={`data:application/pdf;base64,${openDocument.data.imageBase64}`}
+                                  target="_blank" rel="noreferrer"
+                                  style={{ fontSize: 12, color: "var(--green)" }}
+                                >
+                                  {t("opdConsult.documentOpenPdf")}
+                                </a>
+                              )}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>

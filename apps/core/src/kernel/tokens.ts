@@ -5,3 +5,5 @@ export const DB = Symbol("DB");
 export const DB_POOL = Symbol("DB_POOL");
 export const CONFIG = Symbol("CONFIG");
 export const MODULE_REGISTRY = Symbol("MODULE_REGISTRY");
+/** The byte store behind a photographed document — disk today, an object store when one is added. */
+export const DOCUMENT_STORE = Symbol("DOCUMENT_STORE");

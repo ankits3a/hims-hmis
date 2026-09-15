@@ -14,6 +14,14 @@ import type { Db } from "../db/client";
 /** The surfaces that read a patient's record. Extended by each module that adds one. */
 export type PhiSurface =
   | "patient.detail" | "patient.allergies"
+  /**
+   * The desk's photograph of a paper slip, and they are TWO surfaces rather than one.
+   *
+   * Seeing that a document EXISTS on a patient's history and OPENING the prescription are different
+   * acts, and the access log is kept to answer "who looked at this patient's prescription". A single
+   * name would make a doctor who scrolled past a list indistinguishable from one who read the slip.
+   */
+  | "patient.documents" | "patient.document.image"
   | "opd.timeline" | "opd.vitals" | "opd.prescriptions" | "opd.visit"
   /** PLAN 16c T3 — the dispensing counter's read of a dispense (its Rx lines): its own name, so the pharmacy's reads count apart from the consult's. */
   | "pharmacy.dispense"

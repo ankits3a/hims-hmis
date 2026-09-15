@@ -31,6 +31,7 @@ import { ApprovalsInbox } from "./screens/approvals-inbox";
 import { OpdAdmin } from "./screens/opd-admin";
 import { OpdAppointments } from "./screens/opd-appointments";
 import { OpdDesk } from "./screens/opd-desk";
+import { SlipCapture } from "./screens/slip-capture";
 import { VitalsBay } from "./screens/vitals-bay";
 import { OpdConsult } from "./screens/opd-consult";
 import { OpdDisplay } from "./screens/opd-display";
@@ -154,6 +155,12 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   // screen is deleted and the bay serves the path, exactly as the registration seat took
   // `/counter`: "keep the new design not the old one."
   { to: "/opd/vitals", label: "nav.opdVitals", permission: "opd.vitals.record", group: "opd" },
+  /*
+    THE SLIP DESK — the seat outside the consultation room. `patients.update` and no new permission
+    (owner, 2026-09-14): the same grant that lets a seat record an allergy, held by the front office,
+    its supervisor, the vitals bay, lab reception, MRD and the doctor.
+  */
+  { to: "/opd/slips", label: "nav.slipCapture", permission: "patients.update", group: "opd" },
   { to: "/opd/consult", label: "nav.opdConsult", permission: "opd.consult", group: "opd" },
   { to: "/opd/display", label: "nav.opdDisplay", permission: "opd.display.read", group: "opd" },
   { to: "/billing", label: "nav.billing", permission: "billing.invoice.issue", group: "billing" },
@@ -671,6 +678,16 @@ const counterDeskRoute = createRoute({
  * which is why `nav-parity.test.ts` still passes — the bay has always required the same grant as
  * the screen it replaces.
  */
+/**
+ * FD — the desk outside the consultation room: scan the slip's QR, see whose visit it matched, and
+ * photograph the paper. See `slip-capture.tsx` for why the read-back is not optional.
+ */
+const slipCaptureRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/opd/slips",
+  component: SlipCapture,
+});
+
 const vitalsBayRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/opd/vitals",
@@ -1068,6 +1085,7 @@ export const router = createRouter({
       // and the one carrying the rebooking rail. `caddyfile-parity.test.ts` pins the count and joins
       // this task's Files list — MEASURED against the tree, never predicted from arithmetic.
       appointmentRoute,
+      slipCaptureRoute,
       vitalsBayRoute,
       formularyAdminRoute,
       // PLAN 14 T9 — 25 -> 28. `caddyfile-parity.test.ts` pins the count and joins this task's
