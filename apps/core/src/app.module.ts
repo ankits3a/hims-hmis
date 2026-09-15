@@ -1,8 +1,9 @@
-import { Module, Global, Inject, OnModuleDestroy } from "@nestjs/common";
+import { Module, Global, Inject, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import type { Pool } from "pg";
 import { createDb, Db } from "./kernel/db/client";
 import { loadConfig, AppConfig } from "./kernel/config";
 import { DiskDocumentStore } from "./kernel/documents/disk";
+import { warnIfDocumentRootUnwritable } from "./kernel/documents/boot-check";
 import type { DocumentStore } from "./kernel/documents/store";
 import { DB, DB_POOL, CONFIG, DOCUMENT_STORE, MODULE_REGISTRY } from "./kernel/tokens";
 import { ModuleRegistry } from "./kernel/modules/loader";
@@ -116,10 +117,33 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
      Every narrow suite passed: they call the service functions directly and never build it. */
   exports: [DB, DB_POOL, CONFIG, DOCUMENT_STORE, MODULE_REGISTRY],
 })
-export class AppModule implements OnModuleDestroy {
+export class AppModule implements OnModuleDestroy, OnModuleInit {
   private poolClosed = false;
 
-  constructor(@Inject(DB_POOL) private readonly pool: Pool) {}
+  constructor(
+    @Inject(DB_POOL) private readonly pool: Pool,
+    @Inject(CONFIG) private readonly cfg: AppConfig,
+  ) {}
+
+  /*
+    DOCUMENT_STORE_PATH is set on no deployment and defaults to a path that exists nowhere, so
+    every slip photographed at /opd/slips is refused `unwritable` until an operator creates it —
+    and today the only place that shows is the desk, mid-patient. This says it at boot instead.
+
+    It WARNS and never refuses: an uncreated directory is a data state an operator can be halfway
+    through, and there is no safety edge — see kernel/documents/boot-check.ts. The try/catch is the
+    same rule the membership check follows: an advisory must not be able to stop the API for the
+    thing it is advising about.
+  */
+  async onModuleInit(): Promise<void> {
+    try {
+      await warnIfDocumentRootUnwritable(this.cfg.documentStorePath, {
+        warn: (m) => { console.warn(`documents: ${m}`); },
+      });
+    } catch {
+      // An advisory that cannot probe says nothing; it does not stop the hospital.
+    }
+  }
 
   async onModuleDestroy(): Promise<void> {
     // Own flag, not pg's pool.ended: that runtime property is missing from @types/pg
