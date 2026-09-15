@@ -85,9 +85,59 @@ export type WirePricedDraft = {
 };
 
 /** D8's fee branch. `free: true` IS the revisit branch — a null service, not a missing mapping. */
+/**
+ * FD-28 — WHO IS BEING BILLED AND WHICH TOKEN THEY ARE HOLDING.
+ *
+ * The counter is normally entered as `/billing?encounterId=…` from the OPD desk, and every box in
+ * its left rail used to be gated on a PICKED patient — so arriving by the front door left the rail
+ * blank. These two ride the quote because the quote is already the billing-scoped read of a visit,
+ * already guarded on `billing.invoice.read`, and already loads the encounter: a cashier holds no
+ * `opd.visits.read` and deliberately must not (see the route's comment).
+ */
+export type WireQuotePatient = {
+  id: string; uhid: string;
+  /** The RELEASE name — a sealed record hands over its alias here exactly as it does on paper. */
+  name: string | null;
+  alias: string | null;
+  restricted: boolean;
+  administrativeGender: string;
+  dob: string | null;
+  phone?: string | null;
+};
+
+/**
+ * `free | settled | credit | unsettled` — the SERVER's projection of the invoice ledger for this
+ * visit's fee, spelled exactly as `EncounterFeeStatus` spells it. Null means the billing module is
+ * unconfigured and there is no fact to state.
+ */
+export type WireFeeStatus = "free" | "settled" | "credit" | "unsettled";
+
+export type WireQuoteVisit = {
+  visitNo: string; serviceDate: string; status: string;
+  /** Null on a deferred visit that has not joined the queue — there is genuinely no token yet. */
+  tokenNo: number | null;
+  /** The department's code — the token reads by department ("MED-4"), on the owner's ruling. */
+  departmentCode: string | null;
+  /**
+   * Owner, 2026-09-12: *"if the visit was already charged then why … does the screen show UNPAID?"*
+   * The rail's money stamp is drawn from THIS — the ledger — and never again from the priced draft,
+   * which is never paid and so could only ever say UNPAID.
+   */
+  feeStatus: WireFeeStatus | null;
+};
+
 export type WireFeeQuote = {
   encounterId: string; visitType: string; free: boolean;
   feeServiceId: string | null; draft: WirePricedDraft | null;
+  patient?: WireQuotePatient | null;
+  visit?: WireQuoteVisit | null;
+  /**
+   * The live invoice that ALREADY charges this visit's fee, asked of FD-27's own duplicate guard so
+   * the screen and the refusal cannot disagree. Non-null means pressing Take with the fee line in
+   * the draft will be refused `duplicate_invoice_refused` — which is what the cashier needs to know
+   * BEFORE counting the cash, not after.
+   */
+  alreadyBilled?: { invoiceId: string; invoiceNo: string } | null;
   /**
    * RC-1 T5 / D8 shipped this on the server's `FeeQuote` and it never reached this type, so the
    * seat that is meant to print "review visit — free till <date> (<doctor>)" could not see the
@@ -303,6 +353,45 @@ export function fetchInvoicePrint(invoiceId: string): Promise<WireInvoicePrint> 
   return api("GET", `/billing/invoices/${encodeURIComponent(invoiceId)}/print`);
 }
 
+/**
+ * ═══ FD-27 — THE INVOICE LIST, WHICH HAS EXISTED AND HAD NO CALLER ═══
+ *
+ * `GET /billing/invoices` has been on the server, permissioned and query-shaped, since Plan 08, and
+ * nothing in this application has ever called it. That is why a patient who lost their bill could
+ * not be helped: the screen that issued it holds the invoice in local state and there was no second
+ * road to it. This is that road, and `desk-one/papers.tsx` is its caller.
+ */
+export function listInvoicesFor(q: { patientId?: string; encounterId?: string }): Promise<{ items: WireInvoice[] }> {
+  const params = new URLSearchParams();
+  if (q.patientId !== undefined) params.set("patientId", q.patientId);
+  if (q.encounterId !== undefined) params.set("encounterId", q.encounterId);
+  return api("GET", `/billing/invoices?${params.toString()}`);
+}
+
+/**
+ * ═══ FD-28 — BOTH SIDES OF THE LEDGER, WHICH IS WHAT "ON THEIR ACCOUNT" ALWAYS MEANT ═══
+ *
+ * Owner, 2026-09-06: *"'On their Account' section in the left panel, looks like it is not fetching
+ * all the related information."*
+ *
+ * `listDues` returns the rows and nothing else, so the billing rail printed each bill's outstanding
+ * and never a total — and never the ADVANCE, money the patient has already deposited, which is the
+ * one figure that changes what a cashier asks for. `GET /billing/patients/:id/balance` has returned
+ * all three since Plan 08 on the same `billing.invoice.read` permission, and `/billing/dues` has
+ * been its only caller. Dues and advances are ONE mechanism (owner ruling 2026-08-18) and reading
+ * only half of it is what made the box look broken.
+ */
+export type WirePatientBalance = {
+  patientId: string;
+  advancePaise: number;
+  outstandingPaise: number;
+  dues: WireDueRow[];
+};
+
+export function fetchPatientBalance(patientId: string): Promise<WirePatientBalance> {
+  return api("GET", `/billing/patients/${encodeURIComponent(patientId)}/balance`);
+}
+
 export function listDues(patientId: string): Promise<{ items: WireDueRow[] }> {
   return api("GET", `/billing/patients/${encodeURIComponent(patientId)}/dues`);
 }
@@ -350,3 +439,18 @@ export function fetchCurrentSession(): Promise<{ session: WireCashSession | null
 export function openCashSession(floatPaise: number): Promise<WireCashSession> {
   return api("POST", "/billing/sessions", { floatPaise });
 }
+
+
+/**
+ * FD-33 / owner 2026-09-13 — a visit that should carry a consultation charge and does not. A FREE
+ * REVISIT never appears: the server's scan skips a visit with no fee service, which is what makes
+ * "absent from this list" the auditor's answer rather than a gap in it.
+ */
+export type WireChargeOrphan = {
+  encounterId: string;
+  patientId: string;
+  feeServiceId: string;
+  visitNo: string;
+  visitType: string;
+  serviceDate: string;
+};

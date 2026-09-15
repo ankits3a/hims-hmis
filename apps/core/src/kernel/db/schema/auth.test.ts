@@ -13,6 +13,7 @@ describe("auth tables", () => {
       id: "01HUSER00000000000000000A",
       username: "asha",
       fullName: "Asha K",
+      staffCode: "EMP-0001",
       passwordHash: "x",
     });
     const rows = await db.select().from(users);
@@ -23,8 +24,10 @@ describe("auth tables", () => {
 
   it("enforces username uniqueness", async () => {
     const base = { username: "asha", fullName: "Asha K", passwordHash: "x" };
-    await db.insert(users).values({ ...base, id: "01A" });
-    await expect(db.insert(users).values({ ...base, id: "01B" })).rejects.toThrow();
+    /* The staff codes DIFFER deliberately. Share one and `users_staff_code_ux` rejects the second
+       insert, this row still goes green, and it has stopped testing username uniqueness. */
+    await db.insert(users).values({ ...base, id: "01A", staffCode: "EMP-0001" });
+    await expect(db.insert(users).values({ ...base, id: "01B", staffCode: "EMP-0002" })).rejects.toThrow();
   });
 
   it("role_permissions requires a synced permission row (FK)", async () => {

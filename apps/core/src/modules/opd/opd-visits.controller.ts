@@ -8,10 +8,11 @@ import { opdQueueEntries } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { bookAppointment, cancelAppointment, checkInAppointment, listAppointments, rescheduleAppointment } from "./appointments";
 import {
-  abandonVisit, counterState, getEncounterByVisitNo, getVisit, joinQueue, listVisits, openVisit,
+  abandonVisit, counterState, getEncounterByVisitNo, getVisit, grantFeeBypass, joinQueue, listVisits, openVisit,
   patientTimeline, reEnterVisit, reclassifyVisit,
 } from "./encounters";
 import { patientRxHistory, patientVitalsHistory } from "./history";
+import { feeMarksFor } from "./prestage";
 import { listDepartments } from "./masters";
 import type { RxHistoryItem, VitalsHistoryItem } from "./history";
 import type { AppConfig } from "../../kernel/config";
@@ -79,6 +80,9 @@ const appointmentCreateBody = z.object({
 });
 const rescheduleBody = z.object({ slotStart: z.coerce.date(), doctorId: z.string().min(1).optional() });
 const reasonBody = z.object({ reason: z.string().max(500) }); // blank ⇒ reason_required from the service, with its code
+/* FD-32 — the same shape, and the same choice: a blank reason is refused by the SERVICE so the
+   clerk gets `reason_required` with its code rather than a zod shape error they cannot map. */
+const feeBypassBody = z.object({ reason: z.string().max(500) });
 const visitOpenBody = z.object({
   patientId: z.string().min(1),
   departmentId: z.string().min(1),
@@ -203,7 +207,18 @@ const escalationBody = z.object({
 
 type AppointmentView = AppointmentRow & { patient: PatientSummary | null };
 type VisitListItem = EncounterRow & { patient: PatientSummary | null; queueEntry: QueueEntryRow | null };
-type VisitDetail = NonNullable<Awaited<ReturnType<typeof getVisit>>> & { patient: PatientSummary | null };
+/**
+ * FD-32 — the visit read carries the two money marks as well, so the CONSULTATION and the OPD Order
+ * Desk wear the owner's warning from the same derivation the vitals bay uses (`feeMarksFor`). On
+ * consultation the pair that matters is the BYPASSED one: the fee gate already refuses an unpaid
+ * consult, so the patient a doctor actually meets unpaid is the one the front desk waved through —
+ * and the doctor should see whose decision that was and why.
+ */
+type VisitDetail = NonNullable<Awaited<ReturnType<typeof getVisit>>> & {
+  patient: PatientSummary | null;
+  feeUnpaid: boolean;
+  feeBypass: { by: string; reason: string; at: Date } | null;
+};
 
 @Controller("opd")
 export class OpdVisitsController {
@@ -442,13 +457,33 @@ export class OpdVisitsController {
     };
   }
 
+  /**
+   * ═══ FD-32 — THE FRONT DESK'S BYPASS (OWNER RULING 2026-09-13) ═══
+   *
+   * *"In case of emergency or VIP patient, the front desk could enable the patient to bypass the
+   * billing."* `opd.visits.open` is that desk's own key — the seat that opens the visit is the seat
+   * that may wave it past the counter, and it is held by `front_office`, its supervisor and nobody
+   * downstream. Deliberately NOT the cashier's: a counter that can excuse its own collection is the
+   * separation this hospital draws everywhere else.
+   */
+  @RequirePermission("opd.visits.open", "hospital")
+  @Post("visits/:id/fee-bypass")
+  async feeBypass(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ encounter: EncounterRow }> {
+    const b = parsed(feeBypassBody, body);
+    try {
+      return { encounter: await grantFeeBypass(this.db, actor, id, b.reason) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
   @RequirePermission("opd.visits.read", "hospital")
   @Get("visits/:id")
   async visit(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<VisitDetail> {
     const found = await getVisit(this.db, actor, id);
     if (!found) toHttp(new OpdError("unknown_encounter", `unknown encounter ${id}`));
     const [summary] = await getPatientSummaries(this.db, actor, [found.encounter.patientId]);
-    return { ...found, patient: summary ?? null };
+    return { ...found, patient: summary ?? null, ...(await feeMarksFor(this.db, found.encounter)) };
   }
 
   /**

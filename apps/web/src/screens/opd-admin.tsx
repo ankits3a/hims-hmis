@@ -378,6 +378,14 @@ function RoomsTab({ items, queryClient }: { items: WireRoom[]; queryClient: Quer
 
 // ——— doctors ———
 
+/**
+ * NO `code` FIELD, DELIBERATELY. The doctor id is MINTED by the server at creation — this form
+ * shipped for four hours with a "Doctor ID (blank to assign one)" box and the owner's first
+ * question was why it was not automatic, which is the box answering for the behaviour. Adding a
+ * doctor asks for the facts a human knows; the id is not one of them, and the table below shows
+ * what was assigned. Overriding it with a college's own faculty number stays available on
+ * `PATCH /opd/doctors/:id` and wants an edit affordance of its own, not a question here.
+ */
 const doctorSchema = z.object({
   username: z.string().min(1),
   displayName: z.string().min(1),
@@ -433,6 +441,7 @@ function DoctorsTab({
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead>{t("opdAdmin.doctorCode")}</TableHead>
             <TableHead>{t("opd.labels.name")}</TableHead>
             <TableHead>{t("opd.labels.department")}</TableHead>
             <TableHead>{t("opdAdmin.registrationNo")}</TableHead>
@@ -442,6 +451,7 @@ function DoctorsTab({
         <TableBody>
           {items.map((d) => (
             <TableRow key={d.id}>
+              <TableCell className="mo">{d.code}</TableCell>
               <TableCell>{d.displayName}</TableCell>
               <TableCell>{departmentName(d.departmentId)}</TableCell>
               <TableCell className="mo">{d.registrationNo ?? "—"}</TableCell>

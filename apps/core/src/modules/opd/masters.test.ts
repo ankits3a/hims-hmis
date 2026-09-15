@@ -70,6 +70,110 @@ describe("opd masters", () => {
     void doc2;
   });
 
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-29 — THE DOCTOR ID, WHICH THE PRESCRIPTION PRINTS AND NOBODY TYPES
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Owner, 2026-09-06: the A4 letterhead names the prescriber by id, not by name and council number.
+   * That is only safe if EVERY doctor has an id, which is why the column is NOT NULL and why it is
+   * minted rather than asked for. These rows pin the four things that makes true.
+   */
+  describe("the minted doctor id", () => {
+    it("mints DR-0001 upward, and steps past a RETIRED doctor's id rather than reissuing it", async () => {
+      const admin = await mkUser(db, "admin-code-1", ["opd_admin"]);
+      const { deptId } = await seedOpdMasters(db);
+      await mkUser(db, "codedoc1", ["doctor"]);
+      await mkUser(db, "codedoc2", ["doctor"]);
+      await mkUser(db, "codedoc3", ["doctor"]);
+
+      const a = await withTx(db, (tx) => createDoctor(tx, admin.actor, { username: "codedoc1", displayName: "Dr A", departmentId: deptId }));
+      const b = await withTx(db, (tx) => createDoctor(tx, admin.actor, { username: "codedoc2", displayName: "Dr B", departmentId: deptId }));
+      expect((await getDoctor(db, a.doctorId))?.code).toBe("DR-0001");
+      expect((await getDoctor(db, b.doctorId))?.code).toBe("DR-0002");
+
+      /*
+        RETIRE the highest and mint again. This is what actually happens when a doctor leaves — there
+        is no delete route — and the id must NOT come back: a prescription is paper that outlives an
+        employment, and a reissued id makes an old sheet name the wrong person. A COUNT-based
+        sequence, or one that filtered to `active`, would hand DR-0002 to Dr C.
+      */
+      await withTx(db, (tx) => updateDoctor(tx, admin.actor, b.doctorId, { active: false }));
+      const c = await withTx(db, (tx) => createDoctor(tx, admin.actor, { username: "codedoc3", displayName: "Dr C", departmentId: deptId }));
+      expect((await getDoctor(db, c.doctorId))?.code).toBe("DR-0003");
+      expect((await getDoctor(db, b.doctorId))?.code).toBe("DR-0002");
+    });
+
+    it("takes a college's own faculty number when one is supplied, and does not let it derail the sequence", async () => {
+      const admin = await mkUser(db, "admin-code-2", ["opd_admin"]);
+      const { deptId } = await seedOpdMasters(db);
+      await mkUser(db, "codedoc4", ["doctor"]);
+      await mkUser(db, "codedoc5", ["doctor"]);
+
+      const own = await withTx(db, (tx) =>
+        createDoctor(tx, admin.actor, { username: "codedoc4", displayName: "Dr D", departmentId: deptId, code: "  CRK/FAC/0114  " }));
+      expect((await getDoctor(db, own.doctorId))?.code).toBe("CRK/FAC/0114");
+
+      /* The minter reads only `DR-nnnn`, so a hospital's own numbering alongside it is invisible to
+         the sequence rather than something the sequence tries to parse. */
+      const next = await withTx(db, (tx) => createDoctor(tx, admin.actor, { username: "codedoc5", displayName: "Dr E", departmentId: deptId }));
+      expect((await getDoctor(db, next.doctorId))?.code).toBe("DR-0001");
+    });
+
+    /**
+     * THE CASE THAT SEPARATES MAX FROM COUNT, and the reason this row exists rather than the
+     * retirement row above: retiring a doctor leaves the row in place, so a count and a max agree
+     * and a `count(*)` mutant survives. They part company the moment a DR- number is SET rather
+     * than minted — an admin matching the hospital's existing paper register, which is exactly when
+     * this happens in a hospital that has been running on paper.
+     */
+    it("steps past a DR- number an admin set by hand, instead of colliding with it", async () => {
+      const admin = await mkUser(db, "admin-code-5", ["opd_admin"]);
+      const { deptId } = await seedOpdMasters(db);
+      await mkUser(db, "codedoc9", ["doctor"]);
+      await mkUser(db, "codedoc10", ["doctor"]);
+
+      await withTx(db, (tx) => createDoctor(tx, admin.actor, { username: "codedoc9", displayName: "Dr I", departmentId: deptId, code: "DR-0114" }));
+      const after = await withTx(db, (tx) => createDoctor(tx, admin.actor, { username: "codedoc10", displayName: "Dr J", departmentId: deptId }));
+      // A count would say "one doctor, so DR-0002" and hand out a number BELOW one already issued.
+      expect((await getDoctor(db, after.doctorId))?.code).toBe("DR-0115");
+    });
+
+    it("refuses a blank id, and refuses to reuse one another doctor already holds", async () => {
+      const admin = await mkUser(db, "admin-code-3", ["opd_admin"]);
+      const { deptId } = await seedOpdMasters(db);
+      await mkUser(db, "codedoc6", ["doctor"]);
+      await mkUser(db, "codedoc7", ["doctor"]);
+      const first = await withTx(db, (tx) => createDoctor(tx, admin.actor, { username: "codedoc6", displayName: "Dr F", departmentId: deptId }));
+
+      await expect(
+        withTx(db, (tx) => createDoctor(tx, admin.actor, { username: "codedoc7", displayName: "Dr G", departmentId: deptId, code: "   " })),
+      ).rejects.toMatchObject({ code: "invalid_doctor_code" });
+
+      /* `opd_doctors_code_ux`, not a read-then-write check: two admins creating a doctor at once
+         must not both pass a "is it taken" query and then both insert. */
+      await expect(
+        withTx(db, (tx) => createDoctor(tx, admin.actor, { username: "codedoc7", displayName: "Dr G", departmentId: deptId, code: "DR-0001" })),
+      ).rejects.toThrow();
+      expect((await getDoctor(db, first.doctorId))?.code).toBe("DR-0001");
+    });
+
+    it("lets an admin change the id but never clear it", async () => {
+      const admin = await mkUser(db, "admin-code-4", ["opd_admin"]);
+      const { deptId } = await seedOpdMasters(db);
+      await mkUser(db, "codedoc8", ["doctor"]);
+      const { doctorId } = await withTx(db, (tx) => createDoctor(tx, admin.actor, { username: "codedoc8", displayName: "Dr H", departmentId: deptId }));
+
+      await withTx(db, (tx) => updateDoctor(tx, admin.actor, doctorId, { code: "CRK/FAC/0207" }));
+      expect((await getDoctor(db, doctorId))?.code).toBe("CRK/FAC/0207");
+
+      await expect(
+        withTx(db, (tx) => updateDoctor(tx, admin.actor, doctorId, { code: "" })),
+      ).rejects.toMatchObject({ code: "invalid_doctor_code" });
+      expect((await getDoctor(db, doctorId))?.code).toBe("CRK/FAC/0207");
+    });
+  });
+
   it("doctorForUser finds the profile; updateDoctor(active:false) then getDoctor shows inactive", async () => {
     const admin = await mkUser(db, "admin4", ["opd_admin"]);
     const { deptId } = await seedOpdMasters(db);

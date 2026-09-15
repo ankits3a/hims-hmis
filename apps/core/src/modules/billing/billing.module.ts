@@ -1,5 +1,5 @@
 import { Module, OnModuleInit } from "@nestjs/common";
-import { registerConsultStartGuard } from "../opd";
+import { registerConsultStartGuard, registerVitalsStartGuard } from "../opd";
 import { BillingController } from "./billing.controller";
 import { BILLING_FEE_GATE_KEY, feeGate } from "./gate";
 import type { ConsultStartGuard } from "../opd";
@@ -42,5 +42,14 @@ const registeredFeeGate: ConsultStartGuard = async (db, encounter) => {
 export class BillingModule implements OnModuleInit {
   onModuleInit(): void {
     registerConsultStartGuard(BILLING_FEE_GATE_KEY, registeredFeeGate);
+    /*
+      FD-32 / owner ruling 2026-09-13 — the SAME verdict one desk earlier: *"No patient should reach
+      vitals desk until he has paid."* The identical function, deliberately, so the two doors can
+      never disagree about whether a visit is paid; what differs is only WHERE the refusal lands and
+      that OPD reads the front desk's bypass before asking at all. The `billing_not_configured`
+      pass-through above matters here too — a hospital that has not run `seed:billing` has no fee
+      policy, and gating its vitals desk would stop the whole OPD on day one of commissioning.
+    */
+    registerVitalsStartGuard(BILLING_FEE_GATE_KEY, registeredFeeGate);
   }
 }

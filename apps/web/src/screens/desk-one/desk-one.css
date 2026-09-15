@@ -171,6 +171,20 @@
 .d1 .sw { width: 38px; height: 38px; border-radius: 6px; border: 1px solid var(--line); flex-shrink: 0; }
 
 .d1 .frame { min-width: 1220px; flex-grow: 1; display: flex; flex-direction: column; min-height: 0; }
+/*
+  FD-26 — A `.pp` SCREEN NESTED INSIDE A SEAT FRAME FILLS IT, RATHER THAN MEASURING ITS WAY THERE.
+
+  `components/paper-screen.tsx` sizes itself `calc(100vh - <its own offsetTop + what the shell puts
+  below it>)`, which is exactly right under the app shell and slightly wrong inside `.d1`: the frame
+  is `position: fixed`, so `document.documentElement.scrollHeight` is not the frame's height and the
+  "below" term reads a page that is not the one being laid out. The visible symptom is a strip of
+  ground under the agent dock on `/billing`.
+
+  Overriding the measurement here rather than teaching the measurement about `.d1` keeps the rule
+  where the exception is: this selector cannot match a `.pp` screen outside a seat frame, so every
+  other `.pp` mount keeps the behaviour its own comment argues for.
+*/
+.d1 .pp { min-height: 0; flex-grow: 1; }
 
 /* The header row and the dossier rail — geometry a media query has to be able to reach. */
 .d1 .top {

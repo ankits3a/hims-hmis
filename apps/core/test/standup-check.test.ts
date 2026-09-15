@@ -595,7 +595,7 @@ describe("standup:check — the readiness census (11i T2)", () => {
 
     const { id: userId } = await createUser(db, { username: "path.record", fullName: "Dr Record", password: "p1234567" });
     await db.insert(opdDoctors).values({
-      id: "doc-record", userId, displayName: "Dr Record", registrationNo: null,
+      id: "doc-record", userId, displayName: "Dr Record", code: "DR-9001", registrationNo: null,
       departmentId: deptId, createdBy: "t", updatedBy: "t",
     });
     results = await runCensus(db, "lab");

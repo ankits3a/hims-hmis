@@ -52,8 +52,8 @@ describe("pcpndt — 0047 structure", () => {
   beforeEach(async () => {
     await truncateAll(db);
     await db.insert(users).values([
-      { id: USER, username: "dr.sonologist", passwordHash: "x", fullName: "Dr S Rao", createdBy: "u1", updatedBy: "u1" },
-      { id: USER2, username: "dr.incharge", passwordHash: "x", fullName: "Dr M Iyer", createdBy: "u1", updatedBy: "u1" },
+      { id: USER, username: "dr.sonologist", passwordHash: "x", fullName: "Dr S Rao", staffCode: "EMP-0001", createdBy: "u1", updatedBy: "u1" },
+      { id: USER2, username: "dr.incharge", passwordHash: "x", fullName: "Dr M Iyer", staffCode: "EMP-0002", createdBy: "u1", updatedBy: "u1" },
     ] as never);
     await db.insert(patients).values({
       id: PATIENT, uhid: "HMS-00000001-5", name: "Asha Devi",

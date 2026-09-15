@@ -90,6 +90,14 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "opd.appointments.manage",
       "opd.visits.read",
       "opd.visits.open",
+      /*
+        FD-27 — HELD EXPLICITLY, NOT INHERITED. `GET /print/jobs` and `POST /print/reprint` used to
+        ride `opd.visits.open`, which this role happens to hold; narrowing them onto their own string
+        would have SILENTLY taken the counter's reprint rail away if this line were not added in the
+        same commit. A permission that changes hands is a permission that has to be re-granted, and
+        the seat that hands a patient their token slip is this one.
+      */
+      "opd.paper.reprint",
       "opd.queue.read",
       // Owner ruling 7 — without these the desk cannot register a patient and the OPD flow this
       // plan exists to enable dies at step one.
@@ -280,6 +288,78 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        */
       "radiology.orders.place",
       "radiology.reports.read",
+      /**
+       * FD-30 / owner ruling 2026-09-12 — the doctor holds the SCRIBE'S key as well, and that is a
+       * decision rather than a convenience. `RequirePermission` takes exactly one string, so the
+       * read and discard routes — which BOTH seats need — are gated on `opd.prescription.draft`
+       * alone; guarding them on `opd.consult` instead would shut out the person who wrote the slip.
+       * The pair is therefore made here. It grants the doctor nothing they could not already do:
+       * `opd.consult` is the whole prescribing surface, and drafting is strictly less than issuing.
+       */
+      "opd.prescription.draft",
+    ],
+  },
+  /**
+   * ═══ THE OPD DOOR SCRIBE — OWNER, 2026-09-12 ═══
+   *
+   * *"Sometimes doctors have so tight schedule that they fail to enter his observation on the
+   * operating system. They just write manually by pen on the prescription slip. So we must give
+   * access to a staff who could enter details on behalf of doctor or after the doctor consulted."*
+   *
+   * The seat outside the OPD room: it captures the paper, transcribes what the doctor wrote into a
+   * DRAFT for the doctor to tap, and raises the lab and imaging orders the slip carries.
+   *
+   * ═══ WHAT IT CANNOT DO, AND WHY EACH ABSENCE IS DELIBERATE ═══
+   *
+   *   · **`opd.consult` — NO.** This is the whole point of the owner's ruling. A draft becomes a
+   *     prescription only through the treating doctor's own tap; `requireTreatingDoctor` refuses
+   *     this seat even if the permission were granted, and the permission is withheld as well so
+   *     the refusal is never the only thing standing between a clerk and a prescription.
+   *   · **No `pharmacy.*`.** The dispense queue enqueues from an issued prescription; there is no
+   *     door here to hold open.
+   *   · **No `lab.results.*` and no `radiology.gates.satisfy`.** Placing an order is not reading a
+   *     result and is certainly not recording that a patient is not pregnant — the same separation
+   *     `radiology_receptionist` already draws in this file, drawn the same way.
+   *   · **No billing.** `lab_reception` bills at order time because it IS the lab counter; this
+   *     seat stands at the OPD door and the money is taken at the counter it hands to.
+   *
+   * `patients.update` is granted for one reason the owner named on the same day: an allergy written
+   * on the slip in pen must be recordable by the person reading that slip.
+   */
+  {
+    roleKey: "opd_scribe",
+    permissions: [
+      "opd.prescription.draft",
+      /**
+       * FD-31 / owner ruling 2026-09-12 — the desk's MODE B key. With it this seat can send a
+       * prescription the doctor wrote in pen straight to the pharmacy queue; without it the seat
+       * can only draft and wait for a tap that, in a hospital with no assistant to spare, never
+       * comes. The control it trades away is recovered at the pharmacy, not abandoned: the
+       * dispense refuses to bill until a pharmacist cross-confirms the slip.
+       */
+      "opd.prescription.transcribe",
+      // The visit is the thing being transcribed against, and the queue says who has been seen.
+      "opd.visits.read",
+      "opd.queue.read",
+      "opd.masters.read",
+      // Re-print the slip being captured: the same grant, for the same reason, as the cashier's.
+      "opd.paper.reprint",
+      "patients.read",
+      "patients.update",
+      /**
+       * The two departments the slip names. `lab.desk.operate` rather than `lab.orders.place` alone
+       * because that is the string the lab's own placement route is guarded on (`lab-desk.controller`)
+       * — measured, not assumed; the pair is what `lab_reception` holds and it is what works.
+       * `orders.place` rides with both: `placeOrder` requires the kernel key AND the kind's own, by
+       * design, so holding one makes this seat no imaging requester by accident.
+       */
+      "lab.desk.operate",
+      "lab.orders.place",
+      "lab.catalogue.read",
+      "radiology.orders.place",
+      "radiology.definitions.read",
+      "orders.place",
+      "orders.read",
     ],
   },
   {
@@ -444,6 +524,22 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * print rail ever reaches this seat, the grant is a fresh question with a fresh answer.*/
       "tariff.read",
       "patients.read",
+      /**
+       * ═══ FD-27 — THE PRINT RAIL REACHED THIS SEAT, AND THIS IS THAT FRESH ANSWER ═══
+       *
+       * Owner, 2026-09-06: *"A user with Billing permission don't have any way to print the OPD
+       * prescription (A4 size) … if the patient comes back saying he lost the bill and OPD
+       * prescription page … can he print it again?"* They are right, and the block above is exactly
+       * why: the cashier could not call `GET /print/jobs` or `POST /print/reprint` at all.
+       *
+       * The answer is NOT to give back `opd.visits.open`. Everything the reviewers said about it is
+       * still true — it still opens `POST /opd/visits/:id/reclassify`, and one actor lowering a
+       * consult fee and then collecting it is still the hole it was. `opd.paper.reprint` is a new,
+       * narrower string that authorises re-queueing a document ALREADY produced for a visit and
+       * nothing else: no open, no abandon, no re-enter, no reclassify. The SoD argument survives
+       * intact and the patient gets their paper back.
+       */
+      "opd.paper.reprint",
     ],
   },
   {
@@ -1479,6 +1575,12 @@ export const GRANTED_BY_OTHER_SEEDS: readonly {
  * "the role keys" is exactly the mechanism this plan exists to close.
  */
 export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
+  /**
+   * FD-30 — declared HERE and not in `OPD_ROLE_KEYS` for the reason that constant's own users give:
+   * `OPD_ROLE_KEYS` is the set the `opd_visit` workflow definition names in its Class A policy, and
+   * the scribe is not a party to that policy. It is a station on the OPD road, not a signatory.
+   */
+  opd_scribe: "OPD Door Scribe (paper-slip transcription)",
   pharmacy: "Pharmacy (prescription verification)",
   cashier: "Cashier",
   billing_manager: "Billing Manager",

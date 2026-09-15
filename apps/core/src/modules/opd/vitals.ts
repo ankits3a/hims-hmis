@@ -6,6 +6,7 @@ import { withTx } from "../../kernel/db/client";
 import { opdEncounters, opdQueueEntries, opdQueueSessions, opdVitals, users } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { loadOpdConfig } from "./config";
+import { vitalsGateVerdict } from "./consultation";
 import { getEncounter, moveEncounter } from "./encounters";
 import { OpdError } from "./errors";
 import { visibleEncounterFor } from "./read-gate";
@@ -241,6 +242,24 @@ export async function recordVitals(
   const enc = await getEncounter(db, encounterId);
   if (!enc) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
   if (!RECORDABLE.includes(enc.status)) throw new OpdError("encounter_state_conflict", `vitals need registered or waiting, not ${enc.status}`);
+  /*
+    ═══ FD-32 — PAY BEFORE VITALS (OWNER RULING 2026-09-13) ═══
+
+    Owner: *"No patient should reach vitals desk until he has paid."* Refused HERE, before the
+    transaction opens, for the same reason the queue-entry check above is: nothing is attempted and
+    rolled back, and the nurse gets a sentence rather than a failed write.
+
+    `vitalsGateVerdict` honours the front desk's bypass itself, so this call site cannot forget it.
+    `consult_gate_refused` is reused as the CODE deliberately — it is already in
+    `OPD_CONFLICT_CODES`, already 409, and already rendered by every screen that shows a gate
+    refusal; the `detail.guard` names which door refused, which is what a screen branches on.
+  */
+  const gate = await vitalsGateVerdict(db, enc);
+  if (!gate.ok) {
+    throw new OpdError("consult_gate_refused", `the vitals desk is gated: ${gate.code}`, {
+      guard: "billing_fee_gate", door: "vitals", code: gate.code, detail: gate.detail,
+    });
+  }
   // The pre-flight half of the deferred-visit guard (see `latestEntryWhere`): refuse before the
   // transaction opens, so nothing is attempted and rolled back.
   if ((await latestEntry(db, encounterId)) === null) throw new OpdError("unknown_queue_entry", NOT_QUEUED, { encounterId });

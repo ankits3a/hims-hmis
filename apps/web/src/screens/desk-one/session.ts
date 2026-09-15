@@ -3,7 +3,7 @@ import type { WirePatientHit, WireRegisterBody } from "../../lib/patients-api";
 import type { WireDepartment, WireDoctorSummary, WireSlot } from "../../lib/opd-api";
 import type { WireFeeQuote, WireIssueInvoiceResult, TenderMode } from "../../lib/billing-api";
 import type { WireRecognition } from "../../lib/membership-api";
-import type { BillLine, DeptQueue, Lane, LogLine, Stage } from "./model";
+import type { BillLine, DeptQueue, Lane, LogLine, Seat, Stage } from "./model";
 
 /**
  * ═══ THE PERSON IN HAND ═══
@@ -51,7 +51,11 @@ export type FutureHold = {
   slotStart: string;
 };
 
-export type Overlay = "palette" | "flow" | "queues" | "edit" | "schema" | null;
+/**
+ * FD-27 — `papers` joins the five. It is the "I lost my bill" surface: the print jobs and the bills
+ * raised for ONE encounter, with a way to hand each of them over again. See `papers.tsx`.
+ */
+export type Overlay = "palette" | "flow" | "queues" | "edit" | "schema" | "papers" | "history" | null;
 
 /**
  * FD-12 — one entitlement the patient produced at the desk. Kept as STRINGS like the rest of this
@@ -218,6 +222,13 @@ export type Session = {
   busy: string | null;
   error: string | null;
   overlay: Overlay;
+  /**
+   * FD-27 — WHICH ENCOUNTER the papers sheet is showing. A separate field rather than a variant of
+   * `overlay` because it outlives the sheet being closed and reopened, and because the sheet is
+   * opened from a HISTORY row — a visit that is not the one in hand, and therefore not derivable
+   * from `s.visit`. Null means "the visit in hand", which is what the dock's own entry opens.
+   */
+  papersFor: { encounterId: string; when: string | null } | null;
   drawer: boolean;
   answer: string | null;
   /** Wall-clock ms the person arrived at the desk — the "2 min at desk" figure on the done stage. */
@@ -230,7 +241,7 @@ export function emptySession(): Session {
     photo: null,
     complaint: "", triage: null, triageBusy: false, tab: "now", visit: null, future: null,
     coupons: [], attributionCode: "", issued: null, tender: null, armedTender: null, tenderRef: "", takenPaise: 0,
-    log: [], busy: null, error: null, overlay: null, drawer: false, answer: null, startedAt: null,
+    log: [], busy: null, error: null, overlay: null, papersFor: null, drawer: false, answer: null, startedAt: null,
   };
 }
 
@@ -245,6 +256,12 @@ export function emptySession(): Session {
 export type DeskApi = {
   s: Session;
   patch: (next: Partial<Session>) => void;
+  /**
+   * FD-26 — WHICH CHAIR THIS MOUNT IS. Not session state: the session is what the clerk is doing,
+   * the seat is who they are. It never changes for the life of a mount, and `"counter"` — the
+   * default everywhere — is the identity that keeps Desk One what it was.
+   */
+  seat: Seat;
   lane: Lane;
   /** Server reads the whole screen shares. Undefined while loading, never invented. */
   departments: WireDepartment[];
@@ -321,6 +338,16 @@ export function useDesk(): DeskApi {
   const ctx = useContext(DeskContext);
   if (ctx === null) throw new Error("useDesk outside DeskProvider");
   return ctx;
+}
+
+/**
+ * FD-27 — the same shape `usePatientInHandOptional` and `usePaletteOptional` already have, and
+ * added for the same reason: `papers.tsx` is mounted BOTH inside Desk One and inside
+ * `billing-counter.tsx`, which has no `DeskProvider` above it. A component shared across that seam
+ * must be able to ask whether it has a desk instead of throwing at the one seat that has none.
+ */
+export function useDeskOptional(): DeskApi | null {
+  return useContext(DeskContext);
 }
 
 /**

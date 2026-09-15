@@ -71,7 +71,7 @@ function opdStatus(code: OpdErrorCode): number {
   // `opd.visits.open`; `patients.register` is asserted in the service (the decorator writes one
   // metadata key, so a second `@RequirePermission` would silently replace the first), and its
   // refusal must read as 403 rather than falling through to the 400 default.
-  if (code === "registration_not_permitted") return 403;
+  if (code === "registration_not_permitted" || code === "transcription_not_permitted") return 403;
   if (code.endsWith("_state_conflict") || code.startsWith("duplicate_") || OPD_CONFLICT_CODES.has(code)) return 409;
   return 400; // invalid_*, vitals_incomplete, reason_required, empty_prescription, … — a client mistake
 }
@@ -134,12 +134,18 @@ const roomPatchBody = z.object({
 const doctorCreateBody = z.object({
   username: z.string().min(1).max(100),
   displayName: z.string().min(1).max(200),
+  /* FD-29 — OPTIONAL, and omitting it is the normal path: `nextDoctorCode` mints `DR-nnnn`. It is
+     accepted so a college with its own faculty numbering can supply that instead. */
+  code: z.string().max(32).optional(),
   registrationNo: z.string().max(100).optional(),
   departmentId: z.string().min(1),
   specialty: z.string().max(200).optional(),
 });
 const doctorPatchBody = z.object({
   displayName: z.string().min(1).max(200).optional(),
+  /* NOT nullable, unlike `registrationNo` beside it: the column is NOT NULL and a doctor without
+     an id would print a blank where the prescription identifies the prescriber. */
+  code: z.string().min(1).max(32).optional(),
   registrationNo: z.string().max(100).nullable().optional(),
   departmentId: z.string().min(1).optional(),
   specialty: z.string().max(200).nullable().optional(),

@@ -3,6 +3,10 @@ export type OpdErrorCode =
   | "unknown_department" | "department_inactive" | "duplicate_department_code"
   | "unknown_room" | "duplicate_room_code"
   | "unknown_doctor" | "doctor_inactive" | "unknown_user" | "user_already_doctor" | "doctor_department_mismatch"
+  // FD-29 — the doctor id the prescription prints. Both fall through `opdStatus` to 400, which
+  // is right for each: a blank or over-long id is a malformed request, and the exhausted case
+  // is reached only at ten thousand doctors, where the caller's answer is to supply one.
+  | "invalid_doctor_code" | "doctor_code_exhausted"
   | "not_a_doctor" | "not_your_patient"
   | "invalid_schedule" | "unknown_schedule" | "unknown_leave" | "leave_not_scheduled" | "invalid_leave_range"
   | "patient_not_found" | "duplicate_suspected" | "registration_not_permitted"
@@ -39,6 +43,13 @@ export type OpdErrorCode =
   | "unknown_vitals" | "vitals_state_conflict"
   | "invalid_follow_up_days" | "extension_cap_reached" | "reason_required"
   | "allergy_conflict" | "override_reason_required" | "empty_prescription" | "unknown_prescription"
+  // FD-30 — the transcription draft (owner ruling 2026-09-12, draft-then-confirm). `unknown_draft`
+  // rides the `unknown_*` rule to 404 deliberately: a doctor tapping issue on a slip a colleague
+  // just discarded is asking for something that is no longer there, not sending a bad request.
+  | "unknown_draft"
+  // FD-31 — 403 through `opdStatus`'s own rule, like `registration_not_permitted` beside it: the
+  // request is well formed and the account simply may not do this.
+  | "transcription_not_permitted"
   // PLAN 16a T5 — the hard-warning grammar EXTENDS rather than forks (DD3): these two carry their
   // hits in `detail` and are cleared by an override with a reason, exactly as `allergy_conflict` is.
   // A severe interaction, and the same moiety twice on one slip under two brand names.

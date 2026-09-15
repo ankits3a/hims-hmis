@@ -398,7 +398,7 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // 53 -> 54, 2026-09-14: `/opd/slips`, the desk outside the consultation room that photographs
     // the paper prescription. Measured from the failure — the run reported `Received length: 54`
     // against the pinned 53 — rather than incremented on the way past.
-    expect(routes).toHaveLength(54);
+    expect(routes).toHaveLength(55); // MERGE 2026-09-15: main's grants + the lane's, measured from the failing run
     expect(routes).toContain("/opd/slips");
     expect(routes).toContain("/radiology/radiation-safety");
     /*

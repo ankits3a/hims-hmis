@@ -7,6 +7,8 @@ import { loadOpdConfig } from "./config";
 import { OpdError } from "./errors";
 import { ageYearsAt } from "./time";
 import { bandFor, evaluateVitals } from "./vitals-rules";
+/* The ledger projection the queue token and the billing rail already read — one definition of paid. */
+import { encounterFeeStatuses } from "../billing";
 import type { BandConfig, BandKey, DangerRangesConfig, VitalKey } from "./config";
 import type { DangerFlag } from "./events";
 import type { Db } from "../../kernel/db/client";
@@ -66,6 +68,24 @@ export type PreStage = {
   /** The band's demanded set, and the ones it records but never range-flags (D5). */
   required: VitalKey[];
   notRoutine: VitalKey[];
+  /**
+   * ═══ FD-32 — THE MONEY FACT, SO THE BAY CAN WEAR THE OWNER'S WARNING ═══
+   *
+   * Owner, 2026-09-13: *"A symbol to symbolize in the vital dashboard that the user has not yet
+   * paid … also on doctor consultation and the desk outside the consultation room."*
+   *
+   * `feeUnpaid` is the LEDGER's answer, not a guess from the draft: `encounterFeeStatuses` returns
+   * `settled | credit | free | unsettled` and only the last is unpaid. It rides the pre-stage rather
+   * than being fetched separately because the bay holds `opd.vitals.*` and not `billing.*` — the
+   * same reason the band's own limits were moved onto this read.
+   *
+   * `feeBypass` is the front desk's waiver, carried as the clerk's own sentence so each desk shows
+   * WHY rather than a bare icon. Non-null only where the bypass was granted; the two are
+   * independent, and the pair that matters most is `feeUnpaid: true` WITH a bypass — that is the
+   * patient the owner wants a warning against at every desk they reach.
+   */
+  feeUnpaid: boolean;
+  feeBypass: { by: string; reason: string; at: Date } | null;
   last: {
     vitalsId: string;
     recordedAt: Date;
@@ -109,6 +129,30 @@ function carryCandidatesFor(ageYears: number | null, last: { heightCm: number | 
  * 07a rule, inherited from `getPatient` rather than re-implemented, because a distinct refusal
  * confirms the record exists to somebody who may not be allowed to know that.
  */
+/**
+ * ═══ FD-32 — THE TWO MONEY FACTS EVERY DESK SHOWS, DEFINED ONCE ═══
+ *
+ * Owner, 2026-09-13: the unpaid symbol belongs on the vitals bay, the consultation AND the OPD
+ * Order Desk. Three screens reading three derivations is three chances for one of them to quietly
+ * stop warning; this is the derivation, and `preStage` and the visit route both call it.
+ *
+ * `feeUnpaid` is FALSE on an unconfigured hospital by construction, because `encounterFeeStatuses`
+ * returns an empty map there — the same answer the consult gate gives when it lets
+ * `billing_not_configured` pass through. The warning and the refusal agree about a hospital with no
+ * fee policy, which is what stops a commissioning deployment painting every patient red.
+ */
+export async function feeMarksFor(
+  db: Db, encounter: { id: string; visitType: string; feeBypassBy: string | null; feeBypassReason: string | null; feeBypassAt: Date | null },
+): Promise<{ feeUnpaid: boolean; feeBypass: { by: string; reason: string; at: Date } | null }> {
+  const status = (await encounterFeeStatuses(db, [encounter as never])).get(encounter.id);
+  return {
+    feeUnpaid: status === "unsettled",
+    feeBypass: encounter.feeBypassBy === null || encounter.feeBypassReason === null
+      ? null
+      : { by: encounter.feeBypassBy, reason: encounter.feeBypassReason, at: encounter.feeBypassAt ?? new Date(0) },
+  };
+}
+
 export async function preStage(db: Db, actor: Actor, encounterId: string, now: Date = new Date()): Promise<PreStage> {
   const encounters = await db.select().from(opdEncounters).where(eq(opdEncounters.id, encounterId));
   const encounter = encounters[0];
@@ -163,6 +207,8 @@ export async function preStage(db: Db, actor: Actor, encounterId: string, now: D
     sealed,
     required: [...band.required],
     notRoutine: [...band.notRoutine],
+    /* One derivation, shared with the visit route so three desks cannot disagree. */
+    ...(await feeMarksFor(db, encounter)),
     last,
     carryCandidates: carryCandidatesFor(ageYears, last),
     // Evaluated against TODAY's band, not the band the reading was taken under: a four-year-old

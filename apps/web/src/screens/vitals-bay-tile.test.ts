@@ -25,7 +25,7 @@ const PRE: WirePreStage = {
   muacBands: { samUnderCm: 11.5, mamUnderCm: 12.5 }, sealed: false,
   required: ["heightCm", "weightKg", "sbp", "dbp", "pulse", "spo2", "tempC"], notRoutine: [],
   last: { vitalsId: "V-A0", recordedAt: "2026-06-11T04:00:00.000Z", serviceDate: "2026-06-11", heightCm: 151, weightKg: 62, sbp: 132, dbp: 84, pulse: 78, rr: 16, spo2: 98, tempC: 36.8, muacCm: null },
-  carryCandidates: ["heightCm"], expectedFlags: [],
+  carryCandidates: ["heightCm"], expectedFlags: [], feeUnpaid: false, feeBypass: null
 };
 
 const withTake = (key: keyof Tiles, take: Tile["takes"][number], over: Partial<Tile> = {}): Tiles => {

@@ -22,7 +22,7 @@ describe("opd schema (migration 0010)", () => {
     // `opd_queue_sessions.room_id` name `resources(id)`. `opd_rooms` no longer exists at all after
     // `0033`, so there is no other table this fixture could seed.
     await db.insert(resources).values({ id: "R1", kind: "room", code: "12", name: "Room 12", status: "available", ...AUDIT });
-    await db.insert(opdDoctors).values({ id: "DOC1", userId: "U1", displayName: "Dr A", departmentId: "D1", ...AUDIT });
+    await db.insert(opdDoctors).values({ id: "DOC1", userId: "U1", displayName: "Dr A", code: "DR-0001", departmentId: "D1", ...AUDIT });
     return { deptId: "D1", roomId: "R1", doctorId: "DOC1" };
   }
   async function seedPatient(id: string): Promise<void> {

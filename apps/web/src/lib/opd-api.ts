@@ -31,7 +31,9 @@ export type WireRoom = {
 };
 
 export type WireDoctor = {
-  id: string; userId: string; displayName: string; registrationNo: string | null; departmentId: string;
+  /* FD-29 — `code` is the DOCTOR ID the prescription letterhead prints. NOT NULL server-side: it is
+     minted at creation, so the screen never has to handle a doctor without one. */
+  id: string; userId: string; displayName: string; code: string; registrationNo: string | null; departmentId: string;
   specialty: string | null; active: boolean;
   createdBy: string; createdAt: string; updatedBy: string; updatedAt: string;
 };
@@ -664,6 +666,15 @@ export type WirePreStage = {
   sealed: boolean;
   required: WireVitalKey[];
   notRoutine: WireVitalKey[];
+  /**
+   * FD-32 / owner ruling 2026-09-13 — *"A symbol to symbolize in the vital dashboard that the user
+   * has not yet paid."* The LEDGER's answer, not the draft's: false on an unconfigured hospital,
+   * which has no fee policy to warn about. `feeBypass` is the front desk's waiver carried as the
+   * clerk's own sentence, so each desk shows WHY rather than a bare icon — and it never clears
+   * `feeUnpaid`, because a bypass waives the ORDER of payment and not the fee.
+   */
+  feeUnpaid: boolean;
+  feeBypass: { by: string; reason: string; at: string } | null;
   last: {
     vitalsId: string; recordedAt: string; serviceDate: string;
     heightCm: number | null; weightKg: number | null; sbp: number | null; dbp: number | null;
@@ -844,4 +855,55 @@ export function rescheduleAppointment(
  */
 export function cancelAppointment(appointmentId: string, reason: string): Promise<{ appointment: WireAppointment }> {
   return api("POST", `/opd/appointments/${encodeURIComponent(appointmentId)}/cancel`, { reason });
+}
+
+/**
+ * ═══ FD-30 — THE TRANSCRIPTION DRAFT (OWNER RULING 2026-09-12: DRAFT THEN CONFIRM) ═══
+ *
+ * The scribe at the OPD door types what the doctor wrote in pen; the treating doctor taps to issue.
+ * `WireRxLine` is reused verbatim rather than copied — a draft whose shape could drift from the
+ * prescription's is a slip the doctor's tap would refuse for a reason nobody could see.
+ */
+export type WireRxDraft = {
+  id: string;
+  encounterId: string;
+  patientId: string;
+  lines: WireRxLine[];
+  note: string | null;
+  status: "pending" | "issued" | "discarded";
+  draftedBy: string;
+  draftedAt: string;
+  resolvedBy: string | null;
+  resolvedAt: string | null;
+  issuedPrescriptionId: string | null;
+};
+
+export function fetchRxDraft(encounterId: string): Promise<{ draft: WireRxDraft | null }> {
+  return api("GET", `/opd/visits/${encodeURIComponent(encounterId)}/prescription-draft`);
+}
+
+export function saveRxDraft(
+  encounterId: string, body: { lines: WireRxLine[]; note?: string | null },
+): Promise<WireRxDraft> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/prescription-draft`, body);
+}
+
+export function discardRxDraft(encounterId: string): Promise<{ draft: WireRxDraft | null }> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/prescription-draft/discard`, {});
+}
+
+/**
+ * THE TAP. Overrides ride HERE and never on the draft: clearing an allergy conflict, a severe
+ * interaction or a duplicate salt is a clinical judgement recorded against the prescriber who made
+ * it, so the warnings surface at the doctor's screen and the reasons are typed there.
+ */
+export function issueRxDraft(
+  encounterId: string,
+  overrides: {
+    overrides?: { lineIndex: number; substance: string; reason: string }[];
+    interactionOverrides?: { lineIndex: number; reason: string; saltPair?: [string, string] }[];
+    duplicateOverrides?: { lineIndex: number; reason: string; moiety?: string }[];
+  } = {},
+): Promise<{ prescriptionId: string; version: number; draftId: string }> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/prescription-draft/issue`, overrides);
 }

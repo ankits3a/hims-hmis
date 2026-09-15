@@ -5,6 +5,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../lib/api";
+import { discardRxDraft, fetchRxDraft, issueRxDraft } from "../lib/opd-api";
+import { UnpaidMark } from "../components/unpaid-mark";
 import { SKIP_REASONS, isInteractionHit, opdErrorMessage, todayIst } from "../lib/opd-api";
 import type {
   WireDoctor, WireEncounter, WireOpdConfig, WirePatientSummary, WirePrescription, WireQueueEntry,
@@ -64,6 +66,9 @@ const FREQUENCY_OPTIONS = ["OD", "BD", "TDS", "QID", "HS", "SOS", "STAT", "other
 
 type VisitDetail = {
   encounter: WireEncounter;
+  /* FD-32 — the owner's warning, from the same derivation the vitals bay uses. */
+  feeUnpaid?: boolean;
+  feeBypass?: { by: string; reason: string; at: string } | null;
   queueEntries: WireQueueEntry[];
   vitals: WireVitals[];
   prescriptions: WirePrescription[];
@@ -538,6 +543,59 @@ export function OpdConsult(): React.ReactElement {
     defaultValues: { lines: [EMPTY_LINE] },
   });
   const lines = useFieldArray({ control: rxForm.control, name: "lines" });
+
+  /*
+    ═══ FD-30 — THE DOOR'S SLIP, AND THE TAP THAT ISSUES IT (OWNER RULING 2026-09-12) ═══
+
+    Keyed on the encounter in hand, so a doctor moving down the bench never sees the previous
+    patient's slip. `retry: false` because a visit with no draft is the ordinary case and a 404 is
+    the ordinary answer — retrying it three times would put three requests behind every consult.
+  */
+  const [draftBusy, setDraftBusy] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const draft = useQuery({
+    queryKey: ["opd", "rx-draft", active?.encounterId ?? ""],
+    queryFn: () => fetchRxDraft(active!.encounterId),
+    enabled: active?.encounterId !== undefined,
+    retry: false,
+  });
+
+  const issueTheDraft = async (): Promise<void> => {
+    const encounterId = active?.encounterId;
+    if (encounterId === undefined || draftBusy) return;
+    setDraftBusy(true);
+    setDraftError(null);
+    try {
+      await issueRxDraft(encounterId);
+      await queryClient.invalidateQueries({ queryKey: ["opd", "rx-draft", encounterId] });
+      await queryClient.invalidateQueries({ queryKey: ["opd", "rx-history"] });
+    } catch (e) {
+      /*
+        A REFUSED TAP IS A CLINICAL ANSWER, and the draft is deliberately still there afterwards
+        (`issueDraft` marks it issued only after the prescription exists). The doctor's next act is
+        to load it into the editor, where the override dialogs are — which is what the message says.
+      */
+      const body = e instanceof ApiError ? (e.body as { message?: string } | null) : null;
+      setDraftError(`${body?.message ?? (e instanceof Error ? e.message : String(e))} — ${t("opdConsult.draft.refusedHint")}`);
+    } finally {
+      setDraftBusy(false);
+    }
+  };
+
+  const discardTheDraft = async (): Promise<void> => {
+    const encounterId = active?.encounterId;
+    if (encounterId === undefined || draftBusy) return;
+    setDraftBusy(true);
+    setDraftError(null);
+    try {
+      await discardRxDraft(encounterId);
+      await queryClient.invalidateQueries({ queryKey: ["opd", "rx-draft", encounterId] });
+    } catch (e) {
+      setDraftError(String(e));
+    } finally {
+      setDraftBusy(false);
+    }
+  };
 
   /**
    * ONE READ PER PAUSE, NOT ONE PER KEYSTROKE. The route is a keyword match over eight syndromes
@@ -1642,6 +1700,14 @@ export function OpdConsult(): React.ReactElement {
 
                 {!restricted && (
                   <div style={{ paddingTop: 7 }}>
+                    {/*
+                    FD-32 / owner 2026-09-13 — beside the allergies, because both are things the
+                    doctor must see BEFORE prescribing. The fee gate already refuses an unpaid
+                    consult, so a patient who reaches this chair unpaid was waved through by the
+                    front desk on purpose: the mark names the clerk's reason rather than accusing
+                    the patient.
+                  */}
+                  <UnpaidMark unpaid={visit.data?.feeUnpaid ?? false} bypass={visit.data?.feeBypass ?? null} />
                     <h3 className="tag" style={{ margin: "0 0 5px" }}>{t("opdConsult.allergies")}</h3>
                     <div data-testid="allergy-chips" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 5 }}>
                       {activeAllergies.length === 0 && (
@@ -2272,6 +2338,66 @@ export function OpdConsult(): React.ReactElement {
 
                 {tab === "rx" && (
                 <div role="tabpanel" id="tabpanel-rx" aria-labelledby="tab-rx">
+                  {/*
+                    ═══ FD-30 — THE SLIP THE DOOR TRANSCRIBED, WAITING FOR THIS DOCTOR'S TAP ═══
+
+                    Owner ruling 2026-09-12: draft then confirm. It sits ABOVE the editor because on
+                    a visit that has one it is the first thing to decide — issue it, edit it, or
+                    throw it away — and below the editor it is a panel the doctor scrolls past after
+                    already typing the same lines by hand.
+
+                    TWO ROADS OUT, DELIBERATELY. "Issue" is the tap the ruling asks for and it is the
+                    common case. "Load into the editor" exists because the tap can be REFUSED — an
+                    allergy conflict, a severe interaction, a duplicate salt — and clearing one needs
+                    the override dialogs this screen already owns. Duplicating those here would be a
+                    second implementation of a clinical decision; handing the lines down to the
+                    editor is the same doctor, the same checks, one panel lower.
+                  */}
+                  {draft.data?.draft != null && (
+                    <div className="box" data-testid="rx-draft" style={{ marginBottom: 13, padding: 12, borderColor: "var(--gold-line)", background: "var(--gold-soft)" }}>
+                      <span className="tag">{t("opdConsult.draft.heading")}</span>
+                      <ul style={{ margin: "7px 0 0", paddingLeft: 18, fontSize: 12.5 }}>
+                        {draft.data.draft.lines.map((l, i) => (
+                          <li key={i} data-testid={`rx-draft-line-${String(i)}`}>
+                            <strong>{l.drug}</strong>{l.dose === "" ? "" : ` · ${l.dose}`} · {l.route} · {l.frequency}
+                            {l.durationDays === null ? "" : ` · ${String(l.durationDays)}d`}
+                            {l.instructions === null || l.instructions === "" ? "" : ` — ${l.instructions}`}
+                          </li>
+                        ))}
+                      </ul>
+                      {draft.data.draft.note !== null && draft.data.draft.note !== "" && (
+                        <p data-testid="rx-draft-note" style={{ margin: "7px 0 0", fontSize: 12 }}>{draft.data.draft.note}</p>
+                      )}
+                      <ErrorLine message={draftError} />
+                      <div style={{ marginTop: 9, display: "flex", gap: 7, flexWrap: "wrap" }}>
+                        <button type="button" className="pri" data-testid="rx-draft-issue" disabled={draftBusy} onClick={() => { void issueTheDraft(); }}>
+                          {t("opdConsult.draft.issue")}
+                        </button>
+                        <button
+                          type="button" className="sec" data-testid="rx-draft-load"
+                          onClick={() => {
+                            /* Into the editor exactly as typed, so the doctor edits and issues by the
+                               ordinary road — every check and every override dialog unchanged. */
+                            const d = draft.data?.draft;
+                            if (d == null) return;
+                            rxForm.reset({
+                              lines: d.lines.map((l) => ({
+                                drug: l.drug, dose: l.dose, route: l.route, frequency: l.frequency,
+                                durationDays: l.durationDays === null ? "" : String(l.durationDays),
+                                instructions: l.instructions ?? "", noSubstitution: l.noSubstitution, medicineId: null,
+                              })),
+                            });
+                          }}
+                        >
+                          {t("opdConsult.draft.load")}
+                        </button>
+                        <button type="button" className="sec" data-testid="rx-draft-discard" disabled={draftBusy} onClick={() => { void discardTheDraft(); }}>
+                          {t("opdConsult.draft.discard")}
+                        </button>
+                      </div>
+                      <p style={{ margin: "8px 0 0", fontSize: 11, color: "var(--faint)" }}>{t("opdConsult.draft.who")}</p>
+                    </div>
+                  )}
                   <FormProvider {...rxForm}>
                     <FormKit onSubmit={submitRx}>
                       {lines.fields.map((f, i) => (

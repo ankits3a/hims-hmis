@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
-import { pharmacyDispenseLines, pharmacyDispenses } from "../../kernel/db/schema";
+import { opdPrescriptions, pharmacyDispenseLines, pharmacyDispenses } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { transition } from "../../kernel/workflow/instances";
 import { getInvoice, issueInvoice, previewInvoice } from "../billing";
@@ -9,6 +9,7 @@ import { effectiveRegulation, getBatch, itemUomRows } from "../materials";
 import { getEncounter } from "../opd";
 import { dispenseBilled } from "./events";
 import { PharmacyError } from "./errors";
+import type { DispenseRow } from "./queue";
 import { priceForBatch } from "./price";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
 import { requireActiveSaleItem } from "./sale-items";
@@ -78,9 +79,43 @@ export async function previewDispenseBill(db: Db, actor: Actor, dispenseId: stri
  * same draft and the same approvals. The invoice carries the ENCOUNTER ID (the OPD counter's shape):
  * billing accepts a visit number too, but `encounterFeeStatuses` and `listInvoices` match by id.
  */
+/**
+ * ═══ FD-31 — A TRANSCRIBED PRESCRIPTION IS NOT BILLED UNTIL A PHARMACIST HAS SEEN THE SLIP ═══
+ *
+ * Owner ruling, 2026-09-12: *"the pharmacist will cross confirm the prescription slip (either the
+ * photo capture of prescription or physical prescription slip) before generating the medicine
+ * bill."*
+ *
+ * THE WINDOW IS THE BILL, and that is the owner's word rather than an implementation convenience.
+ * The claim is too early — the patient may still be walking over — and the hand-over is too late,
+ * because by then the money has been taken and a correction is a refund. The bill is the last
+ * moment at which nothing has been committed.
+ *
+ * IT APPLIES ONLY TO A TRANSCRIPTION. On a prescription the doctor keyed themselves there is
+ * nothing to cross-confirm, and demanding the ceremony anyway would teach a pharmacist to click it
+ * without looking — which is how a real control decays into a habit. `transcribed_by` is the
+ * discriminator, read from the prescription the dispense already points at.
+ */
+async function requireSlipConfirmed(db: Db, d: DispenseRow): Promise<void> {
+  const rows = await db
+    .select({ transcribedBy: opdPrescriptions.transcribedBy })
+    .from(opdPrescriptions)
+    .where(eq(opdPrescriptions.id, d.prescriptionId));
+  const transcribedBy = rows[0]?.transcribedBy ?? null;
+  if (transcribedBy === null) return; // the doctor keyed it; there is no slip to cross-confirm
+  if (d.slipConfirmedBy === null) {
+    throw new PharmacyError(
+      "slip_not_confirmed",
+      "this prescription was typed from the doctor's paper slip — confirm the slip against it before billing",
+      { transcribedBy, prescriptionId: d.prescriptionId },
+    );
+  }
+}
+
 export async function billDispense(db: Db, actor: Actor, dispenseId: string, input: BillInput, now: Date): Promise<DispenseView> {
   const d = await getDispenseRow(db, dispenseId);
   if (d.status !== "picked") throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} is ${d.status}, not picked`, { status: d.status });
+  await requireSlipConfirmed(db, d);
   const encounter = await getEncounter(db, d.encounterId);
   if (encounter === null) throw new PharmacyError("not_found", `encounter ${d.encounterId} not found`);
   const plan = await priceLines(db, dispenseId, now);

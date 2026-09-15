@@ -304,6 +304,49 @@ async function orphanScan(db: Db, day: string, cfg: BillingConfig): Promise<Char
   return orphans;
 }
 
+/**
+ * ═══ FD-33 — THE SAME SCAN, READ-ONLY, SO A HUMAN CAN ASK IT (OWNER, 2026-09-13) ═══
+ *
+ * Owner: *"when auditing, I am unable to see why there's no bill against that token."*
+ *
+ * The answer has existed every night since Plan 08 and reached NO SCREEN. `orphanScan` computes
+ * exactly "visits that should have a bill and do not", and it excludes a free revisit by
+ * construction — `feeServiceFor` returns null and the loop skips it with the comment "revisit is
+ * FREE — there is no charge to be missing". So the owner's question inverts cleanly: a token is
+ * legitimately unbilled if and only if it is ABSENT from this list.
+ *
+ * READ-ONLY, AND THAT IS THE WHOLE REASON THIS EXISTS RATHER THAN A CALL TO `runDailyClose`. The
+ * close CLAIMS the day and appends a `charge.orphan_flagged` per finding; an auditor refreshing a
+ * screen must not close the books, and must not be silently answered "claimed: false, here is
+ * yesterday's list" because a worker got there first. This function writes nothing and can be asked
+ * at 11am about today.
+ *
+ * ENRICHED, because a list of ULIDs is not an audit. The visit number is what the auditor is holding
+ * on paper, and the visit type is what the owner asked to see printed on it.
+ */
+export type ChargeOrphanRow = ChargeOrphan & {
+  visitNo: string;
+  visitType: string;
+  serviceDate: string;
+};
+
+export async function chargeOrphans(db: Db, day: string): Promise<ChargeOrphanRow[]> {
+  const cfg = await loadBillingConfig(db);
+  const bare = await orphanScan(db, day, cfg);
+  if (bare.length === 0) return [];
+  const visits = await listVisits(db, { serviceDate: day }, ORPHAN_SCAN_LIMIT);
+  const byId = new Map(visits.map((v) => [v.id, v]));
+  return bare.map((o) => {
+    const v = byId.get(o.encounterId);
+    return {
+      ...o,
+      visitNo: v?.visitNo ?? o.encounterId,
+      visitType: v?.visitType ?? "unknown",
+      serviceDate: v?.serviceDate ?? day,
+    };
+  });
+}
+
 export type DailyCloseResult = {
   day: string;
   /** false ⇒ the day was already claimed and NOTHING was appended — no `day.closed`, no flags. */

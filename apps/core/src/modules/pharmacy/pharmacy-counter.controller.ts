@@ -7,7 +7,7 @@ import { withIdempotency } from "../billing";
 import { claimDispense, findAtCounter } from "./claim";
 import { istDateOf } from "./config";
 import { PHARMACY_IDEMPOTENT_ROUTES, idSchema, parsed, toHttp } from "./pharmacy-http";
-import { getDispense, listQueue } from "./queue";
+import { confirmSlip, getDispense, listQueue } from "./queue";
 import { billDispense, previewDispenseBill } from "./bill";
 import { handOverDispense } from "./handover";
 import { labelFor } from "./label";
@@ -134,6 +134,28 @@ export class PharmacyCounterController {
     try {
       return await withIdempotency(this.db, { actorId: actor.id, route: PHARMACY_IDEMPOTENT_ROUTES.pick, key }, { id, ...input },
         () => pickDispense(this.db, actor, this.decls(), id, input, new Date()));
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * ═══ FD-31 — THE PHARMACIST'S CROSS-CONFIRMATION (OWNER RULING 2026-09-12) ═══
+   *
+   * `pharmacy.dispense.place` — the counter's own key, which the pharmacist working the queue
+   * already holds. Deliberately NOT `pharmacy.dispense.scheduled`: that is the registered
+   * pharmacist's hand-over grant for Schedule H, and gating this on it would mean an ordinary
+   * transcribed slip could not be confirmed by the person actually at the window.
+   *
+   * No body. The attestation is "I have the slip and it matches"; anything this route asked the
+   * pharmacist to type would be a second-hand copy of what the slip already says.
+   */
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Post("dispenses/:id/confirm-slip")
+  async confirmSlipRoute(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ slipConfirmedBy: string | null; slipConfirmedAt: Date | null }> {
+    try {
+      const row = await confirmSlip(this.db, actor, id, new Date());
+      return { slipConfirmedBy: row.slipConfirmedBy, slipConfirmedAt: row.slipConfirmedAt };
     } catch (e) {
       return toHttp(e);
     }
