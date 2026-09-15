@@ -226,6 +226,28 @@ export async function updateMedicine(
   let toSaltIds: string[] = [];
   if (salts !== undefined) {
     toSaltIds = salts.map((s) => s.saltId);
+    /**
+     * M4 AT THE SECOND DOOR — the same guard `addMedicine` applies above, and for the same reason
+     * it gives: a medicine with no composition resolves to "known, and contains nothing", which is
+     * the shape that makes a check suite go quiet while reporting success.
+     *
+     * This path did not have it. `salts: []` passed `requireSalts([])` and `intraFdcPairs([])`,
+     * which both return early on an empty list, then deleted every composition row at :247 and
+     * re-inserted none because :248 is guarded by `if (salts.length > 0)` — so the curation surface
+     * could mint the exact row the other door refuses, and appended `medicine.corrected` recording
+     * that it had done so. It is the same failure C6 found on this pair three paragraphs down:
+     * TWO DOORS, ONE LOCK. `curation-door-parity.test.ts` now holds both guards as a class.
+     *
+     * A brand that should no longer be prescribed is DEACTIVATED (`active: false`), which keeps its
+     * composition readable for the labels and refusals that still name it. Emptying it is not a
+     * quieter way of saying the same thing; it is a way of saying nothing while looking checked.
+     */
+    if (toSaltIds.length === 0) {
+      throw new FormularyError(
+        "unknown_salt",
+        `"${patch.brandName ?? row.brandName}" needs at least one moiety — deactivate it instead of emptying it`,
+      );
+    }
     await requireSalts(tx, toSaltIds);
     /**
      * C6 (independent review) — DD8 HAS TWO DOORS AND ONLY ONE HAD A LOCK. `addMedicine` refuses an
