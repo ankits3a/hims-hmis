@@ -55,6 +55,31 @@ REPO_PATH="${HMIS_DRILL_REPO_PATH:-}"
 SCRATCH_PROJECT="${HMIS_DRILL_PROJECT:-hmis-drill}"
 SCRATCH_PORT="${HMIS_DRILL_PORT:-5601}"
 RECOVERY_TIMEOUT="${HMIS_DRILL_RECOVERY_TIMEOUT:-900}"
+# PHASE 11i T8 / D12 — REHEARSAL MODE: THIS DRILL IS THE MIGRATION REHEARSAL.
+#
+# The drill already restores last night's production backup into a scratch container, boots a
+# second postmaster on it and runs the application's migrator from a NAMED image. Point
+# `HMIS_DRILL_SERVER_IMAGE` at an image built from a candidate tip and that IS the pending journal
+# applied to a faithful copy of production — real data shape, real watermark, real journal, real
+# image — with nothing touched that production serves. Three things the weekly drill does not do
+# and a rehearsal must:
+#
+#   1. run the SEEDS and the CONFIGURATION GATE after the migrator. A deploy is migrations AND the
+#      rows the modules throw without; a rehearsal that stopped at the migrator would prove half
+#      of what the deploy is about to do. `standup:check all` is printed from the restored copy
+#      too, so the RED rows are a preview of the ones the real deploy will print.
+#   2. assert the restored migration count EQUAL to the candidate's journal length. The weekly
+#      drill's `>=` is right for a drill — it is asking whether the restore regressed — but a
+#      rehearsal passing on `>=` would also pass a HALF-APPLIED journal, which is the one outcome
+#      it exists to catch.
+#   3. append `backup.drill_rehearsed`, never `drill_passed`. The Grafana rule that watches for a
+#      MISSED weekly drill counts `drill_passed`, and a rehearsal is not a drill: counting one
+#      would let a genuinely missed backup drill hide behind a deploy rehearsal, and a FAILED
+#      rehearsal would page as a failed backup at whatever hour somebody was rehearsing.
+#
+# NEVER RUN IT AGAINST THE PRODUCTION REPOSITORY FROM A LANE. The defaults here ARE production;
+# a rehearsal sets HMIS_DRILL_STANZA and HMIS_DRILL_REPO_PATH at a scratch prefix.
+REHEARSAL="${HMIS_DRILL_REHEARSAL:-0}"
 
 ENV_FILE="$DEPLOY_DIR/.env"
 PGBR_ENV="$DEPLOY_DIR/.env.pgbackrest"
@@ -124,6 +149,8 @@ emit_drill_event() {
   local prefix="${prod_url%@*}" suffix="${prod_url##*@}"
   export DATABASE_URL="$prefix@127.0.0.1:5432/${suffix#*/}"
   export HMIS_DRILL_VERDICT="$verdict"
+  export HMIS_DRILL_REHEARSAL_MODE="$REHEARSAL"
+  export HMIS_DRILL_CANDIDATE_IMAGE="$SERVER_IMAGE"
   export HMIS_DRILL_EVENT_STANZA="$STANZA"
   export HMIS_DRILL_EVENT_CENSUS="$CENSUS_EVENTS"
   export HMIS_DRILL_EVENT_RESTORED="$RESTORED_EVENTS"
@@ -135,6 +162,8 @@ emit_drill_event() {
   docker run --rm --network "container:$DB_CONTAINER" \
     --env DATABASE_URL \
     --env HMIS_DRILL_VERDICT \
+    --env HMIS_DRILL_REHEARSAL_MODE \
+    --env HMIS_DRILL_CANDIDATE_IMAGE \
     --env HMIS_DRILL_EVENT_STANZA \
     --env HMIS_DRILL_EVENT_CENSUS \
     --env HMIS_DRILL_EVENT_RESTORED \
@@ -148,7 +177,13 @@ const catalog = require("./dist/src/kernel/retention/events.js");
 const num = (v) => (v === undefined || v === "" ? null : Number(v));
 const str = (v) => (v === undefined || v === "" ? null : v);
 const passed = process.env.HMIS_DRILL_VERDICT === "passed";
-const def = passed ? catalog.backupDrillPassed : catalog.backupDrillFailed;
+// 11i T8 / D12: a REHEARSAL appends its own kind whatever its outcome, so the alert rule that
+// watches for a missed weekly drill never counts one, and a failed rehearsal never pages as a
+// failed backup.
+const rehearsal = process.env.HMIS_DRILL_REHEARSAL_MODE === "1";
+const def = rehearsal
+  ? catalog.backupDrillRehearsed
+  : (passed ? catalog.backupDrillPassed : catalog.backupDrillFailed);
 const { db, pool } = createDb(process.env.DATABASE_URL);
 withTx(db, (tx) => appendEvent(tx, def.make({
   actor: { type: "system", id: "restore-drill" },
@@ -159,6 +194,9 @@ withTx(db, (tx) => appendEvent(tx, def.make({
     assertedEventId: str(process.env.HMIS_DRILL_EVENT_ID),
     backupSeconds: num(process.env.HMIS_DRILL_EVENT_BACKUP_SECONDS),
     restoreSeconds: num(process.env.HMIS_DRILL_EVENT_RESTORE_SECONDS),
+    ...(rehearsal
+      ? { outcome: passed ? "passed" : "failed", candidateImage: str(process.env.HMIS_DRILL_CANDIDATE_IMAGE) }
+      : {}),
   },
 })))
   .then(() => pool.end())
@@ -172,7 +210,11 @@ withTx(db, (tx) => appendEvent(tx, def.make({
 
 emit_verdict() {
   local verdict="$1"
-  note "verdict: $verdict — appending backup.drill_$verdict to the events log"
+  if [ "$REHEARSAL" = "1" ]; then
+    note "verdict: $verdict — appending backup.drill_rehearsed (a rehearsal is not a drill)"
+  else
+    note "verdict: $verdict — appending backup.drill_$verdict to the events log"
+  fi
   emit_drill_event "$verdict" \
     || note "verdict NOT evented; the exit code and this transcript remain the record"
 }
@@ -328,6 +370,36 @@ DRILL_SUFFIX="${DATABASE_URL##*@}"
 export DATABASE_URL="$DRILL_PREFIX@127.0.0.1:$SCRATCH_PORT/${DRILL_SUFFIX#*/}"
 docker run --rm --network "container:$SCRATCH_NAME" --env DATABASE_URL "$SERVER_IMAGE" \
   node dist/scripts/migrate.js
+
+if [ "$REHEARSAL" = "1" ]; then
+  # ----------------------------------------------------------------------------------------------
+  step "5b/7 REHEARSAL — the deploy's seeds, its gate, and the census, against the restored copy"
+  # ----------------------------------------------------------------------------------------------
+  # THE LIST IS THE DEPLOY'S LIST, IN THE DEPLOY'S ORDER, and `apps/core/test/deploy-parity.test.ts`
+  # asserts that this line and `deploy.sh`'s own sequence agree. A second hand-maintained copy of
+  # a seed census is exactly the shape that goes stale in silence — it is the defect that census
+  # exists to catch, and this file would otherwise be the fourth place it could happen.
+  REHEARSAL_SEEDS="seed-cursors.js seed-ops.js seed-opd.js seed-patients.js seed-billing.js seed-tariff.js seed-membership.js seed-formulary-interactions.js seed-materials.js seed-ot.js seed-pharmacy.js seed-lab.js"
+  for seed in $REHEARSAL_SEEDS; do
+    note "rehearsing $seed"
+    docker run --rm --network "container:$SCRATCH_NAME" --env DATABASE_URL "$SERVER_IMAGE" \
+      node "dist/scripts/$seed" >/dev/null \
+      || die "$seed FAILED against the restored copy — the real deploy would stop here, after migrating"
+  done
+  # seed-roles' verdict is about staffing and is printed, never obeyed — the deploy's own rule.
+  docker run --rm --network "container:$SCRATCH_NAME" --env DATABASE_URL "$SERVER_IMAGE" \
+    node dist/scripts/seed-roles.js || note "seed:roles reported NOT READY — as it does on production"
+  # The GATE, and it is a gate here too: a candidate whose gate fails against a faithful copy of
+  # production is a deploy that would abort after migrating and before the containers came up.
+  docker run --rm --network "container:$SCRATCH_NAME" --env DATABASE_URL "$SERVER_IMAGE" \
+    node dist/scripts/check-config-present.js \
+    || die "check-config-present FAILED against the restored copy — do not deploy this tip"
+  # The census is a PREVIEW, printed and not obeyed, exactly as `deploy.sh` treats it.
+  docker run --rm --network "container:$SCRATCH_NAME" --env DATABASE_URL "$SERVER_IMAGE" \
+    node dist/scripts/standup-check.js all \
+    || note "standup:check reported RED rows — this is the to-do list the real deploy will print"
+fi
+
 unset DATABASE_URL
 
 # ------------------------------------------------------------------------------------------------
@@ -341,6 +413,21 @@ note "restored events=$RESTORED_EVENTS (census $CENSUS_EVENTS) · migrations=$RE
   || die "row count REGRESSED: the restored cluster has $RESTORED_EVENTS events, the live one had $CENSUS_EVENTS"
 [ "$RESTORED_MIGRATIONS" -ge "$CENSUS_MIGRATIONS" ] \
   || die "migration count REGRESSED: restored $RESTORED_MIGRATIONS, live $CENSUS_MIGRATIONS"
+
+if [ "$REHEARSAL" = "1" ]; then
+  # EQUALITY, and the number is READ OUT OF THE IMAGE rather than typed. A rehearsal's whole
+  # question is "does this candidate's journal apply cleanly and COMPLETELY to production's data",
+  # and `>=` answers a different one: a journal that half-applied — one migration refused, the
+  # rest skipped by the watermark — satisfies `>=` against the live census and would report PASS.
+  CANDIDATE_MIGRATIONS="$(docker run --rm "$SERVER_IMAGE" \
+    node -e 'process.stdout.write(String(require("./drizzle/meta/_journal.json").entries.length))')"
+  note "candidate image $SERVER_IMAGE declares $CANDIDATE_MIGRATIONS migrations in its journal"
+  [ "$RESTORED_MIGRATIONS" = "$CANDIDATE_MIGRATIONS" ] \
+    || die "REHEARSAL FAILED: the restored cluster carries $RESTORED_MIGRATIONS migrations and the
+    candidate image's journal has $CANDIDATE_MIGRATIONS. The pending journal did not apply
+    completely. Fix it on main — never by hand on production."
+  note "rehearsal: all $CANDIDATE_MIGRATIONS of the candidate's migrations are applied on the restored copy"
+fi
 
 if [ -n "$CENSUS_EVENT_ID" ]; then
   found="$(scratch_psql "$POSTGRES_DB" "select count(*) from events where event_id = '$CENSUS_EVENT_ID'")"

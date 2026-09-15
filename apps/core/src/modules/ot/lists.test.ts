@@ -158,6 +158,46 @@ describe("the OT list (Plan 15 T4)", () => {
   });
 
   /**
+   * ═══ A RE-SEQUENCE THAT LEFT NO TRACE ═══
+   *
+   * `resequence` moved every case on the list and wrote **no event**. The architecture spec's OT
+   * catalogue names `ot_list.resequenced`; the module declared nothing and emitted nothing, so the
+   * printed sheet in a nurse's hand could disagree with the screen and **the log did not record
+   * that the order had ever changed** — NPO, the wards and the porters re-time off that fact.
+   *
+   * **The version is deliberately NOT bumped and this test pins that too.** `resequence`'s own
+   * docstring makes the call: *"the order within a published list is operational, and versioning
+   * every swap would make the printed sheet's version number meaningless."* The event is the trace;
+   * the version is the printed artefact's identity, and they are different objects. A fix that
+   * bumped the version would have broken the sheet to record the swap.
+   */
+  it("records the re-sequence as an event, and does NOT bump the list version", async () => {
+    const a = await book();
+    const b = await book({
+      procedureClass: "ortho_ganglion_excision", procedureCode: "ORT-GANG-01", laterality: "left",
+    });
+    const published = await publishList(db, f.incharge, { listDate: LIST_DATE, theatreResourceId: f.theatreId });
+
+    await resequence(db, f.incharge, {
+      listDate: LIST_DATE, theatreResourceId: f.theatreId,
+      caseIdsInOrder: [b.caseId, a.caseId], reason: "surgeon delayed in OPD",
+    });
+
+    const emitted = (await db.select().from(events)).filter((e) => e.name === "list.resequenced");
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]!.payload).toMatchObject({
+      listDate: LIST_DATE,
+      theatreResourceId: f.theatreId,
+      caseIdsInOrder: [b.caseId, a.caseId],
+      reason: "surgeon delayed in OPD",
+    });
+
+    /** The printed sheet's identity is untouched — see the docstring quoted above. */
+    const rows = await db.select().from(otLists);
+    expect(rows.map((r) => r.version)).toEqual([published.version]);
+  });
+
+  /**
    * ═══ F20 — A CONFIDENTIAL PATIENT'S LEGAL NAME NEVER REACHES THE LIST DTO ═══
    *
    * The theatre list is PRINTED and pinned to a wall, which makes it the surface §14 is about. The

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { BRIEF_PERIODS, downloadReportCsv, fetchBrief, fetchReport, todayIst } from "../lib/desk-api";
+import { downloadReportCsv, fetchBrief, fetchReport, periodsFor, todayIst } from "../lib/desk-api";
 import type { WireBriefPeriod, WireReportSection } from "../lib/desk-api";
 import { useAuth } from "../lib/auth";
 import { PaperScreen, ScreenTitle } from "../components/paper-screen";
@@ -101,8 +101,16 @@ export function SectionTable({ section }: { section: WireReportSection }): React
  */
 export function BriefPanel({ date }: { date: string }): React.ReactElement {
   const { t } = useTranslation();
-  const { actor } = useAuth();
+  const { actor, can } = useAuth();
   const [period, setPeriod] = useState<WireBriefPeriod>("week");
+  /*
+   * T0 — THE HORIZON APPLIES TO YOUR OWN BRIEF TOO, and this is the one place in the phase where an
+   * existing capability NARROWS: this picker offered all five periods to everyone, so a front-desk
+   * clerk could pull six months of their own day and after the owner's 2026-09-14 ruling stops at
+   * three. The release note says so; a clerk who could do it last week must find the reason written
+   * down rather than meet it as a bug.
+   */
+  const periods = periodsFor(can);
   // FD-1 CLOSE pass 1 — the actor is in the key: the cache outlives a logout (see counter-figures.tsx)
   const who = actor?.id ?? "";
   const brief = useQuery({ queryKey: ["me", "brief", who, period, date], queryFn: () => fetchBrief(period, date), enabled: who !== "" });
@@ -112,7 +120,7 @@ export function BriefPanel({ date }: { date: string }): React.ReactElement {
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 11 }}>
         <h2 className="tag" style={{ margin: 0 }}>{t("brief.title")}</h2>
         <div style={{ display: "flex", gap: 5 }} role="group" aria-label={t("brief.periodLabel")}>
-          {BRIEF_PERIODS.map((p) => (
+          {periods.map((p) => (
             <button
               key={p}
               type="button"

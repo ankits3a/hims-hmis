@@ -354,6 +354,32 @@ export async function recordAcquired(
    * a scan that turns out to need none is a gate the floor learns to click past. T5 recorded the
    * obligation: **T7 refuses `contrastGiven` on a study whose contrast gates are not terminal.**
    */
+  /**
+   * ═══ 18a-iii T4 — `outside` IS REFUSED HERE, AND THE REASON IS A STATUTORY REGISTER ═══
+   *
+   * 18b put `outside` in `IMAGE_SOURCES` and left nothing behind it, so this console accepted it.
+   * For an `ionising: true` study type the block below then demanded a dose and wrote a
+   * `radiation_dose_register` row naming **our** `deviceResourceId` — which means a CT performed at
+   * another hospital, reported by us, would have entered ANOTHER HOSPITAL'S EXPOSURE into the
+   * statutory register an AERB inspector reads, against a machine that never ran.
+   *
+   * Nothing caught it because nothing was wrong at either end on its own: 18b's enum value is
+   * correct, and 18a's dose write is correct for every study that actually happened here. The defect
+   * lived in the fact that one door served both.
+   *
+   * So there is now one door each. An outside film goes through `registerOutsideStudy`, which
+   * records provenance, reaches `acquired` on its own workflow edge, and logs no dose at all.
+   */
+  if (input.imageSource === "outside") {
+    throw new RadiologyError(
+      "outside_study_only",
+      `study ${study.id} was recorded with imageSource "outside" at the acquisition console — a film `
+      + "from another centre is registered through the outside-study register, which records the "
+      + "centre that performed it and writes NO radiation dose against our machine (18a-iii T4/D5)",
+      { studyId: study.id },
+    );
+  }
+
   const studyInstanceUid = resolveStudyInstanceUid(study.id, input);
   const contrastGiven = input.contrastGiven ?? false;
   /**

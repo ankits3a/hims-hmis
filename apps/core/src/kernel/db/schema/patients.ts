@@ -282,15 +282,42 @@ export const patientAllergies = pgTable(
     substance: text("substance").notNull(),
     reaction: text("reaction"),
     severity: text("severity"), // 'mild' | 'moderate' | 'severe' | null
-    source: text("source").notNull(), // 'registration' | 'vitals' | 'consult'
+    source: text("source").notNull(), // 'registration' | 'vitals' | 'consult' | 'radiology' (18a-iii T2)
     status: text("status").notNull().default("active"), // 'active' | 'entered_in_error'
     recordedBy: text("recorded_by").notNull(),
     recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
     correctedBy: text("corrected_by"),
     correctedAt: timestamp("corrected_at", { withTimezone: true }),
     correctionReason: text("correction_reason"),
+    /**
+     * ═══════════════════════════════════════════════════════════════════════════════════════════
+     * THE CODED ALLERGEN — BECAUSE A TYPO SILENCES A SAFETY CHECK
+     * ═══════════════════════════════════════════════════════════════════════════════════════════
+     *
+     * `substance` is free text and must stay so: a patient says "the red syrup gave him a rash"
+     * and that is worth recording exactly. But the prescription guard reads it by TOKEN. `blockedBy`
+     * (cds/regimen.ts) matches the patient's allergy words against each rule's allergen and
+     * `blocked_classes` on tokens of five letters or more — so `pencilin`, written at a busy desk,
+     * matches nothing, and the penicillin block goes SILENT. No error, no warning; the guard simply
+     * has nothing to say, and the quietest failure in this tree is a guard with nothing to say.
+     *
+     * `allergen_class` is the rule's own class name ("Penicillins / Beta-Lactams") stored when the
+     * doctor PICKED from the catalogue rather than typed, which lets the rule be found by identity
+     * instead of by spelling. `salt_id` does the same for a specific moiety out of
+     * `formulary_salts`. Both are NULL for free text, which is the ordinary case and not an error —
+     * the token match still runs, exactly as before, for every row that has no code.
+     *
+     * No foreign key on `allergen_class`: the rules live in `cds/knowledge.json`, versioned as
+     * code, not as a table.
+     */
+    saltId: text("salt_id"),
+    allergenClass: text("allergen_class"),
   },
-  (t) => [index("patient_allergies_patient_idx").on(t.patientId)],
+  (t) => [
+    index("patient_allergies_patient_idx").on(t.patientId),
+    /** The guard reads by class, so the class is what a lookup across patients would group on. */
+    index("patient_allergies_class_idx").on(t.allergenClass),
+  ],
 );
 
 /**

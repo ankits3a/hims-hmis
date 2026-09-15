@@ -114,7 +114,7 @@ describe("the two radiology workflow definitions (18a T2 A4)", () => {
    * Read off the whole transition table rather than off the edges a reader remembered, so an edge
    * added later shows up here as a diff instead of passing unnoticed.
    */
-  it("A4: the study machine's declared pairs are exactly these fifteen", () => {
+  it("A4: the study machine's declared pairs are exactly these sixteen", () => {
     const declared = imagingStudyDefinition.transitions
       .map((t) => `${t.from}→${t.to}`)
       .sort();
@@ -129,6 +129,26 @@ describe("the two radiology workflow definitions (18a T2 A4)", () => {
       "ready→cancelled",
       "ready→in_acquisition",
       "reported→published",
+      /**
+       * ═══ 18a-iii T4 — THE SIXTEENTH, AND THIS CENSUS IS WHY IT IS DEFENDED IN WRITING ═══
+       *
+       * This list is friction on purpose, and the friction worked: the edge was added in
+       * `workflow-def.ts` and this test reddened before any suite of T4's ran, forcing the argument
+       * to be made HERE rather than noticed in a review six commits later.
+       *
+       * `scheduled → acquired` is how a film from another centre reaches a reportable state. It has
+       * no check-in, no gates, no machine and no exposure — and routing it through the ordinary arc
+       * would have reached `recordAcquired`, which for an ionising study type demands a dose and
+       * writes the AERB radiation dose register **against one of our machines**, for an exposure
+       * another hospital delivered.
+       *
+       * **It is also, unavoidably, a route past the machine, the gates and the dose** — the workflow
+       * engine cannot see which caller is using an edge. Three things hold it: the roles exclude
+       * `radiographer` (registering somebody else's film is a reception act); `registerOutsideStudy`
+       * refuses any study carrying a device, a slot or an acquisition start; and `outside.test.ts`
+       * pins the edge to ONE caller by grep, because a revert pair cannot prove an absence.
+       */
+      "scheduled→acquired",
       "scheduled→cancelled",
       "scheduled→checked_in",
       "scheduled→no_show",

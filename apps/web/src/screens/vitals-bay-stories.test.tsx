@@ -101,7 +101,7 @@ function serve(): Server {
         pulse: (body.readings as { pulse?: { takes: number[] } })?.pulse?.takes.at(-1) ?? null, rr: (body.readings as { rr?: { takes: number[] } })?.rr?.takes.at(-1) ?? null,
         spo2: (body.readings as { spo2?: { takes: number[] } })?.spo2?.takes.at(-1) ?? null, tempC: (body.readings as { tempC?: { takes: number[] } })?.tempC?.takes.at(-1) ?? null,
         muacCm: (body.readings as { muacCm?: { takes: number[] } })?.muacCm?.takes.at(-1) ?? null, notes: null,
-        ageYearsAtRecord: PRE[enc]!.ageYears, band: PRE[enc]!.band, dangerFlags: [], recordedBy: "sister-kavita", recordedAt: "2026-09-02T04:40:00.000Z",
+        ageYearsAtRecord: PRE[enc]!.ageYears, band: PRE[enc]!.band, dangerFlags: [], recordedBy: "sister-kavita", recordedByName: "Sister Kavita Toppo", recordedAt: "2026-09-02T04:40:00.000Z",
         readings: body.readings, contextChips: body.contextChips ?? [], carriedForward: (body.carriedForward as string[] | undefined) ?? [], supersedesVitalsId: null, amendmentReason: null, status: "active", emergency: body.emergency === true };
       S.charts[enc] = [v];
       const r = S.rows.find((x) => x.encounterId === enc)!; r.vitalsDone = true; r.vitalsId = v.id; r.benchState = null; r.recallAt = null;
@@ -287,7 +287,9 @@ it("the seven stories run in order on one bay, three patients, without narration
   fireEvent.click(screen.getByTestId("amend-save"));
   await waitFor(() => expect(screen.getByTestId("amend-trail")).toBeInTheDocument());
   expect(screen.getByTestId("trail-weightKg").textContent).toContain("48 → 62");
-  expect(screen.getByTestId("trail-weightKg").textContent).toContain("sister-kavita");
+  // 2026-09-13: was `toContain("sister-kavita")` — the actor id. Story 7's trail names the NURSE.
+  expect(screen.getByTestId("trail-weightKg").textContent).toContain("Sister Kavita Toppo");
+  expect(screen.getByTestId("trail-weightKg").textContent).not.toContain("sister-kavita");
   expect(screen.getByTestId("saved-banner").textContent).toContain("Amended Sunita Devi");
   expect(posted("/amend")).toHaveLength(1);
 

@@ -17,6 +17,7 @@ import { opdManifest } from "../../modules/opd";
 import { billingManifest } from "../../modules/billing";
 import * as labSweepsMod from "../../modules/lab/sweeps";
 import * as pharmacyExpiryMod from "../../modules/pharmacy/expiry";
+import * as radiologyChasersMod from "../../modules/radiology/chasers";
 import * as dispatcherMod from "../events/dispatcher";
 import * as timersMod from "../workflow/timers";
 import * as tempRolesMod from "../auth/temp-roles";
@@ -307,10 +308,28 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("sweepExpiredPharmacyPicks");
       return { cancelled: [] };
     }),
+    /**
+     * THE SEVENTEENTH AND EIGHTEENTH (Plan 18a-iii T5 / D7). Stubbed for the tenth's reason and
+     * more sharply: un-stubbed, `sweepCriticalChaser` reads the governed tier book, WRITES
+     * `chased_at` and APPENDS `imaging.critical_overdue` — inside a fake-clock unit test that is
+     * about the CLOCK. Their behaviour is asserted DIRECTLY in `modules/radiology/chasers.test.ts`.
+     *
+     * Spied on their OWN module rather than on the module index, because that is where the binding
+     * `jobs.ts` reaches through actually lives — the eleventh's rule, and it is easy to get wrong
+     * here because `jobs.ts` imports these two FROM the index.
+     */
+    jest.spyOn(radiologyChasersMod, "sweepCriticalChaser").mockImplementation(async () => {
+      invoked.push("sweepCriticalChaser");
+      return { chased: [] };
+    }),
+    jest.spyOn(radiologyChasersMod, "sweepUnreadWatchman").mockImplementation(async () => {
+      invoked.push("sweepUnreadWatchman");
+      return { chased: [] };
+    }),
   ];
 }
 
-const THE_SIXTEEN = [
+const THE_EIGHTEEN = [
   "runDispatchCycle",
   "runDueTimers",
   "sweepExpiredTempRoles",
@@ -349,6 +368,26 @@ const THE_SIXTEEN = [
    * `pick.ts` had written `expires_at` since 16c T4 and no job had ever read it.
    */
   "sweepExpiredPharmacyPicks",
+  /**
+   * PLAN 18a-iii T5 / D7 — the SEVENTEENTH and EIGHTEENTH, registered last, which is where
+   * `jobs.ts` puts them. They arrive TOGETHER because they are one decision: 18a shipped the
+   * critical-communication tier book as record-only, and these two are the pair that finally asks
+   * whether the promises in it were kept.
+   *
+   * `sweepCriticalChaser` is `every(60_000)` and widened NOTHING — a literal cadence, exactly as
+   * `sweepExpiredPharmacyPicks` and `flagLateSurgeons` take theirs, so no `JobIntervals` literal
+   * announced it and **this list is again the only census that had to change.** That is the whole
+   * reason this array exists, and it is now the third task it has caught.
+   *
+   * `sweepUnreadWatchman` is `dailyIst("08:00")`, and the asymmetry is deliberate: it measures a
+   * window of HOURS and its reader is a duty manager starting a shift, so a minute-by-minute sweep
+   * would raise the same alert at 03:00 to nobody.
+   *
+   * Neither has teeth. Each writes a mark saying it escalated and emits; the alerts consumer turns
+   * that into a row in front of a human. Nothing here changes a study's status.
+   */
+  "sweepCriticalChaser",
+  "sweepUnreadWatchman",
 ];
 
 /**
@@ -625,7 +664,7 @@ describe("Scheduler", () => {
       try {
         const scheduler = new Scheduler(fresh.db, fresh.pool, stubLocks(), CENSUS_DAILY_TICK_MS);
         registerAllJobs(scheduler, fresh.db, registry, {}, CENSUS_INTERVALS);
-        expect(scheduler.jobs()).toEqual(THE_SIXTEEN);
+        expect(scheduler.jobs()).toEqual(THE_EIGHTEEN);
 
         // Fake milliseconds advanced so far, measured from the pin. The walk only moves forward,
         // so a target already behind the cursor is a no-op rather than a rewind.
@@ -661,18 +700,18 @@ describe("Scheduler", () => {
         // and the post-await re-check then correctly drops any run whose read had not come back,
         // so calling it too early is exactly how this census came back short on CI twice while
         // being green on the build host every single time.
-        const settled = await settleUntil(() => new Set(invoked).size >= THE_SIXTEEN.length);
+        const settled = await settleUntil(() => new Set(invoked).size >= THE_EIGHTEEN.length);
         await scheduler.stop();
         // Reported, not asserted: on a bound hit the assertion below fails on its own SET and
         // names the missing jobs, which is a better failure message than a bare timeout.
         if (!settled) {
           // eslint-disable-next-line no-console
           console.warn(
-            `census: settleUntil hit its bound with ${new Set(invoked).size}/${THE_SIXTEEN.length} invoked`,
+            `census: settleUntil hit its bound with ${new Set(invoked).size}/${THE_EIGHTEEN.length} invoked`,
           );
         }
 
-        expect(new Set(invoked)).toEqual(new Set(THE_SIXTEEN));
+        expect(new Set(invoked)).toEqual(new Set(THE_EIGHTEEN));
         expect(scheduler.leakedErrors()).toEqual([]);
       } finally {
         jest.useRealTimers();

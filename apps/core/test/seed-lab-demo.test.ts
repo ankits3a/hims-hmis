@@ -120,22 +120,57 @@ describe("seed:lab-demo — synthetic clinical data for the five seats", () => {
    * subprocess gets verified by hand once and then rots.
    */
   describe("assertDemoDataAllowed", () => {
+    /**
+     * ═══ PHASE 11i T5 — A THIRD DOOR, AND THE PROSE ABOVE HAD TO CHANGE WITH IT ═══
+     *
+     * This block used to say *"the opt-in does NOT override production — the two refusals are
+     * independent, not a ladder"*, and that is still true of `ALLOW_DEMO_DATA`. What changed is
+     * that `NODE_ENV` stopped being able to separate the hospital from the bench: **UAT runs the
+     * PRODUCTION IMAGE**, which sets `NODE_ENV=production`, because a rehearsal on a different
+     * build proves nothing about the build that ships.
+     *
+     * So there is now a third refusal, `HMIS_SYNTHETIC_DATA_OK=1` (11i D5) — an ENVIRONMENT fact
+     * rather than an argument, living in `/opt/hmis-uat/.env` and in no other `.env` on the host,
+     * absent from the production template, and refused by `deploy.sh`'s prod target. The
+     * `NODE_ENV` refusal is read THROUGH it and is not weakened: a plain production container,
+     * with no such key, is refused exactly as before.
+     *
+     * Each leg below opens only the doors it is not testing, so no assertion passes for another
+     * refusal's reason.
+     */
+    const DOOR = { HMIS_SYNTHETIC_DATA_OK: "1" } as const;
+
     it("refuses without the explicit opt-in, and NAMES the database it would have written to", () => {
-      expect(() => assertDemoDataAllowed({}, "hmis_prod")).toThrow(/hmis_prod/);
-      expect(() => assertDemoDataAllowed({}, "hmis_prod")).toThrow(/ALLOW_DEMO_DATA=yes/);
-      expect(() => assertDemoDataAllowed({ ALLOW_DEMO_DATA: "1" }, "d")).toThrow();
-      expect(() => assertDemoDataAllowed({ ALLOW_DEMO_DATA: "true" }, "d")).toThrow();
+      expect(() => assertDemoDataAllowed({ ...DOOR }, "hmis_prod")).toThrow(/hmis_prod/);
+      expect(() => assertDemoDataAllowed({ ...DOOR }, "hmis_prod")).toThrow(/ALLOW_DEMO_DATA=yes/);
+      // The spelling is exact, and the door is OPEN here so the throw can only be about spelling.
+      expect(() => assertDemoDataAllowed({ ...DOOR, ALLOW_DEMO_DATA: "1" }, "d")).toThrow(/ALLOW_DEMO_DATA=yes/);
+      expect(() => assertDemoDataAllowed({ ...DOOR, ALLOW_DEMO_DATA: "true" }, "d")).toThrow(/ALLOW_DEMO_DATA=yes/);
     });
 
-    /** The opt-in does NOT override production — the two refusals are independent, not a ladder. */
-    it("refuses under NODE_ENV=production even WITH the opt-in", () => {
+    /** The opt-in still does not override production. Only the environment door does. */
+    it("refuses under NODE_ENV=production with the opt-in but WITHOUT the door", () => {
       expect(() => assertDemoDataAllowed(
         { NODE_ENV: "production", ALLOW_DEMO_DATA: "yes" }, "hmis",
-      )).toThrow(/refuses to run with NODE_ENV=production/);
+      )).toThrow(/HMIS_SYNTHETIC_DATA_OK/);
+    });
+
+    /** …and refuses under production with the DOOR but without the opt-in: neither implies the other. */
+    it("refuses under NODE_ENV=production with the door but WITHOUT the opt-in", () => {
+      expect(() => assertDemoDataAllowed(
+        { ...DOOR, NODE_ENV: "production" }, "hmis",
+      )).toThrow(/ALLOW_DEMO_DATA=yes/);
     });
 
     it("allows exactly the one spelling, off production", () => {
-      expect(() => assertDemoDataAllowed({ ALLOW_DEMO_DATA: "yes" }, "hmis_dev")).not.toThrow();
+      expect(() => assertDemoDataAllowed({ ...DOOR, ALLOW_DEMO_DATA: "yes" }, "hmis_dev")).not.toThrow();
+    });
+
+    it("allows UAT — the production IMAGE, with both the door and the opt-in", () => {
+      // The case the whole change exists for, and the one the old guard made impossible.
+      expect(() => assertDemoDataAllowed(
+        { ...DOOR, NODE_ENV: "production", ALLOW_DEMO_DATA: "yes" }, "hmis_uat",
+      )).not.toThrow();
     });
   });
 

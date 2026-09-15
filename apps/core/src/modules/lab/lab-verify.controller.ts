@@ -11,7 +11,7 @@ import {
   printReport, publishReport, releaseUnpaid, reportVersions, deliveryRegister, reportsForPatient,
 } from "./reports";
 import { amendResult, requestRerun } from "./results";
-import { verifyResult } from "./verify";
+import { nightReleasesAwaitingReview, reviewNightRelease, verifyResult } from "./verify";
 import { publishableOrders, verifyWorklist } from "./worklist";
 import { LAB_IDEMPOTENT_ROUTES, LAB_REPORT_ROUTES, idSchema, isoDateSchema, parsed, toHttp } from "./lab-http";
 import type { Actor } from "@hmis/contracts";
@@ -37,6 +37,9 @@ import type { ModuleRegistry } from "../../kernel/modules/loader";
  * That is 02 O-1 and it is the one route in this phase whose failure kills somebody rather than
  * annoying them.
  */
+/** DD11 — a concurrence IS the record; a note is optional so a queue is not worked by typing ".". */
+const nightReviewBody = z.object({ note: z.string().max(400).optional() });
+
 const rerunBody = z.object({ resultId: idSchema, reason: z.string().max(300).optional() });
 const publishBody = z.object({ orderId: idSchema, partial: z.boolean().optional() });
 const printBody = z.object({
@@ -120,6 +123,34 @@ export class LabVerifyController {
    * an idempotency key** (close review m7): it is a workflow transition, and a double-submit that
    * lost the race would surface `stale_transition` to a pathologist who pressed one button once.
    */
+  /**
+   * DD11 §7 — THE MORNING QUEUE. The runbook told a human to read `lab_results` where
+   * `pathologist_review_pending` is true; this is that read, with the patient, the analyte and the
+   * number the reviewer needs to judge it, and WHO released it alone.
+   */
+  @Get("verify/night-releases")
+  @RequirePermission("lab.results.verify", "hospital")
+  async nightReleases(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return await nightReleasesAwaitingReview(this.db, actor); } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * The second pair of hands arriving. `lab.results.verify` because it IS a verification act, taken
+   * late — the vocabulary already named it and no new grant is owed.
+   */
+  @Post("verify/night-releases/:resultId/review")
+  @RequirePermission("lab.results.verify", "hospital")
+  async reviewNight(
+    @CurrentActor() actor: Actor,
+    @Param("resultId") resultId: string,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    const input = parsed(nightReviewBody, body);
+    try {
+      return await reviewNightRelease(this.db, actor, { resultId, ...input });
+    } catch (e) { toHttp(e); }
+  }
+
   @Post("verify/rerun")
   @RequirePermission("lab.results.verify", "hospital")
   async rerun(

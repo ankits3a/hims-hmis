@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { eq } from "drizzle-orm";
 import { registrationConfig } from "../../kernel/db/schema";
-import type { Tx } from "../../kernel/db/client";
+import type { Db, Tx } from "../../kernel/db/client";
 
 /**
  * One error class for the whole patients module (the Plan 03/04 one-class convention).
@@ -41,7 +41,16 @@ export type PatientErrorCode =
    * FD-8 — registration now ENDS AT THE UHID, so `POST /patients` is a counter act and must carry
    * the near-match warning the walk-in has always had. A WARNING a human may override, never a gate.
    */
-  | "duplicate_suspected";
+  | "duplicate_suspected"
+  /**
+   * The desk's photograph of a paper slip. `document_too_large` maps to 413 beside `photo_too_large`
+   * for the same reason: the client must downscale, and a 400 reads as "your request was malformed"
+   * when the request was fine and the file was big. `document_corrupt` is the integrity check —
+   * stored bytes that no longer match the hash taken at capture — and it is a CONFLICT rather than a
+   * 500 because the record is wrong, not the server.
+   */
+  | "unsupported_document_type" | "document_too_large" | "document_empty"
+  | "document_not_found" | "document_corrupt";
 
 export class PatientError extends Error {
   constructor(
@@ -180,6 +189,23 @@ export function formatUhid(prefix: string, n: number): string {
   }
   const body = String(n).padStart(UHID_SERIAL_DIGITS, "0");
   return `${prefix}${body}${verhoeffCheckDigit(body)}`;
+}
+
+/**
+ * IS THE `registration_config` ROW THERE — PHASE 11i T2, and READ-ONLY on purpose.
+ *
+ * `allocateUhid` below already answers this question, by throwing `registration_not_configured`
+ * with the seed command in its text. But it answers it by ALLOCATING A UHID, and a readiness
+ * census that burned a patient number every time it ran would be a census nobody could run twice.
+ * So the question gets its own read, against the same row `allocateUhid` reads, in the module that
+ * owns it — never a select from the census's own file.
+ */
+export async function registrationConfigured(exec: Db | Tx): Promise<boolean> {
+  const rows = await (exec as Db)
+    .select({ uhidPrefix: registrationConfig.uhidPrefix })
+    .from(registrationConfig)
+    .where(eq(registrationConfig.id, "main"));
+  return rows.length > 0 && rows[0]!.uhidPrefix.trim() !== "";
 }
 
 /** Allocates the next UHID on the caller's transaction. Sequence = concurrency-safe by construction. */

@@ -5,7 +5,13 @@ import { defineEvent } from "@hmis/contracts";
  * PLAN 17 T2 / DD18 — the lab's event surface. `entity.verb_past`, module carried separately (the
  * `opd`, `materials`, `membership`, `formulary` and `ot` grammar, unchanged).
  *
- * ═══ `subscriptions: []` — THIS MODULE CONSUMES NOTHING, AND THAT IS A DECISION ═══
+ * ═══ THE LAB CONSUMES NOTHING **ABOUT A PATIENT**, AND THAT IS THE DECISION ═══
+ *
+ * NARROWED AT 17-E T7b. Until this task the sentence here read *"this module consumes nothing"*, and
+ * the manifest's `subscriptions: []` was its evidence. The manifest now carries two subscriptions, so
+ * the general claim is retired and the specific one it was always arguing is stated instead —
+ * a header that keeps asserting an emptiness the file beside it has filled is how a comment becomes
+ * a lie (#160: written diagnoses record a MOMENT, not a state).
  *
  * The one subscription a reader will look for is `patient.merged`, which the OT and materials both
  * take. The lab does not need it: **every table in T1 keys by `order_item_id`, `specimen_id` or
@@ -14,6 +20,12 @@ import { defineEvent } from "@hmis/contracts";
  * merge path moves `orders.patient_id` and the tube belongs to the order group. A consumer here
  * would be a second answer to a question the envelope already answers, which is the shape §2.54
  * exists to stop.
+ *
+ * **`interface.down` / `interface.restored` are the exception because they are the opposite case**:
+ * the kernel's heartbeat sweep is the ONLY answer to "is this bridge alive", the lab is the only
+ * module that knows an `interfaces` row is an analyser's, and no other component projects that fact
+ * onto the machine's status — so consuming them adds the missing answer instead of a second one
+ * (17-E T7b, `interface-status.ts`).
  *
  * `lab.notifiable_flagged` is emitted and consumed by NOBODY in this phase — 28a subscribes to it
  * when the notifiable-disease register exists. An event with no consumer is not a defect; a
@@ -153,9 +165,37 @@ export const labResultVerified = defineEvent("lab.result_verified", MODULE, z.ob
 }));
 
 /**
+ * 17-E T7 / D17 — WHICH OF AN ANALYSER'S TWO RUNS THE REPORT WILL CARRY, AND WHY.
+ *
+ * `supersededResultIds` names the rows the choice leaves behind rather than a single "other": a
+ * third transmission is a set of three, and an event that could only describe a pair would go
+ * silent on the case a busy bench actually produces. The reason travels in the event as well as on
+ * the row — an auditor reading the stream should not have to join back to learn WHY.
+ */
+export const labResultChosen = defineEvent("lab.result_chosen", MODULE, z.object({
+  resultId: id, orderItemId: id, analyteId: id, chosenBy: id, reason: z.string().min(1),
+  supersededResultIds: z.array(id), previousChoiceId: id.nullable(),
+}));
+
+/**
  * DD12 — the 15-minute clock. Emitted at ENTRY, before any verification: the clinical need is the
  * CALL, and the signature follows by 09:00 (R-014's default, adopted).
  */
+/**
+ * DD11 / §7 — THE MORNING AFTER. Night mode borrowed the second pair of hands; this is that pair
+ * arriving, and it is the compensating control that makes the relaxation a relaxation rather than an
+ * absent control.
+ *
+ * **Both people are named, because a review is a relationship between two of them** — "who signed
+ * this off" is only half the question NABL asks, and `releasedBy` is the half a boolean on the row
+ * could never have answered once it was cleared. The note is nullable: a concurrence IS the record,
+ * and demanding an essay on every one is how a queue gets worked by typing a full stop.
+ */
+export const labNightReleaseReviewed = defineEvent("lab.night_release_reviewed", MODULE, z.object({
+  resultId: id, orderItemId: id, analyteId: id,
+  reviewedBy: id, releasedBy: id, note: z.string().nullable(), reviewedAt: z.string(),
+}));
+
 export const labResultCriticalFlagged = defineEvent("lab.result_critical_flagged", MODULE, z.object({
   resultId: id, callId: id, orderItemId: id, analyteId: id, patientId: id,
   value: z.string().min(1), band: z.enum(["low", "high"]),
@@ -181,6 +221,25 @@ export const labReflexAdded = defineEvent("lab.reflex_added", MODULE, z.object({
  * DD11 — the SoD refusal, EVENTED. A refusal nobody can count is a control nobody can audit, and
  * NABL asks how often the single-operator path was used.
  */
+/**
+ * §9.2 F44, OWED SINCE 17b AND PAID HERE. A reflex rule that FIRES but cannot place — the reflexed
+ * test has no price in the active tariff version, or the line trips a credit cap — is rolled back
+ * with its savepoint, and the verification stands (close review M1: money must never hold a clinical
+ * fact). The refusal was RETURNED and shown on the screen, and that is all: *"how often does a
+ * reflex fail to place"* was unanswerable, and the runbook's pilot harvest counted it by hand.
+ *
+ * `verify.ts` names this event by name in its own comment as the thing it could not emit while
+ * `LAB_EVENTS` was frozen for Plan 17. **A rule that fires and silently does not order a test is a
+ * missed test on a real patient**; the count is what tells a hospital its tariff has a hole in it.
+ *
+ * Emitted on the VERIFYING transaction, not inside the savepoint that rolled back — the boundary is
+ * one-way by construction, so this commits with the signature that caused it and dies with it.
+ */
+export const labReflexRefused = defineEvent("lab.reflex_refused", MODULE, z.object({
+  orderItemId: id, analyteId: id, ruleId: id, addedServiceId: id,
+  code: z.string().min(1), reason: z.string(),
+}));
+
 export const labSodViolationBlocked = defineEvent("lab.sod_violation_blocked", MODULE, z.object({
   resultId: id, orderItemId: id, actorId: id, enteredById: id,
 }));
@@ -233,8 +292,9 @@ export const LAB_EVENTS = [
   labOrderDesked, labAttributionUnverifiedFlagged,
   labLabelPrinted, labTubeMismatchFlagged, labSpecimenCollected, labSpecimenReceived,
   labSpecimenRejected, labSpecimenRelabelled, labRecollectionRequested,
-  labResultEntered, labResultVerified, labTubeSwapSuspected, labResultCriticalFlagged, labCriticalAcknowledged,
-  labResultDeltaFlagged, labReflexAdded, labSodViolationBlocked,
+  labResultEntered, labResultVerified, labResultChosen, labNightReleaseReviewed,
+  labTubeSwapSuspected, labResultCriticalFlagged, labCriticalAcknowledged,
+  labResultDeltaFlagged, labReflexAdded, labReflexRefused, labSodViolationBlocked,
   labReportPublished, labReportPrintBlocked, labReportReleasedUnpaid, labReportPrinted,
   labReportAmended,
   labSlaBreached, labNotifiableFlagged,

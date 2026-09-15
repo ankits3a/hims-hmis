@@ -246,3 +246,21 @@ export function assertFormulaParses(formula: string, guard: string | null): void
   run(formula, null);
   if (guard !== null) runGuard(guard, null);
 }
+
+/**
+ * ═══ EVERY ANALYTE CODE AN EXPRESSION AND ITS GUARD NAME ═══
+ *
+ * The grammar has no functions and no keywords, so every bare identifier in it is an analyte code —
+ * which is what makes a regex the honest reading rather than a shortcut past the parser.
+ *
+ * It lives HERE, beside the tokenizer whose character class it mirrors, because there were two
+ * copies of it by 17-E T7: `results.ts` used one to decide whether a formula could be computed and
+ * `verify.ts` needed one to decide whether it could be signed. Two readings of "what does this
+ * expression depend on" that could drift is #130's shape — a rule added to one of two near-duplicate
+ * functions leaves a hole with no error anywhere — and the hole here would be a derived value signed
+ * over an input nobody had chosen.
+ */
+export function formulaInputCodes(formula: string | null, guard: string | null): string[] {
+  const text = `${formula ?? ""} ${guard ?? ""}`;
+  return [...new Set(text.match(/[A-Za-z][A-Za-z0-9_]*/g) ?? [])];
+}

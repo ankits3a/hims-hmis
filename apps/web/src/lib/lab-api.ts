@@ -27,6 +27,17 @@ export type WireAnalyteRow = {
   pathologistReviewPending: boolean;
   /** 17c T4 / D11 — the last VERIFIED value of this analyte on the canonical patient, or null. */
   previous: { resultId: string; value: string; flag: string | null; at: string } | null;
+  /**
+   * 17-E T7 / D18 — **the runs nobody has chosen between**, oldest first; empty for almost every
+   * analyte. Two entries means an analyser re-ran the tube and `value` above is null: the analyte
+   * has no reportable value until the bench says which run the report carries, and **this list is
+   * non-empty exactly when a signature would be refused `rerun_unchosen`.** Not a history — a
+   * superseded row (a human's re-key) never appears here and was never choosable.
+   */
+  rerunChoice: {
+    resultId: string; value: string; flag: string | null; deltaFlag: boolean;
+    at: string; entryMode: string; isRerun: boolean;
+  }[];
 };
 
 export type WireWorklistRow = {
@@ -177,7 +188,20 @@ export type WireReportSnapshot = {
   patient: { id: string; uhid: string; name: string; sex: string; dob: string | null };
   orderingClinicianId: string | null;
   panels: WireReportPanel[];
-  signatory: { userId: string; username: string; signedAt: string };
+  /**
+   * `fullName` and `registrationNo` are OPTIONAL because a published report is immutable by database
+   * trigger: reports signed before the letterhead change can never gain them, there is no backfill,
+   * and there must not be one. The print component falls back rather than rendering `undefined`.
+   */
+  signatory: {
+    userId: string;
+    username: string;
+    signedAt: string;
+    fullName?: string;
+    registrationNo?: string | null;
+  };
+  /** The hospital as it was named on the day this was signed. Optional for the same reason. */
+  letterhead?: { name: string; addressLines: string[] };
   partial: boolean;
   notes: string[];
 };
@@ -342,6 +366,16 @@ export const enterResult = (body: EnterResultRequest, key: string): Promise<{
   resultId: string; flag: string | null; deltaFlagged: boolean; criticalCallId: string | null;
 }> => api("POST", "/lab/bench/results", body, key);
 
+/**
+ * 17-E T7 / D18 — WHICH RUN THE REPORT CARRIES. `lab.results.enter`, so the bench makes it and the
+ * pathologist (who holds that grant too) may make it at the verify seat. **The reason is not
+ * optional and is not decoration:** the server refuses `rerun_choice_reason_required` on a blank
+ * one, because a choice without a reason is exactly the auto-supersession D9 removed.
+ */
+export const chooseResult = (body: { resultId: string; reason: string }): Promise<{
+  resultId: string; analyteId: string; supersededResultIds: string[];
+}> => api("POST", "/lab/bench/results/choose", body);
+
 export const openCriticals = (): Promise<WireCriticalCall[]> => api("GET", "/lab/bench/criticals");
 
 export const acknowledgeCritical = (
@@ -352,6 +386,24 @@ export const acknowledgeCritical = (
 /* ────────────────────────── the signature and the document ────────────────────────── */
 
 export const verifyWorklist = (): Promise<WireWorklistRow[]> => api("GET", "/lab/verify/worklist");
+
+/**
+ * DD11 §7 — the morning queue. Until now the runbook told a human to read `lab_results` where
+ * `pathologist_review_pending` is true; a morning round does not begin with psql.
+ */
+export type WireNightRelease = {
+  resultId: string; orderItemId: string; orderNo: string;
+  patientId: string; patientDisplay: string;
+  analyteCode: string; analyteName: string;
+  value: string; unit: string | null; flag: string | null;
+  releasedBy: string; releasedAt: string;
+};
+
+export const nightReleases = (): Promise<WireNightRelease[]> =>
+  api("GET", "/lab/verify/night-releases");
+
+export const reviewNightRelease = (resultId: string, note?: string): Promise<unknown> =>
+  api("POST", `/lab/verify/night-releases/${resultId}/review`, note === undefined ? {} : { note });
 
 /**
  * The orders a report can be published for. A SEPARATE queue from the verify worklist, because an

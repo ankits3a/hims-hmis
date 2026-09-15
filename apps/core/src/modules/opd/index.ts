@@ -9,7 +9,7 @@ export { OpdError } from "./errors";
 export type { OpdErrorCode } from "./errors";
 export { OPD_VISIT_DEF_KEY, OPD_VISIT_DEFINITION_JSON, OPD_VISIT_STATES, opdVisitDefinition } from "./workflow-def";
 export type { OpdVisitState } from "./workflow-def";
-export { registerConsultStartGuard } from "./consultation";
+export { parkConsultation, registerConsultStartGuard, resumeConsultation } from "./consultation";
 export type { ConsultStartGuard } from "./consultation";
 /*
   FD-28 — `counterState` is exported for BILLING. It is the PHI-free projection of a visit (status,
@@ -47,6 +47,8 @@ export type { VisitType } from "./visit-type";
 export { loadOpdConfig } from "./config";
 export type { OpdConfig } from "./config";
 export { orderQueue, nextInQueue, classOf } from "./queue-engine";
+export { SKIP_REASONS } from "./skip-reasons";
+export type { SkipReason } from "./skip-reasons";
 export type { QueueEntryState, QueuePolicy, QueueClass } from "./queue-engine";
 export * from "./events";
 export { walkIn } from "./walk-in";

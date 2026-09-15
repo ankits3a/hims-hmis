@@ -18,11 +18,28 @@ import type { RegisterPatientInput } from "../../src/modules/patients";
 
 export const testCfg = loadConfig({ DATABASE_URL: "postgres://unused", SECRET_KEY: process.env.SECRET_KEY! });
 
-/** opd_config 'main' with the shipped defaults (+ registration_config so registerPatient works). */
+/**
+ * opd_config 'main' with the shipped defaults (+ registration_config so registerPatient works).
+ *
+ * ═══ RE-ENTRANT, AND WITH THE CALLER'S INTENT — NOT MERELY WITH THEIR ROW ═══
+ *
+ * `registration_config` above has always been guarded and `opd_config` was not, so a second call
+ * against the same database died on `duplicate key … "opd_config_pkey"`. **Two adjacent statements
+ * that had to agree about re-entrancy, one carrying the guard and one not** — and it presents as an
+ * order-dependent flake rather than an honest error, because whether it fires depends on what else
+ * already seeded that worker's database.
+ *
+ * **`DoUpdate` and deliberately not `DoNothing`.** This function takes OVERRIDES, so DoNothing would
+ * make a second call silently keep the FIRST config: a test asking for `perkEveryNth: 5` would run
+ * against the default `null` **and pass**. That is a green failure, and strictly worse than the
+ * duplicate key it replaces. `registration_config` keeps DoNothing because it is NOT parameterised —
+ * the distinction is whether the row carries the caller's intent, not whether the insert repeats.
+ *
+ * Pinned by `test/helpers-idempotence.test.ts`, whose second case is the one that refuses DoNothing.
+ */
 export async function seedOpdBase(db: Db, over: { perkEveryNth?: number | null; slotMinutes?: number; extensionCap?: number; maxSkips?: number } = {}): Promise<void> {
   await db.insert(registrationConfig).values({ id: "main", uhidPrefix: "HMS", updatedBy: "t" }).onConflictDoNothing();
-  await db.insert(opdConfig).values({
-    id: "main",
+  const config = {
     slotMinutes: over.slotMinutes ?? 10,
     followUpExtensionDays: DEFAULT_FOLLOW_UP_EXTENSION_DAYS,
     extensionCapPerDoctorPerMonth: over.extensionCap ?? 30,
@@ -31,7 +48,9 @@ export async function seedOpdBase(db: Db, over: { perkEveryNth?: number | null; 
     dangerRanges: DEFAULT_DANGER_RANGES,
     letterhead: DEFAULT_LETTERHEAD,
     updatedBy: "t",
-  });
+  };
+  await db.insert(opdConfig).values({ id: "main", ...config })
+    .onConflictDoUpdate({ target: opdConfig.id, set: config });
 }
 
 export async function ensureRole(db: Db, key: string): Promise<void> {

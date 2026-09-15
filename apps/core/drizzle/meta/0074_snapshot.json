@@ -1,5 +1,5 @@
 {
-  "id": "2395ca05-7d49-4161-9135-24e4eb07f3a0",
+  "id": "613b5b77-ef99-453e-b781-a7353610bcdf",
   "prevId": "26587fc4-adbd-4179-b98b-190d3a97e87e",
   "version": "7",
   "dialect": "postgresql",
@@ -4862,12 +4862,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "code": {
-          "name": "code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "registration_no": {
           "name": "registration_no",
           "type": "text",
@@ -4926,21 +4920,6 @@
           "columns": [
             {
               "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "opd_doctors_code_ux": {
-          "name": "opd_doctors_code_ux",
-          "columns": [
-            {
-              "expression": "code",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -19065,6 +19044,333 @@
         "lab_parked_results_discard_ck": {
           "name": "lab_parked_results_discard_ck",
           "value": "(\"lab_parked_results\".\"status\" = 'discarded') = (\"lab_parked_results\".\"discard_reason\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.lab_plate_maps": {
+      "name": "lab_plate_maps",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "instrument_id": {
+          "name": "instrument_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plate_ref": {
+          "name": "plate_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "assay": {
+          "name": "assay",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kit_lot": {
+          "name": "kit_lot",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'open'"
+        },
+        "cutoff_multiplier": {
+          "name": "cutoff_multiplier",
+          "type": "numeric(8, 4)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cutoff_offset": {
+          "name": "cutoff_offset",
+          "type": "numeric(8, 4)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "min_pc_nc_ratio": {
+          "name": "min_pc_nc_ratio",
+          "type": "numeric(8, 4)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_nc_od": {
+          "name": "max_nc_od",
+          "type": "numeric(8, 4)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nc_mean_od": {
+          "name": "nc_mean_od",
+          "type": "numeric(8, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pc_mean_od": {
+          "name": "pc_mean_od",
+          "type": "numeric(8, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cutoff_od": {
+          "name": "cutoff_od",
+          "type": "numeric(8, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "controls_fail_reason": {
+          "name": "controls_fail_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "opened_at": {
+          "name": "opened_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "opened_by": {
+          "name": "opened_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "read_at": {
+          "name": "read_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "read_by_transmission_id": {
+          "name": "read_by_transmission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "lab_plate_maps_open_ux": {
+          "name": "lab_plate_maps_open_ux",
+          "columns": [
+            {
+              "expression": "instrument_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "status = 'open'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "lab_plate_maps_instrument_idx": {
+          "name": "lab_plate_maps_instrument_idx",
+          "columns": [
+            {
+              "expression": "instrument_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "opened_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "lab_plate_maps_instrument_id_lab_instruments_id_fk": {
+          "name": "lab_plate_maps_instrument_id_lab_instruments_id_fk",
+          "tableFrom": "lab_plate_maps",
+          "tableTo": "lab_instruments",
+          "columnsFrom": [
+            "instrument_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "lab_plate_maps_status_ck": {
+          "name": "lab_plate_maps_status_ck",
+          "value": "\"lab_plate_maps\".\"status\" in ('open', 'read', 'controls_failed', 'abandoned')"
+        },
+        "lab_plate_maps_failed_reason_ck": {
+          "name": "lab_plate_maps_failed_reason_ck",
+          "value": "(\"lab_plate_maps\".\"status\" = 'controls_failed') = (\"lab_plate_maps\".\"controls_fail_reason\" is not null)"
+        },
+        "lab_plate_maps_cutoff_ck": {
+          "name": "lab_plate_maps_cutoff_ck",
+          "value": "\"lab_plate_maps\".\"cutoff_multiplier\" > 0 or \"lab_plate_maps\".\"cutoff_offset\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.lab_plate_wells": {
+      "name": "lab_plate_wells",
+      "schema": "",
+      "columns": {
+        "plate_map_id": {
+          "name": "plate_map_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "well": {
+          "name": "well",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "specimen_id": {
+          "name": "specimen_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "od": {
+          "name": "od",
+          "type": "numeric(8, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "verdict": {
+          "name": "verdict",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "repeat_required": {
+          "name": "repeat_required",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "scanned_at": {
+          "name": "scanned_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "scanned_by": {
+          "name": "scanned_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "lab_plate_wells_specimen_ux": {
+          "name": "lab_plate_wells_specimen_ux",
+          "columns": [
+            {
+              "expression": "plate_map_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "specimen_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "lab_plate_wells_plate_map_id_lab_plate_maps_id_fk": {
+          "name": "lab_plate_wells_plate_map_id_lab_plate_maps_id_fk",
+          "tableFrom": "lab_plate_wells",
+          "tableTo": "lab_plate_maps",
+          "columnsFrom": [
+            "plate_map_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "lab_plate_wells_specimen_id_lab_specimens_id_fk": {
+          "name": "lab_plate_wells_specimen_id_lab_specimens_id_fk",
+          "tableFrom": "lab_plate_wells",
+          "tableTo": "lab_specimens",
+          "columnsFrom": [
+            "specimen_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "lab_plate_wells_plate_map_id_well_pk": {
+          "name": "lab_plate_wells_plate_map_id_well_pk",
+          "columns": [
+            "plate_map_id",
+            "well"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "lab_plate_wells_role_ck": {
+          "name": "lab_plate_wells_role_ck",
+          "value": "\"lab_plate_wells\".\"role\" in ('blank', 'negative_control', 'positive_control', 'cutoff_control', 'patient')"
+        },
+        "lab_plate_wells_specimen_ck": {
+          "name": "lab_plate_wells_specimen_ck",
+          "value": "(\"lab_plate_wells\".\"role\" = 'patient') = (\"lab_plate_wells\".\"specimen_id\" is not null)"
+        },
+        "lab_plate_wells_verdict_ck": {
+          "name": "lab_plate_wells_verdict_ck",
+          "value": "\"lab_plate_wells\".\"verdict\" is null or \"lab_plate_wells\".\"verdict\" in ('non_reactive', 'reactive', 'control_ok', 'control_failed')"
         }
       },
       "isRLSEnabled": false

@@ -10,7 +10,11 @@ import {
   addInteraction, addMedicine, addSalt, listInteractions, listMedicines, listSalts,
   updateInteraction, updateMedicine, updateSalt,
 } from "./masters";
+import { searchMedicines } from "./search";
+import type { MedicineHit } from "./search";
 import { admitStaging, getStagingRow, rejectStaging, searchStaging } from "./staging";
+import { MAX_SUGGESTIONS, suggestDrugs } from "./suggest";
+import type { DrugSuggestion } from "./suggest";
 import { getCoverage, getPairOverrideRates } from "./curation";
 import type { InteractionRow, MedicineWithSalts, SaltRow } from "./masters";
 import type { StagingRow } from "./staging";
@@ -52,7 +56,18 @@ function parsed<T>(schema: z.ZodType<T>, body: unknown): T {
 
 /** Query flags arrive as strings; never z.coerce.boolean() — it reads "false" as true (§3.19). */
 const flagQuery = z.enum(["true", "false"]).optional();
+const medicineSearchQuery = z.object({ q: z.string().max(120), limit: z.string().max(3).optional() });
 const activeQuery = z.object({ active: flagQuery });
+
+/**
+ * `limit` is CLAMPED, not merely validated: a caller asking for 10,000 gets 25 rather than an
+ * error, because a typeahead that 400s on a stray query parameter is a prescribing screen that
+ * stops working for a reason the doctor cannot see.
+ */
+const suggestQuery = z.object({
+  q: z.string().min(1).max(120),
+  limit: z.coerce.number().int().min(1).max(MAX_SUGGESTIONS).optional(),
+});
 
 const name = z.string().min(1).max(200);
 const routeClass = z.enum(["systemic", "topical"]);
@@ -136,6 +151,42 @@ export class FormularyController {
     } catch (e) {
       toHttp(e);
     }
+  }
+
+  /**
+   * THE PRESCRIBER'S DRUG SEARCH. Molecule and strength, no brand — see `suggest.ts` for why it
+   * returns no `medicineId` and why that is the safe choice on an uncurated catalogue.
+   *
+   * NO RATE LIMITER HERE, DELIBERATELY. `checkSearchRate` counts `search_audit` rows against one
+   * budget that PATIENT lookup shares (120 per 60 s), so a doctor writing a ten-line prescription
+   * would burn a quarter of the budget their own patient search depends on. And the limiter's own
+   * header names the threat it exists for: scripted enumeration of a patient list. This route reads
+   * a PUBLISHED national catalogue. The defences that apply are the permission, the three-character
+   * floor and the hard cap.
+   */
+  @RequirePermission("formulary.read", "hospital")
+  @Get("suggest")
+  async suggest(@Query() query: unknown): Promise<{ items: DrugSuggestion[] }> {
+    const q = parsed(suggestQuery, query);
+    return { items: await suggestDrugs(this.db, q.q, { limit: q.limit }) };
+  }
+
+  /**
+   * ═══ THE TYPEAHEAD — AND IT MUST SIT ABOVE `@Get("medicines")` ═══
+   *
+   * Nest matches in declaration order, so a literal segment declared after `medicines` would still
+   * be reached, but the pair reads as one thing here: `medicines` is the WHOLE catalogue and is now
+   * the wrong instrument for a screen — 103,383 rows, 15 MB, measured after the owner's bundle
+   * landed. Everything interactive uses this route and takes ten rows.
+   *
+   * `formulary.read` and no new grant: the doctor has held it since 16a, precisely so the consult
+   * screen could name a medicine.
+   */
+  @RequirePermission("formulary.read", "hospital")
+  @Get("medicines/search")
+  async searchMedicinesRoute(@Query() query: unknown): Promise<{ items: MedicineHit[] }> {
+    const q = parsed(medicineSearchQuery, query);
+    return { items: await searchMedicines(this.db, q.q, q.limit === undefined ? 10 : Number(q.limit)) };
   }
 
   @RequirePermission("formulary.read", "hospital")

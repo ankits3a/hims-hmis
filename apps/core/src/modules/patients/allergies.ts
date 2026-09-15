@@ -17,7 +17,33 @@ export async function addAllergy(
     substance: string;
     reaction?: string;
     severity?: "mild" | "moderate" | "severe";
-    source: "registration" | "vitals" | "consult";
+    /**
+     * ═══ 18a-iii T2 — `radiology` JOINS THIS UNION, AND THE HTTP ROUTE DOES NOT ═══
+     *
+     * A contrast reaction WRITES this patient's allergy, in the same transaction as the reaction
+     * record (18a-iii D2), because a reaction invisible to the next CT's `prior_contrast_reaction`
+     * gate is the defect that whole chain exists to prevent. `radiology` is the fourth source.
+     *
+     * `patients.controller.ts` deliberately still accepts only the first three: a counter clerk
+     * posting to `/patients/:id/allergies` must not be able to CLAIM a radiology provenance for a
+     * line they typed. The fourth value is reachable only through `recordContrastReaction`, which
+     * derives the substance from the administration row rather than from anything a human typed.
+     */
+    source: "registration" | "vitals" | "consult" | "radiology";
+    /**
+     * ═══ THE CODED ALLERGEN — SET WHEN THE ALLERGY WAS PICKED, NEVER INFERRED HERE ═══
+     *
+     * `allergenClass` is the CDS rule's own class name and is what lets the prescription block fire
+     * by identity instead of by spelling: `blockedBy` matches free text on five-letter tokens, so a
+     * misspelt `pencilin` matches nothing and the penicillin block goes silent for the life of the
+     * record. `saltId` names one moiety exactly when the allergy is not one of the six classes.
+     *
+     * Both are OPTIONAL and this function never derives them from `substance`. Guessing a class
+     * from typed words is exactly the judgement the picker exists to make explicit — a wrong guess
+     * here would record a block the patient's history does not support.
+     */
+    saltId?: string | null;
+    allergenClass?: string | null;
   },
 ): Promise<{ allergyId: string }> {
   if (actor.type !== "user") throw new PatientError("user_actor_required");
@@ -33,6 +59,8 @@ export async function addAllergy(
     reaction: input.reaction ?? null,
     severity: input.severity ?? null,
     source: input.source,
+    saltId: input.saltId ?? null,
+    allergenClass: input.allergenClass ?? null,
     recordedBy: actor.id,
   });
   await appendEvent(

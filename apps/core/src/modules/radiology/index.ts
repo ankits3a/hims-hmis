@@ -14,7 +14,7 @@ export { RadiologyError, RADIOLOGY_ERROR_CODES, radiologyHttpStatus } from "./er
 export type { RadiologyErrorCode } from "./errors";
 export {
   RADIOLOGY_RESOURCE_KINDS, SCHEDULABLE_DEVICE_STATUSES, DEVICE_MODALITY_ATTRIBUTE,
-  IMAGING_MODALITIES,
+  DEVICE_PORTABLE_ATTRIBUTE, IMAGING_MODALITIES,
 } from "./kinds";
 export type { ImagingModality } from "./kinds";
 export {
@@ -72,6 +72,18 @@ export {
   recordContrastAdministration, summariseContrast,
 } from "./contrast";
 export type { ContrastAdministrationRow, RecordContrastInput } from "./contrast";
+export {
+  CONTRAST_ALLERGY_SUFFIX, contrastAllergySubstance, contrastReactionHistory, contrastReactionsFor,
+  recordContrastReaction,
+} from "./reactions";
+export type { ContrastReactionRow, RecordContrastReactionInput } from "./reactions";
+export { outsideStudyFor, registerOutsideStudy } from "./outside";
+export type { OutsideStudyRow, RegisterOutsideStudyInput } from "./outside";
+/** 18a-iii T5 — the worker's two chasers. `jobs.ts` imports them through this barrel, as it does the lab's. */
+export {
+  CHASER_ACTOR, UNREAD_REPORT_HOURS, sweepCriticalChaser, sweepUnreadWatchman,
+} from "./chasers";
+export type { CriticalChaseResult, UnreadChaseResult } from "./chasers";
 export {
   authorisationOf, encounterPayer, hasBillDecision, linkInvoiceLine, openBillDecisions,
   raiseBillDecision, resolveBillDecision,

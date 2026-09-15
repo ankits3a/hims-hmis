@@ -34,6 +34,12 @@ export type DrafterFacts = {
   contrastAgent: string | null;
   contrastVolumeMl: string | null;
   dose: { ctdivol: string | null; dlp: string | null; dap: string | null; fluoroSeconds: number | null };
+  /**
+   * 18a-iii T4 / D5 — null for a study we performed. Non-null means the images came from another
+   * centre, and the TECHNIQUE sentence has to say so: a signed report that reads like ours, about a
+   * film that is not, is the exact confusion the register exists to prevent.
+   */
+  outside: { centreName: string; studyDate: string; arrival: string } | null;
 };
 
 export type DraftProposal = {
@@ -67,13 +73,52 @@ const MODALITY_WORDS: Readonly<Record<string, string>> = {
  * number under the wrong unit is a thousand-fold regulatory error under a signature. CTDIvol (mGy)
  * and DLP (mGy·cm) have one unit each; fluoroscopy is seconds. DAP's unit belongs to 18c's register.
  */
+const ARRIVAL_WORDS: Readonly<Record<string, string>> = {
+  film: "film", cd: "CD", link: "an external link", none: "no images",
+};
+
 function techniqueOf(f: DrafterFacts): string {
   const word = MODALITY_WORDS[f.studyType.modality] ?? f.studyType.modality;
   const parts = [f.studyType.name === "" ? word : `${word}: ${f.studyType.name}`];
+  /**
+   * ═══ 18a-iii T4 / D5 — THE LABEL COMES FIRST, BEFORE THE READER'S EYE REACHES THE FINDINGS ═══
+   *
+   * D5: *"the report surface labelling it so no reader mistakes it for ours."* The sentence names
+   * the centre, their date and how the images arrived, because a radiologist reading a report six
+   * months later needs all three to judge what the opinion was based on — and "reported from a CD"
+   * is a materially different statement from "reported from film".
+   *
+   * Dose is deliberately NOT rendered for these: we did not irradiate this patient and there is no
+   * dose of ours to state. That is the same fact `registerOutsideStudy` records by writing no
+   * `radiation_dose_register` row at all.
+   */
+  if (f.outside !== null) {
+    const how = ARRIVAL_WORDS[f.outside.arrival] ?? f.outside.arrival;
+    parts.push(
+      `— OUTSIDE STUDY, performed at ${f.outside.centreName} on ${f.outside.studyDate}, `
+      + `reported here from ${how}.`,
+    );
+    return parts.join(" ");
+  }
   if (f.laterality !== "na") parts.push(`(${f.laterality})`);
   if (f.contrastGiven) {
+    /**
+     * ═══ 18a-iii T1/T2 — THE NULL-VOLUME LEG NO LONGER CLAIMS A ROUTE ═══
+     *
+     * It used to read *"with intravenous {agent}."* whenever the volume was absent. 18a-iii makes
+     * an ORAL-only study a first-class thing to record — and `summariseContrast` deliberately gives
+     * such a study an agent and a NULL volume, because the study's volume column is the
+     * INTRAVASCULAR volume and a litre of dilute barium is not a dose. So the old sentence would
+     * have drafted *"Barium sulphate, intravenously"* into a signed report on a barium swallow.
+     *
+     * The non-null leg keeps the word, and it is now TRUE by construction rather than by luck: a
+     * volume reaches this column only from an intravenous or intra-arterial administration.
+     * (**Residue, named rather than fixed:** an intra-arterial study still drafts "intravenously".
+     * DSA reporting has its own template and no seat drives it yet; when one does, the route belongs
+     * on `DrafterFacts` and this branch goes away.)
+     */
     const agent = f.contrastAgent ?? "contrast";
-    parts.push(f.contrastVolumeMl === null ? `with intravenous ${agent}.` : `with ${f.contrastVolumeMl} ml ${agent} intravenously.`);
+    parts.push(f.contrastVolumeMl === null ? `with ${agent}.` : `with ${f.contrastVolumeMl} ml ${agent} intravenously.`);
   } else if (f.studyType.contrast_option !== "none") {
     parts.push("without contrast.");
   } else {

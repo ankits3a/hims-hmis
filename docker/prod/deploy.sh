@@ -41,15 +41,128 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SRC_DIR="$REPO_DIR/docker/prod"
-DEPLOY_DIR="${HMIS_DEPLOY_DIR:-/opt/hmis-prod}"
-PROJECT="hmis-prod"
+
+# ════════════════════════════════════════════════════════════════════════════════════════════════
+# PHASE 11i T3 — ONE SCRIPT, TWO TARGETS. `HMIS_TARGET=prod` (the default) or `uat`.
+#
+# ═══ WHY UAT IS THIS SCRIPT AND NOT A SECOND ONE ═══
+#
+# UAT exists to rehearse PEOPLE — a receptionist's first registration, a technologist's first
+# result, the five-seat walk-through of the laboratory's go-live runbook — and it can only do that
+# if it is the same build, brought up the same way. A second script would be a second thing to
+# keep in step, and the first divergence would be invisible until the rehearsal proved something
+# about a stack nobody runs. So the target parameterises PROJECT, the image namespace, the deploy
+# directory, the cron file and the compose overlay, and NOTHING ELSE branches except the three
+# steps that are production-only by nature.
+#
+# ═══ WHAT UAT DOES NOT DO, AND WHY EACH IS SKIPPED RATHER THAN FAKED ═══
+#
+#   step 4  the pgBackRest stanza. UAT has no backup repository and must not have one: its whole
+#           point is that it holds nothing worth restoring. D1/§2b row 23 — **UAT NEVER RESTORES A
+#           PRODUCTION BACKUP**, because a training box that holds a real patient is a DPDP
+#           incident wearing a training label.
+#   step 7  the backup and drill cron. Same reason, plus: two crons writing one log file is how a
+#           drill's verdict gets attributed to the wrong cluster.
+#   step 8  the real-hostname half of the edge gate. UAT has no public hostname and no ACME
+#           certificate; it answers on this box's IP over `tls internal`, behind basic auth.
+#
+# Everything else — the build, the config copy, the migrate, the seeds, the gate, the census, the
+# service census, the restarts — is the same code on both targets, which is the only way the
+# rehearsal is worth anything.
+# ════════════════════════════════════════════════════════════════════════════════════════════════
+TARGET="${HMIS_TARGET:-prod}"
+case "$TARGET" in
+  prod)
+    PROJECT="hmis-prod"
+    IMAGE_NS="hmis-prod"
+    DEPLOY_DIR="${HMIS_DEPLOY_DIR:-/opt/hmis-prod}"
+    ;;
+  uat)
+    PROJECT="hmis-uat"
+    IMAGE_NS="hmis-uat"
+    DEPLOY_DIR="${HMIS_DEPLOY_DIR:-/opt/hmis-uat}"
+    ;;
+  *)
+    echo "deploy.sh: HMIS_TARGET must be 'prod' or 'uat' (got '$TARGET')" >&2; exit 1 ;;
+esac
+
+# ════════════════════════════════════════════════════════════════════════════════════════════════
+# PHASE 11i T3 — `HMIS_DEPLOY_ALLOW_DIRTY=1` IS FOR A REHEARSAL, AND A REHEARSAL IS NOT PRODUCTION.
+#
+# ═══ THIS GUARD EXISTS BECAUSE A DEPLOY HAPPENED THAT NOBODY DECIDED — 2026-09-06 ═══
+#
+# TWO EVENTS, and the second one COMPLETED. An earlier version of this comment described only the
+# first and said "nothing reached the deploy directory, the images, the database or the containers".
+# That was true of the first event and false of the day, and a reader would have taken it as a
+# statement about production. It is corrected here rather than deleted.
+#
+# EVENT ONE — the near miss. The commissioning lane meant to stand UAT up from its own branch —
+# which it has to, because the `uat` target and the synthetic-data door had not merged yet — and ran
+#
+#     HMIS_TARGET=uat HMIS_DEPLOY_ALLOW_DIRTY=1 bash docker/prod/deploy.sh
+#
+# from a worktree left checked out on an EARLIER branch in the same stack. That branch's copy of
+# this script predates the target concept, so `HMIS_TARGET` was an environment variable nothing
+# read: `DEPLOY_DIR` defaulted to /opt/hmis-prod. Killed during step 1; production verified
+# untouched at that point.
+#
+# EVENT TWO — the fix for event one deployed production. The leg added to `deploy-parity.test.ts`
+# proves this refusal fires BY EXECUTING THIS SCRIPT. The mutation run that DELETES the refusal
+# therefore ran a `deploy.sh` with nothing left to stop it, and that leg did not set
+# `HMIS_DEPLOY_DIR` — on the reasoning that the guard fires before the deploy-directory check, so
+# the value could not matter. It cannot matter WHILE THE GUARD IS THERE. Measured afterwards:
+#
+#     hmis-prod/{server,web}:399f92c   built 12:35:00 and 12:35:04 from a LANE tree
+#     hmis-prod-api-1                  StartedAt 12:35:42 on that image
+#     migrations                       56 -> 78, the whole pending journal
+#     8 of 9 containers                restarted; db and node-exporter untouched
+#
+# Production came up healthy and is serving. It is running a commit that is not on `main`, and the
+# image it replaced is gone from the daemon, so this one deploy has no image-level rollback.
+#
+# WHAT LET BOTH HAPPEN is the same thing: `HMIS_DEPLOY_ALLOW_DIRTY=1` disabled BOTH refusals
+# standing between a lane tree and the hospital — the dirty-tree check and `HEAD == origin/main`.
+#
+# ═══ WHAT THE GUARD IS, AND WHY IT IS NOT MERELY A RULE ═══
+#
+# The override's own comment below has always said "for a rehearsal only". A rehearsal is UAT. So
+# the word is now enforced rather than trusted: on the PROD target the override REFUSES, and the
+# refusal names the two things it would have switched off. Nothing legitimate is lost — a real
+# production deploy is cut from `origin/main` with a clean tree, which is the definition of not
+# needing this flag — and the rollback path never reaches here because it builds nothing.
+#
+# A newer script cannot defend against an older copy of itself, and this guard does not pretend to.
+# What it does is make the FLAG safe, so the same mistake with today's script stops at a refusal.
+# ════════════════════════════════════════════════════════════════════════════════════════════════
+if [ "$TARGET" = "prod" ] && [ "${HMIS_DEPLOY_ALLOW_DIRTY:-0}" = "1" ] && [ -z "${HMIS_DEPLOY_ROLLBACK_TO:-}" ]; then
+  echo "deploy.sh: HMIS_DEPLOY_ALLOW_DIRTY=1 is refused on the PROD target." >&2
+  echo "    It switches off BOTH refusals between a checkout and the hospital: the dirty-tree" >&2
+  echo "    check and HEAD == origin/main. A production deploy is cut from origin/main with a" >&2
+  echo "    clean tree and needs neither. Rehearse on HMIS_TARGET=uat instead." >&2
+  exit 1
+fi
+
+# PHASE 11i T8 / D13 — THE WAY BACK.
+#
+# `HMIS_DEPLOY_ROLLBACK_TO=<short-sha>` retags `:latest` from images that are already on the daemon
+# and restarts. It BUILDS NOTHING and MIGRATES NOTHING: the supported backout is the OLD CODE ON
+# THE NEW SCHEMA, which additive migrations permit by rule (CLAUDE.md), and re-running a migrator
+# on the way back is the one thing that could make a bad deploy unrecoverable. Until this existed
+# there was no backout at all — the three images were tagged `:latest` only, so a build overwrote
+# the previous one, and the refusal below made a rebuild from the deployed base impossible by
+# construction. That is why PR #73 exists as a branch that can never merge.
+ROLLBACK_TO="${HMIS_DEPLOY_ROLLBACK_TO:-}"
 
 # 2026-09-02: THE IMAGES ARE BUILT FROM THIS CHECKOUT, so the checkout must be exactly the commit
 # CI gated. Two refusals: a dirty tree (a peer lane's uncommitted file would ship inside the
 # image — it happened: 09a's "deploy" carried 16a) and a HEAD that is not origin/main (never
 # gated, or stale). `docs/` is exempt from the dirty check because design and plan drafts live
 # there and never reach an image. HMIS_DEPLOY_ALLOW_DIRTY=1 overrides for a rehearsal only.
-if [ "${HMIS_DEPLOY_ALLOW_DIRTY:-0}" != "1" ]; then
+#
+# 11i T8: the refusal is on the BUILD PATH, and the rollback path never builds. Demanding
+# `HEAD == origin/main` to go BACK to an older image would be demanding the checkout be the very
+# tip you are rolling away from — the refusal that made the backout impossible in the first place.
+if [ -z "$ROLLBACK_TO" ] && [ "${HMIS_DEPLOY_ALLOW_DIRTY:-0}" != "1" ]; then
   dirty="$(git -C "$REPO_DIR" status --porcelain | grep -vE '^\?\? docs/' || true)"
   if [ -n "$dirty" ]; then
     echo "deploy.sh: working tree is dirty — commit, stash by path, or HMIS_DEPLOY_ALLOW_DIRTY=1 for a rehearsal:" >&2
@@ -60,16 +173,25 @@ if [ "${HMIS_DEPLOY_ALLOW_DIRTY:-0}" != "1" ]; then
     echo "deploy.sh: HEAD is not origin/main — deploy only what CI gated (git pull --ff-only, or push first)" >&2; exit 1
   fi
 fi
-SERVER_IMAGE="hmis-prod/server:latest"
-WEB_IMAGE="hmis-prod/web:latest"
-DB_IMAGE="hmis-prod/db:latest"
+SERVER_IMAGE="$IMAGE_NS/server:latest"
+WEB_IMAGE="$IMAGE_NS/web:latest"
+DB_IMAGE="$IMAGE_NS/db:latest"
+# 11i T8 / D13. Every build also lands under the short SHA it was built from, so the image that
+# was serving before this deploy is still on the daemon under a name, and `HMIS_DEPLOY_ROLLBACK_TO`
+# can name it. `:latest` alone means the previous image is overwritten at build time and there is
+# nothing to go back to.
+IMAGE_REPOS="$IMAGE_NS/server $IMAGE_NS/web $IMAGE_NS/db"
+GIT_SHA="$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+# How many SHA-tagged images to keep per repository. Three is two rollbacks deep plus the current
+# one; the images are ~1 GB each and this box has 15 GB.
+SHA_TAGS_KEPT="${HMIS_SHA_TAGS_KEPT:-3}"
 DB_HEALTH_TIMEOUT="${HMIS_DB_HEALTH_TIMEOUT:-180}"
 # D8. The stanza name is also written into the db service's archive_command in the compose file
 # and into the [hmis] section of pgbackrest.conf; changing it means changing all three.
 STANZA="hmis"
 # Overridable so the generated cron file can be inspected without writing to /etc on a box that is
 # only being rehearsed against.
-CRON_FILE="${HMIS_CRON_FILE:-/etc/cron.d/hmis-prod-backup}"
+CRON_FILE="${HMIS_CRON_FILE:-/etc/cron.d/${PROJECT}-backup}"
 # A first bring-up has to wait for an ACME order; a re-deploy answers in seconds.
 EDGE_HEALTH_TIMEOUT="${HMIS_EDGE_HEALTH_TIMEOUT:-240}"
 # Plan 11c / D10. `prom/alertmanager:v0.27.0` runs as `nobody`, and its /etc/passwd maps that to
@@ -87,10 +209,36 @@ die() { printf 'deploy.sh: FATAL: %s\n' "$*" >&2; exit 1; }
 step() { printf '\n==> %s\n' "$*"; }
 note() { printf '    %s\n' "$*"; }
 
+# 11i T3: on UAT the base file is overlaid with `docker-compose.uat.yml`, which resizes the four
+# services UAT runs and puts the five monitoring services behind a profile nothing here enables —
+# so `compose config --services` (step 6b's census) lists exactly what UAT starts, and `up -d`
+# starts exactly that. An override cannot DELETE a service; a profile is how compose expresses it.
 compose() {
-  docker compose -p "$PROJECT" \
-    -f "$DEPLOY_DIR/docker-compose.prod.yml" \
-    --project-directory "$DEPLOY_DIR" "$@"
+  if [ "$TARGET" = "uat" ]; then
+    docker compose -p "$PROJECT" \
+      -f "$DEPLOY_DIR/docker-compose.prod.yml" \
+      -f "$DEPLOY_DIR/docker-compose.uat.yml" \
+      --project-directory "$DEPLOY_DIR" "$@"
+  else
+    docker compose -p "$PROJECT" \
+      -f "$DEPLOY_DIR/docker-compose.prod.yml" \
+      --project-directory "$DEPLOY_DIR" "$@"
+  fi
+}
+
+# 11i T8 — keep the last $SHA_TAGS_KEPT SHA-tagged images per repository. `docker images` lists
+# newest first, so "everything after the first N" is the tail. `:latest` is never in the list and
+# an image still referenced by a running container refuses to be removed, which is correct.
+prune_sha_tags() {
+  local repo tag
+  for repo in $IMAGE_REPOS; do
+    docker images --format '{{.Repository}}:{{.Tag}}' "$repo" 2>/dev/null \
+      | grep -v ':latest$' | tail -n "+$((SHA_TAGS_KEPT + 1))" \
+      | while read -r tag; do
+          [ -n "$tag" ] || continue
+          docker rmi "$tag" >/dev/null 2>&1 && note "pruned $tag" || true
+        done
+  done
 }
 
 # Something is listening on port $1, on any interface.
@@ -126,6 +274,50 @@ ENV_MODE="$(stat -c '%a' "$ENV_FILE")"
 [ "$ENV_MODE" = "600" ] || die "$ENV_FILE is mode $ENV_MODE; GC2 wants 600. Run: chmod 600 $ENV_FILE"
 note "deploy directory $DEPLOY_DIR, environment file present and 600"
 
+# ════════════════════════════════════════════════════════════════════════════════════════════════
+# PHASE 11i T5 / D5 — THE PRODUCTION TARGET REFUSES TO RUN WITH THE SYNTHETIC-DATA DOOR OPEN.
+#
+# `HMIS_SYNTHETIC_DATA_OK=1` is what lets `seed:lab-catalogue`, `seed:lab-demo` and
+# `seed:aerb-demo` write invented reference ranges, synthetic patients and DEMO certificates. It
+# belongs in /opt/hmis-uat/.env and in no other .env on this host. If it is ever in production's —
+# copied from UAT's, or inherited from a shell — then the next person who runs a seed by hand on
+# production gets no refusal at all, and a synthetic patient is referenced by orders, invoices and
+# results within the hour and cannot be deleted.
+#
+# So the deploy refuses BEFORE it builds anything, and it names the file to edit. The check reads
+# both the deploy directory's env file and this process's environment: the first is how it would
+# be inherited by every container, the second is how a hand would carry it in.
+# ════════════════════════════════════════════════════════════════════════════════════════════════
+if [ "$TARGET" = "prod" ]; then
+  if grep -q '^HMIS_SYNTHETIC_DATA_OK=' "$ENV_FILE" 2>/dev/null; then
+    die "$ENV_FILE declares HMIS_SYNTHETIC_DATA_OK. That key is the synthetic-data door (11i D5)
+    and it must exist in NO production environment file. Remove the line, then re-run.
+    It belongs in /opt/hmis-uat/.env and nowhere else."
+  fi
+  [ -z "${HMIS_SYNTHETIC_DATA_OK:-}" ] || die "HMIS_SYNTHETIC_DATA_OK is set in this shell.
+    Refusing to deploy production from an environment that carries the synthetic-data door.
+    Open a clean shell (or: unset HMIS_SYNTHETIC_DATA_OK) and re-run."
+  note "synthetic-data door is closed on this target"
+fi
+if [ "$TARGET" = "uat" ]; then
+  # 11i T3 — UAT HAS NO BACKUP REPOSITORY AND NO ALERT SINK, and neither is an omission.
+  # It holds nothing worth restoring (that is the whole point of it), and an alert path pointing
+  # at the owner's mailbox from a training box is how a real page gets ignored.
+  note "target uat: no pgBackRest credentials and no alert sink expected"
+  UAT_SITE="$(sed -n 's/^HMIS_UAT_SITE=//p' "$ENV_FILE" | head -n 1)"
+  [ -n "$UAT_SITE" ] || die "$ENV_FILE carries no HMIS_UAT_SITE. It is the address UAT answers on
+    (this box's IP, or a name that resolves to it) and the Caddyfile reads it as {\$HMIS_UAT_SITE}."
+  grep -q '^HMIS_UAT_BASIC_AUTH_HASH=' "$ENV_FILE" \
+    || die "$ENV_FILE carries no HMIS_UAT_BASIC_AUTH_HASH. Mint one and keep the password out of
+    git:  docker run --rm caddy:2-alpine caddy hash-password --plaintext '<password>'"
+  if port_in_use 8443; then
+    our_caddy_running || die "port 8443 is in use and it is not this project's caddy.
+    The retired preview stack used it: docker stop hmis-preview-caddy"
+    note "port 8443 is held by this project's own caddy — re-deploy, continuing"
+  else
+    note "port 8443 free"
+  fi
+else
 # D8/GC2. The object-store credentials are a SEPARATE root-only file: merging them into .env would
 # put a backup credential into every api and worker container for no reason at all.
 R2_ENV="$DEPLOY_DIR/.env.r2"
@@ -176,7 +368,25 @@ for port in 80 443; do
     note "port $port free"
   fi
 done
+fi
 
+if [ -n "$ROLLBACK_TO" ]; then
+# ----------------------------------------------------------------------------------------------
+step "1/8 ROLLBACK — retagging :latest from $ROLLBACK_TO. Nothing is built and nothing is migrated"
+# ----------------------------------------------------------------------------------------------
+# REFUSE BY NAME rather than fail inside compose. A `:latest` retagged from an image that is not
+# on the daemon leaves the stack pointing at nothing, and the first symptom would be a container
+# that will not start — at the exact moment somebody is rolling back because production is broken.
+for repo in $IMAGE_REPOS; do
+  docker image inspect "$repo:$ROLLBACK_TO" >/dev/null 2>&1 \
+    || die "no image $repo:$ROLLBACK_TO on this host. Available:
+$(docker images --format '      {{.Repository}}:{{.Tag}}' "$repo" 2>/dev/null | grep -v ':latest$' || echo '      (none)')"
+done
+for repo in $IMAGE_REPOS; do
+  docker tag "$repo:$ROLLBACK_TO" "$repo:latest"
+  note "$repo:latest now points at $ROLLBACK_TO"
+done
+else
 # ----------------------------------------------------------------------------------------------
 step "1/8 building images from the checkout ($REPO_DIR)"
 # ----------------------------------------------------------------------------------------------
@@ -186,16 +396,68 @@ docker build --tag "$WEB_IMAGE" --target web "$REPO_DIR"
 # server's own container and a sidecar therefore cannot archive at all.
 docker build --tag "$DB_IMAGE" --file "$SRC_DIR/db.Dockerfile" "$REPO_DIR"
 note "built $SERVER_IMAGE, $WEB_IMAGE and $DB_IMAGE"
+# 11i T8 / D13 — the same three images under the SHA they were built from, so this deploy leaves
+# behind the thing the next one can go back to.
+docker tag "$SERVER_IMAGE" "$IMAGE_NS/server:$GIT_SHA"
+docker tag "$WEB_IMAGE" "$IMAGE_NS/web:$GIT_SHA"
+docker tag "$DB_IMAGE" "$IMAGE_NS/db:$GIT_SHA"
+note "tagged $IMAGE_NS/{server,web,db}:$GIT_SHA — roll back with HMIS_DEPLOY_ROLLBACK_TO=$GIT_SHA"
+prune_sha_tags
+fi
 
 # ----------------------------------------------------------------------------------------------
 step "2/8 copying configs into $DEPLOY_DIR"
 # ----------------------------------------------------------------------------------------------
+# ═══ 11i T8 / D13 — SNAPSHOT WHAT IS THERE BEFORE OVERWRITING IT ═══
+#
+# A retag without the configs is HALF A ROLLBACK. The images carry the application; the deploy
+# directory carries the compose file, the edge config and the prometheus rules — and this block is
+# about to overwrite all three with the candidate's. Rolling the images back to yesterday while
+# the Caddyfile, the compose file and the alert rules stay on today's is a state that never ran
+# anywhere and was never tested. So the outgoing set is copied aside first, and the rollback path
+# below puts it back beside the images.
+#
+# It is a plain `cp -a` of what is on disk, taken BEFORE the installs, and it is deliberately not
+# a git checkout of anything: what production was serving is what is in the deploy directory, and
+# that is the only thing whose restoration is a real backout.
+if [ -z "$ROLLBACK_TO" ] && [ -f "$DEPLOY_DIR/docker-compose.prod.yml" ]; then
+  rm -rf "$DEPLOY_DIR/previous"
+  install -d -m 0750 "$DEPLOY_DIR/previous"
+  cp -a "$DEPLOY_DIR/docker-compose.prod.yml" "$DEPLOY_DIR/previous/docker-compose.prod.yml"
+  [ -d "$DEPLOY_DIR/caddy" ] && cp -a "$DEPLOY_DIR/caddy" "$DEPLOY_DIR/previous/caddy"
+  [ -d "$DEPLOY_DIR/prometheus" ] && cp -a "$DEPLOY_DIR/prometheus" "$DEPLOY_DIR/previous/prometheus"
+  note "snapshotted the outgoing compose file, caddy/ and prometheus/ into $DEPLOY_DIR/previous"
+fi
+
+if [ -n "$ROLLBACK_TO" ]; then
+  # THE CONFIGS GO BACK WITH THE IMAGES. A missing snapshot is not fatal — the images are the
+  # larger half and a first rollback on a directory that predates this change has none — but it
+  # is said out loud, because a partial backout that reported success would be the worse failure.
+  if [ -d "$DEPLOY_DIR/previous" ]; then
+    cp -a "$DEPLOY_DIR/previous/docker-compose.prod.yml" "$DEPLOY_DIR/docker-compose.prod.yml"
+    [ -d "$DEPLOY_DIR/previous/caddy" ] && cp -a "$DEPLOY_DIR/previous/caddy/." "$DEPLOY_DIR/caddy/"
+    [ -d "$DEPLOY_DIR/previous/prometheus" ] && cp -a "$DEPLOY_DIR/previous/prometheus/." "$DEPLOY_DIR/prometheus/"
+    note "restored the previous compose file, caddy/ and prometheus/ from $DEPLOY_DIR/previous"
+  else
+    note "WARNING: $DEPLOY_DIR/previous does not exist — the IMAGES are rolled back and the"
+    note "  configs on disk are the ones the failed deploy installed. Check them by hand."
+  fi
+else
 install -m 0644 "$SRC_DIR/docker-compose.prod.yml" "$DEPLOY_DIR/docker-compose.prod.yml"
 # The Caddyfile goes into a DIRECTORY that the caddy service mounts whole. A single-file bind
 # mount would pin the container to this file's inode, and install(1) replaces the inode — the
 # edge would keep serving the previous config for as long as the container lived. See the
 # comment on the volume in docker-compose.prod.yml; it was measured, not predicted.
+if [ "$TARGET" = "uat" ]; then
+  # 11i T3 — UAT's own edge: this box's IP over `tls internal`, basic auth on the STATIC handle
+  # only (never on /api*, for the measured reason written into the file), and no ACME. Installed
+  # to the same path so nothing downstream branches on the target again.
+  install -D -m 0644 "$SRC_DIR/Caddyfile.uat" "$DEPLOY_DIR/caddy/Caddyfile"
+  install -m 0644 "$SRC_DIR/docker-compose.uat.yml" "$DEPLOY_DIR/docker-compose.uat.yml"
+  install -D -m 0750 "$SRC_DIR/uat-reset.sh" "$DEPLOY_DIR/uat-reset.sh"
+else
 install -D -m 0644 "$SRC_DIR/Caddyfile" "$DEPLOY_DIR/caddy/Caddyfile"
+fi
 # Same shape, same reason: the db service mounts $DEPLOY_DIR/pgbackrest as a directory.
 install -D -m 0644 "$SRC_DIR/pgbackrest/pgbackrest.conf" "$DEPLOY_DIR/pgbackrest/pgbackrest.conf"
 install -D -m 0750 "$SRC_DIR/drill/restore-drill.sh" "$DEPLOY_DIR/drill/restore-drill.sh"
@@ -240,7 +502,21 @@ note "docker-compose.prod.yml, caddy/Caddyfile, pgbackrest/pgbackrest.conf, dril
 # from what the block above actually put on disk, the same principle the backup credentials below
 # are written to, so the census cannot disagree with the deploy.
 note "prometheus/$(cd "$DEPLOY_DIR/prometheus" && echo *.yml | tr ' ' ',' ), postgres-exporter/queries.yml, grafana/provisioning/**"
+fi
 
+# ════════════════════════════════════════════════════════════════════════════════════════════════
+# BOTH DERIVATIONS BELOW ARE PRODUCTION-ONLY, AND UNTIL NOW NOTHING SAID SO.
+#
+# `R2_ENV` and `SMTP_ENV` are assigned in the PROD branch of the pre-flight and nowhere else, and
+# this script runs under `set -euo pipefail`. So on `HMIS_TARGET=uat` the first `"$R2_ENV"` below
+# was an UNBOUND VARIABLE and the deploy died here — after building images and copying configs,
+# before ever reaching the database. The uat pre-flight already says why neither credential exists
+# ("no pgBackRest credentials and no alert sink expected"); the derivations simply never learned it.
+#
+# Guarded rather than made conditional inside: a rehearsal box must not derive a backup credential
+# at all, not derive an empty one.
+# ════════════════════════════════════════════════════════════════════════════════════════════════
+if [ "$TARGET" != "uat" ]; then
 # --- the backup credentials, derived rather than duplicated --------------------------------------
 # GC2: the five owner-supplied values live in $R2_ENV and ONLY there. They are translated here into
 # the six PGBACKREST_* names the binary reads, written to a 600 file that only the db service
@@ -265,18 +541,56 @@ PGBR_ENV="$DEPLOY_DIR/.env.pgbackrest"
 # in the repository is encrypted with it (spec E-2); regenerating it would silently orphan every
 # existing backup while every new one kept succeeding, which is the worst failure shape available
 # here. So: read it back if it is there, and only mint one if it is not.
+#
+# ═══ TWO CHANGES, 2026-09-14, AND BETWEEN THEM THEY CLOSE THE ONLY UNRECOVERABLE FAILURE HERE ═══
+#
+# This block used to read the passphrase back, mint one if that read came up empty, and then write
+# the file with `cat > "$PGBR_ENV"` — a TRUNCATE IN PLACE whose LAST line was the passphrase. The
+# two halves compounded into the failure the comment above already names:
+#
+#   kill the deploy inside the heredoc  ->  the file exists and has no passphrase
+#   next deploy reads it back empty     ->  mints a NEW one, silently, and reports success
+#   every byte already in the repository is now ciphertext nobody can read, including us
+#
+# The pre-deploy copy an operator was told to take mitigated exactly one run and depended on
+# somebody remembering. A check that depends on remembering is not a control.
+#
+#   (1) MINT ONLY WHEN THERE IS NO FILE AT ALL. A file that exists and carries no passphrase is
+#       not a first deploy — it is damage, and the correct response is to stop and let a human
+#       decide, because the recovery (restore the passphrase from escrow) is possible right up
+#       until we overwrite it with a new one.
+#   (2) WRITE TO A TEMPORARY AND RENAME. `mv` within one directory is atomic, so $PGBR_ENV only
+#       ever holds the complete previous file or the complete new one. There is no window.
+#
+# (1) is the load-bearing one. (2) removes the window that makes (1) likely; (1) is what makes a
+# corrupted or hand-edited file survivable however it got that way.
 CIPHER_PASS=""
 if [ -f "$PGBR_ENV" ]; then
   CIPHER_PASS="$(sed -n 's/^PGBACKREST_REPO1_CIPHER_PASS=//p' "$PGBR_ENV" | head -n 1)"
+  [ -n "$CIPHER_PASS" ] || die "$PGBR_ENV exists but carries no PGBACKREST_REPO1_CIPHER_PASS.
+
+    REFUSING TO MINT A NEW ONE. Every backup already in the object store is encrypted with the old
+    passphrase; writing a fresh one here would make all of them unreadable while every new backup
+    kept succeeding — silently, and for ever.
+
+    This file is damaged rather than absent. Recover the passphrase from escrow (the runbook's
+    procedure, stored with SECRET_KEY), put it back as the
+    PGBACKREST_REPO1_CIPHER_PASS= line, and re-run. If this deploy was killed part-way, look for
+    $PGBR_ENV.tmp and for any .pre-deploy-* copy first.
+
+    Only delete this file if you have accepted that every existing backup is being abandoned."
 fi
 if [ -z "$CIPHER_PASS" ]; then
   CIPHER_PASS="$(openssl rand -hex 32)"
-  note "MINTED A NEW REPOSITORY CIPHER PASSPHRASE in $PGBR_ENV (this happens once)."
+  note "MINTED A NEW REPOSITORY CIPHER PASSPHRASE in $PGBR_ENV (this happens once, on a box with"
+  note "  no $(basename "$PGBR_ENV") at all)."
   note "ESCROW IT with SECRET_KEY by the runbook's procedure. Without it every backup in the"
   note "object store is unreadable ciphertext, including by you."
 fi
+# A .tmp carrying a live credential must not outlive a failure. `set -e` would otherwise leave one.
+trap 'rm -f "$PGBR_ENV.tmp"' EXIT
 ( umask 077
-  cat > "$PGBR_ENV" <<EOF
+  cat > "$PGBR_ENV.tmp" <<EOF
 # GENERATED BY deploy.sh FROM $R2_ENV — DO NOT EDIT, DO NOT COPY, DO NOT COMMIT.
 # Loaded by the hmis-prod db service only. The passphrase below is preserved across deploys.
 PGBACKREST_REPO1_S3_ENDPOINT=$R2_ENDPOINT_HOST
@@ -287,7 +601,11 @@ PGBACKREST_REPO1_S3_KEY_SECRET=$R2_SECRET_V
 PGBACKREST_REPO1_CIPHER_PASS=$CIPHER_PASS
 EOF
 )
-chmod 600 "$PGBR_ENV"
+chmod 600 "$PGBR_ENV.tmp"
+# THE ATOMIC STEP. Same directory, so this is a rename rather than a copy: readers see either the
+# whole old file or the whole new one, never a half-written one missing its last line.
+mv -f "$PGBR_ENV.tmp" "$PGBR_ENV"
+trap - EXIT
 unset CIPHER_PASS R2_KEY_V R2_SECRET_V
 note "backup credentials derived into $(basename "$PGBR_ENV") (600)"
 
@@ -357,6 +675,8 @@ chmod 600 "$AM_YML" "$AM_PASS"
 chown "$ALERTMANAGER_UID:$ALERTMANAGER_UID" "$AM_YML" "$AM_PASS"
 unset SMTP_PASSWORD_V AM_TPL
 note "alert routing derived into alertmanager/alertmanager.yml + smtp_password (600, uid $ALERTMANAGER_UID)"
+fi
+
 
 # ----------------------------------------------------------------------------------------------
 step "3/8 database up"
@@ -377,10 +697,36 @@ step "4/8 pgBackRest stanza and archiving check (D8)"
 # and confirms the segment actually arrived in the repository, so a deploy cannot report success
 # over a backup fabric that is quietly archiving into the void. It is also the first thing that
 # would notice a credential rotation nobody carried into $R2_ENV.
+if [ "$TARGET" = "uat" ]; then
+  # 11i T3 / D1 — UAT has no backup repository, deliberately. It holds nothing worth restoring,
+  # and §2b row 23 rules that it NEVER restores production's: a training box carrying a real
+  # patient is a DPDP incident wearing a training label.
+  note "target uat — no pgBackRest stanza and no archiving; skipped"
+elif [ -n "$ROLLBACK_TO" ]; then
+  # 11i T8: the stanza is a property of the REPOSITORY, not of the image, and a rollback changes
+  # neither. Re-running `check` here would force a WAL switch during an incident for no verdict
+  # anybody is waiting on.
+  note "rollback — the pgBackRest stanza is unchanged by a retag; skipped"
+else
 compose exec -T --user postgres db pgbackrest --stanza="$STANZA" stanza-create
 compose exec -T --user postgres db pgbackrest --stanza="$STANZA" check
 note "stanza $STANZA created/valid and WAL archiving verified end to end"
+fi
 
+if [ -n "$ROLLBACK_TO" ]; then
+# ----------------------------------------------------------------------------------------------
+step "5/8 ROLLBACK — NO MIGRATION, NO SEED, NO GATE (D13)"
+# ----------------------------------------------------------------------------------------------
+# THIS IS THE POINT OF THE WHOLE PATH. The supported backout is OLD CODE ON THE NEW SCHEMA, which
+# additive migrations permit by rule; running the outgoing image's migrator against the new schema
+# would at best do nothing and at worst be the moment a bad deploy became unrecoverable. The seeds
+# and the gate are skipped for the same reason: they establish rows for the code that is going
+# away, and the gate would be asking the OLD image's questions of the NEW schema.
+#
+# What a rollback cannot undo is any row the new code wrote while it was serving. The catch-up
+# runbook names that window and the tables it could have touched; nothing here can.
+note "rollback — the schema stays where it is; only the images and configs go back"
+else
 # ----------------------------------------------------------------------------------------------
 step "5/8 migrations, run from inside the image (D2)"
 # ----------------------------------------------------------------------------------------------
@@ -481,6 +827,14 @@ compose run --rm api node dist/scripts/seed-ot.js
 # definition. Without the store every claim refuses `store_missing`; without the definition the
 # claim's `startInstance` throws. Idempotent; runs before `seed-roles` for the same reason as the rest.
 compose run --rm api node dist/scripts/seed-pharmacy.js
+# PHASE 11i T1 — the laboratory's two workflow definitions (`lab_item`, `lab_specimen`, both Class
+# C) and its `lab_release_unpaid` approval type. The lab has been DEPLOYED since migration 0046 and
+# unable to take a single order the whole time: `activateLabDefinitions` had exactly one caller in
+# the tree and it was a test helper, so `startInstance` threw `no_active_definition` on every order
+# and `requestApproval` threw `unknown_type` on every unpaid release. The runbook's "not a deploy
+# step" predates Plan 11g / DD2 reaching the lab and is superseded by it. Idempotent; it establishes
+# no catalogue, no user and no CA-signed row.
+compose run --rm api node dist/scripts/seed-lab.js
 
 # `seed-roles` IS RUN, AND ITS EXIT STATUS IS DELIBERATELY NOT THIS DEPLOY'S.
 #
@@ -515,6 +869,30 @@ step "configuration gate — refuse to continue without the rows the modules req
 # deploy gate demanding them would refuse every deploy between now and the CA's signature.
 compose run --rm api node dist/scripts/check-config-present.js
 note "every configuration row the modules require is present"
+
+# ----------------------------------------------------------------------------------------------
+# THE READINESS CENSUS — PHASE 11i T2 / D3. IT REPORTS; IT DOES NOT DECIDE.
+# ----------------------------------------------------------------------------------------------
+# The gate above asked whether the modules can RUN. This asks whether a department can OPEN: the
+# LAB department and its pathologist of record, the four lab role keys held by four humans, every
+# orderable priced in the active tariff version, the pharmacy's stock, the AERB licences. None of
+# those is a row a deploy can write, and every one of them is a sentence out of the module's own
+# go-live runbook, printed with the screen or the command that turns it green.
+#
+# ITS EXIT CODE IS DELIBERATELY NOT THIS DEPLOY'S — the `seed-roles` rule, one level up. A verdict
+# about staffing and master data must never abort a deploy that has already migrated, and this one
+# is RED on every box until the hospital has hired the people and typed in its catalogue. Under
+# `set -e` an unwrapped non-zero here would kill every deploy from now until the laboratory opens.
+#
+# On UAT (T6) the same script IS the stand-up gate and its exit code is read as the verdict.
+if compose run --rm api node dist/scripts/standup-check.js all; then
+  note "standup:check reported every declared row ok"
+else
+  note "standup:check reported RED rows (exit $?) — that is the to-do list for the department"
+  note "  heads, not a failed deploy. Each line names the runbook step that turns it green."
+fi
+
+fi
 
 # ----------------------------------------------------------------------------------------------
 step "6/8 api, worker and caddy up"
@@ -640,6 +1018,11 @@ step "7/8 backup and restore-drill cron"
 # worker must hold no restore privilege and must never block for minutes on a restore. The nightly
 # full rides in the same file because the two are one fabric — a drill with nothing to restore is
 # theatre, and a backup nobody restores is a belief.
+if [ "$TARGET" = "uat" ]; then
+  # 11i T3 — no backup cron and no drill cron on UAT. There is nothing to back up, and two crons
+  # appending to one log file is how a drill's verdict gets attributed to the wrong cluster.
+  note "target uat — no backup or restore-drill cron installed"
+else
 ( umask 022
   cat > "$CRON_FILE" <<EOF
 # hmis-prod backups — GENERATED BY docker/prod/deploy.sh. Edit that file, not this one; the next
@@ -658,11 +1041,17 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # THE WEEKLY RESTORE DRILL, 22:00 UTC Saturday = 03:30 IST Sunday — an hour after Saturday night's
 # full, so there is always a fresh one to restore. It restores for real (GC7).
+#
+# 11i T8: this hour is OUTSIDE the lanes' test mutex by design — production must not depend on lane
+# tooling to take its own backup. The consequence belongs to whoever is deploying: a UAT deploy or a
+# rehearsal run inside 22:00-23:00 UTC Saturday competes with the real drill for this box's memory
+# and its docker daemon. Avoid that hour; the catch-up runbook says so where the owner will read it.
 0 22 * * 6 root $DEPLOY_DIR/drill/restore-drill.sh >> $DEPLOY_DIR/log/restore-drill.log 2>&1
 EOF
 )
 chmod 0644 "$CRON_FILE"
 note "cron installed at $CRON_FILE (nightly full 02:30 IST · restore drill 03:30 IST Sunday)"
+fi
 note "logs append to $DEPLOY_DIR/log/ — the runbook owns their rotation"
 
 # ----------------------------------------------------------------------------------------------
@@ -670,10 +1059,23 @@ step "8/8 the edge gate: /api/health as JSON, and a screen path as HTML"
 # ----------------------------------------------------------------------------------------------
 # The hostname is read out of the Caddyfile rather than configured twice — one source of truth,
 # and re-pointing the stack at another name stays a one-file change (GC1).
+if [ "$TARGET" = "uat" ]; then
+  # UAT's site address is `https://{$HMIS_UAT_SITE}:8443` — an env placeholder Caddy expands at
+  # load time, so there is no hostname in the file to read. It comes from the same .env the
+  # pre-flight already validated, which keeps ONE source of truth exactly as the awk below does
+  # for production.
+  SITE_BASE="https://$UAT_SITE:8443"
+  # `tls internal` means a certificate this box signed for itself, so curl is told to accept it —
+  # for UAT only, named here rather than hidden in a variable.
+  CURL_TLS="--insecure"
+else
 SITE_HOST="$(awk 'NF == 2 && $2 == "{" && $1 ~ /^[A-Za-z0-9][A-Za-z0-9.-]*$/ && $1 ~ /\./ { print $1; exit }' \
   "$DEPLOY_DIR/caddy/Caddyfile")"
 [ -n "$SITE_HOST" ] || die "could not read the site hostname out of $DEPLOY_DIR/caddy/Caddyfile"
 note "site hostname $SITE_HOST"
+SITE_BASE="https://$SITE_HOST"
+CURL_TLS=""
+fi
 
 # PLAN 11g / DD1 — THE API MOVED TO /api/*, AND THIS GATE HAD TO MOVE WITH IT OR BECOME A LIE.
 #
@@ -682,9 +1084,9 @@ note "site hostname $SITE_HOST"
 # the exact defect this phase exists to close, so it now checks BOTH halves of the split and
 # checks the BODY rather than only the status.
 deadline=$(( $(date +%s) + EDGE_HEALTH_TIMEOUT ))
-until body="$(curl -fsS --max-time 10 "https://$SITE_HOST/api/health" 2>/dev/null)"; do
+until body="$(curl -fsS $CURL_TLS --max-time 10 "$SITE_BASE/api/health" 2>/dev/null)"; do
   [ "$(date +%s)" -lt "$deadline" ] \
-    || die "https://$SITE_HOST/api/health did not answer within ${EDGE_HEALTH_TIMEOUT}s.
+    || die "$SITE_BASE/api/health did not answer within ${EDGE_HEALTH_TIMEOUT}s.
     On a first deploy this is usually ACME: read the caddy container log and confirm the hostname
     resolves to this box unproxied."
   sleep 3
@@ -693,7 +1095,7 @@ done
 # means the @api matcher or its strip_prefix is wrong — and it would otherwise report as healthy.
 case "$body" in
   '{'*) : ;;
-  *) die "https://$SITE_HOST/api/health answered 200 with a NON-JSON body — the edge is serving the
+  *) die "$SITE_BASE/api/health answered 200 with a NON-JSON body — the edge is serving the
     SPA where the API should be. First 200 bytes: $(printf '%.200s' "$body")" ;;
 esac
 note "api through the edge: HTTP 200 $body"
@@ -702,16 +1104,35 @@ note "api through the edge: HTTP 200 $body"
 # 2026-08-24 smoke test's D1: fifteen screens answered the API's JSON to a browser for a whole
 # plan cycle while every test and every deploy gate was green. `/admin/users` is chosen because it
 # is the exact URL the owner opened when the outage was found.
-screen="$(curl -fsS --max-time 10 -H 'Accept: text/html' "https://$SITE_HOST/admin/users" 2>/dev/null)" \
-  || die "https://$SITE_HOST/admin/users did not answer at all"
+if [ "$TARGET" = "uat" ]; then
+  # THE APPLICATION HALF, ASSERTED WITHOUT A CREDENTIAL. UAT's static handle is behind basic auth
+  # and this script holds the bcrypt HASH, never the password — so it cannot fetch the document,
+  # and inventing an environment variable to hold a plaintext password so a gate could pass would
+  # be putting a credential on the box to prove a credential works.
+  #
+  # What it asserts instead is exactly as strong for the failure this leg exists to catch: the
+  # SPA handler answers, with its auth gate on. A `401` carrying `WWW-Authenticate: Basic` can
+  # only come from the `handle` block that serves /srv — the API half answers JSON without
+  # challenge, and a misdirected @api matcher would produce that JSON here instead.
+  code="$(curl -s $CURL_TLS -o /dev/null -w '%{http_code}' --max-time 10 -H 'Accept: text/html' "$SITE_BASE/admin/users" 2>/dev/null || true)"
+  challenge="$(curl -sI $CURL_TLS --max-time 10 "$SITE_BASE/admin/users" 2>/dev/null | tr -d '\r' | grep -i '^www-authenticate:' || true)"
+  [ "$code" = "401" ] || die "$SITE_BASE/admin/users answered $code, expected 401 behind basic auth.
+    A 200 here means the auth gate is off; a JSON body means the @api matcher is wrong."
+  [ -n "$challenge" ] || die "$SITE_BASE/admin/users answered 401 with no WWW-Authenticate header —
+    that is not the basic-auth gate answering."
+  note "screen through the edge: /admin/users is 401 behind basic auth ($challenge)"
+else
+screen="$(curl -fsS --max-time 10 -H 'Accept: text/html' "$SITE_BASE/admin/users" 2>/dev/null)" \
+  || die "$SITE_BASE/admin/users did not answer at all"
 case "$screen" in
   *'<!doctype html>'*|*'<!DOCTYPE html>'*) : ;;
-  *) die "https://$SITE_HOST/admin/users did not serve the SPA — a browser asking for a SCREEN is
+  *) die "$SITE_BASE/admin/users did not serve the SPA — a browser asking for a SCREEN is
     being handed something else (smoke-test D1). First 200 bytes: $(printf '%.200s' "$screen")" ;;
 esac
 note "screen through the edge: /admin/users serves the SPA document"
+fi
 
-printf '\n==> hmis-prod is up: https://%s\n' "$SITE_HOST"
+printf '\n==> %s is up: %s\n' "$PROJECT" "$SITE_BASE"
 # PLAN 11g / DD1 — SAY THIS EVERY TIME, because the one deploy where it mattered is the one where
 # nobody was told. The API moved under /api/*; any browser still holding a pre-11g bundle requests
 # the bare paths, gets the SPA's index.html where it expects JSON, and fails with an unrecognised

@@ -345,7 +345,14 @@ describe("registerAllJobs threads WORKER_INTERFACE_SWEEP_INTERVAL_MS to the tent
     // PLAN 16c CLOSE / F11 — 16 with `sweepExpiredPharmacyPicks`, the pharmacy pick-reservation
     // sweep at `every: 60_000`. Same finding as the four above it: this file is in no Files list,
     // and a task that registers a job still edits `jobs.ts`, the censuses and `alerts.yml`.
-    expect(specs).toHaveLength(16);
+    // PLAN 18a-iii T5 / D7 — 18 with the two radiology chasers: `sweepCriticalChaser` at
+    // `every: 60_000` and `sweepUnreadWatchman` at `dailyIst: "08:00"`. **The finding above held for
+    // a SIXTH registrant and this one is the confession**: `alerts-parity.test.ts` carries a
+    // docstring enumerating all six sites, written after the fifth registrant read it and paid
+    // nothing. T5 did not read it, and found this file, that file and `alerts.yml`'s three places by
+    // going red instead. The tax is identical either way; the difference is whether it is paid once
+    // or discovered three times.
+    expect(specs).toHaveLength(18);
     expect(specs).toContainEqual(
       expect.objectContaining({ name: "flagLateSurgeons", every: 60_000 }),
     );

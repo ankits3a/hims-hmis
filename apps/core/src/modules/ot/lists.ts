@@ -7,7 +7,7 @@ import { transition } from "../../kernel/workflow/instances";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { displayName } from "../patients";
 import { OtError } from "./errors";
-import { listPublished, surgeonLateFlagged } from "./events";
+import { listPublished, listResequenced, surgeonLateFlagged } from "./events";
 import { caseGates, evaluateReadiness } from "./gates";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -179,7 +179,13 @@ export async function publishList(
  * and versioning every swap would make the printed sheet's version number meaningless.
  */
 export async function resequence(
-  db: Db, actor: Actor, input: { listDate: string; theatreResourceId: string; caseIdsInOrder: string[] },
+  db: Db, actor: Actor,
+  input: {
+    listDate: string; theatreResourceId: string; caseIdsInOrder: string[];
+    /** Why the order changed. The cockpit has always SENT one; until this seam was reconciled the
+     *  server's schema had nowhere for it to land and zod stripped it silently. */
+    reason?: string | null;
+  },
 ): Promise<{ resequenced: number }> {
   return db.transaction(async (tx) => {
     const cases = await tx.select().from(otCases)
@@ -204,6 +210,13 @@ export async function resequence(
       await tx.update(otCases).set({ seq: index + 1, updatedBy: actor.id, updatedAt: new Date() })
         .where(eq(otCases.id, caseId));
     }
+    await appendEvent(tx, listResequenced.make({
+      actor,
+      payload: {
+        listDate: input.listDate, theatreResourceId: input.theatreResourceId,
+        caseIdsInOrder: input.caseIdsInOrder, reason: input.reason ?? null,
+      },
+    }));
     return { resequenced: input.caseIdsInOrder.length };
   });
 }

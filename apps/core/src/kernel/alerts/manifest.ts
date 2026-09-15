@@ -35,5 +35,17 @@ export const alertsManifest: ModuleManifest = {
     // explicit branch in `consumer.ts` would feed every mode change into
     // `escalationTriggered.payloadSchema.parse` and fail the delivery instead of raising an alert.
     { event: "ops.mode_changed", consumer: "kernel.alerts" },
+    // PLAN 18a-iii T5 / D7 — THE TWO RADIOLOGY CHASERS, AND THE ONE-EDIT RULE AGAIN. A critical
+    // finding nobody acknowledged past its own tier's window, and a signed report nobody but its
+    // author has opened after a working day. Both raise for the DUTY MANAGERS: the honest first
+    // rung is the people whose job is "something needs a human", and a clinician-specific route
+    // needs a rota that 18a's §7 does not have.
+    //
+    // Both branches exist in `consumer.ts` in THIS commit, for the reason the two comments above
+    // give and which bites identically here: the default branch is the escalation parser, so a
+    // subscription declared without its branch feeds a radiology payload into
+    // `escalationTriggered.payloadSchema.parse` and fails the delivery rather than raising anything.
+    { event: "imaging.critical_overdue", consumer: "kernel.alerts" },
+    { event: "imaging.report_unread", consumer: "kernel.alerts" },
   ],
 };

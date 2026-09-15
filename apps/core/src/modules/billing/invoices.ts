@@ -12,6 +12,7 @@ import { hasPermission } from "../../kernel/auth/permissions";
 import { enqueuePrintJob } from "../../kernel/printing/enqueue";
 import { getApproval } from "../../kernel/approvals/worklist";
 import { getEncounter } from "../opd";
+import { resolvePatientId } from "../patients";
 import { resolveEncounterByPrefix } from "../../kernel/episodes/encounter-resolvers";
 import {
   clampValueEntitlementsToBalance, consumeEntitlements, counterForWinner, couponRedemptionStates, couponSource, COUPON_SOURCE_KEY,
@@ -624,6 +625,68 @@ async function composeBenefits(
   };
 }
 
+/**
+ * ═══ FD-35 — A BILL NAMES ONE PERSON, AND NOTHING USED TO CHECK THAT ═══
+ *
+ * Owner, 2026-09-13, on `/billing`: a patient in hand — Ankit — and another patient's encounter id
+ * typed into the field, and the counter showed *"Abhay's encounter/visit details under the Ankit"*.
+ * The screen blending two people is the half that is visible. This is the half underneath: no code
+ * path here ever compared the two ids, and the line below preferred the CALLER's patient
+ * (`draft.patientId ?? encounter.patientId`).
+ *
+ * THE WRITE IS WHERE IT BITES, and the preview is already safe for a reason worth not undoing:
+ * `previewInvoiceBody` deliberately omits `patientId` (review MAJOR 4 — it made the route an
+ * instrument oracle), so a preview's subject is always the encounter's own patient.
+ * `issueInvoiceBody` requires `patientId` and takes `encounterId` beside it, so the counter could
+ * price Abhay's visit honestly, show it under Ankit's name, and persist one row carrying Ankit's
+ * `patient_id` beside Abhay's `encounter_id` — with Ankit's memberships and coupons composed
+ * against Abhay's visit on the way.
+ *
+ * That row is wrong in three ledgers at once and looks right in all of them: the charge lands on
+ * Ankit's dues and his outstanding cap, Abhay's visit is marked billed so FD-33's orphan scan stops
+ * asking about it, and Ankit's counters are spent on care he never had.
+ *
+ * ═══ IT REFUSES; IT DOES NOT CORRECT ═══
+ *
+ * Taking the encounter's patient and silently rebinding the bill would be the same defect wearing a
+ * helpful face: the cashier believes they are billing the person in front of them. The server names
+ * both people and stops, and the counter asks.
+ *
+ * ═══ BOTH SIDES RESOLVE THROUGH THE MERGE CHAIN FIRST, AND THAT IS NOT A REFINEMENT ═══
+ *
+ * `opd_encounters.patient_id` is the canonical id AT OPEN and is not rewritten by a later merge, so
+ * every de-duplicated patient's older visits hold the LOSER's id while every screen hands the
+ * counter the WINNER's. A bare `!==` would therefore refuse to bill a real person standing at the
+ * window, for the whole of their history before the merge — a guard that stops the money. The walk
+ * costs nothing in the ordinary case because identical ids never reach it.
+ */
+async function assertOneSubject(db: Db, draftPatientId: string | undefined, encounterPatientId: string | null): Promise<void> {
+  if (draftPatientId === undefined || encounterPatientId === null) return;
+  if (draftPatientId === encounterPatientId) return; // the common case pays for nothing
+  const [billed, visited] = await Promise.all([
+    resolvePatientId(db, draftPatientId),
+    resolvePatientId(db, encounterPatientId),
+  ]);
+  /*
+    A null is "no such patient row", which is not this guard's question to answer — the callers
+    below already refuse an unknown patient in their own words, and answering it here would give
+    one defect two error codes.
+  */
+  if (billed === null || visited === null || billed === visited) return;
+  throw new BillingError(
+    "patient_encounter_mismatch",
+    /*
+      THE IDS STAY IN `detail`, NOT IN THE SENTENCE. `billingErrorMessage` shows the server's message
+      verbatim to the cashier, and two ULIDs in a refusal are noise to the person who has to act on
+      it: what they need to be told is that the screen is holding two different people. The screen
+      has both ids in `detail` and can name them properly, since it may read patients and this
+      module may not hand out a name it did not check a seal on.
+    */
+    "the patient on this bill and the patient who had this visit are two different people — check which one is right before charging",
+    { billedPatientId: billed, encounterPatientId: visited },
+  );
+}
+
 async function priceDraftWithBenefits(
   db: Db,
   draft: {
@@ -633,6 +696,7 @@ async function priceDraftWithBenefits(
   now: Date,
 ): Promise<{ priced: PricedDraft; benefits: BenefitContext | null }> {
   const encounter = await resolveEncounter(db, draft.encounterId);
+  await assertOneSubject(db, draft.patientId, encounter.patientId);
   // `loadPricingContext` takes Db, NOT Tx (§14.5) and runs OUTSIDE any transaction; the engine
   // itself is pure and synchronous, so pricing holds no connection and no lock.
   const base = await loadPricingContext(db, { at: now, tags: draft.tags ?? [] });

@@ -1109,6 +1109,7 @@ hand-over; what stays refused is any result before signature and every list's re
 | `lab.instruments.manage` | ✓ | | | | |
 | `lab.instruments.read` | | | | | ✓ |
 | `lab.results.interface` | | | | | ✓ |
+| `lab.instruments.operate` | | ✓ | | | |
 | `lab.worklist.read` | ✓ | ✓ | ✓ | ✓ | |
 | `lab.desk.operate` | | | | ✓ | |
 | `lab.collection.operate` | | | ✓ | | |
@@ -1318,6 +1319,22 @@ read every patient list in the building. Who holds the drill is a ruling for the
 under DPDP — the `patients.confidential.read` precedent — and every use of it writes a
 `staff_report.drilled` row naming the supervisor, the subject and the stated reason, so the audit
 trail covers the auditor.
+
+**The history horizon (owner ruling, 2026-09-14).** How far back a person may look is decided by who
+they are, and it is a SECOND question from whose figures they may see. The floor is three months and
+it is the absence of a grant, so `front_office` reaches a quarter of their own day and gains history
+by being granted rather than by being exempted. `front_office_supervisor` gains
+`staff.reports.history.year` and reaches one year, because "is this September normal" is a question
+three months cannot be asked. `medical_superintendent`, `staff_auditor` and `owner` gain
+`staff.reports.history.full` and are unbounded — hospital-level governance is not a one-year
+question, and an audit that stops at a year is an audit with a date the subject can wait out.
+**`owner` gains `staff.reports.read` here too, and that half is a defect being closed rather than a
+decision being taken**: the role held no staff-report string at all, so the person carrying the
+hospital's risk could not open the staff view. It does NOT gain `staff.reports.drill` — the horizon
+widens how far back the owner may look, never what they may look at, and the patient rows stay with
+`staff_auditor` under the 2026-08-29 ruling. Holding neither history string is the floor and holding
+both is harmless: they are a lattice, not a switch, because roles combine and a role-to-horizon
+table would need a `max()` across a person's holdings that nobody writes the first time.
 
 **Two approval types, registered by `seed:ot` in the deploy path.** `ot_definition_publish`
 (approver `medical_superintendent`, 1,440-minute SLA) gates publishing any of the four governed

@@ -16,6 +16,11 @@ export type BillingErrorCode =
   | "recon_parse_failed"
   | "idempotency_key_reused" | "idempotency_key_in_progress"
   | "unknown_encounter" | "fee_not_applicable" | "duplicate_ref"
+  /**
+   * FD-35 — the draft names a patient and an encounter that belong to two different people. The
+   * server does not get to guess which one the cashier meant, so it refuses and names both.
+   */
+  | "patient_encounter_mismatch"
   // FD-11 — the audited re-count of a mistyped closing count.
   | "unknown_session" | "not_your_session" | "recount_reason_required";
 
@@ -57,6 +62,12 @@ const FORBIDDEN_CODES = new Set<BillingErrorCode>(["credit_permission_required",
 const VALIDATION_CODES = new Set<BillingErrorCode>([
   "invalid_paise", "pan_required", "tender_ref_required", "bank_transfer_required",
   "recon_parse_failed", "duplicate_ref", "recount_reason_required",
+  /*
+    FD-35 — a 400 rather than the default 409, because nothing is in conflict in the LEDGER: the
+    request itself is contradictory, two ids naming two people. The code travels in the body, so a
+    screen can still tell it apart from a malformed payload and say which two people it was handed.
+  */
+  "patient_encounter_mismatch",
 ]);
 
 export function billingHttpStatus(code: BillingErrorCode): number {

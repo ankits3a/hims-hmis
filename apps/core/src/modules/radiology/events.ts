@@ -120,6 +120,54 @@ export const imagingContrastAdministered = defineEvent("imaging.contrast_adminis
   volumeMl: z.string().min(1),
 }));
 
+/**
+ * 18a-iii T2 / D1 — a patient reacted to a contrast agent. **Nothing consumes this**, and that is
+ * the posture 18c's D9 took for the same reason: the hospital-wide incident and ADR registers are
+ * the quality pack's (28a) and it is unbuilt. `incident.reported` exists and is `ot`-LOCAL by its
+ * own docstring; radiology emitting into it would make the hospital's incident register a thing
+ * `ot` owns by accident of shipping first.
+ *
+ * `allergyId` travels because the allergy write is the point (D2) and a consumer must be able to
+ * follow it. The MANIFESTATION does not travel: it is the clinical narrative, and this module's
+ * rule is that ids and codes go into payloads and findings do not.
+ */
+export const imagingContrastReaction = defineEvent("imaging.contrast_reaction", MODULE, z.object({
+  studyId: id, administrationId: id, reactionId: id, allergyId: id,
+  severity: z.enum(["mild", "moderate", "severe"]), onset: z.enum(["immediate", "delayed"]),
+}));
+
+/**
+ * 18a-iii T4 / D5 — a film from another centre entered the register. 18b's D8 deferred `outside` to
+ * this phase; the event is how the rest of the hospital learns a study it can see is not one we
+ * performed. The centre's NAME travels because it is provenance rather than a finding — a reader
+ * needs to know whose machine irradiated this patient, and it is on the film's own label.
+ */
+export const imagingOutsideStudyRegistered = defineEvent("imaging.outside_study_registered", MODULE, z.object({
+  studyId: id, outsideStudyId: id, centreName: z.string().min(1), studyDate: z.string().min(1),
+  modality: z.string().min(1), arrival: z.string().min(1),
+}));
+
+/**
+ * ═══ 18a-iii T5 / D7 — THE TWO CHASERS' VOICES ═══
+ *
+ * Each is emitted once per row, by a worker sweep, when a promise the department made to itself has
+ * gone past its window. **Neither changes anything**: the alerts consumer turns them into a row in
+ * front of a human, and the human decides.
+ *
+ * The payloads carry ids, a tier and a NUMBER OF MINUTES OR HOURS. They carry no finding, no
+ * impression and no name — this module's rule, and here it is doubly load-bearing: the alerts
+ * consumer builds its title and body exclusively from structural payload fields **because an alert
+ * is fanned straight to a browser**, and its own header says so in as many words.
+ */
+export const imagingCriticalOverdue = defineEvent("imaging.critical_overdue", MODULE, z.object({
+  criticalId: id, reportId: id, studyId: id,
+  category: z.enum(["red", "orange", "yellow"]), overdueMin: z.number().int().positive(),
+}));
+
+export const imagingReportUnread = defineEvent("imaging.report_unread", MODULE, z.object({
+  reportId: id, studyId: id, unreadHours: z.number().int().nonnegative(),
+}));
+
 /** Every event this module declares, for the catalogue parity test. */
 export const RADIOLOGY_EVENTS = [
   imagingStudyScheduled,
@@ -131,4 +179,8 @@ export const RADIOLOGY_EVENTS = [
   imagingBillDecisionRaised,
   imagingImageViewed,
   imagingContrastAdministered,
+  imagingContrastReaction,
+  imagingOutsideStudyRegistered,
+  imagingCriticalOverdue,
+  imagingReportUnread,
 ] as const;

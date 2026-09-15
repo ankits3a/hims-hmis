@@ -117,7 +117,10 @@ export function satisfyGate(gateId: string, evidence: Record<string, unknown>, k
 export function publishList(body: { listDate: string; theatreResourceId: string }, key?: string): Promise<{ caseCount: number; readyCaseIds: string[] }> {
   return api("POST", "/ot/lists/publish", body, key);
 }
-export function resequenceList(body: { listDate: string; theatreResourceId: string; order: string[]; reason: string }, key?: string): Promise<unknown> {
+/** `caseIdsInOrder`, not `order` — the server validates against that name and this end used its own,
+ *  so every call failed validation. `reason` is optional and now actually lands: it rides on
+ *  `list.resequenced`. */
+export function resequenceList(body: { listDate: string; theatreResourceId: string; caseIdsInOrder: string[]; reason?: string }, key?: string): Promise<unknown> {
   return api("POST", "/ot/lists/resequence", body, key);
 }
 

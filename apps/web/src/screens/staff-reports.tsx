@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
-import { BRIEF_PERIODS, todayIst } from "../lib/desk-api";
+import { periodsFor, todayIst } from "../lib/desk-api";
 import type { WireBrief, WireBriefPeriod, WireReportSection } from "../lib/desk-api";
 import { useAuth } from "../lib/auth";
 import { PaperScreen, ScreenTitle } from "../components/paper-screen";
@@ -50,6 +50,8 @@ export function StaffReports(): React.ReactElement {
   });
 
   const canDrill = can("staff.reports.drill");
+  /* T0 — offer only the windows this supervisor's horizon reaches. The server refuses the rest. */
+  const periods = periodsFor(can);
 
   /*
     THE CO-PILOT HERE IS BOUND BY DD14 EXACTLY AS THE SCREEN IS. It can describe the brief and it can
@@ -95,7 +97,7 @@ export function StaffReports(): React.ReactElement {
           </select>
         </label>
         <div style={{ display: "flex", gap: 6 }} role="group" aria-label={t("brief.periodLabel")}>
-          {BRIEF_PERIODS.map((p) => (
+          {periods.map((p) => (
             <button
               key={p}
               type="button"

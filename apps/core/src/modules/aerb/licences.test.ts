@@ -92,11 +92,51 @@ describe("the AERB licence register (18c T1)", () => {
     expect(await activeLicenceFor(db, ct, date) !== null).toBe(expected);
   });
 
+  /**
+   * The same sweep, one function over. `fileLicence`'s overlap refusal opened
+   * `device 01M1VRJ4QVQ… already carries licence …` — read by an RSO working down a list of
+   * machines, for whom "which machine" is the whole content of the sentence. The device row is
+   * already read FOR UPDATE here, so carrying its code costs nothing.
+   */
+  it("the overlap refusal names the machine, not its ULID", async () => {
+    await file(ct, "2026-01-01", "2026-12-31");
+    await expect(file(ct, "2026-06-01", "2027-05-31")).rejects.toMatchObject({
+      code: "licence_already_active",
+      message: expect.stringContaining("CT-1 (CT-1 machine)"),
+    });
+    await expect(file(ct, "2026-06-01", "2027-05-31")).rejects.toMatchObject({
+      message: expect.not.stringContaining(ct),
+    });
+  });
+
   it("assertDeviceLicensed refuses a lapsed licence by name, with the date in the detail", async () => {
     await file(ct, "2026-01-01", "2026-12-31");
     await expect(assertDeviceLicensed(db, ct, "2027-01-01")).rejects.toMatchObject({
       code: "device_not_licensed",
-      detail: { deviceResourceId: ct, onDate: "2027-01-01" },
+      detail: { deviceResourceId: ct, onDate: "2027-01-01", code: "CT-1" },
+    });
+  });
+
+  /**
+   * ═══ THE SENTENCE THIS TEST IS NAMED AFTER, WHICH IT DID NOT USED TO READ ═══
+   *
+   * The case above is called "refuses ... **by name**" and asserted the code and the detail only,
+   * so the message was free to say anything — and it said
+   * `device 01M1VRJ4QVQWNA2V3X8YYK62MF carries no active AERB licence…`. This is the refusal that
+   * stops the imaging department, met by a radiographer standing at a console who cannot map a
+   * ULID to the room they are in. The machine's own code is the payload; the ULID belongs in
+   * `detail`, where it still is.
+   */
+  it("names the machine the radiographer is standing at, not its ULID, and says who lifts it", async () => {
+    await expect(assertDeviceLicensed(db, ct, "2026-06-15")).rejects.toMatchObject({
+      message: expect.stringContaining("CT-1 (CT-1 machine)"),
+    });
+    await expect(assertDeviceLicensed(db, ct, "2026-06-15")).rejects.toMatchObject({
+      message: expect.stringContaining("radiation safety officer"),
+    });
+    /** The opaque id must be GONE from the prose, not merely accompanied by the code. */
+    await expect(assertDeviceLicensed(db, ct, "2026-06-15")).rejects.toMatchObject({
+      message: expect.not.stringContaining(ct),
     });
   });
 

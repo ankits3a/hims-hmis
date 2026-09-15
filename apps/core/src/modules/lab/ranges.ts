@@ -42,6 +42,27 @@ export function ageInDaysIst(dob: string, collectedAt: Date): number {
   return istDayIndex(collectedAt) - istDayIndexOfDate(dob);
 }
 
+/**
+ * ═══ IS THIS RANGE-BOOK DATE STILL IN THE FUTURE? ═══
+ *
+ * `catalogue.ts` refuses a reference band whose `effective_from` has not arrived, and deciding that
+ * needs the hospital's calendar day. **It lives HERE rather than there, and the reason is a census.**
+ *
+ * `test/ist-clock-parity.test.ts` pins every file allowed to construct the IST offset, and it caught
+ * the range-book door adding a FOURTEENTH copy on its first CI run — as it caught the thirteenth,
+ * and for the same reason. Two legitimate answers were available: add `catalogue.ts` to the list with
+ * an argument, or put the question where the clock already is. This file is already on the list, it
+ * already owns the range book's other calendar judgement (`ageInDaysIst`), and **"what is today"
+ * should have exactly one definition in a module that decides which band a patient falls in**.
+ *
+ * Both sides use `istDayIndex`, so the comparison is between two IST calendar DAYS and not between
+ * an instant and a midnight: a band dated today is in effect from 00:00 IST today, and at 23:00 IST
+ * the day before it is not — which is the answer a curator entering tomorrow's kit lot expects.
+ */
+export function isFutureIstDay(date: string, at: Date): boolean {
+  return istDayIndexOfDate(date) > istDayIndex(at);
+}
+
 export type RangeSubject = {
   /** `null` when the patient has no recorded date of birth (E7's UNK row, H4's estimate). */
   dob: string | null;

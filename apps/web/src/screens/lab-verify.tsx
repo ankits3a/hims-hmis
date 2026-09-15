@@ -3,10 +3,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { newIdempotencyKey } from "../lib/api";
 import {
-  amendReport, flagTone, getReport, LAB_BENCH_TOPIC, LAB_CRITICAL_TOPIC, labErrorText, openCriticals, printReport,
-  publishableOrders, publishReport, requestRerun, verifyResult, verifyWorklist,
+  amendReport, chooseResult, flagTone, getReport, LAB_BENCH_TOPIC, LAB_CRITICAL_TOPIC, labErrorText, nightReleases,
+  openCriticals, printReport, publishableOrders, publishReport, requestRerun, reviewNightRelease,
+  verifyResult, verifyWorklist,
 } from "../lib/lab-api";
 import { useRealtime } from "../lib/realtime";
+import { RerunChoicePair } from "../components/lab-rerun-choice";
 import { LabReportPrint } from "../components/lab-report-print";
 import { Button } from "@/components/ui/button";
 import { LabSeatFrame } from "./lab-seat";
@@ -46,7 +48,13 @@ export function orderQueue(rows: readonly WireWorklistRow[], calls: readonly Wir
   return rows
     .map((r) => ({
       ...r,
-      hasCritical: r.analytes.some((a) => flagTone(a.flag) === "critical"),
+      /**
+       * 17-E T7 — **THE PAIR'S FLAGS COUNT.** `a.flag` is null while two runs are live, so an order
+       * whose only critical is a re-run potassium would otherwise sort as routine — losing its place
+       * at the top of the pathologist's queue precisely because it needs a decision.
+       */
+      hasCritical: r.analytes.some((a) =>
+        flagTone(a.flag) === "critical" || a.rerunChoice.some((c) => flagTone(c.flag) === "critical")),
       openCall: callOrders.has(r.orderNo),
       ageMinutes: r.tatStartedAt === null ? 0 : Math.max(0, Math.floor((now - new Date(r.tatStartedAt).getTime()) / 60_000)),
     }))
@@ -83,6 +91,18 @@ export function LabVerify(): React.ReactElement {
   const queue = useQuery({ queryKey: ["lab", "verify"], queryFn: verifyWorklist, refetchInterval: 30_000 });
   const calls = useQuery({ queryKey: ["lab", "criticals"], queryFn: openCriticals, refetchInterval: 30_000 });
   const publishable = useQuery({ queryKey: ["lab", "publishable"], queryFn: publishableOrders, refetchInterval: 30_000 });
+  /**
+   * DD11 §7 — THE MORNING QUEUE. Night mode relaxes separation of duties and this is the
+   * compensating review. It shipped with no screen at all: the runbook's own words were *"somebody
+   * must work it, and this build ships no screen filter for it — read `lab_results` where
+   * `pathologist_review_pending` is true."*
+   */
+  const nights = useQuery({ queryKey: ["lab", "night-releases"], queryFn: nightReleases, refetchInterval: 30_000 });
+  const review = useMutation({
+    mutationFn: (resultId: string) => reviewNightRelease(resultId),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["lab", "night-releases"] }); },
+    onError: (e: unknown) => setError(labErrorText(e)),
+  });
   const refresh = (): void => { void qc.invalidateQueries({ queryKey: ["lab"] }); };
   const { connected } = useRealtime([LAB_BENCH_TOPIC, LAB_CRITICAL_TOPIC], () => refresh());
 
@@ -117,6 +137,18 @@ export function LabVerify(): React.ReactElement {
   });
   const rerun = useMutation({
     mutationFn: (resultId: string) => requestRerun(resultId, t("lab.verify.rerunReason"), newIdempotencyKey()),
+    onSuccess: () => { setError(null); refresh(); },
+    onError: (e: unknown) => setError(labErrorText(e)),
+  });
+
+  /**
+   * 17-E T7 / D18 — the pathologist holds `lab.results.enter` too (`seed-roles.ts`: "may key a
+   * number in a small lab"), and `rerun_unchosen` is raised at the SIGNATURE — this seat's own act.
+   * Showing the refusal here without the control is the defect moved one seat over: at 02:00 with
+   * nobody at the bench, the only remaining answer would be to curl.
+   */
+  const choose = useMutation({
+    mutationFn: (v: { resultId: string; reason: string }) => chooseResult(v),
     onSuccess: () => { setError(null); refresh(); },
     onError: (e: unknown) => setError(labErrorText(e)),
   });
@@ -193,6 +225,37 @@ export function LabVerify(): React.ReactElement {
             })}
           </ul>
           <p className="text-xs text-muted-foreground">{t("lab.verify.autoVerifyNote")}</p>
+
+          {/*
+            ═══ DD11 — RELEASED OVERNIGHT, AWAITING THE SECOND PAIR OF HANDS ═══
+
+            Shown only when there is something to work, because a heading over an empty list on every
+            day shift is how a reviewer learns to skip the section on the morning it is not empty.
+
+            Each row carries WHO released it alone. That is the fact the review is about, and a queue
+            that hid it behind a click would be worked by clicking.
+          */}
+          {(nights.data ?? []).length > 0 && (
+            <section className="space-y-2 pt-2" aria-label={t("lab.verify.nightQueue")}>
+              <h2 className="text-sm font-semibold">{t("lab.verify.nightQueue")}</h2>
+              <p className="text-xs text-muted-foreground">{t("lab.verify.nightQueueHint")}</p>
+              <ul className="divide-y divide-border rounded border border-border">
+                {(nights.data ?? []).map((r) => (
+                  <li key={r.resultId} data-testid={`night-${r.resultId}`} className="flex items-center gap-2 px-2 py-1.5 text-sm">
+                    <span className="font-semibold">{r.patientDisplay}</span>
+                    <span className="text-muted-foreground">{r.analyteCode} {r.value}{r.unit !== null && ` ${r.unit}`}</span>
+                    <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                      {t("lab.verify.releasedBy", { who: r.releasedBy })}
+                    </span>
+                    <Button type="button" variant="outline" size="sm" disabled={review.isPending}
+                      onClick={() => { review.mutate(r.resultId); }}>
+                      {t("lab.verify.reviewed")}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           <h2 className="pt-2 text-sm font-semibold">{t("lab.verify.publishQueue")}</h2>
           {publishable.isError
@@ -272,9 +335,31 @@ export function LabVerify(): React.ReactElement {
                       </tr>
                     </thead>
                     <tbody>
-                      {row.analytes.filter((a) => a.resultId !== null).map((a) => {
+                      {/*
+                        17-E T7 — `resultId` is null for an analyte awaiting a rerun choice, so this
+                        filter USED TO DROP THE ROW ENTIRELY: the pathologist saw a complete-looking
+                        panel, pressed sign, and met `rerun_unchosen` about an analyte that was not on
+                        the screen. An unchosen pair is kept and given its own row below.
+                      */}
+                      {row.analytes.filter((a) => a.resultId !== null || a.rerunChoice.length > 0).map((a) => {
                         const tone = flagTone(a.flag);
                         const delta = deltaText(a.value, a.previous?.value ?? null);
+                        if (a.rerunChoice.length > 0) {
+                          return (
+                            <tr key={a.analyteId} className="border-t border-border" data-testid={`row-${a.code}`}>
+                              <td className="py-1 pr-2">{a.nameEn}</td>
+                              <td colSpan={6} className="py-1">
+                                <RerunChoicePair
+                                  runs={a.rerunChoice}
+                                  name={`rerun-${row.orderItemId}-${a.analyteId}`}
+                                  analyteLabel={`${row.orderableCode} ${a.code}`}
+                                  pending={choose.isPending}
+                                  onChoose={(v) => choose.mutate(v)}
+                                />
+                              </td>
+                            </tr>
+                          );
+                        }
                         return (
                           <tr key={a.analyteId} className="border-t border-border" data-testid={`row-${a.code}`}>
                             <td className="py-1 pr-2">{a.nameEn}</td>

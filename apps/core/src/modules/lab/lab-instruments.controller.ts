@@ -4,7 +4,10 @@ import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { parsed, toHttp } from "./lab-http";
 import { ingestResults, LAB_RESULTS_INTERFACE } from "./ingest";
-import { instrumentWorklist, LAB_INSTRUMENTS_READ, listInstruments } from "./instruments";
+import {
+  instrumentWorklist, LAB_INSTRUMENTS_MANAGE, LAB_INSTRUMENTS_READ, linkInstrumentInterface,
+  listInstruments,
+} from "./instruments";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -47,6 +50,14 @@ const worklistQuery = z.object({ sampleId: z.string().min(1).max(32) });
  * `instrumentAt` is accepted and stored and NEVER read for turnaround (D5). Analyser clocks drift,
  * are set wrong at install, and survive a power cut reading 00:00.
  */
+/**
+ * ═══ 17-E T7b — THE LINK, AND `null` IS A REAL VALUE ON THIS BODY ═══
+ *
+ * `.nullable()` and not `.nullish()`: unlinking a bridge is a decision an administrator makes, and a
+ * body that omits the field entirely should not silently perform it. The caller must SAY `null`.
+ */
+const linkInterfaceBody = z.object({ interfaceId: z.string().min(1).max(64).nullable() });
+
 const ingestBody = z.object({
   transmissionRef: z.string().min(1).max(64),
   rows: z.array(z.object({
@@ -69,6 +80,32 @@ export class LabInstrumentsController {
   async register(): Promise<unknown> {
     try {
       return { items: await listInstruments(this.db) };
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * ═══ 17-E T7b — POINT A MACHINE AT ITS BRIDGE'S `interfaces` ROW ═══
+   *
+   * On `lab.instruments.manage`, the same grant the register read above is held on, and NOT on
+   * `lab.instruments.read`: the bridge must not be able to re-point its own link — see the header's
+   * reasoning about the code map, which is the same act in a different table.
+   *
+   * **THIS IS THE ONLY WRITE DOOR THE MACHINE REGISTER HAS.** `registerInstrument` and
+   * `mapInstrumentCode` are reachable from `seed-lab-demo.ts` and from nowhere else — a register with
+   * a read route, a manage permission and no writer, which is the shape the launch census named. It
+   * is disclosed here rather than fixed here: this task owns the link, not the register.
+   */
+  @Post("instruments/:instrumentId/interface")
+  @RequirePermission(LAB_INSTRUMENTS_MANAGE, "hospital")
+  async link(
+    @CurrentActor() actor: Actor,
+    @Param("instrumentId") instrumentId: string,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    const b = parsed(linkInterfaceBody, body);
+    try {
+      await linkInstrumentInterface(this.db, actor, { instrumentId, interfaceId: b.interfaceId });
+      return { ok: true };
     } catch (e) { toHttp(e); }
   }
 

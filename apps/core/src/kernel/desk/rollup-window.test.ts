@@ -25,7 +25,7 @@ import type { Db } from "../db/client";
  *
  * It seeds REAL visits through `openOpdVisit` — the module's own writer, never a raw insert — on a
  * SAMPLE of days spread across the whole 183-day window, and rolls EVERY day in that window. Then,
- * for all five periods, it compares the sum the brief would serve from `user_day_facts` against the
+ * for all six periods, it compares the sum the brief would serve from `user_day_facts` against the
  * same window recomputed live, day by day, through the very function the rollup is a cache of.
  *
  * It does NOT seed 183 days of full clinic traffic. That is a load test, it belongs with the
@@ -87,7 +87,7 @@ describe("07c T8 A1 — the rollup reconciles to live across a six-month window"
   });
 
   /**
-   * A1, FOR ALL FIVE PERIODS. The brief serves the rollup; this recomputes the identical window
+   * A1, FOR ALL SIX PERIODS. The brief serves the rollup; this recomputes the identical window
    * live, day by day, and demands the same number. A cached total and a live total that differ is
    * the worst outcome this design can produce — both look authoritative and neither says which is
    * right.

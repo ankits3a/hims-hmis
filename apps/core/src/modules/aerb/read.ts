@@ -2,7 +2,9 @@ import { and, asc, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { aerbLicences, aerbPersons } from "../../kernel/db/schema/aerb";
 import { resources } from "../../kernel/db/schema/resources";
 import { users } from "../../kernel/db/schema/auth";
+import { istDayString } from "../../kernel/approvals/cumulative";
 import type { Db } from "../../kernel/db/client";
+import type { AerbPersonRole } from "../../kernel/db/schema/aerb";
 
 /**
  * PLAN 18c T1 — the register as a BOOK, which is the form an inspector asks for it in.
@@ -241,6 +243,28 @@ export interface AerbDeviceChoice {
 export interface AerbUserChoice {
   userId: string;
   fullName: string;
+  /**
+   * The person's LIVE AERB appointment role, or `null` for the great majority who have none.
+   *
+   * ═══ WHY THE PICKER HAS TO SAY THIS ═══
+   *
+   * This list fills the licence form's **RSO** field, and it is every active user in the hospital —
+   * `fileLicence` does not check `rsoUserId` and the column is nullish, so **a statutory AERB
+   * licence could be filed naming the cashier as the Radiological Safety Officer and nothing
+   * anywhere refused or warned.** Measured on a stand-up: a licence came out naming a radiologist
+   * who held no `radiation_safety_officer` role and had no appointment row at all.
+   *
+   * It is `null` rather than a filter for the same reason the device picker returns unlicensable
+   * machines with a flag instead of hiding them: **`PersonForm` uses this same list to CREATE an
+   * appointment**, and a picker that offered only appointed people could never appoint the first
+   * one. The server states the fact; each form renders what it means (18b MAJOR B4's posture).
+   *
+   * Holding the `radiation_safety_officer` ROLE and holding an APPOINTMENT are different things —
+   * the role is an application permission, the appointment is the regulator's own reference number
+   * against a named, qualified person. This reports the second, because that is the one a licence
+   * is claiming.
+   */
+  aerbRole: AerbPersonRole | null;
 }
 
 /**
@@ -277,6 +301,12 @@ export async function aerbPickers(
     .where(eq(users.active, true))
     .orderBy(asc(users.fullName));
 
+  /** Today's live appointments, by user. `appointments` already applies the validity window. */
+  const appointed = new Map<string, AerbPersonRole>();
+  for (const row of await appointments(db, { onDate: istDayString(new Date()) })) {
+    appointed.set(row.userId, row.personRole as AerbPersonRole);
+  }
+
   return {
     devices: deviceRows.map((r) => {
       const modality = typeof r.attributes?.modality === "string" ? r.attributes.modality : "";
@@ -289,6 +319,6 @@ export async function aerbPickers(
         licensable: !AERB_UNLICENSABLE_MODALITIES.includes(modality.trim().toLowerCase()),
       };
     }),
-    users: userRows,
+    users: userRows.map((u) => ({ ...u, aerbRole: appointed.get(u.userId) ?? null })),
   };
 }

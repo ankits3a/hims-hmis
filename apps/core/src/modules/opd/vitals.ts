@@ -3,7 +3,7 @@ import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
-import { opdEncounters, opdQueueEntries, opdQueueSessions, opdVitals } from "../../kernel/db/schema";
+import { opdEncounters, opdQueueEntries, opdQueueSessions, opdVitals, users } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { loadOpdConfig } from "./config";
 import { vitalsGateVerdict } from "./consultation";
@@ -116,6 +116,28 @@ export async function lastActiveVitals(db: Db | Tx, patientId: string): Promise<
 export type VitalsRow = typeof opdVitals.$inferSelect;
 
 /**
+ * ═══ THE NAME BESIDE THE ID ═══
+ *
+ * `recordedBy` is a ULID, and a screen that shows a nurse who changed a chart must not show her
+ * `01M1R6FXR0AQN3BNA8Q8K0ESM6` — which is exactly what the amendment trail was doing at the bay.
+ * The kernel hands no caller a display name (`auth.controller` returns `{ actor: { type, id } }`
+ * and the FD-9 note in the web's `auth.tsx` says so out loud), so the module that knows WHOSE row
+ * this is resolves it — the join `lab/reports.ts` and `radiology/views.ts` already make.
+ *
+ * `users.fullName` is NOT NULL, so the username fallback exists for the one case that is reachable —
+ * a full name that is blank — and the id itself only for a `recordedBy` that resolves to no user row
+ * at all (an agent or a deleted account). It never returns an empty string at a nurse.
+ */
+export type VitalsRowWithRecorder = VitalsRow & { recordedByName: string };
+
+export async function withRecorder(db: Db, row: VitalsRow): Promise<VitalsRowWithRecorder> {
+  const [u] = await db.select({ fullName: users.fullName, username: users.username })
+    .from(users).where(eq(users.id, row.recordedBy)).limit(1);
+  const named = (u?.fullName ?? "").trim() !== "" ? u!.fullName : (u?.username ?? "").trim() !== "" ? u!.username : row.recordedBy;
+  return { ...row, recordedByName: named };
+}
+
+/**
  * VD-2 T0 / F1 — the chart BEFORE the one being amended. An amendment's gates and its carried lock
  * compare against the visit's predecessor, never against the row being replaced: correcting a
  * mistyped 151 → 147 on the same visit must not fire `shrinking_adult` against the number being
@@ -210,7 +232,7 @@ async function latestEntryWhere(tx: Tx, encounterId: string): Promise<{ entry: Q
  */
 export async function recordVitals(
   db: Db, actor: Actor, encounterId: string, input: VitalsInput, now: Date = new Date(), detail: VitalsDetail = {},
-): Promise<{ vitals: VitalsRow; flags: DangerFlag[]; encounter: EncounterRow }> {
+): Promise<{ vitals: VitalsRowWithRecorder; flags: DangerFlag[]; encounter: EncounterRow }> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
   // ONE input path (vitals-rules.ts's own header): readings win and the scalars are derived from
   // them; a flat body gets one typed take per vital synthesised. Nothing downstream branches.
@@ -347,7 +369,7 @@ export async function recordVitals(
       dangerCount: dangerFlags.length, noticeCount: flags.length - dangerFlags.length,
     } }));
 
-    return { vitals: vitals!, flags, encounter };
+    return { vitals: await withRecorder(tx, vitals!), flags, encounter };
   });
 }
 
@@ -384,7 +406,7 @@ export async function recordVitals(
 export async function amendVitals(
   db: Db, actor: Actor, vitalsId: string, input: VitalsInput, reason: string,
   now: Date = new Date(), detail: VitalsDetail = {},
-): Promise<{ vitals: VitalsRow; flags: DangerFlag[]; superseded: string }> {
+): Promise<{ vitals: VitalsRowWithRecorder; flags: DangerFlag[]; superseded: string }> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
   if (reason.trim() === "") throw new OpdError("reason_required", "an amendment needs a reason — it is the record");
 
@@ -511,7 +533,7 @@ export async function amendVitals(
         reason, changed: changedFields(prior, vitals!), dangerCount: dangerFlags.length,
       },
     }));
-    return { vitals: vitals!, flags, superseded: prior.id };
+    return { vitals: await withRecorder(tx, vitals!), flags, superseded: prior.id };
   });
 }
 
@@ -538,7 +560,7 @@ export function changedFields(prior: VitalsRow, next: VitalsRow): { field: strin
  * made lawful was unreachable from the screen it was fixed for. The same rule as the write, then:
  * whoever may amend the chart may read the row they are about to amend, and the read is logged.
  */
-export async function getVitalsForAmend(db: Db, actor: Actor, vitalsId: string): Promise<VitalsRow | null> {
+export async function getVitalsForAmend(db: Db, actor: Actor, vitalsId: string): Promise<VitalsRowWithRecorder | null> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
   const rows = await db.select().from(opdVitals).where(eq(opdVitals.id, vitalsId));
   const row = rows[0];
@@ -550,7 +572,7 @@ export async function getVitalsForAmend(db: Db, actor: Actor, vitalsId: string):
     actor, patientId: row.patientId, surface: "opd.vitals", encounterId: row.encounterId,
     sealed: summary?.restricted ?? true, reason: null,
   });
-  return row;
+  return withRecorder(db, row);
 }
 
 export async function listVitals(db: Db, actor: Actor, encounterId: string): Promise<VitalsRow[]> {

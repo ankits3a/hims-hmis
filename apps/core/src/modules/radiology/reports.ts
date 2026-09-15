@@ -16,6 +16,7 @@ import { findLockoutHits } from "../pcpndt";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import type { LockoutTier } from "../pcpndt";
 import { RadiologyError } from "./errors";
+import { outsideStudyFor } from "./outside";
 import {
   imagingCriticalAcknowledged, imagingCriticalFlagged, imagingReportPublished,
 } from "./events";
@@ -215,6 +216,11 @@ export async function proposeDraft(
   assertReportable(study.status, input.studyId);
   const type = await requireStudyType(tx, study.studyTypeCode);
   const tier = await lockoutTierFor(tx, study, now);
+  /** 18a-iii T4 — null for our own studies; the drafter prints the label when it is not. */
+  const outsideRow = await outsideStudyFor(tx, study.id);
+  const outsideFacts = outsideRow === null
+    ? null
+    : { centreName: outsideRow.centreName, studyDate: outsideRow.studyDate, arrival: outsideRow.arrival };
   const proposal = await activeDrafter().draft({
     studyId: study.id, accessionNo: study.accessionNo,
     studyType: {
@@ -224,6 +230,7 @@ export async function proposeDraft(
     laterality: study.laterality, lockoutTier: tier, contrastGiven: study.contrastGiven,
     contrastAgent: study.contrastAgent, contrastVolumeMl: study.contrastVolumeMl,
     dose: { ctdivol: study.doseCtdivol, dlp: study.doseDlp, dap: study.doseDap, fluoroSeconds: study.fluoroSeconds },
+    outside: outsideFacts,
   }, now);
   // Close review B1 — the SAME tier a human's text gets (F66: the demographic terms only in an
   // obstetric context), so "USG female pelvis" on a man's scan is not refused on the type's name.

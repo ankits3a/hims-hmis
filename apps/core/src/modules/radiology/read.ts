@@ -1,11 +1,13 @@
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { recordPhiAccess } from "../../kernel/phi/audit";
-import { imagingReports, imagingStudies } from "../../kernel/db/schema/radiology";
+import { imagingReportDelivery, imagingReports, imagingStudies } from "../../kernel/db/schema/radiology";
 import { orderItems } from "../../kernel/db/schema/orders";
 import { patients } from "../../kernel/db/schema/patients";
 import { displayName } from "../patients";
 import { RadiologyError } from "./errors";
+import { outsideStudyFor } from "./outside";
 import { mintStudyInstanceUid } from "./uid";
 import { IMAGES_READ, studyImageViews } from "./views"; // pass 2 N2 — the button follows the door's own string
 import type { ImageViewRow } from "./views";
@@ -216,6 +218,17 @@ export type StudyView = WorklistRow & {
   laterality: string;
   ionising: boolean;
   contrastGiven: boolean;
+  /**
+   * 18a-iii T3 / D4 — null when the study happens where the machine lives; the ward and bed when
+   * the machine goes to the patient. The console renders it because a technologist wheeling a
+   * trolley needs to know where, and a porter needs it before the machine moves.
+   */
+  bedsideLocation: string | null;
+  /**
+   * 18a-iii T4 / D5 — the provenance when the images came from another centre, null when they are
+   * ours. On the console beside the study, for the same reason it is in the report's first sentence.
+   */
+  outside: { centreName: string; studyDate: string; modality: string; externalAccessionNo: string | null; arrival: string } | null;
   acquiredAt: Date | null;
   authorisedBy: string | null;
   /** 18b T2 — null until acquisition; the console shows `mintedStudyInstanceUid` before that. */
@@ -281,6 +294,8 @@ export async function studyView(db: Db, actor: Actor, studyId: string): Promise<
     formFRequired: row.study.formFRequired, restricted: row.restricted,
     laterality: row.study.laterality,
     ionising: row.study.ionising, contrastGiven: row.study.contrastGiven,
+    bedsideLocation: row.study.bedsideLocation,
+    outside: await outsideProvenance(db, studyId),
     acquiredAt: row.study.acquiredAt, authorisedBy: row.study.authorisedBy,
     studyInstanceUid: row.study.studyInstanceUid, imageSource: row.study.imageSource,
     mintedStudyInstanceUid: mintStudyInstanceUid(row.study.id),
@@ -363,6 +378,47 @@ export async function reportView(db: Db, actor: Actor, reportId: string): Promis
     reason: `report v${String(row.report.version)} on ${row.study.accessionNo}`,
   });
 
+  /**
+   * ═══ 18a-iii T5 / D7 — THE FACT THE UNREAD WATCHMAN NEEDS, RECORDED WHERE IT HAPPENS ═══
+   *
+   * Stamped on the FIRST read by somebody who is not the signer, and never again. See the column's
+   * own comment for why the signer is excluded (a radiologist re-reading their own report is not the
+   * referring clinician acting on it) and why first rather than latest (the question is "did it
+   * land", and a report read once has landed).
+   *
+   * `isNull(firstReadAt)` in the WHERE makes this idempotent and race-free without a transaction of
+   * its own: the second reader's update matches no row. It is a `set` and not a read-then-write for
+   * that reason.
+   *
+   * **A failure here must never fail the read.** A radiologist opening a report at 02:00 does not
+   * care that a chaser's bookkeeping column could not be written, and a `catch` that swallowed the
+   * report itself would be the cure being worse than the disease. Drizzle throws on a genuine
+   * failure and the route's `toHttp` would turn it into a 500 on a screen that had already
+   * succeeded — so the write is last, after the PHI log, and its only effect on the caller is a
+   * column they do not read.
+   */
+  if (row.report.status === "signed" && row.report.publishedAt !== null
+      && row.report.signerId !== actor.id) {
+    /**
+     * An UPSERT on `imaging_report_delivery`, not an update of the report: the report row is
+     * append-only by database trigger (`imaging_reports_forbid_mutation`, migration 0047) and only
+     * `status` and `published_at` may ever change on it. That refusal is what produced this table —
+     * a signed report is a courtroom document, and a chaser's bookkeeping does not belong on it.
+     *
+     * `setWhere` on the conflict arm is what makes it FIRST-read rather than latest, and makes two
+     * simultaneous readers safe without a transaction: the second reader's update matches no row
+     * because `first_read_at` is already set.
+     */
+    await db
+      .insert(imagingReportDelivery)
+      .values({ id: newId(), reportId: row.report.id, firstReadAt: new Date(), firstReadBy: actor.id })
+      .onConflictDoUpdate({
+        target: imagingReportDelivery.reportId,
+        set: { firstReadAt: new Date(), firstReadBy: actor.id },
+        setWhere: isNull(imagingReportDelivery.firstReadAt),
+      });
+  }
+
   return {
     reportId: row.report.id, studyId: row.study.id, accessionNo: row.study.accessionNo,
     version: row.report.version, status: row.report.status, templateKey: row.report.templateKey,
@@ -374,5 +430,14 @@ export async function reportView(db: Db, actor: Actor, reportId: string): Promis
     patientName: displayName(
       { name: row.name, alias: row.alias, isConfidential: row.isConfidential }, clearance.canSeeConfidential,
     ),
+  };
+}
+
+/** The provenance a console renders beside an outside study, or null when the study is ours. */
+async function outsideProvenance(db: Db, studyId: string): Promise<StudyView["outside"]> {
+  const row = await outsideStudyFor(db, studyId);
+  return row === null ? null : {
+    centreName: row.centreName, studyDate: row.studyDate, modality: row.modality,
+    externalAccessionNo: row.externalAccessionNo, arrival: row.arrival,
   };
 }

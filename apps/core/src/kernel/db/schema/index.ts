@@ -25,6 +25,14 @@ export * from "./membership";
 // pairs the OPD check suite reads. `modules/opd` reaches it only through read helpers (the
 // `listAllergies` precedent), never by importing these tables.
 export * from "./formulary";
+
+// The ICD-10 tabular list — the diagnosis catalogue the consult screen completes from and MRD
+// codes from. A pure reference table: nothing writes to it but the importer, and nothing foreign
+// keys to it, so it sits under no other schema in the dependency order.
+export * from "./clinical-coding";
+// The desk's photograph of a paper slip. The row is metadata and a storage key; the BYTES live
+// behind `kernel/documents` — a disk adapter now, an object store when the owner adds one.
+export * from "./documents";
 // PLAN 13 T1 — the resource registry, LAST because of dependency order. `opd.ts` above declares
 // BOTH its `room_id` foreign keys into `resources.id` (T6 repointed them; T7's `0033` dropped
 // `opd_rooms` entirely), so `opd.ts` depends on THIS file and not the other way round, and the

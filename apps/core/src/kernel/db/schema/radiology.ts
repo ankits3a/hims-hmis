@@ -3,7 +3,7 @@ import { boolean, check, date, index, integer, jsonb, numeric, pgTable, text, ti
 import type { SQL } from "drizzle-orm";
 import { invoiceLines } from "./billing";
 import { orderItems, orders } from "./orders";
-import { patients } from "./patients";
+import { patientAllergies, patients } from "./patients";
 import { resources } from "./resources";
 import { services } from "./tariff";
 
@@ -223,6 +223,25 @@ export const imagingStudies = pgTable(
     repeatReason: text("repeat_reason"),
     /** DD14's applicability rule, evaluated at PLACEMENT and frozen on the row (T3). */
     formFRequired: boolean("form_f_required").notNull().default(false),
+    /**
+     * ═══ PLAN 18a-iii T3 / D4 — THE BEDSIDE. A PORTABLE STUDY IS THE SAME STUDY WITH A PLACE ═══
+     *
+     * *"It hangs off the existing `imaging_studies` row with a bedside location and the ward's
+     * request; there is no parallel table and no second workflow definition."* The temptation is a
+     * `portable_studies` table, and it would fork every report, bill, worklist and register query in
+     * this module — two shapes for one examination, and every later reader having to remember both.
+     *
+     * NULL means the study was performed where the machine lives. Non-null means the machine was
+     * taken to the patient, and the string is the ward and bed a porter and a technologist need.
+     * `scheduleStudy` refuses to write it for a device that does not carry `attributes.portable`.
+     *
+     * **The gate set does not change and that is the point.** `deriveGateSet` reads the study TYPE
+     * and `form_f_required`, and nothing else — so a portable USG on a ward opens `form_f` and
+     * `chaperone_present` exactly as it would in the department, and `assertFormFRecorded` still
+     * demands a RECORDED form before the exposure. §11.19-C-6 widened Form F to cover precisely this
+     * case, and it holds here by construction rather than by a second rule.
+     */
+    bedsideLocation: text("bedside_location"),
     /** DD12a — a line the COUNTER raised. This module composes no invoice. */
     invoiceLineId: text("invoice_line_id").references(() => invoiceLines.id),
     authorisedBy: text("authorised_by"),
@@ -482,10 +501,30 @@ export const imagingCriticalFindings = pgTable(
     /** F76 — who entered the acknowledgement. Separate from who gave it, deliberately. */
     recordedBy: text("recorded_by"),
     acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+    /**
+     * ═══ 18a-iii T5 / D7 — WHEN THE CHASER ESCALATED THIS ONE, AND WHY IT IS NOT A STATUS ═══
+     *
+     * This table's own header left the note: *"the escalation ladder that chases an unacknowledged
+     * critical at 02:00 is 18a-iii's, and it reads these rows."* This is the mark it writes.
+     *
+     * It exists because a sweep with no memory alerts every cycle. `sweepCriticalChaser` runs every
+     * minute — a sweep coarser than the window it enforces cannot enforce it — and an unacknowledged
+     * red finding would otherwise put a row in front of a human sixty times an hour, which is how an
+     * alert surface becomes one nobody reads.
+     *
+     * **It is a record that an escalation happened, NOT a state of the finding.** D7 is explicit
+     * that the chasers escalate to a human and never to a status: nothing reads this column to
+     * decide what a finding IS, `acknowledgedAt` remains the only answer to "was this closed", and a
+     * chased finding is exactly as unacknowledged as it was a minute earlier.
+     */
+    chasedAt: timestamp("chased_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index("imaging_critical_findings_report_idx").on(t.reportId),
+    /** The chaser's own query: everything unacknowledged and unchased, oldest first. */
+    index("imaging_critical_findings_chase_idx")
+      .on(t.acknowledgedAt, t.chasedAt, t.createdAt),
     check("imaging_critical_findings_category_ck", inList(t.category, IMAGING_CRITICAL_CATEGORIES)),
     /** An acknowledgement is a person and an instant; half of one is not an acknowledgement. */
     check(
@@ -654,6 +693,224 @@ export const imagingContrastAdministrations = pgTable(
     check(
       "imaging_contrast_administrations_vial_expiry_ck",
       sql`${t.vialExpiry} is null or ${t.vialExpiry} >= (${t.givenAt} at time zone 'Asia/Kolkata')::date`,
+    ),
+  ],
+);
+
+/**
+ * ═══ PLAN 18a-iii T2 — `imaging_contrast_reactions`: THE ROW THAT MUST REACH THE NEXT SCAN ═══
+ *
+ * 18a's `prior_contrast_reaction` gate READS the patients module's allergy list, and 18a's own
+ * out-of-scope note left this phase the other half: *"the reaction that WRITES that allergy is the
+ * follow-on's."* This is that write, and D2 makes it the one thing about this table that is not
+ * record-only.
+ *
+ * ═══ `allergy_id` IS `NOT NULL`, AND THAT IS THE WHOLE DESIGN IN ONE COLUMN ═══
+ *
+ * The defect this chain exists to prevent is *a reaction recorded in radiology and invisible to the
+ * next CT's gate*. An event a consumer might one day handle does not prevent it; a service branch
+ * that writes the allergy "as well" does not prevent it, because a later refactor can drop the
+ * branch and every test about the reaction still passes. **A `NOT NULL` foreign key to
+ * `patient_allergies` makes a reaction row that wrote no allergy a state the database cannot hold.**
+ * The two writes are one transaction because they are one fact.
+ *
+ * The reaction hangs off the ADMINISTRATION, not off the study: `imaging_contrast_administrations`
+ * already knows the agent, the volume and the route, so the substance written onto the allergy list
+ * is the agent that actually went in rather than a second free-text field a hurried hand retypes.
+ * `study_id` and `patient_id` are derived from that row and never taken from the caller.
+ *
+ * ═══ SEVERITY DECIDES WHAT THE RECORD REQUIRES, NEVER WHO MAY WRITE IT (D3) ═══
+ *
+ * A severe reaction demands the managing clinician and the treatment given —
+ * `imaging_contrast_reactions_severe_ck` — because a cardiac arrest with no named clinician and no
+ * treatment is not a record of anything. It does NOT demand a senior recorder: a radiographer at
+ * 02:00 records what happened, and a system that made them wait for a doctor to type it would be a
+ * system that loses the record.
+ *
+ * ═══ RECORD-ONLY, AND `ot`'s INCIDENT TABLE IS NOT REACHED INTO (D1) ═══
+ *
+ * `incident.reported` exists and is OWNED by `ot` — its own docstring calls it *"the OT-local
+ * incident record, until the quality module (28a) subscribes to it"*. There is no hospital-wide
+ * incident or ADR register and 28a is unbuilt. Radiology records the reaction on its own table and
+ * emits `imaging.contrast_reaction` for a consumer that does not exist yet. Writing into `ot`'s
+ * table would make the hospital's incident register a thing `ot` owns by accident of shipping first.
+ */
+export const CONTRAST_REACTION_SEVERITIES = ["mild", "moderate", "severe"] as const;
+export type ContrastReactionSeverity = (typeof CONTRAST_REACTION_SEVERITIES)[number];
+
+/** Acute versus delayed, the ACR split. A delayed rash at 24 hours is a reaction and is recordable. */
+export const CONTRAST_REACTION_ONSETS = ["immediate", "delayed"] as const;
+export type ContrastReactionOnset = (typeof CONTRAST_REACTION_ONSETS)[number];
+
+/** Where the patient ended up. NULL while they are still in front of you, which is the usual case. */
+export const CONTRAST_REACTION_OUTCOMES = [
+  "recovered", "recovering", "admitted", "referred", "died",
+] as const;
+export type ContrastReactionOutcome = (typeof CONTRAST_REACTION_OUTCOMES)[number];
+
+export const imagingContrastReactions = pgTable(
+  "imaging_contrast_reactions",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    administrationId: text("administration_id").notNull()
+      .references(() => imagingContrastAdministrations.id),
+    studyId: text("study_id").notNull().references(() => imagingStudies.id),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    /** D2 — the allergy this reaction wrote. NOT NULL: see the header. */
+    allergyId: text("allergy_id").notNull().references(() => patientAllergies.id),
+    severity: text("severity").notNull(),
+    onset: text("onset").notNull(),
+    /** What happened, in the recorder's words. Clinical narrative: it stays here and never in an event. */
+    manifestation: text("manifestation").notNull(),
+    treatmentGiven: text("treatment_given"),
+    managingClinicianId: text("managing_clinician_id"),
+    outcome: text("outcome"),
+    observedBy: text("observed_by").notNull(),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull(),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    /** The question the next scan asks: has this patient reacted before, and to what. */
+    index("imaging_contrast_reactions_patient_idx").on(t.patientId, t.observedAt),
+    index("imaging_contrast_reactions_study_idx").on(t.studyId),
+    index("imaging_contrast_reactions_administration_idx").on(t.administrationId),
+    check("imaging_contrast_reactions_severity_ck", inList(t.severity, CONTRAST_REACTION_SEVERITIES)),
+    check("imaging_contrast_reactions_onset_ck", inList(t.onset, CONTRAST_REACTION_ONSETS)),
+    check(
+      "imaging_contrast_reactions_outcome_ck",
+      sql`${t.outcome} is null or ${inList(t.outcome, CONTRAST_REACTION_OUTCOMES)}`,
+    ),
+    /** D3 — a severe reaction with no named clinician and no treatment records nothing. */
+    check(
+      "imaging_contrast_reactions_severe_ck",
+      sql`${t.severity} <> 'severe' or (${t.treatmentGiven} is not null and ${t.managingClinicianId} is not null)`,
+    ),
+  ],
+);
+
+/**
+ * ═══ PLAN 18a-iii T4 / D5 — `imaging_outside_studies`: A RECORD OF A DOCUMENT, NOT AN IMAGE STORE ═══
+ *
+ * 18b shipped `IMAGE_SOURCES` with `outside` in it and **nothing behind the value** — its D8 defers
+ * the register here by name. This is that register, and D5 fixes its shape: a study performed
+ * somewhere else enters as PROVENANCE — the centre, their date, the modality, their accession if the
+ * paperwork carries one, and how the images physically arrived — so that a radiologist reporting on
+ * it and a clinician reading that report can both see, without asking anybody, that it was not ours.
+ *
+ * **No file upload in this phase.** The DPDP question and the storage tiering belong with 18b-ii, and
+ * a half-built upload is worse than a citation: a link that resolves for six months and then does
+ * not is a report referring to evidence nobody can produce.
+ *
+ * ═══ WHY THE ROW HANGS OFF A STUDY RATHER THAN STANDING ALONE ═══
+ *
+ * Because the point of the register is that our radiologist REPORTS on it, and a report in this
+ * module is written about an `imaging_studies` row. A free-standing provenance table would need a
+ * second reporting path, a second worklist and a second way to be billed — D4's argument against a
+ * `portable_studies` table, applied to the other end of the module.
+ *
+ * `study_id` is UNIQUE: one study is one outside examination. Two films from two centres are two
+ * referrals, two studies and two rows, because a radiologist signs one report per study and a reader
+ * must never have to work out which of two provenances a paragraph refers to.
+ *
+ * ═══ AND THE ROW IS THE PROOF THAT NO DOSE WAS LOGGED ═══
+ *
+ * `registerOutsideStudy` is the ONLY path that reaches `acquired` without an acquisition, and it
+ * writes this row in the same transaction. So "an `acquired` study with no dose register entry" is
+ * not an anomaly to investigate — it is an outside study, and this table says which centre irradiated
+ * the patient instead of us.
+ */
+export const IMAGE_ARRIVALS = ["film", "cd", "link", "none"] as const;
+export type ImageArrival = (typeof IMAGE_ARRIVALS)[number];
+
+export const imagingOutsideStudies = pgTable(
+  "imaging_outside_studies",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    studyId: text("study_id").notNull().references(() => imagingStudies.id),
+    /** Free text: the other hospital's name as it appears on the film or the envelope. */
+    centreName: text("centre_name").notNull(),
+    /** THEIR date, not ours. A date on a label, never an instant — it is often all the film carries. */
+    studyDate: date("study_date").notNull(),
+    modality: text("modality").notNull(),
+    /** Their accession or film number, when the paperwork has one. Usually it does not. */
+    externalAccessionNo: text("external_accession_no"),
+    /** How the images physically arrived. `none` is a REPORT with no images, which is a real case. */
+    arrival: text("arrival").notNull(),
+    notes: text("notes"),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("imaging_outside_studies_study_ux").on(t.studyId),
+    index("imaging_outside_studies_centre_idx").on(t.centreName, t.studyDate),
+    check("imaging_outside_studies_arrival_ck", inList(t.arrival, IMAGE_ARRIVALS)),
+    /**
+     * **No CHECK on `modality`, and that is deliberate.** `IMAGING_MODALITIES` lives in
+     * `modules/radiology/kinds.ts` — a MODULE file — and this is the kernel schema surface. Inlining
+     * the five words here would be a second copy of a vocabulary with one owner, and §2.54's rule is
+     * that if a fact must be written twice, something must fail when the copies diverge. Nothing
+     * would. `registerOutsideStudy` validates against the owning constant instead, which is also
+     * where `imaging_studies` gets its modality answered from (the study TYPE, never a column).
+     */
+  ],
+);
+
+/**
+ * ═══ PLAN 18a-iii T5 / D7 — `imaging_report_delivery`: WHAT HAPPENED TO A REPORT AFTER IT WAS SIGNED ═══
+ *
+ * **This table exists because the database refused the first design, and the database was right.**
+ *
+ * The Unread Watchman needs two mutable facts about a signed report — was it read by anybody but its
+ * author, and has the chaser already escalated it. The obvious place was three columns on
+ * `imaging_reports`, and `imaging_reports_forbid_mutation` (migration 0047) rejected the write:
+ * *"only status and published_at may change after insert"*.
+ *
+ * That trigger is 18a's A10 — a signed report is a courtroom document and its row is append-only.
+ * A design that put a chaser's bookkeeping on it would have made the document mutable to buy a
+ * worker sweep a column, and every later reader would have had to know which of its fields were
+ * evidence and which were housekeeping. **The report is immutable; its DELIVERY is not, and they
+ * are different objects.** That is a better model than the one the trigger refused, and it was not
+ * the one being written until the refusal.
+ *
+ * ═══ WHAT EACH COLUMN IS FOR ═══
+ *
+ * `first_read_*` — `reportView` writes this the first time a reader who is NOT the signer opens a
+ * published report. Nothing else in the tree could answer "did this land": `phi_access_log` is an
+ * AUDIT surface keyed by patient and surface, carrying the accession only inside a free-text
+ * `reason`, and making a clinical escalation depend on that sentence would stop the chasing the day
+ * somebody rewords it. `imaging_image_views` answers who opened the IMAGES, which is a different
+ * question.
+ *
+ * FIRST read rather than latest, because the question is whether it landed — a report read once and
+ * forgotten has landed. The SIGNER is excluded because a radiologist re-reading their own report is
+ * not the referring clinician acting on it, and counting it would make every report look read the
+ * moment it was written: the Watchman would go permanently silent, and **a safety net's silence is
+ * indistinguishable from everything being fine.**
+ *
+ * `unread_chased_at` — a record that an escalation HAPPENED, never a state of the report. Same
+ * argument as `imaging_critical_findings.chased_at`, and D7's rule that these chasers get a voice
+ * rather than teeth.
+ */
+export const imagingReportDelivery = pgTable(
+  "imaging_report_delivery",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    reportId: text("report_id").notNull().references(() => imagingReports.id),
+    firstReadAt: timestamp("first_read_at", { withTimezone: true }),
+    firstReadBy: text("first_read_by"),
+    unreadChasedAt: timestamp("unread_chased_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    /** One delivery record per report. The read is an upsert against this. */
+    uniqueIndex("imaging_report_delivery_report_ux").on(t.reportId),
+    /** The Watchman's own query: unread and unchased, oldest first. */
+    index("imaging_report_delivery_unread_idx").on(t.firstReadAt, t.unreadChasedAt),
+    /** A read is a person and an instant. Half of one is not a read. */
+    check(
+      "imaging_report_delivery_first_read_ck",
+      sql`(${t.firstReadBy} is null) = (${t.firstReadAt} is null)`,
     ),
   ],
 );

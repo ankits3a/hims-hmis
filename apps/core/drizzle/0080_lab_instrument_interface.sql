@@ -1,0 +1,3 @@
+ALTER TABLE "lab_instruments" ADD COLUMN "interface_id" text;--> statement-breakpoint
+ALTER TABLE "lab_instruments" ADD CONSTRAINT "lab_instruments_interface_id_interfaces_id_fk" FOREIGN KEY ("interface_id") REFERENCES "public"."interfaces"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "lab_instruments_interface_ux" ON "lab_instruments" USING btree ("interface_id") WHERE "lab_instruments"."interface_id" is not null;

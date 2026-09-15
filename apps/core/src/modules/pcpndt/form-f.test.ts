@@ -64,6 +64,21 @@ describe("Form F: membership, the completion, the freeze and the gate (18a T6)",
       .rejects.toMatchObject({ code: "machine_not_registered" });
   });
 
+  /**
+   * ═══ THE REFUSALS NAME THE MACHINE A SONOLOGIST IS STANDING AT ═══
+   *
+   * `machine_not_registered` reaches the console verbatim — `pcpndt-http.ts` throws
+   * `httpError(status, e.message)` and `radiology-api.ts` states that the server's wording is
+   * "never re-worded here" — and it opened with a 26-character ULID. The wrong-machine refusal was
+   * worse: **two ULIDs in one sentence**, asking a sonologist to spot the difference between them.
+   */
+  it("names the machine rather than its ULID, in both A2 refusals", async () => {
+    await expect(assertMachineRegistered(db, fx.unregisteredDeviceId, DAY))
+      .rejects.toMatchObject({ message: expect.stringContaining("USG-2 (USG-2 machine)") });
+    await expect(assertMachineRegistered(db, fx.unregisteredDeviceId, DAY))
+      .rejects.toMatchObject({ message: expect.not.stringContaining(fx.unregisteredDeviceId) });
+  });
+
   it("A2: a person on no registration is refused `person_not_registered`", async () => {
     await expect(assertPersonRegistered(db, fx.outsider.id, fx.registrationId))
       .rejects.toMatchObject({ code: "person_not_registered" });

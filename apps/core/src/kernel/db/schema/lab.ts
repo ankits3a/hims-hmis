@@ -5,6 +5,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { invoiceLines, invoices } from "./billing";
 import { orderItems, orders } from "./orders";
+import { interfaces } from "./ops";
 import { patients } from "./patients";
 import { resources } from "./resources";
 import { services } from "./tariff";
@@ -488,6 +489,20 @@ export const labResults = pgTable(
     pathologistReviewPending: boolean("pathologist_review_pending").notNull().default(false),
     rerunOf: text("rerun_of"),
     supersedesResultId: text("supersedes_result_id"),
+    /**
+     * ═══ 17-E T7 / D17 — THE BENCH'S CHOICE, WHEN A MACHINE RAN THE SAME TUBE TWICE ═══
+     *
+     * A human re-key supersedes the row it replaces (close review M3) and needs no choice: one live
+     * value, and the chain is the auditor's path. **An analyser re-running does not supersede**
+     * (D9), so an analyte can carry two live values that are both legitimate measurements — and
+     * which of them the report prints is a judgement, made by a person, with a reason.
+     *
+     * The three columns move together or not at all, and the reason may not be blank: a choice
+     * recorded without one is the auto-supersession this task exists to remove, wearing a name.
+     */
+    reportedChoiceAt: timestamp("reported_choice_at", { withTimezone: true }),
+    reportedChoiceBy: text("reported_choice_by"),
+    reportedChoiceReason: text("reported_choice_reason"),
     remarks: text("remarks"),
   },
   (t) => [
@@ -523,6 +538,31 @@ export const labResults = pgTable(
       "lab_results_verified_status_ck",
       sql`(${t.verificationStatus} = 'unverified') = (${t.verifiedBy} is null)`,
     ),
+    /**
+     * 17-E T7 — the choice is a TRIPLE. Two of the three would let a row say it was chosen without
+     * saying by whom, or why; the biconditional is the same shape as the verification pair above.
+     */
+    check(
+      "lab_results_reported_choice_ck",
+      sql`(${t.reportedChoiceAt} is null) = (${t.reportedChoiceBy} is null)
+        and (${t.reportedChoiceAt} is null) = (${t.reportedChoiceReason} is null)`,
+    ),
+    /** A blank reason is no reason. The service trims; this is the floor under it. */
+    check(
+      "lab_results_reported_choice_reason_ck",
+      sql`${t.reportedChoiceReason} is null or length(btrim(${t.reportedChoiceReason})) > 0`,
+    ),
+    /**
+     * ═══ ONE CHOSEN VALUE PER ANALYTE PER ITEM, ENFORCED BY THE DATABASE ═══
+     *
+     * The service moves the choice inside one transaction, so two chosen rows should be
+     * unreachable. This index is what makes that a fact rather than a promise: a set with two
+     * chosen values is a report with two answers for one line, and the renderer would pick by
+     * accident of ordering.
+     */
+    uniqueIndex("lab_results_one_choice_idx")
+      .on(t.orderItemId, t.analyteId)
+      .where(sql`${t.reportedChoiceAt} is not null`),
   ],
 );
 
@@ -684,6 +724,52 @@ export const labSlaBreaches = pgTable(
  * problem (D1: the bridge is out of this repository), and a column the server branches on would be
  * a lie about where that decision is made.
  */
+/**
+ * ═══ WHICH FILE PRODUCED THIS CATALOGUE — the provenance `import-item-master` shipped without ═══
+ *
+ * `import:lab-catalogue` takes the owner's own spreadsheets. Six months later the question is *"where
+ * did this reference range come from"*, and `lab_reference_ranges.source` answers it clinically (the
+ * kit insert, the textbook) while nothing answered it operationally: **which file, sent when, loaded
+ * by whom.** The first loader recorded neither, and the design note names that as its open defect.
+ *
+ * `holder_book_imports` (Plan 09 T5) is the precedent and this mirrors it deliberately, including
+ * what it does NOT do: **per IMPORT, never per row.** A column on `lab_analytes`,
+ * `lab_orderables` and `lab_reference_ranges` would be three migrations, three joins and a
+ * per-row fact nobody asks for; what an operator actually asks is "was the March range book
+ * loaded, and by whom", which one row answers.
+ *
+ * `file_hash` makes a re-send visible: the same bytes arriving twice is the ordinary case when a
+ * transfer is retried, and it should read as the same import rather than as a second one.
+ * `imported_by` is a NAME in plain text, never a foreign key — note §6, inherited from
+ * `seed-staff`: an operator is identified without the script authenticating one.
+ *
+ * ROW COUNTS ARE PER KIND because the three files are separate and any subset may be sent; a single
+ * `rows_accepted` would make "the range book went in" and "the test list went in" indistinguishable.
+ */
+export const labCatalogueImports = pgTable(
+  "lab_catalogue_imports",
+  {
+    id: text("id").primaryKey(),
+    /** The three file names as given, joined — an audit reads what the operator actually ran. */
+    fileNames: text("file_names").notNull(),
+    fileHash: text("file_hash").notNull(),
+    analytesWritten: integer("analytes_written").notNull().default(0),
+    orderablesWritten: integer("orderables_written").notNull().default(0),
+    rangesWritten: integer("ranges_written").notNull().default(0),
+    importedBy: text("imported_by").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [
+    /**
+     * The same bytes are the same import. A retried transfer must not read as a second load, and an
+     * operator re-running the identical file should be told so rather than silently duplicating a
+     * record of work that happened once.
+     */
+    uniqueIndex("lab_catalogue_imports_hash_ux").on(t.fileHash),
+  ],
+);
+
 export const labInstruments = pgTable(
   "lab_instruments",
   {
@@ -693,6 +779,19 @@ export const labInstruments = pgTable(
     sampleIdMode: text("sample_id_mode").notNull(),
     /** Free text, for a human reading the register. Nothing branches on it — see the header. */
     connection: text("connection"),
+    /**
+     * 17-E T7b — the `interfaces` row this machine's BRIDGE heartbeats on (Plan 11c D6).
+     *
+     * **NULLABLE, and that is Q5's rule at the instrument level.** *"`interface_down` is written only
+     * by the bridge's own heartbeat lapse, never by idleness"* — and an analyser with no registered
+     * bridge is not a broken link, it is a machine nobody has connected yet, which is the state every
+     * instrument is in the day it is entered in the register. NOT NULL would have forced a fake
+     * interface row per instrument and then downed every one of them on the first sweep.
+     *
+     * It is NOT `connection`, whose own comment two lines up says nothing branches on it. Making a
+     * free-text field branch is the silent overloading this schema avoids everywhere else.
+     */
+    interfaceId: text("interface_id").references(() => interfaces.id),
     active: boolean("active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     createdBy: text("created_by").notNull(),
@@ -700,6 +799,12 @@ export const labInstruments = pgTable(
     updatedBy: text("updated_by").notNull(),
   },
   (t) => [
+    /**
+     * ONE INSTRUMENT PER BRIDGE. Two analysers pointing at one `interfaces` row would both go
+     * `interface_down` on one lapse and both come back on one heartbeat, which is a lie about
+     * whichever of them was actually still connected.
+     */
+    uniqueIndex("lab_instruments_interface_ux").on(t.interfaceId).where(sql`${t.interfaceId} is not null`),
     /**
      * TWO instrument rows against one machine would give it two code maps and two sample-id modes,
      * and an ingest resolving through "the" instrument would pick by row order. The machine is the
@@ -929,5 +1034,115 @@ export const labRunSheetPositions = pgTable(
      * results for one sample and the bench would have no way to tell which cup was actually read.
      */
     uniqueIndex("lab_run_sheet_positions_specimen_ux").on(t.runSheetId, t.specimenId),
+  ],
+);
+
+/**
+ * ═══ PLAN 17-E T5 — THE PLATE MAP, AND THE CONTROLS THAT CAN VOID IT ═══
+ *
+ * The board: *"The reader sends 96 optical densities and nothing else. The plate map — blank,
+ * negative and positive controls, cut-off, then 92 patient wells scanned in order — is built here
+ * before the plate goes in. The cut-off is computed from the controls; a plate whose controls fail
+ * is rejected whole, and no patient gets a result from it. Reactive screens are repeated before
+ * anyone is told."*
+ *
+ * An ELISA reader is the extreme case of this phase's problem: it transmits 96 numbers and **no
+ * identity whatsoever** — not a barcode, not a sequence, not even a run. The well is the only
+ * handle, and the map is the only thing that turns a well into a person.
+ *
+ * ═══ THE KIT DEFINES THE ARITHMETIC; THIS TABLE ONLY STORES AND APPLIES IT ═══
+ *
+ * `cutoff_multiplier`, `cutoff_offset`, `min_pc_nc_ratio` and `max_nc_od` are read off the kit
+ * insert and entered when the plate is laid out. They are NOT constants in our code, and that is
+ * deliberate: an assay's cut-off formula and validity criteria are the manufacturer's, they differ
+ * per kit and per lot, and a number hard-coded here would be this software quietly overruling a
+ * regulated document. NABL asks which kit and which lot; the plate carries both.
+ */
+export const labPlateMaps = pgTable(
+  "lab_plate_maps",
+  {
+    id: text("id").primaryKey(),
+    instrumentId: text("instrument_id").notNull().references(() => labInstruments.id),
+    /** The bench's label — "plate 2". Human-facing. */
+    plateRef: text("plate_ref").notNull(),
+    /** The screen this plate runs: HBsAg, HCV, HIV. */
+    assay: text("assay").notNull(),
+    kitLot: text("kit_lot").notNull(),
+    status: text("status").notNull().default("open"),
+    /** From the kit insert: cutoff = ncMean × multiplier + offset. */
+    cutoffMultiplier: numeric("cutoff_multiplier", { precision: 8, scale: 4 }).notNull(),
+    cutoffOffset: numeric("cutoff_offset", { precision: 8, scale: 4 }).notNull(),
+    /** Validity, also from the insert: the plate is void unless both hold. */
+    minPcNcRatio: numeric("min_pc_nc_ratio", { precision: 8, scale: 4 }).notNull(),
+    maxNcOd: numeric("max_nc_od", { precision: 8, scale: 4 }).notNull(),
+    /** COMPUTED at read, and KEPT even when the plate is rejected — a void plate is a record. */
+    ncMeanOd: numeric("nc_mean_od", { precision: 8, scale: 4 }),
+    pcMeanOd: numeric("pc_mean_od", { precision: 8, scale: 4 }),
+    cutoffOd: numeric("cutoff_od", { precision: 8, scale: 4 }),
+    controlsFailReason: text("controls_fail_reason"),
+    openedAt: timestamp("opened_at", { withTimezone: true }).notNull().defaultNow(),
+    openedBy: text("opened_by").notNull(),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    readByTransmissionId: text("read_by_transmission_id"),
+  },
+  (t) => [
+    /** ONE open plate per machine, for the reason a run sheet has one: a well would have two maps. */
+    uniqueIndex("lab_plate_maps_open_ux").on(t.instrumentId).where(sql`status = 'open'`),
+    index("lab_plate_maps_instrument_idx").on(t.instrumentId, t.openedAt),
+    check(
+      "lab_plate_maps_status_ck",
+      sql`${t.status} in ('open', 'read', 'controls_failed', 'abandoned')`,
+    ),
+    /** A rejected plate NAMES why. A verdict with nothing to show is not a record. */
+    check(
+      "lab_plate_maps_failed_reason_ck",
+      sql`(${t.status} = 'controls_failed') = (${t.controlsFailReason} is not null)`,
+    ),
+    /** The kit's numbers must be usable: a zero multiplier and offset is a cut-off of nothing. */
+    check("lab_plate_maps_cutoff_ck", sql`${t.cutoffMultiplier} > 0 or ${t.cutoffOffset} > 0`),
+  ],
+);
+
+/**
+ * One well. `role` is what the well IS, and it is the reason a control can never be reported as a
+ * patient: `specimen_id` is non-null exactly for `patient` wells, both directions, enforced.
+ *
+ * A plate laid out with a control in a patient's row would report the kit's own positive control as
+ * somebody's HIV screen. That is not a hypothetical mistake — it is what a 96-well grid entered by
+ * hand invites — and it is why the biconditional is a database check rather than a convention.
+ */
+export const labPlateWells = pgTable(
+  "lab_plate_wells",
+  {
+    plateMapId: text("plate_map_id").notNull().references(() => labPlateMaps.id),
+    /** The reader's own coordinate: `A1` … `H12`. Text, because that is what it sends. */
+    well: text("well").notNull(),
+    role: text("role").notNull(),
+    specimenId: text("specimen_id").references(() => labSpecimens.id),
+    /** Filled at read. Kept on a failed plate too — the ODs are why it failed. */
+    od: numeric("od", { precision: 8, scale: 4 }),
+    verdict: text("verdict"),
+    /** The board: a reactive screen is repeated IN DUPLICATE before anyone is told. */
+    repeatRequired: boolean("repeat_required").notNull().default(false),
+    scannedAt: timestamp("scanned_at", { withTimezone: true }).notNull().defaultNow(),
+    scannedBy: text("scanned_by").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.plateMapId, t.well] }),
+    /** ONE well per specimen on a plate — the same tube in two wells reports itself twice. */
+    uniqueIndex("lab_plate_wells_specimen_ux").on(t.plateMapId, t.specimenId),
+    check(
+      "lab_plate_wells_role_ck",
+      sql`${t.role} in ('blank', 'negative_control', 'positive_control', 'cutoff_control', 'patient')`,
+    ),
+    /** THE BICONDITIONAL: a patient well has a specimen, and nothing else has one. */
+    check(
+      "lab_plate_wells_specimen_ck",
+      sql`(${t.role} = 'patient') = (${t.specimenId} is not null)`,
+    ),
+    check(
+      "lab_plate_wells_verdict_ck",
+      sql`${t.verdict} is null or ${t.verdict} in ('non_reactive', 'reactive', 'control_ok', 'control_failed')`,
+    ),
   ],
 );

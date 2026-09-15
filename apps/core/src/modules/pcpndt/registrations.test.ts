@@ -4,8 +4,7 @@ import { mkDevice, setupPcpndtFixture } from "../../../test/helpers/pcpndt";
 import { pcpndtRegistrations } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import {
-  activeRegistrationFor, addMachine, addPerson, createRegistration, deactivateMachine,
-  deactivatePerson, deactivateRegistration, registeredPersons,
+  activeRegistrationFor, addMachine, addPerson, createRegistration, deactivateMachine, deactivatePerson, deactivateRegistration, readRegister, registeredPersons,
 } from "./registrations";
 import type { PcpndtFixture } from "../../../test/helpers/pcpndt";
 import type { Db } from "../../kernel/db/client";
@@ -33,6 +32,50 @@ describe("the PCPNDT registration, its machines and its people (18a T6)", () => 
   const on = (date: string) => activeRegistrationFor(db, fx.deviceResourceId, date);
 
   /* ═══════════════════════ A7 — THE VALIDITY WINDOW ═══════════════════════ */
+
+  /* ────────── `readRegister` — the door `pcpndt.registrations.read` never had ────────── */
+
+  /**
+   * The permission was declared at 18a T6, granted to `radiologist` and `pcpndt_incharge`, and
+   * guarded NOTHING until 2026-09-07 — it appeared in the manifest and in no route. The five writes
+   * could populate a register that nothing could read back, so a hospital following the go-live
+   * runbook had no way to confirm what it had entered.
+   */
+  it("reads the whole book — the registration with its machines and its people assembled", async () => {
+    const book = await readRegister(db);
+
+    expect(book).toHaveLength(1);
+    expect(book[0]!.registration.registrationNo).toBe("PNDT/MH/2026/0001");
+    expect(book[0]!.machines.map((m) => m.serial)).toEqual(["SN-99001"]);
+    expect(book[0]!.persons.map((p) => p.userId)).toEqual([fx.sonologist.id]);
+  });
+
+  /**
+   * ═══ WITHDRAWN ROWS ARE IN THE BOOK, AND THAT IS THE DECISION ═══
+   *
+   * `active` is a withdrawal flag rather than a delete — the schema says *"a machine sold last year
+   * still has its serial series and its forms."* A reader that returned only live rows would answer
+   * "what is registered today", which `activeRegistrationFor` already answers, and would silently
+   * lose the historical half an inspection asks for. **The flag is returned so the caller decides.**
+   *
+   * This is the assertion that fails if someone later "tidies" the reader with an `active = true`
+   * filter, which is the natural mistake precisely because every other loader in this file has one.
+   */
+  it("includes a WITHDRAWN machine, with its flag — the register is historical, not a live view", async () => {
+    await withTx(db, (tx) => deactivateMachine(tx, fx.incharge, fx.machineId));
+
+    const book = await readRegister(db);
+
+    expect(book[0]!.machines.map((m) => [m.serial, m.active])).toEqual([["SN-99001", false]]);
+    /** And the live view still says what it always said — the two readers disagree on purpose. */
+    expect(await activeRegistrationFor(db, fx.deviceResourceId, "2026-06-01")).toBeNull();
+  });
+
+  /** No register at all is an empty book, not a throw — the state every fresh deployment is in. */
+  it("returns an empty book on a database with no register", async () => {
+    await truncateAll(db);
+    expect(await readRegister(db)).toEqual([]);
+  });
 
   it("A7: a device on a live registration resolves inside the window", async () => {
     const found = await on("2026-06-15");

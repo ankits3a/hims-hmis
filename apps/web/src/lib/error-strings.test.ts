@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import en from "../locales/en.json";
+import hi from "../locales/hi.json";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -77,5 +78,64 @@ describe("every pharmacy refusal the server can throw has a string a pharmacist 
   it("has no string for a refusal the server cannot make", () => {
     const orphans = Object.keys(en.pharmacyErrors).filter((key) => !codes.includes(key));
     expect(orphans, `these locale strings answer no server code:\n${orphans.join("\n")}\n`).toEqual([]);
+  });
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * EVERY ERROR NAMESPACE IS FULLY TRANSLATED, AND NOTHING WAS CHECKING
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Measured 2026-09-06, and the number is the reason this test exists rather than a reason it does
+ * not need to:
+ *
+ *     materialsErrors  24 en / 24 hi      otErrors  26 / 26      pharmacyErrors  32 / 32
+ *     top-level keys   71 en / 71 hi      missing from hi: 0
+ *
+ * **Eighty-two error strings and seventy-one top-level keys at perfect parity, held entirely by
+ * hand, enforced by nothing.** A record like that is not evidence a guard is unnecessary — it is a
+ * record with no instrument defending it, and the first person in a hurry breaks it silently. The
+ * file above imports `en.json` alone, so nothing in this suite had ever opened `hi.json`.
+ *
+ * It passes today, which is exactly when a census is cheapest to add.
+ *
+ * ═══ WHAT A GREEN HERE DOES **NOT** MEAN ═══
+ *
+ * **Parity is COVERAGE, not QUALITY.** This asserts that every key present in English is present in
+ * Hindi. It cannot read Hindi, and nobody should ever cite it as "the Hindi is fine" — a
+ * mistranslated clinical hard stop is worse than an English one, and only a clinician can say which
+ * is which. The distinction is stated here because a later reader will meet the green before they
+ * meet this paragraph.
+ */
+describe("the Hindi locale covers the English one, namespace by namespace", () => {
+  /**
+   * `labErrors` is DELIBERATELY ABSENT from both locales and is not listed here, because there is
+   * nothing yet to be at parity with. The laboratory's refusals reach the screen as the SERVER's
+   * English prose — measured in a real browser on 2026-09-06, with the whole UI in Hindi — and the
+   * reason lab has no namespace is not an oversight: 68 of its 77 refusal messages interpolate a
+   * runtime value (an analyte code, a measured number, a UHID) and only 16 carry a structured
+   * `detail` to rebuild one from. A generic Hindi sentence that dropped "999" and "1.0000 … 25.0000"
+   * would be a DOWNGRADE for the technologist it is meant to help, because the digits are the
+   * actionable part and they read the same in both scripts.
+   *
+   * So the gap is named here rather than papered over, and closing it is server work before it is
+   * translation work. See `docs/superpowers/plans/reports/2026-09-06-lab-walk-findings.md`.
+   */
+  const NAMESPACES = ["pharmacyErrors", "materialsErrors", "otErrors"] as const;
+
+  it.each(NAMESPACES)("%s — every English key has a Hindi one", (ns) => {
+    const e = en[ns] as Record<string, string>;
+    const h = (hi as unknown as Record<string, Record<string, string>>)[ns] ?? {};
+    const missing = Object.keys(e).filter((k) => typeof h[k] !== "string" || h[k] === "");
+    expect(missing, `these ${ns} refusals reach a Hindi-speaking user in English:\n${missing.join("\n")}\n`).toEqual([]);
+  });
+
+  /**
+   * The whole file, not only the error namespaces: the same hand-held parity covers all 71 top-level
+   * keys, and a screen's labels going untranslated is the same failure one layer out.
+   */
+  it("and every top-level namespace exists in Hindi", () => {
+    const missing = Object.keys(en).filter((k) => !(k in (hi as unknown as Record<string, unknown>)));
+    expect(missing, `these namespaces are missing from hi.json:\n${missing.join("\n")}\n`).toEqual([]);
   });
 });

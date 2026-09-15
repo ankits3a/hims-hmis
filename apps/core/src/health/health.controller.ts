@@ -19,9 +19,22 @@ export class HealthController {
     @Inject(CONFIG) private readonly cfg: AppConfig,
   ) {}
 
+  /**
+   * PHASE 11i T3 (§2b row 22) — `environment` RIDES ON `/health`, and that is a deliberate choice
+   * of surface rather than a new route.
+   *
+   * The banner it feeds has to be readable BEFORE anyone logs in: the moment a trainee is most
+   * likely to type a real patient into UAT is while they are looking at a login screen identical
+   * to production's. `/health` is the one `@Public()` endpoint this application has, the SPA can
+   * read it with no token, and the edge gate already fetches it on every deploy — so the fact
+   * travels on a wire that is already proven to work rather than on a second one that is not.
+   *
+   * `null` on production, always: the key is unset there and `deploy-parity` pins that the
+   * production environment template does not carry it.
+   */
   @Public()
   @Get()
-  async health(): Promise<{ status: string; db: string; worker: WorkerHealth }> {
+  async health(): Promise<{ status: string; db: string; worker: WorkerHealth; environment: string | null }> {
     await this.db.execute(sql`select 1`);
     // The FRESHEST heartbeat decides: one aged job among fresh ones is not a stalled worker.
     const [freshest] = await this.db
@@ -34,6 +47,9 @@ export class HealthController {
       const ageMs = Date.now() - freshest.lastStartedAt.getTime();
       worker = ageMs > this.cfg.workerStaleAfterMs ? "stale" : "ok";
     }
-    return { status: worker === "stale" ? "degraded" : "ok", db: "ok", worker };
+    return {
+      status: worker === "stale" ? "degraded" : "ok", db: "ok", worker,
+      environment: this.cfg.environmentLabel,
+    };
   }
 }

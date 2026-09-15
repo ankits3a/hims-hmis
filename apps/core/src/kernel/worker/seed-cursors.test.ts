@@ -11,6 +11,7 @@ import { MATERIALS_CONSUMPTION_CONSUMER } from "../../modules/materials";
 import { OT_IMPLANT_CONFIRMED_CONSUMER, OT_PATIENT_MERGED_CONSUMER } from "../../modules/ot";
 import { RADIOLOGY_ORDER_PLACED_CONSUMER } from "../../modules/radiology";
 import { PHARMACY_RX_ISSUED_CONSUMER } from "../../modules/pharmacy";
+import { LAB_INTERFACE_CONSUMER } from "../../modules/lab";
 import { seedCursors } from "./seed-cursors";
 
 const mkInput = (name: string) => ({
@@ -65,7 +66,7 @@ describe("seedCursors", () => {
    * wired a phase early: without a seeded cursor the consumer's first cycle after Plan 15 ships
    * would start from zero and re-walk every event the hospital has ever emitted.
    */
-  it("enumerates workerConsumers(db)'s keys — the kernel two, partners.accrual, materials.consumption, the OT's two and radiology's, and no others", async () => {
+  it("enumerates workerConsumers(db)'s keys — the kernel two, partners, materials, the OT's two, radiology's, pharmacy's and the lab's, and no others", async () => {
     const seeded = await seedCursors(db);
     // PLAN 15 T2 / A5 — the fifth. It joins for the reason D10 gives every entry here: a consumer
     // whose cursor is not seeded starts from zero and re-reads the WHOLE subscribed backlog on its
@@ -94,6 +95,20 @@ describe("seedCursors", () => {
         // Plan 15 recorded T2-f.
         RADIOLOGY_ORDER_PLACED_CONSUMER,
         PHARMACY_RX_ISSUED_CONSUMER, // PLAN 16c T3
+        /**
+         * PLAN 17-E T7b — THE EIGHTH, and the first whose unseeded cursor would replay a backlog
+         * that is genuinely OLD. `interface.down` / `interface.restored` have been raised by the
+         * kernel's heartbeat sweep since Plan 11c, so a consumer starting from zero would walk every
+         * liveness edge every printer and scanner in the hospital has ever produced and — worse than
+         * the radiology case, which returns immediately on `kind !== "imaging"` — would REPLAY them
+         * against the analyser register, driving a machine that is up right now to `interface_down`
+         * on a year-old outage before the newest `interface.restored` put it back. Seeding at
+         * `max(seq)` is what makes the projection start from the present.
+         *
+         * **THIS FILE IS NOT IN 17-E T7b's FILES LIST** — the third consumer census a task has moved,
+         * recorded here with its reason exactly as Plan 15 recorded T2-f and 18a recorded F14.
+         */
+        LAB_INTERFACE_CONSUMER,
       ].sort());
   });
 

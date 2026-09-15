@@ -12,7 +12,70 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ════════════════════════════════════════════════════════════════════════════════════════════════
+  # EVERY JOB DECLARES `timeout-minutes`, BECAUSE THE DEFAULT IS SIX HOURS.
+  #
+  # 2026-09-07, 02:56 — two twin runs on one commit, same shard, same tree. The `pull_request` twin's
+  # `core (2)` went GREEN in 9m44s. The `push` twin's `core (2)` WEDGED: 22+ minutes with no step
+  # progress. With no bound declared, GitHub's default of 360 minutes applies, so that job would have
+  # held its PR — and the four PRs stacked behind it — until roughly 08:56. It was cleared only
+  # because somebody happened to be looking at that PR at 03:19. A control that needs a person
+  # watching is not a control.
+  #
+  # ═══ THE NUMBERS ARE MEASURED, NOT CHOSEN ═══
+  #
+  # ═══ SIZE IT AGAINST THE SATURATED BOARD, NOT THE QUIET ONE ═══
+  #
+  # **This number was 30 for four hours and it was wrong, and the way it was wrong is the part worth
+  # keeping.** 30 came from 151 jobs whose slowest SUCCESS was 19 minutes — sampled correctly, and on
+  # a quiet board. Then a five-branch stack propagated, each branch firing twin runs, ~15 runs hit the
+  # pool at once, and `core (2)` took **29m55s and passed**. Five seconds of headroom.
+  #
+  # Re-sampled over 274 jobs spanning the saturated window (n=113 successful `core`):
+  #
+  #     p50   p90   p95   p99   MAX(success)
+  #     10.7  17.3  23.5  29.9  32.0          <- a THIRTY-TWO minute job that SUCCEEDED
+  #
+  #     static   n=70   p50 1.1   max 1.7
+  #     web      n=69   p50 2.2   max 2.8
+  #
+  # **The lesson is about the sample, not the arithmetic: a bound sized in the quiet period has no
+  # headroom in the condition that produces slow runs, because the load and the slowness have the
+  # same cause and therefore arrive together.** Anyone re-deriving this number on a calm afternoon
+  # will get 30 again and be wrong again — so the figures above are the SATURATED distribution, and
+  # that is stated so the next reader knows which one to compare against.
+  #
+  # ═══ WHY 60 ═══
+  #
+  # The two errors are not symmetric. A bound that is too TIGHT turns a healthy slow run RED, in a way
+  # that reads as a real failure — the worst outcome available, because it manufactures the very flake
+  # this is meant to bound, on a board whose central difficulty is already telling a flake from a
+  # defect. A bound that is too LOOSE merely lets a hang waste more minutes before dying, and ANY
+  # value far below 360 already fixes what this is for.
+  #
+  # So the headroom goes on the side that cannot mislead. **60 is 1.9x the observed maximum success
+  # and 5.6x the median** — a shard taking six times the median is not slow, it is stuck — while still
+  # killing a hang **six times sooner** than the default. The value here is bounded-versus-unbounded,
+  # not the precise figure: 360 -> 60 frees a blocked PR five hours earlier, and buying that with
+  # 1.9x headroom instead of 1.6x costs nothing anyone will notice.
+  #
+  # `static` and `web` keep 10. Their maxima are 1.7 and 2.8 minutes and they barely moved under
+  # saturation (`web` spread p50 2.2 -> max 2.8, a factor of 1.3, against `core`'s factor of 3). 10 is
+  # ~4x web's worst and a wedged 2-minute job should not hang for an hour. A bound belongs near the
+  # job it bounds.
+  #
+  # ═══ WHAT THIS DOES NOT FIX ═══
+  #
+  # A timed-out job does not pass, so the PR still needs a new commit for a green check: this turns a
+  # six-hour block into a thirty-minute one, it does not make the twin-run problem go away. The twins
+  # are the deeper defect — this file fires on both `push` and `pull_request` while `concurrency`
+  # keys on `github.ref`, and those events produce different refs (`refs/heads/…` vs `refs/pull/…`),
+  # so the two runs sit in different groups and NEITHER CAN EVER CANCEL THE OTHER. Every PR rolls the
+  # dice twice and either roll blocks the merge. Changing the trigger is a separate decision and the
+  # owner's, because these four job names are the required status checks in branch protection.
+  # ════════════════════════════════════════════════════════════════════════════════════════════════
   static:
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -52,6 +115,9 @@ jobs:
           RELAY_CHROMIUM: /nonexistent-chromium-ci-forces-the-skip
 
   core:
+    # 60: 1.9x the slowest SUCCESSFUL shard observed under SATURATION (32.0 min), 5.6x the median.
+    # Was 30, sized on a quiet board, and a healthy run finished 5 seconds inside it. See above.
+    timeout-minutes: 60
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -81,6 +147,8 @@ jobs:
       - run: pnpm --filter @hmis/core exec jest -w 2 --shard=${{ matrix.shard }}/2
 
   web:
+    # 10: this job's observed maximum is 2 minutes. See the block above `static`.
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

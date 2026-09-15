@@ -83,6 +83,47 @@ async function findByToken(seen: Seen): Promise<void> {
   expect(seen.find((s) => s.path === "/api/lab/desk/find")).toBeDefined();
 }
 
+/**
+ * ═══ THE SEAT ASKED FOR A GRANT IT DOES NOT HOLD, TWICE A MINUTE, FOR EVER ═══
+ *
+ * Found by opening the reception seat in a real browser: `GET /lab/collection/queue` answered **403**
+ * on every load and every 30-second refetch, and the screen said *"The portal list could not be
+ * loaded"* — which sends a clerk looking for a network fault that does not exist. The route is gated
+ * on `lab.collection.operate`, the permission to DRAW BLOOD, which `lab_reception` does not hold.
+ *
+ * **No test could see it**: the component swallowed the 403 into `isError`, and every existing
+ * fixture mocked the route as 200. The `enabled:` idiom was already three lines below the query.
+ *
+ * Both halves are asserted, and the second is why this is one change and not two: gating alone
+ * would have replaced a misleading error with an empty panel and no explanation, which is worse. **A
+ * refusal presented as a failure teaches a user to ignore it; a refusal presented as nothing teaches
+ * it faster.**
+ */
+it("without the collection grant the seat does not ASK, and says what it may not see", async () => {
+  const seen = mockRoutes({
+    "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" }, permissions: { hospital: ["lab.desk.operate"], scoped: { department: {}, floor: {} } } } },
+  });
+  renderWithProviders(<LabDesk />);
+
+  await waitFor(() => expect(screen.getByText(/not shown at this seat/i)).toBeInTheDocument());
+  /** THE KILL: the forbidden request is never sent — not once, never mind twice a minute. */
+  expect(seen.filter((r) => r.path.includes("/lab/collection/queue"))).toHaveLength(0);
+  /** And the misleading sentence is gone, replaced rather than added to. */
+  expect(screen.queryByText(/could not be loaded/i)).not.toBeInTheDocument();
+});
+
+/** A phlebotomist at the same screen still gets the list — the guard narrows, it does not remove. */
+it("WITH the collection grant the seat asks, and renders the queue", async () => {
+  const seen = mockRoutes({
+    "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u-2" }, permissions: { hospital: ["lab.desk.operate", "lab.collection.operate"], scoped: { department: {}, floor: {} } } } },
+    "GET /api/lab/collection/queue": { status: 200, body: [] },
+  });
+  renderWithProviders(<LabDesk />);
+
+  await waitFor(() => expect(seen.some((r) => r.path.includes("/lab/collection/queue"))).toBe(true));
+  expect(screen.queryByText(/not shown at this seat/i)).not.toBeInTheDocument();
+});
+
 it("the TOKEN door: one hit is the person, and the consult's Rx lines are on the screen before anybody types", async () => {
   const seen = mockRoutes({
     "GET /api/lab/collection/queue": { status: 200, body: [] },

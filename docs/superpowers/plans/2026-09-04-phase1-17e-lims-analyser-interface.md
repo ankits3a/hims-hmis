@@ -141,6 +141,37 @@ Two measured facts that shape the design and would otherwise be guessed:
   lock every analyser from its first run. `interface_down` **is** written here (T7) because the
   bridge can observe it; `qc_locked` and `calibration_due` need Levey–Jennings and a calibration
   schedule, which is its own phase. Recorded in §6, not silently skipped.
+- **D12 — A plate reader names its sample by the WELL, and `position` is never consulted for
+  identity.** DECIDED at T5. The well arrives in `sampleId`, the field whose whole meaning is "how
+  the machine named this sample"; `position` stays the transmission's own ordinal and is the key the
+  parked-results table is unique on. Two fields that could each answer "which well is this" is one
+  answer too many, and the wrong one would report a control as a patient.
+- **D13 — On a plate whose controls failed, NOTHING from that block reaches a human — not a result,
+  and not an inbox row either.** DECIDED at T5, and it is the half of D10 that D10 did not say out
+  loud. T6's inbox exists so somebody can NAME an unidentified number and attach it, which re-runs
+  the whole attachment path; every guard on that path would let a void well through, because none of
+  them knows about the plate. A parked row from a rejected plate is therefore an *invitation* to
+  release the exact value the rejection refused. So parking is DEFERRED until the controls have
+  spoken: the rows are collected first and written only once the plate is known to be good. The
+  plate row — status, both control means, the computed cut-off, and a sentence naming the fault — is
+  the whole record of the rejection, and every optical density on it is kept. **T6 must render a
+  `controls_failed` plate somewhere**, because the inbox deliberately will not.
+- **D14 — What a patient well REPORTS follows the catalogue, not the plate.** DECIDED at T5. A
+  qualitative screen is a `coded` analyte and carries the interpretation (`Reactive` /
+  `Non-Reactive`); a lab that catalogued the index as a number gets the S/CO ratio. Either way the
+  other figure travels in the result's remarks with the plate, the kit lot, the well, the OD and the
+  cut-off — so the number that produced the interpretation is on the record, and a report can never
+  show a bare optical density, which is meaningless off its own plate and, worse, looks comparable
+  across plates. The remarks are also where a first-run reactive carries its REPEAT instruction, so
+  whoever verifies it sees the requirement without opening the plate.
+- **D15 — A dedicated cut-off control REPLACES the kit formula when the plate carries one; blanks are
+  never subtracted.** DECIDED at T5. Some kits ship a cut-off control and say to use its mean
+  directly, others give a formula over the negative controls — the plate says which kit this is by
+  whether the control was laid out, rather than this file preferring one house style and applying it
+  to a kit whose insert says otherwise. Blank wells are recorded and deliberately not subtracted:
+  whether the reader has already blanked its own readings is a property of the reader, and
+  subtracting a second time would silently halve every cut-off, which makes borderline samples read
+  as reactive and would never announce itself.
 
 ## 4. Tasks — one PR each, fail-first, rail + consumer together
 
@@ -305,3 +336,350 @@ table, the README-parity derived base, and the V5 database census **twice** (fir
 **Evidence:** 29 suites / 263 tests exit 0 (lab + lab e2e + seed-roles), typecheck 0, lint 0.
 
 
+
+### 8.5 T5 — The plate map, and the controls that can void it (executed 2026-09-05)
+
+Migration **0073** — `lab_plate_maps` + `lab_plate_wells`, additive, no existing table touched.
+Built on `lane/lims-17e-t5-clean`, cut fresh from `origin/main` with the parked schema
+(`beed060`) cherry-picked rather than the stale T4 base merged.
+
+- **The kit defines the arithmetic; the tables only store and apply it.** `cutoff_multiplier`,
+  `cutoff_offset`, `min_pc_nc_ratio` and `max_nc_od` come off the kit insert at lay-out. A cut-off
+  formula hard-coded here would be this software quietly overruling a regulated document, and NABL
+  asks which kit and which lot — the plate carries both.
+- **`evaluatePlateControls` is PURE and takes only readings from the plate being evaluated.** There
+  is no parameter through which another plate's controls, a cached figure or yesterday's number
+  could reach it. That is the shape of the guard, not a comment about it.
+- **The biconditional is a database CHECK**: `specimen_id` non-null exactly for `patient` wells.
+- One open plate per reader (partial unique index), one well per specimen, a rejected plate NAMES
+  its reason, and every computed OD is kept on a failed plate.
+
+**Four decisions taken and recorded in §3 as D12–D15.** D13 is the one a later task must not
+undo: on a controls-failed plate NOTHING parks either, so **T6 must render a rejected plate from
+`lab_plate_maps`, because the inbox deliberately will not show one.**
+
+**One defect the plan did not name, found by asking what else could move the cut-off.** A well
+transmitted TWICE in one block silently drags the negative-control mean, and the cut-off every
+patient well is measured against moves with it, in a direction nothing reports. Neither reading is
+used now. It is the same shape as the four mandated mutants and nobody had written it down.
+
+**The four naming modes had grown four copies of "attach a machine value or say why it parked."**
+They are one closure in `ingest.ts` now, collapsed BEFORE T5's arm was added rather than after —
+four copies is four places a later task can loosen one guard on one path. T3's and T4's merged
+suites are what proved the collapse did not change their behaviour.
+
+**MUTANTS — six applied, six killed, each mutation OBSERVED rather than assumed.**
+
+| mutant | result |
+|---|---|
+| the cut-off computed from something other than this plate's controls | KILLED — 4 failed / 11 passed |
+| patient wells released off a plate whose controls failed (D10 defeated) | KILLED — 1 failed / 14 passed |
+| the service lets a control well carry a tube | KILLED — 1 failed / 14 passed |
+| the DB biconditional `lab_plate_wells_specimen_ck` dropped | KILLED — 1 failed / 14 passed |
+| a reactive screen skips the repeat-in-duplicate flag | KILLED — 1 failed / 14 passed |
+| a doubled well keeps its FIRST reading | KILLED — 1 failed / 14 passed |
+
+**TWO METHOD FINDINGS, and the second is worth more than the feature.**
+
+- **A mutant must be PROVED PRESENT before its survival means anything.** The constraint mutant
+  first "survived". It had never been applied: the lane's worker databases persist between runs and
+  drizzle applies migrations by timestamp, so editing an already-applied migration FILE is not a
+  lever on a live schema. Measured afterwards, `lab_plate_wells_specimen_ck` was still present in
+  both worker DBs. Reporting that survival would have been a fabricated finding about our own test,
+  sourced from an experiment that never ran. The harness now drops the constraint with `ALTER TABLE`
+  against both worker DBs and prints the constraint list before and after. **A survivor is a claim
+  about the test only if the mutation was real; otherwise it is a claim about the harness.**
+- **"The test throws, so the guard works" is unsound whenever more than one layer could throw.**
+  Chasing that survivor found a real defect underneath: the test inserted `specimenId: newId()` into
+  a column with an FK to `lab_specimens`, so the row was refused by the **foreign key** and not by
+  the biconditional the test is named for — it would have stayed green with the CHECK deleted. A row
+  can be refused by a type, a NOT NULL, an FK, a unique index, a CHECK or a trigger, and the cheapest
+  fires first. The test now uses a REAL tube and asserts `.toThrow(/lab_plate_wells_specimen_ck/)`,
+  naming the constraint it is about. It also asserts the half no foreign key could ever cover — a
+  `patient` well with a NULL specimen, which nothing but the biconditional can refuse. **Enumerate
+  what the invariant forbids before choosing the mutant: there were two forbidden things, not one.**
+
+**Evidence:** 34 suites / 296 tests exit 0 (`src/modules/lab` + `test/lab.e2e.test.ts`), typecheck 0,
+lint 0 (2 pre-existing warnings in files this task does not touch). Migration serial 0073 verified
+free against `origin/main` and every remote branch at push time.
+
+### 8.6 T6 — The inbox: results waiting for a patient (executed 2026-09-05)
+
+No migration. `lab_parked_results` already carries `status`, `resolved_by`, `resolved_at` and
+`discard_reason` — T3 built the table with this seat in mind, and T6 is its reader and its two
+writers. New permission `lab.instruments.operate`, granted to `lab_technician`.
+
+- **The hand match imports the machine's own attachment path.** `attachMachineValue` was lifted out
+  of `ingestResults` to module level so the inbox is its FIFTH caller rather than a second
+  implementation. The board says the hand match "re-runs the same attachment path so every guard
+  applies", and a screen with its own quieter path is how an inbox becomes the softest door in the
+  building — the one somebody reaches for precisely when a result is already confusing.
+- **A refusal leaves the row PARKED**, never closed. The human has learned something and the row must
+  stay in front of them; closing it on a write that did not happen is the defect M1 tests for.
+- **A discard is a record**: `status = 'discarded'` with a reason the service refuses to leave blank
+  and the database refuses to leave null. The raw payload stays readable afterwards.
+- **`rejectedPlates` is here because D13 obliged it.** A controls-failed plate parks nothing, so the
+  inbox will never list one; without this read the rejection would be invisible to the person whose
+  job it is to act on it.
+
+**D16 — THE HAND MATCH IS `manual_from_printout`, NOT `interface`, AND THAT IS NOT A WORKAROUND.**
+
+`enterResult` authorises an `interface` write with `lab.results.interface`, which is the BRIDGE's
+grant and deliberately disjoint from the technologist's (D6) — so the match failed
+`permission_denied` the first time it ran. **The one-line repair was to grant `lab_technician` that
+permission, and it would have dismantled the separation T3 exists to create in order to make a test
+pass.** The vocabulary already held the answer: `manual_from_printout` already ships and T7's own
+spec names it as the interface-down fallback.
+
+It is also the truthful record. The interface did NOT attach this value — it failed to name the
+tube, which is why the row was in the inbox — and a person read the number off a screen and decided
+whose it was. `entry_mode` is where that decision has to be visible: labelling it `interface` would
+hide **the single human judgement in the chain, and it is the judgement most likely to be wrong.**
+`analyzer_id` still records the machine, so nothing about its authorship is lost, and the grant
+follows the act instead of being widened to fit it.
+
+**D17 — THE SEAT IS TOLD WHICH CONTROL REFUSED.** The ingest collapses every refusal to
+`guard_refused` because it only needs to know a human must look. A person standing at this screen
+needs to know whether the analyte is not on this tube's order, the value is outside the absurd
+envelope, or it is impossible for this patient — three different next actions. The underlying code is
+surfaced verbatim.
+
+**MUTANTS — five applied, five killed.**
+
+| mutant | result |
+|---|---|
+| the row is CLOSED even though the write was refused | KILLED — 1 failed / 7 passed |
+| a discard with an EMPTY reason | KILLED — 1 failed / 7 passed |
+| a tube received on ANOTHER DAY carries the result | KILLED — 1 failed / 7 passed |
+| the operate permission is not checked | KILLED — 1 failed / 7 passed |
+| a controls-failed plate parks its patient wells (D13 defeated) | KILLED — 1 failed / 7 passed |
+
+**A TEST OF THIS TASK'S OWN PASSED VACUOUSLY, AND IT IS THE FK LESSON AGAIN.** `MUTANT: a match the
+guards refuse` asserted `rejects.toThrow(LabError)` — so `permission_denied` satisfied it, and it
+reported the applicability guard working when that guard had never been reached. **An error-CLASS
+assertion is satisfied by every error of that class, including the ones meaning the test never got
+where it was going.** It now names the code. And chasing what the code actually IS produced D17: a
+test that could not tell two failures apart was hiding a screen that could not either.
+
+**THE CENSUS TAX WAS EIGHTEEN SITES, NOT §7's NINE — and the eighteenth is the one worth the note.**
+`seed-roles.test.ts` was fully GREEN at seventeen. The eighteenth was in `manifest.test.ts`, a file
+the census suite never loads, and only the broader lab run found it. **A targeted sweep is itself a
+selection and cannot find a coupling it does not include.** The seventeenth is the positional
+grant-count array's SECOND copy, which the file's own comment says every permission moves twice and
+no grep finds. The nine was honestly measured at T1, which granted to a role already present in every
+derived list; this grant also moves four INDEPENDENT derived readers. **The tax is a property of
+which readers a grant happens to move, and it is knowable only by moving it.**
+
+**Evidence:** 36 suites / 320 tests exit 0 (`src/modules/lab` + `test/lab.e2e.test.ts` +
+`test/seed-roles.test.ts`), typecheck 0.
+
+
+### 8.7 T7 — NOT STARTED, and it is not ROUTINE. D9 is already violated by merged code.
+
+**Measured 2026-09-05 with a throwaway probe, not inferred from reading.** Two transmissions from one
+instrument carrying the same analyte for the same tube — a rerun by D9's own definition — produce:
+
+    rows: 2   [ {v: 5.0000, supersedes: null,    rerunOf: null},
+                {v: 9.9000, supersedes: <first>, rerunOf: <first>} ]
+
+**Both rows live, so D9's first half already holds. But the second value AUTO-SUPERSEDES the first,
+with no human choice and no reason — which is the exact thing D9 forbids** and the first mutant T7
+names. It is live in merged code today, on every machine path T3, T4 and T5 ship.
+
+**The line is `results.ts`'s `supersedesResultId: input.supersedesResultId ?? priorForAnalyte?.id ?? null`,
+and it is there ON PURPOSE.** Close review M3 introduced it to fix a real defect: the chain was NULL
+for every re-keyed value because `EnterResultInput` declared fields no caller set, so *"an NABL auditor
+following `supersedes_result_id` back to the number that was wrong found nothing, on the one path that
+exists to answer that question."* Its comment reads *"a value keyed for an analyte that already carries
+one supersedes it, which is exactly what a rerun is."*
+
+**So T7 is not a gap to fill, it is a CONTRADICTION to resolve, and both sides are right about their
+own case.** A human re-keying at the bench IS a supersession — a typo corrected, and M3's chain is how
+the auditor finds it. An analyser re-running a sample is NOT — both values are legitimate measurements
+of the same tube, and D9's reason is that *"auto-choosing the later value is how a bad second run
+silently overwrites a good first one."*
+
+The distinction is available in the row itself: `entry_mode` and `analyzer_id` already say whether a
+machine produced the value, and `rerunOf` is already populated. **What T7 must not do is widen or
+delete M3's rule to make the machine case work** — that is D16's shape one layer out, and it would
+re-open the audit hole M3 closed. It needs a rule that separates the two cases explicitly, plus the
+bench's choice, its reason, and its audit row.
+
+**IT IS NOT LIVE IN PRODUCTION, AND THAT CHANGES *WHEN* THE OWNER DECIDES, NOT WHETHER.** Raised by
+the orchestrator and verified here rather than relayed. At `c11833d` — the commit it identifies as the
+deployed base; this lane did not independently confirm which commit production runs —
+
+    results.ts's supersede rule        PRESENT (7 references)
+    lab/ingest.ts                      ABSENT
+    lab/instruments.ts                 ABSENT
+    lab/plate-maps.ts                  ABSENT
+    anything writing entryMode "interface"   NONE
+
+**The rule is deployed; the only caller that makes it wrong is not.** So production today sees human
+re-keys only, which is the case M3 is right about. It becomes wrong the moment 17-E's machine paths
+deploy, and T1–T4 are merged and sitting in the migration backlog. **So this is a decision to take
+BEFORE the next deploy, not a defect to fix after one.** Stated precisely because inferring a live
+production exposure from individually-true facts is how this project once escalated a fabricated
+patient-safety emergency.
+
+**Also unbuilt: `interface_down`.** The first of `kinds.ts`'s four unwritten `analyzer` statuses to get
+a writer, with the mutant "written on a machine that is merely idle" — an idle analyser at 3 a.m. must
+not read as a broken link.
+
+**Estimated cost is higher than §4's ROUTINE label.** It touches `enterResult`, which is the shared
+CRITICAL path every result in the system goes through, and it needs a migration for the choice, the
+reason and the audit row. The serial queue is contended: radiology holds a three-PR stack behind #103.
+
+### 8.8 T7a — Reruns keep both, and the bench chooses (executed 2026-09-06)
+
+**Executed as T7a. `interface_down` is split out as T7b and is not in this PR** — §4 packages them
+together and they share nothing: the rerun rule is a decision about two rows, and `interface_down` is
+an observer with a heartbeat and a worker sweep. Splitting lets the rule land on the deploy it is
+needed for without waiting for a sweep no analyser is yet connected to. DECIDED.
+
+**§4's ROUTINE label was wrong and §8.7 said so before the work started.** The final shape: three
+columns, two constraints, one partial unique index, a new service function, a guard in `verify.ts`,
+a change to the formula reader, six error codes, and a route. Migration `0079`.
+
+#### The decisions taken, as D16–D20
+
+- **D16 — the discriminator is READ FROM THE ROW, never passed by the caller.** `entry_mode` already
+  says whether a machine produced the value, and D6 makes it route-bounded. A parameter meaning "I am
+  a machine" would be the same fact asserted by its caller, and a caller that can assert it can deny
+  it. The caller-supplied `supersedesResultId` override stays open for `requestRerun`'s amendment
+  path and is refused on the interface path (`machine_cannot_supersede`), so the rule is not enforced
+  by a `??` any caller can step around.
+- **D17 — M3 IS NOT WIDENED AND NOT DELETED.** §8.7's central warning. Its fallback applies on the
+  human path exactly as before and stops at the machine's. `results.test.ts`'s M3 assertion is
+  untouched and green, and `rerun-choice.test.ts` carries its own copy so a successor who meets the
+  contradiction meets both halves at once.
+- **D18 — the guard is at VERIFY, not at the report.** `reports.ts` prints the last verified row per
+  analyte. Stopping the auto-supersession alone would have moved the silent overwrite one layer up:
+  two live values, both signable, the report carrying whichever was clicked second. Verification is
+  where a number becomes reportable, so `reports.ts` is unchanged and no shared reader is widened —
+  the shape that cost 22c-A its C1.
+- **D19 — "live" means NOT SUPERSEDED, and deliberately not "unverified".** If it meant unverified,
+  signing the chosen value would release its twin.
+- **D20 — no new permission.** `lab.results.enter`, the bench's grant: judging which of two
+  measurements of one tube is the laboratory's answer is the same class of judgement as keying the
+  number, and the second pair of hands still arrives at `verify.ts` under SoD. The census tax was
+  measured at EIGHTEEN sites for a permission that moves a role (the orchestrator's count from T6,
+  which paid 9 → 15 → 17 → 18 in waves). **None of it is owed, because the vocabulary already named
+  the act** (#139).
+
+#### Found while walking the lifecycle, and it predates 17-E
+
+**A superseded row could be verified.** A re-key supersedes the row it corrects; nothing stopped a
+pathologist signing the corrected-away row afterwards, and because the report takes the last verified
+row per analyte, doing so would print the number the bench had corrected. Not introduced by this
+phase and not by the analyser interface; it needs a machine path to be reachable, so it is not a
+production exposure. Closed here as `result_superseded` — the same guard, and splitting it would have
+shipped half a guard.
+
+#### Close review C3, one layer out
+
+C3's fix reads *"the newest row is the current value"*, which was true while every path superseded.
+After D17 it is false for a rerun set. An unresolved analyte therefore has NO current value: no
+formula over it is computed, none is signable, and the choice is the moment it acquires one — at
+which point every formula over it is recomputed as a superseding row. **Per input and not per
+panel**: a lipid profile carries four formula analytes, VLDL is `TG / 5`, and a repeated cholesterol
+must not stop every lipid profile in the laboratory.
+
+#### Evidence
+
+| | |
+|---|---|
+| `src/modules/lab/rerun-choice.test.ts` | **14/14** |
+| fail-first, rule reverted with schema/service/route left in place | **11 of 14 fail** |
+| the three that pass | `M3` (the half that must not break), `A5` (a request-shape guard), `A6` (an ABSENCE assertion — a revert pair structurally cannot prove one, recorded rather than counted) |
+| `errors.test.ts` | found a census site nobody predicted: the 404/409/403 families were pinned as whole sorted lists and **422 by ONE member**, so six new codes broke two lists loudly and slipped past the third. Fixed as the fourth SET plus a totality assertion (#157) |
+
+#### §6 — carried out of T7a, named so nobody infers it is solved
+
+- **`lab.result_chosen` is NOT in `LAB_REALTIME_NAMES`.** Its payload carries a technologist's
+  free-text reason and 17c's rule for `lab:bench` is that a payload is STRUCTURAL — no value crosses
+  it. A sentence a human typed at a bench can contain one. So a pathologist's screen does not
+  live-refresh when a choice makes a row signable; it refreshes on its next read.
+- **The choice has no web surface yet.** Reachable at `POST /lab/bench/results/choose`. Until a
+  screen exists, a rerun on a real analyser is a state only an API caller can clear — which is why
+  this must not deploy ahead of the bench screen for a laboratory that has an analyser connected. No
+  such laboratory exists today; the ordering matters when one does.
+
+### 8.9 What the launch census found beside T7, 2026-09-06 — and it changed what this phase is for
+
+A seven-dimension read-only census of the whole lab launch path, every blocking claim adversarially
+verified by an agent briefed to REFUTE it. **Of eleven claims filed BLOCKS_OPENING or BLOCKS_DEPLOY,
+the verifiers confirmed none at that level — including T7's own.** That is the right outcome and it
+is recorded rather than buried: the lab is not open, no analyser transmits, so the rerun
+contradiction is real, deployed, and currently unreachable.
+
+**What every downgrade shared is more useful than any of them individually.** Each verifier asked
+*"does this block the lab OPENING?"* and each honestly answered no. **Nobody was asked whether it
+blocks USING it.** A verification question that every finding passes is not discriminating.
+
+Asked the second way, the answer is one shape and it is this phase's real remaining debt:
+
+    lab_reference_ranges     a reader, a census row, a wiping seed — and NO WRITER
+    bench resources          a census row, a declared kind          — and NO WRITER
+    the analyte catalogue    a manage grant, a runbook section      — and NO IMPORTER (194 calls)
+    the printed report       ————                                   — NO HOSPITAL, and a LOGIN as the signature
+
+**17-E ships readers, guards and census rows for data it ships no way to put in — and the one
+document that leaves the building carries neither the hospital's identity nor the signer's.** Three
+are data that cannot get in; the fourth is identity that cannot get out. That is why every verifier
+could truthfully say the lab can open while the lab cannot be used.
+
+Three of the four are closed by this lane on 2026-09-06 (the report, the range book, and — outside
+this phase's scope but the same shape — the ingest defect below). **The catalogue importer is not**,
+and it is Track S's, in the roadmap's weeks 4–6.
+
+#### The defect the census found in already-merged, already-deployed 17-E code
+
+`attachMachineValue`'s `for` loop **never iterated**: every path through the body left the function,
+so iteration two was unreachable and the `return` after it was dead code. Only `items[0]` was ever
+tried, out of a query with **no analyte filter and no `ORDER BY`**.
+
+**61 of the 64 seeded orderables sit on a container shared with at least one other** (42 on
+serum/SST), and `specimens.ts` draws one tube per `(specimen_type, container)`. So on any multi-test
+tube **at most one orderable could ever receive a machine value**, chosen by row order — and
+`inbox.ts:181` calls the same function, so the documented recovery path re-entered the identical bug.
+For a multi-test tube that is not a defect the analyser interface has; it is the interface not
+working. Fixed outside this task, with the phase's own D4 intact: the fix NARROWS the candidates, it
+does not search harder.
+
+#### Two things about the tests themselves, which cost more than the defects did
+
+- **The fixture blinded the whole assertion book.** `test/helpers/opd.ts:43` creates every user with
+  `fullName: username`, so a report printing the login and one printing the person's name render the
+  SAME STRING in every suite that has ever run. 329 passing tests were not careless; they were
+  unable to see it by construction. `mkUser` is deliberately NOT changed here — a shared factory is
+  its own PR with its own blast radius — and the interim rule is that any test distinguishing a login
+  from a name supplies its own distinct value and asserts `not.toBe`.
+- **A mis-aimed mutation reports a clean result.** Removing T7's overlap guard by cutting to
+  `const id = newId();` matched that string at its FIRST occurrence — inside `upsertAnalyte` — so the
+  mutation mangled a neighbour, left the guard intact, and reported the guard's own test as PASSING.
+  A surviving mutant and an unapplied mutant are indistinguishable from the log. Scope the edit to
+  the function under test and **grep the mutated file to prove the mutation landed** before running.
+
+#### Still open in this phase after T7a
+
+- **T7b — `interface_down`.** Cheaper than §4 assumed and cheaper than T7's own estimate:
+  `kernel/ops/interfaces.ts` ALREADY has `recordHeartbeat`, `sweepInterfaceHeartbeats` and
+  `stale_after_ms` as the tenth worker job (Plan 11c D6). **`lab_instruments` needs no heartbeat
+  column and no new sweep** — T7b bridges the existing sweep to
+  `changeResourceStatus(…, 'interface_down')`. The #149 hazard the phase would otherwise have walked
+  into — *a status nothing sets is a silence indistinguishable from health* — is already answered
+  there, and the observer is the SERVER, which is alive when the bridge is dead.
+- **The bench's choice has no screen.** `POST /lab/bench/results/choose` ships; nothing renders a
+  rerun pair. Until it does, a rerun on a real analyser is a state only an API caller can clear.
+  **This must not reach a laboratory that has an analyser connected before the screen does** — and no
+  such laboratory exists today, which is why the ordering is recorded rather than urgent.
+- **`lab.result_chosen` is not routed in realtime**, and that is a decision: its payload carries a
+  technologist's free-text reason, and 17c's rule for `lab:bench` is that a payload is STRUCTURAL.
+- **The range book has no versioning.** `effective_from` is `notNull()` with ZERO readers and there is
+  no `effective_to`. The door added on 2026-09-06 REFUSES a future date rather than implementing a
+  reader — accepting a date the code will silently ignore is a claim the system will honour it. Giving
+  the column a reader changes how every historical result resolves and is its own phase.
+- **`assertMayManage` refuses a non-user actor as `permission_denied`**, which is the aliasing its own
+  comment argues against, while `results.ts` has carried `user_actor_required` for exactly this since
+  17b. Two doors, two vocabularies for one fact. Pinned as it behaves; changing it is shared surface.

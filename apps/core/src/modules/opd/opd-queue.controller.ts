@@ -4,14 +4,15 @@ import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
-import { completeConsultation, saveConsultNote, startConsultation } from "./consultation";
+import { completeConsultation, parkConsultation, resumeConsultation, saveConsultNote, startConsultation } from "./consultation";
 import { transferQueue } from "./encounters";
 import { parsed, toHttp } from "./opd-masters.controller";
 import {
   getPrescriptionPrint, issuePrescription, listPrescriptions, precheckPrescription, verifyPrescriptionQr,
 } from "./prescriptions";
 import { discardDraft, getPendingDraft, issueDraft, saveDraft } from "./prescription-drafts";
-import { boardSnapshot, callNext, listQueue, skipCalled, summaryByDoctor } from "./queue";
+import { SKIP_REASONS } from "./skip-reasons";
+import { boardSnapshot, callNext, listQueue, skipCalled, summaryByDoctor, undoSkip } from "./queue";
 import { setSessionStatus } from "./sessions";
 import { istDate } from "./time";
 import type { EncounterRow, PrescriptionRow, QueueEntryRow } from "./encounters";
@@ -34,8 +35,30 @@ const transferBody = z.object({
 });
 const queueQuery = z.object({ doctorId: z.string().min(1), serviceDate: z.string().max(10).optional() });
 const sessionStatusBody = z.object({ status: z.enum(["in", "out", "closed"]) });
+/**
+ * THE SKIP NOW STATES ITS REASON (owner, 2026-09-13). `reason` is REQUIRED, so the shipped client
+ * that posted an empty body gets a 400 rather than writing a reasonless skip — which is the right
+ * direction for a field whose whole point is that it is never absent. The note is bounded like
+ * every other free-text field here; `skipCalled` — not zod — refuses an empty note under `other`,
+ * so the client gets `reason_required` with an OPD code it can map to the box rather than a schema
+ * error it cannot.
+ */
+const skipBody = z.object({ reason: z.enum(SKIP_REASONS), note: z.string().max(500).nullish() });
 const consultNoteBody = z.object({
   chiefComplaint: z.string().max(2000).nullable().optional(),
+  /**
+   * THE DIAGNOSES, AS A LIST. Bounded for the same reason `advisedTests` is: an unbounded array on
+   * a request body is a body somebody can make arbitrarily large. Twelve is a consultation's worth
+   * of a primary diagnosis and its comorbidities.
+   *
+   * `diagnosis` and `icd10Code` below are still accepted — an older caller writing prose is a
+   * caller that still works — but when `diagnoses` is present the server DERIVES both from it and
+   * ignores what was sent, so the display string and the coded rows cannot be made to disagree.
+   */
+  diagnoses: z.array(z.object({
+    text: z.string().min(1).max(300),
+    icd10Code: z.string().max(20).nullable(),
+  })).max(12).nullable().optional(),
   diagnosis: z.string().max(2000).nullable().optional(),
   icd10Code: z.string().max(20).nullable().optional(),
   advice: z.string().max(4000).nullable().optional(),
@@ -207,9 +230,25 @@ export class OpdQueueController {
 
   @RequirePermission("opd.queue.operate", "hospital")
   @Post("queues/entries/:entryId/skip")
-  async skip(@CurrentActor() actor: Actor, @Param("entryId") entryId: string): Promise<{ entry: QueueEntryRow }> {
+  async skip(@CurrentActor() actor: Actor, @Param("entryId") entryId: string, @Body() body: unknown): Promise<{ entry: QueueEntryRow }> {
+    const b = parsed(skipBody, body);
     try {
-      return await skipCalled(this.db, actor, entryId);
+      return await skipCalled(this.db, actor, entryId, { reason: b.reason, note: b.note ?? null });
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * THE SKIP TAKEN BACK — `opd.queue.operate`, the same grant that made the skip. A doctor who can
+   * pass a patient over can put them back, and a correction that needed a second authority would be
+   * a correction nobody makes at the moment it matters.
+   */
+  @RequirePermission("opd.queue.operate", "hospital")
+  @Post("queues/entries/:entryId/undo-skip")
+  async undoSkipped(@CurrentActor() actor: Actor, @Param("entryId") entryId: string): Promise<{ entry: QueueEntryRow }> {
+    try {
+      return await undoSkip(this.db, actor, entryId);
     } catch (e) {
       toHttp(e);
     }
@@ -222,6 +261,34 @@ export class OpdQueueController {
   async start(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ encounter: EncounterRow; queueEntry: QueueEntryRow }> {
     try {
       return await startConsultation(this.db, actor, id);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * PARK / RESUME (owner report, 2026-09-13) — the patient who stepped out mid-consultation.
+   *
+   * `opd.consult` and no new permission, because this is not a new authority: both acts are
+   * refused by `requireTreatingDoctor` to anybody but the encounter's own doctor, exactly like the
+   * note and the completion beside them. A permission of their own would be a second name for a
+   * grant every doctor already holds, and `seed-roles.ts` pins the count.
+   */
+  @RequirePermission("opd.consult", "hospital")
+  @Post("visits/:id/consult/park")
+  async park(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ encounter: EncounterRow; queueEntry: QueueEntryRow }> {
+    try {
+      return await parkConsultation(this.db, actor, id);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("opd.consult", "hospital")
+  @Post("visits/:id/consult/resume")
+  async resume(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ encounter: EncounterRow; queueEntry: QueueEntryRow }> {
+    try {
+      return await resumeConsultation(this.db, actor, id);
     } catch (e) {
       toHttp(e);
     }

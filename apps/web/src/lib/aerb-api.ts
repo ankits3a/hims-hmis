@@ -261,7 +261,12 @@ export type WireDeviceChoice = {
   licensable: boolean;
 };
 
-export type WireUserChoice = { userId: string; fullName: string };
+/**
+ * `aerbRole` is the server's answer to "is this person actually appointed under AERB?" — `null` for
+ * most people. The licence form's RSO field says so; `PersonForm` ignores it, because appointing
+ * the first RSO means choosing somebody who does not have one yet.
+ */
+export type WireUserChoice = { userId: string; fullName: string; aerbRole: "rso" | "physicist" | null };
 
 export function fetchAerbPickers(): Promise<{ devices: WireDeviceChoice[]; users: WireUserChoice[] }> {
   return api<{ devices: WireDeviceChoice[]; users: WireUserChoice[] }>("GET", "/aerb/pickers");

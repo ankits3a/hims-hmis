@@ -1,5 +1,9 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
+import { backupDrillRehearsed } from "../src/kernel/retention/events";
 
 /**
  * Plan 11d / D8 — `deploy.sh`'s two hand-maintained lists become ONE tested invariant.
@@ -44,6 +48,11 @@ import { resolve } from "node:path";
  */
 const REPO_ROOT = resolve(__dirname, "..", "..", "..");
 const DEPLOY_SH = resolve(REPO_ROOT, "docker", "prod", "deploy.sh");
+const DRILL_SH = resolve(REPO_ROOT, "docker", "prod", "drill", "restore-drill.sh");
+const UAT_COMPOSE = resolve(REPO_ROOT, "docker", "prod", "docker-compose.uat.yml");
+const UAT_CADDYFILE = resolve(REPO_ROOT, "docker", "prod", "Caddyfile.uat");
+const UAT_RESET_SH = resolve(REPO_ROOT, "docker", "prod", "uat-reset.sh");
+const ENV_EXAMPLE = resolve(REPO_ROOT, "docker", "prod", ".env.prod.example");
 const COMPOSE_YML = resolve(REPO_ROOT, "docker", "prod", "docker-compose.prod.yml");
 const PROMETHEUS_DIR = resolve(REPO_ROOT, "docker", "prod", "prometheus");
 const PROMETHEUS_YML = resolve(PROMETHEUS_DIR, "prometheus.yml");
@@ -106,13 +115,24 @@ function commandLines(block: string): string[] {
  * rendering block, or by anything else. `$DEPLOY_DIR/docker-compose.prod.yml` (a file at the top
  * level) and `$DEPLOY_DIR/log` (a directory nothing is written into) are correctly excluded: both
  * lack the second path segment that makes a directory a CONFIG directory.
+ *
+ * PHASE 11i T8 — ONE NAMED EXCEPTION, and it is named rather than absorbed into the integer.
+ * `$DEPLOY_DIR/previous` is where step 2 SNAPSHOTS the outgoing compose file, `caddy/` and
+ * `prometheus/` before overwriting them, so the rollback path can put the configs back beside the
+ * images. It matches the shape of a config directory and is definitionally not one: no service
+ * mounts it, and nothing in it is ever read by a running container. Bumping the census to eight
+ * would have made "populated config directory" mean two different things in the same test; this
+ * keeps the census's meaning and states the exception. The snapshot itself is pinned by the T8
+ * block further down.
  */
+const NOT_A_CONFIG_DIR = ["previous"];
+
 function populatedConfigDirs(block: string): string[] {
   const dirs = new Set<string>();
   for (const line of commandLines(block)) {
     for (const match of line.matchAll(/\$DEPLOY_DIR\/([A-Za-z0-9._-]+)\/[A-Za-z0-9._-]/g)) {
       const dir = match[1];
-      if (dir !== undefined) dirs.add(dir);
+      if (dir !== undefined && !NOT_A_CONFIG_DIR.includes(dir)) dirs.add(dir);
     }
   }
   if (dirs.size === 0) {
@@ -372,6 +392,13 @@ const SEED_STEP_SCRIPTS = [
   // materials module's own seed must have run first.
   "seed-ot.js",
   "seed-pharmacy.js", // PLAN 16c T5
+  // PHASE 11i T1 — the laboratory's two Class-C definitions and its `lab_release_unpaid`
+  // approval type. It joins for the reason `seed-patients` and `seed-materials` did, in its
+  // sharpest form yet: the lab has been DEPLOYED since migration 0046 and could not take an
+  // order the whole time, because `activateLabDefinitions` had one caller in the tree and it
+  // was `test/helpers/lab.ts`. A module that ships, migrates, serves routes and throws
+  // `no_active_definition` on first use is what this census exists to make impossible.
+  "seed-lab.js",
   "seed-roles.js",
 ] as const;
 
@@ -429,7 +456,13 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
     // creates that store through `materials.createStore`, so the materials seed must run first.
     // 14 since Plan 16c T5 added `seed-pharmacy.js` after `seed-ot.js` (the `PHARM-OPD` store is a
     // materials store too, so the materials seed still runs first).
-    expect(order).toHaveLength(14);
+    // 15 since Phase 11i T1 added `seed-lab.js` after `seed-pharmacy.js` and before `seed-roles.js`
+    // — the pharmacy shape, one module over. (This file joins the Files list of the task that moves
+    // the integer, which is the S11 rule the paragraph above invokes.)
+    // 16 since Phase 11i T2 added `standup-check.js` — which is NOT a seed and is deliberately not
+    // in SEED_STEP_SCRIPTS: it runs AFTER the gate and writes nothing. It appears here only because
+    // this parser counts every `compose run --rm api node dist/scripts/*.js` line.
+    expect(order).toHaveLength(16);
     expect(order[0]).toBe("migrate.js");
     expect(order[1]).toBe("seed-cursors.js");
   });
@@ -446,7 +479,27 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
       .toEqual({ seedOpsAt: ops, seedRolesAt: roles, opsFirst: true });
   });
 
-  it("runs every one of the ten configuration seeds, and each one exists in scripts/", () => {
+  it("runs seed-roles LAST of the configuration seeds — PHASE 11i T1", () => {
+    /**
+     * The leg above pins ONE pair (`seed-ops` before `seed-roles`) because that pair is the one
+     * that broke. This pins the PROPERTY the pair is an instance of, and it was added because 11i
+     * T1's own mutant survived: `seed-lab.js` moved to after `seed-roles.js` and every existing
+     * assertion here stayed green — the census counted 15, found each file, and saw all 15 run
+     * before the gate.
+     *
+     * `seed-roles`' verdict is a census over the grants and role holders THE OTHER SEEDS WRITE.
+     * A seed that runs after it is a seed whose grants its verdict cannot see, so the deploy
+     * prints NOT READY about a box that is in fact ready — and a verdict that cries wolf is a
+     * verdict nobody reads, which is the whole value of running it at all (`deploy.sh`:497).
+     */
+    const order = deploySeedOrder(deploySource);
+    const rolesAt = order.indexOf("seed-roles.js");
+    expect(rolesAt).toBeGreaterThanOrEqual(0);
+    const after = SEED_STEP_SCRIPTS.filter((n) => n !== "seed-roles.js" && order.indexOf(n) > rolesAt);
+    expect({ seedRolesAt: rolesAt, seedsRunningAfterIt: after }).toEqual({ seedRolesAt: rolesAt, seedsRunningAfterIt: [] });
+  });
+
+  it("runs every one of the configuration seeds, and each one exists in scripts/", () => {
     const order = deploySeedOrder(deploySource);
     expect(SEED_STEP_SCRIPTS.filter((name) => !order.includes(name))).toEqual([]);
     // A seed named here but deleted from the tree would make the deploy die at a `node` that
@@ -463,6 +516,524 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
     expect(gate).toBeGreaterThanOrEqual(0);
     expect(existsSync(resolve(scriptsDir, "check-config-present.ts"))).toBe(true);
     for (const seed of SEED_STEP_SCRIPTS) expect(order.indexOf(seed)).toBeLessThan(gate);
+  });
+
+  it("runs the readiness census AFTER the gate, and does NOT obey its exit code — PHASE 11i T2", () => {
+    /**
+     * D3, and the `seed-roles` rule one level up. The census is RED on every box until the
+     * hospital has hired its people and typed in its catalogue — a permanent, correct RED. Under
+     * `set -euo pipefail` an UNWRAPPED non-zero here would kill every deploy from now until the
+     * laboratory opens, after migrations and before the containers are recreated.
+     *
+     * The order matters too: the gate REFUSES and must run first, so a box that cannot issue an
+     * invoice stops there rather than reading a census about benches.
+     */
+    const order = deploySeedOrder(deploySource);
+    const census = order.indexOf("standup-check.js");
+    const gate = order.indexOf("check-config-present.js");
+    expect(existsSync(resolve(scriptsDir, "standup-check.ts"))).toBe(true);
+    expect({ censusAt: census, gateAt: gate, gateFirst: gate >= 0 && census > gate })
+      .toEqual({ censusAt: census, gateAt: gate, gateFirst: true });
+    // Wrapped in an `if`, exactly as seed-roles is — and NOT a bare line, which is what the gate is.
+    expect(deploySource).toMatch(/if compose run --rm api node dist\/scripts\/standup-check\.js all; then/);
+    expect(deploySource).not.toMatch(/^compose run --rm api node dist\/scripts\/standup-check\.js/m);
+    // It is not a seed: it writes nothing and must not be counted among the rows the gate guards.
+    expect(SEED_STEP_SCRIPTS).not.toContain("standup-check.js");
+  });
+
+  /**
+   * ═══ PHASE 11i T8 — THE BACKOUT, AND THE DRILL AS THE MIGRATION REHEARSAL (D12, D13) ═══
+   *
+   * Everything below reads the SHIPPED BYTES of two shell scripts, for the reason the seed census
+   * above does: the failure is a sequence between programs, and `deploy.sh` is the one artefact in
+   * this repository where a mistake reaches production directly rather than through a merge and a
+   * train. Running it to find out is not an option; reading what it says is.
+   */
+  describe("the backout path and the drill's rehearsal mode (11i T8)", () => {
+    const drillSource = readFileSync(DRILL_SH, "utf8");
+
+    /** Everything between `if [ -n "$ROLLBACK_TO" ]; then` and its matching `else`/`fi`. */
+    function rollbackBranches(source: string): string {
+      const out: string[] = [];
+      const lines = source.split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        if (!/^if \[ -n "\$ROLLBACK_TO" \]; then$/.test(lines[i]!)) continue;
+        let depth = 1;
+        const body: string[] = [];
+        for (let j = i + 1; j < lines.length && depth > 0; j++) {
+          const line = lines[j]!;
+          if (/^\s*if /.test(line)) depth++;
+          if (/^\s*fi\s*$/.test(line)) { depth--; if (depth === 0) break; }
+          if (depth === 1 && /^else$/.test(line)) break; // the else half is the BUILD path
+          body.push(line);
+        }
+        out.push(body.join("\n"));
+      }
+      if (out.length === 0) throw new Error("deploy.sh: no `if [ -n \"$ROLLBACK_TO\" ]` branch — this parser is stale");
+      return out.join("\n");
+    }
+
+    it("the rollback path BUILDS NOTHING and MIGRATES NOTHING — D13", () => {
+      const rollback = rollbackBranches(deploySource);
+      expect(rollback.length).toBeGreaterThan(200); // non-vacuous: the branches were actually read
+      // A comment may SAY "migrate"; a command line may not BE one.
+      const commands = rollback.split("\n").map((l) => l.trim()).filter((l) => l !== "" && !l.startsWith("#"));
+      expect(commands.filter((l) => l.includes("docker build"))).toEqual([]);
+      expect(commands.filter((l) => /migrate\.js|db:migrate/.test(l))).toEqual([]);
+      expect(commands.filter((l) => /check-config-present\.js|seed-[a-z-]+\.js/.test(l))).toEqual([]);
+      // and it DOES retag, which is the whole of what it may do to the images
+      expect(rollback).toMatch(/docker tag "\$repo:\$ROLLBACK_TO" "\$repo:latest"/);
+    });
+
+    it("refuses BY NAME when the image it would retag is not on the host", () => {
+      // A `:latest` retagged from nothing leaves the stack pointing at nothing, and the first
+      // symptom is a container that will not start — while somebody is rolling back an outage.
+      expect(deploySource).toMatch(/docker image inspect "\$repo:\$ROLLBACK_TO" >\/dev\/null 2>&1[\s\S]{0,80}\|\| die/);
+    });
+
+    it("tags every image with the SHA it was built from, beside :latest", () => {
+      expect(deploySource).toMatch(/IMAGE_REPOS="\$IMAGE_NS\/server \$IMAGE_NS\/web \$IMAGE_NS\/db"/);
+      // `$IMAGE_NS`, not the literal `hmis-prod`: 11i T3 gave the script a second target, and a
+      // SHA tag hard-coded to production's namespace would have put UAT's images there — measured,
+      // by this leg failing when the target landed.
+      for (const name of ["server", "web", "db"]) {
+        expect(deploySource).toContain(`docker tag "$${name.toUpperCase()}_IMAGE" "$IMAGE_NS/${name}:$GIT_SHA"`);
+      }
+      expect(deploySource).toMatch(/GIT_SHA="\$\(git -C "\$REPO_DIR" rev-parse --short HEAD/);
+      expect(deploySource).toMatch(/prune_sha_tags/);
+    });
+
+    it("snapshots the outgoing configs BEFORE the installs overwrite them", () => {
+      // A retag without the configs is half a rollback: yesterday's images beside today's
+      // Caddyfile, compose file and alert rules is a state that never ran anywhere.
+      const snapshotAt = deploySource.indexOf('cp -a "$DEPLOY_DIR/docker-compose.prod.yml" "$DEPLOY_DIR/previous/docker-compose.prod.yml"');
+      const firstInstallAt = deploySource.indexOf('install -m 0644 "$SRC_DIR/docker-compose.prod.yml"');
+      expect(snapshotAt).toBeGreaterThan(0);
+      expect(firstInstallAt).toBeGreaterThan(0);
+      expect({ snapshotAt, firstInstallAt, snapshotFirst: snapshotAt < firstInstallAt })
+        .toEqual({ snapshotAt, firstInstallAt, snapshotFirst: true });
+      expect(rollbackBranches(deploySource)).toMatch(/cp -a "\$DEPLOY_DIR\/previous\/docker-compose\.prod\.yml"/);
+    });
+
+    it("the drill's REHEARSAL seed list is the DEPLOY'S list, in the deploy's order", () => {
+      // A second hand-maintained copy of a seed census is the exact shape that goes stale in
+      // silence — this census exists because that happened twice already.
+      const match = /REHEARSAL_SEEDS="([^"]+)"/.exec(drillSource);
+      if (match === null) throw new Error("restore-drill.sh: no REHEARSAL_SEEDS — this parser is stale");
+      const rehearsed = match[1]!.trim().split(/\s+/);
+      expect(rehearsed[0]).toBe("seed-cursors.js"); // the deploy runs it first, before any config seed
+      // seed-roles is run separately because its verdict is printed and not obeyed, exactly as in
+      // deploy.sh — so the two lists agree once it is put back on the end.
+      expect([...rehearsed.slice(1), "seed-roles.js"]).toEqual([...SEED_STEP_SCRIPTS]);
+      expect(drillSource).toMatch(/node dist\/scripts\/seed-roles\.js \|\| note/);
+      expect(drillSource).toMatch(/node dist\/scripts\/check-config-present\.js/);
+      expect(drillSource).toMatch(/node dist\/scripts\/standup-check\.js all/);
+    });
+
+    it("the rehearsal asserts migration count by EQUALITY, read out of the candidate image", () => {
+      // `>=` is right for a weekly drill (did the restore regress?) and wrong for a rehearsal: a
+      // half-applied journal — one migration refused, the rest skipped by the watermark — passes
+      // `>=` against the live census and would report PASS.
+      expect(drillSource).toMatch(/CANDIDATE_MIGRATIONS="\$\(docker run --rm "\$SERVER_IMAGE"/);
+      expect(drillSource).toMatch(/_journal\.json"\)\.entries\.length/);
+      expect(drillSource).toMatch(/\[ "\$RESTORED_MIGRATIONS" = "\$CANDIDATE_MIGRATIONS" \][\s\S]{0,40}\|\| die/);
+      // and the weekly drill's own `>=` assertions are untouched
+      expect(drillSource).toMatch(/\[ "\$RESTORED_EVENTS" -ge "\$CENSUS_EVENTS" \]/);
+      expect(drillSource).toMatch(/\[ "\$RESTORED_MIGRATIONS" -ge "\$CENSUS_MIGRATIONS" \]/);
+    });
+
+    it("a rehearsal appends backup.drill_rehearsed and NEVER drill_passed", () => {
+      // The prometheus rule that watches for a MISSED weekly drill counts `drill_passed`; a
+      // rehearsal appending it would let a genuinely missed backup drill hide behind somebody's
+      // deploy preparation, and a failed rehearsal would page as a failed backup.
+      expect(backupDrillRehearsed.name).toBe("backup.drill_rehearsed");
+      expect(drillSource).toMatch(/catalog\.backupDrillRehearsed/);
+      expect(drillSource).toMatch(/const rehearsal = process\.env\.HMIS_DRILL_REHEARSAL_MODE === "1";/);
+      // the ternary must be REACHED before the pass/fail one, not beside it
+      const rehearsedAt = drillSource.indexOf("catalog.backupDrillRehearsed");
+      const passedAt = drillSource.indexOf("catalog.backupDrillPassed");
+      expect({ rehearsedAt, passedAt, rehearsalFirst: rehearsedAt < passedAt })
+        .toEqual({ rehearsedAt, passedAt, rehearsalFirst: true });
+    });
+
+    it("both scripts still parse", () => {
+      // The cheapest possible guard on the file whose failure mode is the owner's live box.
+      for (const script of [DEPLOY_SH, DRILL_SH]) {
+        const r = spawnSync("bash", ["-n", script], { encoding: "utf8" });
+        expect({ script, status: r.status, stderr: r.stderr }).toEqual({ script, status: 0, stderr: "" });
+      }
+    });
+  });
+
+  /**
+   * ═══ PHASE 11i T3 — UAT IS A TARGET OF THIS SCRIPT, NOT A SECOND SCRIPT ═══
+   *
+   * The danger is not that UAT breaks; it is that UAT reaches production. One host, two stacks,
+   * one script — so every leg below asks the same question from a different side: **with
+   * `HMIS_TARGET=uat`, does anything still say `hmis-prod`?**
+   */
+  describe("the UAT target (11i T3)", () => {
+    /**
+     * The overlay's YAML with its COMMENTS STRIPPED. This file explains at length why it takes
+     * 8443 instead of 80/443 and why the db moves off 5434 — and an assertion that "5434 does not
+     * appear" would fail on the sentence saying so. `i18n-keys.test.ts` and `vitals-bay.test.tsx`
+     * both hit the same false positive; the fix is the same one: read the directives, not the prose.
+     */
+    const uatCompose = readFileSync(UAT_COMPOSE, "utf8").split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
+    const uatComposeWithProse = readFileSync(UAT_COMPOSE, "utf8");
+
+    /**
+     * The script's OWN target block, extracted from the shipped bytes and evaluated — the
+     * caddyfile-parity shape. Reading the text would tell us the words are there; running it
+     * tells us what they resolve to, which is the only thing a mistake here would be about.
+     */
+    function resolveTarget(target: string): Record<string, string> {
+      const block = /TARGET="\$\{HMIS_TARGET:-prod\}"\ncase "\$TARGET" in\n[\s\S]*?\nesac\n/.exec(deploySource);
+      if (block === null) throw new Error("deploy.sh: no `case \"$TARGET\"` block — this parser is stale");
+      const cronLine = /CRON_FILE="\$\{HMIS_CRON_FILE:-[^"]*\}"/.exec(deploySource);
+      if (cronLine === null) throw new Error("deploy.sh: no CRON_FILE line — this parser is stale");
+      const script = [
+        "set -euo pipefail",
+        block[0],
+        cronLine[0],
+        'SERVER_IMAGE="$IMAGE_NS/server:latest"',
+        'IMAGE_REPOS="$IMAGE_NS/server $IMAGE_NS/web $IMAGE_NS/db"',
+        'printf "%s\\n%s\\n%s\\n%s\\n%s\\n" "$PROJECT" "$IMAGE_NS" "$DEPLOY_DIR" "$CRON_FILE" "$SERVER_IMAGE"',
+      ].join("\n");
+      const r = spawnSync("bash", ["-c", script], { encoding: "utf8", env: { ...process.env, HMIS_TARGET: target, HMIS_DEPLOY_DIR: "", HMIS_CRON_FILE: "" } });
+      expect({ target, status: r.status, stderr: r.stderr }).toEqual({ target, status: 0, stderr: "" });
+      const [project, ns, dir, cron, image] = r.stdout.trim().split("\n");
+      return { project: project!, ns: ns!, dir: dir!, cron: cron!, image: image! };
+    }
+
+    it("resolves production's names when the target is unset — the default is not a new thing", () => {
+      const prod = resolveTarget("");
+      expect(prod).toEqual({
+        project: "hmis-prod", ns: "hmis-prod", dir: "/opt/hmis-prod",
+        cron: "/etc/cron.d/hmis-prod-backup", image: "hmis-prod/server:latest",
+      });
+    });
+
+    it("says `hmis-prod` NOWHERE when the target is uat — project, image, directory or cron", () => {
+      const uat = resolveTarget("uat");
+      expect(uat).toEqual({
+        project: "hmis-uat", ns: "hmis-uat", dir: "/opt/hmis-uat",
+        cron: "/etc/cron.d/hmis-uat-backup", image: "hmis-uat/server:latest",
+      });
+      // The property, stated once over all four, so a fifth value added later is covered too.
+      expect(Object.values(uat).filter((v) => v.includes("hmis-prod"))).toEqual([]);
+    });
+
+    it("refuses a target it does not know, rather than deploying production by default", () => {
+      const block = /TARGET="\$\{HMIS_TARGET:-prod\}"\ncase "\$TARGET" in\n[\s\S]*?\nesac\n/.exec(deploySource)!;
+      const r = spawnSync("bash", ["-c", `set -euo pipefail\n${block[0]}`], {
+        encoding: "utf8", env: { ...process.env, HMIS_TARGET: "staging" },
+      });
+      expect(r.status).not.toBe(0);
+      expect(r.stderr).toMatch(/HMIS_TARGET must be 'prod' or 'uat'/);
+    });
+
+    it("REFUSES HMIS_DEPLOY_ALLOW_DIRTY on the prod target — the 2026-09-06 near miss", () => {
+      /**
+       * The commissioning lane ran `HMIS_TARGET=uat HMIS_DEPLOY_ALLOW_DIRTY=1 deploy.sh` from a
+       * worktree left checked out on an EARLIER branch of its own stack. That branch's copy of the
+       * script predates the target concept, so `HMIS_TARGET` was an unread environment variable:
+       * `DEPLOY_DIR` defaulted to /opt/hmis-prod and it began building `hmis-prod/server:latest`
+       * from a lane tree on its way to migrating production. Killed in step 1; nothing reached the
+       * deploy directory, the images, the database or the containers.
+       *
+       * The flag is what let it get that far — it disables BOTH refusals between a checkout and
+       * the hospital. Its own comment has always said "for a rehearsal only", and a rehearsal is
+       * UAT; the word is now enforced instead of trusted. Asked by RUNNING the script, because a
+       * refusal that only exists in the text is a refusal nobody has seen fire.
+       */
+      /**
+       * ═══ `HMIS_DEPLOY_DIR` IS POINTED AT NOTHING, AND THAT IS THE LOAD-BEARING PART ═══
+       *
+       * The first version of this leg omitted it, on the reasoning that the guard fires before the
+       * deploy-directory check so the value could not matter. It does not matter while the guard is
+       * THERE. The mutant run that removes the guard is the whole point of this leg — and without
+       * this line that run inherits `DEPLOY_DIR=/opt/hmis-prod` and deploys the hospital. It did:
+       * on 2026-09-06 the mutation run for this very assertion rebuilt production's images from a
+       * lane tree, applied 22 migrations and restarted the stack.
+       *
+       * So a test that EXECUTES this script must make the script unable to reach anything real,
+       * independently of the behaviour it is asserting. A guard is not a safety mechanism for the
+       * test that removes it.
+       */
+      const NOWHERE = "/nonexistent-deploy-dir-for-this-test";
+      const r = spawnSync("bash", [DEPLOY_SH], {
+        encoding: "utf8",
+        env: {
+          ...process.env, HMIS_DEPLOY_ALLOW_DIRTY: "1", HMIS_TARGET: "prod",
+          HMIS_DEPLOY_ROLLBACK_TO: "", HMIS_DEPLOY_DIR: NOWHERE,
+        },
+      });
+      expect(r.status).toBe(1);
+      expect(r.stderr).toMatch(/HMIS_DEPLOY_ALLOW_DIRTY=1 is refused on the PROD target/);
+      expect(r.stderr).toMatch(/Rehearse on HMIS_TARGET=uat instead/);
+
+      // …and it does NOT refuse on uat, which is the target the flag exists for. (It fails later,
+      // on the deploy directory, which is a different refusal and proves the guard let it past.)
+      const uat = spawnSync("bash", [DEPLOY_SH], {
+        encoding: "utf8",
+        env: {
+          ...process.env, HMIS_DEPLOY_ALLOW_DIRTY: "1", HMIS_TARGET: "uat",
+          HMIS_DEPLOY_DIR: NOWHERE, HMIS_DEPLOY_ROLLBACK_TO: "",
+        },
+      });
+      expect(uat.stderr).not.toMatch(/ALLOW_DIRTY=1 is refused/);
+      expect(uat.stderr).toMatch(/deploy directory .* does not exist/);
+    });
+
+    it("skips the stanza, the cron and the real-hostname edge check on uat, and nothing else", () => {
+      // Each of the three is production-only BY NATURE (no repository, no backup to schedule, no
+      // public hostname). Everything else — build, config, migrate, seeds, gate, census, service
+      // census, restarts — must be the same code, or the rehearsal proves nothing about the deploy.
+      expect(deploySource).toMatch(/if \[ "\$TARGET" = "uat" \]; then\n {2}# 11i T3 \/ D1 — UAT has no backup repository/);
+      expect(deploySource).toMatch(/note "target uat — no backup or restore-drill cron installed"/);
+      expect(deploySource).toMatch(/SITE_BASE="https:\/\/\$UAT_SITE:8443"/);
+      // and the migrate/seed/gate block is NOT behind a target branch
+      expect(deploySource).not.toMatch(/if \[ "\$TARGET" = "uat" \]; then[\s\S]{0,200}migrate\.js/);
+    });
+
+    it("the UAT overlay runs FOUR services and profiles the five it does not", () => {
+      for (const svc of ["node-exporter", "postgres-exporter", "prometheus", "grafana", "alertmanager"]) {
+        expect(uatCompose).toMatch(new RegExp(`${svc}:\\n +profiles: \\["monitoring"\\]`));
+      }
+      // An override cannot DELETE a service, and `scale: 0` would still leave it in
+      // `compose config --services` — which is what step 6b enumerates.
+      expect(uatCompose).not.toMatch(/scale:\s*0/);
+      expect(uatComposeWithProse).toContain("PHASE 11i T3"); // the stripped read is not vacuous
+    });
+
+    it("UAT shares no volume, no network and no port with production", () => {
+      // Compose namespaces volumes and networks by project, so the ONLY ways to reach across are
+      // an `external: true` volume or a `name:` that pins one. Neither may appear.
+      expect(uatCompose).not.toMatch(/external:\s*true/);
+      expect(uatCompose).not.toMatch(/^\s+name:\s/m);
+      // The two ports production holds, replaced rather than merged — compose APPENDS port lists.
+      // 8443 ON BOTH SIDES: this assertion used to pin `8443:443`, which is the inverted map that
+      // kept UAT from ever answering — `Caddyfile.uat`'s site address is `:8443`, so caddy binds
+      // 8443 INSIDE the container and publishing host 8443 to container 443 pointed at nothing.
+      // The test agreed with the bug, which is why nothing was red.
+      expect(uatCompose).toMatch(/ports: !override \["8443:8443"\]/);
+      expect(uatCompose).toMatch(/ports: !override \["127\.0\.0\.1:5435:5432"\]/);
+      expect(uatCompose).not.toMatch(/"80:80"|"443:443"|5434/);
+    });
+
+    /**
+     * ═══ THE ONE THAT SUCCEEDS, WHICH IS WHY IT NEEDS A TEST ═══
+     *
+     * The overlay declared no `image:` at all, so every service inherited the base file's
+     * `hmis-prod/*:latest` — PRODUCTION'S CURRENTLY-DEPLOYED BUILD — while the `hmis-uat/*` images
+     * `deploy.sh` had just built sat on the daemon unused.
+     *
+     * Every other UAT defect failed loudly: an unbound `$R2_ENV`, an empty site address, a port
+     * nothing listened on, a reload with no admin API to reach. **This one brings a stack up,
+     * serves it, and rehearses the wrong code** — and a rehearsal on a different build proves
+     * nothing about the build that ships, which is the overlay's own stated purpose.
+     *
+     * Pinned both directions: every runtime service names an `hmis-uat/` image, and no
+     * `hmis-prod/` image name survives anywhere in the overlay.
+     */
+    it("UAT runs the images UAT built, not production's — every runtime service overrides `image:`", () => {
+      for (const [svc, img] of [
+        ["db", "hmis-uat/db:latest"],
+        ["api", "hmis-uat/server:latest"],
+        ["worker", "hmis-uat/server:latest"],
+        ["caddy", "hmis-uat/web:latest"],
+      ] as const) {
+        expect(uatCompose).toMatch(new RegExp(`${svc}:\\n\\s+image: ${img.replace("/", "\\/")}`));
+      }
+      // `deploy.sh`'s uat target builds into this namespace; if IMAGE_NS and the overlay ever
+      // disagree again, UAT silently runs whatever production last deployed.
+      expect(deploySource).toMatch(/IMAGE_NS="hmis-uat"/);
+      expect(uatCompose).not.toMatch(/hmis-prod\//);
+    });
+
+    /**
+     * `Caddyfile.uat` reads `{$HMIS_UAT_SITE}` and `{$HMIS_UAT_BASIC_AUTH_HASH}` from caddy's OWN
+     * process environment. Neither the base file nor the overlay gave the caddy service any, so
+     * both expanded to empty: an edge with no site address and — the part that matters — no
+     * basic-auth hash. The `:?` form makes compose refuse by name rather than serve UAT open.
+     */
+    it("UAT's caddy is handed the two variables its Caddyfile expands, and refuses without them", () => {
+      expect(uatCompose).toMatch(/HMIS_UAT_SITE: \$\{HMIS_UAT_SITE:\?/);
+      expect(uatCompose).toMatch(/HMIS_UAT_BASIC_AUTH_HASH: \$\{HMIS_UAT_BASIC_AUTH_HASH:\?/);
+      // And the Caddyfile must keep its admin endpoint: `deploy.sh` step 6 reloads caddy on BOTH
+      // targets and `caddy reload` is a client of that API. `admin off` made the deploy unable to
+      // finish, after migrating and seeding.
+      expect(readFileSync(UAT_CADDYFILE, "utf8")).not.toMatch(/^\s*admin off/m);
+    });
+
+    it("UAT's database archives nothing and mounts no pgBackRest anything — §2b row 23", () => {
+      // UAT NEVER RESTORES A PRODUCTION BACKUP (D1): a training box holding a real patient is a
+      // DPDP incident wearing a training label. It follows that it has no repository at all —
+      // and an `archive_command` pointing at a stanza that does not exist fills pg_wal until the
+      // disk does, silently.
+      expect(uatCompose).toMatch(/command: !override \["postgres"\]/);
+      expect(uatCompose).toMatch(/env_file: !reset null/);
+      expect(uatCompose).toMatch(/volumes: !override\n\s+- hmis_prod_pgdata:/);
+      expect(uatCompose).not.toMatch(/pgbackrest/);
+    });
+
+    it("the production environment template carries neither the banner key nor the synthetic door", () => {
+      // §2b row 22 and D5. Both are things only a NON-production deployment can turn on, which is
+      // the only direction that fails safe: production does not switch the banner off, it never
+      // had it.
+      const example = readFileSync(ENV_EXAMPLE, "utf8");
+      expect(example).not.toMatch(/HMIS_ENVIRONMENT_LABEL/);
+      expect(example).not.toMatch(/HMIS_SYNTHETIC_DATA_OK/);
+    });
+
+    it("uat-reset.sh REFUSES production, and it is asked rather than read", () => {
+      const r = spawnSync("bash", [UAT_RESET_SH], {
+        encoding: "utf8",
+        env: { ...process.env, HMIS_UAT_PROJECT: "hmis-prod", HMIS_TARGET: "uat", HMIS_DEPLOY_DIR: "/opt/hmis-uat" },
+      });
+      expect(r.status).not.toBe(0);
+      expect(r.stderr).toMatch(/DROPS A DATABASE and will not run/);
+      // and the deploy directory is checked too, independently of the project name
+      const byDir = spawnSync("bash", [UAT_RESET_SH], {
+        encoding: "utf8",
+        env: { ...process.env, HMIS_UAT_PROJECT: "hmis-uat", HMIS_TARGET: "uat", HMIS_DEPLOY_DIR: "/opt/hmis-prod" },
+      });
+      expect(byDir.status).not.toBe(0);
+      expect(byDir.stderr).toMatch(/that is production's/);
+    });
+
+    it("uat-reset.sh runs the DEPLOY'S seed list, in the deploy's order", () => {
+      const source = readFileSync(UAT_RESET_SH, "utf8");
+      const match = /for seed in ([\s\S]*?); do/.exec(source);
+      if (match === null) throw new Error("uat-reset.sh: no seed loop — this parser is stale");
+      const seeds = match[1]!.replace(/\\\n/g, " ").trim().split(/\s+/);
+      expect(seeds[0]).toBe("seed-cursors.js");
+      expect([...seeds.slice(1), "seed-roles.js"]).toEqual([...SEED_STEP_SCRIPTS]);
+    });
+
+    it("both new scripts parse", () => {
+      for (const script of [UAT_RESET_SH]) {
+        const r = spawnSync("bash", ["-n", script], { encoding: "utf8" });
+        expect({ script, status: r.status, stderr: r.stderr }).toEqual({ script, status: 0, stderr: "" });
+      }
+    });
+  });
+
+  /**
+   * THE CIPHER PASSPHRASE — the only UNRECOVERABLE failure the 2026-09-13 deploy-safety audit found.
+   *
+   * `deploy.sh` derives `$DEPLOY_DIR/.env.pgbackrest` on every production deploy. It used to
+   * `cat >` that path — a truncate in place — with `PGBACKREST_REPO1_CIPHER_PASS` as the LAST line
+   * written, and upstream it minted a fresh passphrase whenever it read that key back empty. The
+   * two compose:
+   *
+   *   kill the deploy inside the heredoc  ->  the file exists and has no passphrase
+   *   the next deploy reads it back empty ->  mints a NEW one, silently, reports success
+   *   every backup already in the object store is ciphertext nobody can read, including us
+   *
+   * ═══ THESE TESTS RUN THE REAL LINES, THEY DO NOT RE-IMPLEMENT THEM ═══
+   *
+   * The block is EXTRACTED from `deploy.sh` by text and executed against stubs. A test that
+   * re-implemented the logic would pass against a `deploy.sh` that had been reverted — it would be
+   * asserting about its own copy. Extracting means the assertion is about the shipped script, and
+   * it fails the day somebody puts `cat > "$PGBR_ENV"` back.
+   *
+   * === WHICH OF THESE FIVE ACTUALLY BITE - MEASURED, NOT ASSUMED ===
+   *
+   * The pre-fix behaviour was restored (truncate in place, mint on an empty read) and the suite
+   * re-run. **Two of the five go red**: "REFUSES to mint" and "writes through a .tmp". The other
+   * three pass against the defect, and that is recorded here rather than left to be rediscovered:
+   *
+   *   PRESERVES an existing passphrase   the old code preserved a PRESENT passphrase too, so this
+   *                                      pins the property without discriminating
+   *   mints exactly once, no file        identical on both sides - a first deploy was never the bug
+   *   leaves no .tmp behind              passes TRIVIALLY against the defect, which creates no .tmp
+   *                                      at all; it guards the new path's own litter
+   *
+   * Keeping all five is right - three pin properties that must not regress for other reasons - but
+   * only two are evidence that the fix is present.
+   */
+  describe("the backup cipher passphrase is never absent from a file that exists", () => {
+    /** Pull the derivation out of the shipped script and make it runnable in isolation. */
+    function harness(): string {
+      const from = deploySource.indexOf('CIPHER_PASS=""');
+      const to = deploySource.indexOf("unset CIPHER_PASS R2_KEY_V R2_SECRET_V");
+      expect(from).toBeGreaterThan(0);
+      expect(to).toBeGreaterThan(from);
+      const block = deploySource.slice(from, to);
+      // Everything the block reads from its surroundings, stubbed — and `die` made observable.
+      return [
+        "set -euo pipefail",
+        'die() { printf "DIED: %s\n" "$*" >&2; exit 9; }',
+        'note() { :; }',
+        'PGBR_ENV="$1"',
+        'R2_ENV="/dev/null"',
+        "R2_ENDPOINT_HOST=e; R2_BUCKET_V=b; R2_REGION_V=r; R2_KEY_V=k; R2_SECRET_V=s",
+        block,
+        'echo "OK"',
+      ].join("\n");
+    }
+
+    function run(envPath: string): { status: number | null; stdout: string; stderr: string } {
+      const r = spawnSync("bash", ["-c", harness(), "bash", envPath], { encoding: "utf8" });
+      return { status: r.status, stdout: r.stdout, stderr: r.stderr };
+    }
+
+    let dir: string;
+    beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "pgbr-")); });
+    afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+    it("PRESERVES an existing passphrase — the property every backup depends on", () => {
+      const f = join(dir, ".env.pgbackrest");
+      writeFileSync(f, "PGBACKREST_REPO1_CIPHER_PASS=keepme0123456789\n");
+      const r = run(f);
+      expect(r.status).toBe(0);
+      expect(readFileSync(f, "utf8")).toContain("PGBACKREST_REPO1_CIPHER_PASS=keepme0123456789");
+    });
+
+    it("REFUSES to mint when the file exists but carries no passphrase — it does not 'repair' it", () => {
+      // This is the damaged-file case: a killed deploy, a corrupt write, a hand edit. Minting here
+      // is the unrecoverable act, and it used to be the default.
+      const f = join(dir, ".env.pgbackrest");
+      writeFileSync(f, "PGBACKREST_REPO1_S3_BUCKET=b\n");
+      const r = run(f);
+      expect(r.status).toBe(9);
+      expect(r.stderr).toContain("REFUSING TO MINT A NEW ONE");
+      // ...and it left the damaged file alone rather than overwriting the evidence.
+      expect(readFileSync(f, "utf8")).toBe("PGBACKREST_REPO1_S3_BUCKET=b\n");
+    });
+
+    it("mints exactly once, when there is NO file at all", () => {
+      const f = join(dir, ".env.pgbackrest");
+      const r = run(f);
+      expect(r.status).toBe(0);
+      const first = readFileSync(f, "utf8").match(/^PGBACKREST_REPO1_CIPHER_PASS=(.+)$/m)?.[1];
+      expect(first).toMatch(/^[0-9a-f]{64}$/);
+      // Re-running must preserve it, not mint a second one.
+      expect(run(f).status).toBe(0);
+      expect(readFileSync(f, "utf8")).toContain(`PGBACKREST_REPO1_CIPHER_PASS=${first!}`);
+    });
+
+    it("writes through a .tmp and renames — $PGBR_ENV is never the target of the heredoc", () => {
+      // The atomic property, asserted where it lives. `mv` within one directory is a rename, so a
+      // reader sees the whole old file or the whole new one and never a half-written one.
+      const block = deploySource.slice(
+        deploySource.indexOf('CIPHER_PASS=""'),
+        deploySource.indexOf("unset CIPHER_PASS R2_KEY_V R2_SECRET_V"),
+      );
+      expect(block).toContain('cat > "$PGBR_ENV.tmp"');
+      expect(block).not.toMatch(/cat > "\$PGBR_ENV"\s/);
+      expect(block).toContain('mv -f "$PGBR_ENV.tmp" "$PGBR_ENV"');
+      // A .tmp holding a live credential must not outlive a failure.
+      expect(block).toContain(`trap 'rm -f "$PGBR_ENV.tmp"' EXIT`);
+    });
+
+    it("leaves no .tmp behind on the success path", () => {
+      const f = join(dir, ".env.pgbackrest");
+      expect(run(f).status).toBe(0);
+      expect(existsSync(`${f}.tmp`)).toBe(false);
+    });
   });
 
   it("does NOT let seed-roles' readiness verdict abort the deploy, and DOES let the gate", () => {

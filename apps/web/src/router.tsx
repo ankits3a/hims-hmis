@@ -30,6 +30,7 @@ import { ApprovalsInbox } from "./screens/approvals-inbox";
 import { OpdAdmin } from "./screens/opd-admin";
 import { OpdAppointments } from "./screens/opd-appointments";
 import { OpdDesk } from "./screens/opd-desk";
+import { SlipCapture } from "./screens/slip-capture";
 import { VitalsBay } from "./screens/vitals-bay";
 import { OpdConsult } from "./screens/opd-consult";
 import { OpdDisplay } from "./screens/opd-display";
@@ -154,6 +155,12 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   // screen is deleted and the bay serves the path, exactly as the registration seat took
   // `/counter`: "keep the new design not the old one."
   { to: "/opd/vitals", label: "nav.opdVitals", permission: "opd.vitals.record", group: "opd" },
+  /*
+    THE SLIP DESK — the seat outside the consultation room. `patients.update` and no new permission
+    (owner, 2026-09-14): the same grant that lets a seat record an allergy, held by the front office,
+    its supervisor, the vitals bay, lab reception, MRD and the doctor.
+  */
+  { to: "/opd/slips", label: "nav.slipCapture", permission: "patients.update", group: "opd" },
   { to: "/opd/consult", label: "nav.opdConsult", permission: "opd.consult", group: "opd" },
   { to: "/opd/display", label: "nav.opdDisplay", permission: "opd.display.read", group: "opd" },
   // FD-30 / owner ruling 2026-09-12 — the OPD door: the paper slip, transcribed for the doctor's tap.
@@ -699,6 +706,16 @@ const counterDeskRoute = createRoute({
  * which is why `nav-parity.test.ts` still passes — the bay has always required the same grant as
  * the screen it replaces.
  */
+/**
+ * FD — the desk outside the consultation room: scan the slip's QR, see whose visit it matched, and
+ * photograph the paper. See `slip-capture.tsx` for why the read-back is not optional.
+ */
+const slipCaptureRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/opd/slips",
+  component: SlipCapture,
+});
+
 const vitalsBayRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/opd/vitals",
@@ -1054,6 +1071,56 @@ const partnerPnlRoute = createRoute({
   component: PartnerPnl,
 });
 
+/**
+ * ═══ PHASE 11i T9 — THREE FORWARDING ADDRESSES, FOR ONE RELEASE (§2b row 24) ═══
+ *
+ * Production has been serving `/counter/seat`, `/counter/seat/figures` and `/opd/vitals/bay` since
+ * 2 September. The catch-up deploy deletes all three in one step. The desk PCs have them
+ * bookmarked, the SPA is cached in those browsers, and the first thing a clerk does on the morning
+ * after a deploy is click the bookmark they have clicked every morning — and get a blank screen
+ * with no message, which reads as "the new version is broken".
+ *
+ * ═══ WHY THIS IS NOT THE SECOND NAME FD-9 AND FD-5 DELETED ═══
+ *
+ * Both rulings above are emphatic that a redirect leaves a second name for one screen, and they
+ * are right about what they were refusing: `/counter/seat` and `/opd/vitals/bay` were second DOORS
+ * — a nav row, a manifest entry, a menu label, a place the owner could arrive by mistake and
+ * report the wrong screen as broken. That is what was deleted and it stays deleted.
+ *
+ * A forwarding address is not a door. These three carry no component, no nav row, no manifest
+ * entry, no locale key and no permission of their own; nothing in the application links to them;
+ * and the only way to arrive at one is to already know it, which is exactly the population this
+ * exists for. **They are removed in the release after the laboratory's G6 closes** — the deletion
+ * is a dated act, not an intention.
+ *
+ * ═══ THE QUERY STRING IS CARRIED, AND THAT IS THE WHOLE VALUE ═══
+ *
+ * A bookmark to `/counter/seat?patient=U00110012` that lands on a bare `/counter` has lost the
+ * patient, which is worse than a blank page: the clerk now has to know what they lost. `search` is
+ * passed through unchanged.
+ *
+ * They ARE counted by `caddyfile-parity.test.ts`'s SPA census, and correctly: a path the browser
+ * requests is a path Caddy must serve as the SPA and must never proxy, which is the only question
+ * that census asks. The count is raised there with the same reasoning.
+ */
+const legacySeatRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/counter/seat",
+  beforeLoad: ({ search }) => { throw redirect({ to: "/counter", search }); },
+});
+
+const legacySeatFiguresRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/counter/seat/figures",
+  beforeLoad: ({ search }) => { throw redirect({ to: "/counter/figures", search }); },
+});
+
+const legacyVitalsBayRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/opd/vitals/bay",
+  beforeLoad: ({ search }) => { throw redirect({ to: "/opd/vitals", search }); },
+});
+
 export const router = createRouter({
   routeTree: rootRoute.addChildren([
     loginRoute,
@@ -1077,6 +1144,7 @@ export const router = createRouter({
       // and the one carrying the rebooking rail. `caddyfile-parity.test.ts` pins the count and joins
       // this task's Files list — MEASURED against the tree, never predicted from arithmetic.
       appointmentRoute,
+      slipCaptureRoute,
       vitalsBayRoute,
       formularyAdminRoute,
       // PLAN 14 T9 — 25 -> 28. `caddyfile-parity.test.ts` pins the count and joins this task's
@@ -1101,6 +1169,12 @@ export const router = createRouter({
       // PLAN 16c T5 — 45 -> 47, the pharmacy: the dispense counter and the sale-items admin. TWO routes
       // and two NAV links. `caddyfile-parity.test.ts` pins the count and joins this task's Files list.
       pharmacyCounterRoute, pharmacyItemsRoute,
+      // PHASE 11i T9 — 50 -> 53, and every one of the three is a REDIRECT with no screen. They exist
+      // because the catch-up deploy deletes three paths production has been serving since
+      // 2 September and the desk PCs have them bookmarked. Removed in the release after the
+      // laboratory's G6 closes. `caddyfile-parity.test.ts` pins the count and joins this task's
+      // Files list — the S11 rule, applied to itself again.
+      legacySeatRoute, legacySeatFiguresRoute, legacyVitalsBayRoute,
     ]),
   ]),
 });

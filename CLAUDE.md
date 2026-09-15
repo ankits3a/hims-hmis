@@ -22,16 +22,25 @@ tools/lane.sh status            # who else is running tests, free memory, every 
 
 ## Verify
 
+**Take the lock around every pool — jest and vitest, targeted runs as well as full ones:**
+
 ```
-pnpm typecheck && pnpm lint                              # fast, always
-pnpm --filter @hmis/core exec jest -w 2 <path…>          # the suites you touched, while iterating
-pnpm --filter @hmis/core exec jest -w 2                  # full core (~15 min); check status first
-pnpm --filter @hmis/web exec vitest run                  # full web
+L=/opt/hmis-lanes/.orchestrator/bin/test-lock.sh          # the arbiter; `$L status` says who holds it
+pnpm typecheck && pnpm lint                               # fast, always — no lock, not a pool
+$L run <lane> pnpm --filter @hmis/core exec jest -w 2 <path…>   # the suites you touched
+$L run <lane> pnpm --filter @hmis/core exec jest -w 2           # full core (~15 min)
+$L run <lane> pnpm --filter @hmis/web exec vitest run           # full web
 ```
 
-Never run `pnpm verify` on this box with a peer's suite running: two jest pools plus vitest OOM
-a 15 GB host. `maxWorkers: 2` in `apps/core/jest.config.cjs` is an owner ruling. The full suite
-belongs to CI; run it locally only when `tools/lane.sh status` shows no other runner.
+Two jest pools plus vitest OOM a 15 GB host. `maxWorkers: 2` in `apps/core/jest.config.cjs` is an
+owner ruling for that reason, and the full suite belongs to CI.
+
+**`tools/lane.sh status` is not a substitute, and believing it was cost a peer a full-suite run
+(2026-09-14).** It is a SNAPSHOT: it can be honest at the moment you read it and wrong by the time
+you run, because a peer starts in between. The lock is the only thing that closes that window —
+`$L run` blocks until the box is free instead of asking you to have looked. A suite killed for
+memory looks nothing like a suite that failed, so the lane that skips the lock spends somebody
+else's afternoon on a red nobody can reproduce.
 
 ## Files that belong to everyone — coordinate before editing
 

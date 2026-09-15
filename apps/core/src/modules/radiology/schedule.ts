@@ -4,7 +4,7 @@ import { resources } from "../../kernel/db/schema/resources";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { transition } from "../../kernel/workflow/instances";
 import { recordPhiAccess } from "../../kernel/phi/audit";
-import { DEVICE_MODALITY_ATTRIBUTE, SCHEDULABLE_DEVICE_STATUSES } from "./kinds";
+import { DEVICE_MODALITY_ATTRIBUTE, DEVICE_PORTABLE_ATTRIBUTE, SCHEDULABLE_DEVICE_STATUSES } from "./kinds";
 import { RadiologyError } from "./errors";
 import { imagingStudyScheduled } from "./events";
 import { appendEvent } from "../../kernel/events/append";
@@ -46,6 +46,12 @@ export type ScheduleInput = {
   studyId: string;
   deviceResourceId: string;
   scheduledAt: Date;
+  /**
+   * 18a-iii T3 / D4 — the ward and bed, when the machine goes to the patient. `undefined` leaves
+   * whatever the row already holds; `null` clears it, which is what a reschedule back into the
+   * department means.
+   */
+  bedsideLocation?: string | null;
 };
 
 export type ScheduleResult = {
@@ -55,7 +61,24 @@ export type ScheduleResult = {
   accessionNo: string;
 };
 
-type DeviceRow = { id: string; status: string; attributes: Record<string, unknown> };
+type DeviceRow = { id: string; status: string; code: string; name: string; attributes: Record<string, unknown> };
+
+/**
+ * ═══ A REFUSAL NAMES THE MACHINE THE WAY THE PERSON READING IT KNOWS IT ═══
+ *
+ * Every sentence below used to open `device 01M1VRJ4QVQWNA2V3X8YYK62MF …`. A receptionist reads
+ * these at a counter and a technologist reads them at a console; neither has any way to map a ULID
+ * to a room, and "which machine" is the only thing they need in order to act. The id stays in
+ * `detail`, where a client reads it.
+ *
+ * This is the sweep for the fix that landed as an INSTANCE in `aerb/licences.ts`
+ * (`assertDeviceLicensed`). A census of `device ${` across radiology and aerb found ELEVEN sites and
+ * that fix closed one — the same "a fix aimed at an instance closes the instance" shape the close
+ * review's second pass exists to catch, caught here against my own change.
+ */
+function machineLabel(device: { code: string; name: string }): string {
+  return `${device.code} (${device.name})`;
+}
 
 /**
  * A2 + A3 — the device must be a `device`, bookable, and of the study type's modality.
@@ -70,15 +93,39 @@ async function assertDeviceBookable(
   modality: string,
 ): Promise<DeviceRow> {
   const rows = await (exec as Db)
-    .select({ id: resources.id, status: resources.status, attributes: resources.attributes, kind: resources.kind })
+    .select({
+      id: resources.id, status: resources.status, code: resources.code, name: resources.name,
+      attributes: resources.attributes, kind: resources.kind,
+    })
     .from(resources)
     .where(eq(resources.id, deviceResourceId));
   const device = rows[0];
-  if (!device || device.kind !== "device") {
+  /**
+   * ═══ THE PATTERN WAS THE LIMIT, NOT THE SCOPE (close review, second pass) ═══
+   *
+   * This line said `resource ${deviceResourceId} is not an imaging device` and the sweep that
+   * rewrote the two refusals below it walked straight past — because it grepped `device ${` and
+   * this line says `resource ${`. **Thirteen lines apart, in the same function.** The SELECT above
+   * had already been widened to fetch `code` and `name` for those two, so the material was sitting
+   * in scope, unused.
+   *
+   * Two messages rather than one, because the two branches are different facts: a row that is not
+   * there at all, and a row that is there and is a bed, a theatre or a bench. **The second is the
+   * one a receptionist actually hits** — pasting the wrong resource id into the device box — and it
+   * is the one that can name what they picked.
+   */
+  if (!device) {
     throw new RadiologyError(
       "device_unavailable",
-      `resource ${deviceResourceId} is not an imaging device`,
+      `no resource ${deviceResourceId} exists`,
       { deviceResourceId },
+    );
+  }
+  if (device.kind !== "device") {
+    throw new RadiologyError(
+      "device_unavailable",
+      `${machineLabel(device)} is a ${device.kind}, not an imaging device`,
+      { deviceResourceId, kind: device.kind },
     );
   }
   if (!SCHEDULABLE_DEVICE_STATUSES.includes(device.status)) {
@@ -90,7 +137,7 @@ async function assertDeviceBookable(
      */
     throw new RadiologyError(
       "device_unavailable",
-      `device ${deviceResourceId} is ${device.status} and cannot take bookings`,
+      `${machineLabel(device)} is ${device.status} and cannot take bookings`,
       { deviceResourceId, status: device.status },
     );
   }
@@ -98,11 +145,14 @@ async function assertDeviceBookable(
   if (deviceModality !== modality) {
     throw new RadiologyError(
       "modality_mismatch",
-      `device ${deviceResourceId} is a ${String(deviceModality)} machine and this study is ${modality}`,
+      `${machineLabel(device)} is a ${String(deviceModality)} machine and this study is ${modality}`,
       { deviceResourceId, deviceModality, studyModality: modality },
     );
   }
-  return { id: device.id, status: device.status, attributes: device.attributes };
+  return {
+    id: device.id, status: device.status, code: device.code, name: device.name,
+    attributes: device.attributes,
+  };
 }
 
 /** Postgres' unique-violation SQLSTATE. A slot collision is this and nothing else. */
@@ -152,8 +202,14 @@ async function assertSlotFree(
   durationMin: number,
   studyId: string,
 ): Promise<void> {
-  /** The lock. Every booking for this machine queues behind it, so the read below is stable. */
-  await (tx as unknown as Db).select({ id: resources.id })
+  /**
+   * The lock. Every booking for this machine queues behind it, so the read below is stable.
+   *
+   * It also carries the machine's CODE and NAME, so the clash refusal below can name the room
+   * rather than a ULID. That costs nothing: this row is read and locked either way.
+   */
+  const locked = await (tx as unknown as Db)
+    .select({ id: resources.id, code: resources.code, name: resources.name })
     .from(resources).where(eq(resources.id, deviceResourceId)).for("update");
 
   const start = scheduledAt;
@@ -176,7 +232,7 @@ async function assertSlotFree(
   if (clash[0]) {
     throw new RadiologyError(
       "slot_taken",
-      `device ${deviceResourceId} is busy with ${clash[0].accessionNo} from `
+      `${locked[0] ? machineLabel(locked[0]) : `device ${deviceResourceId}`} is busy with ${clash[0].accessionNo} from `
       + `${clash[0].scheduledAt?.toISOString() ?? "?"} for ${String(clash[0].durationMin)} minutes — `
       + `this ${String(durationMin)}-minute study overlaps it`,
       {
@@ -197,6 +253,41 @@ const LIVE_SLOT_STATUSES = ["scheduled", "checked_in", "ready", "in_acquisition"
  * what makes two concurrent callers produce one winner and one `slot_taken` rather than two
  * bookings that both passed a check a microsecond apart.
  */
+/**
+ * ═══ 18a-iii T3 / D4 — WHERE THIS STUDY HAPPENS, AND THE ONE RULE ABOUT IT ═══
+ *
+ * A bedside location may only sit on a device carrying `attributes.portable`. The rule is
+ * **one-directional on purpose**: a portable unit wheeled into a department room is an ordinary
+ * thing and takes no bedside location, so the reverse ("a portable device must have a place") would
+ * be false on a real case. A study is portable because it has a PLACE, not because of its machine.
+ *
+ * **It is evaluated on the EFFECTIVE value rather than the caller's**, which is what makes it whole:
+ * `undefined` means "leave what the row holds", so a study already carrying "Ward 3, Bed 12" and
+ * being moved to the CT is refused rather than silently keeping a place the gantry cannot go to.
+ * Clearing it is explicit — `bedsideLocation: null`.
+ *
+ * The refusal names the MACHINE, not the field: the recoverable action is picking a different
+ * machine, because the CT does not come to the ward.
+ */
+function resolveBedside(
+  device: DeviceRow,
+  current: string | null,
+  input: ScheduleInput,
+): string | null {
+  const effective = input.bedsideLocation === undefined
+    ? current
+    : (input.bedsideLocation?.trim() || null);
+  if (effective !== null && device.attributes[DEVICE_PORTABLE_ATTRIBUTE] !== true) {
+    throw new RadiologyError(
+      "device_not_portable",
+      `${machineLabel(device)} is not a portable unit and cannot be taken to a bedside — book a `
+      + "portable machine, or clear the bedside location and bring the patient to the department",
+      { deviceResourceId: device.id, bedsideLocation: effective },
+    );
+  }
+  return effective;
+}
+
 export async function scheduleStudy(
   tx: Tx,
   actor: Actor,
@@ -211,8 +302,9 @@ export async function scheduleStudy(
     );
   }
   const studyType = await requireStudyType(tx, study.studyTypeCode);
-  await assertDeviceBookable(tx, input.deviceResourceId, studyType.modality);
+  const device = await assertDeviceBookable(tx, input.deviceResourceId, studyType.modality);
   await assertSlotFree(tx, input.deviceResourceId, input.scheduledAt, studyType.duration_min, study.id);
+  const bedsideLocation = resolveBedside(device, study.bedsideLocation, input);
 
   try {
     await tx.update(imagingStudies)
@@ -221,13 +313,14 @@ export async function scheduleStudy(
         scheduledAt: input.scheduledAt,
         /** F55 — the length is snapshotted, so a later book edit cannot move a booked slot. */
         durationMin: studyType.duration_min,
+        bedsideLocation,
       })
       .where(eq(imagingStudies.id, input.studyId));
   } catch (e) {
     if (isSlotCollision(e)) {
       throw new RadiologyError(
         "slot_taken",
-        `device ${input.deviceResourceId} already has a live booking at that time`,
+        `${machineLabel(device)} already has a live booking at that time`,
         { deviceResourceId: input.deviceResourceId, scheduledAt: input.scheduledAt.toISOString() },
       );
     }
@@ -292,8 +385,16 @@ export async function rescheduleStudy(
     );
   }
   const studyType = await requireStudyType(tx, study.studyTypeCode);
-  await assertDeviceBookable(tx, input.deviceResourceId, studyType.modality);
+  const device = await assertDeviceBookable(tx, input.deviceResourceId, studyType.modality);
   await assertSlotFree(tx, input.deviceResourceId, input.scheduledAt, studyType.duration_min, study.id);
+  /**
+   * 18a-iii T3 — **the same call, and this is the hole it closes.** A guard placed only on
+   * `scheduleStudy` would let a ward study booked on the portable trolley be RESCHEDULED onto the
+   * CT with its bedside location intact, and the row would then say a fixed gantry went to bed 12.
+   * `resolveBedside` evaluates the EFFECTIVE value — the caller's, or the one already on the row —
+   * so moving to a fixed machine refuses until the place is explicitly cleared.
+   */
+  const bedsideLocation = resolveBedside(device, study.bedsideLocation, input);
 
   try {
     await tx.update(imagingStudies)
@@ -301,13 +402,14 @@ export async function rescheduleStudy(
         deviceResourceId: input.deviceResourceId,
         scheduledAt: input.scheduledAt,
         durationMin: studyType.duration_min,
+        bedsideLocation,
       })
       .where(eq(imagingStudies.id, input.studyId));
   } catch (e) {
     if (isSlotCollision(e)) {
       throw new RadiologyError(
         "slot_taken",
-        `device ${input.deviceResourceId} already has a live booking at that time`,
+        `${machineLabel(device)} already has a live booking at that time`,
         { deviceResourceId: input.deviceResourceId, scheduledAt: input.scheduledAt.toISOString() },
       );
     }

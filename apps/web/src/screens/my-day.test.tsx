@@ -39,13 +39,26 @@ const SECTION = {
   totals: ["", "", "", "", "", "1"],
 };
 
-const ME = { status: 200, body: { actor: { type: "user", id: "u1" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } } };
+/**
+ * The signed-in fixture. `hospital` is the permission list, and after the 2026-09-14 horizon ruling
+ * it decides which PERIODS this screen offers: holding neither `staff.reports.history.*` string is
+ * the three-month floor.
+ */
+const meHolding = (...hospital: string[]) => ({
+  status: 200,
+  body: { actor: { type: "user", id: "u1" }, permissions: { hospital, scoped: { department: {}, floor: {} } } },
+});
+const ME = meHolding();
 
 const EMPTY_BRIEF = { period: "week", from: "2026-08-23", to: "2026-08-29", clauses: [], totals: {}, daysWithActivity: 0 };
 
-function mount(report: { date: string; provisional: boolean; sections: unknown[] }, extra: Record<string, Reply> = {}): void {
+function mount(
+  report: { date: string; provisional: boolean; sections: unknown[] },
+  extra: Record<string, Reply> = {},
+  me: Reply = ME,
+): void {
   mockRoutes({
-    "GET /api/auth/me": ME,
+    "GET /api/auth/me": me,
     "GET /api/me/report": { status: 200, body: report },
     "GET /api/me/brief": { status: 200, body: EMPTY_BRIEF },
     ...extra,
@@ -232,7 +245,9 @@ describe("07c T2/T3/T5 — my day", () => {
   });
 
   it("T8: switching period asks the server for that period — the client computes nothing", async () => {
-    mount({ date: "2026-08-29", provisional: true, sections: [SECTION] });
+    // A YEAR-TIER CALLER, because six months is past the floor. Before the horizon this fixture held
+    // nothing and still got every period, which is the capability the ruling narrowed.
+    mount({ date: "2026-08-29", provisional: true, sections: [SECTION] }, {}, meHolding("staff.reports.history.year"));
     await waitFor(() => { expect(screen.getByRole("button", { name: "6 months" })).toBeInTheDocument(); });
 
     await userEvent.click(screen.getByRole("button", { name: "6 months" }));
@@ -243,4 +258,39 @@ describe("07c T2/T3/T5 — my day", () => {
     });
     expect(screen.getByRole("button", { name: "6 months" })).toHaveAttribute("aria-pressed", "true");
   });
+
+  /**
+   * ═══ STAFF-REPORTS T0 — THE HISTORY HORIZON, owner ruling 2026-09-14 ═══
+   *
+   * THE ONE PLACE IN THIS PHASE WHERE AN EXISTING CAPABILITY NARROWS. This picker offered all five
+   * periods to every signed-in user, so a front-desk clerk could pull six months of their own day.
+   * The floor is now three months and it is the ABSENCE of a grant.
+   *
+   * The picker is CONVENIENCE and not the control — `kernel/desk/horizon.ts` refuses an over-horizon
+   * window whatever the screen renders, because the route is reachable without the screen. What this
+   * pair asserts is that the screen does not offer a button whose only possible answer is a refusal.
+   */
+  it("T0: a clerk holding neither history string is offered the floor and no further", async () => {
+    mount({ date: "2026-08-29", provisional: true, sections: [SECTION] });
+    await waitFor(() => { expect(screen.getByRole("button", { name: "Day" })).toBeInTheDocument(); });
+    for (const within of ["Day", "Week", "Month", "3 months"]) {
+      expect(screen.getByRole("button", { name: within })).toBeInTheDocument();
+    }
+    expect(screen.queryByRole("button", { name: "6 months" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "1 year" })).not.toBeInTheDocument();
+  });
+
+  /**
+   * BOTH STRINGS, because they are a lattice and `.full` implies `.year`. Asserting only the one
+   * that happens to be granted in a fixture is how a tier ships working for the role it was written
+   * against and refusing for the role above it.
+   */
+  it.each(["staff.reports.history.year", "staff.reports.history.full"])(
+    "T0: %s opens the two long windows",
+    async (held) => {
+      mount({ date: "2026-08-29", provisional: true, sections: [SECTION] }, {}, meHolding(held));
+      await waitFor(() => { expect(screen.getByRole("button", { name: "1 year" })).toBeInTheDocument(); });
+      expect(screen.getByRole("button", { name: "6 months" })).toBeInTheDocument();
+    },
+  );
 });

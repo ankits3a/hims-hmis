@@ -14,6 +14,14 @@ import type { Db } from "../db/client";
 /** The surfaces that read a patient's record. Extended by each module that adds one. */
 export type PhiSurface =
   | "patient.detail" | "patient.allergies"
+  /**
+   * The desk's photograph of a paper slip, and they are TWO surfaces rather than one.
+   *
+   * Seeing that a document EXISTS on a patient's history and OPENING the prescription are different
+   * acts, and the access log is kept to answer "who looked at this patient's prescription". A single
+   * name would make a doctor who scrolled past a list indistinguishable from one who read the slip.
+   */
+  | "patient.documents" | "patient.document.image"
   | "opd.timeline" | "opd.vitals" | "opd.prescriptions" | "opd.visit"
   /** PLAN 16c T3 — the dispensing counter's read of a dispense (its Rx lines): its own name, so the pharmacy's reads count apart from the consult's. */
   | "pharmacy.dispense"
@@ -170,7 +178,18 @@ export type PhiSurface =
    * this is the MONEY desk's read, under `billing.invoice.read`, and a log that folded it into a
    * consult read could not answer for it separately.
    */
-  | "billing.collection_worklist";
+  | "billing.collection_worklist"
+  /**
+   * FD-34 — **THE HOUSEHOLD READ, and it is an APPEND to a union and nothing else.**
+   *
+   * `GET /patients/:id/linked` answers "who else is registered on this person's mobile?" and
+   * returns a NAME, a UHID, an age and a sex for every one of them. Its own name rather than a
+   * reuse of `patient.detail` for the reason `patient.coverage` is its own name: opening one record
+   * and pulling the household off the back of it are different disclosures, and the second is the
+   * one an enquiry would ask about — it is how a clerk with a legitimate reason to open ONE record
+   * reaches the names of everyone who shares a phone with them.
+   */
+  | "patient.linked";
 
 /** How the reader was connected to this patient's care AT THE MOMENT OF THE READ. */
 export type CareContext = "treating" | "serving" | "none";

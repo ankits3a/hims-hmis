@@ -365,7 +365,17 @@ function LicenceForm({ devices, users, prefill, onWritten, onCancel }: {
         testId="aerb-licence-rso"
         value={rsoUserId}
         onChange={setRso}
-        options={users.map((u) => ({ value: u.userId, label: u.fullName }))}
+        /**
+         * The same shape as the device picker two fields up: the server states the fact, the form
+         * renders what it means. A licence naming somebody with no AERB appointment is not refused
+         * — `rsoUserId` is nullish and a certificate may legitimately be filed before the
+         * appointment paperwork — but it must not be filed BLIND, which is what an unlabelled list
+         * of every active user in the hospital made it.
+         */
+        options={users.map((u) => ({
+          value: u.userId,
+          label: u.aerbRole === null ? `${u.fullName} · ${t("aerb.write.noAppointment")}` : u.fullName,
+        }))}
       />
       <Field label={t("aerb.write.remarks")} testId="aerb-licence-remarks" value={remarks} onChange={setRemarks} />
     </FormPanel>

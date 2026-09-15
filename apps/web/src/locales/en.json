@@ -63,7 +63,8 @@
     "radiationSafety": "Radiation safety",
     "registration": "Registration",
     "appointment": "Booking desk",
-    "opdScribe": "Door scribe"
+    "opdScribe": "Door scribe",
+    "slipCapture": "Slip desk"
   },
   "palette": {
     "title": "Search",
@@ -216,7 +217,15 @@
       "merge_reconciliation": "Settled while resolving a duplicate"
     },
     "askPlaceholder": "ask — \"what is their ABHA?\"",
-    "agentIdle": "I read this patient's record only — UHID, date of birth, contact, ABHA. I cannot look anything else up."
+    "agentIdle": "I read this patient's record only — UHID, date of birth, contact, ABHA. I cannot look anything else up.",
+    "linked": {
+      "title": "Linked patients",
+      "basis": "same contact number",
+      "none": "No other patient is registered on this number.",
+      "shares": "shares {{number}}",
+      "more_one": "{{count}} more record shares this number, {{total}} in all — a number on this many records is usually a shop or a shared line, not one household.",
+      "more_other": "{{count}} more records share this number, {{total}} in all — a number on this many records is usually a shop or a shared line, not one household."
+    }
   },
   "merge": {
     "title": "Merge review",
@@ -328,7 +337,8 @@
       "departments": "Departments",
       "rooms": "Rooms",
       "doctors": "Doctors",
-      "schedules": "Schedules & leaves"
+      "schedules": "Schedules & leaves",
+      "vocabulary": "Complaint words"
     },
     "newDepartment": "New department",
     "addDepartment": "Add department",
@@ -382,7 +392,29 @@
       "allActive": "Everything here is active.",
       "cannot": "I cannot answer that from this screen. I can tell you about the departments, rooms and doctors on this deployment, and which are deactivated."
     },
-    "doctorCode": "Doctor ID"
+    "doctorCode": "Doctor ID",
+    "vocabulary": {
+      "intro": "Phrases doctors have written that the co-pilot does not recognise yet, most used first. Mapping one groups it with the phrasings that mean the same thing — in any script.",
+      "empty": "Nothing to map. Every phrase written so far is already in the vocabulary.",
+      "phrase": "Phrase",
+      "uses": "Written",
+      "map": "Map",
+      "mapping": "What does “{{term}}” mean?",
+      "maybe": "Perhaps:",
+      "concept": "Existing meaning",
+      "chooseConcept": "Choose an existing meaning…",
+      "newConcept": "New meaning",
+      "newConceptPlaceholder": "…or name a new one",
+      "script": "Script",
+      "scripts": {
+        "en": "English",
+        "hi": "Hindi (Devanagari)",
+        "hinglish": "Hindi in English letters"
+      },
+      "confirm": "Map it",
+      "pickAConcept": "Choose a meaning, or name a new one.",
+      "cancel": "Cancel"
+    }
   },
   "opdAppt": {
     "title": "OPD appointments",
@@ -641,7 +673,8 @@
     "history": {
       "visits": "Visits",
       "rx": "Prescriptions",
-      "vitals": "Vitals"
+      "vitals": "Vitals",
+      "documents": "Slips"
     },
     "noRxHistory": "No prescription has been issued to this patient in this system.",
     "noVitalsHistory": "No vitals have been recorded for this patient in this system.",
@@ -712,6 +745,90 @@
       "discard": "Discard",
       "who": "Typed at the door from the paper slip. It is not a prescription until you issue it.",
       "refusedHint": "load it into the editor below to resolve this and issue."
+    },
+    "drugPlaceholder": "type 3 letters — e.g. par, amox, clav",
+    "complaintPlaceholder": "type a symptom, press Enter to add it",
+    "complaintHint": "Enter adds exactly what you typed · → completes the suggestion · × removes a tag",
+    "addAllergy": "+ Add allergy",
+    "allergySubstance": "Allergy — substance",
+    "allergyPlaceholder": "e.g. Penicillin",
+    "allergySeverity": "Severity",
+    "allergySave": "Record allergy",
+    "severity": {
+      "mild": "Mild",
+      "moderate": "Moderate",
+      "severe": "Severe"
+    },
+    "park": "Park patient",
+    "resume": "Resume",
+    "openPatient": "Open",
+    "inChair": "In consultation",
+    "parkedFor": "Parked {{minutes}} min",
+    "parkedJustNow": "Parked just now",
+    "parkedHint": "Parked patients keep their turn, their note and their token. Pick one to carry on.",
+    "cancel": "Cancel",
+    "skipTitle": "Skip token {{token}}",
+    "skipHint": "Why is this patient not being seen now? It goes on the visit's record.",
+    "skipNote": "Note (optional)",
+    "skipNoteRequired": "Say what the reason was (required)",
+    "skipMistakeHint": "Clicked it by mistake? Press Undo skip on their row — their turn comes back.",
+    "undoSkip": "Undo skip",
+    "bringBack": "Bring back",
+    "leftQueue": "Left the queue ({{n}})",
+    "leftQueueHint": "Three skips takes a token out of the queue. The visit is still open — bring them back and they keep their turn.",
+    "skipReason": {
+      "absent": "Not at the door when called",
+      "stepped_out": "Stepped out, back shortly",
+      "at_billing": "At the billing counter",
+      "at_investigation": "Gone for vitals or a test",
+      "not_ready": "Patient or attendant not ready",
+      "other": "Other"
+    },
+    "diagnosisPlaceholder": "Type a diagnosis or an ICD-10 code…",
+    "diagnosisHint": "Enter adds your own words. Tap a suggestion to take its ICD-10 code.",
+    "icd10Hint": "Set by the diagnoses above — tap a suggestion to attach its code.",
+    "allergyBlocks": "blocks {{list}}",
+    "allergyUnknown": "Saved as written — the prescription check knows no rule for this, so it will not warn on it.",
+    "adviceSaveAsTemplate": "+ Save as my template",
+    "adviceTemplateTitle": "Template name",
+    "adviceTemplateTitlePlaceholder": "Name this template…",
+    "adviceSave": "Save template",
+    "allergyRemoveOne": "Remove {{substance}}",
+    "allergyRemoveTitle": "Remove {{substance}} from this patient's allergies?",
+    "allergyRemoveProvenance": "Recorded at {{source}}, {{when}}.",
+    "allergyRemoveKept": "It is marked entered-in-error, not deleted: it stops warning immediately, and the record keeps who removed it and why.",
+    "allergyRemoveReason": "Reason",
+    "allergyRemoveReasonPlaceholder": "Why is this wrong?",
+    "allergyRemoveConfirm": "Remove it",
+    "allergyCorrectedToggle": "{{count}} removed earlier",
+    "allergySource": {
+      "registration": "registration",
+      "vitals": "the vitals bay",
+      "consult": "this consultation",
+      "radiology": "radiology, from a contrast reaction"
+    },
+    "adviceKeyword": "Keyword",
+    "adviceKeywordProblem": {
+      "lead": "A keyword must start with ; / or \\ — otherwise it fires inside ordinary words.",
+      "short": "Add a word after the ; — a lead character alone is not a keyword.",
+      "space": "A keyword cannot contain a space."
+    },
+    "snippetStops": "Tab to fill: {{label}} ({{n}} more)",
+    "snippetReference": "Placeholders you can use",
+    "snippetReferenceHint": "Type these inside a template. They fill from this patient the moment the snippet expands — nothing with braces is ever saved.",
+    "snippetUnknownTokens": "Not a placeholder: {{list}} — it will become a blank to fill, not text.",
+    "complaintUsedByYou_one": "you have written this once",
+    "complaintUsedByYou_other": "you have written this {{count}} times",
+    "noDocuments": "No slips have been photographed for this patient.",
+    "documentOpen": "Open",
+    "documentHide": "Hide",
+    "documentOpenPdf": "Open the PDF",
+    "documentAlt": "Photograph of the prescription slip",
+    "documentUnreadable": "This slip cannot be opened — the stored image does not match what was captured. Tell the desk.",
+    "documentKind": {
+      "outside_prescription": "Outside prescription",
+      "consult_prescription": "Prescription from this visit",
+      "outside_report": "Outside report"
     }
   },
   "rx": {
@@ -1902,7 +2019,8 @@
       "week": "Week",
       "month": "Month",
       "quarter": "3 months",
-      "half": "6 months"
+      "half": "6 months",
+      "year": "1 year"
     },
     "range": "{{from}} to {{to}}",
     "nothingToSay": "Nothing to report for this period yet — a comparison needs a fortnight of history before it can be made honestly.",
@@ -2049,7 +2167,8 @@
         "other": "Other",
         "unknown": "Unknown"
       },
-      "pathologistOfRecord": "Pathologist of record (walk-in)"
+      "pathologistOfRecord": "Pathologist of record (walk-in)",
+      "portalNotPermitted": "The portal list is not shown at this seat — it needs the collection grant, which belongs to the phlebotomist's chair."
     },
     "collection": {
       "title": "Collection",
@@ -2175,7 +2294,15 @@
       "tryNext": "Try next: {{rung}}",
       "openFor": "Open {{minutes}} min · target {{target}} min",
       "kitSerial": "Downtime kit serial on the tube",
-      "kitSerialHint": "e.g. DK-0241"
+      "kitSerialHint": "e.g. DK-0241",
+      "rerunOwed": "run choice owed ({{count}})",
+      "rerunFirst": "first run",
+      "rerunRepeat": "repeat run",
+      "rerunDelta": "delta",
+      "rerunPick": "{{run}}, {{value}}",
+      "rerunReason": "Why this run",
+      "rerunReasonHint": "Why this run — e.g. repeat QC failed",
+      "rerunChoose": "Use this run"
     },
     "verify": {
       "title": "Verify & report",
@@ -2228,7 +2355,11 @@
       "live": "live",
       "offline": "offline",
       "held_one": "Held: ₹{{amount}} outstanding on {{count}} invoice.",
-      "held_other": "Held: ₹{{amount}} outstanding on {{count}} invoices."
+      "held_other": "Held: ₹{{amount}} outstanding on {{count}} invoices.",
+      "nightQueue": "Released overnight · awaiting the second pair of hands",
+      "nightQueueHint": "A single operator signed these between 21:00 and 07:00. The printed report says PROVISIONAL until a second pathologist reviews them.",
+      "releasedBy": "released by {{who}}",
+      "reviewed": "Reviewed"
     },
     "print": {
       "department": "Department of Laboratory Medicine",
@@ -2261,7 +2392,8 @@
       "note2": "A borderline or high value should be repeated before any change of treatment.",
       "note3": "Results are not valid for medico-legal purposes.",
       "authorisedBy": "Authorised by",
-      "computerGenerated": "This is a computer generated report. A handwritten signature is not required."
+      "computerGenerated": "This is a computer generated report. A handwritten signature is not required.",
+      "registrationNo": "Reg. No."
     },
     "consult": {
       "title": "Laboratory results",
@@ -2341,7 +2473,8 @@
       "printPaper": "Print the paper",
       "hindiCopy": "Hindi copy",
       "heldLine_one": "Held: ₹{{amount}} outstanding on {{count}} invoice. The print lights the moment billing settles it.",
-      "heldLine_other": "Held: ₹{{amount}} outstanding on {{count}} invoices. The print lights the moment billing settles it."
+      "heldLine_other": "Held: ₹{{amount}} outstanding on {{count}} invoices. The print lights the moment billing settles it.",
+      "testsWithheld": "test names withheld"
     }
   },
   "radiology": {
@@ -3022,7 +3155,16 @@
       "readFailed": "The saved chart could not be read",
       "trail": "by {{by}} at {{at}} — the old value stays in the trail",
       "carried": "carried forward",
-      "stale": "This chart was amended elsewhere while you were typing — re-open it from the bench to correct the current one"
+      "stale": "This chart was amended elsewhere while you were typing — re-open it from the bench to correct the current one",
+      "reasonPlaceholder": "or type the reason",
+      "reasonPreset": {
+        "otherArm": "Other arm",
+        "remeasured": "Re-measured",
+        "keyed": "Typing error",
+        "device": "Device misread",
+        "wrongVital": "Wrong vital",
+        "wrongChart": "Wrong chart"
+      }
     },
     "doctor": "Doctor",
     "allDoctors": "All doctors on the bench",
@@ -3101,7 +3243,8 @@
     "invoice_not_settled": "This dispense carries no settled invoice yet — it cannot be handed over until billing is done.",
     "identity_mismatch": "Those four digits do not end the phone number on the record.",
     "batch_expired": "That batch has expired and cannot be dispensed. Choose another batch.",
-    "slip_not_confirmed": "This prescription was typed from the doctor’s paper slip. Check the slip — the photo on the visit, or the paper the patient is holding — against these lines, then confirm it before billing."
+    "slip_not_confirmed": "This prescription was typed from the doctor’s paper slip. Check the slip — the photo on the visit, or the paper the patient is holding — against these lines, then confirm it before billing.",
+    "batch_expired_before_collection": "This batch was in date when it was picked and expired before the patient collected it, so it cannot be handed over. Quarantine the strip, then send the patient to the billing desk — the bill is already paid and needs a credit note."
   },
   "pharmacyCounter": {
     "title": "Dispense counter",
@@ -3507,7 +3650,8 @@
       "levelSet": "The investigation level is now {{level}} mSv per month. Readings already recorded keep the level that was in force when they were entered.",
       "surrenderArmed": "Terminal — the machine becomes unlicensed:",
       "surrenderConfirm": "Confirm surrender",
-      "decommissionRef": "Decommissioning ref."
+      "decommissionRef": "Decommissioning ref.",
+      "noAppointment": "no AERB appointment on file"
     }
   },
   "registrationSeat": {
@@ -3755,5 +3899,48 @@
     "title": "This patient has not paid the consultation fee yet.",
     "notPaid": "NOT PAID",
     "bypassed": "PASSED WITHOUT PAYING"
+  },
+  "cds": {
+    "suggests": "Suggests",
+    "band": {
+      "adult": "Adult regimen",
+      "pediatric": "Child regimen"
+    },
+    "noWeight": "no weight on file",
+    "instead": "Instead",
+    "swapped": "Swapped",
+    "pregnantYes": "Yes, pregnant",
+    "pregnantNo": "No, not pregnant",
+    "fill": "Fill prescription ({{n}} lines)"
+  },
+  "slipCapture": {
+    "title": "Slip desk",
+    "intro": "Scan the QR in the slip's footer, check the name that comes back, then photograph the paper.",
+    "visitNo": "Visit number",
+    "visitNoHint": "Scan the QR, or type the visit number",
+    "find": "Find",
+    "notFound": "No visit numbered {{visitNo}}. Check the number on the slip, or type it.",
+    "unnamed": "(name withheld)",
+    "checkPerson": "Check this is the patient whose slip you are holding before you photograph it.",
+    "openCamera": "Open the camera",
+    "orChooseFile": "…or choose a photo",
+    "noCamera": "No camera available here. Choose a photo instead — on a phone that opens the camera.",
+    "capture": "Capture",
+    "cancel": "Cancel",
+    "retake": "Retake",
+    "previewAlt": "The photograph about to be filed",
+    "kind": "What is this?",
+    "kinds": {
+      "consult_prescription": "Prescription from this visit",
+      "outside_prescription": "Outside prescription",
+      "outside_report": "Outside report"
+    },
+    "note": "Note",
+    "noteHint": "Anything the doctor should know",
+    "fileIt": "File it",
+    "filed": "Filed against {{name}}.",
+    "tooLarge": "That photograph is too large even after downscaling. Move closer and take it again.",
+    "badImage": "That file could not be read as an image.",
+    "failed": "It could not be filed. Try again."
   }
 }

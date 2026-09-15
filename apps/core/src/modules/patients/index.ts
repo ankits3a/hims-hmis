@@ -16,13 +16,22 @@ export type { PatientSummary } from "./registration";
  */
 export { listPatientCoverages } from "./coverages";
 export type { CoverageRow } from "./coverages";
-export { listAllergies } from "./allergies";
+/**
+ * `addAllergy` is exported for 18a-iii T2: a contrast reaction writes the patient's allergy in the
+ * same transaction as the reaction record (D2), and it does so through this seam rather than by
+ * reaching for `patient_allergies` directly — the write must carry `allergy.recorded` and the
+ * patient-is-canonical check, and a second INSERT site would carry neither.
+ */
+export { addAllergy, listAllergies } from "./allergies";
 export type { AllergyRow } from "./allergies";
 export { searchPatients, visiblePatientIds } from "./search";
 export type { MatchLane, PatientSearchResult } from "./search";
 /** FD-8 — the near-match probe, shared by `POST /patients` and the walk-in. */
 export { nearMatches } from "./duplicates";
 export type { DuplicateCandidate } from "./duplicates";
+/** FD-34 — the family a shared mobile makes: derived, symmetric, never a stored household. */
+export { LINKED_CAP, linkedPatients } from "./linked";
+export type { LinkedPatientRow, LinkedPatients } from "./linked";
 export { NO_AUTHORITY, effectiveGuardianAuthority, guardiansWithAuthority, sweepGuardianMajority } from "./guardians";
 export type { GuardianAuthority, GuardianRow } from "./guardians";
 /**
@@ -38,6 +47,6 @@ export { displayName, displayNameFor, displayNameForRelease } from "./display-na
 export type { NameablePatient } from "./display-name";
 export { verifyQrScan } from "./qr";
 export type { QrVerifyResult } from "./qr";
-export { isValidUhid, PatientError } from "./uhid";
+export { isValidUhid, registrationConfigured, PatientError } from "./uhid";
 export type { PatientErrorCode } from "./uhid";
 export * from "./events";

@@ -606,7 +606,31 @@ const STAFF_REPORT_PAIRS: readonly string[] = [
   "medical_superintendent/staff.reports.read",
 ];
 
-/** All NINETEEN non-table sets. A model row outside this union fails V3's last leg. */
+/** The README prose line authorising the 2026-09-14 horizon ruling. Quoted, not paraphrased. */
+const HISTORY_HORIZON_README_PROSE =
+  "How far back a person may look is decided by who\nthey are";
+
+/**
+ * PHASE STAFF-REPORTS T0 — THE FIVE PAIRS THE 2026-09-14 OWNER RULING ADDED.
+ *
+ * Four are the horizon itself: one tier-lifting string for the front desk's supervisor, and the
+ * unbounded string for the three hospital-level roles. **The fifth is `owner/staff.reports.read`,
+ * and it is a DEFECT being closed rather than a tier being granted** — the role held no
+ * staff-report string at all, so the owner could not open `/staff`. It is in this set because it
+ * arrived with the ruling, and the README sentence above says so in as many words.
+ *
+ * `owner/staff.reports.drill` IS ABSENT and stays absent: the drill returns patient rows and the
+ * 2026-08-29 ruling put it with `staff_auditor` alone. A horizon widens how far back, never what.
+ */
+const HISTORY_HORIZON_PAIRS: readonly string[] = [
+  "front_office_supervisor/staff.reports.history.year",
+  "medical_superintendent/staff.reports.history.full",
+  "owner/staff.reports.history.full",
+  "owner/staff.reports.read",
+  "staff_auditor/staff.reports.history.full",
+];
+
+/** All TWENTY non-table sets. A model row outside this union fails V3's last leg. */
 /** The README prose line that authorises the 2026-09-02 owner ruling (Plan 17c §7). Quoted, not paraphrased. */
 const LAB_RELEASE_REQUEST_README_PROSE =
   "the counter may raise the release request for a held report";
@@ -672,6 +696,8 @@ const NON_TABLE_PAIRS: readonly string[] = [
   ...CASHIER_SEAT_PAIRS, ...PAPER_REPRINT_PAIRS,
   ...PRIVACY_WRITE_PAIRS, ...LAB_PAIRS, ...RADIOLOGY_PAIRS, ...RC2_ENROL_PAIRS, ...PHARMACY_PAIRS, ...LAB_RELEASE_REQUEST_PAIRS,
   ...SCRIBE_PAIRS,
+  ...CASHIER_SEAT_PAIRS,
+  ...HISTORY_HORIZON_PAIRS,
 ];
 
 type GrantTable = {
@@ -907,7 +933,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // them, for the reason the `membership`/`partners` paragraph above gives: `seed-roles.ts`,
       // this file and `README.md` are named in T2's Files list and in NO later task's, so a string
       // first declared by T7 or T8 would fail this build for a task that is not allowed to fix it.
-      lab: 18, // 17-E T1: 15 -> 16 (lab.instruments.manage); T2: -> 17 (lab.instruments.read); T3: -> 18 (lab.results.interface)
+      lab: 19, // 17-E T6: +1, lab.instruments.operate // 17-E T1: 15 -> 16 (lab.instruments.manage); T2: -> 17 (lab.instruments.read); T3: -> 18 (lab.results.interface)
       // PLAN 14 T2 / DD11. ELEVEN strings, all declared here ahead of the routes that guard on
       // them, for the reason the `membership`/`partners` paragraph above gives: `seed-roles.ts`,
       // this file and `README.md` are named in T2's Files list and in NO later task's, so a string
@@ -932,7 +958,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // to `front_office_supervisor` and `medical_superintendent`; `staff.reports.drill` buys the
       // PATIENT ROWS behind those figures and is held by nobody, on the `patients.confidential.read`
       // argument — the mechanism is built and audited, and who holds it is an owner/DPO ruling.
-      desk: 2,
+      desk: 4,
       // PLAN 17 PHASE 0 T5 — FOUR strings, and every one of them is in `NOT_YET_MODELLED`.
       // `orders.place` is the kernel half of a TWO-permission gate (the kind declares the other
       // half, e.g. `lab.orders.place`), `orders.read` guards the cross-kind readers,
@@ -1043,7 +1069,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // RC-1 T2 — 14 -> 15 with the counter-flow lock (D5): the pill, not the config editor.
       // RC-2 T4 — 15 -> 16 with `membership.instrument.enrol` (D5): this role may MINT a card;
       // `front_office` above may only honour one, which is the whole of the enrol/apply split.
-      front_office_supervisor: 16,
+      front_office_supervisor: 17, // staff-reports T0: +1, staff.reports.history.year (the one-year tier)
       vitals_desk: 6, // VD-1 T4 — 5 -> 6 with `opd.vitals.history.read`, the bay's pre-stage read
       // Group B, 2026-08-26: +2, the patient record and the allergy register.
       // Plan 16a / DD10: +1, the formulary read the consult autocomplete needs.
@@ -1091,16 +1117,16 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // Group A, 2026-08-26: +4 — tariff.read, the activator key, tariff config, and approval-type
       // governance. `owner` is now the activator for BOTH ceremonies, workflow and price list.
       // Group B then added +3: the invoice, the daybook and the cashier sessions. NOT patients.read.
-      owner: 10,
+      owner: 12, // staff-reports T0: +2, staff.reports.read (a defect closed) and .history.full
       // Group C, 2026-08-26: +2, the break-glass and elevation review desks. The merge lane then
       // added +3 — the approvals pair it is the approverRole for, and the records it decides about.
       // PLAN 07c T9 — 9 → 10 with `staff.reports.read`, for the reason the two review desks moved
       // to this role in the first place: staff and medical-record governance is its job (spec §14,
       // role card #39), not the technical administrator's.
-      medical_superintendent: 10,
+      medical_superintendent: 11, // staff-reports T0: +1, staff.reports.history.full
       duty_manager: 1,
       // OWNER RULING 2026-08-29 — two strings, one role, one holder: the figures and the rows.
-      staff_auditor: 2,
+      staff_auditor: 3, // staff-reports T0: +1, staff.reports.history.full
       tariff_editor: 3,
       // RC-2 T4 — 2 -> 3 with `membership.instrument.enrol`: the role that works the holder book
       // may also put somebody into it from the counter (the lane itself stays flag-OFF, O-15).
@@ -1144,7 +1170,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       pcpndt_incharge: 4,
       // PLAN 18c T1 — the RSO's three: manage, read, and the dose read the register is built on.
       radiation_safety_officer: 3,
-      lab_technician: 8,
+      lab_technician: 9, // 17-E T6: +1, lab.instruments.operate — the interface inbox is a bench seat
       phlebotomist: 4,
       radiographer: 10, // 18b T1: +`radiology.mwl.read`; 18c T1: +`aerb.doses.read`
       radiologist: 15, // 18c T1: +`aerb.doses.read`, the cumulative nudge at protocolling
@@ -1370,11 +1396,11 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     // Fourteen rows rather than fifteen: `lab.reports.release_unpaid` appears in NO column,
     // because the role that holds it is `billing_manager` and a lab station column for it would be
     // the lab approving its own override.
-    expect(labTable.rowCount).toBe(17); // 17-E T1: +1, lab.instruments.manage; T2: +1, lab.instruments.read; T3: +1, lab.results.interface
+    expect(labTable.rowCount).toBe(18); // 17-E T6: +1, lab.instruments.operate; 17-E T1: +1, lab.instruments.manage; T2: +1, lab.instruments.read; T3: +1, lab.results.interface
     expect(labTable.roles).toEqual(["pathologist", "lab_technician", "phlebotomist", "lab_reception", "lab_bridge"]);
-    expect(tablePairs(labTable)).toHaveLength(29); // 17-E T1: +1; T2: +1; T3: +1 (the bridge's second tick)
+    expect(tablePairs(labTable)).toHaveLength(30); // 17-E T6: +1, lab.instruments.operate; 17-E T1: +1; T2: +1; T3: +1 (the bridge's second tick)
     expect(tablePairs(labTable).filter((p) => p.startsWith("pathologist/"))).toHaveLength(13); // 17-E T1: +1
-    expect(tablePairs(labTable).filter((p) => p.startsWith("lab_technician/"))).toHaveLength(6);
+    expect(tablePairs(labTable).filter((p) => p.startsWith("lab_technician/"))).toHaveLength(7); // 17-E T6: +1, lab.instruments.operate
     expect(tablePairs(labTable).filter((p) => p.startsWith("phlebotomist/"))).toHaveLength(3);
     expect(tablePairs(labTable).filter((p) => p.startsWith("lab_reception/"))).toHaveLength(5);
 
@@ -1610,7 +1636,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     // 129 since 17-E T1 — `lab.instruments.manage`'s single tick, the pathologist's alone.
     // 130 since 17-E T2 — `lab.instruments.read`'s single tick, the bridge's alone.
     // 131 since 17-E T3 — `lab.results.interface`, the bridge's second and last.
-    expect(fromReadme).toHaveLength(131 + tablePairs(radiologyTable).length + tablePairs(pharmacyTable).length);
+    expect(fromReadme).toHaveLength(132 + tablePairs(radiologyTable).length + tablePairs(pharmacyTable).length); // 17-E T6: 131 -> 132, lab_technician's lab.instruments.operate tick
     // Direction 1: nothing the README ticks is missing from the model.
     expect(fromReadme.filter((p) => !fromModel.includes(p))).toEqual([]);
     // Direction 2: nothing the model grants from a table is missing from that table.
@@ -1705,6 +1731,8 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(RC2_ENROL_README_PROSE);
     // The 2026-09-02 owner ruling's own sentence (Plan 17c §7), held to the same standard.
     expect(readme).toContain(LAB_RELEASE_REQUEST_README_PROSE);
+    // The 2026-09-14 horizon ruling's own sentence, held to the same standard as the four above.
+    expect(readme).toContain(HISTORY_HORIZON_README_PROSE);
     // `vitals_desk` deliberately does NOT get `patients.register`: registration is the desk's
     // work and vitals record against a patient who already exists.
     expect(nonTable).not.toContain("vitals_desk/patients.register");

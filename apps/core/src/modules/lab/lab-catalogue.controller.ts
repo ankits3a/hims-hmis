@@ -4,7 +4,9 @@ import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { labOrderables } from "../../kernel/db/schema";
-import { analytesFor, getOrderable, rangesFor, upsertAnalyte, upsertOrderable } from "./catalogue";
+import {
+  analytesFor, getOrderable, putReferenceRange, rangesFor, upsertAnalyte, upsertOrderable,
+} from "./catalogue";
 import { duplicateWarnings } from "./duplicates";
 import { idSchema, parsed, toHttp } from "./lab-http";
 import type { Actor } from "@hmis/contracts";
@@ -34,6 +36,19 @@ const analyteBody = z.object({
   deltaPct: z.string().max(24).nullish(),
   deltaWindowHours: z.number().int().positive().nullish(),
   loincCode: z.string().max(32).nullish(),
+});
+
+const rangeBody = z.object({
+  sex: z.enum(["male", "female", "other", "any"]),
+  ageMinDays: z.number().int().min(0).max(40000),
+  ageMaxDays: z.number().int().min(0).max(40000),
+  low: z.string().max(24).nullish(),
+  high: z.string().max(24).nullish(),
+  text: z.string().max(120).nullish(),
+  criticalLow: z.string().max(24).nullish(),
+  criticalHigh: z.string().max(24).nullish(),
+  source: z.string().min(1).max(200),
+  effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 
 const orderableBody = z.object({
@@ -96,6 +111,28 @@ export class LabCatalogueController {
     try {
       const id = await withTx(this.db, (tx) => upsertAnalyte(tx, actor, input));
       return { analyteId: id };
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * ═══ THE RANGE BOOK'S DOOR (`lab.catalogue.manage`, like its two neighbours) ═══
+   *
+   * The reader above has shipped since Plan 17a; the writer had not, so a hospital loading its own
+   * catalogue through the two routes below got analytes and orderables and **no reference bands**.
+   * `sex` is the enum the table's CHECK already carries, and `effectiveFrom` is a plain `YYYY-MM-DD`
+   * — the service refuses a future one, because nothing in this build reads the column.
+   */
+  @Post("analytes/:analyteId/ranges")
+  @RequirePermission("lab.catalogue.manage", "hospital")
+  async putRange(
+    @CurrentActor() actor: Actor,
+    @Param("analyteId") analyteId: string,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    const input = parsed(rangeBody, body);
+    try {
+      const id = await withTx(this.db, (tx) => putReferenceRange(tx, actor, { ...input, analyteId }));
+      return { rangeId: id };
     } catch (e) { toHttp(e); }
   }
 

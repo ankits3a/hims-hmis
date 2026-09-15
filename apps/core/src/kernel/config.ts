@@ -45,6 +45,18 @@ const configSchema = z.object({
   // run since yesterday must never make the worker read stale (D7/D9). Defaulted here so no
   // .env changes anywhere — the hard-fail-on-missing rule is untouched, nothing new is required.
   WORKER_STALE_AFTER_MS: z.coerce.number().int().positive().default(60000),
+  /**
+   * ═══ WHERE A PHOTOGRAPHED SLIP'S BYTES LIVE ═══
+   *
+   * Owner ruling, 2026-09-14: disk now, Cloudflare R2 or S3 later. The DEFAULT is a path beside the
+   * database's own data rather than inside the repo, because a document written into a checkout is
+   * a document lost at the next deploy — and it is a path an operator can mount, back up and move,
+   * which is the whole point of it not being in Postgres.
+   *
+   * This is NOT a secret and belongs in the deploy environment. When the object-store adapter
+   * arrives it takes its own keys; this one stays for the disk fallback.
+   */
+  DOCUMENT_STORE_PATH: z.string().trim().min(1).default("/var/lib/hmis/documents"),
   // D9: the six sweeps' cadences. Every key defaults in this schema, so no .env change is
   // needed anywhere (server or CI) — Plan 08.5 flag 8. The daily jobs' IST clock instants
   // (guardians 00:05 / no-shows 23:55 / daily-close 23:59) are CODE CONSTANTS beside their
@@ -59,6 +71,21 @@ const configSchema = z.object({
   // require a value or a new .env entry anywhere (server or CI).
   WORKER_NOTIFY_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
   NOTIFY_PROVIDER: notifyProviderSchema.default("console"),
+  /*
+   * PHASE 11i T3 (§2b row 22) — WHICH BOX AM I LOOKING AT.
+   *
+   * UAT runs the PRODUCTION image against a different database, on the same host, behind a Caddy
+   * that serves the same SPA. Two browser tabs, identical in every pixel, one of which must never
+   * hold a real person. A receptionist being trained on UAT who registers the patient standing in
+   * front of them has created a record in the wrong hospital, and nothing on either screen would
+   * have told them.
+   *
+   * Optional and EMPTY BY DEFAULT: production's environment file never sets it and
+   * `deploy-parity.test.ts` asserts the production template does not carry the key. So the banner
+   * is not something production turns off — it is something only a non-production deployment can
+   * turn ON, which is the only direction that fails safe.
+   */
+  HMIS_ENVIRONMENT_LABEL: z.string().trim().max(24).default(""),
   /*
    * FD-8 — the triage advisor's gateway. ALL OPTIONAL and unset by default: with no key the desk
    * routes on its own keyword table and never makes a network call, which is the shipped behaviour
@@ -237,12 +264,15 @@ export type AppConfig = {
   breakGlassTtlMinutes: number;
   tempRoleMaxTtlMinutes: number;
   workerStaleAfterMs: number;
+  documentStorePath: string;
   workerDispatchIntervalMs: number;
   workerTimersIntervalMs: number;
   workerTempRolesIntervalMs: number;
   workerDailyTickMs: number;
   workerNotifyIntervalMs: number;
   notifyProvider: NotifyProvider;
+  /** 11i T3 — "UAT", "TRAINING", …; `null` on production, where the key is never set. */
+  environmentLabel: string | null;
   /** FD-8 — the triage advisor. `baseUrl`/`apiKey` null ⇒ the desk uses its own keyword table only. */
   triage: { baseUrl: string | null; apiKey: string | null; model: string; timeoutMs: number };
   notifyStuckAfterMs: number;
@@ -293,6 +323,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     breakGlassTtlMinutes: parsed.BREAK_GLASS_TTL_MINUTES,
     tempRoleMaxTtlMinutes: parsed.TEMP_ROLE_MAX_TTL_MINUTES,
     workerStaleAfterMs: parsed.WORKER_STALE_AFTER_MS,
+    documentStorePath: parsed.DOCUMENT_STORE_PATH,
+    environmentLabel: parsed.HMIS_ENVIRONMENT_LABEL === "" ? null : parsed.HMIS_ENVIRONMENT_LABEL,
     workerDispatchIntervalMs: parsed.WORKER_DISPATCH_INTERVAL_MS,
     workerTimersIntervalMs: parsed.WORKER_TIMERS_INTERVAL_MS,
     workerTempRolesIntervalMs: parsed.WORKER_TEMP_ROLES_INTERVAL_MS,
