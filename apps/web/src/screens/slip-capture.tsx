@@ -79,6 +79,13 @@ export function fitsBudget(b64: string): boolean {
 }
 
 async function downscaleToJpeg(source: CanvasImageSource, width: number, height: number): Promise<string | null> {
+  /*
+    A source with no area cannot be a photograph of anything. This matters because a 0x0 canvas
+    still ENCODES — to a couple of dozen bytes that sail through the size budget — so without this
+    line the desk files a blank page and the screen congratulates it by name. Browser-walked
+    2026-09-15 against a camera that had not yet delivered a frame: 0 bytes reached the server.
+  */
+  if (width <= 0 || height <= 0) return null;
   const fit = fitToMaxEdge(width, height);
   const canvas = document.createElement("canvas");
   canvas.width = fit.width;
@@ -136,10 +143,6 @@ export function SlipCapture(): React.ReactElement {
       });
       streamRef.current = stream;
       setCameraOn(true);
-      if (videoRef.current !== null) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
     } catch {
       /* No camera, no permission, or no secure context. The file input below still works and on a
          phone it opens the camera anyway — so this is a fallback, not a dead end. */
@@ -153,9 +156,29 @@ export function SlipCapture(): React.ReactElement {
     setCameraOn(false);
   };
 
+  /*
+    ═══ THE STREAM IS ATTACHED ONCE THE ELEMENT EXISTS, NEVER BEFORE ═══
+
+    `<video>` renders only under `cameraOn`, so attaching inside `startCamera` read
+    `videoRef.current` in the very tick that set the flag — the element had not mounted and the ref
+    was still null. Not a race: it failed on every run, the preview stayed empty, and `takeShot`
+    then photographed a 0x0 frame. Found by driving real Chromium on 2026-09-15; S7 is the row that
+    goes red if this ever moves back into `startCamera`.
+  */
+  useEffect(() => {
+    const video = videoRef.current;
+    const stream = streamRef.current;
+    if (!cameraOn || video === null || stream === null) return;
+    video.srcObject = stream;
+    void video.play().catch(() => { setError(t("slipCapture.noCamera")); });
+  }, [cameraOn, t]);
+
   const takeShot = async (): Promise<void> => {
     const video = videoRef.current;
     if (video === null) return;
+    /* A camera reports 0x0 until its first frame lands — a real one has that window after play()
+       too, so this outlives the attach bug it was found with. Say what the operator can DO. */
+    if (video.videoWidth === 0 || video.videoHeight === 0) { setError(t("slipCapture.notReady")); return; }
     const b64 = await downscaleToJpeg(video, video.videoWidth, video.videoHeight);
     if (b64 === null) { setError(t("slipCapture.tooLarge")); return; }
     setShot(b64);

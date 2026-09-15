@@ -3832,6 +3832,7 @@
     "openCamera": "Open the camera",
     "orChooseFile": "…or choose a photo",
     "noCamera": "No camera available here. Choose a photo instead — on a phone that opens the camera.",
+    "notReady": "The camera has not sent a picture yet. Wait a moment, then press Capture again.",
     "capture": "Capture",
     "cancel": "Cancel",
     "retake": "Retake",
