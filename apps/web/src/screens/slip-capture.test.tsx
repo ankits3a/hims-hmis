@@ -172,6 +172,72 @@ describe("SlipCapture", () => {
     expect(await screen.findByTestId("slip-filed")).toHaveTextContent("Asha Devi");
   });
 
+  /**
+   * ═══ THE TWO ROWS A BROWSER WALK WROTE, 2026-09-15 ═══
+   *
+   * Driven in real Chromium with a synthetic camera, `/opd/slips` opened the camera, showed an
+   * EMPTY grey box, and filing posted **0 bytes** behind a green "Filed against Ramesh Kumar."
+   * Every row above was green throughout, because jsdom stubs `toDataURL` and never mounts a
+   * video, so neither of the two failures below was reachable from here.
+   *
+   * S7 pins the CAUSE: `<video>` renders only under `cameraOn`, so at the moment `startCamera`
+   * set that flag the element did not exist yet and `videoRef.current` was null — the stream was
+   * never attached, deterministically, on every run.
+   *
+   * S8 pins the CONSEQUENCE, and it is the one that must never come back: a source with no
+   * dimensions must not become a filed document. A real camera has a window after `play()` where
+   * `videoWidth` is still 0, so this outlives the specific bug in S7.
+   */
+  it("S7: starting the camera ATTACHES the stream to the video element", async () => {
+    const track = { stop: vi.fn() };
+    const stream = { getTracks: () => [track] } as unknown as MediaStream;
+    vi.stubGlobal("navigator", { ...navigator, mediaDevices: { getUserMedia: vi.fn().mockResolvedValue(stream) } });
+    const play = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(HTMLMediaElement.prototype, "play", { configurable: true, writable: true, value: play });
+    let attached: unknown = null;
+    Object.defineProperty(HTMLMediaElement.prototype, "srcObject", {
+      configurable: true, get: () => attached, set(v: unknown) { attached = v; },
+    });
+
+    stubFetch({ "GET /api/opd/visits/by-number/V2609140007": VISIT });
+    renderWithProviders(<SlipCapture />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Visit number"), "V2609140007{Enter}");
+    await screen.findByTestId("slip-readback");
+    await user.click(screen.getByTestId("slip-camera"));
+
+    /* The video must exist AND be carrying the stream. Mounting it empty is the whole defect. */
+    await screen.findByTestId("slip-video");
+    await waitFor(() => { expect(attached).toBe(stream); });
+    expect(play).toHaveBeenCalled();
+  });
+
+  it("S8: a camera with no frame yet files NOTHING and says so", async () => {
+    const track = { stop: vi.fn() };
+    const stream = { getTracks: () => [track] } as unknown as MediaStream;
+    vi.stubGlobal("navigator", { ...navigator, mediaDevices: { getUserMedia: vi.fn().mockResolvedValue(stream) } });
+    Object.defineProperty(HTMLMediaElement.prototype, "play", { configurable: true, writable: true, value: vi.fn().mockResolvedValue(undefined) });
+    Object.defineProperty(HTMLMediaElement.prototype, "srcObject", { configurable: true, writable: true, value: null });
+    /* videoWidth/videoHeight are 0 in jsdom and 0 in a real browser until metadata loads. */
+
+    stubFetch({
+      "GET /api/opd/visits/by-number/V2609140007": VISIT,
+      "POST /api/patients/p-1/documents": { documentId: "doc-9" },
+    });
+    renderWithProviders(<SlipCapture />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Visit number"), "V2609140007{Enter}");
+    await screen.findByTestId("slip-readback");
+    await user.click(screen.getByTestId("slip-camera"));
+    await screen.findByTestId("slip-video");
+    await user.click(screen.getByTestId("slip-shoot"));
+
+    /* No preview to file, an error that names the remedy, and NOTHING posted. */
+    expect(screen.queryByTestId("slip-preview")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("slip-error")).toBeInTheDocument();
+    expect(callsTo("POST", "/api/patients/p-1/documents")).toHaveLength(0);
+  });
+
   it("S5: after filing, the desk is ready for the next patient with nothing carried over", async () => {
     /* The failure this prevents is the worst one this screen has: a second slip filed against the
        first patient because the desk still had them in hand. */
