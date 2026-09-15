@@ -101,6 +101,19 @@ COPY --from=build /app/packages/contracts/dist ./packages/contracts/dist
 COPY --from=build /app/apps/core/dist ./apps/core/dist
 COPY apps/core/drizzle ./apps/core/drizzle
 WORKDIR /app/apps/core
+
+# ═══ THE SLIP DESK'S DOCUMENT ROOT, CREATED HERE AND OWNED BY `node` ═══
+#
+# `DOCUMENT_STORE_PATH` defaults to /var/lib/hmis/documents. The api container runs as `node` and
+# has no writable parent for it, so on 2026-09-15's deploy the boot check reported
+# `EACCES: permission denied, mkdir '/var/lib/hmis'` and every photograph at /opd/slips would have
+# been refused `unwritable`.
+#
+# It is created in the IMAGE rather than left to the volume, and that is the whole point: a named
+# volume Docker creates for a path absent from the image is root-owned, and `node` still could not
+# write into it. Mounted over a path that EXISTS with an owner, the volume inherits that owner.
+RUN mkdir -p /var/lib/hmis/documents && chown -R node:node /var/lib/hmis
+
 USER node
 EXPOSE 3000
 CMD ["node", "dist/src/main.js"]

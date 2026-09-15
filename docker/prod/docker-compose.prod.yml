@@ -101,6 +101,12 @@ services:
     command: ["node", "dist/src/main.js"]
     env_file:
       - .env
+    # The slip desk's photographs. A NAMED VOLUME because the bytes must outlive a container
+    # recreate the way pgdata does — a deploy that dropped them would lose every prescription the
+    # desk had filed. The image creates /var/lib/hmis/documents owned by `node` so this volume
+    # inherits that owner; without that it is root-owned and the API cannot write a single file.
+    volumes:
+      - hmis_prod_documents:/var/lib/hmis/documents
     expose:
       - "3000"
     depends_on:
@@ -390,3 +396,9 @@ volumes:
   # strands a fresh anonymous volume AND forgets which alerts it has already sent and which the
   # operator silenced. See the service's own comment above.
   alertmanager_data:
+  # FD/slip capture — the document root behind `DOCUMENT_STORE_PATH`. Named for the same reason
+  # pgdata is: these are clinical documents, and an anonymous volume is one `docker compose down`
+  # from being unreachable. The owner's ruling was disk now, object store later; when R2/S3 lands
+  # this volume stops being the store and becomes a cache, and that is a provider swap in
+  # app.module.ts, not a change here.
+  hmis_prod_documents:
