@@ -21,6 +21,16 @@ export type { InteractionRow, MedicineWithSalts, MedicineRow, RouteClass, SaltRo
  */
 export { listInteractionsAmong, normalizeDrugName, resolveDrugTexts, resolveMedicines } from "./resolve";
 export type { InteractionPair, ResolvedDrug, SaltRef } from "./resolve";
+/**
+ * THE BOUNDED READS. `listMedicines` above answers "give me the catalogue", which is a question no
+ * caller ever actually had and which THROWS on the wire past 65,535 rows — see
+ * `kernel/db/any-of.ts`. These answer the questions the callers do have: these ids, this
+ * equivalence, does this id exist. A module reaching past them to the tables is the defect
+ * returning under another name.
+ */
+export { MAX_IDS, medicineExists, medicinesByIds, saltsByIds } from "./reads";
+export { equivalentMedicines, isEquivalentMedicine } from "./equivalence";
+export type { EquivalentMedicine } from "./equivalence";
 /** T7 — staging admission. `searchStaging` may match generously; nothing here resolves anything. */
 export { MAX_SUGGESTIONS, MIN_QUERY_CHARS, suggestDrugs } from "./suggest";
 export type { DrugSuggestion } from "./suggest";

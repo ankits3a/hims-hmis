@@ -1,4 +1,4 @@
-import { listMedicines } from "../formulary";
+import { medicinesByIds } from "../formulary";
 import { fromBase, getBatch, itemUomRows, itemsByIds } from "../materials";
 import { getPatientSummaries } from "../patients";
 import { PharmacyError } from "./errors";
@@ -37,7 +37,7 @@ export async function labelFor(db: Db, actor: Actor, dispenseId: string): Promis
   const [summary] = await getPatientSummaries(db, actor, [d.patientId]);
   if (summary === undefined) throw new PharmacyError("unknown_dispense", `dispense ${dispenseId} not found`);
   const lines = (await linesOf(db, dispenseId)).filter((l) => l.status === "open");
-  const medicines = new Map((await listMedicines(db)).map((m) => [m.id, m]));
+  const medicines = await medicinesByIds(db, lines.flatMap((l) => [l.dispensedMedicineId, l.orderedMedicineId]).filter((x): x is string => x !== null));
   const items = await itemsByIds(db, lines.map((l) => l.itemId).filter((x): x is string => x !== null));
   const out: LabelLine[] = [];
   for (const l of lines) {

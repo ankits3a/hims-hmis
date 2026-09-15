@@ -35,16 +35,32 @@ export type FormularyErrorCode =
   /** DD8 — the medicine's OWN salts interact, and admission needs an explicit acknowledgement. */
   | "intra_fdc_interaction"
   /** T7 — a staging row already approved or rejected cannot be admitted a second time. */
-  | "staging_not_pending";
+  | "staging_not_pending"
+  /**
+   * ADDED AFTER 16a, UNDER THE UNION'S OWN RULE. The closure above says a later task needing a
+   * code this union does not carry "has found a PLAN DEFECT and reports it, it does not widen the
+   * union and it does not borrow a neighbouring code" — so this widens it, and says why.
+   *
+   * `reads.ts`'s id-keyed readers REFUSE a list longer than `MAX_IDS` rather than truncating it: a
+   * short map silently drops a dispense line's medicine and blanks a brand on a printed label.
+   * That refusal needed a name and none of the six above means "you asked for too many at once".
+   * Borrowing `unknown_medicine` would tell a caller the catalogue lacks a row it has — exactly
+   * the misleading refusal that `unknown_interaction`'s note above exists to prevent.
+   */
+  | "too_many_ids";
 
 const NOT_FOUND_CODES = new Set<FormularyErrorCode>(["unknown_salt", "unknown_medicine", "unknown_interaction"]);
+/** A request this module could not have served whatever the database held. */
+const BAD_REQUEST_CODES = new Set<FormularyErrorCode>(["too_many_ids"]);
 
 /**
- * 404 for a thing that is not there, 409 for a state conflict the caller can act on.
+ * 404 for a thing that is not there, 409 for a state conflict the caller can act on,
+ * 400 for a request that was malformed before the state was consulted.
  * NOTHING here answers 5xx, which is the property the counter-side lesson above is about.
  */
 export function formularyHttpStatus(code: FormularyErrorCode): number {
   if (NOT_FOUND_CODES.has(code)) return 404;
+  if (BAD_REQUEST_CODES.has(code)) return 400;
   return 409;
 }
 

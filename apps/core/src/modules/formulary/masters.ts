@@ -11,6 +11,7 @@ import {
 } from "./events";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
+import { anyOfText } from "../../kernel/db/any-of";
 
 export type SaltRow = typeof formularySalts.$inferSelect;
 export type MedicineRow = typeof formularyMedicines.$inferSelect;
@@ -346,7 +347,7 @@ export async function listMedicines(db: Db, opts: { activeOnly?: boolean } = {})
   const wanted = opts.activeOnly === true ? medicines.filter((m) => m.active) : medicines;
   if (wanted.length === 0) return [];
   const composition = await db.select().from(formularyMedicineSalts)
-    .where(inArray(formularyMedicineSalts.medicineId, wanted.map((m) => m.id)));
+    .where(anyOfText(formularyMedicineSalts.medicineId, wanted.map((m) => m.id)));
   const byMedicine = new Map<string, { saltId: string; strength: string | null }[]>();
   for (const row of composition) {
     const list = byMedicine.get(row.medicineId) ?? [];
