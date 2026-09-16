@@ -15,6 +15,8 @@ import { pickDispense } from "./pick";
 import { alternativesFor, cancelDispense, declineLine, verifyDispense } from "./verify";
 import { cancelBilledDispense } from "./refund";
 import { reorderAdvice } from "./replenishment";
+import { acceptReturn } from "./returns";
+import type { ReturnResult } from "./returns";
 import type { ReorderAdvice } from "./replenishment";
 import type { CancelBilledResult } from "./refund";
 import type { Actor } from "@hmis/contracts";
@@ -38,6 +40,12 @@ const verifyBody = z.object({
 });
 const reasonBody = z.object({ reason: z.string().min(1).max(240) });
 const refundBody = z.object({ reason: z.string().min(3).max(500), reasonClass: z.enum(["mistake", "genuine"]) });
+const returnBody = z.object({
+  lines: z.array(z.object({ lineIdx: z.number().int().nonnegative(), qtyBase: z.number().int().positive() })).min(1).max(50),
+  sealedIntact: z.literal(true),
+  reason: z.string().min(3).max(500),
+  reasonClass: z.enum(["mistake", "genuine"]),
+});
 const pickBody = z.object({
   lines: z.array(z.object({
     lineIdx: z.number().int().nonnegative(),
@@ -216,6 +224,19 @@ export class PharmacyCounterController {
     const { reason } = parsed(reasonBody, body);
     try {
       return await declineLine(this.db, actor, this.decls(), id, Number(idx), reason, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** P6 — a sealed pack comes back: restocked, credited, its refund requested. The act asserts the rest. */
+  @RequirePermission("billing.refund.request", "hospital")
+  @Post("dispenses/:id/returns")
+  async returns(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown, @Headers("idempotency-key") key?: string): Promise<ReturnResult> {
+    const input = parsed(returnBody, body);
+    try {
+      return await withIdempotency(this.db, { actorId: actor.id, route: PHARMACY_IDEMPOTENT_ROUTES.returns, key }, { id, ...input },
+        () => acceptReturn(this.db, actor, this.decls(), id, input, new Date()));
     } catch (e) {
       return toHttp(e);
     }

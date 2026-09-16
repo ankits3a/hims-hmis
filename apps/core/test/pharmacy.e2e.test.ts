@@ -54,6 +54,11 @@ describe("the OPD dispense counter over HTTP (16c T5)", () => {
     await as(fx.clerk.token)(request(server()).get("/pharmacy/reorder")).expect(403);
     const reorder = await as(fx.aide.token)(request(server()).get("/pharmacy/reorder")).expect(200);
     expect((reorder.body as { window: unknown }).window).toEqual({ days: 30, minCoverDays: 3, targetCoverDays: 7 });
+    // P6 — a return is a money act too; and an unattested one never reaches the act.
+    await as(fx.aide.token)(request(server()).post("/pharmacy/dispenses/d-any/returns").set("idempotency-key", "rt-1")
+      .send({ lines: [{ lineIdx: 0, qtyBase: 10 }], sealedIntact: true, reason: "changed", reasonClass: "genuine" })).expect(403);
+    await as(fx.pharmacist.token)(request(server()).post("/pharmacy/dispenses/d-any/returns").set("idempotency-key", "rt-2")
+      .send({ lines: [{ lineIdx: 0, qtyBase: 10 }], sealedIntact: false, reason: "changed", reasonClass: "genuine" })).expect(400);
     // P5 — the refund route is a money act: the aide holds no billing string at all.
     await as(fx.aide.token)(request(server()).post("/pharmacy/dispenses/d-any/refund").set("idempotency-key", "r-1")
       .send({ reason: "expired before collection", reasonClass: "genuine" })).expect(403);

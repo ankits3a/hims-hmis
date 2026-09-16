@@ -44,3 +44,16 @@ export function istDateOf(at: Date): string {
 export const REORDER_WINDOW_DAYS = 30;
 export const REORDER_MIN_COVER_DAYS = 3;
 export const REORDER_TARGET_COVER_DAYS = 7;
+
+/**
+ * PHARMACY P6 — SALES RETURNS (doc 16 O-7, the standard Indian retail-pharmacy policy): within
+ * SEVEN days of the hand-over, sealed and intact, in whole issue packs, and never a cold-chain,
+ * frozen or narcotic item, whose storage after it left the counter nobody can vouch for. A batch
+ * with under THIRTY days to expiry is not put back on the shelf: the counter would only have to
+ * pull it again.
+ */
+export const RETURN_WINDOW_DAYS = 7;
+export const RETURN_MIN_SHELF_DAYS = 30;
+export const RETURN_REFUSED_STORAGE = ["cold_2_8", "frozen", "narcotic"] as const;
+/** The ledger's `ref_type` for a counter's sales return: `ref_id` is the dispense LINE. */
+export const RETURN_REF_TYPE = "pharmacy_return";

@@ -213,6 +213,22 @@ left null bills the right amount and reports no output tax: read the column back
 > - Only a registered pharmacist (P2) holding `billing.credit_note.issue` and
 >   `billing.refund.request` can do it.
 
+> **3.11 A SEALED PACK COMES BACK (pharmacy P6, doc 16 O-7).**
+> - Open the handed-over dispense.
+> - Enter the quantity per line in base units: whole strips only.
+> - Tick "sealed and intact" only after you have inspected the pack yourself.
+> - Give the reason and press **Accept return**.
+> - The pack goes back into `PHARM-OPD` on its own batch, and the invoice is credited for exactly
+>   that quantity; tax and any discount are pro-rated.
+> - The refund request goes to billing's approver, and the patient takes the credit-note number to
+>   the billing desk.
+> - Refused:
+>   - after 7 days;
+>   - a cut strip;
+>   - a cold-chain, frozen or narcotic item;
+>   - a batch with under 30 days to expiry, or recalled. Quarantine that one instead.
+>   - more than was dispensed, net of earlier returns.
+
 ## 4. What refuses, and why — all 33 codes
 
 `errors.ts` declares 33; the table here used to name 13, and the drill above provokes several of the
@@ -247,6 +263,7 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `batch_expired` | a batch was NAMED and its printed expiry has passed | quarantine it; pick again without naming a batch |
 | **`batch_expired_before_collection`** | in date at the pick, expired before the patient collected | §3.10 — quarantine; cancel with a refund at the counter (P5), then scan the Rx again if the patient still wants it |
 | `reason_required` | a paid dispense cancelled with no reason the refund approver can read | type the reason |
+| `return_window_closed` · `return_not_sealed` · `return_cut_strip` · `return_not_accepted` · `return_short_expiry` · `return_exceeds_dispensed` | a sales return outside O-7: more than 7 days after the hand-over, not attested sealed, a cut strip, a cold-chain/frozen/narcotic item, a batch too near expiry or recalled, or more than was dispensed | §3.11 — refuse the return; quarantine a short-dated or recalled batch |
 | `fefo_override_unavailable` | a named batch is the wrong item, is recalled, or cannot cover the quantity | check the carton, or let FEFO choose |
 | `invoice_not_settled` | the money moved BACK after billing — a reversed allocation or a credit note | send the patient to the billing desk; the drug does not leave unpaid |
 
@@ -324,8 +341,9 @@ No migration is reversed and no table is dropped.
 
 ## 8. Not in 16c (do not look for it)
 
-IPD indents and ward stock; NDPS and Schedule X custody; **returns of drugs already handed over**
-(a billed dispense that was never collected is cancelled with a refund since P5, §3.10); cold chain; antimicrobial stewardship; the doctor ping on a held line; walk-in
+IPD indents and ward stock; NDPS and Schedule X custody; returns of cold-chain, frozen and
+narcotic items (sealed ambient packs come back since P6, §3.11; a billed dispense never collected is
+cancelled with a refund since P5, §3.10); cold chain; antimicrobial stewardship; the doctor ping on a held line; walk-in
 retail and outside prescriptions; repeat dispensing; home delivery; counts; the Replenishment
 automation; realtime on the counter (it polls every 10 s).
 

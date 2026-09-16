@@ -3387,7 +3387,13 @@
     "registration_in_use": "That registration number is already on file for another person",
     "registration_ended": "That registration has already ended",
     "not_a_pharmacist_role": "This person does not hold the pharmacy role",
-    "reason_required": "Say why — the refund approver will read it"
+    "reason_required": "Say why — the refund approver will read it",
+    "return_window_closed": "Returns are accepted within 7 days of the hand-over",
+    "return_not_sealed": "Only a sealed, intact pack comes back — inspect it and confirm",
+    "return_not_accepted": "Cold-chain, frozen and narcotic items are not taken back",
+    "return_cut_strip": "Returns come back in whole strips or packs, never cut",
+    "return_short_expiry": "This batch is too close to expiry (or recalled) to go back on the shelf — quarantine it",
+    "return_exceeds_dispensed": "That is more than was dispensed on this line, less what already came back"
   },
   "pharmacyCounter": {
     "partlyChecked": "Checked only in part",
@@ -3399,6 +3405,12 @@
     "refundGenuine": "Genuine (the patient cannot be supplied)",
     "refundMistake": "Mistake (billed in error)",
     "refundSubmit": "Cancel & request refund",
+    "returnTitle": "Return a sealed pack",
+    "returnQty": "Return qty, line {{n}}",
+    "returnSealed": "I have inspected it: sealed and intact",
+    "returnReason": "Reason for the return",
+    "returnSubmit": "Accept return",
+    "returned": "Return accepted. Credit note {{no}} raised; the refund waits for approval at billing.",
     "refunded": "Cancelled. Credit note {{no}} raised; the refund waits for approval at billing.",
     "regNo": "Reg. {{no}}",
     "title": "Dispense counter",

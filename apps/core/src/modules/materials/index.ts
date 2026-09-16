@@ -51,7 +51,7 @@ export type {
 export { createStore, ensureTransitStore, findStoreByCode, listStores, requireStore } from "./stores";
 export type { StoreRow } from "./stores";
 export {
-  availableQty, availableQtyByItem, balances, batchLocations, consumeReservation, consumedQtyByItem, fefoPick, getBatch, movementsFor, postMovement,
+  availableQty, availableQtyByItem, balances, batchLocations, consumeReservation, consumedQtyByItem, fefoPick, getBatch, movementsFor, postMovement, returnedQtyByRef,
   postMovements, recallBatch, releaseReservation, reserveStock,
 } from "./ledger";
 export type { BalanceRow, BatchRow, LedgerRow, MovementInput, MovementReason, ReservationRow } from "./ledger";

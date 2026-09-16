@@ -120,6 +120,14 @@ export async function cancelBilledDispense(
 ): Promise<{ dispense: WireDispense; creditNoteId: string; creditNoteNo: string; refundApprovalId: string }> {
   return api("POST", `/pharmacy/dispenses/${id}/refund`, body, idempotencyKey);
 }
+/** P6 — a sealed pack comes back after the hand-over. */
+export async function acceptReturn(
+  id: string,
+  body: { lines: { lineIdx: number; qtyBase: number }[]; sealedIntact: true; reason: string; reasonClass: "mistake" | "genuine" },
+  idempotencyKey: string,
+): Promise<{ dispense: WireDispense; creditNoteId: string; creditNoteNo: string; refundApprovalId: string }> {
+  return api("POST", `/pharmacy/dispenses/${id}/returns`, body, idempotencyKey);
+}
 export async function cancelDispense(id: string, reason: string): Promise<WireDispense> {
   return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/cancel`, { reason });
 }

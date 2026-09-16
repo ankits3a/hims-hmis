@@ -443,6 +443,30 @@ export async function availableQtyByItem(
 }
 
 /**
+ * PHARMACY P6 — how much has come BACK against each reference: the sum of `return` rows whose
+ * `ref_type` is `refType`, keyed by `ref_id`, over the ids asked for. A counter's sales return
+ * names the dispense line it returns, so this is "already returned", and the next return is
+ * bounded by it.
+ */
+export async function returnedQtyByRef(
+  db: Db | Tx, refType: string, refIds: readonly string[],
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const wanted = [...new Set(refIds)].filter((id) => id !== "");
+  if (wanted.length === 0) return out;
+  const rows = await db.select({
+    refId: stockLedger.refId,
+    qty: sql<string>`coalesce(sum(${stockLedger.qtyDelta}), 0)`,
+  }).from(stockLedger).where(and(
+    eq(stockLedger.reason, "return"),
+    eq(stockLedger.refType, refType),
+    inArray(stockLedger.refId, wanted),
+  )).groupBy(stockLedger.refId);
+  for (const r of rows) if (r.refId !== null) out.set(r.refId, Number(r.qty));
+  return out;
+}
+
+/**
  * PHARMACY P4 — how much of each item this store CONSUMED in `[since, until)`, keyed by item id; an
  * item with none is absent. Bounded by the item ids and the window. `occurred_at` is the injected
  * instant (a downtime back-entry lands on the day it happened, which is the day the velocity is
