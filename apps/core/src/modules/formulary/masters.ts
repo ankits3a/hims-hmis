@@ -1,4 +1,4 @@
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import {
@@ -10,8 +10,7 @@ import {
   saltAdded, saltUpdated,
 } from "./events";
 import type { Actor } from "@hmis/contracts";
-import type { Db, Tx } from "../../kernel/db/client";
-import { anyOfText } from "../../kernel/db/any-of";
+import type { Tx } from "../../kernel/db/client";
 
 export type SaltRow = typeof formularySalts.$inferSelect;
 export type MedicineRow = typeof formularyMedicines.$inferSelect;
@@ -359,34 +358,16 @@ export async function updateInteraction(
 
 // ─────────────────────────────────────── the reads ───────────────────────────────────────
 
-export async function listSalts(db: Db, opts: { activeOnly?: boolean } = {}): Promise<SaltRow[]> {
-  const rows = await db.select().from(formularySalts).orderBy(formularySalts.name);
-  return opts.activeOnly === true ? rows.filter((r) => r.active) : rows;
-}
-
-export async function listMedicines(db: Db, opts: { activeOnly?: boolean } = {}): Promise<MedicineWithSalts[]> {
-  const medicines = await db.select().from(formularyMedicines).orderBy(formularyMedicines.brandName);
-  const wanted = opts.activeOnly === true ? medicines.filter((m) => m.active) : medicines;
-  if (wanted.length === 0) return [];
-  const composition = await db.select().from(formularyMedicineSalts)
-    .where(anyOfText(formularyMedicineSalts.medicineId, wanted.map((m) => m.id)));
-  const byMedicine = new Map<string, { saltId: string; strength: string | null }[]>();
-  for (const row of composition) {
-    const list = byMedicine.get(row.medicineId) ?? [];
-    list.push({ saltId: row.saltId, strength: row.strength });
-    byMedicine.set(row.medicineId, list);
-  }
-  return wanted.map((m) => ({ ...m, salts: byMedicine.get(m.id) ?? [] }));
-}
-
-/** Every pair touching any of `saltIds`; the whole active table when `saltIds` is omitted. */
-export async function listInteractions(db: Db, saltIds?: string[]): Promise<InteractionRow[]> {
-  if (saltIds === undefined) {
-    return db.select().from(formularyInteractions).orderBy(formularyInteractions.severity);
-  }
-  if (saltIds.length === 0) return [];
-  return db.select().from(formularyInteractions).where(or(
-    inArray(formularyInteractions.saltAId, saltIds),
-    inArray(formularyInteractions.saltBId, saltIds),
-  ));
-}
+/**
+ * THE THREE UNBOUNDED READERS THAT USED TO LIVE HERE ARE GONE, NOT CAPPED.
+ *
+ * `listSalts`, `listMedicines` and `listInteractions` each answered "give me the whole table".
+ * `listMedicines` did it by reading every row and then asking for the composition with an `inArray`
+ * over every id, which THROWS `08P01` past 65,535 rows — see `kernel/db/any-of.ts`. Their
+ * replacements are in `reads.ts` and their names carry their bounds: `pageMedicines`, `pageSalts`,
+ * `pageInteractions`, `medicinesByIds`, `saltsByIds`, `countSalts`, `catalogueCensus`.
+ *
+ * They were DELETED rather than given a `limit` because a capped version leaves the unbounded
+ * question spellable, and the next caller spells it and gets a silently short answer.
+ * `index.test.ts` freezes the module's export list so they cannot quietly return.
+ */

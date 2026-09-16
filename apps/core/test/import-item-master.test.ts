@@ -2,7 +2,7 @@ import { setupTestDb, truncateAll } from "./helpers/db";
 import { seedPharmacyBase } from "./helpers/pharmacy";
 import { applyItemMaster, parseItemMaster, planItemMaster } from "../scripts/import-item-master";
 import { getItem, listItems, registerItem } from "../src/modules/materials";
-import { listMedicines } from "../src/modules/formulary";
+import { medicineIdsByBrandNames } from "../src/modules/formulary";
 import { withTx } from "../src/kernel/db/client";
 import type { PharmacyFixture } from "./helpers/pharmacy";
 import type { Db } from "../src/kernel/db/client";
@@ -168,7 +168,8 @@ describe("import:item-master — the hospital's own file, never invented rows", 
       expect(plan.refusals).toBe(0);
 
       /* somebody else takes RACE1 between the plan and the apply */
-      const medicineId = (await listMedicines(db)).find((m) => m.brandName === "Calpol 500")!.id;
+      /* Ask for the ONE brand this row needs. The map is keyed by the lowercased name. */
+      const medicineId = (await medicineIdsByBrandNames(db, ["Calpol 500"])).get("calpol 500")!;
       await withTx(db, (tx) => registerItem(tx, actor, {
         code: "RACE1", name: "Taken First", class: "drug", baseUom: "tablet",
         batchTracked: true, formularyMedicineId: medicineId,

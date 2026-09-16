@@ -582,7 +582,30 @@
     "admitted": "{{name}} फ़ॉर्मुलरी में दर्ज",
     "rejected": "{{name}} अस्वीकृत",
     "stocked": "फ़ॉर्मुलरी में",
-    "moieties": "मूल तत्व"
+    "moietyCount_one": "{{count}} मूल तत्व",
+    "moietyCount_other": "{{count}} मूल तत्व",
+    "catalogueShow": "सूची देखें",
+    "catalogueHide": "सूची छिपाएँ",
+    "catalogueCost": "खोलने तक कुछ नहीं मँगाया जाता — सूची एक-एक पृष्ठ करके पढ़ी जाती है।",
+    "catalogueMore": "और लाएँ",
+    "catalogueLoading": "लाया जा रहा है…",
+    "catalogueEnd": "सूची यहीं समाप्त होती है।",
+    "compositionEmpty": "अभी कोई मूल तत्व नहीं चुना गया।",
+    "saltSearchPlaceholder": "जैसे amoxicillin",
+    "saltSearchHint": "मूल तत्व खोजने के लिए नाम के कम से कम दो अक्षर लिखें।",
+    "saltSearching": "खोजा जा रहा है…",
+    "saltNoHits": "इस नाम का कोई सक्रिय मूल तत्व नहीं मिला।",
+    "saltAlreadyChosen": "— चुना गया",
+    "saltRemove": "{{name}} हटाएँ",
+    "census": {
+      "moieties": "मूल तत्व",
+      "medicines": "दवाइयाँ",
+      "uncomposed": "संरचना दर्ज नहीं",
+      "activeOfTotal": "{{total}} में से {{active}} सक्रिय",
+      "uncomposedCount_one": "{{count}} सक्रिय दवा",
+      "uncomposedCount_other": "{{count}} सक्रिय दवाइयाँ",
+      "uncomposedHint": "जिस उत्पाद का कोई मूल तत्व दर्ज नहीं, उस पर परस्पर-क्रिया, एलर्जी या विकल्प की कोई जाँच काम नहीं कर सकती।"
+    }
   },
   "opdConsult": {
     "pickFromFormulary": "फ़ॉर्मुलरी से चुनें",

@@ -7,9 +7,11 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { FormularyError, formularyHttpStatus } from "./errors";
 import {
-  addInteraction, addMedicine, addSalt, listInteractions, listMedicines, listSalts,
-  updateInteraction, updateMedicine, updateSalt,
+  addInteraction, addMedicine, addSalt, updateInteraction, updateMedicine, updateSalt,
 } from "./masters";
+import { catalogueCensus, pageInteractions, pageMedicines, pageSalts } from "./reads";
+import type { CatalogueCensus } from "./reads";
+import { CursorError } from "../../kernel/db/page";
 import { searchMedicines } from "./search";
 import type { MedicineHit } from "./search";
 import { admitStaging, getStagingRow, rejectStaging, searchStaging } from "./staging";
@@ -19,7 +21,8 @@ import { getCoverage, getPairOverrideRates } from "./curation";
 import type { InteractionRow, MedicineWithSalts, SaltRow } from "./masters";
 import type { StagingRow } from "./staging";
 import type { Coverage, PairUsage } from "./curation";
-import type { Actor } from "@hmis/contracts";
+import { pageQuery } from "@hmis/contracts";
+import type { Actor, WirePage } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -45,6 +48,12 @@ function httpError(statusCode: number, message: string, code: string, detail?: u
 /** Unrecognized errors rethrow — a 500 is a genuine bug, loudly (the patients/opd convention). */
 export function toHttp(e: unknown): never {
   if (e instanceof FormularyError) throw httpError(formularyHttpStatus(e.code), e.message, e.code, e.detail);
+  /**
+   * A cursor this server did not issue is a MALFORMED REQUEST, not a server fault and not a reason
+   * to quietly serve page one. `kernel/db/page.ts` refuses it there for the reason written in that
+   * file's header; this is where the refusal becomes the 400 a client can act on.
+   */
+  if (e instanceof CursorError) throw httpError(400, e.message, "bad_cursor");
   throw e;
 }
 
@@ -58,6 +67,13 @@ function parsed<T>(schema: z.ZodType<T>, body: unknown): T {
 const flagQuery = z.enum(["true", "false"]).optional();
 const medicineSearchQuery = z.object({ q: z.string().max(120), limit: z.string().max(3).optional() });
 const activeQuery = z.object({ active: flagQuery });
+/**
+ * The three list routes are PAGED — they used to answer with the whole table, and `medicines` did
+ * it by a read that THROWS past 65,535 rows (`kernel/db/any-of.ts`). `pageQuery` clamps `limit`
+ * rather than rejecting it, matching the `suggestQuery` ruling above.
+ */
+const activePageQuery = activeQuery.merge(pageQuery);
+const saltsPageQuery = activePageQuery.extend({ q: z.string().max(120).optional() });
 
 /**
  * `limit` is CLAMPED, not merely validated: a caller asking for 10,000 gets 25 rather than an
@@ -123,9 +139,13 @@ export class FormularyController {
 
   @RequirePermission("formulary.read", "hospital")
   @Get("salts")
-  async salts(@Query() query: unknown): Promise<{ items: SaltRow[] }> {
-    const q = parsed(activeQuery, query);
-    return { items: await listSalts(this.db, { activeOnly: q.active === "true" }) };
+  async salts(@Query() query: unknown): Promise<WirePage<SaltRow>> {
+    const q = parsed(saltsPageQuery, query);
+    try {
+      return await pageSalts(this.db, {
+        activeOnly: q.active === "true", q: q.q, limit: q.limit, cursor: q.cursor,
+      });
+    } catch (e) { toHttp(e); }
   }
 
   @RequirePermission("formulary.manage", "hospital")
@@ -175,9 +195,21 @@ export class FormularyController {
    * ═══ THE TYPEAHEAD — AND IT MUST SIT ABOVE `@Get("medicines")` ═══
    *
    * Nest matches in declaration order, so a literal segment declared after `medicines` would still
-   * be reached, but the pair reads as one thing here: `medicines` is the WHOLE catalogue and is now
-   * the wrong instrument for a screen — 103,383 rows, 15 MB, measured after the owner's bundle
-   * landed. Everything interactive uses this route and takes ten rows.
+   * be reached, but the pair reads as one thing here: `medicines` is the catalogue and is the wrong
+   * instrument for a screen. It is PAGED now and no longer unbounded, but the reason it must not be
+   * a screen's default read is unchanged and the size is worth stating correctly, because three
+   * files carried three different figures for it and all three said "measured":
+   *
+   *   MEASURED read-only on `hmis_cds_dev` (103,383 medicines, 142,759 composition rows) by
+   *   rebuilding this route's exact JSON body in SQL and taking `octet_length`:
+   *     full `MedicineWithSalts` rows ......... 60,128,503 bytes  (57.3 MiB)
+   *     trimmed to the fields the web client transcribes .. 38,762,461 bytes  (37.0 MiB)
+   *   So "38 MiB" measured the trimmed shape and is about right; "about 15 MB" is not reproducible
+   *   at any field subset. `apps/web/src/screens/opd-consult.tsx` and
+   *   `apps/web/src/components/drug-field.tsx` still carry the 15 MB figure; four live lanes are
+   *   mid-edit on the first, so the correction is recorded rather than taken here.
+   *
+   * Everything interactive uses this route and takes ten rows.
    *
    * `formulary.read` and no new grant: the doctor has held it since 16a, precisely so the consult
    * screen could name a medicine.
@@ -191,9 +223,28 @@ export class FormularyController {
 
   @RequirePermission("formulary.read", "hospital")
   @Get("medicines")
-  async medicines(@Query() query: unknown): Promise<{ items: MedicineWithSalts[] }> {
-    const q = parsed(activeQuery, query);
-    return { items: await listMedicines(this.db, { activeOnly: q.active === "true" }) };
+  async medicines(@Query() query: unknown): Promise<WirePage<MedicineWithSalts>> {
+    const q = parsed(activePageQuery, query);
+    try {
+      return await pageMedicines(this.db, {
+        activeOnly: q.active === "true", limit: q.limit, cursor: q.cursor,
+      });
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * How big the catalogue is — in ONE statement of scalar subqueries, with no row on the wire.
+   *
+   * Keyset paging deliberately gives no total, so a screen that wants to say "103,383 medicines"
+   * has to ask. Before this route the admin screen got that number by fetching all 103,383 rows and
+   * taking `.length`, which is the defect this phase is about wearing the clothes of a statistic.
+   * `uncomposedActiveMedicines` is the figure nobody has ever been shown: active products that no
+   * interaction, allergy or substitution check can reason about.
+   */
+  @RequirePermission("formulary.read", "hospital")
+  @Get("census")
+  async census(): Promise<CatalogueCensus> {
+    return catalogueCensus(this.db);
   }
 
   @RequirePermission("formulary.manage", "hospital")
@@ -223,8 +274,13 @@ export class FormularyController {
 
   @RequirePermission("formulary.read", "hospital")
   @Get("interactions")
-  async interactions(): Promise<{ items: InteractionRow[] }> {
-    return { items: await listInteractions(this.db) };
+  async interactions(@Query() query: unknown): Promise<WirePage<InteractionRow>> {
+    const q = parsed(activePageQuery, query);
+    try {
+      return await pageInteractions(this.db, {
+        activeOnly: q.active === "true", limit: q.limit, cursor: q.cursor,
+      });
+    } catch (e) { toHttp(e); }
   }
 
   @RequirePermission("formulary.manage", "hospital")

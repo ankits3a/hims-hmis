@@ -21,22 +21,36 @@ import { FormularyAdmin } from "./formulary-admin";
  * self-contained). Every name below is INVENTED except the pharmacology, which is real.
  */
 type Reply = { status: number; body: unknown };
-type Handler = Reply | (() => Reply);
+/**
+ * A HANDLER RECEIVES THE URL, and that is not a convenience — it is what lets these tests behave
+ * like the routes they stand in for. The three list routes are now PAGED and FILTERED by query
+ * string (`?active=true&q=amox&cursor=…`), so a handler that could not read the query could only
+ * ever answer one fixed page, and a paging test written against it would pass whatever the screen
+ * did with `nextCursor`. `test-utils`'s own `stubFetch` passes the url for the same reason.
+ */
+type Handler = Reply | ((url: URL) => Reply);
 
 function mockRoutes(handlers: Record<string, Handler>): void {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-      const key = `${init?.method ?? "GET"} ${raw.split("?")[0]!}`;
-      const handler = handlers[key];
+      const url = new URL(raw, "http://localhost");
+      const handler = handlers[`${init?.method ?? "GET"} ${url.pathname}`];
       if (handler === undefined) return new Response("{}", { status: 404 });
-      const reply = typeof handler === "function" ? handler() : handler;
+      const reply = typeof handler === "function" ? handler(url) : handler;
       return new Response(JSON.stringify(reply.body), {
         status: reply.status, headers: { "Content-Type": "application/json" },
       });
     }),
   );
+}
+
+/** The URLs of every request made to a path, so a test can assert what was ASKED, not only what came back. */
+function urlsOf(method: string, path: string): URL[] {
+  return vi.mocked(fetch).mock.calls
+    .filter(([input, init]) => (init?.method ?? "GET") === method && String(input).split("?")[0]!.endsWith(path))
+    .map(([input]) => new URL(String(input), "http://localhost"));
 }
 
 function bodiesOf(method: string, path: string): unknown[] {
@@ -61,6 +75,30 @@ const SALTS = [
   { id: "s-old", name: "withdrawn moiety", aliases: [], drugClass: null, atcCode: null, active: false },
 ];
 
+/**
+ * THE MOIETY ROUTE, BEHAVING AS THE SERVER DOES: `q` is a substring of the NAME, `active=true`
+ * narrows to active rows, and the answer is a page — `{ items, nextCursor }`. Filtering here rather
+ * than returning a fixed list is what makes "already chosen survives a new search" a real test: the
+ * second search genuinely cannot return the first moiety.
+ */
+function saltsRoute(url: URL): Reply {
+  const q = (url.searchParams.get("q") ?? "").toLowerCase();
+  const activeOnly = url.searchParams.get("active") === "true";
+  const items = SALTS
+    .filter((s) => (activeOnly ? s.active : true))
+    .filter((s) => (q === "" ? true : s.name.toLowerCase().includes(q)));
+  return { status: 200, body: { items, nextCursor: null } };
+}
+
+/** The census: one statement on the server, one object here. Figures are the shape of the real ones. */
+const CENSUS = {
+  salts: 3283, activeSalts: 3283,
+  medicines: 103383, activeMedicines: 103383,
+  compositionRows: 142759,
+  uncomposedActiveMedicines: 8,
+  interactions: 412, activeInteractions: 400,
+};
+
 /** The payload is SCRAPED. This one is hostile on purpose. */
 const MINED = {
   id: "g-1", kind: "medicine", name: "Augmentin 625",
@@ -77,10 +115,18 @@ const MINED = {
 
 function baseRoutes(): Record<string, Handler> {
   return {
-    "GET /api/formulary/salts": { status: 200, body: { items: SALTS } },
-    "GET /api/formulary/medicines": { status: 200, body: { items: [] } },
+    "GET /api/formulary/salts": saltsRoute,
+    "GET /api/formulary/medicines": { status: 200, body: { items: [], nextCursor: null } },
+    "GET /api/formulary/census": { status: 200, body: CENSUS },
     "GET /api/formulary/staging/search": { status: 200, body: { items: [MINED] } },
   };
+}
+
+/** Type two letters, wait out the 180 ms debounce, and take the row. */
+async function pickMoiety(user: ReturnType<typeof userEvent.setup>, typed: string, id: string): Promise<void> {
+  await user.clear(screen.getByTestId("formulary-salt-search"));
+  await user.type(screen.getByTestId("formulary-salt-search"), typed);
+  await user.click(await screen.findByTestId(`formulary-salt-hit-${id}`));
 }
 
 describe("FormularyAdmin", () => {
@@ -101,6 +147,16 @@ describe("FormularyAdmin", () => {
     await screen.findByTestId("formulary-admin");
     expect(callsTo("GET", "/formulary/staging/search")).toHaveLength(0);
     expect(screen.queryByTestId("formulary-hits")).toBeNull();
+
+    /**
+     * NOR HAS THE CATALOGUE, AND THAT IS THE DEFECT THIS SCREEN WAS CARRYING. Opening it used to
+     * fetch every medicine (103,383 rows, ~57 MiB measured) and every moiety (3,283) before the
+     * pharmacist had typed anything. The census is the one eager read and it carries no rows.
+     */
+    await screen.findByTestId("formulary-census");
+    expect(callsTo("GET", "/formulary/medicines")).toHaveLength(0);
+    expect(callsTo("GET", "/formulary/salts")).toHaveLength(0);
+    expect(callsTo("GET", "/formulary/census")).toHaveLength(1);
 
     await user.type(screen.getByTestId("formulary-search"), "augmentin");
     await user.click(screen.getByRole("button", { name: "Search" }));
@@ -142,7 +198,8 @@ describe("FormularyAdmin", () => {
     // …and CHANGED by the person admitting it. Seed is never authority.
     await user.clear(screen.getByTestId("formulary-brand"));
     await user.type(screen.getByTestId("formulary-brand"), "Augmentin 625 Duo");
-    await user.selectOptions(screen.getByTestId("formulary-salts"), ["s-amox", "s-clav"]);
+    await pickMoiety(user, "amox", "s-amox");
+    await pickMoiety(user, "clav", "s-clav");
     await user.click(screen.getByTestId("formulary-admit"));
 
     await waitFor(() => expect(admitted).toBe(1));
@@ -155,7 +212,16 @@ describe("FormularyAdmin", () => {
     expect(await screen.findByTestId("formulary-done")).toHaveTextContent("Augmentin 625 Duo");
   });
 
-  it("offers only ACTIVE moieties, so a withdrawn one cannot be composed into a new medicine", async () => {
+  /**
+   * ═══ THE ACTIVE RULE MOVED INTO THE REQUEST, SO THE ASSERTION MOVES WITH IT ═══
+   *
+   * It used to be a `.filter((s) => s.active)` over a fetched-in-full table, and the test read the
+   * `<option>` nodes. Both are gone: the screen now asks `GET /formulary/salts?active=true&q=…` and
+   * the server decides, which is where a rule about what may be composed belongs. So this asserts
+   * the ASK — the one thing the client is still responsible for — and then that the withdrawn
+   * moiety never reaches the picker.
+   */
+  it("asks the server for ACTIVE moieties only, so a withdrawn one cannot be composed in", async () => {
     mockRoutes(baseRoutes());
     const user = userEvent.setup();
     renderWithProviders(<FormularyAdmin />);
@@ -163,8 +229,142 @@ describe("FormularyAdmin", () => {
     await user.click(screen.getByRole("button", { name: "Search" }));
     await user.click(await screen.findByTestId("formulary-hit-g-1"));
 
-    const options = within(await screen.findByTestId("formulary-salts")).getAllByRole("option");
-    expect(options.map((o) => o.textContent)).toEqual(["amoxicillin (penicillin)", "clavulanic acid"]);
+    // "moiety" matches the withdrawn row's name and nothing else in the fixture.
+    await user.type(screen.getByTestId("formulary-salt-search"), "moiety");
+    expect(await screen.findByTestId("formulary-salt-no-hits")).toBeInTheDocument();
+    expect(screen.queryByTestId("formulary-salt-hit-s-old")).toBeNull();
+
+    const asked = urlsOf("GET", "/formulary/salts");
+    expect(asked).not.toHaveLength(0);
+    for (const url of asked) expect(url.searchParams.get("active")).toBe("true");
+    expect(asked[asked.length - 1]!.searchParams.get("q")).toBe("moiety");
+  });
+
+  /**
+   * ═══ THE BUG THIS WIDGET SHAPE EXISTS TO PREVENT ═══
+   *
+   * A composition is two or three moieties, so the pharmacist searches more than once — and the
+   * second search cannot return the first moiety, because it is a different substring. A picker
+   * that holds its selection INSIDE the result list (a `<select multiple>`, or chips rebuilt from
+   * the current hits) loses the first choice at the moment the second is being made, silently, and
+   * what is admitted is a one-salt Augmentin. The chips are held as rows, so they survive.
+   */
+  it("a moiety already chosen survives a new search, and is removable one at a time", async () => {
+    let admitted: unknown = null;
+    mockRoutes({
+      ...baseRoutes(),
+      "POST /api/formulary/staging/g-1/admit": () => ({ status: 201, body: { medicineId: "m-1" } }),
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<FormularyAdmin />);
+    await user.type(await screen.findByTestId("formulary-search"), "augmentin");
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await user.click(await screen.findByTestId("formulary-hit-g-1"));
+
+    await pickMoiety(user, "amox", "s-amox");
+    expect(await screen.findByTestId("formulary-salt-chip-s-amox")).toHaveTextContent("amoxicillin (penicillin)");
+
+    // A search that CANNOT return amoxicillin — and the chip is still there when it comes back.
+    await pickMoiety(user, "clav", "s-clav");
+    expect(screen.queryByTestId("formulary-salt-hit-s-amox")).toBeNull();
+    expect(screen.getByTestId("formulary-salt-chip-s-amox")).toBeInTheDocument();
+    expect(screen.getByTestId("formulary-salt-chip-s-clav")).toBeInTheDocument();
+
+    // Both travel on the request, in the order they were chosen.
+    await user.click(screen.getByTestId("formulary-admit"));
+    await waitFor(() => { admitted = bodiesOf("POST", "/formulary/staging/g-1/admit")[0] ?? null; expect(admitted).not.toBeNull(); });
+    expect(admitted).toMatchObject({ salts: [{ saltId: "s-amox" }, { saltId: "s-clav" }] });
+  });
+
+  it("removing one chip removes exactly that moiety", async () => {
+    mockRoutes(baseRoutes());
+    const user = userEvent.setup();
+    renderWithProviders(<FormularyAdmin />);
+    await user.type(await screen.findByTestId("formulary-search"), "augmentin");
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await user.click(await screen.findByTestId("formulary-hit-g-1"));
+
+    await pickMoiety(user, "amox", "s-amox");
+    await pickMoiety(user, "clav", "s-clav");
+    await user.click(screen.getByTestId("formulary-salt-remove-s-amox"));
+
+    expect(screen.queryByTestId("formulary-salt-chip-s-amox")).toBeNull();
+    expect(screen.getByTestId("formulary-salt-chip-s-clav")).toBeInTheDocument();
+  });
+
+  /**
+   * ═══ THE NUMBER THIS MODULE HAS NEVER SHOWN ANYONE ═══
+   *
+   * An ACTIVE medicine with no composition can be prescribed and dispensed while the interaction,
+   * allergy and substitution checks have nothing to reason with. It is invisible in every list that
+   * shows names — a list shows what IS there — and it costs one statement and no rows to state.
+   */
+  it("the census strip states the catalogue's size and how much of it no safety check can read", async () => {
+    mockRoutes(baseRoutes());
+    renderWithProviders(<FormularyAdmin />);
+
+    const census = await screen.findByTestId("formulary-census");
+    // Indian grouping, because the pharmacist reading it reads every other figure that way.
+    expect(within(census).getByTestId("census-medicines")).toHaveTextContent("1,03,383 active of 1,03,383");
+    expect(within(census).getByTestId("census-salts")).toHaveTextContent("3,283 active of 3,283");
+    expect(within(census).getByTestId("census-uncomposed")).toHaveTextContent("8 active medicines");
+    expect(within(census).getByText(/no interaction, allergy or substitution check/i)).toBeInTheDocument();
+
+    // It is a census, not a listing: no row of any table was fetched to produce it.
+    expect(callsTo("GET", "/formulary/medicines")).toHaveLength(0);
+  });
+
+  /**
+   * ═══ THE CATALOGUE IS PAGED, AND THE END OF IT IS `nextCursor === null` — NOTHING ELSE ═══
+   *
+   * The two halves of that law are both tested here, because each has a plausible wrong
+   * implementation that the other cannot catch:
+   *
+   *  · page one is SHORT (one row) and carries a cursor — a screen that stopped because the page
+   *    was shorter than the limit would truncate the catalogue at one row and show no way on;
+   *  · page two is FULL (two rows) and carries no cursor — a screen that offered "load more"
+   *    because the page was full would ask again, get nothing, and loop.
+   */
+  it("the catalogue is collapsed, costs nothing until opened, and follows nextCursor to the end", async () => {
+    const pages: Record<string, Reply> = {
+      "": {
+        status: 200,
+        body: { items: [{ id: "m-1", brandName: "Augmentin 625", salts: [{ saltId: "s-amox", strength: "500 mg" }] }], nextCursor: "c-1" },
+      },
+      "c-1": {
+        status: 200,
+        body: {
+          items: [
+            { id: "m-2", brandName: "Azithral 500", salts: [{ saltId: "s-azi", strength: "500 mg" }] },
+            { id: "m-3", brandName: "Pan 40", salts: [] },
+          ],
+          nextCursor: null,
+        },
+      },
+    };
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/formulary/medicines": (url) => pages[url.searchParams.get("cursor") ?? ""]!,
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<FormularyAdmin />);
+
+    await screen.findByTestId("formulary-census");
+    expect(callsTo("GET", "/formulary/medicines")).toHaveLength(0);
+
+    await user.click(screen.getByTestId("formulary-catalogue-toggle"));
+    expect(await screen.findByTestId("formulary-medicine-m-1")).toHaveTextContent("Augmentin 625 — 1 moiety");
+
+    // A SHORT page that carries a cursor is not the end.
+    const more = await screen.findByTestId("formulary-catalogue-more");
+    await user.click(more);
+
+    expect(await screen.findByTestId("formulary-medicine-m-3")).toHaveTextContent("Pan 40 — 0 moieties");
+    expect(screen.getByTestId("formulary-medicine-m-1")).toBeInTheDocument(); // page one is kept
+    // A FULL page that carries no cursor IS the end.
+    await waitFor(() => expect(screen.queryByTestId("formulary-catalogue-more")).toBeNull());
+    expect(screen.getByTestId("formulary-catalogue-end")).toBeInTheDocument();
+    expect(urlsOf("GET", "/formulary/medicines").map((u) => u.searchParams.get("cursor"))).toEqual([null, "c-1"]);
   });
 
   it("surfaces the server's refusal verbatim, including the DD8 intra-FDC gate", async () => {
@@ -183,7 +383,7 @@ describe("FormularyAdmin", () => {
     await user.type(await screen.findByTestId("formulary-search"), "augmentin");
     await user.click(screen.getByRole("button", { name: "Search" }));
     await user.click(await screen.findByTestId("formulary-hit-g-1"));
-    await user.selectOptions(await screen.findByTestId("formulary-salts"), ["s-amox"]);
+    await pickMoiety(user, "amox", "s-amox");
     await user.click(screen.getByTestId("formulary-admit"));
 
     // The message is the SERVER's, not a re-worded client copy of the same rule.

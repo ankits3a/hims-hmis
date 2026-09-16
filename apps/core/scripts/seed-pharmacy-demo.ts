@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { createDb, withTx } from "../src/kernel/db/client";
 import { requireEnv } from "../src/kernel/config";
 import { roleAssignments, users } from "../src/kernel/db/schema";
-import { addMedicine, addSalt, listMedicines, listSalts } from "../src/modules/formulary";
+import { addMedicine, addSalt, medicineIdsByBrandNames, saltIdsByNames } from "../src/modules/formulary";
 import {
   activateVendor, addVendorDocument, availableQty, balances, captureGrn, findStoreByCode, listGrns,
   listItems, listVendors, postGrn, registerItem, registerVendor, runGateQc,
@@ -209,7 +209,11 @@ export function assertDemoDataAllowed(
 }
 
 async function ensureSalts(db: Db, actor: Actor, report: PharmacyDemoReport): Promise<Map<string, string>> {
-  const byName = new Map((await listSalts(db)).map((s) => [s.name.toLowerCase(), s.id]));
+  /* ASK ABOUT THE EIGHT MOIETIES THIS SEED KNOWS, not about every moiety there is. The map is keyed
+     by the LOWERCASED name, and `SALTS` is written lowercase, so `byName.has(salt.name)` reads the
+     same as it did when the map was built from a full `listSalts`. No `activeOnly` here on purpose:
+     a moiety somebody deactivated still OCCUPIES its name, and re-creating it would collide. */
+  const byName = await saltIdsByNames(db, SALTS.map((s) => s.name));
   for (const salt of SALTS) {
     if (byName.has(salt.name)) { report.saltsExisting += 1; continue; }
     const { saltId } = await withTx(db, (tx: Tx) => addSalt(tx, actor, { name: salt.name, drugClass: salt.drugClass }));
@@ -222,7 +226,9 @@ async function ensureSalts(db: Db, actor: Actor, report: PharmacyDemoReport): Pr
 async function ensureMedicines(
   db: Db, actor: Actor, salts: Map<string, string>, report: PharmacyDemoReport,
 ): Promise<Map<string, string>> {
-  const existing = new Map((await listMedicines(db)).map((m) => [m.brandName.toLowerCase(), m.id]));
+  /* Same shape, same reason: the eight brands this seed would create, not the catalogue. An
+     existing row is ADOPTED rather than duplicated, and adopting requires only these names. */
+  const existing = await medicineIdsByBrandNames(db, MEDICINES.map((m) => m.brand));
   const byBrand = new Map<string, string>();
   for (const med of MEDICINES) {
     const found = existing.get(med.brand.toLowerCase());
