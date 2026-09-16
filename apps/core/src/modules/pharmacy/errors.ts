@@ -85,6 +85,8 @@ export const PHARMACY_ERROR_CODES = [
   "return_exceeds_dispensed",
   // ── P7 ──
   "invalid_day",
+  // ── P9 ──
+  "invalid_range",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -150,6 +152,7 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   return_short_expiry: 409,
   return_exceeds_dispensed: 409,
   invalid_day: 400,
+  invalid_range: 400,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {

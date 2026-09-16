@@ -189,7 +189,16 @@ export type PhiSurface =
    * one an enquiry would ask about — it is how a clerk with a legitimate reason to open ONE record
    * reaches the names of everyone who shares a phone with them.
    */
-  | "patient.linked";
+  | "patient.linked"
+  /**
+   * PHARMACY P9 — **THE SCHEDULE H1 REGISTER, and it is an APPEND to a union and nothing else.**
+   *
+   * Drugs and Cosmetics Rules 1945 r.65(3A): the register names the patient, the prescriber and the
+   * drug, and is produced to an inspector. Reading a month of it is the `aerb.dose_register` shape,
+   * a list of patients and what was given to them. It is its own name because a pharmacist opening
+   * one dispense and an inspector's copy of a month are different disclosures.
+   */
+  | "pharmacy.h1_register";
 
 /** How the reader was connected to this patient's care AT THE MOMENT OF THE READ. */
 export type CareContext = "treating" | "serving" | "none";

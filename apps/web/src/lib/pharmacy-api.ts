@@ -210,6 +210,17 @@ export async function fetchReorderAdvice(): Promise<WireReorderAdvice> {
   return api<WireReorderAdvice>("GET", "/pharmacy/reorder");
 }
 
+// ── P9 — the Schedule H1 register ──
+export type WireH1RegisterRow = {
+  entryNo: number; dispensedAt: string; patientId: string; patientName: string; patientAddress: string | null;
+  restricted: boolean; prescriberName: string; prescriberRegNo: string | null; drugName: string;
+  batchNo: string; qtyBase: number; unit: string; pharmacistRegNo: string | null;
+};
+export type WireH1Register = { period: { from: string; to: string }; rows: WireH1RegisterRow[] };
+export async function fetchH1Register(from: string, to: string): Promise<WireH1Register> {
+  return api<WireH1Register>("GET", `/pharmacy/registers/h1${qs({ from, to })}`);
+}
+
 // ── P7 — the counter's day ──
 export type WireCounterSummary = {
   day: string; handedOver: number;

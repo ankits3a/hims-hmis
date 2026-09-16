@@ -16,8 +16,10 @@ import { alternativesFor, cancelDispense, declineLine, verifyDispense } from "./
 import { cancelBilledDispense } from "./refund";
 import { reorderAdvice } from "./replenishment";
 import { acceptReturn } from "./returns";
+import { h1Register } from "./registers";
 import { counterSummary } from "./summary";
 import type { CounterSummary } from "./summary";
+import type { H1Register } from "./registers";
 import type { ReturnResult } from "./returns";
 import type { ReorderAdvice } from "./replenishment";
 import type { CancelBilledResult } from "./refund";
@@ -250,6 +252,22 @@ export class PharmacyCounterController {
   async summary(@Query("day") day?: string): Promise<CounterSummary> {
     try {
       return await counterSummary(this.db, day ?? istDateOf(new Date()));
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * P9 — the Schedule H1 register for `from`..`to` (IST dates, at most 31 days). The read asserts the
+   * permission itself, and logs one PHI access row per patient it shows.
+   */
+  @RequirePermission("pharmacy.register.read", "hospital")
+  @Get("registers/h1")
+  async h1Register(
+    @CurrentActor() actor: Actor, @Query("from") from?: string, @Query("to") to?: string,
+  ): Promise<H1Register> {
+    try {
+      return await h1Register(this.db, actor, { from: from ?? "", to: to ?? "" });
     } catch (e) {
       return toHttp(e);
     }

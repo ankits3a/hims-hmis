@@ -66,7 +66,8 @@
     "registration": "Registration",
     "appointment": "Booking desk",
     "opdScribe": "Door scribe",
-    "slipCapture": "Slip desk"
+    "slipCapture": "Slip desk",
+    "pharmacyH1": "H1 register"
   },
   "palette": {
     "title": "Search",
@@ -3422,7 +3423,8 @@
     "return_cut_strip": "Returns come back in whole strips or packs, never cut",
     "return_short_expiry": "This batch is too close to expiry (or recalled) to go back on the shelf — quarantine it",
     "return_exceeds_dispensed": "That is more than was dispensed on this line, less what already came back",
-    "invalid_day": "That is not a date"
+    "invalid_day": "That is not a date",
+    "invalid_range": "The period must be real dates, running forwards, at most 31 days"
   },
   "pharmacyCounter": {
     "partlyChecked": "Checked only in part",
@@ -4142,5 +4144,26 @@
   "drugField": {
     "unreviewed": "not yet reviewed by pharmacy",
     "unreviewedTitle": "A component of this product has not been reviewed by pharmacy, so an allergy class or an interaction on that component cannot be checked."
+  },
+  "pharmacyH1": {
+    "title": "Schedule H1 register",
+    "rule": "Drugs and Cosmetics Rules, 1945, rule 65(3A)",
+    "intro": "Every Schedule H1 supply the counter handed over, in the order it was entered: the prescriber, the patient, the drug and the quantity. Keep it for three years and produce it to an inspector. Print a month at a time.",
+    "month": "Month",
+    "print": "Print register",
+    "period": "Period: {{from}} to {{to}}",
+    "licence": "Drug licence no.: ____________________",
+    "signature": "Signature of the pharmacist in charge: ____________________",
+    "none": "No Schedule H1 supply in this month.",
+    "sno": "S. no.",
+    "when": "Date and time",
+    "patient": "Patient (name and address)",
+    "prescriber": "Prescriber (name, reg. no.)",
+    "drug": "Drug",
+    "batch": "Batch",
+    "qty": "Quantity",
+    "pharmacist": "Pharmacist (reg. no.)",
+    "sealed": "sealed record",
+    "sealedNote": "A sealed patient's name and address are withheld from this login. An inspector's unredacted copy needs the patients.confidential.read grant."
   }
 }

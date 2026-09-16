@@ -56,6 +56,11 @@ describe("the OPD dispense counter over HTTP (16c T5)", () => {
     expect((reorder.body as { window: unknown }).window).toEqual({ days: 30, minCoverDays: 3, targetCoverDays: 7, nearExpiryDays: 90 });
     // P8 — both shelf-risk lists travel with it.
     expect(reorder.body).toMatchObject({ expiring: expect.any(Array), expiredOnShelf: expect.any(Array) });
+    // P9 — the H1 register: the pharmacist's read, never the aide's; a period that is not dates is refused.
+    await as(fx.aide.token)(request(server()).get("/pharmacy/registers/h1?from=2026-08-01&to=2026-08-31")).expect(403);
+    const h1 = await as(fx.pharmacist.token)(request(server()).get("/pharmacy/registers/h1?from=2026-08-01&to=2026-08-31")).expect(200);
+    expect(h1.body).toEqual({ period: { from: "2026-08-01", to: "2026-08-31" }, rows: [] });
+    await as(fx.pharmacist.token)(request(server()).get("/pharmacy/registers/h1?from=2026-08-01")).expect(400);
     // P7 — the counter's day: read at the counter only, and a day that is not a date is refused.
     await as(fx.clerk.token)(request(server()).get("/pharmacy/summary")).expect(403);
     await as(fx.aide.token)(request(server()).get("/pharmacy/summary?day=2026-08-17")).expect(200);
