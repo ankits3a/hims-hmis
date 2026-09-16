@@ -68,8 +68,8 @@ describe("the formulary tables (Plan 16a T1)", () => {
     ]);
     await db.insert(formularyMedicines).values({ id: "M-AUG", brandName: "Augmentin 625", form: "tablet", ...AUDIT });
     await db.insert(formularyMedicineSalts).values([
-      { medicineId: "M-AUG", saltId: "S-AMOX", strength: "500 mg" },
-      { medicineId: "M-AUG", saltId: "S-CLAV", strength: "125 mg" },
+      { medicineId: "M-AUG", saltId: "S-AMOX", strength: "500 mg", source: "curated" },
+      { medicineId: "M-AUG", saltId: "S-CLAV", strength: "125 mg", source: "curated" },
     ]);
   }
 
@@ -122,14 +122,14 @@ describe("the formulary tables (Plan 16a T1)", () => {
     expect(rows.map((r) => r.saltId).sort()).toEqual(["S-AMOX", "S-CLAV"]);
     // The same salt twice on one medicine is a data error, not a stronger dose.
     await expect(
-      db.insert(formularyMedicineSalts).values({ medicineId: "M-AUG", saltId: "S-AMOX", strength: "250 mg" }),
+      db.insert(formularyMedicineSalts).values({ medicineId: "M-AUG", saltId: "S-AMOX", strength: "250 mg", source: "curated" }),
     ).rejects.toThrow(/formulary_medicine_salts_medicine_id_salt_id_pk/);
   });
 
   it("a composition cannot name a moiety the formulary does not have", async () => {
     await db.insert(formularyMedicines).values({ id: "M1", brandName: "Invented Brand", form: "tablet", ...AUDIT });
     await expect(
-      db.insert(formularyMedicineSalts).values({ medicineId: "M1", saltId: "S-NOSUCH" }),
+      db.insert(formularyMedicineSalts).values({ medicineId: "M1", saltId: "S-NOSUCH", source: "curated" }),
     ).rejects.toThrow(/formulary_medicine_salts_salt_id_formulary_salts_id_fk/);
   });
 

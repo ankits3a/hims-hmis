@@ -179,15 +179,39 @@ export const formularyMedicines = pgTable(
 /**
  * The composition join - a fixed-dose combination is simply a medicine with more than one row.
  *
- * === `source` EXISTS BECAUSE TWO WRITERS ARE ABOUT TO SHARE THIS TABLE ===
+ * === `source` EXISTS BECAUSE TWO WRITERS SHARE THIS TABLE ===
  *
- * Today the only writer is a pharmacist through `addMedicine`/`updateMedicine`, and
- * `updateMedicine` does an unconditional `delete ... where medicine_id = $1` before re-inserting
- * (`masters.ts:247`). Once a derivation also writes here - medicine -> generic -> substance ->
- * curated moiety - those two overwrite each other in both directions and neither can tell which
- * rows were its own. A pharmacist's correction would vanish on the next derivation run, silently.
+ * A pharmacist writes here through `addMedicine`/`updateMedicine`, and the catalogue importer
+ * writes here too. `updateMedicine` does an unconditional `delete ... where medicine_id = $1`
+ * before re-inserting. Without provenance those two overwrite each other in both directions and
+ * neither can tell which rows were its own, so a pharmacist's correction would vanish on the next
+ * import run, silently. Every row therefore says where it came from.
  *
- * So every row says where it came from, and the curated delete is scoped to `curated`.
+ * === WHAT THIS COMMENT USED TO CLAIM, AND WHY THE CORRECTION IS THE INTERESTING PART ===
+ *
+ * It said, in the present tense, "the curated delete is scoped to `curated`". It never was:
+ * `updateMedicine`'s delete is unscoped. And the column could not have told the two apart even if
+ * it were, because `source` carried a DEFAULT and no writer ever set it — measured on the loaded
+ * catalogue, all 142,759 release-derived rows read `'curated'`. A column nobody writes, described
+ * by a comment nobody could check, is worse than no column: it reads as a guarantee.
+ *
+ * So: the DEFAULT IS GONE and every writer states its own provenance. An unprovenanced insert is
+ * now a COMPILE error rather than a silently mislabelled row — `$inferInsert` makes the field
+ * required and `tsc` names every site, which is only safe because all five writers are drizzle
+ * builder inserts and none is raw SQL.
+ *
+ * === THE RULE THE FIRST DERIVATION WRITER IS HELD TO ===
+ *
+ * The curated delete STAYS UNSCOPED, because `updateMedicine` is a whole-composition replace: a
+ * pharmacist who submits a composition is stating the whole of it, and leaving derived rows behind
+ * would silently merge their statement with the importer's. What a derivation may do is narrower,
+ * and it is a rule rather than a mechanism because there is no derivation yet:
+ *
+ *   A DERIVATION MAY WRITE ONLY WHERE THE MEDICINE HAS NO `curated` ROW,
+ *   AND MAY DELETE ONLY ITS OWN `derived` ROWS.
+ *
+ * The write half matters as much as the delete half: scoping only the delete leaves a derivation
+ * free to add a moiety beside a pharmacist's and produce a composition neither of them stated.
  */
 export const formularyMedicineSalts = pgTable(
   "formulary_medicine_salts",
@@ -196,8 +220,11 @@ export const formularyMedicineSalts = pgTable(
     saltId: text("salt_id").notNull().references(() => formularySalts.id),
     /** Per-salt strength, e.g. '500 mg' on the amoxicillin row of an Augmentin 625. */
     strength: text("strength"),
-    /** 'curated' (a pharmacist typed it) or 'derived' (the release produced it). */
-    source: text("source").notNull().default("curated"),
+    /**
+     * 'curated' (a pharmacist typed it) or 'derived' (the release produced it). NO DEFAULT, on
+     * purpose — see the header. It means WHO LAST ASSERTED THIS ROW, not who first created it.
+     */
+    source: text("source").notNull(),
   },
   (t) => [
     primaryKey({ columns: [t.medicineId, t.saltId] }),
