@@ -57,9 +57,10 @@ export default tseslint.config(
        * `modules/formulary/reads.ts` — the unbounded read this repo spent two PRs deleting was
        * reachable precisely because asking the table was easier than asking the module.
        *
-       * IT CANNOT SEE RAW SQL. `modules/cds/allergens.ts` reads `formulary_salts` in a raw
-       * statement and is invisible to any import rule. Recorded so a green lint is not mistaken
-       * for an enforced boundary.
+       * IT CANNOT SEE RAW SQL. `modules/cds/allergens.ts` used to read `formulary_salts` in a raw
+       * statement, invisible to any import rule. It now asks `suggestMoieties`, and the raw-SQL half
+       * of this boundary is `apps/core/test/formulary-table-boundary.test.ts`, which scans the
+       * source text. Both halves are needed: a green lint alone is not an enforced boundary.
        */
       "no-restricted-syntax": ["error", {
         selector: "ImportSpecifier[imported.name=/^formulary[A-Z]/]",

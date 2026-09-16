@@ -34,9 +34,9 @@ export type { InteractionPair, ResolvedDrug, SaltRef } from "./resolve";
  */
 export {
   MAX_IDS, catalogueCensus, countSalts, medicineExists, medicineIdsByBrandNames, medicinesByIds,
-  pageInteractions, pageMedicines, pageSalts, saltIdsByNames, saltsByIds,
+  pageInteractions, pageMedicines, pageSalts, saltIdsByNames, saltsByIds, suggestMoieties,
 } from "./reads";
-export type { CatalogueCensus } from "./reads";
+export type { CatalogueCensus, MoietySuggestion } from "./reads";
 export { equivalentMedicines, isEquivalentMedicine } from "./equivalence";
 export type { EquivalentMedicine } from "./equivalence";
 /** T7 — staging admission. `searchStaging` may match generously; nothing here resolves anything. */
