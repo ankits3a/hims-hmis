@@ -360,11 +360,12 @@ withheld** unless the reader also holds `patients.confidential.read`, which no r
 an inspector an unredacted copy is therefore the owner's grant to the pharmacist in charge, made
 deliberately. Until then, the sealed rows print as the alias, marked "sealed record".
 
-**No patient's copy of the pharmacy invoice.** `billDispense` issues a real invoice with real tax
-heads and `daily-close` folds it into GSTR-1, so the tax side is intact — but no screen in the
-application renders an already-issued invoice, and `kernel/printing/enqueue.ts` declares four
-documents, none of them an invoice. §3.10 makes this worse rather than better: a patient who has paid
-and cannot collect needs a document showing what they paid for.
+**The patient's copy of the bill is printed at the counter since P10.** A billed or handed-over
+dispense shows **Print bill**. It opens billing's own printed invoice (letterhead, lines, tax heads,
+settlement, signed QR) with a batch table added (drug, batch, expiry, quantity) and "Dispensed by …
+· Reg. …". The counter steps aside while the bill is on screen. `billing.invoice.read`, which
+`pharmacy` already holds, is the grant it uses. For a patient who paid and could not collect (§3.10),
+the same bill shows what was paid, and the credit note is billing's.
 
 **Careful with "the Expiry Watchman":** the automation that WATCHES SHELF STOCK for approaching
 expiry and raises ALERTS is not in 16c. The reorder screen READS it (P8): what will expire at the

@@ -3517,7 +3517,9 @@
     "billed": "बिल बना। चालान {{no}}।",
     "directions": "निर्देश",
     "expiry": "समाप्ति",
-    "substitutedFor": "{{brand}} के स्थान पर"
+    "substitutedFor": "{{brand}} के स्थान पर",
+    "printBill": "बिल प्रिंट करें",
+    "backToCounter": "काउंटर पर वापस"
   },
   "appointmentSeat": {
     "title": "अपॉइंटमेंट",
@@ -4165,5 +4167,15 @@
     "pharmacist": "फ़ार्मासिस्ट (रजि. नं.)",
     "sealed": "गोपनीय रिकॉर्ड",
     "sealedNote": "गोपनीय मरीज़ का नाम और पता इस लॉगिन से छिपाया गया है। निरीक्षक के लिए पूरी प्रति के लिए patients.confidential.read अनुमति चाहिए।"
+  },
+  "pharmacyBill": {
+    "title": "बैच विवरण",
+    "drug": "दवा",
+    "batch": "बैच",
+    "expiry": "एक्स.",
+    "qty": "मात्रा",
+    "substitutedFor": "({{brand}} के स्थान पर)",
+    "dispensedBy": "{{name}} द्वारा दी गई",
+    "reg": "रजि. {{no}}"
   }
 }

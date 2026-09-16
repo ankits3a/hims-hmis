@@ -62,6 +62,8 @@ describe("InvoicePrint", () => {
     expect(screen.getByText("BIHAR 844101")).toBeInTheDocument();
 
     expect(screen.getByTestId("invoice-no")).toHaveTextContent("INV/26-27/000042");
+    // PHARMACY P10 — a caller that passes no annex prints no annex section.
+    expect(screen.queryByTestId("invoice-annex")).toBeNull();
     expect(screen.getByTestId("invoice-day")).toHaveTextContent("2026-08-20");
 
     // CONFIDENTIAL/VIP §14: a restricted row prints the ALIAS, and the real name is not in the DOM.
