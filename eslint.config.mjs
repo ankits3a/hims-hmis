@@ -34,7 +34,43 @@ export default tseslint.config(
           message: "Modules may only import another module's index.ts (its declared interface). Cross-module internals are forbidden (spec §4).",
         }],
       }],
+      /*
+       * ═══ AND A MODULE MAY NOT GO ROUND ANOTHER MODULE TO ITS TABLES ═══
+       *
+       * `no-restricted-imports` above stops `modules/x` importing `modules/y/internal`. It does not
+       * stop `modules/x` importing `formularyMedicines` from `kernel/db/schema` and querying y's
+       * tables itself, which arrives at the same place by a different road — and the formulary's
+       * own `index.ts` states that boundary in prose that nothing enforced.
+       *
+       * A PATH-BASED FORM OF THIS RULE WOULD MATCH NOTHING, and that is measured rather than
+       * guessed: `grep -rn 'kernel/db/schema/formulary' apps/core/src` returns ONE hit and it is a
+       * sentence in a doc comment, because every module imports the barrel
+       * (`from "../../kernel/db/schema"`, 339 of them). A `no-restricted-imports` group on a
+       * `kernel/db/schema/formulary` path would therefore land green for ever while the thing it
+       * forbids went on happening — the same failure the comment above records for the extglob
+       * patterns, which is why it is worth saying twice. So this matches the imported SPECIFIER
+       * NAME, which catches the barrel import that is the only form anybody actually writes.
+       *
+       * Scoped to the formulary because that is the boundary that was crossed and has just been
+       * fixed: `materials/items.ts` selected from `formulary_medicines` to check an id exists and
+       * now asks `medicineExists`. The argument for routing it through the module is in
+       * `modules/formulary/reads.ts` — the unbounded read this repo spent two PRs deleting was
+       * reachable precisely because asking the table was easier than asking the module.
+       *
+       * IT CANNOT SEE RAW SQL. `modules/cds/allergens.ts` reads `formulary_salts` in a raw
+       * statement and is invisible to any import rule. Recorded so a green lint is not mistaken
+       * for an enforced boundary.
+       */
+      "no-restricted-syntax": ["error", {
+        selector: "ImportSpecifier[imported.name=/^formulary[A-Z]/]",
+        message: "Do not query another module's tables. Ask modules/formulary through its index.ts (medicineExists, medicinesByIds, pageMedicines...) — it owns these tables and the bounds live with them.",
+      }],
     },
+  },
+  {
+    /* The formulary owns these tables, so it is the one module that may name them. */
+    files: ["apps/core/src/modules/formulary/**/*.ts"],
+    rules: { "no-restricted-syntax": "off" },
   },
   {
     /**

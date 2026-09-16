@@ -60,11 +60,11 @@ describe("searchMedicines — the typeahead over the imported catalogue", () => 
       { id: "M5", brandName: "Amoxi Withdrawn", form: "Tablet", routeClass: "systemic", saltRank: 3830, active: false, ...AUDIT },
     ]);
     await db.insert(formularyMedicineSalts).values([
-      { medicineId: "M1", saltId: "S1", strength: "500 mg" },
-      { medicineId: "M2", saltId: "S1", strength: "500 mg" },
-      { medicineId: "M2", saltId: "S2", strength: "125 mg" },
-      { medicineId: "M3", saltId: "S3", strength: "50 mg" },
-      { medicineId: "M5", saltId: "S1", strength: "500 mg" },
+      { medicineId: "M1", saltId: "S1", strength: "500 mg", source: "curated" },
+      { medicineId: "M2", saltId: "S1", strength: "500 mg", source: "curated" },
+      { medicineId: "M2", saltId: "S2", strength: "125 mg", source: "curated" },
+      { medicineId: "M3", saltId: "S3", strength: "50 mg", source: "curated" },
+      { medicineId: "M5", saltId: "S1", strength: "500 mg", source: "curated" },
     ]);
   }
 

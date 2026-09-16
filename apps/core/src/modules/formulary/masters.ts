@@ -182,7 +182,8 @@ export async function addMedicine(
   }
   if (input.salts.length > 0) {
     await tx.insert(formularyMedicineSalts).values(input.salts.map((s) => ({
-      medicineId, saltId: s.saltId, strength: s.strength ?? null,
+      // A pharmacist typed this. Stated, not defaulted — see the table's header.
+      medicineId, saltId: s.saltId, strength: s.strength ?? null, source: "curated" as const,
     })));
   }
   await appendEvent(tx, medicineAdded.make({
@@ -269,7 +270,7 @@ export async function updateMedicine(
     await tx.delete(formularyMedicineSalts).where(eq(formularyMedicineSalts.medicineId, medicineId));
     if (salts.length > 0) {
       await tx.insert(formularyMedicineSalts).values(salts.map((s) => ({
-        medicineId, saltId: s.saltId, strength: s.strength ?? null,
+        medicineId, saltId: s.saltId, strength: s.strength ?? null, source: "curated" as const,
       })));
     }
   }
