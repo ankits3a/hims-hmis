@@ -748,3 +748,83 @@ export const grnLines = pgTable(
     check("grn_lines_qty_base_ck", sql`${t.qtyBase} > 0`),
   ],
 );
+
+// ═══════════════════════════════════ COUNTS (PLAN 14c, FIRST SLICE) ═══════════════════════════════════
+
+/**
+ * A BLIND STOCK COUNT OF ONE STORE. Phase doc `docs/superpowers/plans/2026-09-17-phase-materials-counts.md`,
+ * doc 09 §3.9.
+ *
+ *   - `counter_user_id` is chosen by the system from holders of `materials.counts.perform` who did not
+ *     schedule the count and do not keep the store (S10's custodian / counter pair). The CHECK keeps
+ *     the scheduler off the sheet whatever the code does.
+ *   - `frozen_at` is the instant the system's figures were copied onto the lines. `counted_at` is the
+ *     instant the sheet describes, which may be earlier than the submission (K8: a count on paper
+ *     during an outage), and never earlier than the freeze.
+ *   - `recount_of` links H7's automatic blind recount to the count whose lines it re-counts, and
+ *     `recount_id` on the original points forward to it.
+ *   - One count BEING COUNTED per store, by partial unique index: two sheets on one shelf at once is
+ *     how a count goes wrong. A submitted count awaiting review does not block its own recount.
+ *   - User ids are plain text, the `stock_ledger.actor_id` precedent.
+ *   - No adjustment column: writing a variance off needs two keys, and runbook O1 is open.
+ */
+export const stockCounts = pgTable(
+  "stock_counts",
+  {
+    id: text("id").primaryKey(),
+    resourceId: text("resource_id").notNull().references(() => resources.id),
+    status: text("status").notNull(),
+    scheduledBy: text("scheduled_by").notNull(),
+    counterUserId: text("counter_user_id").notNull(),
+    recountOf: text("recount_of"),
+    recountId: text("recount_id"),
+    frozenAt: timestamp("frozen_at", { withTimezone: true }).notNull(),
+    countedAt: timestamp("counted_at", { withTimezone: true }),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    closedBy: text("closed_by"),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    closeNote: text("close_note"),
+    cancelledBy: text("cancelled_by"),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    cancelReason: text("cancel_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("stock_counts_resource_idx").on(t.resourceId, t.frozenAt),
+    uniqueIndex("stock_counts_one_counting_uq").on(t.resourceId).where(sql`${t.status} = 'counting'`),
+    check("stock_counts_status_ck", sql`${t.status} in ('counting', 'submitted', 'closed', 'cancelled')`),
+    check("stock_counts_sod_ck", sql`${t.counterUserId} <> ${t.scheduledBy}`),
+    check("stock_counts_counted_ck", sql`(${t.countedAt} is null) = (${t.submittedAt} is null) and (${t.countedAt} is null or ${t.countedAt} >= ${t.frozenAt})`),
+    check("stock_counts_closed_ck", sql`(${t.status} = 'closed') = (${t.closedAt} is not null) and (${t.closedAt} is null) = (${t.closedBy} is null)`),
+    check("stock_counts_cancelled_ck", sql`(${t.status} = 'cancelled') = (${t.cancelledAt} is not null) and (${t.cancelledAt} is null) = (${t.cancelReason} is null)`),
+  ],
+);
+
+/**
+ * One batch on a count sheet. `system_qty` is `qty_on_hand` at the freeze; the counter never reads
+ * it. At submission `moved_qty` is the ledger's net movement between the freeze and `counted_at`,
+ * and `variance_qty = counted_qty − (system_qty + moved_qty)`. So a sale during the count is not
+ * the counter's variance. `variance_paise` is the variance at the batch's landed cost per base unit.
+ * `flag`: `match`, `variance`, or `recount` (H7's threshold).
+ */
+export const stockCountLines = pgTable(
+  "stock_count_lines",
+  {
+    id: text("id").primaryKey(),
+    countId: text("count_id").notNull().references(() => stockCounts.id),
+    batchId: text("batch_id").notNull().references(() => stockBatches.id),
+    itemId: text("item_id").notNull().references(() => items.id),
+    systemQty: integer("system_qty").notNull(),
+    countedQty: integer("counted_qty"),
+    movedQty: integer("moved_qty"),
+    varianceQty: integer("variance_qty"),
+    variancePaise: bigint("variance_paise", { mode: "number" }),
+    flag: text("flag"),
+  },
+  (t) => [
+    uniqueIndex("stock_count_lines_batch_uq").on(t.countId, t.batchId),
+    check("stock_count_lines_counted_ck", sql`${t.countedQty} is null or ${t.countedQty} >= 0`),
+    check("stock_count_lines_flag_ck", sql`${t.flag} is null or ${t.flag} in ('match', 'variance', 'recount')`),
+    check("stock_count_lines_settled_ck", sql`(${t.countedQty} is null) = (${t.flag} is null) and (${t.flag} is null) = (${t.varianceQty} is null)`),
+  ],
+);
