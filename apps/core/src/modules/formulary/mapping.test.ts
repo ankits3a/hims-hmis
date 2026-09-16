@@ -199,17 +199,25 @@ describe("the formulary mapping loop (phase 2)", () => {
       });
     });
 
+    /**
+     * The rank must CHANGE across the decision for this to prove anything: amoxicillin already has
+     * a hand-typed product, so after the move it carries 3 and the image carries 0, and a product's
+     * rank (the largest count among its moieties) goes from 2 to 3. With equal counts either side, a
+     * missing refresh would read as correct.
+     */
     it("moves the typeahead's ranking signal with the rows", async () => {
       const { amox, amoxTri, augmentin } = await augmentinWorld();
-      expect(await productCount(amoxTri.image)).toBe(2);
-      expect(await productCount(amox)).toBe(0);
+      await withTx(db, (tx) => addMedicine(tx, PHARMACIST, {
+        brandName: "Novamox 500", form: "capsule", routeClass: "systemic", salts: [{ saltId: amox }],
+      }));
+      await withTx(db, (tx) => refreshRankSignals(tx, "all"));
+      const rankOf = async (id: string) => Number((await db.execute<{ salt_rank: number }>(
+        sql`select salt_rank from formulary_medicines where id = ${id}`)).rows[0]?.salt_rank);
+      expect([await productCount(amoxTri.image), await productCount(amox), await rankOf(augmentin)]).toEqual([2, 1, 2]);
 
       await attest(PHARMACIST, amoxTri.id, { saltId: amox });
 
-      expect(await productCount(amoxTri.image)).toBe(0);
-      expect(await productCount(amox)).toBe(2);
-      const rank = await db.execute<{ salt_rank: number }>(sql`select salt_rank from formulary_medicines where id = ${augmentin}`);
-      expect(Number(rank.rows[0]?.salt_rank)).toBe(2);
+      expect([await productCount(amoxTri.image), await productCount(amox), await rankOf(augmentin)]).toEqual([0, 3, 3]);
     });
 
     it("never touches a medicine a pharmacist composed by hand, even on the same release entry (E3)", async () => {
@@ -222,6 +230,25 @@ describe("the formulary mapping loop (phase 2)", () => {
       await attest(PHARMACIST, amoxTri.id, { saltId: amox });
 
       expect(await composition(handTyped)).toEqual([{ saltId: amoxTri.image, source: "curated", derivedFrom: null }]);
+    });
+
+    /**
+     * No writer in this repo produces a medicine with both kinds of row today (`updateMedicine`
+     * replaces a composition whole). The schema's rule for any derivation is written for the writer
+     * that one day does, so the state is built by hand here, and the guard is held to it.
+     */
+    it("never touches a medicine that carries ANY curated row, even beside a derived one (E3)", async () => {
+      const { amox, amoxTri, clav } = await augmentinWorld();
+      const mixed = await catalogueProduct("Clavam 625", [{ salt: amoxTri.image, sctid: SCT.amoxTrihydrate }]);
+      await db.execute(sql`
+        insert into formulary_medicine_salts (medicine_id, salt_id, strength, source)
+        values (${mixed}, ${clav.image}, '125 mg', 'curated')
+      `);
+
+      const decision = await attest(PHARMACIST, amoxTri.id, { saltId: amox });
+
+      expect(await saltsOf(mixed)).toEqual([amoxTri.image, clav.image].sort());
+      expect(decision.projection.medicinesBlocked).toBe(1);
     });
 
     it("leaves a product naming one moiety twice where it is, and counts it (E2)", async () => {
@@ -502,11 +529,13 @@ describe("the formulary mapping loop (phase 2)", () => {
 
       const seen: string[] = [];
       let cursor: string | null = null;
-      do {
+      // Bounded: a keyset that never advances must fail this test, not hang the suite.
+      for (let pages = 0; pages < 10; pages += 1) {
         const page: Awaited<ReturnType<typeof pageMappingWorklist>> = await pageMappingWorklist(db, { limit: 1, cursor });
         seen.push(...page.items.map((i) => i.id));
         cursor = page.nextCursor;
-      } while (cursor !== null);
+        if (cursor === null) break;
+      }
 
       // paracetamol 3, amoxicillin trihydrate 2, clavulanate 1, lactobacillus 0 (no entry at all: E11).
       expect(seen).toEqual([para.id, amoxTri.id, clav.id, lacto.id]);
