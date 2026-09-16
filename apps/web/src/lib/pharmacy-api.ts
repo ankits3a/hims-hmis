@@ -186,13 +186,25 @@ export type WireReorderLine = {
   itemId: string; code: string; name: string; baseUom: string;
   status: "stock_out" | "reorder" | "ok" | "no_movement";
   available: number; usedInWindow: number; daysOfCover: number | null;
+  /** P8: what the pace will not sell before its batch expires; not counted as cover. */
+  unsoldByExpiry: number;
   suggestBase: number; suggestPacks: string | null;
   source: { storeCode: string; storeName: string; available: number } | null;
 };
+export type WireExpiringLine = {
+  itemId: string; code: string; name: string; baseUom: string;
+  batchId: string; batchNo: string; expiryDate: string; daysLeft: number;
+  available: number; unsoldByExpiry: number; action: "move_back" | "sell_first";
+};
+export type WireExpiredLine = {
+  itemId: string; code: string; name: string; baseUom: string; batchId: string; batchNo: string; expiryDate: string; onHand: number;
+};
 export type WireReorderAdvice = {
   asOf: string;
-  window: { days: number; minCoverDays: number; targetCoverDays: number };
+  window: { days: number; minCoverDays: number; targetCoverDays: number; nearExpiryDays: number };
   items: WireReorderLine[];
+  expiring: WireExpiringLine[];
+  expiredOnShelf: WireExpiredLine[];
 };
 export async function fetchReorderAdvice(): Promise<WireReorderAdvice> {
   return api<WireReorderAdvice>("GET", "/pharmacy/reorder");

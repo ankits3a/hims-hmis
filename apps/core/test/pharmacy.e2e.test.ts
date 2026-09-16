@@ -53,7 +53,9 @@ describe("the OPD dispense counter over HTTP (16c T5)", () => {
     // P4 — the reorder list is read by anyone at the counter, and by nobody else.
     await as(fx.clerk.token)(request(server()).get("/pharmacy/reorder")).expect(403);
     const reorder = await as(fx.aide.token)(request(server()).get("/pharmacy/reorder")).expect(200);
-    expect((reorder.body as { window: unknown }).window).toEqual({ days: 30, minCoverDays: 3, targetCoverDays: 7 });
+    expect((reorder.body as { window: unknown }).window).toEqual({ days: 30, minCoverDays: 3, targetCoverDays: 7, nearExpiryDays: 90 });
+    // P8 — both shelf-risk lists travel with it.
+    expect(reorder.body).toMatchObject({ expiring: expect.any(Array), expiredOnShelf: expect.any(Array) });
     // P7 — the counter's day: read at the counter only, and a day that is not a date is refused.
     await as(fx.clerk.token)(request(server()).get("/pharmacy/summary")).expect(403);
     await as(fx.aide.token)(request(server()).get("/pharmacy/summary?day=2026-08-17")).expect(200);

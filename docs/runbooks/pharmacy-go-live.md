@@ -150,7 +150,8 @@ left null bills the right amount and reports no output tax: read the column back
 > quantities are subtracted. So the counter's figure is legitimately SMALLER than
 > `select sum(qty_on_hand)`, and the difference is expired or recalled stock still physically on the
 > shelf. If the two disagree by a lot at go-live, look for expired batches to quarantine — not for a
-> bug. **The census row `pharmacy_batch_in_stock` currently uses the RAW balance**, so it can read
+> bug. `/pharmacy/reorder` lists them by batch under **"Expired, still on the shelf"**. Its
+> near-expiry table lists the batches that will expire before the counter sells them (P8). **The census row `pharmacy_batch_in_stock` currently uses the RAW balance**, so it can read
 > green on a box where the counter still refuses every line.
 
 ## 3. The seat drill (pharmacist + aide, 20 minutes, one real prescription)

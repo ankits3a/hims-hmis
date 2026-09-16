@@ -362,11 +362,12 @@ async function sellableBatchRows(
   resourceId: string,
   itemIds: readonly string[],
   asOf: Date,
-): Promise<{ itemId: string; batchId: string; onHand: number; reserved: number; frozen: number; expiryDate: string | null }[]> {
+): Promise<{ itemId: string; batchId: string; batchNo: string; onHand: number; reserved: number; frozen: number; expiryDate: string | null }[]> {
   if (itemIds.length === 0) return [];
   return db.select({
     itemId: stockBalances.itemId,
     batchId: stockBalances.batchId,
+    batchNo: stockBatches.batchNo,
     onHand: stockBalances.qtyOnHand,
     reserved: stockBalances.qtyReserved,
     frozen: stockBalances.qtyFrozen,
@@ -440,6 +441,56 @@ export async function availableQtyByItem(
     out.set(r.itemId, (out.get(r.itemId) ?? 0) + Math.max(0, r.onHand - r.reserved - r.frozen));
   }
   return out;
+}
+
+/**
+ * PHARMACY P8 — the batches `fefoPick` would offer, per item, in its order, each with what it can
+ * still give (`on_hand − reserved − frozen`, and never below zero). The same query as the pick and
+ * `availableQtyByItem`, so a forecast over these rows and the pick can never disagree about which
+ * batch goes first.
+ */
+export async function sellableBatchesByItem(
+  db: Db | Tx,
+  resourceId: string,
+  itemIds: readonly string[],
+  asOf: Date = new Date(),
+): Promise<Map<string, { batchId: string; batchNo: string; expiryDate: string | null; available: number }[]>> {
+  const out = new Map<string, { batchId: string; batchNo: string; expiryDate: string | null; available: number }[]>();
+  const wanted = [...new Set(itemIds)].filter((id) => id !== "");
+  for (const r of await sellableBatchRows(db, resourceId, wanted, asOf)) {
+    const available = Math.max(0, r.onHand - r.reserved - r.frozen);
+    if (available === 0) continue;
+    const list = out.get(r.itemId) ?? [];
+    list.push({ batchId: r.batchId, batchNo: r.batchNo, expiryDate: r.expiryDate, available });
+    out.set(r.itemId, list);
+  }
+  return out;
+}
+
+/**
+ * PHARMACY P8 — stock at ONE store whose expiry date has passed (IST) and which is still on hand:
+ * what has to come off that shelf into quarantine. The pick already refuses it; this is the list of
+ * what is physically still there. Earliest expiry first.
+ */
+export async function expiredStockAt(
+  db: Db | Tx, resourceId: string, asOf: Date = new Date(),
+): Promise<{ itemId: string; batchId: string; batchNo: string; expiryDate: string; onHand: number }[]> {
+  const rows = await db.select({
+    itemId: stockBalances.itemId,
+    batchId: stockBalances.batchId,
+    batchNo: stockBatches.batchNo,
+    expiryDate: stockBatches.expiryDate,
+    onHand: stockBalances.qtyOnHand,
+  })
+    .from(stockBalances)
+    .innerJoin(stockBatches, eq(stockBatches.id, stockBalances.batchId))
+    .where(and(
+      eq(stockBalances.resourceId, resourceId),
+      sql`${stockBalances.qtyOnHand} > 0`,
+      sql`${stockBatches.expiryDate} < ${istDay(asOf)}::date`,
+    ))
+    .orderBy(asc(stockBatches.expiryDate), asc(stockBatches.batchNo));
+  return rows.map((r) => ({ ...r, expiryDate: r.expiryDate as string }));
 }
 
 /**

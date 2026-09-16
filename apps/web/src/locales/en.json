@@ -3343,7 +3343,22 @@
     "no_movement": "No use",
     "purchase": "Purchase",
     "noCover": "—",
-    "sourceHas": "{{store}} (has {{n}})"
+    "sourceHas": "{{store}} (has {{n}})",
+    "unsoldHint": "{{n}} will expire unsold",
+    "expiringTitle": "Near expiry at the counter (next {{days}} days)",
+    "expiringIntro": "The counter sells the earliest-expiring batch first. At the pace above, whatever a batch cannot sell before its date will expire on the shelf, so it is not counted as cover. Send it back while there is time: to the main store for a busier counter, or to the supplier under the expiry-return terms.",
+    "noneExpiring": "Nothing on the counter's shelf expires in the next {{days}} days.",
+    "batch": "Batch",
+    "expiry": "Expires",
+    "daysLeft": "Days left",
+    "lastDay": "last day today",
+    "unsold": "Will expire unsold",
+    "action": "Do",
+    "move_back": "Send back",
+    "sell_first": "Sells in time",
+    "expiredTitle": "Expired, still on the shelf",
+    "expiredIntro": "The counter will not sell these. Take them off the shelf and move them to quarantine in Stores, naming the batch.",
+    "onHand": "On hand"
   },
   "pharmacyDay": {
     "today": "Today",

@@ -1,5 +1,8 @@
-import { availableQtyByItem, consumedQtyByItem, findStoreByCode, listStores, uomsByItems } from "../materials";
-import { OPD_PHARMACY_STORE_CODE, REORDER_MIN_COVER_DAYS, REORDER_TARGET_COVER_DAYS, REORDER_WINDOW_DAYS } from "./config";
+import {
+  EXPIRY_THRESHOLD_DAYS, availableQtyByItem, consumedQtyByItem, expiredStockAt, findStoreByCode, itemsByIds, listStores,
+  sellableBatchesByItem, uomsByItems,
+} from "../materials";
+import { OPD_PHARMACY_STORE_CODE, REORDER_MIN_COVER_DAYS, REORDER_TARGET_COVER_DAYS, REORDER_WINDOW_DAYS, istDateOf } from "./config";
 import { PharmacyError } from "./errors";
 import { listSaleItems } from "./sale-items";
 import type { Db } from "../../kernel/db/client";
@@ -21,6 +24,22 @@ import type { Db } from "../../kernel/db/client";
  *     It is only suggested when cover is under REORDER_MIN_COVER_DAYS.
  *   - `source`: the non-transit store holding the most of it that can cover the suggestion. Failing
  *     that, the one holding the most. Null means it has to be purchased.
+ *
+ * ═══ P8 — NEAR EXPIRY, AND WHY IT IS NOT COVER ═══
+ *
+ * Phase doc `docs/superpowers/plans/2026-09-16-phase-pharmacy-p8-near-expiry.md`. The pick sells the
+ * earliest-expiring batch first (FEFO), so at the window's pace every batch gets the selling days
+ * left between the batches ahead of it and its own expiry date (the last day it may be sold). What
+ * it cannot sell in them expires on the shelf.
+ *   - `unsoldByExpiry`: that forecast, summed over the batches expiring within NEAR_EXPIRY_DAYS (the
+ *     widest expiry band materials announces). Past that horizon a 30-day pace forecasts nothing.
+ *   - `daysOfCover` and the suggestion use `available − unsoldByExpiry`: a strip that will expire
+ *     before anyone buys it does not keep the counter open.
+ *   - `expiring`: every such batch, soonest first. `move_back` when some of it will expire unsold
+ *     (back to the main store for a busier counter, or to the supplier under the rate contract's
+ *     expiry-return clause, while there is still time). `sell_first` when FEFO will clear it.
+ *   - `expiredOnShelf`: the counter's stock already past its date. The pick refuses it; it still has
+ *     to be taken off the shelf into quarantine.
  */
 export type ReorderStatus = "stock_out" | "reorder" | "ok" | "no_movement";
 
@@ -33,17 +52,67 @@ export type ReorderLine = {
   available: number;
   usedInWindow: number;
   daysOfCover: number | null;
+  /** P8: how much of `available` the window's pace will not sell before its batch expires. */
+  unsoldByExpiry: number;
   suggestBase: number;
   /** "2 strip" when the suggestion is a whole number of the item's issue pack. */
   suggestPacks: string | null;
   source: { storeCode: string; storeName: string; available: number } | null;
 };
 
+export type ExpiryAction = "move_back" | "sell_first";
+
+export type ExpiringLine = {
+  itemId: string;
+  code: string;
+  name: string;
+  baseUom: string;
+  batchId: string;
+  batchNo: string;
+  expiryDate: string;
+  /** Days from today (IST) to the expiry date; 0 is its last selling day. */
+  daysLeft: number;
+  available: number;
+  unsoldByExpiry: number;
+  action: ExpiryAction;
+};
+
+export type ExpiredLine = { itemId: string; code: string; name: string; baseUom: string; batchId: string; batchNo: string; expiryDate: string; onHand: number };
+
 export type ReorderAdvice = {
   asOf: Date;
-  window: { days: number; minCoverDays: number; targetCoverDays: number };
+  window: { days: number; minCoverDays: number; targetCoverDays: number; nearExpiryDays: number };
   items: ReorderLine[];
+  expiring: ExpiringLine[];
+  expiredOnShelf: ExpiredLine[];
 };
+
+const NEAR_EXPIRY_DAYS: number = EXPIRY_THRESHOLD_DAYS[0];
+const DAY_MS = 24 * 60 * 60 * 1000;
+const dayNumber = (isoDate: string): number => Math.floor(Date.parse(`${isoDate}T00:00:00Z`) / DAY_MS);
+
+/**
+ * FEFO at a steady pace, in whole units. `batches` in the pick's order; returns what each will leave
+ * unsold at its expiry.
+ *
+ * By the end of a batch's last selling day the counter will have sold
+ * `floor(used × sellingDays ÷ window)` units in all. The batches ahead of it took the first of
+ * those, whether they ran out early or expired with some left, so this batch sells what remains,
+ * up to what it holds. Integer arithmetic on purpose: a running day-cursor of `sold ÷ perDay` is a
+ * float, and `floor(3 × (35 − 10/3))` is 94, not 95. An undated batch never expires.
+ */
+function forecastUnsold(
+  batches: readonly { expiryDate: string | null; available: number }[], used: number, today: string,
+): number[] {
+  let soldBefore = 0;
+  return batches.map((b) => {
+    const demand = b.expiryDate === null ? Number.POSITIVE_INFINITY
+      : Math.floor((used * Math.max(0, dayNumber(b.expiryDate) - dayNumber(today) + 1)) / REORDER_WINDOW_DAYS);
+    const sold = Math.max(0, Math.min(b.available, demand - soldBefore));
+    soldBefore += sold;
+    return b.available - sold;
+  });
+}
 
 const RANK: Record<ReorderStatus, number> = { stock_out: 0, reorder: 1, ok: 2, no_movement: 3 };
 
@@ -55,24 +124,44 @@ export async function reorderAdvice(db: Db, now: Date = new Date()): Promise<Reo
   const sale = (await listSaleItems(db)).filter((i) => i.active && i.itemActive);
   const ids = sale.map((i) => i.itemId);
   const since = new Date(now.getTime() - REORDER_WINDOW_DAYS * 24 * 60 * 60 * 1000);
-  const [available, used, uoms] = await Promise.all([
+  const today = istDateOf(now);
+  const [available, used, uoms, batches, expired] = await Promise.all([
     availableQtyByItem(db, counter.id, ids, now),
     consumedQtyByItem(db, counter.id, ids, since, now),
     uomsByItems(db, ids),
+    sellableBatchesByItem(db, counter.id, ids, now),
+    expiredStockAt(db, counter.id, now),
   ]);
 
+  const expiring: ExpiringLine[] = [];
   const lines: ReorderLine[] = sale.map((item) => {
     const have = available.get(item.itemId) ?? 0;
     const usedQty = used.get(item.itemId) ?? 0;
     const perDay = usedQty / REORDER_WINDOW_DAYS;
-    const daysOfCover = perDay === 0 ? null : Math.round((have / perDay) * 10) / 10;
+    const fefo = batches.get(item.itemId) ?? [];
+    const unsold = forecastUnsold(fefo, usedQty, today);
+    let unsoldByExpiry = 0;
+    fefo.forEach((b, i) => {
+      if (b.expiryDate === null) return;
+      const daysLeft = dayNumber(b.expiryDate) - dayNumber(today);
+      if (daysLeft > NEAR_EXPIRY_DAYS) return;
+      const left = unsold[i]!;
+      unsoldByExpiry += left;
+      expiring.push({
+        itemId: item.itemId, code: item.code, name: item.name, baseUom: item.baseUom,
+        batchId: b.batchId, batchNo: b.batchNo, expiryDate: b.expiryDate, daysLeft,
+        available: b.available, unsoldByExpiry: left, action: left > 0 ? "move_back" : "sell_first",
+      });
+    });
+    const cover = Math.max(0, have - unsoldByExpiry);
+    const daysOfCover = perDay === 0 ? null : Math.round((cover / perDay) * 10) / 10;
     const status: ReorderStatus = usedQty === 0 ? "no_movement"
       : have === 0 ? "stock_out"
         : (daysOfCover as number) < REORDER_MIN_COVER_DAYS ? "reorder" : "ok";
     let suggestBase = 0;
     let suggestPacks: string | null = null;
     if (status === "stock_out" || status === "reorder") {
-      const short = Math.max(0, Math.ceil(perDay * REORDER_TARGET_COVER_DAYS) - have);
+      const short = Math.max(0, Math.ceil(perDay * REORDER_TARGET_COVER_DAYS) - cover);
       const pack = (uoms.get(item.itemId) ?? [])
         .filter((u) => u.isIssueUom && u.toBaseMultiplier > 1)
         .sort((a, b) => a.toBaseMultiplier - b.toBaseMultiplier)[0];
@@ -81,7 +170,7 @@ export async function reorderAdvice(db: Db, now: Date = new Date()): Promise<Reo
     }
     return {
       itemId: item.itemId, code: item.code, name: item.name, baseUom: item.baseUom,
-      status, available: have, usedInWindow: usedQty, daysOfCover, suggestBase, suggestPacks, source: null,
+      status, available: have, usedInWindow: usedQty, daysOfCover, unsoldByExpiry, suggestBase, suggestPacks, source: null,
     };
   });
 
@@ -104,9 +193,23 @@ export async function reorderAdvice(db: Db, now: Date = new Date()): Promise<Reo
   lines.sort((a, b) => RANK[a.status] - RANK[b.status]
     || (a.daysOfCover ?? Infinity) - (b.daysOfCover ?? Infinity)
     || a.code.localeCompare(b.code));
+  expiring.sort((a, b) => a.daysLeft - b.daysLeft || a.code.localeCompare(b.code) || a.batchNo.localeCompare(b.batchNo));
+
+  // The expired shelf may hold items no longer on sale: name them from the item master.
+  const names = await itemsByIds(db, expired.map((e) => e.itemId));
+  const expiredOnShelf: ExpiredLine[] = expired.map((e) => {
+    const item = names.get(e.itemId);
+    return { ...e, code: item?.code ?? "", name: item?.name ?? e.itemId, baseUom: item?.baseUom ?? "" };
+  });
+
   return {
     asOf: now,
-    window: { days: REORDER_WINDOW_DAYS, minCoverDays: REORDER_MIN_COVER_DAYS, targetCoverDays: REORDER_TARGET_COVER_DAYS },
+    window: {
+      days: REORDER_WINDOW_DAYS, minCoverDays: REORDER_MIN_COVER_DAYS, targetCoverDays: REORDER_TARGET_COVER_DAYS,
+      nearExpiryDays: NEAR_EXPIRY_DAYS,
+    },
     items: lines,
+    expiring,
+    expiredOnShelf,
   };
 }
