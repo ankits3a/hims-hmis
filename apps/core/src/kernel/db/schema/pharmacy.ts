@@ -1,7 +1,8 @@
 import { sql } from "drizzle-orm";
 import {
-  bigint, bigserial, boolean, check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex,
+  bigint, bigserial, boolean, check, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { users } from "./auth";
 import { invoiceLines, invoices } from "./billing";
 import { formularyMedicines } from "./formulary";
 import { items, stockBatches, stockLedger, stockReservations } from "./materials";
@@ -208,10 +209,62 @@ export const pharmacyRegH1 = pgTable(
     qtyBase: integer("qty_base").notNull(),
     unit: text("unit").notNull(),
     recordedBy: text("recorded_by").notNull(),
+    /**
+     * PHARMACY P2 — the state council registration number of the pharmacist who handed the drug
+     * over, as it stood at that moment. Null on rows written before the register existed.
+     */
+    pharmacistRegNo: text("pharmacist_reg_no"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index("pharmacy_reg_h1_dispensed_idx").on(t.dispensedAt),
     check("pharmacy_reg_h1_qty_ck", sql`${t.qtyBase} > 0`),
+  ],
+);
+
+/**
+ * PHARMACY P2 — THE REGISTER OF PHARMACISTS: WHO MAY DO WHAT THE PHARMACY ACT RESERVES.
+ *
+ * The Pharmacy Act 1948 §42 reserves dispensing to a registered pharmacist. A ROLE says what a
+ * login may touch; it says nothing about whether the person holds a state pharmacy council
+ * registration, and on this deployment `pharmacy` is also held by a login that is not a pharmacist.
+ * This table is that fact. Phase doc `docs/superpowers/plans/2026-09-16-phase-pharmacy-p2-pharmacist-register.md`.
+ *
+ * ═══ A ROW IS NEVER EDITED ═══
+ *
+ * A renewal ends the current row and records a new one, and a mistake is ended with a reason, so the
+ * register shows its own history. `ended_*` are the only columns ever written after the insert, and
+ * all three are written together or not at all.
+ *
+ * ═══ ONE CURRENT ROW PER PERSON, AND PER CERTIFICATE ═══
+ *
+ * Two partial unique indexes over the rows not yet ended: a person cannot hold two current
+ * registrations here, and one council's number cannot be current on two people.
+ */
+export const pharmacyPharmacistRegistrations = pgTable(
+  "pharmacy_pharmacist_registrations",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    /** The state pharmacy council that issued it, as written on the certificate. */
+    council: text("council").notNull(),
+    registrationNo: text("registration_no").notNull(),
+    /** Councils renew periodically; null for a registration with no end date on the certificate. */
+    validUntil: date("valid_until", { mode: "string" }),
+    recordedBy: text("recorded_by").notNull().references(() => users.id),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    endedBy: text("ended_by").references(() => users.id),
+    endReason: text("end_reason"),
+  },
+  (t) => [
+    uniqueIndex("pharmacy_pharmacist_reg_current_user_ux").on(t.userId).where(sql`${t.endedAt} is null`),
+    uniqueIndex("pharmacy_pharmacist_reg_current_no_ux")
+      .using("btree", sql`lower(${t.council})`, sql`lower(${t.registrationNo})`)
+      .where(sql`${t.endedAt} is null`),
+    check("pharmacy_pharmacist_reg_ended_ck",
+      sql`(${t.endedAt} is null) = (${t.endedBy} is null) and (${t.endedAt} is null) = (${t.endReason} is null)`),
+    check("pharmacy_pharmacist_reg_not_self_ck", sql`${t.recordedBy} <> ${t.userId}`),
+    check("pharmacy_pharmacist_reg_text_ck", sql`btrim(${t.council}) <> '' and btrim(${t.registrationNo}) <> ''`),
   ],
 );

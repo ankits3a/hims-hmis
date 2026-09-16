@@ -130,4 +130,26 @@ describe("the OPD dispense counter over HTTP (16c T5)", () => {
     expect(consumedEv.every((e) => (e.payload as { caseRef: { type: string } }).caseRef.type === "pharmacy_dispense")).toBe(true);
     void MON2;
   });
+
+  /**
+   * PHARMACY P2 — the register of pharmacists over HTTP: the permission gates the route, and the
+   * act refuses a self-filed registration with its own code whatever the route allowed.
+   */
+  it("P2 — the register: listed, filed for a colleague, refused for oneself, and closed to the aide", async () => {
+    const incharge = as(fx.incharge.token);
+    const listed = await incharge(request(server()).get("/pharmacy/pharmacists")).expect(200);
+    const rows = (listed.body as { items: { username: string; current: { registrationNo: string } | null }[] }).items;
+    expect(rows.map((r) => [r.username, r.current?.registrationNo ?? null]).sort()).toEqual([["ph.incharge", null], ["ph.mehta", "MSPC-123456"]]);
+
+    const self = await incharge(request(server()).post(`/pharmacy/pharmacists/${fx.incharge.id}/registrations`)
+      .send({ council: "Maharashtra State Pharmacy Council", registrationNo: "MSPC-999" })).expect(403);
+    expect((self.body as { code?: string }).code).toBe("self_registration");
+    await as(fx.aide.token)(request(server()).get("/pharmacy/pharmacists")).expect(403);
+
+    const filed = await as(fx.pharmacist.token)(request(server()).post(`/pharmacy/pharmacists/${fx.incharge.id}/registrations`)
+      .send({ council: "Maharashtra State Pharmacy Council", registrationNo: "MSPC-999", validUntil: "2030-12-31" })).expect(201);
+    const { id } = filed.body as { id: string };
+    await as(fx.pharmacist.token)(request(server()).post(`/pharmacy/pharmacists/registrations/${id}/end`).send({ reason: "typed against the wrong person" })).expect(201);
+  });
+
 });

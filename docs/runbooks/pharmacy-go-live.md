@@ -79,7 +79,7 @@ It declares six pharmacy rows. Five are checkable; the sixth says itself that it
 | 7 | **An ACTIVATED tariff version resolves today.** `previewDispenseBill` and `billDispense` both load a pricing context and throw `version_not_active` without one — and `seed-tariff` deliberately creates none | `select id, status, effective_from from tariff_versions where status = 'activated'` returns a row covering today |
 | 8 | **The pharmacist can open a cashier drawer** (`billing.session.own`); billing refuses a tender with no open session | they can open a session at `/billing` |
 | 9 | A CA has signed the GST rows | `select ca_signed from gst_settings where id = 'main'` → `true` |
-| 10 | The pharmacist's state council registration number is on file | **the census CANNOT check this** — it is not modelled anywhere in the schema. Keep the certificate in the counter's file. |
+| 10 | Every pharmacist who will verify or hand over Schedule H/H1 has a current state council registration on file (pharmacy P2) | census row **`pharmacist_council_number`**. The pharmacist in charge files each colleague's registration at `/pharmacy/pharmacists`; nobody files their own. **Without one, the counter's verify and every scheduled hand-over refuse with `pharmacist_not_registered`**, and the label prints the number. A login that holds `pharmacy` but is not a pharmacist (on this deployment `admin`) stays unregistered, and so cannot verify. That is the Act, not a fault. |
 
 > **§1.9 WAS BLOCKED ON THE INCLUSIVE-VERSUS-EXCLUSIVE QUESTION. RESOLVED 2026-09-16 (pharmacy P1,
 > `docs/superpowers/plans/2026-09-16-phase-pharmacy-p1-gst-inclusive-mrp.md`).**
@@ -231,6 +231,8 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `store_missing` | `seed-pharmacy` did not run | §1.2 |
 | `scheduled_needs_pharmacist` | the aide tried to complete an H/H1 dispense | call the pharmacist |
 | `identity_confirmation_required` · `identity_mismatch` | a scheduled hand-over without, or with a wrong, token / phone last-4 | ask the person |
+| `pharmacist_not_registered` | verify, or a Schedule H/H1 hand-over, by a login with no current state council registration on file (P2) | the pharmacist in charge files it at `/pharmacy/pharmacists`; until then a registered pharmacist does the act |
+| `self_registration` · `not_a_pharmacist_role` · `invalid_registration` · `registration_expired` · `registration_in_use` · `registration_ended` | filing or ending a registration: one's own, for someone without the `pharmacy` role, a blank or malformed field, a lapsed certificate, a number already on file for someone else, or a row already ended | a colleague files it; assign the role first; file the renewed certificate; end the wrong row first |
 | `nothing_to_dispense` | every line is declined | cancel the dispense instead |
 | `batch_not_saleable` | the named batch cannot be sold | pick again |
 | `short_stock` | the earliest IN-DATE batch cannot cover the line; the message gives both numbers | partial with a reason, or name a batch that covers it |

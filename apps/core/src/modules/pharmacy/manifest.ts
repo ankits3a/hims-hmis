@@ -26,6 +26,7 @@ export const pharmacyManifest: ModuleManifest = {
   menu: [
     { label: "Dispense counter", path: "/pharmacy/counter", permission: "pharmacy.dispense.read" },
     { label: "Sale items", path: "/pharmacy/items", permission: "pharmacy.sale_items.manage" },
+    { label: "Pharmacists", path: "/pharmacy/pharmacists", permission: "pharmacy.pharmacists.manage" },
   ],
   permissions: [
     /** Claim a queued Rx at the counter, which places the `medication` order; verify, pick, bill. */
@@ -35,6 +36,11 @@ export const pharmacyManifest: ModuleManifest = {
     "pharmacy.dispense.scheduled",
     /** D3 — bridge a drug item to its tariff service. */
     "pharmacy.sale_items.manage",
+    /**
+     * P2 — file and end a pharmacist's state council registration (Pharmacy Act 1948 §42). Never
+     * one's own: the act refuses `self_registration` whatever this grant says.
+     */
+    "pharmacy.pharmacists.manage",
   ],
   /** T3 — D10: the Rx is at the counter before the patient is. Handler, worker install and census landed in the same commit. */
   subscriptions: [{ event: "prescription.issued", consumer: PHARMACY_RX_ISSUED_CONSUMER }],

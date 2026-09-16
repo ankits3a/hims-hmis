@@ -31,6 +31,8 @@ export const dispenseVerified = defineEvent("dispense.verified", MODULE, z.objec
   lineCount: z.number().int().positive(), declinedCount: z.number().int().nonnegative(), scheduled: z.boolean(),
   allergyHits: z.number().int().nonnegative(), interactionHits: z.number().int().nonnegative(),
   substitutions: z.number().int().nonnegative(),
+  /** P2 — the verifying pharmacist's state council registration number. Null on payloads written before P2. */
+  pharmacistRegNo: z.string().min(1).nullable().default(null),
   /**
    * PHARMACY P3 — the lines whose checks could see only part of the medicine (a component nobody
    * had reviewed), as they stood at the verify. Without it, `allergyHits: 0` read as "checked and
@@ -63,14 +65,31 @@ export const dispenseBilled = defineEvent("dispense.billed", MODULE, z.object({
 export const dispenseHandedOver = defineEvent("dispense.handed_over", MODULE, z.object({
   dispenseId: id, dispenseNo: id, patientId: id, encounterId: id, handedOverBy: id,
   ledgerEntryIds: z.array(id).min(1), h1RegisterRows: z.number().int().nonnegative(), identityConfirmedVia: z.enum(["token", "phone_last4"]).nullable(),
+  /**
+   * P2 — the handing-over pharmacist's registration number, when they have one. A dispense with no
+   * scheduled line may be handed over by the aide, who has none, so it is nullable by design.
+   */
+  pharmacistRegNo: z.string().min(1).nullable().default(null),
 }));
 
 export const dispenseCancelled = defineEvent("dispense.cancelled", MODULE, z.object({
   dispenseId: id, patientId: id, fromStatus: z.string().min(1), reason: z.string().min(1), reservationsReleased: z.number().int().nonnegative(),
 }));
 
+/** P2 — a state council registration was filed for a pharmacist (a renewal names the row it ended). */
+export const pharmacistRegistered = defineEvent("pharmacist.registered", MODULE, z.object({
+  registrationId: id, userId: id, council: z.string().min(1), registrationNo: z.string().min(1),
+  validUntil: z.string().nullable(), supersededId: id.nullable(),
+}));
+
+/** P2 — a registration stopped being current, with the reason. */
+export const pharmacistRegistrationEnded = defineEvent("pharmacist.registration_ended", MODULE, z.object({
+  registrationId: id, userId: id, reason: z.string().min(1),
+}));
+
 /** The catalog, in source order (`LAB_EVENTS`' discipline). A later task that adds a `defineEvent` above adds it here. */
 export const PHARMACY_EVENTS = [
   dispenseQueued, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded,
   dispensePicked, dispenseBilled, dispenseHandedOver, dispenseCancelled,
+  pharmacistRegistered, pharmacistRegistrationEnded,
 ] as const;

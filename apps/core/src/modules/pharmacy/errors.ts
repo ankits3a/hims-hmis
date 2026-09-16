@@ -62,6 +62,16 @@ export const PHARMACY_ERROR_CODES = [
    * pharmacist an impossible instruction at the one moment they are facing a patient.
    */
   "batch_expired_before_collection",
+  // ── P2: the register of pharmacists (Pharmacy Act 1948 §42) ──
+  /** The acting login has no current state council registration on file. */
+  "pharmacist_not_registered",
+  /** A registration is filed, and ended, by someone other than its holder. */
+  "self_registration",
+  "invalid_registration",
+  "registration_expired",
+  "registration_in_use",
+  "registration_ended",
+  "not_a_pharmacist_role",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -112,6 +122,13 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   batch_expired: 409,
   slip_not_confirmed: 409,
   batch_expired_before_collection: 409,
+  pharmacist_not_registered: 403,
+  self_registration: 403,
+  invalid_registration: 400,
+  registration_expired: 409,
+  registration_in_use: 409,
+  registration_ended: 409,
+  not_a_pharmacist_role: 409,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {

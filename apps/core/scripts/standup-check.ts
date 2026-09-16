@@ -13,7 +13,9 @@ import { registrationConfigured } from "../src/modules/patients";
 import {
   LAB_DEF_KEYS, RELEASE_UNPAID_APPROVAL_TYPE, analytesFor, listOrderables, rangesFor,
 } from "../src/modules/lab";
-import { OPD_PHARMACY_STORE_CODE, PHARMACY_DEF_KEYS, listSaleItems } from "../src/modules/pharmacy";
+import {
+  OPD_PHARMACY_STORE_CODE, PHARMACIST_ROLE, PHARMACY_DEF_KEYS, currentRegistration, listSaleItems,
+} from "../src/modules/pharmacy";
 import {
   DAYCARE_CASE_DEF_KEY, DEFINITION_PUBLISH_APPROVAL_TYPE, DEPOSIT_EXCEPTION_APPROVAL_TYPE,
   OT_DEFINITION_KIND_VALUES, OT_GATE_DEF_KEY, activeDefinitionRow,
@@ -110,7 +112,6 @@ export const isNotModelled = (r: Row): r is NotModelledRow => "runbook" in r;
 
 const LAB_ROLE_KEYS = ["lab_reception", "phlebotomist", "lab_technician", "pathologist"] as const;
 const LAB_RUNBOOK = "docs/runbooks/lab-go-live.md";
-const PHARMACY_RUNBOOK = "docs/runbooks/pharmacy-go-live.md";
 
 /** Today in IST, as the AERB register's date functions want it. */
 function istToday(): string {
@@ -515,9 +516,22 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
     },
     {
       gate: "G4", code: "pharmacist_council_number",
-      runbook: { file: PHARMACY_RUNBOOK, section: "## 1. Preconditions (owner / administrator)" },
-      fix: "§1: the pharmacist's state council registration number is NOT modelled anywhere in the schema. Keep the certificate in the counter's file; the census cannot check it.",
-    } as NotModelledRow,
+      /**
+       * PHARMACY P2 — NOT MODELLED UNTIL THE REGISTER EXISTED; A CHECK NOW. Green when at least one
+       * person who holds `pharmacy` has a current state council registration on file, because
+       * verify and a scheduled hand-over refuse everyone else (`pharmacist_not_registered`): a
+       * counter with role holders and no registrations cannot dispense a single Schedule H line.
+       */
+      check: async (db) => {
+        const holders = await withTx(db, (tx) => usersHoldingRoleAtScope(tx, PHARMACIST_ROLE, "hospital"));
+        const today = istDayString(new Date());
+        for (const userId of holders) {
+          if ((await currentRegistration(db, userId, today)) !== null) return true;
+        }
+        return false;
+      },
+      fix: "§1.10: the pharmacist in charge files each pharmacist's state council registration at /pharmacy/pharmacists (never their own) — verify and a Schedule H/H1 hand-over refuse anyone without one",
+    },
   ],
 
   /**

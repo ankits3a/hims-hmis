@@ -32,12 +32,13 @@ describe("the pharmacy manifest claims the medication order kind (16c T1)", () =
     expect(findOrderKindDecl(decls, "package")).toBeUndefined(); // Plan 26's stays reserved
   });
 
-  it("declares the four counter permissions, the Rx-issued subscription (T3), and the two menu entries (T5)", () => {
+  it("declares the four counter permissions and P2's register permission, the Rx-issued subscription (T3), and the three menu entries (T5, P2)", () => {
     expect(pharmacyManifest.key).toBe("pharmacy");
     expect(pharmacyManifest.permissions).toEqual([
       "pharmacy.dispense.place", "pharmacy.dispense.read", "pharmacy.dispense.scheduled", "pharmacy.sale_items.manage",
+      "pharmacy.pharmacists.manage",
     ]);
-    expect(pharmacyManifest.menu.map((e) => e.path)).toEqual(["/pharmacy/counter", "/pharmacy/items"]);
+    expect(pharmacyManifest.menu.map((e) => e.path)).toEqual(["/pharmacy/counter", "/pharmacy/items", "/pharmacy/pharmacists"]);
     expect(pharmacyManifest.subscriptions).toEqual([{ event: "prescription.issued", consumer: "pharmacy.rx_issued" }]);
     const all = installed().allPermissions();
     for (const p of pharmacyManifest.permissions) expect(all).toContain(p);
