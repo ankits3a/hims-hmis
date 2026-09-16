@@ -1021,11 +1021,20 @@ split is what those pairs will hang on.
 | `materials.stock.issue` | ✓ | ✓ | |
 | `materials.stock.receive` | ✓ | ✓ | |
 | `materials.recall.manage` | ✓ | | |
+| `materials.counts.manage` | ✓ | | |
+| `materials.counts.perform` | ✓ | ✓ | ✓ |
 
 `owner` gains nothing new: the vendor bank-change approval reaches the owner through `approvals.*`,
 which that role already holds, and a `materials.*` string for it would be a second door to one
 decision. Both new roles are created by `seed:roles` with grants and **no holders** — the `pharmacy`
 precedent — so this table mints live authority to nobody until a storekeeper account exists.
+
+**Plan 14c's first slice adds blind counts, and the custodian/counter pair with them.**
+`materials.counts.manage` goes to `materials_head` alone: schedule, review, close and cancel.
+`materials.counts.perform` goes to all three roles, but the act chooses the counter. It never picks
+the person who scheduled the count, or anyone who moved stock at that store in the last 30 days, so
+a storekeeper counts the pharmacy and a pharmacist counts the main store. No count posts an
+adjustment: writing a variance off needs a second key, and runbook O1 is open.
 
 **Two approval types, registered by `seed:materials` in the deploy path.**
 `materials_near_expiry_acceptance` (approver `materials_head`, 240-minute SLA) gates posting a GRN

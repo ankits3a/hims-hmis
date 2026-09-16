@@ -82,4 +82,7 @@ export type { ConsumptionRow } from "./consumption";
 export { MaterialsController } from "./materials.controller";
 export { MaterialsModule } from "./materials.module";
 export { expiringBatches, sweepBatchExpiry, thresholdToAnnounce } from "./expiry";
+/** Plan 14c, first slice — blind counts and the variance register. No adjustment (runbook O1). */
+export { cancelCount, closeCount, countSheet, getCount, listCounts, myCounts, scheduleCount, submitCount } from "./counts";
+export type { CountFlag, CountHeader, CountReview, CountReviewLine, CountSheet, CountSheetLine, CountStatus, SubmitCountInput } from "./counts";
 export type { ExpiringBatch } from "./expiry";

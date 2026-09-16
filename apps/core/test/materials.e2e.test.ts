@@ -13,7 +13,8 @@ import { assignRole, createRole, grantPermissionToRole, syncPermissions } from "
 import { seedSodPairs } from "../src/kernel/auth/sod";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
-import { materialsManifest, registerMaterialsApprovalTypes } from "../src/modules/materials";
+import { materialsManifest, postMovement, registerItem, registerMaterialsApprovalTypes } from "../src/modules/materials";
+import { withTx } from "../src/kernel/db/client";
 import type { Db } from "../src/kernel/db/client";
 import { normalizeDrugName } from "../src/modules/formulary";
 
@@ -469,6 +470,54 @@ describe("materials over HTTP (Plan 14 T8)", () => {
     const res = await request(server()).get("/materials/expiring")
       .set("Authorization", `Bearer ${token}`).expect(200);
     expect((res.body as { batches: unknown[] }).batches).toEqual([]);
+  });
+
+  /**
+   * 14c, first slice — a blind count over HTTP: the head schedules, the system assigns the other
+   * counter, the sheet carries no system figure, and the review does.
+   */
+  it("14c — a blind count runs over HTTP, and each step is the right person's", async () => {
+    const head = await userWith([...ALL_PERMISSIONS]);
+    const keeper = await userWith(["materials.counts.perform"]);
+    const front = await frontOfficeUser();
+    const as = (token: string) => (r: request.Test): request.Test => r.set("Authorization", `Bearer ${token}`);
+    const storeRes = await as(head.token)(request(server()).post("/materials/stores").send({ code: "COUNT-E2E", name: "Counted" })).expect(201);
+    const storeId = (storeRes.body as { resourceId: string }).resourceId;
+    const { itemId } = await withTx(db, (tx) => registerItem(tx, { type: "user", id: head.id }, {
+      code: "GLOVE-M", name: "Gloves M", class: "consumable", baseUom: "pair", batchTracked: true, uoms: [],
+    }));
+    const batchId = newId();
+    await db.insert(stockBatches).values({ id: batchId, itemId, batchNo: "GL-1", expiryDate: "2028-01-31", landedCostPaise: 900, ownership: "owned", createdBy: head.id });
+    await withTx(db, (tx) => postMovement(tx, { type: "user", id: head.id }, {
+      resourceId: storeId, batchId, qtyDelta: 20, reason: "grn", refType: "test", refId: batchId, occurredAt: new Date(Date.now() - 60_000),
+    }));
+
+    await as(front.token)(request(server()).post("/materials/counts").send({ storeResourceId: storeId })).expect(403);
+    await as(front.token)(request(server()).get("/materials/counts/mine")).expect(403);
+    const scheduled = await as(head.token)(request(server()).post("/materials/counts").send({ storeResourceId: storeId })).expect(201);
+    const count = scheduled.body as { id: string; counterUserId: string };
+    expect(count.counterUserId).toBe(keeper.id);
+
+    const notMine = await as(head.token)(request(server()).get(`/materials/counts/${count.id}/sheet`)).expect(409);
+    expect((notMine.body as { code: string }).code).toBe("count_not_assigned");
+    const mine = await as(keeper.token)(request(server()).get("/materials/counts/mine")).expect(200);
+    expect((mine.body as { items: { id: string }[] }).items.map((c) => c.id)).toEqual([count.id]);
+    const sheet = await as(keeper.token)(request(server()).get(`/materials/counts/${count.id}/sheet`)).expect(200);
+    const lines = (sheet.body as { lines: { lineId: string; batchNo: string }[] }).lines;
+    expect(lines.map((l) => l.batchNo)).toEqual(["GL-1"]);
+    expect(JSON.stringify(sheet.body)).not.toContain("systemQty");
+    await as(keeper.token)(request(server()).get(`/materials/counts/${count.id}`)).expect(403);
+
+    await as(keeper.token)(request(server()).post(`/materials/counts/${count.id}/submit`)
+      .send({ countedAt: new Date().toISOString(), lines: [{ lineId: lines[0]!.lineId, countedQty: 18 }] })).expect(201);
+    const review = await as(head.token)(request(server()).get(`/materials/counts/${count.id}`)).expect(200);
+    expect((review.body as { lines: unknown[] }).lines).toMatchObject([{ batchNo: "GL-1", systemQty: 20, countedQty: 18, varianceQty: -2, variancePaise: -1800, flag: "variance" }]);
+    // Exactly 10% short is a variance, not a recount (doc 16 H7's threshold is "more than").
+    expect((review.body as { recountId: string | null }).recountId).toBeNull();
+    const closed = await as(head.token)(request(server()).post(`/materials/counts/${count.id}/close`).send({ note: "two pairs short, reported to the head" })).expect(201);
+    expect((closed.body as { status: string }).status).toBe("closed");
+    const refused = await as(head.token)(request(server()).post(`/materials/counts/${count.id}/close`).send({ note: "again" })).expect(409);
+    expect((refused.body as { code: string }).code).toBe("count_not_submitted");
   });
 
   /** DD13's read, mounted. Plan 15 calls exactly this to compose a discharge bill. */

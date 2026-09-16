@@ -49,6 +49,7 @@ import { FormularyAdmin } from "./screens/formulary-admin";
 import { MaterialsItems } from "./screens/materials-items";
 import { MaterialsVendors } from "./screens/materials-vendors";
 import { MaterialsGrn } from "./screens/materials-grn";
+import { MaterialsCounts } from "./screens/materials-counts";
 import { PartnerReceivables } from "./screens/partner-receivables";
 import { PartnerPnl } from "./screens/partner-pnl";
 import { OtList } from "./screens/ot-list";
@@ -230,6 +231,8 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
    * `apps/core/test/nav-parity.test.ts`, so the next divergence fails a suite instead of a role.
    */
   { to: "/materials/grn", label: "nav.materialsGrn", permission: "materials.stock.read", group: "stores" },
+  // PLAN 14c, first slice — blind counts; the counter's grant opens it, the head's shows the review.
+  { to: "/materials/counts", label: "nav.materialsCounts", permission: "materials.counts.perform", group: "stores" },
   /**
    * PLAN 15 T8 — the mini-OT. Each path and permission matches `otManifest.menu`'s own entry
    * exactly, which is where the authoritative pairing lives and which `nav-parity.test.ts` now
@@ -851,6 +854,13 @@ const pharmacyReorderRoute = createRoute({
   component: PharmacyReorder,
 });
 
+/** PLAN 14c, first slice — stock counts. Path matches `materialsManifest.menu`. */
+const materialsCountsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/materials/counts",
+  component: MaterialsCounts,
+});
+
 /** PHARMACY P9 — the Schedule H1 register. Path matches `pharmacyManifest.menu`. */
 const pharmacyH1RegisterRoute = createRoute({
   getParentRoute: () => authedRoute,
@@ -1198,7 +1208,7 @@ export const router = createRouter({
       pcpndtFormFRoute, radiationSafetyRoute,
       // PLAN 16c T5 — 45 -> 47, the pharmacy: the dispense counter and the sale-items admin. TWO routes
       // and two NAV links. `caddyfile-parity.test.ts` pins the count and joins this task's Files list.
-      pharmacyCounterRoute, pharmacyItemsRoute, pharmacyPharmacistsRoute, pharmacyReorderRoute, pharmacyH1RegisterRoute,
+      pharmacyCounterRoute, pharmacyItemsRoute, pharmacyPharmacistsRoute, pharmacyReorderRoute, pharmacyH1RegisterRoute, materialsCountsRoute,
       // PHASE 11i T9 — 50 -> 53, and every one of the three is a REDIRECT with no screen. They exist
       // because the catch-up deploy deletes three paths production has been serving since
       // 2 September and the desk PCs have them bookmarked. Removed in the release after the

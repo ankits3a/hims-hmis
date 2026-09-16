@@ -141,3 +141,26 @@ export const MRP_MANDATORY_CLASSES = ["drug", "implant"] as const;
  * the real place it is.
  */
 export const TRANSIT_STORE_CODE = "IN-TRANSIT";
+
+// ═══ PLAN 14c, FIRST SLICE — COUNTS (phase doc `docs/superpowers/plans/2026-09-17-phase-materials-counts.md`) ═══
+
+/**
+ * S10's custodian, read off the ledger: whoever moved stock at a store within this many days keeps
+ * it, and does not count it. No custody master exists; the ledger already says whose hands the
+ * stock passed through, and a month covers any rota.
+ */
+export const COUNT_CUSTODY_DAYS = 30;
+
+/**
+ * An EMPTY batch stays on a count sheet when it moved at the store within this many days. Stock
+ * found where the books say none is (an unrecorded return, a mis-picked batch) is a finding with the
+ * same weight as stock missing (doc 09 I3), and the sheet is where it can be written down.
+ */
+export const COUNT_EMPTY_LOOKBACK_DAYS = 90;
+
+/**
+ * Doc 16 H7: a line more than 10% out (in basis points of the expected quantity) or more than
+ * ₹2,000 out at landed cost is counted again, blind. Exactly 10% is a variance, not a recount.
+ */
+export const COUNT_RECOUNT_FRACTION_BPS = 1000;
+export const COUNT_RECOUNT_PAISE = 200_000;

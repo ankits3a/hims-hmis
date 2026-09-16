@@ -278,17 +278,19 @@ movement itself, which is why the pharmacy layer never needed its own recall che
 
 ## 5. The pilot window
 
-Run the counter beside the existing process, not instead of it. The module emits nine events and
-**nothing in the system reads any of them**, so the harvest is a daily query, not a dashboard.
+Run the counter beside the existing process, not instead of it. The counter's own line
+(P7, `GET /pharmacy/summary`) shows the day: handed over, waits, backlog, declines, refunds,
+returns. The reorder list (P4, P8) is the stock-out and near-expiry view. Everything else below is
+still a daily query.
 
 | harvest | why it matters |
 |---|---|
 | `dispense.queued` vs `dispense.handed_over`, same day | prescriptions that reached the counter and never left it |
-| `dispense.line_declined` grouped by reason | what the shelf does not carry — the replenishment list nobody has yet |
+| `dispense.line_declined` grouped by reason | what the shelf does not carry. The day strip names the top reason, and `/pharmacy/reorder` is the list |
 | `dispense.cancelled` with an expiry reason | abandoned picks; if this is high, the 30-minute sweep is surprising people |
 | `batch_expired_before_collection` refusals | paid-and-uncollected; each one is a credit note somebody must raise |
 | `short_stock` refusals per item | the stock-out list |
-| `material.consumed` vs `stock_balances` | the ledger and the shelf agreeing |
+| a **blind count** of `PHARM-OPD` each week (`/materials/counts`, scheduled by the materials head, counted by a storekeeper) | the ledger and the shelf agreeing, line by line, with sales during the count reconciled |
 
 **Close the window when the last three are empty for a week.**
 
@@ -348,7 +350,9 @@ No migration is reversed and no table is dropped.
 IPD indents and ward stock; NDPS and Schedule X custody; returns of cold-chain, frozen and
 narcotic items (sealed ambient packs come back since P6, §3.11; a billed dispense never collected is
 cancelled with a refund since P5, §3.10); cold chain; antimicrobial stewardship; the doctor ping on a held line; walk-in
-retail and outside prescriptions; repeat dispensing; home delivery; counts; a Replenishment agent
+retail and outside prescriptions; repeat dispensing; home delivery; stock ADJUSTMENT after a count
+(blind counts and the variance review exist since Plan 14c's first slice, at `/materials/counts`;
+writing a variance off waits for runbook O1's second key); a Replenishment agent
 that ORDERS (P4 and P8 give the reorder list, a read that proposes and moves nothing); realtime on
 the counter (it polls every 10 s).
 

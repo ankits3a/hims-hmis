@@ -278,3 +278,53 @@ export function materialsErrorText(e: unknown, t: (key: string) => string): stri
   }
   return materialsErrorMessage(e);
 }
+
+// ── Plan 14c, first slice — blind counts ──
+export type WireCountHeader = {
+  id: string; storeResourceId: string; storeCode: string; storeName: string;
+  status: "counting" | "submitted" | "closed" | "cancelled";
+  scheduledBy: string; counterUserId: string; counterName: string;
+  recountOf: string | null; recountId: string | null;
+  frozenAt: string; countedAt: string | null; submittedAt: string | null;
+  closedBy: string | null; closedAt: string | null; closeNote: string | null;
+  cancelledBy: string | null; cancelledAt: string | null; cancelReason: string | null;
+};
+export type WireCountReviewLine = {
+  lineId: string; itemId: string; itemCode: string; itemName: string; baseUom: string;
+  batchId: string; batchNo: string; expiryDate: string | null;
+  systemQty: number; countedQty: number | null; movedQty: number | null;
+  varianceQty: number | null; variancePaise: number | null; flag: "match" | "variance" | "recount" | null;
+};
+export type WireCountReview = WireCountHeader & {
+  lines: WireCountReviewLine[];
+  totals: { lines: number; matched: number; variances: number; recounts: number; netVariancePaise: number };
+};
+export type WireCountSheet = {
+  id: string; storeCode: string; storeName: string; frozenAt: string;
+  lines: { lineId: string; itemCode: string; itemName: string; baseUom: string; batchNo: string; expiryDate: string | null }[];
+};
+
+export async function scheduleCount(storeResourceId: string): Promise<WireCountHeader> {
+  return api<WireCountHeader>("POST", "/materials/counts", { storeResourceId });
+}
+export async function fetchCounts(): Promise<WireCountHeader[]> {
+  return (await api<{ items: WireCountHeader[] }>("GET", "/materials/counts")).items;
+}
+export async function fetchMyCounts(): Promise<WireCountHeader[]> {
+  return (await api<{ items: WireCountHeader[] }>("GET", "/materials/counts/mine")).items;
+}
+export async function fetchCount(id: string): Promise<WireCountReview> {
+  return api<WireCountReview>("GET", `/materials/counts/${encodeURIComponent(id)}`);
+}
+export async function fetchCountSheet(id: string): Promise<WireCountSheet> {
+  return api<WireCountSheet>("GET", `/materials/counts/${encodeURIComponent(id)}/sheet`);
+}
+export async function submitCount(id: string, body: { countedAt: string; lines: { lineId: string; countedQty: number }[] }): Promise<WireCountHeader> {
+  return api<WireCountHeader>("POST", `/materials/counts/${encodeURIComponent(id)}/submit`, body);
+}
+export async function closeCount(id: string, note: string): Promise<WireCountHeader> {
+  return api<WireCountHeader>("POST", `/materials/counts/${encodeURIComponent(id)}/close`, { note });
+}
+export async function cancelCount(id: string, reason: string): Promise<WireCountHeader> {
+  return api<WireCountHeader>("POST", `/materials/counts/${encodeURIComponent(id)}/cancel`, { reason });
+}

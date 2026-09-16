@@ -455,6 +455,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY P9 — the Schedule H1 register, read and printed for an inspector. The pharmacist's:
       // it lists patients by name and what they were given.
       "pharmacy.register.read",
+      // 14c — a pharmacist may count the main store; the counter's own store is theirs and is refused.
+      "materials.counts.perform",
       // PHARMACY P5 — a paid dispense that cannot be collected: the counter that issued the invoice
       // credits it and REQUESTS the refund. The payout stays the cashier's, behind billing's approval.
       "billing.credit_note.issue",
@@ -972,6 +974,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "materials.stock.issue",
       "materials.stock.receive",
       "materials.recall.manage",
+      // PLAN 14c, FIRST SLICE — the head schedules and reviews counts, and may count a store someone
+      // else scheduled. The act keeps the scheduler and the store's custodians off the sheet.
+      "materials.counts.manage",
+      "materials.counts.perform",
     ],
   },
   {
@@ -989,6 +995,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "materials.grn.capture",
       "materials.stock.issue",
       "materials.stock.receive",
+      // 14c — the storekeeper counts other stores (the pharmacy's, a ward's), never the one they keep.
+      "materials.counts.perform",
     ],
   },
   // ------------------------------------------------------------------------------------------

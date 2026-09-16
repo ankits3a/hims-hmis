@@ -701,6 +701,13 @@
       "when": 1789593648596,
       "tag": "0099_pharmacy_pharmacist_register",
       "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1789600627776,
+      "tag": "0100_materials_stock_counts",
+      "breakpoints": true
     }
   ]
 }
