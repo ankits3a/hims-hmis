@@ -539,8 +539,28 @@ describe("the formulary mapping loop (phase 2)", () => {
         { sctid: "999999999", moietyName: "nothing", basis: "agent", evidence: { model: "model-x", rationale: "?" } },
       ]));
 
-      expect(result).toEqual({ written: 0, unknownSctids: ["999999999"] });
+      expect(result).toEqual({ written: 0, withdrawn: 0, unknownSctids: ["999999999"] });
       expect((await pageMappingWorklist(db, {})).items.flatMap((i) => i.proposals)).toHaveLength(0);
+    });
+
+    it("a full re-run can withdraw its own drafts for substances it no longer drafts, and only its own", async () => {
+      const { amoxTri, clav } = await augmentinWorld();
+      await withTx(db, (tx) => writeProposals(tx, "drafter:release@1", [
+        { sctid: SCT.amoxTrihydrate, moietyName: "amoxicillin", basis: "release_boss", evidence: {} },
+        { sctid: SCT.clavulanate, moietyName: "clavulanate potassium", basis: "release_boss", evidence: {} },
+      ]));
+      await withTx(db, (tx) => writeProposals(tx, "agent:model-x", [
+        { sctid: SCT.clavulanate, moietyName: "clavulanic acid", basis: "agent", evidence: { model: "model-x", rationale: "potassium salt" } },
+      ]));
+
+      const result = await withTx(db, (tx) => writeProposals(tx, "drafter:release@1", [
+        { sctid: SCT.amoxTrihydrate, moietyName: "amoxicillin", basis: "release_boss", evidence: {} },
+      ], { withdrawOthers: true }));
+
+      expect(result).toEqual({ written: 1, withdrawn: 1, unknownSctids: [] });
+      const items = (await pageMappingWorklist(db, {})).items;
+      expect(items.find((i) => i.id === amoxTri.id)?.proposals.map((p) => p.draftedBy)).toEqual(["drafter:release@1"]);
+      expect(items.find((i) => i.id === clav.id)?.proposals.map((p) => p.draftedBy)).toEqual(["agent:model-x"]);
     });
 
     it("a re-run replaces a drafter's own draft and leaves another drafter's alone", async () => {
@@ -587,6 +607,8 @@ describe("the formulary mapping loop (phase 2)", () => {
 
       // paracetamol 3, amoxicillin trihydrate 2, clavulanate 1, lactobacillus 0 (no entry at all: E11).
       expect(seen).toEqual([para.id, amoxTri.id, clav.id, lacto.id]);
+      const own = (await pageMappingWorklist(db, { limit: 10 })).items.map((i) => [i.id, i.ownEntryId]);
+      expect(own).toEqual([[para.id, para.image], [amoxTri.id, amoxTri.image], [clav.id, clav.image], [lacto.id, null]]);
 
       await attest(PHARMACIST, amoxTri.id, { saltId: amox });
       expect((await pageMappingWorklist(db, {})).items.map((i) => i.id)).toEqual([para.id, clav.id, lacto.id]);

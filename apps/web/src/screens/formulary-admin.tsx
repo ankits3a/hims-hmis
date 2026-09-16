@@ -6,6 +6,7 @@ import {
   formularyErrorMessage, rejectStaging, searchStaging,
 } from "../lib/formulary-api";
 import { Button } from "@/components/ui/button";
+import { MappingWorklist } from "../components/mapping-worklist";
 import type { AdmitInput, WireSalt, WireStagingRow } from "../lib/formulary-api";
 
 /** Two letters before the first request: one letter over 3,283 moieties is not a search, it is a
@@ -258,6 +259,36 @@ export function FormularyAdmin(): React.ReactElement {
             </dd>
             <p className="max-w-md text-xs text-neutral-600">{t("formularyAdmin.census.uncomposedHint")}</p>
           </div>
+          {/*
+            THE MAPPING LOOP'S TWO FIGURES (phase 2). The first says how much of the release is still
+            waiting for a pharmacist; the second is what that waiting COSTS: products a doctor can
+            pick whose components carry no class and no interaction pairs. A release-only or an empty
+            database shows zero substances, and the strip says so rather than hiding the row.
+          */}
+          <div>
+            <dt className="text-xs text-neutral-600">{t("formularyAdmin.census.substances")}</dt>
+            <dd data-testid="census-substances" className="text-sm">
+              {t("formularyAdmin.census.substanceStates", {
+                pending: NUMBERS.format(census.data.pendingSubstances),
+                drafted: NUMBERS.format(census.data.draftedPendingSubstances),
+                mapped: NUMBERS.format(census.data.mappedSubstances),
+                unmappable: NUMBERS.format(census.data.unmappableSubstances),
+              })}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-neutral-600">{t("formularyAdmin.census.unreviewed")}</dt>
+            <dd
+              data-testid="census-unreviewed"
+              className={census.data.unreviewedActiveMedicines > 0 ? "text-sm font-medium text-amber-700" : "text-sm"}
+            >
+              {t("formularyAdmin.census.unreviewedCount", {
+                count: census.data.unreviewedActiveMedicines,
+                shown: NUMBERS.format(census.data.unreviewedActiveMedicines),
+              })}
+            </dd>
+            <p className="max-w-md text-xs text-neutral-600">{t("formularyAdmin.census.unreviewedHint")}</p>
+          </div>
         </dl>
       )}
 
@@ -484,6 +515,14 @@ export function FormularyAdmin(): React.ReactElement {
           </div>
         </div>
       )}
+
+      {/*
+        The mapping worklist sits BELOW the stocking flow, not above it. Found in the browser: ten
+        tall cards between the census and the name search pushed the pharmacist's everyday act,
+        stocking a medicine, off the first screen. Mapping is done in sittings; stocking is done
+        all day.
+      */}
+      <MappingWorklist />
 
       {/* ——— T8: the curation worklist — the prescribing stream IS the queue ——— */}
       {coverage.data !== null && coverage.data !== undefined && (

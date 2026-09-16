@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { searchMedicines } from "../lib/formulary-api";
 import type { WireMedicineHit } from "../lib/formulary-api";
 
@@ -25,8 +26,18 @@ import type { WireMedicineHit } from "../lib/formulary-api";
  * ═══ WHAT IT REPLACED, AND WHY IT HAD TO ═══
  *
  * A `<select>` holding every medicine. Against a curated handful that was fine; against the owner's
- * catalogue it is 103,383 options and a 15 MB payload on every consult screen load — measured. A
- * typeahead is not a nicety at this size, it is the only workable instrument.
+ * catalogue it is 103,383 options on every consult screen load. This comment used to say "a 15 MB
+ * payload — measured", and no field subset reproduces that. The measured figures are 57.3 MiB full
+ * and 37.0 MiB trimmed, with the method in `lib/formulary-api.ts`. A typeahead is not a nicety at
+ * this size, it is the only workable instrument.
+ *
+ * ═══ "NOT YET REVIEWED BY PHARMACY" (formulary phase 2) ═══
+ *
+ * A row whose `reviewed` is false has a component that is still the national release's entry, with
+ * no pharmacist's attestation behind it. That component carries no drug class and no interaction
+ * pairs, so the checks that run on the line cannot see what they would see for a reviewed one. The
+ * pick is still allowed: free prescribing is never taken away. But the row says so, in words,
+ * before the tap rather than after.
  *
  * FREE TYPING IS NEVER TAKEN AWAY (16a design law 1): the input is the value, a doctor may write
  * anything, and picking a row simply fills the name AND the id — which is what turns a line into
@@ -43,6 +54,7 @@ export function DrugField({
   placeholder?: string;
   inputId: string;
 }): React.ReactElement {
+  const { t } = useTranslation();
   const [hits, setHits] = useState<WireMedicineHit[]>([]);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -122,6 +134,16 @@ export function DrugField({
                   <span className="mo" style={{ fontSize: 10.5, color: "var(--faint)" }}>
                     {[h.salts.join(" + ") || null, h.strength, h.code].filter((x) => x !== null && x !== "").join(" · ")}
                   </span>
+                  {/* `=== false`, not `!`: an absent field is an older server saying nothing, not a warning. */}
+                  {h.reviewed === false && (
+                    <span
+                      data-testid={`${inputId}-unreviewed-${h.id}`}
+                      title={t("drugField.unreviewedTitle")}
+                      style={{ display: "block", fontSize: 10.5, color: "#92400e" }}
+                    >
+                      {t("drugField.unreviewed")}
+                    </span>
+                  )}
                 </span>
                 <span className="pill" style={{ flexShrink: 0 }}>{h.form}</span>
               </button>

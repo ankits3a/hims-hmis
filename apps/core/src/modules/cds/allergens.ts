@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { suggestMoieties } from "../formulary";
 import { rulesOf } from "./knowledge";
 import type { Db } from "../../kernel/db/client";
 
@@ -86,29 +86,17 @@ export async function searchAllergens(db: Db, query: string, limit = 8): Promise
   const hits = classes().filter((c) => classMatches(c, q, rawByClass.get(c.allergenClass ?? "") ?? ""));
 
   /*
-    THE MOIETIES, AND THE AUTOCORRECT LIVES HERE. `similarity` is the fuzzy arm — `pencilin` scores
-    high against `Penicillin` — and the `like` arm keeps an exact substring first. A threshold of
-    0.3 is pg_trgm's own default and is what stops `ace` returning a third of the catalogue.
+    THE MOIETIES, AND THE AUTOCORRECT. `similarity` is the fuzzy arm (`pencilin` scores high against
+    `Penicillin`), and the `like` arm keeps an exact substring first. The query belongs to the
+    formulary, which owns the table (`suggestMoieties`). It used to be written here in raw SQL,
+    where the module-boundary lint rule cannot see it.
   */
   const rest = capped - hits.length;
   if (rest > 0) {
-    const res = await db.execute(sql`
-      select s.id, s.name, similarity(lower(s.name), ${q}) as sim
-        from formulary_salts s
-       where s.active
-         and (lower(s.name) like ${`%${q}%`} or similarity(lower(s.name), ${q}) > 0.3)
-       order by (lower(s.name) like ${`${q}%`}) desc,
-                (lower(s.name) like ${`%${q}%`}) desc,
-                sim desc,
-                s.product_count desc,
-                length(s.name) asc
-       limit ${rest}
-    `);
-    for (const r of res.rows as Record<string, unknown>[]) {
-      const name = String(r["name"]);
+    for (const m of await suggestMoieties(db, q, rest)) {
       /* A moiety already offered as a class member is not offered twice under its own name. */
-      if (hits.some((h) => h.term.toLowerCase() === name.toLowerCase())) continue;
-      hits.push({ term: name, kind: "moiety", allergenClass: null, saltId: String(r["id"]), blocks: [] });
+      if (hits.some((h) => h.term.toLowerCase() === m.name.toLowerCase())) continue;
+      hits.push({ term: m.name, kind: "moiety", allergenClass: null, saltId: m.id, blocks: [] });
     }
   }
   return hits.slice(0, capped);

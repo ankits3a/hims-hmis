@@ -81,6 +81,7 @@ const SURFACE = [
   "searchMedicines",
   "searchStaging",
   "suggestDrugs",
+  "suggestMoieties",
   "updateInteraction",
   "updateMedicine",
   "updateSalt",

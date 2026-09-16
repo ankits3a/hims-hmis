@@ -2,7 +2,7 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
 import { FormularyError, formularyHttpStatus } from "./errors";
 import { addMedicine, addSalt, updateMedicine, updateSalt } from "./masters";
-import { MAX_IDS, medicineExists, medicinesByIds, saltsByIds } from "./reads";
+import { MAX_IDS, medicineExists, medicinesByIds, saltsByIds, suggestMoieties } from "./reads";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -374,5 +374,47 @@ describe("formulary reads: medicinesByIds / saltsByIds / medicineExists", () => 
    */
   it("is false for the empty id, without touching the database", async () => {
     expect(await medicineExists(NEVER_QUERIED, "")).toBe(false);
+  });
+});
+
+/**
+ * THE ALLERGY FIELD'S AUTOCORRECT, now owned by the formulary (it was raw SQL in `cds/allergens.ts`).
+ * The ranking is the one the field shipped with; the `%` handling is new and is the house rule.
+ */
+describe("suggestMoieties", () => {
+  let db: Db;
+  let teardown: () => Promise<void>;
+  const PHARMACIST: Actor = { type: "user", id: "01HPHARMACIST0000000000001" };
+  beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
+  afterAll(async () => teardown());
+  beforeEach(async () => { await truncateAll(db); });
+
+  const salt = async (name: string): Promise<string> => (await withTx(db, (tx) => addSalt(tx, PHARMACIST, { name }))).saltId;
+
+  it("corrects a misspelling, ranks a prefix first, and leaves out a withdrawn moiety", async () => {
+    const penicillin = await salt("penicillin G");
+    const amox = await salt("amoxicillin");
+    const withdrawn = await salt("penicillamine");
+    await withTx(db, (tx) => updateSalt(tx, PHARMACIST, withdrawn, { active: false }));
+
+    const misspelt = await suggestMoieties(db, "pencilin", 5);
+    expect(misspelt[0]?.id).toBe(penicillin);
+    expect(misspelt.map((m) => m.id)).not.toContain(withdrawn);
+    expect((await suggestMoieties(db, "amox", 5))[0]?.id).toBe(amox);
+  });
+
+  it("treats a typed % or _ as a character, not a wildcard", async () => {
+    await salt("amoxicillin");
+    await salt("paracetamol");
+
+    expect(await suggestMoieties(db, "%", 20)).toEqual([]);
+    expect(await suggestMoieties(db, "_", 20)).toEqual([]);
+  });
+
+  it("answers nothing for nothing, and never more than twenty", async () => {
+    for (const n of Array.from({ length: 25 }, (_, i) => `sodium salt ${String(i).padStart(2, "0")}`)) await salt(n);
+
+    expect(await suggestMoieties(db, "  ", 10)).toEqual([]);
+    expect(await suggestMoieties(db, "sodium", 500)).toHaveLength(20);
   });
 });

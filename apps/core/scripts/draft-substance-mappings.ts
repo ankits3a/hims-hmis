@@ -156,6 +156,8 @@ export type ReleasePlan = {
     unmatchedStatements: number;
     /** A base sharing no stem with its ingredient ("Menthol (as guaifenesin)"): misaligned, dropped. */
     dissonantStatements: number;
+    /** Statements the release also makes the other way round as often or more: the minority direction, dropped. */
+    reversedStatements: number;
     releaseBoss: number;
     releaseBase: number;
     /** Substances for which the release names more than one base. */
@@ -177,7 +179,11 @@ export function planReleaseDrafts(substances: ReleaseSubstance[], generics: Rele
   let statements = 0;
   let unmatched = 0;
   let dissonant = 0;
+  let reversed = 0;
 
+  type Kept = { subject: ReleaseSubstance; base: string; droppedWord: string | null; generic: { sctid: string; name: string } };
+  const kept: Kept[] = [];
+  const subjectName = (s: ReleaseSubstance): string => stripSemanticTag(s.name).toLowerCase();
   for (const g of generics) {
     const own = g.substanceSctids.map((id) => bySctid.get(id)).filter((s): s is ReleaseSubstance => s !== undefined);
     for (const st of parseBasisStatements(g.name)) {
@@ -186,16 +192,30 @@ export function planReleaseDrafts(substances: ReleaseSubstance[], generics: Rele
       const subject = own.find((s) => namesOf(s).has(ingredient));
       if (subject === undefined) { unmatched += 1; continue; }
       if (!sharesStem(st.base, st.ingredient)) { dissonant += 1; continue; }
-      const perBase = stated.get(subject.sctid) ?? new Map<string, { sctid: string; name: string }[]>();
-      const list = perBase.get(st.base) ?? [];
-      list.push({ sctid: g.sctid, name: g.name });
-      perBase.set(st.base, list);
-      stated.set(subject.sctid, perBase);
-      if (st.droppedWord !== null) dropped.set(`${subject.sctid}|${st.base}`, st.droppedWord);
-      const named = basesNamed.get(st.base) ?? [];
-      named.push({ sctid: g.sctid, name: g.name });
-      basesNamed.set(st.base, named);
+      kept.push({ subject, base: st.base, droppedWord: st.droppedWord, generic: { sctid: g.sctid, name: g.name } });
     }
+  }
+
+  /*
+    THE RELEASE SOMETIMES STATES A PAIR BOTH WAYS. Measured: 38 clinical drugs say "clavulanic acid
+    (as clavulanate potassium)" and one says "Clavulanate potassium (as clavulanic acid)". Taken at
+    its word, the one would draft the salt as the moiety of the base. So for any pair stated in both
+    directions only the direction more generics state survives, and a tie drops both: the release
+    has not said which way round it is.
+  */
+  const pairKey = (base: string, subject: ReleaseSubstance): string => `${base}|${subjectName(subject)}`;
+  const directed = new Map<string, number>();
+  for (const k of kept) directed.set(pairKey(k.base, k.subject), (directed.get(pairKey(k.base, k.subject)) ?? 0) + 1);
+  for (const { subject, base, droppedWord, generic } of kept) {
+    const forward = directed.get(pairKey(base, subject)) ?? 0;
+    const backward = directed.get(`${subjectName(subject)}|${base}`) ?? 0;
+    if (backward >= forward) { reversed += 1; continue; }
+
+    const perBase = stated.get(subject.sctid) ?? new Map<string, { sctid: string; name: string }[]>();
+    perBase.set(base, [...(perBase.get(base) ?? []), generic]);
+    stated.set(subject.sctid, perBase);
+    if (droppedWord !== null) dropped.set(`${subject.sctid}|${base}`, droppedWord);
+    basesNamed.set(base, [...(basesNamed.get(base) ?? []), generic]);
   }
 
   const proposals: ProposalInput[] = [];
@@ -232,7 +252,7 @@ export function planReleaseDrafts(substances: ReleaseSubstance[], generics: Rele
   return {
     proposals,
     report: {
-      statements, unmatchedStatements: unmatched, dissonantStatements: dissonant,
+      statements, unmatchedStatements: unmatched, dissonantStatements: dissonant, reversedStatements: reversed,
       releaseBoss: proposals.length - releaseBase, releaseBase, contested,
     },
   };
@@ -331,6 +351,7 @@ function main(): void {
       console.log(`  "(as …)" statements   ${String(r.statements)}`);
       console.log(`    ignored             ${String(r.unmatchedStatements)} name none of their own generic's substances`);
       console.log(`    ignored             ${String(r.dissonantStatements)} pair names sharing no stem (the release misaligned them)`);
+      console.log(`    ignored             ${String(r.reversedStatements)} stated the other way round at least as often`);
       console.log(`  release_boss drafts   ${String(r.releaseBoss)}  (${String(r.contested)} contested: the release names more than one base)`);
       console.log(`  release_base drafts   ${String(r.releaseBase)}`);
 
@@ -354,17 +375,18 @@ function main(): void {
 
       if (!apply) { console.log("\nDRY RUN — nothing written. Re-run with --apply."); return; }
       const written = await withTx(db, async (tx) => {
-        const rel = await writeProposals(tx, "drafter:release@1", plan.proposals);
+        /* The release half is the WHOLE of what the release says, so a draft it no longer makes is withdrawn. */
+        const rel = await writeProposals(tx, "drafter:release@1", plan.proposals, { withdrawOthers: true });
         if (rel.unknownSctids.length > 0) throw new Error(`release drafts name unknown substances: ${rel.unknownSctids.join(", ")}`);
-        if (agent.length === 0) return { release: rel.written, agent: 0 };
+        if (agent.length === 0) return { release: rel.written, withdrawn: rel.withdrawn, agent: 0 };
         const ag = await writeProposals(tx, agentLabel, agent);
         if (ag.unknownSctids.length > 0) {
           throw new Error(`the agent file names ${String(ag.unknownSctids.length)} substance(s) this release does not hold: `
             + `${ag.unknownSctids.slice(0, 10).join(", ")} — nothing was written`);
         }
-        return { release: rel.written, agent: ag.written };
+        return { release: rel.written, withdrawn: rel.withdrawn, agent: ag.written };
       });
-      console.log(`\nAPPLIED · release drafts ${String(written.release)} · agent drafts ${String(written.agent)}`);
+      console.log(`\nAPPLIED · release drafts ${String(written.release)} (${String(written.withdrawn)} withdrawn) · agent drafts ${String(written.agent)}`);
     } finally {
       await pool.end();
     }

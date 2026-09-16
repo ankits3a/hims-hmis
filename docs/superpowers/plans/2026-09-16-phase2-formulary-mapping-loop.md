@@ -285,24 +285,47 @@ makes the entry unreviewed again.
 
 ## 5. TASKS, AND WHERE EACH ONE IS
 
-- **T1 + T2 + the §3.7 fixes: PR #210** (backend, migration `0097`). 30 + 24 + 5 new tests, and
-  24 mutants (22 killed as predicted, 1 dropping only the row lock surviving by design, 1 invalid
-  and redone).
-- **T3 + T4 (web):** the worklist screen in `formulary-admin`, the census figures, and the
-  `DrugField` chip. The branch is `lane/formulary-web`, and it opens as a PR once #210 merges. 12 +
-  2 new tests, and 6 mutants, all killed as predicted.
-- **T5 residuals.** The 51 collisions are **done** (§3.7). The 15 MB prose is **done** in `search.ts`
-  and `drug-field.tsx`; `opd-consult.tsx` is still not this lane's to edit (live lanes).
-  **Still open:** `cds/allergens.ts` reads `formulary_salts` in raw SQL, invisible to the lint
-  rule, and its `like` does not use `escapeLike`.
-- **T6: the drafting run.** An agent drafts the top 500 undrafted substances into an agent file.
-  The owner or pharmacist applies it with `--agent-file … --apply`, after R3's load.
+- **T1 + T2 + the §3.7 fixes: MERGED as #210** (`c03080ed`, migration `0097`). Green on both CI
+  runs.
+- **T3 + T4 (web) + residuals: the web PR** (branch `lane/formulary-web`). It carries the worklist
+  screen, the census figures, the `DrugField` chip, `suggestMoieties` with the source-text
+  boundary scan, and the drafter's reversal rule.
+- **T5 residuals: all done except `opd-consult.tsx`'s prose.** That file is still being edited by
+  live lanes.
+- **T6: the drafting run is DONE and stored out of git.** It lives at
+  `/opt/hmis-context/nrces-2026-09-drafts/`: 474 model drafts (md5
+  `433339d9f17adc93a81d662dbdcb4976`), 26 deliberate skips with reasons, and a README naming the
+  model's ten least-certain drafts. It applied cleanly to `hmis_formulary_dev`.
 
-**Owner's deploy order, once the web PR is merged:** deploy → `import:nrces` (R3) →
-`draft-substance-mappings --apply` → `draft-substance-mappings --agent-file <file> --apply` →
-attestation sittings of about 50 → `import-cds-catalogue --apply` only after this phase is deployed.
-The importer projects every decision already made, so sittings may come before or after the
-catalogue load.
+### 5.1 What a browser walk on the real release found (all fixed on the web branch)
+
+A walk as a pharmacist (`pharma.demo` holding `pharmacy`) against `hmis_formulary_dev`, with both
+tiers and 1,517 drafts loaded. "Paracetamol is its own moiety" moved 0 rows and took the unreviewed
+count from 1,01,796 to 1,00,583. The walk found five things no test had covered:
+
+1. **A salt was offered as "its own moiety"** beside the release's statement that the moiety is
+   clavulanic acid. The shortcut is now withheld while a draft disagrees, and sits behind a question
+   with the salt-form caution.
+2. **The release states a pair both ways**, 38 to 1 for clavulanate. The minority draft made
+   clavulanic acid "be" clavulanate potassium, and the two cards each sent the pharmacist to the
+   other. The drafter now keeps the majority direction (2 reversed statements in the whole release)
+   and withdraws its own stale drafts on a full re-run.
+3. **"Decide that substance first"** gave no way to reach it. It now has a "Find X" button.
+4. **Copy.** The own-moiety label used the draft's lowercase spelling, and "0 product rows moved"
+   was noise.
+5. **Layout.** The worklist sat above the stocking flow's name search; it is now below it.
+
+### 5.2 Owner's deploy order, once the web PR is merged
+
+1. Deploy. Production applies `0096` (#203) and `0097` (this phase).
+2. `import:nrces --apply` (R3, command in §1).
+3. `draft-substance-mappings --apply`.
+4. `draft-substance-mappings --agent-file /opt/hmis-context/nrces-2026-09-drafts/agent-drafts-claude-opus-5.json --apply`.
+5. The pharmacist's sittings of about 50 on `/formulary/admin`. The curve in §2 is the schedule.
+6. `import-cds-catalogue --apply`, only once this phase is deployed. It projects every decision
+   already made, so step 5 may straddle it.
+
+Also give a person the `pharmacy` role: `formulary.manage` is its grant (16a DD10).
 
 **Not in this phase:**
 - the prescribing checks' verdict for unreviewed lines (§3.4);

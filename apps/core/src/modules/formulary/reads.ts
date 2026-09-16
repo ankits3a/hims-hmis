@@ -362,6 +362,43 @@ export async function catalogueCensus(db: Db): Promise<CatalogueCensus> {
 }
 
 /**
+ * ═══ THE ALLERGY FIELD'S AUTOCORRECT: ACTIVE MOIETY NAMES, FUZZILY, AND AT MOST TWENTY ═══
+ *
+ * `modules/cds/allergens.ts` used to run this query itself, in raw SQL, straight over
+ * `formulary_salts`. The lint rule that closes this module's tables matches IMPORTED table objects
+ * and cannot see a string, so the boundary was open with a green lint (handoff 2026-09-16 §5). The
+ * `like` arms also took the doctor's `%` and `_` as wildcards (`escapeLike` is the house rule).
+ *
+ * DD2 allows this to be fuzzy because it is a PICKER: a doctor sees the offer and chooses. It is
+ * never a resolution. The ranking is the one the field shipped with, moved unchanged: prefix, then
+ * substring, then trigram similarity (pg_trgm's default 0.3 floor), then how much of the market the
+ * moiety carries, then the shorter name.
+ */
+export type MoietySuggestion = { id: string; name: string };
+const MAX_MOIETY_SUGGESTIONS = 20;
+
+export async function suggestMoieties(db: Db, query: string, limit: number): Promise<MoietySuggestion[]> {
+  const q = query.trim().toLowerCase();
+  if (q === "") return [];
+  const capped = Math.min(Math.max(Math.trunc(limit), 1), MAX_MOIETY_SUGGESTIONS);
+  const contains = `%${escapeLike(q)}%`;
+  const starts = `${escapeLike(q)}%`;
+  const res = await db.execute<{ id: string; name: string }>(sql`
+    select s.id, s.name
+      from formulary_salts s
+     where s.active
+       and (lower(s.name) like ${contains} or similarity(lower(s.name), ${q}) > 0.3)
+     order by (lower(s.name) like ${starts}) desc,
+              (lower(s.name) like ${contains}) desc,
+              similarity(lower(s.name), ${q}) desc,
+              s.product_count desc,
+              length(s.name) asc
+     limit ${capped}
+  `);
+  return res.rows.map((r) => ({ id: r.id, name: r.name }));
+}
+
+/**
  * Brand name (lowercased) -> medicine id, for the names asked about.
  *
  * ═══ THIS ONE CHUNKS RATHER THAN REFUSING, AND THE ASYMMETRY IS ABOUT BLAME ═══
