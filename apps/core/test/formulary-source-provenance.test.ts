@@ -5,9 +5,9 @@ import { setupTestDb, truncateAll } from "./helpers/db";
 import type { Db } from "../src/kernel/db/client";
 
 /**
- * ═══ THE BACKFILL IN MIGRATION 0095, RUN AGAINST REAL ROWS ═══
+ * ═══ THE BACKFILL IN MIGRATION 0094, RUN AGAINST REAL ROWS ═══
  *
- * `0095_formulary_composition_provenance.sql` carries a hand-written UPDATE that `drizzle-kit
+ * `0094_formulary_composition_provenance.sql` carries a hand-written UPDATE that `drizzle-kit
  * generate` did not produce and could not: the generator reproduces a schema diff, and this is a
  * data statement. A hand-written data statement with no test is a statement nobody has ever seen
  * run — so this runs the file's own UPDATE against a medicine written by the importer and a
@@ -31,7 +31,7 @@ import type { Db } from "../src/kernel/db/client";
  * idempotent (setting 'derived' twice is setting it once) and scoped by a predicate rather than by
  * position.
  */
-const MIGRATION = resolve(__dirname, "../drizzle/0095_formulary_composition_provenance.sql");
+const MIGRATION = resolve(__dirname, "../drizzle/0094_formulary_composition_provenance.sql");
 
 /** The migration's first statement, with its `--` prose stripped: the backfill, as shipped. */
 function backfillFromMigration(): string {
@@ -44,7 +44,7 @@ function backfillFromMigration(): string {
   return body;
 }
 
-describe("migration 0095 — composition provenance", () => {
+describe("migration 0094 — composition provenance", () => {
   let db: Db;
   let teardown: () => Promise<void>;
 
