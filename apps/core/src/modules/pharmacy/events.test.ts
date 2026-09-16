@@ -1,13 +1,13 @@
 import { PHARMACY_EVENTS, dispenseClaimed, dispenseHandedOver } from "./events";
 
 describe("the pharmacy event catalog (16c T1)", () => {
-  it("is eleven events, all module pharmacy, names unique (P2 added the register's two)", () => {
-    expect(PHARMACY_EVENTS).toHaveLength(11); // P2: +2, the register of pharmacists
+  it("is twelve events, all module pharmacy, names unique (P2 added the register's two, P6 the return)", () => {
+    expect(PHARMACY_EVENTS).toHaveLength(12); // P2: +2, the register of pharmacists; P6: +1, dispense.line_returned
     for (const e of PHARMACY_EVENTS) expect(e.module).toBe("pharmacy");
-    expect(new Set(PHARMACY_EVENTS.map((e) => e.name)).size).toBe(11);
+    expect(new Set(PHARMACY_EVENTS.map((e) => e.name)).size).toBe(12);
     expect(PHARMACY_EVENTS.map((e) => e.name).sort()).toEqual([
       "dispense.billed", "dispense.cancelled", "dispense.claimed", "dispense.handed_over", "dispense.line_declined",
-      "dispense.picked", "dispense.queued", "dispense.verified", "pharmacist.registered", "pharmacist.registration_ended",
+      "dispense.line_returned", "dispense.picked", "dispense.queued", "dispense.verified", "pharmacist.registered", "pharmacist.registration_ended",
       "substitution.recorded",
     ]);
   });

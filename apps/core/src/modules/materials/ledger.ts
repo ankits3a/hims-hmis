@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import {
@@ -362,11 +362,12 @@ async function sellableBatchRows(
   resourceId: string,
   itemIds: readonly string[],
   asOf: Date,
-): Promise<{ itemId: string; batchId: string; onHand: number; reserved: number; frozen: number; expiryDate: string | null }[]> {
+): Promise<{ itemId: string; batchId: string; batchNo: string; onHand: number; reserved: number; frozen: number; expiryDate: string | null }[]> {
   if (itemIds.length === 0) return [];
   return db.select({
     itemId: stockBalances.itemId,
     batchId: stockBalances.batchId,
+    batchNo: stockBatches.batchNo,
     onHand: stockBalances.qtyOnHand,
     reserved: stockBalances.qtyReserved,
     frozen: stockBalances.qtyFrozen,
@@ -439,6 +440,110 @@ export async function availableQtyByItem(
   for (const r of await sellableBatchRows(db, resourceId, wanted, asOf)) {
     out.set(r.itemId, (out.get(r.itemId) ?? 0) + Math.max(0, r.onHand - r.reserved - r.frozen));
   }
+  return out;
+}
+
+/**
+ * PHARMACY P8 — the batches `fefoPick` would offer, per item, in its order, each with what it can
+ * still give (`on_hand − reserved − frozen`, and never below zero). The same query as the pick and
+ * `availableQtyByItem`, so a forecast over these rows and the pick can never disagree about which
+ * batch goes first.
+ */
+export async function sellableBatchesByItem(
+  db: Db | Tx,
+  resourceId: string,
+  itemIds: readonly string[],
+  asOf: Date = new Date(),
+): Promise<Map<string, { batchId: string; batchNo: string; expiryDate: string | null; available: number }[]>> {
+  const out = new Map<string, { batchId: string; batchNo: string; expiryDate: string | null; available: number }[]>();
+  const wanted = [...new Set(itemIds)].filter((id) => id !== "");
+  for (const r of await sellableBatchRows(db, resourceId, wanted, asOf)) {
+    const available = Math.max(0, r.onHand - r.reserved - r.frozen);
+    if (available === 0) continue;
+    const list = out.get(r.itemId) ?? [];
+    list.push({ batchId: r.batchId, batchNo: r.batchNo, expiryDate: r.expiryDate, available });
+    out.set(r.itemId, list);
+  }
+  return out;
+}
+
+/**
+ * PHARMACY P8 — stock at ONE store whose expiry date has passed (IST) and which is still on hand:
+ * what has to come off that shelf into quarantine. The pick already refuses it; this is the list of
+ * what is physically still there. Earliest expiry first.
+ */
+export async function expiredStockAt(
+  db: Db | Tx, resourceId: string, asOf: Date = new Date(),
+): Promise<{ itemId: string; batchId: string; batchNo: string; expiryDate: string; onHand: number }[]> {
+  const rows = await db.select({
+    itemId: stockBalances.itemId,
+    batchId: stockBalances.batchId,
+    batchNo: stockBatches.batchNo,
+    expiryDate: stockBatches.expiryDate,
+    onHand: stockBalances.qtyOnHand,
+  })
+    .from(stockBalances)
+    .innerJoin(stockBatches, eq(stockBatches.id, stockBalances.batchId))
+    .where(and(
+      eq(stockBalances.resourceId, resourceId),
+      sql`${stockBalances.qtyOnHand} > 0`,
+      sql`${stockBatches.expiryDate} < ${istDay(asOf)}::date`,
+    ))
+    .orderBy(asc(stockBatches.expiryDate), asc(stockBatches.batchNo));
+  return rows.map((r) => ({ ...r, expiryDate: r.expiryDate as string }));
+}
+
+/**
+ * PHARMACY P6 — how much has come BACK against each reference: the sum of `return` rows whose
+ * `ref_type` is `refType`, keyed by `ref_id`, over the ids asked for. A counter's sales return
+ * names the dispense line it returns, so this is "already returned", and the next return is
+ * bounded by it.
+ */
+export async function returnedQtyByRef(
+  db: Db | Tx, refType: string, refIds: readonly string[],
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const wanted = [...new Set(refIds)].filter((id) => id !== "");
+  if (wanted.length === 0) return out;
+  const rows = await db.select({
+    refId: stockLedger.refId,
+    qty: sql<string>`coalesce(sum(${stockLedger.qtyDelta}), 0)`,
+  }).from(stockLedger).where(and(
+    eq(stockLedger.reason, "return"),
+    eq(stockLedger.refType, refType),
+    inArray(stockLedger.refId, wanted),
+  )).groupBy(stockLedger.refId);
+  for (const r of rows) if (r.refId !== null) out.set(r.refId, Number(r.qty));
+  return out;
+}
+
+/**
+ * PHARMACY P4 — how much of each item this store CONSUMED in `[since, until)`, keyed by item id; an
+ * item with none is absent. Bounded by the item ids and the window. `occurred_at` is the injected
+ * instant (a downtime back-entry lands on the day it happened, which is the day the velocity is
+ * about), and only `consume` rows count: an issue to another store is a move, not a use.
+ */
+export async function consumedQtyByItem(
+  db: Db | Tx,
+  resourceId: string,
+  itemIds: readonly string[],
+  since: Date,
+  until: Date,
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const wanted = [...new Set(itemIds)].filter((id) => id !== "");
+  if (wanted.length === 0) return out;
+  const rows = await db.select({
+    itemId: stockLedger.itemId,
+    used: sql<string>`coalesce(sum(-${stockLedger.qtyDelta}), 0)`,
+  }).from(stockLedger).where(and(
+    eq(stockLedger.resourceId, resourceId),
+    eq(stockLedger.reason, "consume"),
+    inArray(stockLedger.itemId, wanted),
+    sql`${stockLedger.occurredAt} >= ${since}`,
+    sql`${stockLedger.occurredAt} < ${until}`,
+  )).groupBy(stockLedger.itemId);
+  for (const r of rows) out.set(r.itemId, Number(r.used));
   return out;
 }
 

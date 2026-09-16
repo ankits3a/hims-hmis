@@ -44,4 +44,8 @@ export const PHARMACY_IDEMPOTENT_ROUTES = {
   pick: "POST /pharmacy/dispenses/:id/pick",
   bill: "POST /pharmacy/dispenses/:id/bill",
   handover: "POST /pharmacy/dispenses/:id/handover",
+  /** P5 — a credit note and a refund request: a retried click must not raise two. */
+  refund: "POST /pharmacy/dispenses/:id/refund",
+  /** P6 — a return credits and refunds: a retried click must not return a pack twice. */
+  returns: "POST /pharmacy/dispenses/:id/returns",
 } as const;

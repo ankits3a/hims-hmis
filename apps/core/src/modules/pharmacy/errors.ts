@@ -72,6 +72,19 @@ export const PHARMACY_ERROR_CODES = [
   "registration_in_use",
   "registration_ended",
   "not_a_pharmacist_role",
+  // ── P5: a paid dispense that cannot be collected ──
+  /** An act whose record a reviewer will read, attempted without saying why. */
+  "reason_required",
+  // ── P6: sales returns (doc 16 O-7) ──
+  "return_window_closed",
+  "return_not_sealed",
+  /** A cold-chain, frozen or narcotic item: its storage after it left the counter cannot be vouched for. */
+  "return_not_accepted",
+  "return_cut_strip",
+  "return_short_expiry",
+  "return_exceeds_dispensed",
+  // ── P7 ──
+  "invalid_day",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -129,6 +142,14 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   registration_in_use: 409,
   registration_ended: 409,
   not_a_pharmacist_role: 409,
+  reason_required: 400,
+  return_window_closed: 409,
+  return_not_sealed: 409,
+  return_not_accepted: 409,
+  return_cut_strip: 409,
+  return_short_expiry: 409,
+  return_exceeds_dispensed: 409,
+  invalid_day: 400,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {

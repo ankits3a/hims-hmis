@@ -38,7 +38,7 @@ describe("the pharmacy manifest claims the medication order kind (16c T1)", () =
       "pharmacy.dispense.place", "pharmacy.dispense.read", "pharmacy.dispense.scheduled", "pharmacy.sale_items.manage",
       "pharmacy.pharmacists.manage",
     ]);
-    expect(pharmacyManifest.menu.map((e) => e.path)).toEqual(["/pharmacy/counter", "/pharmacy/items", "/pharmacy/pharmacists"]);
+    expect(pharmacyManifest.menu.map((e) => e.path)).toEqual(["/pharmacy/counter", "/pharmacy/items", "/pharmacy/pharmacists", "/pharmacy/reorder"]);
     expect(pharmacyManifest.subscriptions).toEqual([{ event: "prescription.issued", consumer: "pharmacy.rx_issued" }]);
     const all = installed().allPermissions();
     for (const p of pharmacyManifest.permissions) expect(all).toContain(p);

@@ -13,6 +13,14 @@ import { handOverDispense } from "./handover";
 import { labelFor } from "./label";
 import { pickDispense } from "./pick";
 import { alternativesFor, cancelDispense, declineLine, verifyDispense } from "./verify";
+import { cancelBilledDispense } from "./refund";
+import { reorderAdvice } from "./replenishment";
+import { acceptReturn } from "./returns";
+import { counterSummary } from "./summary";
+import type { CounterSummary } from "./summary";
+import type { ReturnResult } from "./returns";
+import type { ReorderAdvice } from "./replenishment";
+import type { CancelBilledResult } from "./refund";
 import type { Actor } from "@hmis/contracts";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
@@ -33,6 +41,13 @@ const verifyBody = z.object({
   })),
 });
 const reasonBody = z.object({ reason: z.string().min(1).max(240) });
+const refundBody = z.object({ reason: z.string().min(3).max(500), reasonClass: z.enum(["mistake", "genuine"]) });
+const returnBody = z.object({
+  lines: z.array(z.object({ lineIdx: z.number().int().nonnegative(), qtyBase: z.number().int().positive() })).min(1).max(50),
+  sealedIntact: z.literal(true),
+  reason: z.string().min(3).max(500),
+  reasonClass: z.enum(["mistake", "genuine"]),
+});
 const pickBody = z.object({
   lines: z.array(z.object({
     lineIdx: z.number().int().nonnegative(),
@@ -211,6 +226,57 @@ export class PharmacyCounterController {
     const { reason } = parsed(reasonBody, body);
     try {
       return await declineLine(this.db, actor, this.decls(), id, Number(idx), reason, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** P6 — a sealed pack comes back: restocked, credited, its refund requested. The act asserts the rest. */
+  @RequirePermission("billing.refund.request", "hospital")
+  @Post("dispenses/:id/returns")
+  async returns(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown, @Headers("idempotency-key") key?: string): Promise<ReturnResult> {
+    const input = parsed(returnBody, body);
+    try {
+      return await withIdempotency(this.db, { actorId: actor.id, route: PHARMACY_IDEMPOTENT_ROUTES.returns, key }, { id, ...input },
+        () => acceptReturn(this.db, actor, this.decls(), id, input, new Date()));
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** P7 — the counter's day. `day` is an IST date; today when absent. Read-only. */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("summary")
+  async summary(@Query("day") day?: string): Promise<CounterSummary> {
+    try {
+      return await counterSummary(this.db, day ?? istDateOf(new Date()));
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** P4 — the reorder list: what the counter will run out of, and where it can come from. Read-only. */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("reorder")
+  async reorder(): Promise<ReorderAdvice> {
+    try {
+      return await reorderAdvice(this.db, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * P5 — a paid dispense that cannot be collected. The act asserts the Act's registration and both
+   * billing strings itself; this decorator is the first gate, not the only one.
+   */
+  @RequirePermission("billing.refund.request", "hospital")
+  @Post("dispenses/:id/refund")
+  async refund(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown, @Headers("idempotency-key") key?: string): Promise<CancelBilledResult> {
+    const input = parsed(refundBody, body);
+    try {
+      return await withIdempotency(this.db, { actorId: actor.id, route: PHARMACY_IDEMPOTENT_ROUTES.refund, key }, { id, ...input },
+        () => cancelBilledDispense(this.db, actor, this.decls(), id, input, new Date()));
     } catch (e) {
       return toHttp(e);
     }

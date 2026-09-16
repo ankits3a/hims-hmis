@@ -185,7 +185,7 @@ export async function claimDispense(
     await transition(tx, instanceId, "claimed", actor);
     await tx.update(pharmacyDispenses).set({ workflowInstanceId: instanceId }).where(eq(pharmacyDispenses.id, d.id));
     await appendEvent(tx, dispenseClaimed.make({
-      actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
+      occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
       payload: { dispenseId: d.id, patientId: d.patientId, encounterId: d.encounterId, prescriptionId: d.prescriptionId, lineCount: laid.length, door: input.door },
     }));
   });

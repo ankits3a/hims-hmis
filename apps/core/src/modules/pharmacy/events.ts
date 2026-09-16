@@ -74,6 +74,12 @@ export const dispenseHandedOver = defineEvent("dispense.handed_over", MODULE, z.
 
 export const dispenseCancelled = defineEvent("dispense.cancelled", MODULE, z.object({
   dispenseId: id, patientId: id, fromStatus: z.string().min(1), reason: z.string().min(1), reservationsReleased: z.number().int().nonnegative(),
+  /**
+   * P5 — a BILLED dispense is cancelled with the refund credit note it raised and the refund approval
+   * it filed. Null for a dispense cancelled before the bill, and on payloads written before P5.
+   */
+  creditNoteId: id.nullable().default(null),
+  refundApprovalId: id.nullable().default(null),
 }));
 
 /** P2 — a state council registration was filed for a pharmacist (a renewal names the row it ended). */
@@ -87,9 +93,20 @@ export const pharmacistRegistrationEnded = defineEvent("pharmacist.registration_
   registrationId: id, userId: id, reason: z.string().min(1),
 }));
 
+/**
+ * P6 — a sealed pack came back after the hand-over: restocked, credited, its refund requested. The
+ * attestation that it was sealed and intact is the pharmacist's, and it is recorded here.
+ */
+export const dispenseLineReturned = defineEvent("dispense.line_returned", MODULE, z.object({
+  dispenseId: id, patientId: id,
+  lines: z.array(z.object({ lineIdx: z.number().int().nonnegative(), qtyBase: z.number().int().positive(), batchId: id, ledgerEntryId: id })).min(1),
+  sealedIntact: z.literal(true), reason: z.string().min(1), reasonClass: z.enum(["mistake", "genuine"]),
+  creditNoteId: id, refundApprovalId: id,
+}));
+
 /** The catalog, in source order (`LAB_EVENTS`' discipline). A later task that adds a `defineEvent` above adds it here. */
 export const PHARMACY_EVENTS = [
   dispenseQueued, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded,
   dispensePicked, dispenseBilled, dispenseHandedOver, dispenseCancelled,
-  pharmacistRegistered, pharmacistRegistrationEnded,
+  pharmacistRegistered, pharmacistRegistrationEnded, dispenseLineReturned,
 ] as const;

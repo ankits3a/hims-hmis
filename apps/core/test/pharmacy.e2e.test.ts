@@ -50,6 +50,24 @@ describe("the OPD dispense counter over HTTP (16c T5)", () => {
     await request(server()).get("/pharmacy/queue").expect(401);
     await as(fx.clerk.token)(request(server()).get("/pharmacy/queue")).expect(403);
     await as(fx.aide.token)(request(server()).post("/pharmacy/sale-items").send({ itemId: fx.item.crocin })).expect(403);
+    // P4 — the reorder list is read by anyone at the counter, and by nobody else.
+    await as(fx.clerk.token)(request(server()).get("/pharmacy/reorder")).expect(403);
+    const reorder = await as(fx.aide.token)(request(server()).get("/pharmacy/reorder")).expect(200);
+    expect((reorder.body as { window: unknown }).window).toEqual({ days: 30, minCoverDays: 3, targetCoverDays: 7, nearExpiryDays: 90 });
+    // P8 — both shelf-risk lists travel with it.
+    expect(reorder.body).toMatchObject({ expiring: expect.any(Array), expiredOnShelf: expect.any(Array) });
+    // P7 — the counter's day: read at the counter only, and a day that is not a date is refused.
+    await as(fx.clerk.token)(request(server()).get("/pharmacy/summary")).expect(403);
+    await as(fx.aide.token)(request(server()).get("/pharmacy/summary?day=2026-08-17")).expect(200);
+    await as(fx.aide.token)(request(server()).get("/pharmacy/summary?day=yesterday")).expect(400);
+    // P6 — a return is a money act too; and an unattested one never reaches the act.
+    await as(fx.aide.token)(request(server()).post("/pharmacy/dispenses/d-any/returns").set("idempotency-key", "rt-1")
+      .send({ lines: [{ lineIdx: 0, qtyBase: 10 }], sealedIntact: true, reason: "changed", reasonClass: "genuine" })).expect(403);
+    await as(fx.pharmacist.token)(request(server()).post("/pharmacy/dispenses/d-any/returns").set("idempotency-key", "rt-2")
+      .send({ lines: [{ lineIdx: 0, qtyBase: 10 }], sealedIntact: false, reason: "changed", reasonClass: "genuine" })).expect(400);
+    // P5 — the refund route is a money act: the aide holds no billing string at all.
+    await as(fx.aide.token)(request(server()).post("/pharmacy/dispenses/d-any/refund").set("idempotency-key", "r-1")
+      .send({ reason: "expired before collection", reasonClass: "genuine" })).expect(403);
   });
 
   it("e-Rx → scan → claim → decline the unstocked line → verify (P number) → pick → bill → hand over → label; every row read back", async () => {

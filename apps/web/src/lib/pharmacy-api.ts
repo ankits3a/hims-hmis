@@ -114,6 +114,20 @@ export async function verifyDispense(id: string, lines: VerifyLine[], idempotenc
 export async function declineLine(id: string, lineIdx: number, reason: string): Promise<WireDispense> {
   return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/lines/${String(lineIdx)}/decline`, { reason });
 }
+/** P5 — a paid dispense that cannot be collected: cancelled, credited, the refund requested. */
+export async function cancelBilledDispense(
+  id: string, body: { reason: string; reasonClass: "mistake" | "genuine" }, idempotencyKey: string,
+): Promise<{ dispense: WireDispense; creditNoteId: string; creditNoteNo: string; refundApprovalId: string }> {
+  return api("POST", `/pharmacy/dispenses/${id}/refund`, body, idempotencyKey);
+}
+/** P6 — a sealed pack comes back after the hand-over. */
+export async function acceptReturn(
+  id: string,
+  body: { lines: { lineIdx: number; qtyBase: number }[]; sealedIntact: true; reason: string; reasonClass: "mistake" | "genuine" },
+  idempotencyKey: string,
+): Promise<{ dispense: WireDispense; creditNoteId: string; creditNoteNo: string; refundApprovalId: string }> {
+  return api("POST", `/pharmacy/dispenses/${id}/returns`, body, idempotencyKey);
+}
 export async function cancelDispense(id: string, reason: string): Promise<WireDispense> {
   return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/cancel`, { reason });
 }
@@ -165,4 +179,47 @@ export async function filePharmacistRegistration(
 }
 export async function endPharmacistRegistration(registrationId: string, reason: string): Promise<void> {
   await api("POST", `/pharmacy/pharmacists/registrations/${registrationId}/end`, { reason });
+}
+
+// ── P4 — the reorder list ──
+export type WireReorderLine = {
+  itemId: string; code: string; name: string; baseUom: string;
+  status: "stock_out" | "reorder" | "ok" | "no_movement";
+  available: number; usedInWindow: number; daysOfCover: number | null;
+  /** P8: what the pace will not sell before its batch expires; not counted as cover. */
+  unsoldByExpiry: number;
+  suggestBase: number; suggestPacks: string | null;
+  source: { storeCode: string; storeName: string; available: number } | null;
+};
+export type WireExpiringLine = {
+  itemId: string; code: string; name: string; baseUom: string;
+  batchId: string; batchNo: string; expiryDate: string; daysLeft: number;
+  available: number; unsoldByExpiry: number; action: "move_back" | "sell_first";
+};
+export type WireExpiredLine = {
+  itemId: string; code: string; name: string; baseUom: string; batchId: string; batchNo: string; expiryDate: string; onHand: number;
+};
+export type WireReorderAdvice = {
+  asOf: string;
+  window: { days: number; minCoverDays: number; targetCoverDays: number; nearExpiryDays: number };
+  items: WireReorderLine[];
+  expiring: WireExpiringLine[];
+  expiredOnShelf: WireExpiredLine[];
+};
+export async function fetchReorderAdvice(): Promise<WireReorderAdvice> {
+  return api<WireReorderAdvice>("GET", "/pharmacy/reorder");
+}
+
+// ── P7 — the counter's day ──
+export type WireCounterSummary = {
+  day: string; handedOver: number;
+  medianMinutes: { queueToHandover: number | null; claimToHandover: number | null };
+  billedPaise: number;
+  open: { queued: number; claimed: number; verified: number; picked: number; billed: number };
+  declinedLines: number; declinedTop: { reason: string; lines: number }[];
+  substitutions: number; cancelled: number; refundedAfterBilling: number; returns: number;
+  partlyCheckedLines: number; scheduledHandovers: number;
+};
+export async function fetchCounterSummary(day?: string): Promise<WireCounterSummary> {
+  return api<WireCounterSummary>("GET", `/pharmacy/summary${qs({ day })}`);
 }

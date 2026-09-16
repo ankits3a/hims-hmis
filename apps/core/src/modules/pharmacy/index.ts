@@ -70,3 +70,15 @@ export {
   requireRegisteredPharmacist,
 } from "./pharmacists";
 export type { PharmacistRegistration, PharmacistView } from "./pharmacists";
+/** P5 — a paid dispense that cannot be collected: cancelled, credited, a refund requested. */
+export { cancelBilledDispense } from "./refund";
+export type { CancelBilledInput, CancelBilledResult } from "./refund";
+/** P4 — the reorder list (doc 16 §9 Replenishment, drafting tier). Read-only. */
+export { reorderAdvice } from "./replenishment";
+export type { ReorderAdvice, ReorderLine, ReorderStatus } from "./replenishment";
+/** P6 — sales returns at the counter (doc 16 O-7). */
+export { acceptReturn } from "./returns";
+export type { ReturnInput, ReturnResult } from "./returns";
+/** P7 — the counter's day (doc 16 §8 KPIs, 16f's first strip). Read-only. */
+export { counterSummary } from "./summary";
+export type { CounterSummary } from "./summary";

@@ -3,9 +3,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { newIdempotencyKey } from "../lib/api";
 import {
-  billDispense, cancelDispense, claimDispense, declineLine, fetchAlternatives, fetchDispense, fetchLabel, fetchQueue, findAtCounter,
+  acceptReturn, billDispense, cancelBilledDispense, cancelDispense, claimDispense, declineLine, fetchAlternatives, fetchDispense, fetchLabel, fetchQueue, findAtCounter,
   handOverDispense, pharmacyErrorText, pickDispense, previewBill, verifyDispense,
 } from "../lib/pharmacy-api";
+import { CounterDayStrip } from "../components/counter-day-strip";
 import { DispenseLabel } from "../components/dispense-label";
 import { Button } from "@/components/ui/button";
 import type {
@@ -29,6 +30,13 @@ export function PharmacyCounter(): React.ReactElement {
   const [edits, setEdits] = useState<Record<number, LineEdit>>({});
   const [alts, setAlts] = useState<Record<number, WireAlternative[]>>({});
   const [reason, setReason] = useState("");
+  // P5 — cancelling a PAID dispense: the refund approver reads the reason and the class.
+  const [refundReason, setRefundReason] = useState("");
+  const [refundClass, setRefundClass] = useState<"genuine" | "mistake">("genuine");
+  // P6 — a sealed pack coming back: base units per line, the attestation, the reason.
+  const [returnQty, setReturnQty] = useState<Record<number, string>>({});
+  const [returnSealed, setReturnSealed] = useState(false);
+  const [returnReason, setReturnReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   // T4 — the second half's state: partial picks, the priced draft, the tender, identity, the label
@@ -66,6 +74,11 @@ export function PharmacyCounter(): React.ReactElement {
     setIdentityValue("");
     setTenderAmount("");
     setReason("");
+    setRefundReason("");
+    setRefundClass("genuine");
+    setReturnQty({});
+    setReturnSealed(false);
+    setReturnReason("");
     setError(null);
   };
 
@@ -172,6 +185,7 @@ export function PharmacyCounter(): React.ReactElement {
     <div data-seat="pharmacy-counter" className="min-h-screen space-y-6 p-4">
       <header className="flex items-baseline justify-between">
         <h1 className="text-xl font-semibold">{t("pharmacyCounter.title")}</h1>
+        <CounterDayStrip />
       </header>
 
       <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void find(); }}>
@@ -419,11 +433,93 @@ export function PharmacyCounter(): React.ReactElement {
                   >{t("pharmacyCounter.handover")}</Button>
                 </div>
               )}
+              {/*
+                P5 — PAID, NOT COLLECTED. The one exit a billed dispense has: cancelled, the bill
+                credited, the refund requested for billing's approver. Hand-over stays above it,
+                because the usual answer to a billed dispense is still to hand it over.
+              */}
+              {inHand.status === "billed" && (
+                <form
+                  className="space-y-2 rounded border border-red-200 p-2 text-sm"
+                  data-testid="refund-form"
+                  onSubmit={(ev) => {
+                    ev.preventDefault();
+                    void run(async () => {
+                      const r = await cancelBilledDispense(inHand.id, { reason: refundReason.trim(), reasonClass: refundClass }, newIdempotencyKey());
+                      setNote(t("pharmacyCounter.refunded", { no: r.creditNoteNo }));
+                      return r.dispense;
+                    });
+                  }}
+                >
+                  <p className="font-medium">{t("pharmacyCounter.refundTitle")}</p>
+                  <div className="flex flex-wrap items-end gap-2">
+                    <label>
+                      {t("pharmacyCounter.refundReason")}
+                      <input aria-label={t("pharmacyCounter.refundReason")} className="ml-2 rounded border px-2 py-1" value={refundReason} onChange={(ev) => setRefundReason(ev.target.value)} />
+                    </label>
+                    <select aria-label={t("pharmacyCounter.refundClass")} className="rounded border px-2 py-1" value={refundClass} onChange={(ev) => setRefundClass(ev.target.value as "genuine" | "mistake")}>
+                      <option value="genuine">{t("pharmacyCounter.refundGenuine")}</option>
+                      <option value="mistake">{t("pharmacyCounter.refundMistake")}</option>
+                    </select>
+                    <Button type="submit" variant="destructive" size="sm" disabled={refundReason.trim().length < 3}>{t("pharmacyCounter.refundSubmit")}</Button>
+                  </div>
+                </form>
+              )}
               {inHand.status === "handed_over" && (
                 <div className="space-y-2">
                   <Button type="button" variant="outline" disabled={label === null} onClick={() => window.print()}>{t("pharmacyCounter.printLabel")}</Button>
                   {label !== null && <DispenseLabel label={label} />}
                 </div>
+              )}
+              {/*
+                P6 — A SEALED PACK COMES BACK (doc 16 O-7). The server refuses everything the policy
+                refuses; the form asks for the three things only a person at the window can give:
+                how many, that it is sealed, and why.
+              */}
+              {inHand.status === "handed_over" && (
+                <form
+                  className="space-y-2 rounded border p-2 text-sm"
+                  data-testid="return-form"
+                  onSubmit={(ev) => {
+                    ev.preventDefault();
+                    const lines = inHand.lines
+                      .filter((l) => Number(returnQty[l.lineIdx] ?? "") > 0)
+                      .map((l) => ({ lineIdx: l.lineIdx, qtyBase: Number(returnQty[l.lineIdx]) }));
+                    void run(async () => {
+                      const r = await acceptReturn(inHand.id, { lines, sealedIntact: true, reason: returnReason.trim(), reasonClass: "genuine" }, newIdempotencyKey());
+                      setNote(t("pharmacyCounter.returned", { no: r.creditNoteNo }));
+                      return r.dispense;
+                    });
+                  }}
+                >
+                  <p className="font-medium">{t("pharmacyCounter.returnTitle")}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {inHand.lines.filter((l) => l.status === "open").map((l) => (
+                      <label key={l.lineIdx}>
+                        {t("pharmacyCounter.returnQty", { n: l.lineIdx + 1 })}
+                        <input
+                          aria-label={t("pharmacyCounter.returnQty", { n: l.lineIdx + 1 })}
+                          inputMode="numeric"
+                          className="ml-2 w-16 rounded border px-2 py-1"
+                          value={returnQty[l.lineIdx] ?? ""}
+                          onChange={(ev) => setReturnQty({ ...returnQty, [l.lineIdx]: ev.target.value.replace(/\D/g, "") })}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={returnSealed} onChange={(ev) => setReturnSealed(ev.target.checked)} />
+                    {t("pharmacyCounter.returnSealed")}
+                  </label>
+                  <label>
+                    {t("pharmacyCounter.returnReason")}
+                    <input aria-label={t("pharmacyCounter.returnReason")} className="ml-2 rounded border px-2 py-1" value={returnReason} onChange={(ev) => setReturnReason(ev.target.value)} />
+                  </label>
+                  <Button
+                    type="submit" size="sm"
+                    disabled={!returnSealed || returnReason.trim().length < 3 || !Object.values(returnQty).some((v) => Number(v) > 0)}
+                  >{t("pharmacyCounter.returnSubmit")}</Button>
+                </form>
               )}
               {["queued", "claimed", "verified"].includes(inHand.status) && (
                 <form className="flex flex-wrap items-end gap-2" onSubmit={(ev) => { ev.preventDefault(); void run(() => cancelDispense(inHand.id, reason)); setReason(""); }}>

@@ -80,6 +80,7 @@ export async function seedPharmacyBase(db: Db): Promise<PharmacyFixture> {
     "pharmacy.pharmacists.manage",
     ORDERS_PLACE, "orders.read", "orders.cancel",
     "billing.invoice.issue", "billing.invoice.read", "billing.receipt.record", "billing.session.own",
+    "billing.credit_note.issue", "billing.refund.request",
     "patients.read", "formulary.read", "materials.stock.read", "opd.prescriptions.verify",
   ]) await grantPermissionToRole(db, registry, "pharmacy", p);
   for (const p of ["pharmacy.dispense.place", "pharmacy.dispense.read", "orders.read", "patients.read", "formulary.read"]) {
@@ -182,7 +183,7 @@ export async function reissueRx(
 export async function stockIn(
   db: Db,
   fx: PharmacyFixture,
-  input: { itemId: string; batchNo: string; expiryDate?: string | null; mrpPaise?: number | null; mrpUom?: string | null; qtyBase: number; at?: Date },
+  input: { itemId: string; batchNo: string; expiryDate?: string | null; mrpPaise?: number | null; mrpUom?: string | null; qtyBase: number; at?: Date; resourceId?: string },
 ): Promise<string> {
   const HEAD: Actor = { type: "user", id: "01HMATERIALSHEAD00000000001" };
   const batchId = newId();
@@ -193,7 +194,7 @@ export async function stockIn(
     landedCostPaise: 500, ownership: "owned", createdBy: HEAD.id,
   });
   await withTx(db, (tx) => postMovement(tx, HEAD, {
-    resourceId: fx.storeId, batchId, qtyDelta: input.qtyBase, reason: "grn", refType: "test", refId: batchId, occurredAt: input.at ?? MON,
+    resourceId: input.resourceId ?? fx.storeId, batchId, qtyDelta: input.qtyBase, reason: "grn", refType: "test", refId: batchId, occurredAt: input.at ?? MON,
   }));
   return batchId;
 }
