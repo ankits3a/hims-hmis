@@ -1,12 +1,21 @@
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "./helpers/db";
-import { mkPatient, mkUser, seedOpdBase } from "./helpers/opd";
-import { withTx } from "../src/kernel/db/client";
 import {
-  addMedicine, addSalt, attestSubstance, normalizeDrugName, refreshRankSignals, resolveDrugTexts,
+  activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters, testCfg,
+} from "./helpers/opd";
+import { withTx } from "../src/kernel/db/client";
+import { events } from "../src/kernel/db/schema";
+import {
+  addMedicine, addSalt, attestSubstance, catalogueCensus, normalizeDrugName, refreshRankSignals, resolveDrugTexts,
+  ruleSubstanceUnmappable, searchMedicines,
 } from "../src/modules/formulary";
 import { runRxChecks } from "../src/modules/opd";
+import { startConsultation } from "../src/modules/opd/consultation";
+import { openVisit } from "../src/modules/opd/encounters";
+import { issuePrescription, precheckPrescription } from "../src/modules/opd/prescriptions";
+import { callNext } from "../src/modules/opd/queue";
+import { recordVitals } from "../src/modules/opd/vitals";
 import { addAllergy } from "../src/modules/patients";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../src/kernel/db/client";
@@ -116,6 +125,144 @@ describe("formulary mapping × prescription checks", () => {
     expect(resolved?.salts.map((s) => [s.saltId, s.drugClass]).sort()).toEqual([
       [w.amox, "penicillin"], [w.image, null],
     ].sort());
+  });
+
+  /**
+   * ═══ A LINE WITH AN UNREVIEWED COMPONENT WAS CHECKED ONLY IN PART (phase doc §3.4) ═══
+   *
+   * An unreviewed release entry carries no drug class and no interaction pairs. A line containing
+   * one used to come back from `runRxChecks` exactly like a fully checked line: resolved, no hits.
+   * The doctor's picker said "not yet reviewed by pharmacy", and the check said nothing. The server
+   * now names such lines, and it must name the same products the picker does.
+   */
+  describe("which lines the checks could see only in part", () => {
+    it("names every line on an unreviewed entry, and none once the entry's substance is mapped", async () => {
+      const w = await world();
+      const patientId = await patientAllergicTo("sulfonamide");
+      // A projected product, a hand-composed one, and a text naming the entry.
+      const lines = [line("Mox 250 Kid", w.mox), line("Novamox 500", w.novamox), line("Amoxicillin trihydrate", null)];
+
+      const before = await runRxChecks(db, patientId, lines, new Date());
+      expect([before.unreviewedLineIndexes, before.unresolvedLineIndexes]).toEqual([[0, 1, 2], []]);
+
+      await withTx(db, (tx) => attestSubstance(tx, PHARMACIST, w.substance, { saltId: w.amox }));
+
+      // Mox moved to the moiety. Novamox and the text still name the entry, and the moiety beside it.
+      const after = await runRxChecks(db, patientId, lines, new Date());
+      expect([after.unreviewedLineIndexes, after.unresolvedLineIndexes]).toEqual([[], []]);
+    });
+
+    it("agrees with the doctor's picker and the census, product by product: pending, mapped, then ruled unmappable", async () => {
+      const w = await world();
+      const patientId = await patientAllergicTo("sulfonamide");
+      const products = [{ id: w.mox, name: "Mox 250 Kid" }, { id: w.novamox, name: "Novamox 500" }];
+      const both = async (): Promise<{ checks: boolean[]; picker: (boolean | undefined)[]; census: number }> => {
+        const out = await runRxChecks(db, patientId, products.map((p) => line(p.name, p.id)), new Date());
+        const picker = await Promise.all(products.map(async (p) =>
+          (await searchMedicines(db, p.name)).find((h) => h.id === p.id)?.reviewed));
+        const census = (await catalogueCensus(db)).unreviewedActiveMedicines;
+        return { checks: products.map((_, i) => !out.unreviewedLineIndexes.includes(i)), picker, census };
+      };
+
+      expect(await both()).toEqual({ checks: [false, false], picker: [false, false], census: 2 });
+
+      await withTx(db, (tx) => attestSubstance(tx, PHARMACIST, w.substance, { saltId: w.amox }));
+      expect(await both()).toEqual({ checks: [true, true], picker: [true, true], census: 0 });
+
+      // E4: an unmappable ruling returns the rows to the entry, and the product is unreviewed again.
+      await withTx(db, (tx) => ruleSubstanceUnmappable(tx, PHARMACIST, w.substance, {
+        reason: "test: the attestation above was wrong", correction: true,
+      }));
+      expect(await both()).toEqual({ checks: [false, false], picker: [false, false], census: 2 });
+    });
+
+    it("names a product only partly reviewed, and leaves a line it cannot resolve to the other list", async () => {
+      const w = await world();
+      const patientId = await patientAllergicTo("sulfonamide");
+      const { saltId: clav } = await withTx(db, (tx) => addSalt(tx, PHARMACIST, { name: "clavulanic acid" }));
+      const { medicineId: mixed } = await withTx(db, (tx) => addMedicine(tx, PHARMACIST, {
+        brandName: "Moxclav 625", form: "tablet", routeClass: "systemic", salts: [{ saltId: w.image }, { saltId: clav }],
+      }));
+      const { medicineId: curated } = await withTx(db, (tx) => addMedicine(tx, PHARMACIST, {
+        brandName: "Clavo Only", form: "tablet", routeClass: "systemic", salts: [{ saltId: clav }],
+      }));
+
+      const out = await runRxChecks(db, patientId, [
+        line("Moxclav 625", mixed), line("Clavo Only", curated), line("Some Ayurvedic Tonic", null),
+      ], new Date());
+
+      expect([out.unreviewedLineIndexes, out.unresolvedLineIndexes]).toEqual([[0], [2]]);
+    });
+
+    it("\"it is its own moiety\" makes the entry's lines reviewed without moving a row", async () => {
+      const w = await world();
+      const patientId = await patientAllergicTo("sulfonamide");
+      const lines = [line("Mox 250 Kid", w.mox), line("Amoxicillin trihydrate", null)];
+      expect((await runRxChecks(db, patientId, lines, new Date())).unreviewedLineIndexes).toEqual([0, 1]);
+
+      await withTx(db, (tx) => attestSubstance(tx, PHARMACIST, w.substance, { saltId: w.image }));
+
+      expect((await runRxChecks(db, patientId, lines, new Date())).unreviewedLineIndexes).toEqual([]);
+    });
+  });
+});
+
+/**
+ * ═══ THE DOCTOR IS TOLD BEFORE AND AFTER THE ISSUE, AND THE RECORD KEEPS IT ═══
+ *
+ * The consult screen shows the pre-check's answer only when a hard warning pauses the issue.
+ * Otherwise the prescription issues at once, and the only thing that reaches the doctor afterwards
+ * is the issue's own response. So the issue returns the list too. The `prescription.issued` event
+ * records it: which prescriptions were checked only in part is what a later retro-scan needs, and
+ * the next attestation changes the live answer.
+ */
+describe("an issued prescription with a line checked only in part", () => {
+  let db: Db;
+  let teardown: () => Promise<void>;
+  beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
+  afterAll(async () => teardown());
+  beforeEach(async () => { await truncateAll(db); });
+
+  const MON = new Date("2026-08-17T04:00:00.000Z");
+  const MON2 = new Date(MON.getTime() + 20 * 60_000);
+  const adultOk = { heightCm: 165, weightKg: 60, sbp: 120, dbp: 80, pulse: 72, spo2: 98, tempC: 37.0 };
+
+  it("returns the lines from the pre-check and the issue, and records them on the event", async () => {
+    await seedOpdBase(db);
+    await activateOpdVisitDefinition(db);
+    const { deptId, roomId } = await seedOpdMasters(db);
+    const dra = await mkDoctor(db, { username: "dra", departmentId: deptId, roomId });
+    const clerk = await mkUser(db, "clerk", ["front_office"]);
+    const vd = await mkUser(db, "vd", ["vitals_desk"]);
+    const patient = await mkPatient(db, clerk.actor);
+
+    const { saltId: paracetamol } = await withTx(db, (tx) => addSalt(tx, PHARMACIST, { name: "paracetamol", drugClass: "analgesic" }));
+    const { medicineId: crocin } = await withTx(db, (tx) => addMedicine(tx, PHARMACIST, {
+      brandName: "Crocin 500", form: "tablet", routeClass: "systemic", salts: [{ saltId: paracetamol }],
+    }));
+    const image = newId();
+    await db.execute(sql`
+      insert into formulary_salts (id, name, aliases, source_ref, created_by, updated_by)
+      values (${image}, 'Amoxicillin trihydrate', '[]'::jsonb, ${AMOX_TRIHYDRATE}, 'cds-import', 'cds-import')
+    `);
+    const { medicineId: novamox } = await withTx(db, (tx) => addMedicine(tx, PHARMACIST, {
+      brandName: "Novamox 500", form: "capsule", routeClass: "systemic", salts: [{ saltId: image }],
+    }));
+
+    const opened = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    await recordVitals(db, vd.actor, opened.encounter.id, adultOk, MON);
+    await callNext(db, dra.actor, opened.sessionId, MON);
+    const enc = (await startConsultation(db, dra.actor, opened.encounter.id, MON)).encounter;
+    const lines = [line("Crocin 500", crocin), line("Novamox 500", novamox), line("Some Ayurvedic Tonic", null)];
+
+    const pre = await precheckPrescription(db, dra.actor, enc.id, lines, MON2);
+    expect([pre.unreviewedLineIndexes, pre.unresolvedLineIndexes]).toEqual([[1], [2]]);
+
+    const issued = await issuePrescription(db, dra.actor, testCfg, enc.id, { lines }, MON2);
+    expect(issued.unreviewedLineIndexes).toEqual([1]);
+
+    const recorded = await db.select({ payload: events.payload }).from(events).where(eq(events.name, "prescription.issued"));
+    expect(recorded.map((r) => (r.payload as { unreviewedLineIndexes?: unknown }).unreviewedLineIndexes)).toEqual([[1]]);
   });
 });
 

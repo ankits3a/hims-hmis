@@ -33,3 +33,27 @@ export function isMoiety(salt: SQL): SQL {
     select 1 from formulary_substances rv
      where rv.salt_id = ${salt}.id and rv.mapping_status = 'mapped'))`;
 }
+
+/**
+ * ═══ WHAT MAKES A COMPOSITION COMPONENT REVIEWED: A SECOND QUESTION, BUILT ON THE FIRST ═══
+ *
+ * A component is reviewed when it is a moiety (above), OR when it is the release entry of a
+ * substance a pharmacist has MAPPED. For the second kind the decision is already made, and the
+ * resolver names the moiety beside the entry wherever the entry is still named (`resolve.ts`,
+ * `mappedMoieties`). So every check sees what it would see for the moiety itself. Those rows are
+ * a hand-composed product, a product the projection could not move (E2, E3), or a text.
+ *
+ * It is not `isMoiety`, and it must not replace it: an attestation may not TARGET a mapped entry.
+ * That entry is not the moiety; the moiety is.
+ *
+ * An UNMAPPABLE substance's entry stays unreviewed (E4): nothing stands beside it.
+ *
+ * The doctor's `reviewed` flag, the census's unreviewed count and the prescribing checks'
+ * `unreviewedLineIndexes` ask this question, and they ask it here, so that the picker and the check
+ * cannot disagree about one product.
+ */
+export function isReviewedComponent(salt: SQL): SQL {
+  return sql`(${isMoiety(salt)} or exists (
+    select 1 from formulary_substances rd
+     where rd.sctid = ${salt}.source_ref and rd.mapping_status = 'mapped'))`;
+}

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { isMoiety } from "./moiety";
+import { isReviewedComponent } from "./moiety";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -143,7 +143,7 @@ export async function searchMedicines(db: Db, query: string, limit = 10): Promis
            ) as salts,
            (lower(r.brand_name) like ${starts}) as prefix,
            not exists (select 1 from formulary_medicine_salts l join formulary_salts s on s.id = l.salt_id
-                        where l.medicine_id = r.id and not ${isMoiety(sql`s`)}) as reviewed
+                        where l.medicine_id = r.id and not ${isReviewedComponent(sql`s`)}) as reviewed
       from ranked r
      order by (lower(r.brand_name) like ${starts}) desc,
               r.salt_rank desc,

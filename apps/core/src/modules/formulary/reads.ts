@@ -4,7 +4,7 @@ import { anyOfText } from "../../kernel/db/any-of";
 import { CursorError, decodeCursor, finishPage, pageLimit } from "../../kernel/db/page";
 import { formularyInteractions, formularyMedicineSalts, formularyMedicines, formularySalts } from "../../kernel/db/schema";
 import { FormularyError } from "./errors";
-import { isMoiety } from "./moiety";
+import { isMoiety, isReviewedComponent } from "./moiety";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Page, PageRequest } from "../../kernel/db/page";
 import type { InteractionRow, MedicineWithSalts, SaltRow } from "./masters";
@@ -92,6 +92,22 @@ export async function saltsByIds(db: Db | Tx, ids: readonly string[]): Promise<M
   const rows = await db.select().from(formularySalts).where(anyOfText(formularySalts.id, wanted));
   for (const row of rows) out.set(row.id, row);
   return out;
+}
+
+/**
+ * Which of these salt ids are components nobody has reviewed (`isReviewedComponent`)? The
+ * prescribing checks ask this about the moieties a line resolved to (phase doc §3.4), so `opd` never
+ * spells the predicate itself. An id that names no row is not in the answer: it is not a component
+ * of anything.
+ */
+export async function unreviewedSaltIds(db: Db | Tx, ids: readonly string[]): Promise<Set<string>> {
+  const wanted = requireBounded(ids, "unreviewedSaltIds");
+  if (wanted.length === 0) return new Set();
+  const rows = await db.select({ id: formularySalts.id }).from(formularySalts).where(and(
+    anyOfText(formularySalts.id, wanted),
+    sql`not ${isReviewedComponent(sql`${formularySalts}`)}`,
+  ));
+  return new Set(rows.map((r) => r.id));
 }
 
 /**
@@ -354,7 +370,7 @@ export async function catalogueCensus(db: Db): Promise<CatalogueCensus> {
                and exists (select 1 from formulary_medicine_salts l
                              join formulary_salts s on s.id = l.salt_id
                             where l.medicine_id = m.id
-                              and not ${isMoiety(sql`s`)}))                   as "unreviewedActiveMedicines"
+                              and not ${isReviewedComponent(sql`s`)}))        as "unreviewedActiveMedicines"
   `);
   const row = rows.rows[0];
   if (row === undefined) throw new Error("catalogueCensus returned no row");

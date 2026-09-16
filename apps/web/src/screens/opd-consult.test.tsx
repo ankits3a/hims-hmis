@@ -1620,6 +1620,8 @@ describe("OpdConsult", () => {
     // THE COVERAGE GATE. The line is unresolved and the server said so — and the hint is still
     // absent, because coverage is unknown. Below the threshold it would fire on nearly every line.
     expect(screen.queryByTestId("rx-uncovered-0")).toBeNull();
+    // An older server sends no `unreviewedLineIndexes`, and the screen says nothing about it.
+    expect(within(panel).queryByTestId("rx-unreviewed")).toBeNull();
 
     // The e-Rx print dialog is open on top after a successful issue — the notices are BEHIND it,
     // which is the real order of events: the doctor prints, closes, and then reads what was noted.
@@ -1628,6 +1630,47 @@ describe("OpdConsult", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     await user.click(within(await screen.findByTestId("rx-notices")).getByRole("button", { name: "Dismiss" }));
     expect(screen.queryByTestId("rx-notices")).toBeNull();
+  });
+
+  /**
+   * FORMULARY PHASE 3 — A LINE CHECKED ONLY IN PART IS NAMED, AND THE ISSUE'S OWN ANSWER CARRIES IT.
+   *
+   * The pre-check's answer reaches the screen only when a hard warning pauses the issue. Here the
+   * pre-check FAILS outright (its catch clears every hint), so the only source left is the issue
+   * response. A screen that read the list from the pre-check alone would say nothing.
+   */
+  it("phase 3: a line with a component pharmacy has not reviewed is named after the issue", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/formulary/medicines/search": { status: 200, body: DRUG_HITS },
+      "GET /api/formulary/coverage": { status: 200, body: { coverage: 0.92, noticeEnabled: true } },
+      "POST /api/opd/visits/enc-1/rx-precheck": { status: 500, body: { message: "boom" } },
+      "POST /api/opd/visits/enc-1/prescriptions": {
+        status: 201,
+        body: {
+          prescriptionId: "rx-1", version: 1, qrPayload: PRINT_DATA.qrPayload,
+          allergyOverrideCount: 0, interactionOverrideCount: 0, duplicateOverrideCount: 0,
+          notices: [], unreviewedLineIndexes: [0],
+        },
+      },
+      "GET /api/opd/prescriptions/rx-1/print": { status: 200, body: PRINT_DATA },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(screen.getByLabelText("Drug"), "warf");
+    await user.click(await screen.findByTestId("rx-drug-0-hit-m-warf"));
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+
+    await waitFor(() => expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions")).toHaveLength(1));
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    const note = within(await screen.findByTestId("rx-notices")).getByTestId("rx-unreviewed");
+    expect(note).toHaveTextContent("Line 1: checked only in part");
+    expect(note).toHaveTextContent("not yet reviewed by pharmacy");
   });
 
   it("K49: completing with the DEFAULT follow-up OMITS followUpDays from the posted key set; an extension travels as a number, a stubbed 409 extension_cap_reached renders inline and keeps the form, and a real 201 closes the panel and refetches the queue", async () => {

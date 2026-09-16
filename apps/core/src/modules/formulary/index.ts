@@ -34,7 +34,7 @@ export type { InteractionPair, ResolvedDrug, SaltRef } from "./resolve";
  */
 export {
   MAX_IDS, catalogueCensus, countSalts, medicineExists, medicineIdsByBrandNames, medicinesByIds,
-  pageInteractions, pageMedicines, pageSalts, saltIdsByNames, saltsByIds, suggestMoieties,
+  pageInteractions, pageMedicines, pageSalts, saltIdsByNames, saltsByIds, suggestMoieties, unreviewedSaltIds,
 } from "./reads";
 export type { CatalogueCensus, MoietySuggestion } from "./reads";
 export { equivalentMedicines, isEquivalentMedicine } from "./equivalence";
