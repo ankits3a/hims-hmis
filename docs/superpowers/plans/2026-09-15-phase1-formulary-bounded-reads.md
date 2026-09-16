@@ -236,37 +236,71 @@ a shape — **a value computed in two places, or a promise made in one place and
   own `where active`. An assertion was not weakened, it was LOST — the quieter version of the same
   thing, and the one a diff review does not show you.
 
-**PR-C — the lint rule.** `no-restricted-syntax` on `ImportSpecifier[imported.name=/^formulary[A-Z]/]`
-so a module cannot go round the formulary to its tables. Note: the path-based form
-(`no-restricted-imports` on `**/kernel/db/schema/formulary`) **matches nothing** — everyone imports
-the barrel; 339 barrel imports, 0 direct-path imports, verified. Prove it bites before landing it.
+**PR-C — the lint rule. DONE**, `#206`. `no-restricted-syntax` on the imported specifier name, not
+on a path — a path-based rule matches nothing here (339 barrel imports, 0 direct-path imports), which
+is the second time this file has carried a rule that could not fire. Proved it bites. It cannot see
+raw SQL, and that is written into the rule's own comment.
 
-**PR-D — the partial-composition guard and the `source` column.** DECIDED 3. One migration.
-`updateMedicine`'s empty-composition refusal ships first and alone; it is red against `6c9e39d5`
-today.
+**PR-D — the partial-composition guard and the `source` column. DONE**, `#206`, migration 0094.
 
-**PR-E onward — the fork.** DECIDED 2, in the order the ruling gives: `equivalents` (done in PR-A),
-`resolve.ts` cleanups, migration A (`generic_id`, `source_kind`, `formulary_substances.product_count`
-+ trigram index), one-writer refactor of the loaders, the `bridge.ts` derivation, the read-side
-completeness guard, the promotion loop (`pendingSubstances` / `mapSubstance` with **alias
-inheritance** / `markUnmappable`), `searchMedicines`' `checked` flag, then migration B dropping
-`formulary_salts.source_ref` as the standing guard that makes the fork unrepeatable.
+**PR-E — the fork. RE-VERIFIED AND CUT DOWN**, `#207`.
 
-**Then, and only then, the curation queue screen** (handoff §4a). It cannot be ordered "by what the
-hospital stocks" — there is no such data on any database — so it is ordered by **branded-product
-count**, which is sharply concentrated and available. Computed from the release files this session
-with a quoted-CSV-aware parser: the top 200 substances carry **107,026 of 130,570 product
-incidences (82.0%)**, against **40.7%** for the same cut by generic count — so ordering by products
-concentrates the work and ordering by generics does not. **1,756 of the 3,283** substances have zero
-branded products and **647** appear in no composition at all, so roughly half the queue is
-deferrable on measured grounds rather than on a guess.
+### The fork ruling was re-checked against main before any of it was built, and four of its ten steps must NOT be built
 
-A precondition nobody states: whether a substance arrives `pending` depends on the 29 curated
-moieties existing BEFORE the import. `deploy-parity.test.ts:387` puts `seed-formulary-interactions`
-in the deploy script list, so a real deployment auto-links ~26 and the queue is ~3,257; a lane that
-rebuilds a dev database in the other order gets 0 linked and 3,283 pending. Measured on
-`hmis_drugsearch_dev`, which is the only database where the release importer has actually run:
-`pending | 3283`, and `formulary_salts` there is empty.
+This is the most important paragraph in this document. The ruling was written against `6c9e39d5`;
+by the time it was picked up, main was three merged PRs further on. Re-verifying first found:
+
+- **W5** (*"one writer per table; the loader stops writing `formulary_salts`"*) — **contradicted by
+  main.** #206 put the opposite decision into the schema header: *"`source` EXISTS BECAUSE TWO
+  WRITERS SHARE THIS TABLE"*. And it would empty the doctor's picker with no end date — simulated on
+  the real catalogue restricted to the 29 curated moieties, `amox` → 0 hits, `para` → 0, `crocin` →
+  0, against 4,130 / 4,988 / 7 today. Not a window; a step change.
+- **W7** (`resolveMedicines` returning `salts: []` for an unmapped substance) — **reinstates C3**, an
+  independent reviewer's CRITICAL, argued at `resolve.ts:163-166` and pinned at
+  `resolve.test.ts:151-176`. Measured blast radius: 98.5% of products.
+- **W10** (drop `formulary_salts.source_ref`) — that column is the only thing distinguishing a
+  release image from a curated row, which is exactly what #207's loader guard relies on.
+- **W4's `source_kind`** duplicates 0094's discriminator; **W4's substance trigram** is unnecessary
+  (measured: 1.76 ms seq scan over 3,283 rows).
+
+**W6, W8 and W9 are blocked on an environment that has never existed.** `hmis_cds_dev` holds 103,383
+medicines and ZERO substances; `hmis_drugsearch_dev` holds 3,283 substances and ZERO salts. A
+derivation would emit nothing on either. Standing up one database with both tiers is a PRECONDITION,
+not a step inside the work.
+
+### What #207 shipped instead
+
+Three commits, one migration (0095): `resolveMedicines` stopped reading every moiety to feed a
+provably dead branch; the NRCeS loader stopped auto-linking a substance to a moiety the loader itself
+wrote (which would have recorded 3,283 clinical decisions by machine and emptied the pharmacist's
+worklist before anyone opened it); and `resolveDrugTexts` stopped reading 103,383 rows per
+prescription by storing the normalized brand name it had been re-deriving.
+
+---
+
+## 5a. THE TWO THINGS ONLY THE OWNER CAN SETTLE
+
+**1. Will the hospital fund a pharmacist to make ~500 clinical mapping decisions, and when?** This is
+the hinge of the entire two-tier design and the only thing that turns W5–W9 from speculation into a
+schedule. Every one of the 3,283 rows in `formulary_salts` was written by `cds-import`; after
+stripping a trailing " (substance)" wrapper the two name sets match 3,283/3,283 in both directions.
+The "curated moiety vocabulary" the design rests on does not exist — it is the release, loaded
+verbatim, with 437 salt-form names, zero drug classes and zero interaction pairs. The measured curve
+IS the delivery schedule:
+
+| substances mapped | products covered, of 103,383 |
+|---|---|
+| 29 (today's seed) | 29,757 — 28.8% |
+| 100 | 57,858 |
+| 400 | 87,187 — 84% |
+| 800 | 96,857 — 94% |
+| 3,283 | 100% |
+
+**2. Is there any live deployment with a loaded catalogue?** Migration 0094's header records
+production's `formulary_medicines` as empty, dated 2026-09-16 — but production is not on this box and
+no agent here verified it. Every hazard in this phase is conditional on a deployment where the
+catalogue HAS been loaded. If none exists, the remaining urgency drops sharply; if one exists, it
+must be named before anything here deploys.
 
 ---
 
