@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import {
   formularyInteractions, formularyMedicineSalts, formularyMedicines, formularySalts,
 } from "../../kernel/db/schema";
@@ -73,6 +73,53 @@ async function activeSalts(db: Db): Promise<SaltRow[]> {
 }
 
 /**
+ * ═══ A MAPPED RELEASE ENTRY ALSO NAMES THE MOIETY IT WAS MAPPED TO (formulary phase 2) ═══
+ *
+ * A pharmacist's decision re-points DERIVED composition rows from a release entry to a moiety
+ * (`mapping.ts`). Two things still name the entry itself after that:
+ *   - a TEXT: an allergy recorded as "Amoxicillin trihydrate" resolves, by exact name, to the entry;
+ *   - a medicine a pharmacist COMPOSED BY HAND from the entry, which no projection touches.
+ * Left alone, the first stops matching the products that moved: no shared id, no class, no
+ * substring. So an allergy check that was firing went silent BECAUSE of the decision. The second
+ * never gains the moiety's class.
+ *
+ * So wherever the entry is named, the moiety it was mapped to is named beside it: both, never a
+ * swap. It is the C1/C2 union's reasoning, and the direction is the same. A check that over-warns
+ * costs a reasoned override; one that misses costs a patient. Not filtered by `active`, for C3's
+ * reason below: identity is not a stocking question.
+ *
+ * `refs` are salt ids already resolved. Returns entry id → the moiety it names, for those that are
+ * mapped entries only.
+ */
+async function mappedMoieties(db: Db, saltIds: string[]): Promise<Map<string, SaltRef>> {
+  const out = new Map<string, SaltRef>();
+  if (saltIds.length === 0) return out;
+  const res = await db.execute<{ entry_id: string; id: string; name: string; drug_class: string | null }>(sql`
+    select entry.id as entry_id, m.id, m.name, m.drug_class
+      from formulary_salts entry
+      join formulary_substances sub on sub.sctid = entry.source_ref and sub.mapping_status = 'mapped'
+      join formulary_salts m on m.id = sub.salt_id
+     where entry.id = any(${sql.param([...new Set(saltIds)])}::text[])
+       and m.id <> entry.id
+  `);
+  for (const r of res.rows) out.set(r.entry_id, { saltId: r.id, moiety: r.name, drugClass: r.drug_class });
+  return out;
+}
+
+/** Each list, with every mapped entry's moiety appended once. Order is kept: the entry, then its moiety. */
+function withMapped(refs: SaltRef[], mapped: Map<string, SaltRef>): SaltRef[] {
+  const out: SaltRef[] = [];
+  const seen = new Set<string>();
+  const push = (ref: SaltRef): void => { if (!seen.has(ref.saltId)) { seen.add(ref.saltId); out.push(ref); } };
+  for (const ref of refs) {
+    push(ref);
+    const moiety = mapped.get(ref.saltId);
+    if (moiety !== undefined) push(moiety);
+  }
+  return out;
+}
+
+/**
  * Composition for a set of medicines — **every** moiety, active or not.
  *
  * ═══ C3, THE REVIEWER'S THIRD CRITICAL: `active` MEANS "NOT STOCKED", NEVER "NOT A SUBSTANCE" ═══
@@ -128,6 +175,10 @@ async function compositionOf(
     const list = out.get(row.medicineId) ?? [];
     list.push({ saltId: salt.id, moiety: salt.name, drugClass: salt.drugClass });
     out.set(row.medicineId, list);
+  }
+  const mapped = await mappedMoieties(db, referenced);
+  if (mapped.size > 0) {
+    for (const [medicineId, list] of out) out.set(medicineId, withMapped(list, mapped));
   }
   return out;
 }
@@ -222,13 +273,23 @@ export async function resolveDrugTexts(db: Db, texts: string[]): Promise<Map<str
     make this map agree with itself while disagreeing with the WHERE clause that filled it, and the
     disagreement would be invisible: a row would arrive and then fail to be found.
 
-    A collision keeps the LAST row, as it always did — 51 groups collide on the real catalogue, and
-    none of them differ in composition. That is a separate, recorded defect, not one this change
-    introduces or fixes.
-  */
-  const byBrand = new Map(medicines.map((m) => [m.nameNormalized, m]));
+    ═══ A NAME TWO PRODUCTS SHARE RESOLVES TO THEIR MOIETIES, AND TO NO PRODUCT ═══
 
-  const hitMedicineIds = [...wanted].map((t) => byBrand.get(t)?.id).filter((id): id is string => id !== undefined);
+    51 normalized names collide on the loaded catalogue (`Ab-Xone` / `Abxone`). This used to keep the
+    LAST row, and that row's id became the DISPENSED medicine for a free-typed line at the pharmacy
+    counter (`pharmacy/claim.ts`, `substitutionType: "resolved"`). 6 of the 51 differ in strength,
+    form or route, so the server was choosing which product the doctor meant. DD2 (exact only) and
+    FD-35 (a guard, not a correction) decide it. The text exactly names SEVERAL products, so:
+      - `medicineId`/`brandName` are null: no product is resolved, and the counter asks a person;
+      - `salts` are the UNION of theirs: every check still fires, and if the products ever differ in
+        composition the union is the conservative answer (C1/C2);
+      - `routeClass` is systemic if ANY of them is, because a topical guess suppresses warnings.
+    `test/formulary-mapping-safety.test.ts` pins all three.
+  */
+  const byBrand = new Map<string, typeof medicines>();
+  for (const m of medicines) byBrand.set(m.nameNormalized, [...(byBrand.get(m.nameNormalized) ?? []), m]);
+
+  const hitMedicineIds = [...wanted].flatMap((t) => (byBrand.get(t) ?? []).map((m) => m.id));
   const composition = await compositionOf(db, hitMedicineIds);
 
   for (const text of out.keys()) {
@@ -236,12 +297,28 @@ export async function resolveDrugTexts(db: Db, texts: string[]): Promise<Map<str
     if (key === "") continue;
 
     // 1. brand — the only path that carries a composition.
-    const medicine = byBrand.get(key);
-    if (medicine !== undefined) {
+    const named = byBrand.get(key) ?? [];
+    const [medicine] = named;
+    if (named.length === 1 && medicine !== undefined) {
       out.set(text, {
         medicineId: medicine.id, brandName: medicine.brandName,
         routeClass: asRouteClass(medicine.routeClass),
         salts: composition.get(medicine.id) ?? [],
+      });
+      continue;
+    }
+    if (named.length > 1) {
+      const union: SaltRef[] = [];
+      const seen = new Set<string>();
+      for (const m of named) {
+        for (const ref of composition.get(m.id) ?? []) {
+          if (!seen.has(ref.saltId)) { seen.add(ref.saltId); union.push(ref); }
+        }
+      }
+      out.set(text, {
+        medicineId: null, brandName: null,
+        routeClass: named.some((m) => asRouteClass(m.routeClass) === "systemic") ? "systemic" : "topical",
+        salts: union,
       });
       continue;
     }
@@ -255,6 +332,19 @@ export async function resolveDrugTexts(db: Db, texts: string[]): Promise<Map<str
       });
     }
     // 4. nothing else. No substring, no distance — the entry stays `null` (DD2).
+  }
+
+  // A name that resolved to a mapped release entry also names its moiety (`mappedMoieties`).
+  const namedSalts = [...out.values()]
+    .filter((r): r is ResolvedDrug => r !== null && r.medicineId === null && r.brandName === null && r.routeClass === null)
+    .flatMap((r) => r.salts.map((s) => s.saltId));
+  const mapped = await mappedMoieties(db, namedSalts);
+  if (mapped.size > 0) {
+    for (const [text, r] of out) {
+      if (r !== null && r.medicineId === null && r.brandName === null && r.routeClass === null) {
+        out.set(text, { ...r, salts: withMapped(r.salts, mapped) });
+      }
+    }
   }
   return out;
 }
