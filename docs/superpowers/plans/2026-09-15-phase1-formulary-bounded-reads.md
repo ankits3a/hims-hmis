@@ -212,12 +212,29 @@ row, and may delete only its own `derived` rows.*
 Each item is independently committable. Serials are taken **at rebase**, not now (`_journal.json`
 holds 94 entries; next free is 0094, and free is not the same as reachable — see PR #149).
 
-**PR-B — the surface.** No migration. Touches `apps/web/src/locales/*.json`, which is on the
-coordinate-before-editing list. Keyset paging in `kernel/db/page.ts` + `packages/contracts`;
-`pageMedicines` / `pageSalts` / `pageInteractions` / `countSalts` / `catalogueCensus` /
-`medicineIdsByBrandNames`; delete `listMedicines` / `listSalts` / `listInteractions`; the frozen
-export-surface test; three routes gain `?limit=&cursor=`; `formulary-admin.tsx` stops fetching the
-catalogue and the whole salt table on mount.
+**PR-B — the surface. DONE**, `83fa75c1` + `08f3c3a1`. Keyset paging in `kernel/db/page.ts` +
+`packages/contracts`; the seven bounded readers; the three unbounded functions deleted; the frozen
+export-surface test; `GET /formulary/census`; `formulary-admin.tsx` rebuilt. No migration.
+
+Its own review found seven defects worth carrying forward as a pattern, because five of them share
+a shape — **a value computed in two places, or a promise made in one place and enforced in another**:
+
+- The cursor was built with JS `toLowerCase()` while the ORDER BY used Postgres `lower()`. Two
+  engines, one expression. Measured: `İ` (U+0130) lowers differently in each; 0 of the 103,383 real
+  brand names trip it, and a *control* proved the probe could see a difference, so that zero is a
+  fact about the data rather than about the instrument. Fixed by cursoring on a row ID and reading
+  the sort value back in SQL, so the expression is evaluated once, by the database.
+- `pageQuery` capped `cursor` at 512 characters and `encodeCursor` had no bound, so the server
+  issued 523-character cursors it then answered 400 to. The cap now lives in contracts and the
+  issuing side asserts against it.
+- `escapeLike` is the house rule (`kernel/search/text.ts`, obeyed by `suggest.ts`) and `pageSalts`
+  did not obey it, so a pharmacist's `%` was a wildcard.
+- The moiety typeahead had no `isError` branch, so a failed request rendered as "No active moiety
+  matches that name" — a screen stating a clinical fact it had no answer for.
+- `pageMedicines({activeOnly:true})` ended up pinned by **nothing**: the refactor replaced the two
+  assertions that covered it with a `catalogueCensus` count, which is a different statement with its
+  own `where active`. An assertion was not weakened, it was LOST — the quieter version of the same
+  thing, and the one a diff review does not show you.
 
 **PR-C — the lint rule.** `no-restricted-syntax` on `ImportSpecifier[imported.name=/^formulary[A-Z]/]`
 so a module cannot go round the formulary to its tables. Note: the path-based form
