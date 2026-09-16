@@ -370,6 +370,35 @@ export async function getCount(db: Db, actor: Actor, countId: string): Promise<C
   };
 }
 
+/**
+ * PHARMACY P12 — the leakage triangle's COUNTED leg: every non-zero variance line of the counts at
+ * one store whose sheet time falls in `[start, end)`, submitted or closed. A reader for a report,
+ * gated by the report's own route; it carries no system figures beyond the variance.
+ */
+export async function countVariancesBetween(
+  db: Db | Tx, resourceId: string, start: Date, end: Date,
+): Promise<{ counts: number; lines: { countId: string; itemCode: string; batchNo: string; varianceQty: number; variancePaise: number }[] }> {
+  const counts = await db.select({ id: stockCounts.id }).from(stockCounts).where(and(
+    eq(stockCounts.resourceId, resourceId),
+    inArray(stockCounts.status, ["submitted", "closed"]),
+    gte(stockCounts.countedAt, start), lt(stockCounts.countedAt, end),
+  ));
+  if (counts.length === 0) return { counts: 0, lines: [] };
+  const rows = await db.select({
+    countId: stockCountLines.countId, itemCode: items.code, batchNo: stockBatches.batchNo,
+    varianceQty: stockCountLines.varianceQty, variancePaise: stockCountLines.variancePaise,
+  })
+    .from(stockCountLines)
+    .innerJoin(items, eq(items.id, stockCountLines.itemId))
+    .innerJoin(stockBatches, eq(stockBatches.id, stockCountLines.batchId))
+    .where(and(inArray(stockCountLines.countId, counts.map((c) => c.id)), sql`${stockCountLines.varianceQty} <> 0`))
+    .orderBy(asc(items.code), asc(stockBatches.batchNo));
+  return {
+    counts: counts.length,
+    lines: rows.map((r) => ({ countId: r.countId, itemCode: r.itemCode, batchNo: r.batchNo, varianceQty: r.varianceQty ?? 0, variancePaise: r.variancePaise ?? 0 })),
+  };
+}
+
 /** The manager's list: newest first, optionally one status. */
 export async function listCounts(db: Db, actor: Actor, opts: { status?: CountStatus } = {}): Promise<CountHeader[]> {
   await requireGrant(db, actor, COUNTS_MANAGE, "listing counts");

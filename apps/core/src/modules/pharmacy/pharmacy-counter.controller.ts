@@ -17,6 +17,8 @@ import { cancelBilledDispense } from "./refund";
 import { reorderAdvice } from "./replenishment";
 import { acceptReturn } from "./returns";
 import { h1Register } from "./registers";
+import { pharmacyLeakage } from "./leakage";
+import type { LeakageReport } from "./leakage";
 import { counterSummary } from "./summary";
 import type { CounterSummary } from "./summary";
 import type { H1Register } from "./registers";
@@ -268,6 +270,20 @@ export class PharmacyCounterController {
   ): Promise<H1Register> {
     try {
       return await h1Register(this.db, actor, { from: from ?? "", to: to ?? "" });
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * P12 — the leakage triangle for one IST day (today when absent). The Leakage Auditor's report is
+   * the billing supervisor's and the owner's, not the counter's: `billing.reports.read`.
+   */
+  @RequirePermission("billing.reports.read", "hospital")
+  @Get("leakage")
+  async leakage(@Query("day") day?: string): Promise<LeakageReport> {
+    try {
+      return await pharmacyLeakage(this.db, day ?? istDateOf(new Date()));
     } catch (e) {
       return toHttp(e);
     }

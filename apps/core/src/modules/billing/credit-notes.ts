@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
@@ -186,6 +186,45 @@ async function creditedQtyByLine(exec: Db | Tx, invoiceId: string): Promise<Map<
   const out = new Map<string, number>();
   for (const row of rows) out.set(row.invoiceLineId, (out.get(row.invoiceLineId) ?? 0) + row.qty);
   return out;
+}
+
+/**
+ * PHARMACY P12 — the leakage triangle's BILLED leg, for many invoice lines at once: each line's
+ * stored quantity and unit price, and the quantity credited on it by LIVE credit notes (the
+ * `creditedQtyByLine` rule, across invoices). Bounded by the ids asked for; an unknown id is absent.
+ */
+export async function invoiceLineCredits(
+  exec: Db | Tx, invoiceLineIds: readonly string[],
+): Promise<Map<string, { qty: number; unitPaise: number; creditedQty: number }>> {
+  const out = new Map<string, { qty: number; unitPaise: number; creditedQty: number }>();
+  const wanted = [...new Set(invoiceLineIds)].filter((id) => id !== "");
+  if (wanted.length === 0) return out;
+  const lines = await exec.select({ id: invoiceLines.id, qty: invoiceLines.qty, unitPaise: invoiceLines.unitPaise })
+    .from(invoiceLines).where(inArray(invoiceLines.id, wanted));
+  for (const l of lines) out.set(l.id, { qty: l.qty, unitPaise: l.unitPaise, creditedQty: 0 });
+  const credited = await exec
+    .select({ invoiceLineId: creditNoteLines.invoiceLineId, qty: creditNoteLines.qty, creditNoteId: creditNoteLines.creditNoteId })
+    .from(creditNoteLines).where(inArray(creditNoteLines.invoiceLineId, wanted));
+  if (credited.length === 0) return out;
+  const dead = await enteredInErrorDocIds(exec, "credit_note", [...new Set(credited.map((c) => c.creditNoteId))]);
+  for (const c of credited) {
+    const row = out.get(c.invoiceLineId);
+    if (row !== undefined && !dead.has(c.creditNoteId)) row.creditedQty += c.qty;
+  }
+  return out;
+}
+
+/** PHARMACY P12 — the invoice lines that LIVE credit notes issued in `[start, end)` credited. */
+export async function creditedInvoiceLineIdsBetween(exec: Db | Tx, start: Date, end: Date): Promise<string[]> {
+  const notes = await exec.select({ id: creditNotes.id }).from(creditNotes)
+    .where(and(gte(creditNotes.issuedAt, start), lt(creditNotes.issuedAt, end)));
+  if (notes.length === 0) return [];
+  const dead = await enteredInErrorDocIds(exec, "credit_note", notes.map((n) => n.id));
+  const live = notes.filter((n) => !dead.has(n.id)).map((n) => n.id);
+  if (live.length === 0) return [];
+  const rows = await exec.selectDistinct({ invoiceLineId: creditNoteLines.invoiceLineId })
+    .from(creditNoteLines).where(inArray(creditNoteLines.creditNoteId, live));
+  return rows.map((r) => r.invoiceLineId).sort();
 }
 
 /**
