@@ -126,9 +126,9 @@ BEGIN
   )
   SELECT count(*) INTO repaired_params FROM moved;
 
-  RAISE NOTICE 'backfill 0094: % invoice(s) and % print job(s) (% payload(s)) re-filed under the canonical encounter id', repaired_invoices, repaired_jobs, repaired_params;
+  RAISE NOTICE 'backfill 0096: % invoice(s) and % print job(s) (% payload(s)) re-filed under the canonical encounter id', repaired_invoices, repaired_jobs, repaired_params;
 
   IF skipped_invoices > 0 THEN
-    RAISE NOTICE 'backfill 0094: % invoice(s) LEFT UNREPAIRED — patient_id does not match the visit''s own patient (FD-35). These need a human; list them with: SELECT i.id, i.invoice_no, i.patient_id, e.id, e.patient_id FROM invoices i JOIN opd_encounters e ON e.visit_no = i.encounter_id WHERE i.patient_id <> e.patient_id;', skipped_invoices;
+    RAISE NOTICE 'backfill 0096: % invoice(s) LEFT UNREPAIRED — patient_id does not match the visit''s own patient (FD-35). These need a human; list them with: SELECT i.id, i.invoice_no, i.patient_id, e.id, e.patient_id FROM invoices i JOIN opd_encounters e ON e.visit_no = i.encounter_id WHERE i.patient_id <> e.patient_id;', skipped_invoices;
   END IF;
 END $$;

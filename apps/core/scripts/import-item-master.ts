@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { createDb, withTx } from "../src/kernel/db/client";
 import { requireEnv } from "../src/kernel/config";
-import { listMedicines } from "../src/modules/formulary";
+import { medicineIdsByBrandNames } from "../src/modules/formulary";
 import { addItemUom, getItem, listItems, registerItem, updateItem } from "../src/modules/materials";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../src/kernel/db/client";
@@ -156,7 +156,24 @@ export type ImportPlan = { rows: PlannedRow[]; refusals: number; creates: number
 
 export async function planItemMaster(db: Db, parsed: ParsedFile): Promise<ImportPlan> {
   const existing = new Map((await listItems(db, {})).map((i) => [i.code.toLowerCase(), i]));
-  const medicines = new Map((await listMedicines(db)).map((m) => [m.brandName.toLowerCase(), m.id]));
+  /**
+   * ═══ THE BRANDS THIS FILE NAMES, NOT THE CATALOGUE ═══
+   *
+   * This used to read every `formulary_medicines` row and build the brand -> id map from it. Against
+   * a loaded national catalogue that does not merely waste a heap — 103,383 ids is past the Int16 the
+   * Postgres wire counts bind parameters in, and the statement is REFUSED by the server. So the plan
+   * of a perfectly good file failed for a reason nothing in the file caused.
+   *
+   * `medicineIdsByBrandNames` answers only about the brands the operator's file actually mentions,
+   * and CHUNKS internally rather than refusing a long list: an item master is however many drugs the
+   * hospital buys, and refusing on row 501 of a legitimate file punishes an operator who did nothing
+   * wrong. A brand absent from the map is absent from the FORMULARY, which is the same
+   * `unknown_medicine_brand` refusal as before — the map is exhaustive for the names it was asked.
+   */
+  const medicines = await medicineIdsByBrandNames(
+    db,
+    parsed.rows.map((r) => r.cells.medicine_brand ?? "").filter((brand) => brand !== ""),
+  );
   const rows: PlannedRow[] = [];
 
   for (const row of parsed.rows) {

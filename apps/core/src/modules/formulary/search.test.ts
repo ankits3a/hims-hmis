@@ -2,6 +2,7 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { formularyMedicines, formularyMedicineSalts, formularySalts } from "../../kernel/db/schema";
 import { searchMedicines } from "./search";
 import type { Db } from "../../kernel/db/client";
+import { normalizeDrugName } from "./resolve";
 
 /**
  * ═══ THE DRUG TYPEAHEAD, AND THE ONE THING A PICK MUST GUARANTEE ═══
@@ -47,24 +48,24 @@ describe("searchMedicines — the typeahead over the imported catalogue", () => 
       { id: "S3", name: "Amoxapine", productCount: 14, ...AUDIT },
     ]);
     await db.insert(formularyMedicines).values([
-      { id: "M1", brandName: "Amoxil 500", form: "Capsule", routeClass: "systemic", saltRank: 3830, ...AUDIT },
-      { id: "M2", brandName: "Augmentin 625", form: "Tablet", routeClass: "systemic", saltRank: 3830, ...AUDIT },
+      { id: "M1", brandName: "Amoxil 500", nameNormalized: normalizeDrugName("Amoxil 500"), form: "Capsule", routeClass: "systemic", saltRank: 3830, ...AUDIT },
+      { id: "M2", brandName: "Augmentin 625", nameNormalized: normalizeDrugName("Augmentin 625"), form: "Tablet", routeClass: "systemic", saltRank: 3830, ...AUDIT },
       // DELIBERATELY THE SHORTER NAME. Every tie-break BELOW `salt_rank` — similarity, then
       // length, then alphabetical — prefers this row over "Amoxil 500". So if the assertion in
       // S3 holds, `salt_rank` is the only thing that can have produced it.
-      { id: "M3", brandName: "Amox 50", form: "Tablet", routeClass: "systemic", saltRank: 14, ...AUDIT },
+      { id: "M3", brandName: "Amox 50", nameNormalized: normalizeDrugName("Amox 50"), form: "Tablet", routeClass: "systemic", saltRank: 14, ...AUDIT },
       // THE ROW THIS SUITE EXISTS FOR: a brand-name match that carries no moiety at all. It is one
       // of the eight the bundle left uncomposed, and nothing downstream can check a line holding it.
-      { id: "M4", brandName: "Amoxy Mystery Syrup", form: "Syrup", routeClass: "systemic", saltRank: 0, ...AUDIT },
+      { id: "M4", brandName: "Amoxy Mystery Syrup", nameNormalized: normalizeDrugName("Amoxy Mystery Syrup"), form: "Syrup", routeClass: "systemic", saltRank: 0, ...AUDIT },
       // Inactive: withdrawn, and never offered however well it matches.
-      { id: "M5", brandName: "Amoxi Withdrawn", form: "Tablet", routeClass: "systemic", saltRank: 3830, active: false, ...AUDIT },
+      { id: "M5", brandName: "Amoxi Withdrawn", nameNormalized: normalizeDrugName("Amoxi Withdrawn"), form: "Tablet", routeClass: "systemic", saltRank: 3830, active: false, ...AUDIT },
     ]);
     await db.insert(formularyMedicineSalts).values([
-      { medicineId: "M1", saltId: "S1", strength: "500 mg" },
-      { medicineId: "M2", saltId: "S1", strength: "500 mg" },
-      { medicineId: "M2", saltId: "S2", strength: "125 mg" },
-      { medicineId: "M3", saltId: "S3", strength: "50 mg" },
-      { medicineId: "M5", saltId: "S1", strength: "500 mg" },
+      { medicineId: "M1", saltId: "S1", strength: "500 mg", source: "curated" },
+      { medicineId: "M2", saltId: "S1", strength: "500 mg", source: "curated" },
+      { medicineId: "M2", saltId: "S2", strength: "125 mg", source: "curated" },
+      { medicineId: "M3", saltId: "S3", strength: "50 mg", source: "curated" },
+      { medicineId: "M5", saltId: "S1", strength: "500 mg", source: "curated" },
     ]);
   }
 

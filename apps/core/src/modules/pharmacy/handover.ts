@@ -7,7 +7,7 @@ import { withTx } from "../../kernel/db/client";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { transition } from "../../kernel/workflow/instances";
 import { invoiceSettlement } from "../billing";
-import { listMedicines } from "../formulary";
+import { medicinesByIds } from "../formulary";
 import { consumeReservation, effectiveRegulation, getBatch, itemUomRows, itemsByIds, materialConsumed } from "../materials";
 import { getDoctor, getPrescription, getVisit } from "../opd";
 import { getPatient } from "../patients";
@@ -116,7 +116,7 @@ export async function handOverDispense(
   const rx = await getPrescription(db, actor, d.prescriptionId);
   if (rx === null) throw new PharmacyError("unknown_prescription", `prescription ${d.prescriptionId} not found`);
   const doctor = await getDoctor(db, rx.doctorId);
-  const medicines = new Map((await listMedicines(db)).map((m) => [m.id, m]));
+  const medicines = await medicinesByIds(db, lines.map((l) => l.dispensedMedicineId).filter((x): x is string => x !== null));
   const items = await itemsByIds(db, lines.map((l) => l.itemId).filter((x): x is string => x !== null));
 
   const ledgerEntryIds: string[] = [];

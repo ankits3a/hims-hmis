@@ -18,6 +18,7 @@ import type { CaptureLine } from "./grn";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import { formularyMedicines } from "../../kernel/db/schema";
+import { normalizeDrugName } from "../formulary";
 
 /**
  * PLAN 14 T6 — the GRN gate, end to end against the database.
@@ -48,7 +49,7 @@ describe("the GRN gate (Plan 14 T6)", () => {
   async function drugItem(code = "CROC500", over: { shelfLifeDays?: number } = {}): Promise<string> {
     const medicineId = newId();
     await db.insert(formularyMedicines).values({
-      id: medicineId, brandName: `Brand ${medicineId}`, form: "tablet",
+      id: medicineId, brandName: `Brand ${medicineId}`, nameNormalized: normalizeDrugName(`Brand ${medicineId}`), form: "tablet",
       createdBy: HEAD.id, updatedBy: HEAD.id,
     });
     const { itemId } = await withTx(db, (tx) => registerItem(tx, HEAD, {

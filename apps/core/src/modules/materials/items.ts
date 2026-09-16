@@ -2,8 +2,9 @@ import { and, asc, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import {
-  formularyMedicines, itemBarcodes, itemPriceRegulations, itemUoms, items,
+  itemBarcodes, itemPriceRegulations, itemUoms, items,
 } from "../../kernel/db/schema";
+import { medicineExists } from "../formulary";
 import { MaterialsError } from "./errors";
 import { itemRegistered, itemUpdated } from "./events";
 import type { UomRow } from "./uom";
@@ -96,9 +97,7 @@ async function assertDrugMedicinePairing(
   // Only now is the id worth resolving: a drug that named a medicine which does not exist would
   // otherwise fail on the FOREIGN KEY with a constraint name rather than a code.
   if (hasMedicine) {
-    const found = await tx.select({ id: formularyMedicines.id }).from(formularyMedicines)
-      .where(eq(formularyMedicines.id, formularyMedicineId));
-    if (found[0] === undefined) {
+    if (!await medicineExists(tx, formularyMedicineId)) {
       throw new MaterialsError(
         "unknown_item",
         `formulary medicine ${formularyMedicineId} not found — register the medicine in the ` +

@@ -10,6 +10,7 @@ import {
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
+import { normalizeDrugName } from "../formulary";
 
 /**
  * PLAN 14 T3 — the item master.
@@ -52,7 +53,8 @@ describe("the item master (Plan 14 T3)", () => {
     // rather than random, so a failure names the same row twice when it is re-run.
     medicineSeq += 1;
     await db.insert(formularyMedicines).values({
-      id, brandName: brand ?? `Crocin 500 #${String(medicineSeq)}`, form: "tablet",
+      id, brandName: brand ?? `Crocin 500 #${String(medicineSeq)}`,
+      nameNormalized: normalizeDrugName(brand ?? `Crocin 500 #${String(medicineSeq)}`), form: "tablet",
       strengthLabel: "500 mg", createdBy: HEAD.id, updatedBy: HEAD.id,
     });
     return id;

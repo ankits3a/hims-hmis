@@ -136,6 +136,26 @@ export const formularyMedicines = pgTable(
      */
     code: text("code"),
     /**
+     * ═══ THE BRAND NAME AS `normalizeDrugName` SEES IT, STORED ═══
+     *
+     * `resolveDrugTexts` names this column as its own extension point, in as many words: "a stored
+     * normalized column ... filled by the SAME function, so there is still one normalizer and the
+     * WHERE clause reads a column rather than re-deriving a value." This is that column.
+     *
+     * It is filled by the TypeScript `normalizeDrugName` at every write site — NOT by a generated
+     * SQL expression. That is the whole point: a `GENERATED ALWAYS AS (regexp_replace(...))` column
+     * would make a second normalizer permanent and authoritative, and §2.54's objection is that two
+     * copies of one fact drift. One function fills it; the only SQL copy is the one-shot backfill in
+     * the migration, and a test holds the two to one answer over an adversarial corpus.
+     *
+     * THE INDEX IS NOT UNIQUE, and the extension point's own wording ("with a unique index") is
+     * wrong about that — measured on the loaded national catalogue, 103,383 brand names collapse to
+     * 103,332 normalized keys, so 51 groups collide (`Ab-Xone` and `Abxone`, `A-Pan` and `Apan`).
+     * A unique index will not build. Same shape and same reason as
+     * `formulary_generics_name_norm_idx`, where 774 groups collide.
+     */
+    nameNormalized: text("name_normalized").notNull(),
+    /**
      * ═══ THE TYPEAHEAD'S SORT KEY, DENORMALISED ONTO THE PRODUCT ═══
      *
      * The largest `product_count` among this row's moieties. It belongs here rather than being
@@ -168,6 +188,8 @@ export const formularyMedicines = pgTable(
     */
     index("formulary_medicines_brand_trgm_idx").using("gin", sql`lower(${t.brandName}) gin_trgm_ops`),
     index("formulary_medicines_code_idx").using("btree", sql`lower(${t.code})`),
+    /* The free-text resolver's lane: `resolveDrugTexts` asks for a SET of normalized names. */
+    index("formulary_medicines_name_norm_idx").using("btree", t.nameNormalized),
     check("formulary_medicines_route_class_ck", sql`${t.routeClass} in ('systemic', 'topical')`),
     check(
       "formulary_medicines_schedule_flag_ck",
@@ -179,15 +201,39 @@ export const formularyMedicines = pgTable(
 /**
  * The composition join - a fixed-dose combination is simply a medicine with more than one row.
  *
- * === `source` EXISTS BECAUSE TWO WRITERS ARE ABOUT TO SHARE THIS TABLE ===
+ * === `source` EXISTS BECAUSE TWO WRITERS SHARE THIS TABLE ===
  *
- * Today the only writer is a pharmacist through `addMedicine`/`updateMedicine`, and
- * `updateMedicine` does an unconditional `delete ... where medicine_id = $1` before re-inserting
- * (`masters.ts:247`). Once a derivation also writes here - medicine -> generic -> substance ->
- * curated moiety - those two overwrite each other in both directions and neither can tell which
- * rows were its own. A pharmacist's correction would vanish on the next derivation run, silently.
+ * A pharmacist writes here through `addMedicine`/`updateMedicine`, and the catalogue importer
+ * writes here too. `updateMedicine` does an unconditional `delete ... where medicine_id = $1`
+ * before re-inserting. Without provenance those two overwrite each other in both directions and
+ * neither can tell which rows were its own, so a pharmacist's correction would vanish on the next
+ * import run, silently. Every row therefore says where it came from.
  *
- * So every row says where it came from, and the curated delete is scoped to `curated`.
+ * === WHAT THIS COMMENT USED TO CLAIM, AND WHY THE CORRECTION IS THE INTERESTING PART ===
+ *
+ * It said, in the present tense, "the curated delete is scoped to `curated`". It never was:
+ * `updateMedicine`'s delete is unscoped. And the column could not have told the two apart even if
+ * it were, because `source` carried a DEFAULT and no writer ever set it — measured on the loaded
+ * catalogue, all 142,759 release-derived rows read `'curated'`. A column nobody writes, described
+ * by a comment nobody could check, is worse than no column: it reads as a guarantee.
+ *
+ * So: the DEFAULT IS GONE and every writer states its own provenance. An unprovenanced insert is
+ * now a COMPILE error rather than a silently mislabelled row — `$inferInsert` makes the field
+ * required and `tsc` names every site, which is only safe because all five writers are drizzle
+ * builder inserts and none is raw SQL.
+ *
+ * === THE RULE THE FIRST DERIVATION WRITER IS HELD TO ===
+ *
+ * The curated delete STAYS UNSCOPED, because `updateMedicine` is a whole-composition replace: a
+ * pharmacist who submits a composition is stating the whole of it, and leaving derived rows behind
+ * would silently merge their statement with the importer's. What a derivation may do is narrower,
+ * and it is a rule rather than a mechanism because there is no derivation yet:
+ *
+ *   A DERIVATION MAY WRITE ONLY WHERE THE MEDICINE HAS NO `curated` ROW,
+ *   AND MAY DELETE ONLY ITS OWN `derived` ROWS.
+ *
+ * The write half matters as much as the delete half: scoping only the delete leaves a derivation
+ * free to add a moiety beside a pharmacist's and produce a composition neither of them stated.
  */
 export const formularyMedicineSalts = pgTable(
   "formulary_medicine_salts",
@@ -196,8 +242,11 @@ export const formularyMedicineSalts = pgTable(
     saltId: text("salt_id").notNull().references(() => formularySalts.id),
     /** Per-salt strength, e.g. '500 mg' on the amoxicillin row of an Augmentin 625. */
     strength: text("strength"),
-    /** 'curated' (a pharmacist typed it) or 'derived' (the release produced it). */
-    source: text("source").notNull().default("curated"),
+    /**
+     * 'curated' (a pharmacist typed it) or 'derived' (the release produced it). NO DEFAULT, on
+     * purpose — see the header. It means WHO LAST ASSERTED THIS ROW, not who first created it.
+     */
+    source: text("source").notNull(),
   },
   (t) => [
     primaryKey({ columns: [t.medicineId, t.saltId] }),

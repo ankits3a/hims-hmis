@@ -663,8 +663,22 @@
     {
       "idx": 94,
       "version": "7",
-      "when": 1789500604694,
-      "tag": "0094_backfill_encounter_refs",
+      "when": 1789555035276,
+      "tag": "0094_formulary_composition_provenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1789567126695,
+      "tag": "0095_formulary_medicine_name_normalized",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1789574554440,
+      "tag": "0096_backfill_encounter_refs",
       "breakpoints": true
     }
   ]

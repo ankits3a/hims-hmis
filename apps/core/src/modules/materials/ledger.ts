@@ -10,6 +10,7 @@ import { istDay } from "./grn";
 import { requireStore } from "./stores";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
+import { anyOfText } from "../../kernel/db/any-of";
 
 export type LedgerRow = typeof stockLedger.$inferSelect;
 export type BalanceRow = typeof stockBalances.$inferSelect;
@@ -359,10 +360,12 @@ export async function postMovements(
 async function sellableBatchRows(
   db: Db | Tx,
   resourceId: string,
-  itemId: string,
+  itemIds: readonly string[],
   asOf: Date,
-): Promise<{ batchId: string; onHand: number; reserved: number; frozen: number; expiryDate: string | null }[]> {
+): Promise<{ itemId: string; batchId: string; onHand: number; reserved: number; frozen: number; expiryDate: string | null }[]> {
+  if (itemIds.length === 0) return [];
   return db.select({
+    itemId: stockBalances.itemId,
     batchId: stockBalances.batchId,
     onHand: stockBalances.qtyOnHand,
     reserved: stockBalances.qtyReserved,
@@ -373,7 +376,7 @@ async function sellableBatchRows(
     .innerJoin(stockBatches, eq(stockBatches.id, stockBalances.batchId))
     .where(and(
       eq(stockBalances.resourceId, resourceId),
-      eq(stockBalances.itemId, itemId),
+      anyOfText(stockBalances.itemId, itemIds),
       eq(stockBatches.recallStatus, "none"),
       /**
        * ═══ AND IT MUST NOT ALREADY BE EXPIRED (16c close review, second contract sweep) ═══
@@ -410,8 +413,33 @@ export async function availableQty(
   itemId: string,
   asOf: Date = new Date(),
 ): Promise<number> {
-  const rows = await sellableBatchRows(db, resourceId, itemId, asOf);
-  return rows.reduce((n, r) => n + Math.max(0, r.onHand - r.reserved - r.frozen), 0);
+  return (await availableQtyByItem(db, resourceId, [itemId], asOf)).get(itemId) ?? 0;
+}
+
+/**
+ * The same number for MANY items in one statement, keyed by item id; an item with no sellable stock
+ * is absent, and the caller reads that as zero.
+ *
+ * WHY IT EXISTS. The substitution dropdown asks this question once per candidate generic. One
+ * statement per candidate is a round trip per row of a list the pharmacist is waiting on, and the
+ * predicate — recall excluded, expiry excluded, reserved and frozen subtracted — is the exact
+ * predicate `availableQty` already carries. So `availableQty` BECOMES its one-item caller rather
+ * than a second copy: the `Math.max(0, onHand - reserved - frozen)` reduction exists in exactly one
+ * place, which is the property the 16c close review's expired-stock defect was about.
+ */
+export async function availableQtyByItem(
+  db: Db | Tx,
+  resourceId: string,
+  itemIds: readonly string[],
+  asOf: Date = new Date(),
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const wanted = [...new Set(itemIds)].filter((id) => id !== "");
+  if (wanted.length === 0) return out;
+  for (const r of await sellableBatchRows(db, resourceId, wanted, asOf)) {
+    out.set(r.itemId, (out.get(r.itemId) ?? 0) + Math.max(0, r.onHand - r.reserved - r.frozen));
+  }
+  return out;
 }
 
 /**
@@ -447,7 +475,7 @@ export async function fefoPick(
   if (!Number.isSafeInteger(qtyBase) || qtyBase <= 0) {
     throw new MaterialsError("insufficient_stock", `a pick must be a positive integer, got ${String(qtyBase)}`);
   }
-  const rows = await sellableBatchRows(db, resourceId, itemId, asOf);
+  const rows = await sellableBatchRows(db, resourceId, [itemId], asOf);
 
   const picked: { batchId: string; qty: number }[] = [];
   let remaining = qtyBase;

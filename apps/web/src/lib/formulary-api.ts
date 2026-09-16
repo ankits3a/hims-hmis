@@ -49,12 +49,82 @@ export type WireCoverage = {
   unresolvedTop: { drug: string; count: number }[];
 };
 
-export async function fetchSalts(): Promise<WireSalt[]> {
-  return (await api<{ items: WireSalt[] }>("GET", "/formulary/salts")).items;
+/**
+ * ═══ THE THREE LIST ROUTES ARE PAGED, AND `fetchSalts` / `fetchMedicines` ARE GONE, NOT CAPPED ═══
+ *
+ * They used to be `GET /formulary/salts` and `GET /formulary/medicines`, each handing back the
+ * whole table as an array. Both routes now answer `{ items, nextCursor }` — keyset, ascending,
+ * forward-only; the four laws are written in `apps/core/src/kernel/db/page.ts` and this file does
+ * not restate them, it obeys them.
+ *
+ * The array-shaped readers were DELETED rather than re-pointed at page one, which mirrors the
+ * ruling on the server side. A surviving `fetchMedicines()` that quietly returned the first 50 of
+ * 103,383 rows would keep the promise its NAME makes — "the catalogue" — and break it silently, and
+ * the next caller to reach for it (an item-master bridge, a substitution check) would get a short
+ * answer with nothing on screen to say so. A name that cannot be spelled cannot be misread.
+ *
+ * `nextCursor === null` IS THE END OF THE LIST, AND IT IS THE ONLY END. Never stop because a page
+ * came back shorter than `limit`: the server over-fetches by one to decide, so a short page with a
+ * cursor is a real state and a full page without one is the normal last page.
+ */
+export type WirePage<T> = { items: T[]; nextCursor: string | null };
+
+/**
+ * `limit` is CLAMPED server-side to [1, 200] with a default of 50 — never rejected, so asking for
+ * 1,000 is answered with 200 rather than a 400. A `cursor` the server did not issue answers 400:
+ * `decodeCursor` refuses rather than silently restarting at page one, because a client that thinks
+ * it advanced and did not will page the same rows for ever with no error anywhere.
+ */
+type PageAsk = { limit?: number; cursor?: string | null };
+
+/**
+ * `active` is sent ONLY when narrowing to active rows. The server reads `active === "true"`, so
+ * `active=false` and an absent `active` are the same request; sending the redundant one would
+ * suggest a third state ("inactive only") that no route offers.
+ */
+function pageQuery(ask: PageAsk & { activeOnly?: boolean; q?: string }): string {
+  const params = new URLSearchParams();
+  if (ask.activeOnly === true) params.set("active", "true");
+  const q = (ask.q ?? "").trim();
+  if (q !== "") params.set("q", q);
+  if (ask.limit !== undefined) params.set("limit", String(ask.limit));
+  if (ask.cursor !== undefined && ask.cursor !== null) params.set("cursor", ask.cursor);
+  const query = params.toString();
+  return query === "" ? "" : `?${query}`;
 }
 
-export async function fetchMedicines(): Promise<WireMedicine[]> {
-  return (await api<{ items: WireMedicine[] }>("GET", "/formulary/medicines")).items;
+/** A page of moieties. `q` is a substring of the NAME — the server does not search aliases here. */
+export async function fetchSaltsPage(
+  ask: PageAsk & { activeOnly?: boolean; q?: string } = {},
+): Promise<WirePage<WireSalt>> {
+  return api<WirePage<WireSalt>>("GET", `/formulary/salts${pageQuery(ask)}`);
+}
+
+/** A page of medicines with their composition, ordered by brand name. */
+export async function fetchMedicinesPage(
+  ask: PageAsk & { activeOnly?: boolean } = {},
+): Promise<WirePage<WireMedicine>> {
+  return api<WirePage<WireMedicine>>("GET", `/formulary/medicines${pageQuery(ask)}`);
+}
+
+/**
+ * How big the catalogue is, in one statement and with no row on the wire.
+ *
+ * Keyset paging gives no total — that is the price of not paying for `offset` — so a screen that
+ * wants to say how many medicines there are has to ask. `uncomposedActiveMedicines` is the figure
+ * this module has never shown anyone: active products with no moiety, which no interaction,
+ * allergy or substitution check can reason about.
+ */
+export type WireCensus = {
+  salts: number; activeSalts: number;
+  medicines: number; activeMedicines: number;
+  compositionRows: number;
+  uncomposedActiveMedicines: number;
+  interactions: number; activeInteractions: number;
+};
+
+export async function fetchCensus(): Promise<WireCensus> {
+  return api<WireCensus>("GET", "/formulary/census");
 }
 
 /** Pull-based (spec §1.1): a name search. There is no route that lists every pending row. */
@@ -132,9 +202,29 @@ export function formularyErrorMessage(e: unknown): string {
  * work if doctor starts to type drug name."* — so this is the always-on road, and it takes ten rows
  * rather than the catalogue.
  *
- * `fetchMedicines()` above is now the WRONG instrument for a screen and stays only for the admin
- * surfaces that genuinely list everything: after the owner's catalogue landed it returns 103,383
- * rows and about 15 MB, measured.
+ * A `<select>` over the catalogue is the instrument this replaced, and the size of that payload has
+ * been quoted in three places in two different figures — "about 15 MB" here and in
+ * `opd-consult.tsx`, "38 MiB" a hundred lines further down that same screen. Both were written as
+ * "measured" and they cannot both be right, so it was measured again, to a method anyone can repeat.
+ *
+ * ═══ MEASURED 2026-09-16, AND THE METHOD IS THE CLAIM ═══
+ *
+ * Read-only against `hmis_cds_dev`, the database that holds the owner's imported national
+ * catalogue (103,383 medicines, 142,759 composition rows, 3,283 moieties — the same corpus
+ * `catalogue-scale.test.ts` reproduces the wire-protocol crash against). The exact JSON body the
+ * old `GET /formulary/medicines` shipped was rebuilt in SQL — every column of
+ * `formulary_medicines` under its drizzle camelCase name plus the `salts` array, wrapped in
+ * `{ items, nextCursor }` — and its `octet_length` taken:
+ *
+ *     60,128,503 bytes = 57.3 MiB = 60.1 MB
+ *
+ * Trimmed to only the nine fields `WireMedicine` below transcribes, the same body is 38,762,461
+ * bytes = 37.0 MiB. So "38 MiB" was measuring the trimmed shape and is close to right; "about
+ * 15 MB" is not reproducible at any shape and should be read as superseded by this paragraph.
+ * (`opd-consult.tsx` still carries the 15 MB figure in two comments — not this lane's file to edit.)
+ *
+ * Either number is the same conclusion: this is a payload no screen may fetch. Everything
+ * interactive takes ten rows from the typeahead below; the admin catalogue takes one page.
  */
 export type WireMedicineHit = {
   id: string;

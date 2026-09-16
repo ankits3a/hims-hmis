@@ -1,16 +1,17 @@
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import {
   formularyInteractions, formularyMedicineSalts, formularyMedicines, formularySalts,
 } from "../../kernel/db/schema";
 import { FormularyError } from "./errors";
+import { normalizeDrugName } from "./resolve";
 import {
   interactionAdded, interactionUpdated, medicineAdded, medicineCorrected, medicineUpdated,
   saltAdded, saltUpdated,
 } from "./events";
 import type { Actor } from "@hmis/contracts";
-import type { Db, Tx } from "../../kernel/db/client";
+import type { Tx } from "../../kernel/db/client";
 
 export type SaltRow = typeof formularySalts.$inferSelect;
 export type MedicineRow = typeof formularyMedicines.$inferSelect;
@@ -171,6 +172,7 @@ export async function addMedicine(
   try {
     await tx.insert(formularyMedicines).values({
       id: medicineId, brandName: input.brandName, form: input.form, routeClass: input.routeClass,
+      nameNormalized: normalizeDrugName(input.brandName),
       strengthLabel: input.strengthLabel ?? null, scheduleFlag: input.scheduleFlag ?? null,
       stagingId: input.stagingId ?? null, createdBy: actor.id, updatedBy: actor.id,
     });
@@ -182,7 +184,8 @@ export async function addMedicine(
   }
   if (input.salts.length > 0) {
     await tx.insert(formularyMedicineSalts).values(input.salts.map((s) => ({
-      medicineId, saltId: s.saltId, strength: s.strength ?? null,
+      // A pharmacist typed this. Stated, not defaulted — see the table's header.
+      medicineId, saltId: s.saltId, strength: s.strength ?? null, source: "curated" as const,
     })));
   }
   await appendEvent(tx, medicineAdded.make({
@@ -225,6 +228,28 @@ export async function updateMedicine(
   let toSaltIds: string[] = [];
   if (salts !== undefined) {
     toSaltIds = salts.map((s) => s.saltId);
+    /**
+     * M4 AT THE SECOND DOOR — the same guard `addMedicine` applies above, and for the same reason
+     * it gives: a medicine with no composition resolves to "known, and contains nothing", which is
+     * the shape that makes a check suite go quiet while reporting success.
+     *
+     * This path did not have it. `salts: []` passed `requireSalts([])` and `intraFdcPairs([])`,
+     * which both return early on an empty list, then deleted every composition row at :247 and
+     * re-inserted none because :248 is guarded by `if (salts.length > 0)` — so the curation surface
+     * could mint the exact row the other door refuses, and appended `medicine.corrected` recording
+     * that it had done so. It is the same failure C6 found on this pair three paragraphs down:
+     * TWO DOORS, ONE LOCK. `curation-door-parity.test.ts` now holds both guards as a class.
+     *
+     * A brand that should no longer be prescribed is DEACTIVATED (`active: false`), which keeps its
+     * composition readable for the labels and refusals that still name it. Emptying it is not a
+     * quieter way of saying the same thing; it is a way of saying nothing while looking checked.
+     */
+    if (toSaltIds.length === 0) {
+      throw new FormularyError(
+        "unknown_salt",
+        `"${patch.brandName ?? row.brandName}" needs at least one moiety — deactivate it instead of emptying it`,
+      );
+    }
     await requireSalts(tx, toSaltIds);
     /**
      * C6 (independent review) — DD8 HAS TWO DOORS AND ONLY ONE HAD A LOCK. `addMedicine` refuses an
@@ -247,15 +272,26 @@ export async function updateMedicine(
     await tx.delete(formularyMedicineSalts).where(eq(formularyMedicineSalts.medicineId, medicineId));
     if (salts.length > 0) {
       await tx.insert(formularyMedicineSalts).values(salts.map((s) => ({
-        medicineId, saltId: s.saltId, strength: s.strength ?? null,
+        medicineId, saltId: s.saltId, strength: s.strength ?? null, source: "curated" as const,
       })));
     }
   }
 
   if (changed.length > 0) {
     try {
+      /*
+        A RENAME MUST RE-NORMALIZE. `name_normalized` is a cache of `normalizeDrugName(brandName)`,
+        and the two going out of step is silent in the direction that matters: the row keeps
+        resolving under its OLD name and stops resolving under its new one, so a prescription typed
+        as the brand the pharmacist just corrected to falls through to `legacySubstringMatch` while
+        the screen reports that the advanced checks are unavailable.
+      */
       await tx.update(formularyMedicines)
-        .set({ ...attributes, updatedBy: actor.id, updatedAt: new Date() })
+        .set({
+          ...attributes,
+          ...(attributes.brandName === undefined ? {} : { nameNormalized: normalizeDrugName(attributes.brandName) }),
+          updatedBy: actor.id, updatedAt: new Date(),
+        })
         .where(eq(formularyMedicines.id, medicineId));
     } catch (e) {
       if (isUniqueViolation(e)) throw new FormularyError("duplicate_name", `that brand name already exists`);
@@ -336,34 +372,16 @@ export async function updateInteraction(
 
 // ─────────────────────────────────────── the reads ───────────────────────────────────────
 
-export async function listSalts(db: Db, opts: { activeOnly?: boolean } = {}): Promise<SaltRow[]> {
-  const rows = await db.select().from(formularySalts).orderBy(formularySalts.name);
-  return opts.activeOnly === true ? rows.filter((r) => r.active) : rows;
-}
-
-export async function listMedicines(db: Db, opts: { activeOnly?: boolean } = {}): Promise<MedicineWithSalts[]> {
-  const medicines = await db.select().from(formularyMedicines).orderBy(formularyMedicines.brandName);
-  const wanted = opts.activeOnly === true ? medicines.filter((m) => m.active) : medicines;
-  if (wanted.length === 0) return [];
-  const composition = await db.select().from(formularyMedicineSalts)
-    .where(inArray(formularyMedicineSalts.medicineId, wanted.map((m) => m.id)));
-  const byMedicine = new Map<string, { saltId: string; strength: string | null }[]>();
-  for (const row of composition) {
-    const list = byMedicine.get(row.medicineId) ?? [];
-    list.push({ saltId: row.saltId, strength: row.strength });
-    byMedicine.set(row.medicineId, list);
-  }
-  return wanted.map((m) => ({ ...m, salts: byMedicine.get(m.id) ?? [] }));
-}
-
-/** Every pair touching any of `saltIds`; the whole active table when `saltIds` is omitted. */
-export async function listInteractions(db: Db, saltIds?: string[]): Promise<InteractionRow[]> {
-  if (saltIds === undefined) {
-    return db.select().from(formularyInteractions).orderBy(formularyInteractions.severity);
-  }
-  if (saltIds.length === 0) return [];
-  return db.select().from(formularyInteractions).where(or(
-    inArray(formularyInteractions.saltAId, saltIds),
-    inArray(formularyInteractions.saltBId, saltIds),
-  ));
-}
+/**
+ * THE THREE UNBOUNDED READERS THAT USED TO LIVE HERE ARE GONE, NOT CAPPED.
+ *
+ * `listSalts`, `listMedicines` and `listInteractions` each answered "give me the whole table".
+ * `listMedicines` did it by reading every row and then asking for the composition with an `inArray`
+ * over every id, which THROWS `08P01` past 65,535 rows — see `kernel/db/any-of.ts`. Their
+ * replacements are in `reads.ts` and their names carry their bounds: `pageMedicines`, `pageSalts`,
+ * `pageInteractions`, `medicinesByIds`, `saltsByIds`, `countSalts`, `catalogueCensus`.
+ *
+ * They were DELETED rather than given a `limit` because a capped version leaves the unbounded
+ * question spellable, and the next caller spells it and gets a silently short answer.
+ * `index.test.ts` freezes the module's export list so they cannot quietly return.
+ */

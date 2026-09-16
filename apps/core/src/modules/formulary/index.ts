@@ -10,8 +10,7 @@ export { FormularyError, formularyHttpStatus } from "./errors";
 export type { FormularyErrorCode } from "./errors";
 export { FORMULARY_EVENTS } from "./events";
 export {
-  addInteraction, addMedicine, addSalt, listInteractions, listMedicines, listSalts,
-  updateInteraction, updateMedicine, updateSalt,
+  addInteraction, addMedicine, addSalt, updateInteraction, updateMedicine, updateSalt,
 } from "./masters";
 export type { InteractionRow, MedicineWithSalts, MedicineRow, RouteClass, SaltRow, Severity } from "./masters";
 /**
@@ -21,6 +20,25 @@ export type { InteractionRow, MedicineWithSalts, MedicineRow, RouteClass, SaltRo
  */
 export { listInteractionsAmong, normalizeDrugName, resolveDrugTexts, resolveMedicines } from "./resolve";
 export type { InteractionPair, ResolvedDrug, SaltRef } from "./resolve";
+/**
+ * THE BOUNDED READS, AND THEY ARE THE ONLY READS.
+ *
+ * `listMedicines`, `listSalts` and `listInteractions` used to sit in the block above and answer
+ * "give me the whole table" — a question no caller ever actually had, and which THROWS on the wire
+ * past 65,535 rows (`kernel/db/any-of.ts`). They were DELETED rather than capped, because a capped
+ * version leaves the unbounded question spellable and the next caller spells it.
+ *
+ * These answer the questions the callers do have, and each NAME carries its bound: these ids, this
+ * page, this count, this equivalence, does this id exist. `index.test.ts` freezes this list, so an
+ * unbounded read cannot quietly return under another name.
+ */
+export {
+  MAX_IDS, catalogueCensus, countSalts, medicineExists, medicineIdsByBrandNames, medicinesByIds,
+  pageInteractions, pageMedicines, pageSalts, saltIdsByNames, saltsByIds,
+} from "./reads";
+export type { CatalogueCensus } from "./reads";
+export { equivalentMedicines, isEquivalentMedicine } from "./equivalence";
+export type { EquivalentMedicine } from "./equivalence";
 /** T7 — staging admission. `searchStaging` may match generously; nothing here resolves anything. */
 export { MAX_SUGGESTIONS, MIN_QUERY_CHARS, suggestDrugs } from "./suggest";
 export type { DrugSuggestion } from "./suggest";

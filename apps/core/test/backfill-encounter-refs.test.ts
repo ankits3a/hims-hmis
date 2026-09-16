@@ -12,15 +12,15 @@ import type { BillingBaseFixture } from "./helpers/billing";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
- * MIGRATION 0094 — THE BACKFILL, TESTED BY RUNNING THE FILE THAT ACTUALLY SHIPS
+ * MIGRATION 0096 — THE BACKFILL, TESTED BY RUNNING THE FILE THAT ACTUALLY SHIPS
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
  *
  * A data migration is the one artefact a normal suite cannot reach. It runs once, against an EMPTY
  * database, before any test has inserted a row — so on every test database, every lane database and
- * every CI run, `0094` matches nothing and does nothing. A green suite says precisely zero about it,
+ * every CI run, `0096` matches nothing and does nothing. A green suite says precisely zero about it,
  * which is how a backfill ships broken and is discovered on the one machine that has the data.
  *
- * So this suite reads `drizzle/0094_backfill_encounter_refs.sql` off disk and EXECUTES IT, against
+ * So this suite reads `drizzle/0096_backfill_encounter_refs.sql` off disk and EXECUTES IT, against
  * rows shaped into the state production is in. Not a reimplementation of its logic in TypeScript —
  * that tests a copy and ships the original. The file is safe to run twice by construction (after the
  * first pass no `encounter_id` equals a `visit_no`), and the migration's own header says so.
@@ -33,14 +33,14 @@ import type { BillingBaseFixture } from "./helpers/billing";
  * append-only (`billing_immutable`, migration 0012), which is the whole reason the migration has to
  * disable a trigger and the reason the last assertion here exists.
  */
-describe("migration 0094: visits filed under a visit number are re-filed under the canonical id", () => {
+describe("migration 0096: visits filed under a visit number are re-filed under the canonical id", () => {
   let db: Db;
   let teardown: () => Promise<void>;
   let base: BillingBaseFixture;
   /* `seedOpdMasters` inserts fixed department CODES, so it is once per test, not once per visit. */
   let masters: { deptId: string; roomId: string };
 
-  const BACKFILL = join(__dirname, "..", "drizzle", "0094_backfill_encounter_refs.sql");
+  const BACKFILL = join(__dirname, "..", "drizzle", "0096_backfill_encounter_refs.sql");
 
   /**
    * The migrator splits on `--> statement-breakpoint`; this file is one `DO` block and has none, but
@@ -159,7 +159,7 @@ describe("migration 0094: visits filed under a visit number are re-filed under t
   /**
    * ═══ THE GUARD IS BACK ON, AND THIS IS THE ASSERTION THE WHOLE MIGRATION HANGS ON ═══
    *
-   * `0094` disables `invoices_immutable` to do its work. If it ever failed to re-arm it — a missing
+   * `0096` disables `invoices_immutable` to do its work. If it ever failed to re-arm it — a missing
    * `ENABLE`, an early return, a statement reordered — production's money table would be quietly
    * mutable for ever, and NOTHING ELSE IN THIS REPOSITORY WOULD NOTICE: every other billing test
    * asserts that a write is refused through the application, which refuses it by never trying.
