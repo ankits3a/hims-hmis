@@ -105,6 +105,11 @@ export const substanceMapped = defineEvent("substance.mapped", MODULE, z.object(
   proposalId: id.nullable(), agreedWithProposal: z.boolean().nullable(),
   /** Present exactly when a decided substance was changed. */
   correctionReason: z.string().min(1).nullable(),
+  /**
+   * Formulary phase 3: the resolution this decision was adopted under, when it was adopted in bulk
+   * rather than decided by the actor on the worklist. Defaults to null so earlier payloads parse.
+   */
+  adoptedUnder: z.string().min(1).nullable().default(null),
   projection,
 }));
 
@@ -112,6 +117,7 @@ export const substanceRuledUnmappable = defineEvent("substance.ruled_unmappable"
   substanceId: id, sctid: z.string().min(1),
   fromStatus: substanceStatus, fromSaltId: id.nullable(),
   reason: z.string().min(1),
+  adoptedUnder: z.string().min(1).nullable().default(null),
   projection,
 }));
 

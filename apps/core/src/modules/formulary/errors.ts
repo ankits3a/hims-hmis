@@ -74,13 +74,18 @@ export type FormularyErrorCode =
   /** A plain attestation found the substance already decided. Changing it is a CORRECTION, which needs a reason. */
   | "substance_already_decided"
   /** A correction was asked for on a substance nobody has decided yet. */
-  | "substance_not_decided";
+  | "substance_not_decided"
+  /**
+   * Formulary phase 3: a bulk adoption that was malformed before any state was read: no resolution
+   * named, the same substance twice, or a decision of an unknown kind.
+   */
+  | "invalid_adoption";
 
 const NOT_FOUND_CODES = new Set<FormularyErrorCode>([
   "unknown_salt", "unknown_medicine", "unknown_interaction", "unknown_substance", "unknown_proposal",
 ]);
 /** A request this module could not have served whatever the database held. */
-const BAD_REQUEST_CODES = new Set<FormularyErrorCode>(["too_many_ids"]);
+const BAD_REQUEST_CODES = new Set<FormularyErrorCode>(["too_many_ids", "invalid_adoption"]);
 /** The caller is the wrong KIND of actor for the act, whatever it holds. */
 const FORBIDDEN_CODES = new Set<FormularyErrorCode>(["attester_not_user"]);
 

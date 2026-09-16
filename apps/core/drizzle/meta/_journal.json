@@ -687,6 +687,13 @@
       "when": 1789575630680,
       "tag": "0097_formulary_mapping_loop",
       "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1789587782678,
+      "tag": "0098_formulary_adoption",
+      "breakpoints": true
     }
   ]
 }
