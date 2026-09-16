@@ -1,4 +1,4 @@
-import { PAGE_LIMIT_DEFAULT, PAGE_LIMIT_MAX } from "@hmis/contracts";
+import { PAGE_CURSOR_MAX, PAGE_LIMIT_DEFAULT, PAGE_LIMIT_MAX } from "@hmis/contracts";
 
 /**
  * ═══ KEYSET PAGING — THE HOUSE'S FIRST ROW-PAGINATION PRECEDENT, SO THE LAWS ARE WRITTEN DOWN ═══
@@ -9,14 +9,28 @@ import { PAGE_LIMIT_DEFAULT, PAGE_LIMIT_MAX } from "@hmis/contracts";
  * the tail of the list, and the honest fix is a cursor" — so this is that fix, and whatever shape
  * it takes here is the shape the next list will copy. Hence the laws.
  *
- * ── LAW 1. ORDER ASCENDING ON A UNIQUE EXPRESSION, AND THE CURSOR IS THAT VALUE.
+ * ── LAW 1. THE CURSOR CARRIES A ROW'S ID, NEVER ITS SORT VALUE. ORDER BY `(sort expression, id)`.
  *
- * No composite tiebreak, because there is nothing to break: every list paged through here sorts on
- * a column the schema already makes unique — `formulary_medicines_brand_lower_ux` on
- * `lower(brand_name)`, `formulary_salts_name_lower_ux` on `lower(name)`, or a primary key. A
- * non-unique sort key needs `(value, id) > (cursorValue, cursorId)` and this helper does not
- * pretend to offer it; the next author who needs one should add it deliberately rather than
- * discover its absence.
+ * The first version of this file cursored on the sort VALUE — `lower(brand_name)` — and it was
+ * wrong twice, both found by review and both measured:
+ *
+ *   1. AN UNBOUNDED CURSOR. `brand_name` is `text`, and the national release really does carry long
+ *      ones: the loaded catalogue has two rows of 384 and 413 bytes, which encode to cursors of 523
+ *      and 562 characters. `pageQuery` caps `cursor` at 512, so the server ISSUED A CURSOR ITS OWN
+ *      SCHEMA THEN REFUSED — a 400, mid-walk, that no client could recover from.
+ *   2. TWO DIFFERENT `lower()`s. The ORDER BY used Postgres `lower()`; the cursor was built with
+ *      JavaScript `toLowerCase()`. They are not the same function. Measured: `İ` (U+0130) lowers to
+ *      `i` in Postgres and to `i` + U+0307 in JavaScript. Where they differ the cursor does not
+ *      equal the row's own sort position, and the next page's `>` SKIPS the rows in between —
+ *      silently, with no error anywhere. (Zero of the 103,383 loaded brand names trip it today, and
+ *      a control proved the probe could see the difference, so that zero is a fact about the data
+ *      and not about the test.)
+ *
+ * An id fixes both by construction: it is bounded (a ULID, 26 characters), it is immutable, and it
+ * is never lowercased by anybody. The predicate becomes a tuple comparison against the cursor row's
+ * own values, read back in SQL, so the sort expression is evaluated by ONE engine — the database —
+ * and never reproduced in TypeScript. `(sort, id)` is also unique whether or not the sort
+ * expression is, which removes the uniqueness precondition entirely.
  *
  * ── LAW 2. OVER-FETCH BY ONE. `finishPage` IS THE ONLY PLACE `nextCursor` IS PRODUCED.
  *
@@ -71,11 +85,26 @@ export function pageLimit(requested: number | undefined): number {
  */
 const CURSOR_VERSION = "1";
 
-export function encodeCursor(sortValue: string): string {
-  return Buffer.from(JSON.stringify([CURSOR_VERSION, sortValue]), "utf8").toString("base64url");
+/**
+ * The cursor must fit the bound the REQUEST side enforces. Asserted here rather than discovered on
+ * the next request, because the failure it prevents is the server refusing a cursor it issued
+ * itself — which is not a thing a client can do anything about, and which cost this file its first
+ * design. With an id cursor it cannot fire; the assertion is what keeps that true if somebody ever
+ * cursors on something longer again.
+ */
+export function encodeCursor(rowId: string): string {
+  const cursor = Buffer.from(JSON.stringify([CURSOR_VERSION, rowId]), "utf8").toString("base64url");
+  if (cursor.length > PAGE_CURSOR_MAX) {
+    throw new Error(
+      `a cursor of ${String(cursor.length)} characters exceeds the ${String(PAGE_CURSOR_MAX)} a request may carry `
+      + `(row id ${JSON.stringify(rowId.slice(0, 40))}) — cursor on a bounded key`,
+    );
+  }
+  return cursor;
 }
 
-/** `null`/absent means "start at the beginning". Anything else must decode, or it throws. */
+/** `null`/absent means "start at the beginning". Anything else must decode, or it throws. Returns
+ *  the ROW ID the caller should page after. */
 export function decodeCursor(raw: string | null | undefined): string | null {
   if (raw === null || raw === undefined || raw === "") return null;
   let parsed: unknown;
@@ -105,10 +134,10 @@ export function decodeCursor(raw: string | null | undefined): string | null {
  * as the last page, which is the failure this centralisation exists to make impossible to write
  * twice.
  */
-export function finishPage<T>(rows: T[], limit: number, sortValueOf: (row: T) => string): Page<T> {
+export function finishPage<T>(rows: T[], limit: number, idOf: (row: T) => string): Page<T> {
   if (rows.length <= limit) return { items: rows, nextCursor: null };
   const items = rows.slice(0, limit);
   const last = items[items.length - 1];
   // `rows.length > limit >= 1`, so `items` is non-empty and `last` is defined.
-  return { items, nextCursor: encodeCursor(sortValueOf(last as T)) };
+  return { items, nextCursor: encodeCursor(idOf(last as T)) };
 }

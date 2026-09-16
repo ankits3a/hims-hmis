@@ -602,10 +602,12 @@
       "medicines": "Medicines",
       "uncomposed": "No composition on file",
       "activeOfTotal": "{{active}} active of {{total}}",
-      "uncomposedCount_one": "{{count}} active medicine",
-      "uncomposedCount_other": "{{count}} active medicines",
+      "uncomposedCount_one": "{{shown}} active medicine",
+      "uncomposedCount_other": "{{shown}} active medicines",
       "uncomposedHint": "No interaction, allergy or substitution check can reason about a product with no moiety on file."
-    }
+    },
+    "saltSearchFailed": "That search could not be run — the moiety list is unavailable, so this is not an answer about what the formulary holds. Try again.",
+    "saltMoreMatches": "Showing the closest {{shown}} — type more of the name to narrow it."
   },
   "opdConsult": {
     "pickFromFormulary": "Pick from formulary",

@@ -1,6 +1,7 @@
 import { and, asc, eq, gt, sql } from "drizzle-orm";
+import { escapeLike } from "../../kernel/search/text";
 import { anyOfText } from "../../kernel/db/any-of";
-import { decodeCursor, finishPage, pageLimit } from "../../kernel/db/page";
+import { CursorError, decodeCursor, finishPage, pageLimit } from "../../kernel/db/page";
 import { formularyInteractions, formularyMedicineSalts, formularyMedicines, formularySalts } from "../../kernel/db/schema";
 import { FormularyError } from "./errors";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -109,6 +110,24 @@ export async function medicineExists(db: Db | Tx, id: string): Promise<boolean> 
 // ─────────────────────────────── the paged reads ───────────────────────────────
 
 /**
+ * A cursor naming a row that has since been DELETED must refuse, not answer an empty page.
+ *
+ * The tuple predicate compares against a subquery; when the cursor row is gone that subquery yields
+ * no row, the comparison is NULL, and the page comes back EMPTY. A client reading an empty page as
+ * "the end" would stop silently in the middle of the list and report the catalogue as shorter than
+ * it is. Same argument as `decodeCursor`'s refusal: an honest 400 terminates, a plausible answer
+ * does not.
+ */
+async function requireCursorRow(db: Db, table: string, id: string): Promise<void> {
+  const r = await db.execute<{ n: number }>(
+    sql`select count(*)::int as n from ${sql.identifier(table)} where id = ${id}`,
+  );
+  if (Number(r.rows[0]?.n ?? 0) === 0) {
+    throw new CursorError("that cursor points at a row that is no longer there — start the list again");
+  }
+}
+
+/**
  * ═══ THESE REPLACED `listMedicines` / `listSalts` / `listInteractions`, WHICH WERE DELETED ═══
  *
  * Not capped — DELETED. A capped `listMedicines(db, { limit })` leaves "give me the catalogue"
@@ -137,17 +156,26 @@ export async function pageMedicines(
   db: Db, opts: { activeOnly?: boolean } & PageRequest = {},
 ): Promise<Page<MedicineWithSalts>> {
   const limit = pageLimit(opts.limit);
-  const after = decodeCursor(opts.cursor);
+  const afterId = decodeCursor(opts.cursor);
+  /**
+   * THE SORT EXPRESSION IS EVALUATED BY ONE ENGINE. The cursor names a ROW; the predicate reads that
+   * row's own `(lower(brand_name), id)` back in SQL and compares tuples. Nothing lowercases anything
+   * in TypeScript, so Postgres `lower()` and JS `toLowerCase()` cannot disagree — which they do, on
+   * `İ` among others (LAW 1).
+   */
   const where = [
     ...(opts.activeOnly === true ? [eq(formularyMedicines.active, true)] : []),
-    ...(after === null ? [] : [gt(sql`lower(${formularyMedicines.brandName})`, after)]),
+    ...(afterId === null ? [] : [sql`(lower(${formularyMedicines.brandName}), ${formularyMedicines.id}) > (
+      select lower(c.brand_name), c.id from formulary_medicines c where c.id = ${afterId}
+    )`]),
   ];
+  if (afterId !== null) await requireCursorRow(db, "formulary_medicines", afterId);
   const rows = await db.select().from(formularyMedicines)
     .where(where.length === 0 ? undefined : and(...where))
-    .orderBy(sql`lower(${formularyMedicines.brandName}) asc`)
+    .orderBy(sql`lower(${formularyMedicines.brandName}) asc`, asc(formularyMedicines.id))
     .limit(limit + 1);
 
-  const page = finishPage(rows, limit, (r) => r.brandName.toLowerCase());
+  const page = finishPage(rows, limit, (r) => r.id);
   if (page.items.length === 0) return { items: [], nextCursor: page.nextCursor };
 
   const composition = await db.select().from(formularyMedicineSalts)
@@ -176,18 +204,51 @@ export async function pageSalts(
   db: Db, opts: { activeOnly?: boolean; q?: string } & PageRequest = {},
 ): Promise<Page<SaltRow>> {
   const limit = pageLimit(opts.limit);
-  const after = decodeCursor(opts.cursor);
+  const afterId = decodeCursor(opts.cursor);
   const q = (opts.q ?? "").trim().toLowerCase();
+
+  /**
+   * `%` AND `_` ARE THE PHARMACIST'S CHARACTERS, NOT THE PATTERN'S. `escapeLike` is the house rule
+   * — `kernel/search/text.ts` exists for it and `suggest.ts` obeys it. Without it a search for `a%`
+   * runs `like '%a%%'` and answers with every moiety containing an `a`, which the picker then
+   * presents as if it were the answer to what was typed.
+   */
+  const needle = `%${escapeLike(q)}%`;
+
+  if (q !== "" && afterId !== null) {
+    /**
+     * A SEARCH IS RANKED, AND A RANKED ORDER IS NOT A KEYSET. Refused rather than served wrongly:
+     * paging a relevance order with a `(name, id)` cursor would skip and repeat rows silently. The
+     * only caller is a typeahead, which takes one page and never asks for a second.
+     */
+    throw new CursorError("a moiety search cannot be paged — narrow the search instead");
+  }
+  if (afterId !== null) await requireCursorRow(db, "formulary_salts", afterId);
+
   const where = [
     ...(opts.activeOnly === true ? [eq(formularySalts.active, true)] : []),
-    ...(after === null ? [] : [gt(sql`lower(${formularySalts.name})`, after)]),
-    ...(q === "" ? [] : [sql`lower(${formularySalts.name}) like ${`%${q}%`}`]),
+    ...(afterId === null ? [] : [sql`(lower(${formularySalts.name}), ${formularySalts.id}) > (
+      select lower(c.name), c.id from formulary_salts c where c.id = ${afterId}
+    )`]),
+    ...(q === "" ? [] : [sql`lower(${formularySalts.name}) like ${needle}`]),
   ];
   const rows = await db.select().from(formularySalts)
     .where(where.length === 0 ? undefined : and(...where))
-    .orderBy(sql`lower(${formularySalts.name}) asc`)
+    /**
+     * EXACT FIRST, THEN PREFIX, THEN ANYWHERE. Alphabetical alone made a real moiety UNREACHABLE:
+     * measured on the loaded catalogue, "sodium" matches 180 active moieties and 130 of them sort
+     * before the one actually named `Sodium`, so a 20-row picker could never show it — and no
+     * substring of "sodium" did any better. A search must be able to find the thing it names.
+     */
+    .orderBy(
+      ...(q === "" ? [] : [sql`case when lower(${formularySalts.name}) = ${q} then 0
+                                    when lower(${formularySalts.name}) like ${`${escapeLike(q)}%`} then 1
+                                    else 2 end`]),
+      sql`lower(${formularySalts.name}) asc`,
+      asc(formularySalts.id),
+    )
     .limit(limit + 1);
-  return finishPage(rows, limit, (r) => r.name.toLowerCase());
+  return finishPage(rows, limit, (r) => r.id);
 }
 
 /**
@@ -205,6 +266,7 @@ export async function pageInteractions(
   const after = decodeCursor(opts.cursor);
   const salts = opts.saltIds === undefined ? undefined : requireBounded(opts.saltIds, "pageInteractions");
   if (salts !== undefined && salts.length === 0) return { items: [], nextCursor: null };
+  if (after !== null) await requireCursorRow(db, "formulary_interactions", after);
   const where = [
     ...(opts.activeOnly === true ? [eq(formularyInteractions.active, true)] : []),
     ...(after === null ? [] : [gt(formularyInteractions.id, after)]),

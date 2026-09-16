@@ -602,10 +602,12 @@
       "medicines": "दवाइयाँ",
       "uncomposed": "संरचना दर्ज नहीं",
       "activeOfTotal": "{{total}} में से {{active}} सक्रिय",
-      "uncomposedCount_one": "{{count}} सक्रिय दवा",
-      "uncomposedCount_other": "{{count}} सक्रिय दवाइयाँ",
+      "uncomposedCount_one": "{{shown}} सक्रिय दवा",
+      "uncomposedCount_other": "{{shown}} सक्रिय दवाइयाँ",
       "uncomposedHint": "जिस उत्पाद का कोई मूल तत्व दर्ज नहीं, उस पर परस्पर-क्रिया, एलर्जी या विकल्प की कोई जाँच काम नहीं कर सकती।"
-    }
+    },
+    "saltSearchFailed": "यह खोज चल नहीं सकी — मॉयटी सूची उपलब्ध नहीं है, इसलिए यह उत्तर नहीं है कि फ़ॉर्मुलरी में क्या है। फिर से कोशिश करें।",
+    "saltMoreMatches": "निकटतम {{shown}} दिखाए जा रहे हैं — नाम और लिखकर सूची छाँटें।"
   },
   "opdConsult": {
     "pickFromFormulary": "फ़ॉर्मुलरी से चुनें",

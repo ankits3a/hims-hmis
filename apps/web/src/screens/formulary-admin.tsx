@@ -251,7 +251,10 @@ export function FormularyAdmin(): React.ReactElement {
               data-testid="census-uncomposed"
               className={census.data.uncomposedActiveMedicines > 0 ? "text-sm font-medium text-amber-700" : "text-sm"}
             >
-              {t("formularyAdmin.census.uncomposedCount", { count: census.data.uncomposedActiveMedicines })}
+              {t("formularyAdmin.census.uncomposedCount", {
+                count: census.data.uncomposedActiveMedicines,
+                shown: NUMBERS.format(census.data.uncomposedActiveMedicines),
+              })}
             </dd>
             <p className="max-w-md text-xs text-neutral-600">{t("formularyAdmin.census.uncomposedHint")}</p>
           </div>
@@ -403,14 +406,25 @@ export function FormularyAdmin(): React.ReactElement {
               className="w-full max-w-md rounded border px-2 py-1"
             />
 
+            {/*
+              THE ERROR BRANCH IS NOT OPTIONAL, AND ITS ABSENCE WAS A LIE. Without it a failed
+              request — a 500, an expired session, a dropped network — fell through to the
+              zero-hits message, and the screen told a pharmacist "No active moiety matches that
+              name" when nothing had answered at all. They would then admit the product with an
+              empty composition, which lands it in the very `uncomposedActiveMedicines` figure the
+              census strip above this form exists to call out. A refusal must read as a refusal.
+            */}
             {saltAsk.length < MIN_QUERY
               ? <p className="text-xs text-neutral-600">{t("formularyAdmin.saltSearchHint")}</p>
               : saltHits.isPending
                 ? <p data-testid="formulary-salt-busy" className="text-xs text-neutral-600">{t("formularyAdmin.saltSearching")}</p>
-                : (saltHits.data?.items ?? []).length === 0
-                  ? <p data-testid="formulary-salt-no-hits" className="text-xs text-neutral-600">{t("formularyAdmin.saltNoHits")}</p>
-                  : (
-                    <ul data-testid="formulary-salt-hits" className="flex flex-wrap gap-1 py-1">
+                : saltHits.isError
+                  ? <p data-testid="formulary-salt-error" role="alert" className="text-xs text-red-700">{t("formularyAdmin.saltSearchFailed")}</p>
+                  : (saltHits.data?.items ?? []).length === 0
+                    ? <p data-testid="formulary-salt-no-hits" className="text-xs text-neutral-600">{t("formularyAdmin.saltNoHits")}</p>
+                    : (
+                      <>
+                      <ul data-testid="formulary-salt-hits" className="flex flex-wrap gap-1 py-1">
                       {(saltHits.data?.items ?? []).map((s) => {
                         const already = saltIds.includes(s.id);
                         return (
@@ -427,7 +441,20 @@ export function FormularyAdmin(): React.ReactElement {
                           </li>
                         );
                       })}
-                    </ul>
+                      </ul>
+                      {/*
+                        A LIST THAT IS CUT MUST SAY SO. `%q%` matching plus a 20-row cap made a real
+                        moiety unreachable: "sodium" matches 180 active moieties and 130 sort before
+                        the one named `Sodium`. The server now ranks exact and prefix matches first,
+                        which is the actual fix; this line is the other half — a pharmacist who sees
+                        twenty rows should know whether twenty is the answer or the cap.
+                      */}
+                      {(saltHits.data?.items ?? []).length >= SALT_HITS && (
+                        <p data-testid="formulary-salt-truncated" className="text-xs text-neutral-600">
+                          {t("formularyAdmin.saltMoreMatches", { shown: SALT_HITS })}
+                        </p>
+                      )}
+                    </>
                   )}
 
             <p className="text-xs text-neutral-600">{t("formularyAdmin.compositionHint")}</p>

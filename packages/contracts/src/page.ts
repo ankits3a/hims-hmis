@@ -14,6 +14,13 @@ export const PAGE_LIMIT_DEFAULT = 50;
 export const PAGE_LIMIT_MAX = 200;
 
 /**
+ * The most characters a cursor may carry. Shared, because the half that ISSUES a cursor must obey
+ * the bound the half that RECEIVES one enforces — the first version of this file had the cap only
+ * here, and the server duly issued 523-character cursors it then answered 400 to.
+ */
+export const PAGE_CURSOR_MAX = 512;
+
+/**
  * `limit` is CLAMPED, not rejected, which is the ruling `suggestQuery` already carries one file
  * over: "a typeahead that 400s on a stray query parameter is a prescribing screen that stops
  * working for a reason the doctor cannot see". A caller asking for 10,000 gets `PAGE_LIMIT_MAX`.
@@ -23,7 +30,7 @@ export const PAGE_LIMIT_MAX = 200;
  */
 export const pageQuery = z.object({
   limit: z.coerce.number().int().min(1).optional(),
-  cursor: z.string().min(1).max(512).optional(),
+  cursor: z.string().min(1).max(PAGE_CURSOR_MAX).optional(),
 });
 
 export type PageQuery = z.infer<typeof pageQuery>;

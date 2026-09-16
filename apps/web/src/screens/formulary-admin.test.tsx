@@ -241,6 +241,75 @@ describe("FormularyAdmin", () => {
   });
 
   /**
+   * ═══ A FAILED SEARCH IS NOT AN ANSWER ABOUT THE FORMULARY ═══
+   *
+   * Found by review, and it was a screen telling a pharmacist something untrue. The branch chain
+   * went `isPending` -> `items.length === 0` -> "No active moiety matches that name", with no
+   * `isError` leg — so a 500, an expired session or a dropped network all rendered as the
+   * confident negative. The pharmacist then admits the product with an empty composition, and it
+   * lands in `uncomposedActiveMedicines`: the exact figure the census strip at the top of this same
+   * screen exists to call out as invisible to every interaction and allergy check.
+   */
+  it("says the moiety search FAILED, rather than that no moiety matches", async () => {
+    mockRoutes({ ...baseRoutes(), "GET /api/formulary/salts": { status: 500, body: { message: "boom" } } });
+    const user = userEvent.setup();
+    renderWithProviders(<FormularyAdmin />);
+    await user.type(await screen.findByTestId("formulary-search"), "augmentin");
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await user.click(await screen.findByTestId("formulary-hit-g-1"));
+
+    await user.type(screen.getByTestId("formulary-salt-search"), "amoxicillin");
+
+    expect(await screen.findByTestId("formulary-salt-error")).toBeInTheDocument();
+    // AND it must not ALSO claim the formulary holds no such moiety.
+    expect(screen.queryByTestId("formulary-salt-no-hits")).toBeNull();
+  });
+
+  /**
+   * ═══ A LIST THAT IS CUT MUST SAY SO ═══
+   *
+   * The picker takes 20 rows and throws `nextCursor` away. Measured on the loaded catalogue,
+   * "sodium" matches 180 active moieties; the server now ranks exact and prefix matches first so
+   * the one named `Sodium` is reachable at all, and this line is the other half — twenty rows must
+   * not be mistakable for the whole answer.
+   */
+  it("says when the moiety list has been cut to its first page", async () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({
+      id: `s-${String(i)}`, name: `sodium salt ${String(i)}`, aliases: [], drugClass: null, active: true,
+    }));
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/formulary/salts": { status: 200, body: { items: many, nextCursor: "more" } },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<FormularyAdmin />);
+    await user.type(await screen.findByTestId("formulary-search"), "augmentin");
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await user.click(await screen.findByTestId("formulary-hit-g-1"));
+
+    await user.type(screen.getByTestId("formulary-salt-search"), "sodium");
+    expect(await screen.findByTestId("formulary-salt-truncated")).toBeInTheDocument();
+  });
+
+  /**
+   * ═══ ONE STRIP, ONE NUMERAL CONVENTION ═══
+   *
+   * `uncomposedActiveMedicines` went to i18next as a raw `count` while its two neighbours went
+   * through `Intl.NumberFormat("en-IN")`, so at catalogue scale the strip read "1,03,383 active"
+   * beside "103383 active medicines". The fixture's 8 could never show it — a one-digit number is
+   * identical under both — so this case uses a figure large enough to have a grouping.
+   */
+  it("groups the uncomposed figure the Indian way, like the rest of the strip", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/formulary/census": { status: 200, body: { ...CENSUS, uncomposedActiveMedicines: 103383 } },
+    });
+    renderWithProviders(<FormularyAdmin />);
+    const strip = await screen.findByTestId("formulary-census");
+    expect(strip).toHaveTextContent("1,03,383 active medicines");
+  });
+
+  /**
    * ═══ THE BUG THIS WIDGET SHAPE EXISTS TO PREVENT ═══
    *
    * A composition is two or three moieties, so the pharmacist searches more than once — and the
