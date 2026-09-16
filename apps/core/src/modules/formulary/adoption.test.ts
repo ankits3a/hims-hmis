@@ -230,6 +230,12 @@ describe("adopting the release's decisions under a resolution (phase 3)", () => 
       await expect(adopt([{ ...item, moietyName: " " }])).rejects.toMatchObject({ code: "invalid_adoption" });
     });
 
+    it("the database refuses a mark on a substance nobody has decided", async () => {
+      const nacl = await releaseSubstance(SCT.sodiumChloride, "NaCl - Sodium chloride", null);
+      await expect(db.execute(sql`update formulary_substances set adopted_under = ${RESOLUTION} where id = ${nacl.id}`))
+        .rejects.toThrow(/formulary_substances_adopted_decided_ck/);
+    });
+
     it("a file naming a substance this release does not hold writes nothing at all", async () => {
       const nacl = await releaseSubstance(SCT.sodiumChloride, "NaCl - Sodium chloride", null);
       await expect(adopt([
