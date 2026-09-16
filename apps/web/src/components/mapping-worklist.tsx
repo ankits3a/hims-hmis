@@ -261,6 +261,10 @@ function SubstanceCard({
           {item.status === "mapped"
             ? t("formularyAdmin.mapping.decidedMapped", { moiety: item.saltName ?? "", by: item.mappedBy ?? "" })
             : t("formularyAdmin.mapping.decidedUnmappable", { by: item.mappedBy ?? "" })}
+          {/* Phase 3: an adopted decision is not a reviewed one, and the card says which it is. */}
+          {typeof item.adoptedUnder === "string" && (
+            <>{" "}{t("formularyAdmin.mapping.adoptedUnder", { resolution: item.adoptedUnder })}</>
+          )}
           {" "}
           {!correcting && (
             <Button

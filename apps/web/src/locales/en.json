@@ -659,6 +659,7 @@
       "unmappableReasonRequired": "Say why this is not a moiety.",
       "decidedMapped": "Mapped to {{moiety}} by {{by}}.",
       "decidedUnmappable": "Ruled not a moiety by {{by}}.",
+      "adoptedUnder": "Adopted under {{resolution}}, not reviewed one by one.",
       "correct": "Correct this decision",
       "correctionReason": "Why is the earlier decision wrong?",
       "correctionReasonRequired": "A correction needs a reason.",

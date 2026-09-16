@@ -124,9 +124,108 @@ The web test drives a failed pre-check, so the issue response is the only source
 
 ---
 
-## 3. T2 — ADOPTION (planned, next PR)
+## 3. T2 — ADOPTION, AS BUILT
 
-Written when built.
+**One act, by a person, through the two writers that already exist.**
+- `adoptDecisions(tx, actor, resolution, items)` (`modules/formulary/adoption.ts`) runs each
+  decision through `attestSubstance` or `ruleSubstanceUnmappable`. So the row lock, the
+  projection, the events and every refusal still apply.
+- The actor must be a person (`attester_not_user` is unchanged). The script requires the account
+  to be active and to hold `formulary.manage`, which is the `pharmacy` role's grant (16a DD10). In
+  production `admin` holds it.
+
+**Provenance.**
+- Migration `0098` adds `formulary_substances.adopted_under`: the resolution, on each adopted
+  decision.
+- `substance.mapped` and `substance.ruled_unmappable` carry `adoptedUnder`. It defaults to null, so
+  earlier payloads still parse.
+- A pharmacist's correction clears the mark, because the decision is then theirs.
+- The worklist card reads "Mapped to X by Y. Adopted under R, not reviewed one by one."
+- A check constraint keeps a pending row from carrying a mark.
+
+**Ordering, and what it never does.**
+- Unmappable rulings go first.
+- A draft that names another substance's unreviewed release entry waits until that substance is
+  decided in the same pass.
+- If that substance is already mapped, its moiety is used and the redirect is reported.
+- Anything else is refused by name. A leftover cycle is refused too.
+- A decided substance is never overridden: it is reported as `alreadyDecided`.
+- A file that names an sctid this release does not hold refuses the whole run.
+
+**The script.** `scripts/adopt-substance-mappings.ts --decisions f --resolution r --as username
+[--apply]`.
+- The dry run performs the whole adoption inside one transaction, prints the report and rolls back.
+  So its numbers are the numbers `--apply` will write.
+- The report names the account and the resolution before anything else.
+
+**Rehearsed** (provisional decisions file, dry runs):
+
+| database | decisions | mapped | new moieties | own entry | unmappable | refused | products moved | pending after | time |
+|---|---|---|---|---|---|---|---|---|---|
+| production-shaped: release tier only, 29 seed moieties | 3,256 | 3,106 | 2,184 | 0 | 150 | 0 | 0 (no catalogue) | 1 (Paracetamol: attested on dev, pending in production) | 21 s |
+| both tiers (`hmis_formulary_dev` copy, 103,383 products) | 3,256 | 3,106 | 425 | 1,758 | 150 | 0 | 68,845 (124 held back by E2 collisions) | 0 | 52 s |
+
+**Mutants (9, each predicted, all killed):**
+- a salt that waits is refused instead;
+- `attestSubstance` drops the mark;
+- a correction keeps the mark;
+- decided substances are queued;
+- a redirect goes unreported;
+- agreement is always true;
+- the worklist hides the mark;
+- an unknown sctid is not refused;
+- the unmappable event drops the mark.
+
+The actor check at the top of `adoptDecisions` is deliberately not mutated. `attestSubstance`
+refuses the same actor a line later and the transaction rolls back, so the mutant is equivalent in
+effect.
+
+### 3.1 How the decisions were made (out of git: `/opt/hmis-context/nrces-2026-09-drafts/phase3/`)
+
+- **The house standard:** `CONVENTIONS.md`, rules 1 to 8: RxNorm IN and dm+d VTM practice, with
+  IP/INN names.
+- **Maker.**
+  - 1,043 release drafts (the release's own "(as …)" statements) and phase 2's 474 model drafts,
+    already on file.
+  - Seven model agents drafted the 1,753 substances nobody had drafted: 1,603 moieties and
+    150 unmappable. The unmappable ones are almost all class groupers with no product.
+- **Checker.** Nine further agents independently re-decided every item and compared:
+  - existing drafts: 1,454 agree, 49 disagree;
+  - new drafts: the second-round results are in the decisions file's report.
+  - Every disagreement carries a reason, and the checker's answer is the one adopted.
+- **Checker results.** 1,454 of 1,503 existing drafts agreed and 49 disagreed; 1,722 of 1,753 new
+  drafts agreed and 31 disagreed. The checker's answer is the one adopted.
+- **Reconciliation.** One pass over all 2,188 names made 20 renames, each unifying one moiety under
+  one name (hyoscine, phenobarbital, undecenoic acid, sodium nitroprusside, senna…). It also added
+  4 overrides, bare groupers with no products ruled unmappable, and 24 cross-batch rulings
+  (`reconcile.json`), for example:
+  - liposomal forms map to the parent drug;
+  - pegylated conjugates with their own INN stay their own;
+  - a salt of salicylic acid maps to it whatever the cation;
+  - a bare class is unmappable when every product carries a specific moiety.
+- **The files.**
+  - `decisions-final.json`: 3,257 decisions, 3,099 moieties under 2,169 names and 158 unmappable
+    (md5 `9f998644798a3c438d5abc877ec96503`).
+  - `agent-drafts-claude-opus-5-phase3.json`: the maker's 1,603 first answers, loaded as proposals
+    so the P&T scorecard can measure the drafter (md5 `6ddb1b014941dd64e9b4da7586af8bf5`).
+
+### 3.2 The production sequence, rehearsed end to end (`hmis_formulary_prodlike`)
+
+The database was built the way production was:
+- migrate, then `seed:roles` and `seed:formulary` (29 moieties);
+- `import:nrces` under the actor `owner:nrces-load-2026-09-16`;
+- the release drafts and phase 2's 474 model drafts;
+- an owner-shaped account holding `admin` and `pharmacy`.
+
+That gave 3,257 pending and 26 auto-linked, as production has. Then:
+
+| step | result |
+|---|---|
+| phase-3 model drafts as proposals | 1,603 written |
+| adoption, dry run | 3,099 mapped (2,149 new moieties) · 158 unmappable · **0 refused · 0 pending** · 3,004 agreed with the draft, 95 differed · 23 s |
+| adoption, `--apply` | identical report; 3,125 mapped (26 + 3,099), 158 unmappable, every adopted row marked |
+| `import-cds-catalogue --apply` | 103,383 products, 142,759 compositions, +1,527 release entries. The load placed 68,809 rows on 56,722 products onto the adopted moieties, and left 120 products on a release entry because a moiety is named twice (E2). 8 min 30 s |
+| products still unreviewed | **5 of 103,383**. Each contains a component ruled unmappable: egg phospholipid (2), and one each for a bare "insulin", "interferon" and "prostaglandin". Their prescription lines say "checked only in part", which is true |
 
 ## 4. NAMED GAPS
 

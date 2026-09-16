@@ -58,6 +58,12 @@ export {
   attestSubstance, pageMappingWorklist, projectSubstances, refreshRankSignals, ruleSubstanceUnmappable,
   writeProposals,
 } from "./mapping";
+/**
+ * PHASE 3 — ADOPTION. The owner's ruling (phase-3 doc §1): every pending substance decided under
+ * one named resolution, by a person, through the two writers above. A script's door, not a route's.
+ */
+export { adoptDecisions } from "./adoption";
+export type { AdoptionItem, AdoptionReport } from "./adoption";
 export type {
   AttestTarget, MappingDecision, ProjectionResult, ProposalBasis, ProposalInput, ProposalWriteResult,
   WorklistItem, WorklistProposal, WorklistStatus,

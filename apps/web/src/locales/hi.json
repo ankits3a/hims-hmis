@@ -659,6 +659,7 @@
       "unmappableReasonRequired": "बताएँ कि यह मूल तत्व क्यों नहीं है।",
       "decidedMapped": "{{by}} ने {{moiety}} पर मैप किया।",
       "decidedUnmappable": "{{by}} ने इसे मूल तत्व-रहित ठहराया।",
+      "adoptedUnder": "{{resolution}} के अंतर्गत अपनाया गया, एक-एक करके समीक्षा नहीं की गई।",
       "correct": "यह निर्णय सुधारें",
       "correctionReason": "पहला निर्णय क्यों ग़लत है?",
       "correctionReasonRequired": "सुधार के लिए कारण ज़रूरी है।",

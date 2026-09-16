@@ -53,6 +53,7 @@ const SURFACE = [
   "addMedicine",
   "addSalt",
   "admitStaging",
+  "adoptDecisions",
   "attestSubstance",
   "catalogueCensus",
   "countSalts",
