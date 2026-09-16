@@ -14,7 +14,7 @@ import { getPatient } from "../patients";
 import { REFUSED_FLAGS, REGISTER_FLAGS, SCHEDULED_FLAGS, istDateOf } from "./config";
 import { dispenseHandedOver } from "./events";
 import { PharmacyError } from "./errors";
-import { priceForBatch } from "./price";
+import { batchTermsPerBase } from "./price";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -187,13 +187,11 @@ export async function handOverDispense(
       });
       ledgerEntryIds.push(ledgerEntryId);
       const [uoms, regulation] = await Promise.all([itemUomRows(tx, line.itemId), effectiveRegulation(tx, line.itemId, now)]);
-      let mrpPaisePerBase: number | null = null;
-      let ceilingPaisePerBase: number | null = null;
-      try {
-        const price = priceForBatch({ uoms, batch: { mrpPaise: batch.mrpPaise, mrpUom: batch.mrpUom }, regulation: regulation === undefined ? null : { ceilingPaise: regulation.ceilingPaise, mrpUom: regulation.mrpUom } });
-        mrpPaisePerBase = price.mrpPaisePerBase;
-        ceilingPaisePerBase = price.ceilingPaisePerBase;
-      } catch { /* an unsaleable batch was refused at the bill; the event carries nulls */ }
+      // As printed and as notified: the ledger event carries the terms, never a tax (pharmacy P1).
+      const { mrpPaisePerBase, ceilingPaisePerBase } = batchTermsPerBase({
+        uoms, batch: { mrpPaise: batch.mrpPaise, mrpUom: batch.mrpUom },
+        regulation: regulation === undefined ? null : { ceilingPaise: regulation.ceilingPaise, mrpUom: regulation.mrpUom },
+      });
       await appendEvent(tx, materialConsumed.make({
         actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
         payload: {

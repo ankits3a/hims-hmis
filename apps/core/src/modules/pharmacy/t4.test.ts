@@ -86,19 +86,26 @@ describe("the dispense counter — pick, bill, hand over (16c T4)", () => {
     expect(partial.lines[0]).toMatchObject({ batchId: azeeBatch, qtyBase: 6 });
   });
 
-  it("R-1 — the bill prices each line from its batch: MRP per tablet where nothing caps it, the NPPA ceiling where it is lower; totals to the paisa", async () => {
+  it("R-1 + P1 — the bill prices each line from its batch at the printed MRP, GST inside it; the NPPA ceiling plus its GST where that is lower; totals to the paisa", async () => {
     const v = await verified(twoLines(), [20, 3]);
     await pickDispense(db, fx.pharmacist.actor, fx.decls, v.id, {}, MON2);
     const preview = await previewDispenseBill(db, fx.pharmacist.actor, v.id, MON2);
-    // Crocin: 20 × 1200 = 24000 gross, 12% GST → 26880. Azee: 3 × 1000 (ceiling, not the 1500 MRP) = 3000, 5% → 3150.
-    expect(preview.lines.map((l) => [l.unitPaise, l.grossPaise, l.netPaise])).toEqual([[1200, 24000, 26880], [1000, 3000, 3150]]);
-    expect(preview.lines[1]!.regulatedClamp).toMatchObject({ boundApplied: "caller_cap", capUnitPaise: 1000, batchUnitPaise: 1500 });
-    expect(preview.totals.rawTotalPaise).toBe(30030);
+    /*
+      PHARMACY P1 (phase doc 2026-09-16-phase-pharmacy-p1-gst-inclusive-mrp.md). This row used to pin
+      Crocin at ₹268.80 for twenty tablets whose printed MRP is ₹240.00: the 12% was added ON TOP of an
+      MRP that already contains it (L1). The patient now pays the MRP, and the tax is carved out of it.
+      Azee's ceiling is ₹10.00 a tablet BEFORE GST (L2), so at 5% the lawful maximum is ₹10.50, still
+      below its ₹15.00 MRP: the net is unchanged at ₹31.50, now stated as an inclusive ₹10.50 a tablet.
+    */
+    expect(preview.lines.map((l) => [l.unitPaise, l.grossPaise, l.taxableBasePaise, l.gst.cgstPaise, l.gst.sgstPaise, l.netPaise]))
+      .toEqual([[1200, 24000, 21428, 1286, 1286, 24000], [1050, 3150, 3000, 75, 75, 3150]]);
+    expect(preview.lines[1]!.regulatedClamp).toMatchObject({ boundApplied: "caller_cap", capUnitPaise: 1050, batchUnitPaise: 1500 });
+    expect(preview.totals.rawTotalPaise).toBe(27150);
 
     const b = await billDispense(db, fx.pharmacist.actor, v.id, { tenders: [{ mode: "cash", amountPaise: preview.totals.netPayablePaise }] }, MON2);
     expect(b.status).toBe("billed");
     expect(b.invoiceId).not.toBeNull();
-    expect(b.lines.map((l) => [l.unitPaise, l.priceWinner])).toEqual([[1200, "batch_mrp"], [1000, "ceiling"]]);
+    expect(b.lines.map((l) => [l.unitPaise, l.priceWinner])).toEqual([[1200, "batch_mrp"], [1050, "ceiling"]]);
     expect(b.lines.every((l) => l.invoiceLineId !== null)).toBe(true);
     const [ev] = await db.select().from(events).where(eq(events.name, "dispense.billed"));
     expect(ev?.payload).toMatchObject({ invoiceId: b.invoiceId, netPaise: preview.totals.netPayablePaise });

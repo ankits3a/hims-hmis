@@ -6,48 +6,55 @@
       "uoms": [{ "uom": "tablet", "toBaseMultiplier": 1 }, { "uom": "strip", "toBaseMultiplier": 10 }],
       "batch": { "mrpPaise": 12000, "mrpUom": "strip" },
       "regulation": null,
-      "expect": { "batchUnitPaise": 1200, "capUnitPaise": 1200, "winner": "batch_mrp", "mrpPaisePerBase": 1200, "ceilingPaisePerBase": null }
+      "taxRateBps": 0,
+      "expect": { "batchUnitPaise": 1200, "capUnitPaise": 1200, "winner": "batch_mrp", "mrpPaisePerBase": 1200, "ceilingPaisePerBase": null, "ceilingInclusivePaisePerBase": null }
     },
     {
       "name": "MRP wins — a ceiling ABOVE the MRP changes nothing",
       "uoms": [{ "uom": "tablet", "toBaseMultiplier": 1 }, { "uom": "strip", "toBaseMultiplier": 10 }],
       "batch": { "mrpPaise": 12000, "mrpUom": "strip" },
       "regulation": { "ceilingPaise": 15000, "mrpUom": "strip" },
-      "expect": { "batchUnitPaise": 1200, "capUnitPaise": 1200, "winner": "batch_mrp", "mrpPaisePerBase": 1200, "ceilingPaisePerBase": 1500 }
+      "taxRateBps": 0,
+      "expect": { "batchUnitPaise": 1200, "capUnitPaise": 1200, "winner": "batch_mrp", "mrpPaisePerBase": 1200, "ceilingPaisePerBase": 1500, "ceilingInclusivePaisePerBase": 1500 }
     },
     {
       "name": "CEILING wins — the printed MRP exceeds the NPPA ceiling: the list price is still the MRP, the bound is the ceiling",
       "uoms": [{ "uom": "tablet", "toBaseMultiplier": 1 }, { "uom": "strip", "toBaseMultiplier": 10 }],
       "batch": { "mrpPaise": 12000, "mrpUom": "strip" },
       "regulation": { "ceilingPaise": 8000, "mrpUom": "strip" },
-      "expect": { "batchUnitPaise": 1200, "capUnitPaise": 800, "winner": "ceiling", "mrpPaisePerBase": 1200, "ceilingPaisePerBase": 800 }
+      "taxRateBps": 0,
+      "expect": { "batchUnitPaise": 1200, "capUnitPaise": 800, "winner": "ceiling", "mrpPaisePerBase": 1200, "ceilingPaisePerBase": 800, "ceilingInclusivePaisePerBase": 800 }
     },
     {
       "name": "ceiling EQUAL to MRP — the MRP is the winner (nothing capped it)",
       "uoms": [{ "uom": "tablet", "toBaseMultiplier": 1 }],
       "batch": { "mrpPaise": 500, "mrpUom": "tablet" },
       "regulation": { "ceilingPaise": 500, "mrpUom": "tablet" },
-      "expect": { "batchUnitPaise": 500, "capUnitPaise": 500, "winner": "batch_mrp", "mrpPaisePerBase": 500, "ceilingPaisePerBase": 500 }
+      "taxRateBps": 0,
+      "expect": { "batchUnitPaise": 500, "capUnitPaise": 500, "winner": "batch_mrp", "mrpPaisePerBase": 500, "ceilingPaisePerBase": 500, "ceilingInclusivePaisePerBase": 500 }
     },
     {
       "name": "ceiling ONLY — a batch with no printed MRP sells at the ceiling",
       "uoms": [{ "uom": "ml", "toBaseMultiplier": 1 }, { "uom": "bottle", "toBaseMultiplier": 100 }],
       "batch": { "mrpPaise": null, "mrpUom": null },
       "regulation": { "ceilingPaise": 9000, "mrpUom": "bottle" },
-      "expect": { "batchUnitPaise": 90, "capUnitPaise": 90, "winner": "ceiling", "mrpPaisePerBase": null, "ceilingPaisePerBase": 90 }
+      "taxRateBps": 0,
+      "expect": { "batchUnitPaise": 90, "capUnitPaise": 90, "winner": "ceiling", "mrpPaisePerBase": null, "ceilingPaisePerBase": 90, "ceilingInclusivePaisePerBase": 90 }
     },
     {
       "name": "an MRP that does not divide into the base unit is UNUSABLE, and the ceiling stands in",
       "uoms": [{ "uom": "tablet", "toBaseMultiplier": 1 }, { "uom": "strip", "toBaseMultiplier": 15 }],
       "batch": { "mrpPaise": 10000, "mrpUom": "strip" },
       "regulation": { "ceilingPaise": 9000, "mrpUom": "strip" },
-      "expect": { "batchUnitPaise": 600, "capUnitPaise": 600, "winner": "ceiling", "mrpPaisePerBase": null, "ceilingPaisePerBase": 600 }
+      "taxRateBps": 0,
+      "expect": { "batchUnitPaise": 600, "capUnitPaise": 600, "winner": "ceiling", "mrpPaisePerBase": null, "ceilingPaisePerBase": 600, "ceilingInclusivePaisePerBase": 600 }
     },
     {
       "name": "no MRP and no ceiling — UNSALEABLE",
       "uoms": [{ "uom": "tablet", "toBaseMultiplier": 1 }],
       "batch": { "mrpPaise": null, "mrpUom": null },
       "regulation": null,
+      "taxRateBps": 0,
       "expect": { "error": "price_unknown" }
     },
     {
@@ -55,6 +62,7 @@
       "uoms": [{ "uom": "tablet", "toBaseMultiplier": 1 }, { "uom": "strip", "toBaseMultiplier": 15 }],
       "batch": { "mrpPaise": 10000, "mrpUom": "strip" },
       "regulation": null,
+      "taxRateBps": 0,
       "expect": { "error": "price_unknown" }
     },
     {
@@ -62,7 +70,32 @@
       "uoms": [{ "uom": "tablet", "toBaseMultiplier": 1 }],
       "batch": { "mrpPaise": 700, "mrpUom": "tablet" },
       "regulation": { "ceilingPaise": 5000, "mrpUom": "carton" },
-      "expect": { "batchUnitPaise": 700, "capUnitPaise": 700, "winner": "batch_mrp", "mrpPaisePerBase": 700, "ceilingPaisePerBase": null }
+      "taxRateBps": 0,
+      "expect": { "batchUnitPaise": 700, "capUnitPaise": 700, "winner": "batch_mrp", "mrpPaisePerBase": 700, "ceilingPaisePerBase": null, "ceilingInclusivePaisePerBase": null }
+    },
+    {
+      "name": "P1 — a ceiling is notified BEFORE GST: at 12% a ₹80.00 strip ceiling is ₹8.96 a tablet, and a ₹90.00 MRP is capped at it",
+      "uoms": [{ "uom": "tablet", "toBaseMultiplier": 1 }, { "uom": "strip", "toBaseMultiplier": 10 }],
+      "batch": { "mrpPaise": 9000, "mrpUom": "strip" },
+      "regulation": { "ceilingPaise": 8000, "mrpUom": "strip" },
+      "taxRateBps": 1200,
+      "expect": { "batchUnitPaise": 900, "capUnitPaise": 896, "winner": "ceiling", "mrpPaisePerBase": 900, "ceilingPaisePerBase": 800, "ceilingInclusivePaisePerBase": 896 }
+    },
+    {
+      "name": "P1 — an MRP between the ceiling and the ceiling plus GST is lawful, and it is what the patient pays",
+      "uoms": [{ "uom": "tablet", "toBaseMultiplier": 1 }, { "uom": "strip", "toBaseMultiplier": 10 }],
+      "batch": { "mrpPaise": 8500, "mrpUom": "strip" },
+      "regulation": { "ceilingPaise": 8000, "mrpUom": "strip" },
+      "taxRateBps": 1200,
+      "expect": { "batchUnitPaise": 850, "capUnitPaise": 850, "winner": "batch_mrp", "mrpPaisePerBase": 850, "ceilingPaisePerBase": 800, "ceilingInclusivePaisePerBase": 896 }
+    },
+    {
+      "name": "P1 — ceiling only, at 5%: ₹0.90 a ml before GST is ₹0.945, floored to 94 paise so rounding never raises a lawful maximum",
+      "uoms": [{ "uom": "ml", "toBaseMultiplier": 1 }, { "uom": "bottle", "toBaseMultiplier": 100 }],
+      "batch": { "mrpPaise": null, "mrpUom": null },
+      "regulation": { "ceilingPaise": 9000, "mrpUom": "bottle" },
+      "taxRateBps": 500,
+      "expect": { "batchUnitPaise": 94, "capUnitPaise": 94, "winner": "ceiling", "mrpPaisePerBase": null, "ceilingPaisePerBase": 90, "ceilingInclusivePaisePerBase": 94 }
     }
   ],
   "gst": [

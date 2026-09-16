@@ -81,14 +81,18 @@ It declares six pharmacy rows. Five are checkable; the sixth says itself that it
 | 9 | A CA has signed the GST rows | `select ca_signed from gst_settings where id = 'main'` → `true` |
 | 10 | The pharmacist's state council registration number is on file | **the census CANNOT check this** — it is not modelled anywhere in the schema. Keep the certificate in the counter's file. |
 
-> **§1.9 IS BLOCKED ON AN OWNER RULING AS OF 2026-09-06 — DO NOT SET PHARMACY GST RATES YET.**
-> The four `pharmacy*` `gst_config` rows are seeded `exempt: true` beside a
-> `DEV PLACEHOLDER — CA sign-off required (§19)` comment. While they stay exempt the counter bills
-> exactly the printed MRP, which is the correct amount to the patient. **`pricing.ts` computes
-> `netPaise = taxableBase + cgst + sgst` — GST ADDED ON TOP — and the taxable base for a pharmacy
-> line is the printed MRP, which is tax-inclusive by statute. So signing a non-zero rate into those
-> rows before the treatment question is settled makes the counter charge ABOVE the printed MRP.**
-> Owner ruling R-2 answered *which slab*; it never asked inclusive-versus-exclusive.
+> **§1.9 WAS BLOCKED ON THE INCLUSIVE-VERSUS-EXCLUSIVE QUESTION. RESOLVED 2026-09-16 (pharmacy P1,
+> `docs/superpowers/plans/2026-09-16-phase-pharmacy-p1-gst-inclusive-mrp.md`).**
+> - The counter now prices every line **inclusive of GST**. The patient pays the printed MRP (or the
+>   NPPA ceiling plus its GST, where that is lower), and the taxable value and CGST/SGST are carved
+>   out of that amount.
+> - Setting a real rate on a `pharmacy*` row no longer charges above the MRP; it only makes the
+>   invoice report the tax that is inside the price.
+> - **What remains for the CA is the rates themselves**: which slab each medicine is in, and the
+>   `ca_signed` flag.
+> - The treatment is the statute's (Legal Metrology: an MRP includes all taxes; DPCO: a ceiling is
+>   notified before GST), taken under the owner's 2026-09-16 instruction to follow the Indian
+>   standard.
 
 ## 2. Master data — and it is FOUR people, not one
 
@@ -137,7 +141,9 @@ only writer is `PATCH /materials/items/:id`. Read back what you actually have:
 select code, gst_rate_bps from items where class = 'drug' order by code;
 ```
 
-**Leave it null until the owner rules** (§1.9). A null slab bills exactly the printed MRP.
+**Set each drug's slab from the CA's list** (§1.9 is resolved). The bill carves the GST out of the MRP,
+so a real slab never raises the price. **A null slab is still silently exempt**, so a taxable drug
+left null bills the right amount and reports no output tax: read the column back after you set it.
 
 > **"N available" is not a raw stock count.** It is what the pick will actually honour: recalled
 > batches and batches whose printed expiry has PASSED are excluded, and reserved and frozen
@@ -271,7 +277,7 @@ is a GATE: the phase is not complete until every row carries a date and an initi
 | 8 | pharmacist opened a cashier drawer (§1.8) | | | |
 | 9 | formulary medicines classified (§2.1) | | | |
 | 10 | drug items created (§2.2) | | | |
-| 11 | `gst_rate_bps` READ BACK and left null pending the ruling (§2.2) | | | |
+| 11 | `gst_rate_bps` set from the CA's slab list and READ BACK (§2.2) | | | |
 | 12 | sale items registered (§2.3) | | | |
 | 13 | NPPA ceilings recorded where they apply (§2.4) | | | |
 | 14 | GRN captured / QC'd / posted (§2.5a–c) | | | |

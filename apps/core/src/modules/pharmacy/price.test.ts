@@ -18,6 +18,11 @@ const FIXTURE = JSON.parse(readFileSync(resolve(__dirname, "../../../test/fixtur
  * per-winner and per-slab table the owner's ruling R-1/R-2 is read against.
  */
 describe("priceForBatch — the price rule at batch grain (16c T2, R-1)", () => {
+  it("P1 — every case names the GST rate its ceiling is converted at, and some are not nil", () => {
+    expect(FIXTURE.cases.every((c) => Number.isInteger(c.taxRateBps))).toBe(true);
+    expect(new Set(FIXTURE.cases.map((c) => c.taxRateBps)).size).toBeGreaterThanOrEqual(3);
+  });
+
   it("the fixture file carries every winner and both refusals", () => {
     const winners = new Set(FIXTURE.cases.map((c) => ("winner" in c.expect ? c.expect.winner : `error:${c.expect.error}`)));
     expect([...winners].sort()).toEqual(["batch_mrp", "ceiling", "error:price_unknown"]);
@@ -26,7 +31,7 @@ describe("priceForBatch — the price rule at batch grain (16c T2, R-1)", () => 
 
   for (const c of FIXTURE.cases) {
     it(c.name, () => {
-      const input: BatchPriceInput = { uoms: c.uoms, batch: c.batch, regulation: c.regulation };
+      const input: BatchPriceInput = { uoms: c.uoms, batch: c.batch, regulation: c.regulation, taxRateBps: c.taxRateBps };
       if ("error" in c.expect) {
         expect(() => priceForBatch(input)).toThrow(expect.objectContaining({ code: c.expect.error }));
         return;
@@ -36,11 +41,12 @@ describe("priceForBatch — the price rule at batch grain (16c T2, R-1)", () => 
   }
 
   it("A2 — a cap never exceeds either term, and the winner is the lower one", () => {
-    // The property behind the golden rows: for every priced case cap === min(mrp ?? ceiling, ceiling ?? mrp).
+    // The property behind the golden rows: for every priced case cap === min(mrp ?? ceiling, ceiling ?? mrp),
+    // with the ceiling on the INCLUSIVE basis the MRP is printed on (pharmacy P1, L2).
     for (const c of FIXTURE.cases) {
       if ("error" in c.expect) continue;
-      const p = priceForBatch({ uoms: c.uoms, batch: c.batch, regulation: c.regulation });
-      const terms = [p.mrpPaisePerBase, p.ceilingPaisePerBase].filter((x): x is number => x !== null);
+      const p = priceForBatch({ uoms: c.uoms, batch: c.batch, regulation: c.regulation, taxRateBps: c.taxRateBps });
+      const terms = [p.mrpPaisePerBase, p.ceilingInclusivePaisePerBase].filter((x): x is number => x !== null);
       expect(p.capUnitPaise).toBe(Math.min(...terms));
       expect(p.capUnitPaise).toBeLessThanOrEqual(p.batchUnitPaise);
     }

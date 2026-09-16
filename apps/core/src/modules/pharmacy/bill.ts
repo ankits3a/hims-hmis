@@ -5,6 +5,7 @@ import { opdPrescriptions, pharmacyDispenseLines, pharmacyDispenses } from "../.
 import { withTx } from "../../kernel/db/client";
 import { transition } from "../../kernel/workflow/instances";
 import { getInvoice, issueInvoice, previewInvoice } from "../billing";
+import { listGstCategories, serviceCategoriesByIds } from "../tariff";
 import { effectiveRegulation, getBatch, itemUomRows } from "../materials";
 import { getEncounter } from "../opd";
 import { dispenseBilled } from "./events";
@@ -38,6 +39,12 @@ type PricedLinePlan = { lineId: string; lineIdx: number; input: InvoiceLineInput
 async function priceLines(db: Db, dispenseId: string, now: Date): Promise<PricedLinePlan[]> {
   const lines = await linesOf(db, dispenseId);
   const plan: PricedLinePlan[] = [];
+  /*
+    PHARMACY P1: the rate each line will be taxed at, read from the same GST configuration the
+    tariff engine taxes it with, so the ceiling is converted at the rate the bill applies (L2).
+    An exempt category carries no tax, so its ceiling stands as notified.
+  */
+  const gstByCategory = new Map((await listGstCategories(db)).map((c) => [c.category, c] as const));
   for (const line of lines) {
     if (line.status !== "open") continue;
     if (line.itemId === null || line.batchId === null || line.qtyBase === null) {
@@ -47,13 +54,23 @@ async function priceLines(db: Db, dispenseId: string, now: Date): Promise<Priced
     const batch = await getBatch(db, line.batchId);
     if (batch === undefined) throw new PharmacyError("batch_not_saleable", `batch ${line.batchId} not found`);
     const [uoms, regulation] = await Promise.all([itemUomRows(db, line.itemId), effectiveRegulation(db, line.itemId, now)]);
+    const category = (await serviceCategoriesByIds(db, [sale.serviceId])).get(sale.serviceId);
+    const gst = category === undefined ? undefined : gstByCategory.get(category);
+    if (gst === undefined) {
+      throw new PharmacyError("gst_slab_unknown", `the sale item's category "${category ?? "?"}" has no GST configuration — seed or correct it before selling`, { category: category ?? null });
+    }
     const price = priceForBatch({
       uoms, batch: { mrpPaise: batch.mrpPaise, mrpUom: batch.mrpUom },
       regulation: regulation === undefined ? null : { ceilingPaise: regulation.ceilingPaise, mrpUom: regulation.mrpUom },
+      taxRateBps: gst.exempt ? 0 : gst.rateBps,
     });
     plan.push({
       lineId: line.id, lineIdx: line.lineIdx, winner: price.winner,
-      input: { lineId: newId(), serviceId: sale.serviceId, qty: line.qtyBase, batchUnitPaise: price.batchUnitPaise, capUnitPaise: price.capUnitPaise },
+      // P1: an MRP includes its GST (L1), so the bill carves the tax out of the price, never adds it.
+      input: {
+        lineId: newId(), serviceId: sale.serviceId, qty: line.qtyBase,
+        batchUnitPaise: price.batchUnitPaise, capUnitPaise: price.capUnitPaise, taxInclusive: true,
+      },
     });
   }
   if (plan.length === 0) throw new PharmacyError("nothing_to_dispense", "no open line to bill");
