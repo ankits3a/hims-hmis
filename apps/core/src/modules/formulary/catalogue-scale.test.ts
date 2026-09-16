@@ -1,6 +1,10 @@
 import { sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/node-postgres";
+import type { Pool } from "pg";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
+import * as schema from "../../kernel/db/schema";
 import { catalogueCensus, medicinesByIds, pageMedicines } from "./reads";
+import { resolveMedicines } from "./resolve";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -61,14 +65,27 @@ async function seedCatalogueAtScale(db: Db, n: number): Promise<void> {
            'tablet', 'systemic', 0, true, 'catalogue-scale-test', 'catalogue-scale-test'
       from generate_series(1, ${n}) g
   `);
+  /* A moiety table at the same scale, because the read this suite now pins is over THAT table. */
+  await db.execute(sql`
+    insert into formulary_salts (id, name, aliases, product_count, active, created_by, updated_by)
+    select 'SALT' || lpad(g::text, 12, '0'), 'scale moiety ' || lpad(g::text, 12, '0'),
+           '[]'::jsonb, 0, true, 'catalogue-scale-test', 'catalogue-scale-test'
+      from generate_series(1, ${n}) g
+  `);
+  /* One real composition row, so the medicine under test resolves to something rather than nothing. */
+  await db.execute(sql`
+    insert into formulary_medicine_salts (medicine_id, salt_id, strength, source)
+    values ('SCALE000000000001', 'SALT000000000001', '500 mg', 'derived')
+  `);
 }
 
 describe("the catalogue at national scale", () => {
   let db: Db;
+  let pool: Pool;
   let teardown: () => Promise<void>;
 
   beforeAll(async () => {
-    ({ db, teardown } = await setupTestDb());
+    ({ db, pool, teardown } = await setupTestDb());
     await truncateAll(db);
     await seedCatalogueAtScale(db, SCALE);
   });
@@ -91,8 +108,10 @@ describe("the catalogue at national scale", () => {
     expect(page.items).toHaveLength(50);
     expect(page.nextCursor).not.toBeNull();
     expect(page.items[0]?.brandName).toBe("Scale Brand 000000000001");
-    // The composition is joined for the PAGE, so it is present and empty rather than absent.
-    expect(page.items[0]?.salts).toEqual([]);
+    // The composition is joined for the PAGE: the one seeded row carries its moiety...
+    expect(page.items[0]?.salts).toEqual([{ saltId: "SALT000000000001", strength: "500 mg" }]);
+    // ...and a medicine with no composition is present with an EMPTY list rather than absent.
+    expect(page.items[1]?.salts).toEqual([]);
   });
 
   it("advances: the next page starts after the last row of the previous one", async () => {
@@ -114,12 +133,43 @@ describe("the catalogue at national scale", () => {
     const census = await catalogueCensus(db);
     expect(census.medicines).toBe(SCALE);
     expect(census.activeMedicines).toBe(SCALE);
-    // Every seeded row is composition-less, which is precisely what this figure is for.
-    expect(census.uncomposedActiveMedicines).toBe(SCALE);
-    expect(census.compositionRows).toBe(0);
+    /*
+      ONE of the seeded medicines has a composition and the rest do not, so this figure is asserted
+      as SCALE - 1 rather than SCALE. That off-by-one is the assertion: a census that counted rows
+      instead of composition-less rows would read 70,000 here, and the number exists precisely to
+      separate the products a safety check can reason about from the ones it cannot.
+    */
+    expect(census.uncomposedActiveMedicines).toBe(SCALE - 1);
+    expect(census.compositionRows).toBe(1);
 
     const page = await pageMedicines(db, { limit: 50 });
     expect(page.items).toHaveLength(50);
+  });
+
+  /**
+   * ═══ RESOLVING ONE MEDICINE MUST NOT READ THE MOIETY TABLE ═══
+   *
+   * `resolveMedicines` used to call `activeSalts(db)` — `select … from formulary_salts where active`,
+   * unbounded — purely to build a fallback map for a branch that could not fire. It sits on the
+   * doctor's live prescription-check path and on the dispensing gate, where `verify.ts` resolves
+   * exactly TWO medicines and paid for every moiety in the catalogue to do it.
+   *
+   * The assertion is on the SQL ISSUED, not on the answer, and that is the whole point: the answer
+   * was always correct, which is why nothing caught the read. The filter excludes `= any(` because
+   * the bounded reads legitimately query `formulary_salts` by a list of ids — what must never appear
+   * again is a statement over that table with no id list at all.
+   */
+  it("resolves a medicine by id without reading the moiety table", async () => {
+    const issued: string[] = [];
+    const spied = drizzle(pool, {
+      schema, logger: { logQuery: (q: string) => { issued.push(q); } },
+    }) as unknown as Db;
+
+    const out = await resolveMedicines(spied, ["SCALE000000000001"]);
+    expect(out.get("SCALE000000000001")?.salts).toHaveLength(1);
+
+    const unbounded = issued.filter((q) => /from "formulary_salts"/.test(q) && !/= any\(/.test(q));
+    expect(unbounded).toEqual([]);
   });
 
   /** A HANDFUL COSTS A HANDFUL — the shape every pharmacy call site now uses. */
