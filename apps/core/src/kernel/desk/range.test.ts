@@ -63,8 +63,20 @@ describe("staff-reports T3 — the key", () => {
     expect(projectKey(k, G("userId", "visitType"))).toEqual({ userId: "u1", visitType: "new" });
   });
 
+  /**
+   * EVERY DIMENSION MUST SURVIVE `projectKey`, and this went red the moment T5 added `payer` and
+   * `serviceCategory` — which is the point of it. A dimension added to `RANGE_DIMENSIONS` but
+   * forgotten in `projectKey` would be silently dropped from every key, and the symptom would be
+   * rows merging that should not have: two payers' money added together under one heading.
+   *
+   * The fixture below must name every dimension. Adding one to the enum and not to this line is
+   * how the test stops testing anything.
+   */
   it("every dimension is projectable — none is silently dropped", () => {
-    const k = { userId: "u", departmentId: "d", doctorId: "r", visitType: "new", day: "2026-09-14" };
+    const k = {
+      userId: "u", departmentId: "d", doctorId: "r", visitType: "new",
+      payer: "tpa", serviceCategory: "consultation", day: "2026-09-14",
+    };
     expect(Object.keys(projectKey(k, RANGE_DIMENSIONS)).sort()).toEqual([...RANGE_DIMENSIONS].sort());
   });
 });
