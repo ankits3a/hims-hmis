@@ -355,11 +355,18 @@ export async function getInvoice(
 /** Arrival order is `seq`, never the id — ULIDs are not insertion-ordered (§3.26). */
 export async function listInvoices(
   exec: Db | Tx,
-  filters: { patientId?: string; encounterId?: string } = {},
+  filters: { patientId?: string; encounterId?: string | string[] } = {},
 ): Promise<InvoiceRow[]> {
   const conditions = [];
   if (filters.patientId !== undefined) conditions.push(eq(invoices.patientId, filters.patientId));
-  if (filters.encounterId !== undefined) conditions.push(eq(invoices.encounterId, filters.encounterId));
+  /*
+    `string | string[]` because ONE VISIT CAN HAVE TWO KEYS IN THIS COLUMN and no backfill has ever
+    reconciled them — see `encounterRefSpellings`, which is what builds the array. Internal callers
+    hold a row id and pass the bare string; the route that takes a reference from outside passes
+    both spellings of it.
+  */
+  if (Array.isArray(filters.encounterId)) conditions.push(inArray(invoices.encounterId, filters.encounterId));
+  else if (filters.encounterId !== undefined) conditions.push(eq(invoices.encounterId, filters.encounterId));
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   return exec.select().from(invoices).where(where).orderBy(asc(invoices.seq));
 }
@@ -426,6 +433,57 @@ async function canonicalEncounterRef(db: Db, encounterId: string | undefined): P
   if (encounterId === undefined) return undefined;
   const encounter = await getEncounter(db, encounterId);
   return encounter === null ? encounterId : encounter.id;
+}
+
+/**
+ * ═══ THE SAME QUESTION FROM THE READ SIDE, WHERE ONE SPELLING IS NOT ENOUGH ═══
+ *
+ * Owner, 2026-09-15, on a paid visit reached at `/billing` by typing `V2609150001`: *"when I
+ * clicked on 'Their Papers' … I see a popup with no encounter/visit related files. This visit is
+ * paid but I see no related papers."* The same sentence as 2026-09-12, one layer over.
+ *
+ * Everything above is about the WRITER. It made the ledger store one reference; it never asked
+ * whether a READER may spell the question the other way. `GET /billing/invoices?encounterId=`
+ * compares the caller's string to the stored column directly, so the papers sheet asked about a
+ * real, paid visit by the only identifier its cashier is ever shown and was answered, in a 200,
+ * with an empty list — while the rail one panel over, which DOES resolve (`feeQuoteRoute`), stamped
+ * that same visit PAID in the same breath.
+ *
+ * ═══ WHY A READER GETS BOTH SPELLINGS AND A WRITER GETS ONE ═══
+ *
+ * A writer must choose, or the ledger goes back to holding two keys for one visit. A reader must
+ * not, and this is the difference: **`canonicalEncounterRef` shipped in #200 with no backfill.**
+ * The owner's 2026-09-12 report — a visit billed twice, ₹1000 collected, the counter still stamping
+ * UNPAID — is direct evidence that rows keyed on a visit number exist in production right now.
+ * Resolving the reference and asking only the resolved id would find every new bill and LOSE every
+ * legacy one: the reported defect traded for a quieter one on older visits, which is the worse of
+ * the two because nobody would ever report it.
+ *
+ * So the read asks for EVERY SPELLING THE RESOLVED VISIT HAS, and there are exactly two of them:
+ * `opd_encounters.id` and `opd_encounters.visit_no`, both `NOT NULL` and the second uniquely
+ * indexed. That is strictly additive — it can only ever find more rows than the raw compare did,
+ * never fewer — and both belong to ONE visit by construction, so this widens the answer about a
+ * single encounter and never the set of encounters answerable.
+ *
+ * **DERIVED FROM THE RESOLVED ROW, NOT FROM THE CALLER'S STRING**, and the difference is a defect I
+ * wrote first and the suite caught: `[resolved, asGiven]` is only ever two entries when the caller
+ * spelled it the OLD way. Ask with the row id — which is how the OPD desk deep-links this counter,
+ * `/billing?encounterId=…` — and that set collapses to one, so the legacy row stays invisible on
+ * precisely the road the hospital uses most. The visit has two names whichever one you called it by.
+ *
+ * **IT IS A READ-SIDE PLASTER OVER A DATA DEFECT, AND IT IS NOT THE REPAIR.** A legacy row stays
+ * invisible to `feeGate`, `encounterFeeStatuses` and `daily-close`, which key on
+ * `opd_encounters.id` alone — so a patient who paid can still be refused at the doctor's door. The
+ * repair for that is a backfill over `invoices.encounter_id`, an irreversible host mutation and the
+ * owner's call, not a route's.
+ */
+export async function encounterRefSpellings(db: Db, encounterId: string | undefined): Promise<string[] | undefined> {
+  if (encounterId === undefined) return undefined;
+  const encounter = await getEncounter(db, encounterId);
+  /* Resolved to nothing — another module's episode number, or a typo. Left exactly as it came, so
+     the refusal further down still names what the caller actually sent. */
+  if (encounter === null) return [encounterId];
+  return [encounter.id, encounter.visitNo];
 }
 
 async function resolveEncounter(

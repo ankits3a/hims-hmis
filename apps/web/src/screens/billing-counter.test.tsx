@@ -1451,6 +1451,47 @@ describe("BillingCounter", () => {
     expect(callsTo("GET", "/api/print/jobs").some((c) => c.url.includes("enc-77"))).toBe(true);
   });
 
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * THE SHEET IS OPENED WITH THE NUMBER ON THE SLIP, AND THE SERVER IS WHAT RESOLVES IT
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Owner, 2026-09-15, at `/billing` on `V2609150001`: *"I see a popup with no encounter/visit
+   * related files. This visit is paid but I see no related papers."*
+   *
+   * The defect was entirely in `apps/core` — both reads compared the cashier's string to a column
+   * holding `opd_encounters.id` — and both routes now resolve the reference and ask for every
+   * spelling the visit has. **This test cannot see that defect and is not trying to:** `mockRoutes`
+   * answers by PATH, so a key nothing matches and a key that matches everything are the same green
+   * here. That is exactly why the repair is proved in `billing.e2e` and `printing.e2e` instead.
+   *
+   * What it pins is the DIVISION OF LABOUR the repair chose, which is the thing a later change
+   * could quietly undo: this field takes a visit reference in EITHER spelling, and the counter is
+   * entitled to hand that reference straight to both reads. Someone "helpfully" gating the button
+   * on a row-id shape, or resolving in the browser first, would break the cashier's only road back
+   * — the number printed on the patient's slip is all they ever hold.
+   */
+  it("the papers sheet is opened with the visit NUMBER the cashier typed, on both reads", async () => {
+    searchState.current = {};
+    mockRoutes({
+      "GET /api/print/jobs": { status: 200, body: { jobs: [
+        { id: "j-rcpt", document: "opd_payment_receipt", status: "queued", attempts: 0, lastError: null, printedAt: null, createdAt: "2026-09-15T04:59:00.000Z" },
+      ] } },
+      "GET /api/billing/invoices": { status: 200, body: { items: [] } },
+    });
+    renderWithProviders(<BillingCounter />);
+    const user = userEvent.setup({ delay: null });
+
+    await user.type(screen.getByLabelText("Encounter"), "V2609150001");
+    await waitFor(() => { expect(screen.getByTestId("counter-papers")).toBeEnabled(); });
+    await user.click(screen.getByTestId("counter-papers"));
+    await screen.findByTestId("counter-papers-sheet");
+
+    /* BOTH halves of the sheet, because the owner's report was that BOTH were empty. */
+    expect(callsTo("GET", "/api/print/jobs").some((c) => c.url.includes("V2609150001"))).toBe(true);
+    expect(callsTo("GET", "/api/billing/invoices").some((c) => c.url.includes("V2609150001"))).toBe(true);
+  });
+
 
   /**
    * ═══════════════════════════════════════════════════════════════════════════════════════════════
