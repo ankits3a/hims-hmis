@@ -193,10 +193,39 @@ effect.
   - existing drafts: 1,454 agree, 49 disagree;
   - new drafts: the second-round results are in the decisions file's report.
   - Every disagreement carries a reason, and the checker's answer is the one adopted.
-- **Reconciliation.** A last pass unifies spellings across batches (INN/British: aciclovir,
-  cefalexin, adrenaline…) and applies the few cross-batch policies the checkers raised: liposomal
-  forms map to the parent drug; pegylated forms with their own INN stay their own; a bare class
-  with no subtype is unmappable. The rulings are appended to `CONVENTIONS.md`.
+- **Checker results.** 1,454 of 1,503 existing drafts agreed and 49 disagreed; 1,722 of 1,753 new
+  drafts agreed and 31 disagreed. The checker's answer is the one adopted.
+- **Reconciliation.** One pass over all 2,188 names made 20 renames, each unifying one moiety under
+  one name (hyoscine, phenobarbital, undecenoic acid, sodium nitroprusside, senna…). It also added
+  4 overrides, bare groupers with no products ruled unmappable, and 24 cross-batch rulings
+  (`reconcile.json`), for example:
+  - liposomal forms map to the parent drug;
+  - pegylated conjugates with their own INN stay their own;
+  - a salt of salicylic acid maps to it whatever the cation;
+  - a bare class is unmappable when every product carries a specific moiety.
+- **The files.**
+  - `decisions-final.json`: 3,257 decisions, 3,099 moieties under 2,169 names and 158 unmappable
+    (md5 `9f998644798a3c438d5abc877ec96503`).
+  - `agent-drafts-claude-opus-5-phase3.json`: the maker's 1,603 first answers, loaded as proposals
+    so the P&T scorecard can measure the drafter (md5 `6ddb1b014941dd64e9b4da7586af8bf5`).
+
+### 3.2 The production sequence, rehearsed end to end (`hmis_formulary_prodlike`)
+
+The database was built the way production was:
+- migrate, then `seed:roles` and `seed:formulary` (29 moieties);
+- `import:nrces` under the actor `owner:nrces-load-2026-09-16`;
+- the release drafts and phase 2's 474 model drafts;
+- an owner-shaped account holding `admin` and `pharmacy`.
+
+That gave 3,257 pending and 26 auto-linked, as production has. Then:
+
+| step | result |
+|---|---|
+| phase-3 model drafts as proposals | 1,603 written |
+| adoption, dry run | 3,099 mapped (2,149 new moieties) · 158 unmappable · **0 refused · 0 pending** · 3,004 agreed with the draft, 95 differed · 23 s |
+| adoption, `--apply` | identical report; 3,125 mapped (26 + 3,099), 158 unmappable, every adopted row marked |
+| `import-cds-catalogue --apply` | 103,383 products, 142,759 compositions, +1,527 release entries. The load placed 68,809 rows on 56,722 products onto the adopted moieties, and left 120 products on a release entry because a moiety is named twice (E2). 8 min 30 s |
+| products still unreviewed | **5 of 103,383**. Each contains a component ruled unmappable: egg phospholipid (2), and one each for a bare "insulin", "interferon" and "prostaglandin". Their prescription lines say "checked only in part", which is true |
 
 ## 4. NAMED GAPS
 
