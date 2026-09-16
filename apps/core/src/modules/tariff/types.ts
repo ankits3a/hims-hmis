@@ -63,6 +63,18 @@ export type InvoiceLineInput = {
    * re-priced by whoever composes the line. The guard is the whole point of the field.
    */
   batchUnitPaise?: number;
+  /**
+   * PHARMACY P1 — EVERY PRICE TERM ON THIS LINE ALREADY CONTAINS THE GST.
+   *
+   * A printed MRP is inclusive of all taxes (Legal Metrology), and a medicine may not be sold above
+   * it. So on a line that sets this, the patient pays exactly the charged (post-discount) amount,
+   * and the taxable value and the two heads are carved out of it rather than added to it. A
+   * notified ceiling on a regulated service is converted to the same basis first, because NPPA
+   * notifies it before GST. Admitted only on a `pharmacy*` category, like `batchUnitPaise`; every
+   * other line prices exactly as before. Phase doc
+   * `docs/superpowers/plans/2026-09-16-phase-pharmacy-p1-gst-inclusive-mrp.md`.
+   */
+  taxInclusive?: boolean;
 };
 
 export type AdjustmentCandidate = {

@@ -5,6 +5,7 @@ import { regulatedPrices, services } from "../../kernel/db/schema";
 import { assertPaise } from "./money";
 import { TariffError } from "./errors";
 import { loadPricingContext } from "./context";
+import { anyOfText } from "../../kernel/db/any-of";
 import type { Db, Tx } from "../../kernel/db/client";
 
 export type ServiceRow = typeof services.$inferSelect;
@@ -53,6 +54,18 @@ export async function updateService(
     .update(services)
     .set({ ...set, updatedBy: actor.id, updatedAt: new Date() })
     .where(eq(services.id, serviceId));
+}
+
+/**
+ * The GST category of each named service: the key `gst_config` is read by. Bounded by the ids asked
+ * for. Pharmacy P1 reads it to convert a notified ceiling at the rate the bill will apply.
+ */
+export async function serviceCategoriesByIds(db: Db | Tx, serviceIds: readonly string[]): Promise<Map<string, string>> {
+  const wanted = [...new Set(serviceIds)];
+  if (wanted.length === 0) return new Map();
+  const rows = await db.select({ id: services.id, category: services.category }).from(services)
+    .where(anyOfText(services.id, wanted));
+  return new Map(rows.map((r) => [r.id, r.category] as const));
 }
 
 export async function listServices(db: Db, opts?: { activeOnly?: boolean }): Promise<ServiceRow[]> {
