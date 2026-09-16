@@ -54,7 +54,7 @@ export async function enqueueDispense(
     patientId: input.patientId, encounterId: input.encounterId, status: "queued", createdBy: actor.id, createdAt: now,
   });
   await appendEvent(tx, dispenseQueued.make({
-    actor, patientId: input.patientId, encounterId: input.encounterId, correlationId: dispenseId,
+    occurredAt: now, actor, patientId: input.patientId, encounterId: input.encounterId, correlationId: dispenseId,
     payload: {
       dispenseId, prescriptionId: input.prescriptionId, prescriptionVersion: input.prescriptionVersion,
       patientId: input.patientId, encounterId: input.encounterId, source: input.source,

@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { openSessionFor } from "../../../test/helpers/billing";
 import { MON, MON2, MON3, issueRx, line, seedPharmacyBase, stockIn } from "../../../test/helpers/pharmacy";
@@ -61,9 +61,11 @@ describe("the register of pharmacists (pharmacy P2)", () => {
       expect(await currentRegistration(db, fx.incharge.id, "2026-08-17")).toMatchObject({
         id, council: COUNCIL, registrationNo: "MSPC-777777", recordedBy: fx.pharmacist.id, validUntil: null,
       });
-      const [ev] = await db.select().from(events).where(eq(events.name, "pharmacist.registered"))
-        .orderBy(sql`${events.occurredAt} desc`).limit(1);
+      const [ev] = await db.select().from(events)
+        .where(and(eq(events.name, "pharmacist.registered"), sql`${events.payload}->>'registrationId' = ${id}`));
       expect(ev?.payload).toMatchObject({ registrationId: id, userId: fx.incharge.id, supersededId: null });
+      // The event carries the act's clock, not the wall's (P7).
+      expect(ev?.occurredAt).toEqual(MON);
     });
 
     it("refuses a person who does not hold the pharmacy role, a blank field, a lapsed certificate and a number already on file", async () => {

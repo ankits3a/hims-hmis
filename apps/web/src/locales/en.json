@@ -3345,6 +3345,19 @@
     "noCover": "—",
     "sourceHas": "{{store}} (has {{n}})"
   },
+  "pharmacyDay": {
+    "today": "Today",
+    "handedOver": "handed over {{n}}",
+    "wait": "median wait {{m}} min",
+    "open": "open {{n}}",
+    "billed": "billed {{amount}}",
+    "declined": "declined {{n}}",
+    "topReason": "mostly: {{reason}}",
+    "returns": "returns {{n}}",
+    "refunds": "refunds {{n}}",
+    "partly": "partly checked {{n}}",
+    "h1": "H1 {{n}}"
+  },
   "pharmacyErrors": {
     "permission_denied": "You are not allowed to do that",
     "unknown_item": "No such item",
@@ -3393,7 +3406,8 @@
     "return_not_accepted": "Cold-chain, frozen and narcotic items are not taken back",
     "return_cut_strip": "Returns come back in whole strips or packs, never cut",
     "return_short_expiry": "This batch is too close to expiry (or recalled) to go back on the shelf — quarantine it",
-    "return_exceeds_dispensed": "That is more than was dispensed on this line, less what already came back"
+    "return_exceeds_dispensed": "That is more than was dispensed on this line, less what already came back",
+    "invalid_day": "That is not a date"
   },
   "pharmacyCounter": {
     "partlyChecked": "Checked only in part",

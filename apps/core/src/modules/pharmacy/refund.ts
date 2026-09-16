@@ -89,7 +89,7 @@ export async function cancelBilledDispense(
     });
 
     await appendEvent(tx, dispenseCancelled.make({
-      actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
+      occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
       payload: {
         dispenseId: d.id, patientId: d.patientId, fromStatus: d.status, reason, reservationsReleased: released,
         creditNoteId: credit.creditNoteId, refundApprovalId: refund.approvalId,

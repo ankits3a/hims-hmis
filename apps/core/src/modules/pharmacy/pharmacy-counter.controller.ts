@@ -16,6 +16,8 @@ import { alternativesFor, cancelDispense, declineLine, verifyDispense } from "./
 import { cancelBilledDispense } from "./refund";
 import { reorderAdvice } from "./replenishment";
 import { acceptReturn } from "./returns";
+import { counterSummary } from "./summary";
+import type { CounterSummary } from "./summary";
 import type { ReturnResult } from "./returns";
 import type { ReorderAdvice } from "./replenishment";
 import type { CancelBilledResult } from "./refund";
@@ -237,6 +239,17 @@ export class PharmacyCounterController {
     try {
       return await withIdempotency(this.db, { actorId: actor.id, route: PHARMACY_IDEMPOTENT_ROUTES.returns, key }, { id, ...input },
         () => acceptReturn(this.db, actor, this.decls(), id, input, new Date()));
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** P7 — the counter's day. `day` is an IST date; today when absent. Read-only. */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("summary")
+  async summary(@Query("day") day?: string): Promise<CounterSummary> {
+    try {
+      return await counterSummary(this.db, day ?? istDateOf(new Date()));
     } catch (e) {
       return toHttp(e);
     }

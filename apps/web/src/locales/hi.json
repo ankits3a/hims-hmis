@@ -3345,6 +3345,19 @@
     "noCover": "—",
     "sourceHas": "{{store}} ({{n}} उपलब्ध)"
   },
+  "pharmacyDay": {
+    "today": "आज",
+    "handedOver": "सौंपे {{n}}",
+    "wait": "औसत प्रतीक्षा {{m}} मिनट",
+    "open": "लंबित {{n}}",
+    "billed": "बिल {{amount}}",
+    "declined": "अस्वीकृत {{n}}",
+    "topReason": "अधिकतर: {{reason}}",
+    "returns": "वापसी {{n}}",
+    "refunds": "रिफंड {{n}}",
+    "partly": "आंशिक जाँच {{n}}",
+    "h1": "H1 {{n}}"
+  },
   "pharmacyErrors": {
     "permission_denied": "आपको इसकी अनुमति नहीं है",
     "unknown_item": "ऐसी कोई वस्तु नहीं",
@@ -3393,7 +3406,8 @@
     "return_not_accepted": "कोल्ड-चेन, जमी हुई और नारकोटिक दवाएँ वापस नहीं ली जातीं",
     "return_cut_strip": "वापसी पूरी स्ट्रिप या पैक में ही होती है, कटी हुई नहीं",
     "return_short_expiry": "यह बैच समाप्ति के बहुत पास है (या रिकॉल है), शेल्फ पर नहीं जा सकता — अलग रखें",
-    "return_exceeds_dispensed": "यह इस पंक्ति पर दी गई मात्रा (पहले की वापसी घटाकर) से अधिक है"
+    "return_exceeds_dispensed": "यह इस पंक्ति पर दी गई मात्रा (पहले की वापसी घटाकर) से अधिक है",
+    "invalid_day": "यह तिथि नहीं है"
   },
   "pharmacyCounter": {
     "partlyChecked": "जाँच केवल आंशिक",

@@ -199,7 +199,7 @@ export async function handOverDispense(
         regulation: regulation === undefined ? null : { ceilingPaise: regulation.ceilingPaise, mrpUom: regulation.mrpUom },
       });
       await appendEvent(tx, materialConsumed.make({
-        actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
+        occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
         payload: {
           ledgerEntryId, itemId: line.itemId, batchId: line.batchId, ownership: batch.ownership as "owned" | "consignment" | "loaner" | "donated",
           vendorId: batch.vendorId, qtyBase: line.qtyBase, patientId: d.patientId, encounterId: d.encounterId,
@@ -231,7 +231,7 @@ export async function handOverDispense(
     if (won.length === 0) throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} moved while handing over`);
     if (d.workflowInstanceId !== null) await transition(tx, d.workflowInstanceId, "handed_over", actor);
     await appendEvent(tx, dispenseHandedOver.make({
-      actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
+      occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
       payload: {
         dispenseId: d.id, dispenseNo: d.dispenseNo ?? d.id, patientId: d.patientId, encounterId: d.encounterId, handedOverBy: actor.id,
         ledgerEntryIds, h1RegisterRows: h1Rows, identityConfirmedVia, pharmacistRegNo,

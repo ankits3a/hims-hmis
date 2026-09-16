@@ -54,6 +54,10 @@ describe("the OPD dispense counter over HTTP (16c T5)", () => {
     await as(fx.clerk.token)(request(server()).get("/pharmacy/reorder")).expect(403);
     const reorder = await as(fx.aide.token)(request(server()).get("/pharmacy/reorder")).expect(200);
     expect((reorder.body as { window: unknown }).window).toEqual({ days: 30, minCoverDays: 3, targetCoverDays: 7 });
+    // P7 — the counter's day: read at the counter only, and a day that is not a date is refused.
+    await as(fx.clerk.token)(request(server()).get("/pharmacy/summary")).expect(403);
+    await as(fx.aide.token)(request(server()).get("/pharmacy/summary?day=2026-08-17")).expect(200);
+    await as(fx.aide.token)(request(server()).get("/pharmacy/summary?day=yesterday")).expect(400);
     // P6 — a return is a money act too; and an unattested one never reaches the act.
     await as(fx.aide.token)(request(server()).post("/pharmacy/dispenses/d-any/returns").set("idempotency-key", "rt-1")
       .send({ lines: [{ lineIdx: 0, qtyBase: 10 }], sealedIntact: true, reason: "changed", reasonClass: "genuine" })).expect(403);

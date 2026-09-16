@@ -128,7 +128,7 @@ export async function pickDispense(
     if (won.length === 0) throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} moved while picking`);
     if (d.workflowInstanceId !== null) await transition(tx, d.workflowInstanceId, "picked", actor);
     await appendEvent(tx, dispensePicked.make({
-      actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
+      occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
       payload: { dispenseId: d.id, patientId: d.patientId, lines: plan.map((p) => ({ lineIdx: p.lineIdx, batchId: p.batchId, qtyBase: p.qtyBase, fefoOverride: p.fefoOverride })) },
     }));
   });

@@ -79,3 +79,6 @@ export type { ReorderAdvice, ReorderLine, ReorderStatus } from "./replenishment"
 /** P6 — sales returns at the counter (doc 16 O-7). */
 export { acceptReturn } from "./returns";
 export type { ReturnInput, ReturnResult } from "./returns";
+/** P7 — the counter's day (doc 16 §8 KPIs, 16f's first strip). Read-only. */
+export { counterSummary } from "./summary";
+export type { CounterSummary } from "./summary";

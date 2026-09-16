@@ -6,6 +6,7 @@ import {
   acceptReturn, billDispense, cancelBilledDispense, cancelDispense, claimDispense, declineLine, fetchAlternatives, fetchDispense, fetchLabel, fetchQueue, findAtCounter,
   handOverDispense, pharmacyErrorText, pickDispense, previewBill, verifyDispense,
 } from "../lib/pharmacy-api";
+import { CounterDayStrip } from "../components/counter-day-strip";
 import { DispenseLabel } from "../components/dispense-label";
 import { Button } from "@/components/ui/button";
 import type {
@@ -184,6 +185,7 @@ export function PharmacyCounter(): React.ReactElement {
     <div data-seat="pharmacy-counter" className="min-h-screen space-y-6 p-4">
       <header className="flex items-baseline justify-between">
         <h1 className="text-xl font-semibold">{t("pharmacyCounter.title")}</h1>
+        <CounterDayStrip />
       </header>
 
       <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void find(); }}>

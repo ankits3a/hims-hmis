@@ -240,7 +240,7 @@ export async function verifyDispense(
       }).where(eq(pharmacyDispenseLines.id, s.line.id));
       if (s.substitution !== null) {
         await appendEvent(tx, substitutionRecorded.make({
-          actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
+          occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
           payload: { dispenseId: d.id, lineIdx: s.line.lineIdx, patientId: d.patientId, doctorId: rx.doctorId, orderedMedicineId: s.substitution.from, dispensedMedicineId: s.substitution.to, consentBy: actor.id },
         }));
       }
@@ -252,7 +252,7 @@ export async function verifyDispense(
     if (won.length === 0) throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} moved while verifying`);
     if (d.workflowInstanceId !== null) await transition(tx, d.workflowInstanceId, "verified", actor);
     await appendEvent(tx, dispenseVerified.make({
-      actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
+      occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
       payload: {
         dispenseId: d.id, dispenseNo: placed.orderNo, orderId: placed.orderId, patientId: d.patientId, encounterId: d.encounterId,
         lineCount: settled.length, declinedCount, scheduled,
@@ -290,7 +290,7 @@ export async function declineLine(
     if (line.orderItemId !== null) await advanceOrderItem(tx, actor, decls, line.orderItemId, "cancelled", { reason: trimmed, at: now });
     if (line.reservationId !== null) await releaseReservation(tx, actor, line.reservationId);
     await appendEvent(tx, dispenseLineDeclined.make({
-      actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
+      occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
       payload: { dispenseId: d.id, lineIdx, patientId: d.patientId, reason: trimmed },
     }));
   });
@@ -346,7 +346,7 @@ export async function cancelDispense(
     }
     if (d.workflowInstanceId !== null) await transition(tx, d.workflowInstanceId, "cancelled", actor);
     await appendEvent(tx, dispenseCancelled.make({
-      actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
+      occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
       payload: { dispenseId: d.id, patientId: d.patientId, fromStatus: d.status, reason: trimmed, reservationsReleased: released },
     }));
   });

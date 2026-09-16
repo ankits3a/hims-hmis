@@ -121,7 +121,7 @@ export async function recordPharmacistRegistration(
     id, userId: input.userId, council, registrationNo, validUntil, recordedBy, recordedAt: now,
   });
   await appendEvent(tx, pharmacistRegistered.make({
-    actor, correlationId: input.userId,
+    occurredAt: now, actor, correlationId: input.userId,
     payload: { registrationId: id, userId: input.userId, council, registrationNo, validUntil, supersededId },
   }));
   return { id, supersededId };
@@ -145,7 +145,7 @@ export async function endPharmacistRegistration(
     .set({ endedAt: now, endedBy, endReason: why })
     .where(and(eq(pharmacyPharmacistRegistrations.id, registrationId), isNull(pharmacyPharmacistRegistrations.endedAt)));
   await appendEvent(tx, pharmacistRegistrationEnded.make({
-    actor, correlationId: row.userId,
+    occurredAt: now, actor, correlationId: row.userId,
     payload: { registrationId, userId: row.userId, reason: why },
   }));
 }

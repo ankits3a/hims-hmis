@@ -174,7 +174,7 @@ export async function billDispense(db: Db, actor: Actor, dispenseId: string, inp
     if (won.length === 0) throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} moved while billing`);
     if (d.workflowInstanceId !== null) await transition(tx, d.workflowInstanceId, "billed", actor);
     await appendEvent(tx, dispenseBilled.make({
-      actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
+      occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
       payload: { dispenseId: d.id, patientId: d.patientId, encounterId: d.encounterId, invoiceId: result.invoiceId, netPaise: result.totals.netPayablePaise },
     }));
   });

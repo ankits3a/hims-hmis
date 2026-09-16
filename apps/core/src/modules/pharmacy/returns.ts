@@ -126,7 +126,7 @@ export async function acceptReturn(
       reasonClass: input.reasonClass, reason: `pharmacy return: ${reason}`,
     });
     await appendEvent(tx, dispenseLineReturned.make({
-      actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
+      occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
       payload: {
         dispenseId: d.id, patientId: d.patientId, lines: returned, sealedIntact: true, reason,
         reasonClass: input.reasonClass, creditNoteId: credit.creditNoteId, refundApprovalId: refund.approvalId,

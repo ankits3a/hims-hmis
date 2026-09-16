@@ -197,3 +197,17 @@ export type WireReorderAdvice = {
 export async function fetchReorderAdvice(): Promise<WireReorderAdvice> {
   return api<WireReorderAdvice>("GET", "/pharmacy/reorder");
 }
+
+// ── P7 — the counter's day ──
+export type WireCounterSummary = {
+  day: string; handedOver: number;
+  medianMinutes: { queueToHandover: number | null; claimToHandover: number | null };
+  billedPaise: number;
+  open: { queued: number; claimed: number; verified: number; picked: number; billed: number };
+  declinedLines: number; declinedTop: { reason: string; lines: number }[];
+  substitutions: number; cancelled: number; refundedAfterBilling: number; returns: number;
+  partlyCheckedLines: number; scheduledHandovers: number;
+};
+export async function fetchCounterSummary(day?: string): Promise<WireCounterSummary> {
+  return api<WireCounterSummary>("GET", `/pharmacy/summary${qs({ day })}`);
+}
