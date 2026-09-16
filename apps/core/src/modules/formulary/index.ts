@@ -47,3 +47,18 @@ export type { StagingRow } from "./staging";
 
 export { searchMedicines } from "./search";
 export type { MedicineHit } from "./search";
+/**
+ * PHASE 2 — THE MAPPING LOOP. `attestSubstance` and `ruleSubstanceUnmappable` are the only writers
+ * of a release substance's decision. `projectSubstances` and `refreshRankSignals` are exported for
+ * the catalogue importer, which writes rows a projection must place, and they are catalogue writes:
+ * no request handler outside this module has a reason to call them. `writeProposals` is the
+ * drafter's door. It writes advice, never a decision.
+ */
+export {
+  attestSubstance, pageMappingWorklist, projectSubstances, refreshRankSignals, ruleSubstanceUnmappable,
+  writeProposals,
+} from "./mapping";
+export type {
+  AttestTarget, MappingDecision, ProjectionResult, ProposalBasis, ProposalInput, ProposalWriteResult,
+  WorklistItem, WorklistProposal, WorklistStatus,
+} from "./mapping";

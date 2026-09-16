@@ -109,6 +109,16 @@ export const formularySalts = pgTable(
      */
     /** The same trigram instrument for the moiety: a doctor searching `amox` must reach the salt. */
     index("formulary_salts_name_trgm_idx").using("gin", sql`lower(${t.name}) gin_trgm_ops`),
+    /**
+     * ONE RELEASE IMAGE PER RELEASE SUBSTANCE. This does not contradict the paragraph above.
+     * `source_ref` is set only on a RELEASE IMAGE, the importer's verbatim copy of one substance,
+     * which is one-to-one with that substance by construction. A curated moiety carries null here,
+     * so the many-to-one shape is untouched. Measured on `hmis_formulary_dev`: 3,258 images and
+     * 3,258 distinct refs. The projection in `modules/formulary/mapping.ts` joins on this column to
+     * find where an unmapped row goes back to, and a second image would silently double every row
+     * it moves.
+     */
+    uniqueIndex("formulary_salts_source_ref_ux").on(t.sourceRef).where(sql`${t.sourceRef} is not null`),
   ],
 );
 
@@ -226,14 +236,23 @@ export const formularyMedicines = pgTable(
  *
  * The curated delete STAYS UNSCOPED, because `updateMedicine` is a whole-composition replace: a
  * pharmacist who submits a composition is stating the whole of it, and leaving derived rows behind
- * would silently merge their statement with the importer's. What a derivation may do is narrower,
- * and it is a rule rather than a mechanism because there is no derivation yet:
+ * would silently merge their statement with the importer's. What a derivation may do is narrower:
  *
  *   A DERIVATION MAY WRITE ONLY WHERE THE MEDICINE HAS NO `curated` ROW,
  *   AND MAY DELETE ONLY ITS OWN `derived` ROWS.
  *
  * The write half matters as much as the delete half: scoping only the delete leaves a derivation
  * free to add a moiety beside a pharmacist's and produce a composition neither of them stated.
+ *
+ * === THE DERIVATION NOW EXISTS, AND `derived_from` IS WHAT MAKES IT A PROJECTION ===
+ *
+ * `modules/formulary/mapping.ts` is that derivation, and it keeps both halves of the rule. A
+ * derived row names the RELEASE SUBSTANCE it came from (`derived_from`, the SNOMED CT id), so the
+ * moiety it points at is a function of two things: that substance, and whatever the pharmacist
+ * mapped it to. It points at the curated moiety when the substance is mapped, and back at the
+ * release image otherwise. Keyed on the substance rather than on the salt it points at today, a
+ * correction or an "unmappable" ruling can find its rows again after they have moved. The release
+ * image is never deleted, so every projection can be reverted.
  */
 export const formularyMedicineSalts = pgTable(
   "formulary_medicine_salts",
@@ -247,10 +266,27 @@ export const formularyMedicineSalts = pgTable(
      * purpose — see the header. It means WHO LAST ASSERTED THIS ROW, not who first created it.
      */
     source: text("source").notNull(),
+    /**
+     * The release substance (`formulary_substances.sctid`) a DERIVED row was produced from. Null on
+     * every curated row, by constraint: a pharmacist's statement is not derived from anything.
+     *
+     * NULL ON SOME DERIVED ROWS TOO, and that is disclosed rather than backfilled by guesswork. The
+     * catalogue importer reuses an existing moiety when the release names one exactly
+     * (`Paracetamol` onto the seeded `Paracetamol`), and rows written that way before this column
+     * existed carry no record of which substance they came from. They already name a curated
+     * moiety, so no projection ever needs to move them.
+     */
+    derivedFrom: text("derived_from"),
   },
   (t) => [
     primaryKey({ columns: [t.medicineId, t.saltId] }),
     check("formulary_medicine_salts_source_ck", sql`${t.source} in ('curated', 'derived')`),
+    check(
+      "formulary_medicine_salts_curated_underived_ck",
+      sql`${t.source} = 'derived' or ${t.derivedFrom} is null`,
+    ),
+    /* A mapping decision re-projects exactly the rows derived from one substance: this is that lookup. */
+    index("formulary_medicine_salts_derived_from_idx").on(t.derivedFrom),
     /*
       THE PRIMARY KEY LEADS WITH `medicine_id`, so "which products contain this moiety" — the
       direction the drug typeahead asks in — had no index at all and scanned all 142,759 rows on
@@ -453,7 +489,71 @@ export const formularyGenericSubstances = pgTable(
     strength: text("strength"),
     unit: text("unit"),
   },
-  (t) => [primaryKey({ columns: [t.genericId, t.substanceId] })],
+  (t) => [
+    primaryKey({ columns: [t.genericId, t.substanceId] }),
+    /*
+      The key leads with the GENERIC, and the mapping worklist asks the other way round: "which
+      clinical drugs contain this substance", for up to fifty substances on every page.
+    */
+    index("formulary_generic_substances_substance_idx").on(t.substanceId),
+  ],
+);
+
+/** What a proposal rests on. Shown to the pharmacist verbatim; never read by any check. */
+export type MappingProposalEvidence = {
+  /** `release_boss`: the clinical drugs whose names state "precisely X (as <this substance>)". */
+  generics?: { sctid: string; name: string }[];
+  /** Other X values the release states for the same substance. The drafter keeps them all rather than choosing. */
+  alternatives?: string[];
+  /** A hydrate word the drafter removed from the release's X ("levofloxacin anhydrous" → "levofloxacin"). */
+  droppedWord?: string;
+  /** `agent`: the model that drafted it, and why. */
+  model?: string;
+  rationale?: string;
+};
+
+/**
+ * ═══ A DRAFT OF A MAPPING — ADVICE TO A PHARMACIST, AND NOTHING READS IT BUT THE WORKLIST ═══
+ *
+ * Owner ruling R1 (`docs/superpowers/plans/2026-09-16-phase2-formulary-mapping-loop.md`): the
+ * ~500 substance → moiety decisions are DRAFTED by the system and ATTESTED one at a time by the
+ * hospital's pharmacist. This table holds the drafts. It is deliberately not the decision: the
+ * decision is `formulary_substances.salt_id`, and the only writer of that column is a named human
+ * act (`attestSubstance`, which refuses every non-user actor). The house law is
+ * `kernel/orders/place.ts`'s: a drafter proposes, a human orders.
+ *
+ * `moiety_name` is a NAME, not a `salt_id`. The matching curated moiety is resolved when the
+ * worklist is read, so renaming a moiety cannot leave a draft pointing at the old one, and a draft
+ * can name a moiety that does not exist yet ("create clavulanic acid and map it").
+ *
+ * One row per (substance, drafter): a re-run of a drafter replaces its own draft and never
+ * anybody else's.
+ */
+export const formularyMappingProposals = pgTable(
+  "formulary_mapping_proposals",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    substanceId: text("substance_id").notNull().references(() => formularySubstances.id),
+    moietyName: text("moiety_name").notNull(),
+    /**
+     * `release_boss` — the release names this substance's basis of strength ("precisely X (as Y)").
+     * `release_base` — the release uses this substance itself as a basis of strength.
+     * `agent`        — a model drafted it; `evidence.model` and `evidence.rationale` say which and why.
+     */
+    basis: text("basis").notNull(),
+    evidence: jsonb("evidence").$type<MappingProposalEvidence>().notNull(),
+    /** `drafter:release@1`, or `agent:<model id>`. Part of the row's identity. */
+    draftedBy: text("drafted_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("formulary_mapping_proposals_substance_drafter_ux").on(t.substanceId, t.draftedBy),
+    check(
+      "formulary_mapping_proposals_basis_ck",
+      sql`${t.basis} in ('release_boss', 'release_base', 'agent')`,
+    ),
+    check("formulary_mapping_proposals_moiety_name_ck", sql`length(btrim(${t.moietyName})) > 0`),
+  ],
 );
 
 /** MOIETY-level interaction pairs. Ordered, unique, provenanced, optionally route-scoped. */

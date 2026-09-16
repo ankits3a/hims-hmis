@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { isMoiety } from "./moiety";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -8,12 +9,15 @@ import type { Db } from "../../kernel/db/client";
  * auto complete will work if doctor starts to type drug name."* So this is the always-on half: no
  * model, no patient, no co-pilot switch — the hospital's own catalogue, matched on what was typed.
  *
- * ═══ IT REPLACED A `<select>` THAT WOULD HAVE SHIPPED 15 MB ═══
+ * ═══ IT REPLACED A `<select>` THAT WOULD HAVE SHIPPED THE WHOLE CATALOGUE ═══
  *
  * The screen used to load EVERY medicine into a dropdown. That was tolerable against a handful of
- * curated rows and became impossible the moment the owner's catalogue landed: 103,383 options, a
- * 15 MB payload on every consult screen load, measured. A typeahead is not a nicety here — it is
- * what makes a catalogue this size usable at all.
+ * curated rows and became impossible the moment the owner's catalogue landed: 103,383 options on
+ * every consult screen load. This comment used to say "a 15 MB payload, measured"; no field subset
+ * reproduces that figure. The measured sizes are 57.3 MiB for the full rows and 37.0 MiB trimmed to
+ * what the screen used, and the method is written beside the `medicines/search` route in
+ * `formulary.controller.ts`. A typeahead is not a nicety here: it is what makes a catalogue this
+ * size usable at all.
  *
  * ═══ HOW IT RANKS, AND WHY THE SALT IS IN THE `WHERE` ═══
  *
@@ -49,6 +53,17 @@ export type MedicineHit = {
   salts: string[];
   /** True when the name itself starts with what was typed — the screen bolds that prefix. */
   prefix: boolean;
+  /**
+   * TRUE WHEN EVERY COMPONENT IS A MOIETY (phase 2, W9: `moiety.ts` says what that means, once).
+   * False when at least one is still a release entry nobody has reviewed. Such a component carries no drug class
+   * and no interaction pairs, so an allergy to "penicillins" or a warfarin interaction cannot fire
+   * on it. The screen says so beside the name rather than letting the pick look as checked as any
+   * other.
+   *
+   * Named `reviewed`, not `checked`: a curated moiety with no class and no pairs is reviewed, but
+   * nothing has been checked against it either. The word claims only what is true.
+   */
+  reviewed: boolean;
 };
 
 export async function searchMedicines(db: Db, query: string, limit = 10): Promise<MedicineHit[]> {
@@ -126,7 +141,9 @@ export async function searchMedicines(db: Db, query: string, limit = 10): Promis
                where l.medicine_id = r.id),
              '{}'
            ) as salts,
-           (lower(r.brand_name) like ${starts}) as prefix
+           (lower(r.brand_name) like ${starts}) as prefix,
+           not exists (select 1 from formulary_medicine_salts l join formulary_salts s on s.id = l.salt_id
+                        where l.medicine_id = r.id and not ${isMoiety(sql`s`)}) as reviewed
       from ranked r
      order by (lower(r.brand_name) like ${starts}) desc,
               r.salt_rank desc,
@@ -145,5 +162,6 @@ export async function searchMedicines(db: Db, query: string, limit = 10): Promis
     routeClass: String(r["route_class"]),
     salts: Array.isArray(r["salts"]) ? (r["salts"] as unknown[]).map(String) : [],
     prefix: r["prefix"] === true,
+    reviewed: r["reviewed"] === true,
   }));
 }

@@ -18,6 +18,8 @@ import { admitStaging, getStagingRow, rejectStaging, searchStaging } from "./sta
 import { MAX_SUGGESTIONS, suggestDrugs } from "./suggest";
 import type { DrugSuggestion } from "./suggest";
 import { getCoverage, getPairOverrideRates } from "./curation";
+import { attestSubstance, pageMappingWorklist, ruleSubstanceUnmappable } from "./mapping";
+import type { MappingDecision, WorklistItem } from "./mapping";
 import type { InteractionRow, MedicineWithSalts, SaltRow } from "./masters";
 import type { StagingRow } from "./staging";
 import type { Coverage, PairUsage } from "./curation";
@@ -73,7 +75,7 @@ const activeQuery = z.object({ active: flagQuery });
  * rather than rejecting it, matching the `suggestQuery` ruling above.
  */
 const activePageQuery = activeQuery.merge(pageQuery);
-const saltsPageQuery = activePageQuery.extend({ q: z.string().max(120).optional() });
+const saltsPageQuery = activePageQuery.extend({ q: z.string().max(120).optional(), moieties: flagQuery });
 
 /**
  * `limit` is CLAMPED, not merely validated: a caller asking for 10,000 gets 25 rather than an
@@ -128,6 +130,33 @@ const admitBody = z.object({
 });
 const rejectBody = z.object({ reason: z.string().min(1).max(500) });
 
+/**
+ * THE MAPPING LOOP (phase 2). One decision per request, by construction: there is no array
+ * anywhere in these bodies. Owner ruling R1 names bulk acceptance as the way a draft-then-attest
+ * design turns into a rubber stamp, so the wire refuses to carry one.
+ */
+const worklistQuery = pageQuery.extend({
+  status: z.enum(["pending", "mapped", "unmappable"]).optional(),
+  q: z.string().max(120).optional(),
+});
+const reasonText = z.string().trim().min(1).max(500);
+const attestBody = z.object({
+  target: z.union([
+    z.object({ saltId: z.string().min(1) }).strict(),
+    z.object({
+      newMoiety: z.object({
+        name: z.string().trim().min(1).max(200),
+        drugClass: z.string().trim().min(1).max(200).nullish(),
+      }).strict(),
+    }).strict(),
+  ]),
+  /** The draft that was on screen, if any: it is what `agreedWithProposal` is measured against. */
+  proposalId: z.string().min(1).nullish(),
+  /** Present only to change a decided substance. */
+  correctionReason: reasonText.nullish(),
+}).strict();
+const unmappableBody = z.object({ reason: reasonText, correction: z.boolean().optional() }).strict();
+
 const interactionPatchBody = z.object({
   severity: severity.optional(), note: z.string().min(1).max(500).optional(),
   routeScope: z.literal("systemic_only").nullish(), active: z.boolean().optional(),
@@ -143,7 +172,8 @@ export class FormularyController {
     const q = parsed(saltsPageQuery, query);
     try {
       return await pageSalts(this.db, {
-        activeOnly: q.active === "true", q: q.q, limit: q.limit, cursor: q.cursor,
+        activeOnly: q.active === "true", moietiesOnly: q.moieties === "true",
+        q: q.q, limit: q.limit, cursor: q.cursor,
       });
     } catch (e) { toHttp(e); }
   }
@@ -365,6 +395,58 @@ export class FormularyController {
     try {
       await withTx(this.db, (tx) => rejectStaging(tx, actor, id, b.reason));
       return { ok: true };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  // ─────────────────── phase 2: the mapping loop, pharmacist-gated ───────────────────
+
+  /**
+   * The pharmacist's worklist: release substances in one decision state, most-used first, each
+   * with its drafts. `formulary.manage`: this is the curator's surface, not a prescriber's.
+   */
+  @RequirePermission("formulary.manage", "hospital")
+  @Get("substances")
+  async substances(@Query() query: unknown): Promise<WirePage<WorklistItem>> {
+    const q = parsed(worklistQuery, query);
+    try {
+      return await pageMappingWorklist(this.db, {
+        status: q.status, q: q.q, limit: q.limit, cursor: q.cursor,
+      });
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * A pharmacist states which curated moiety a release substance is. The permission says who MAY
+   * decide; `attestSubstance` also refuses any actor that is not a person. Both gates are
+   * deliberate: Plan 12a is the phase that will give agents permissions.
+   */
+  @RequirePermission("formulary.manage", "hospital")
+  @Post("substances/:id/attest")
+  async attest(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown,
+  ): Promise<MappingDecision> {
+    const b = parsed(attestBody, body);
+    try {
+      return await withTx(this.db, (tx) => attestSubstance(tx, actor, id, b.target, {
+        proposalId: b.proposalId ?? null, correctionReason: b.correctionReason ?? null,
+      }));
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("formulary.manage", "hospital")
+  @Post("substances/:id/unmappable")
+  async unmappable(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown,
+  ): Promise<MappingDecision> {
+    const b = parsed(unmappableBody, body);
+    try {
+      return await withTx(this.db, (tx) => ruleSubstanceUnmappable(tx, actor, id, {
+        reason: b.reason, correction: b.correction,
+      }));
     } catch (e) {
       toHttp(e);
     }

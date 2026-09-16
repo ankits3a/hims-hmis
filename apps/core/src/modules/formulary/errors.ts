@@ -47,20 +47,53 @@ export type FormularyErrorCode =
    * Borrowing `unknown_medicine` would tell a caller the catalogue lacks a row it has — exactly
    * the misleading refusal that `unknown_interaction`'s note above exists to prevent.
    */
-  | "too_many_ids";
+  | "too_many_ids"
+  /*
+   * ═══ THE MAPPING LOOP'S REFUSALS (phase 2, 2026-09-16) — WIDENED UNDER THE SAME RULE ═══
+   *
+   * `mapping.ts` is new surface: a pharmacist attesting which curated moiety a release substance
+   * is. None of the codes above says any of the six things it must be able to refuse, and each
+   * neighbour would mislead. `unknown_salt` for a missing SUBSTANCE sends a curator hunting through
+   * the wrong table, and `staging_not_pending` for an already-mapped substance names a different
+   * queue altogether.
+   */
+  /** The release substance does not exist. */
+  | "unknown_substance"
+  /** A draft id that is not a draft FOR THIS substance. Agreement with a draft must never be claimed by accident. */
+  | "unknown_proposal"
+  /**
+   * Only a person attests. A drafter proposes, a human decides: `kernel/orders/place.ts`'s
+   * `agent_cannot_order`, applied to the formulary. Checked before anything is read.
+   */
+  | "attester_not_user"
+  /**
+   * The target is a RELEASE IMAGE, the importer's verbatim copy of a substance. Mapping a substance
+   * onto a copy of itself records that a decision was made while deciding nothing.
+   */
+  | "release_image_target"
+  /** A plain attestation found the substance already decided. Changing it is a CORRECTION, which needs a reason. */
+  | "substance_already_decided"
+  /** A correction was asked for on a substance nobody has decided yet. */
+  | "substance_not_decided";
 
-const NOT_FOUND_CODES = new Set<FormularyErrorCode>(["unknown_salt", "unknown_medicine", "unknown_interaction"]);
+const NOT_FOUND_CODES = new Set<FormularyErrorCode>([
+  "unknown_salt", "unknown_medicine", "unknown_interaction", "unknown_substance", "unknown_proposal",
+]);
 /** A request this module could not have served whatever the database held. */
 const BAD_REQUEST_CODES = new Set<FormularyErrorCode>(["too_many_ids"]);
+/** The caller is the wrong KIND of actor for the act, whatever it holds. */
+const FORBIDDEN_CODES = new Set<FormularyErrorCode>(["attester_not_user"]);
 
 /**
  * 404 for a thing that is not there, 409 for a state conflict the caller can act on,
- * 400 for a request that was malformed before the state was consulted.
- * NOTHING here answers 5xx, which is the property the counter-side lesson above is about.
+ * 400 for a request that was malformed before the state was consulted, 403 for an actor who may
+ * never perform the act. NOTHING here answers 5xx, which is the property the counter-side lesson
+ * above is about.
  */
 export function formularyHttpStatus(code: FormularyErrorCode): number {
   if (NOT_FOUND_CODES.has(code)) return 404;
   if (BAD_REQUEST_CODES.has(code)) return 400;
+  if (FORBIDDEN_CODES.has(code)) return 403;
   return 409;
 }
 

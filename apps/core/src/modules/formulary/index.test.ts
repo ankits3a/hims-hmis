@@ -53,6 +53,7 @@ const SURFACE = [
   "addMedicine",
   "addSalt",
   "admitStaging",
+  "attestSubstance",
   "catalogueCensus",
   "countSalts",
   "equivalentMedicines",
@@ -66,11 +67,15 @@ const SURFACE = [
   "medicinesByIds",
   "normalizeDrugName",
   "pageInteractions",
+  "pageMappingWorklist",
   "pageMedicines",
   "pageSalts",
+  "projectSubstances",
+  "refreshRankSignals",
   "rejectStaging",
   "resolveDrugTexts",
   "resolveMedicines",
+  "ruleSubstanceUnmappable",
   "saltIdsByNames",
   "saltsByIds",
   "searchMedicines",
@@ -79,6 +84,7 @@ const SURFACE = [
   "updateInteraction",
   "updateMedicine",
   "updateSalt",
+  "writeProposals",
 ];
 
 describe("the formulary module's public surface", () => {
