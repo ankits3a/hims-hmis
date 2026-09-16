@@ -143,6 +143,7 @@ describe("PharmacyCounter (16c T3)", () => {
       "POST /api/pharmacy/dispenses/d1/bill": () => { current = dispense("billed", { dispenseNo: "P2608170001", orderId: "o1", invoiceId: "inv1" }); return { status: 201, body: current }; },
       "POST /api/pharmacy/dispenses/d1/handover": () => { current = dispense("handed_over", { dispenseNo: "P2608170001", orderId: "o1", invoiceId: "inv1", identityConfirmedVia: "token" }); return { status: 201, body: current }; },
       "GET /api/pharmacy/dispenses/d1/label": { status: 200, body: { dispenseNo: "P2608170001", status: "handed_over", patient: { display: "Sita Devi", uhid: PATIENT.uhid }, handedOverAt: "2026-08-17T04:40:00.000Z",
+        pharmacist: { name: "Rohit Mehta", council: "Maharashtra State Pharmacy Council", registrationNo: "MSPC-123456" },
         lines: [{ lineIdx: 0, drug: "Crocin 500", strength: "500 mg", form: "tablet", qtyBase: 20, unit: "tablet", packs: "2 strip", batchNo: "CR-EARLY", expiryDate: "2027-01-31", directions: "1 tab · TDS · 5 days", substitutedFor: null }] } },
     });
     renderWithProviders(<PharmacyCounter />);
@@ -157,6 +158,8 @@ describe("PharmacyCounter (16c T3)", () => {
     await waitFor(() => expect(bodiesOf("POST", "/pharmacy/dispenses/d1/handover")).toEqual([{ identity: { via: "token", value: "14" } }]));
     expect(await screen.findByTestId("label-0")).toHaveTextContent("Crocin 500 500 mg tablet");
     expect(screen.getByTestId("label-0")).toHaveTextContent("Batch CR-EARLY · Exp 2027-01-31");
+    // P2 — the pharmacist the dispense was verified by, with the registration current then.
+    expect(screen.getByTestId("label-pharmacist-0")).toHaveTextContent("Dispensed by Rohit Mehta · Reg. MSPC-123456");
   });
   /**
    * THE REQUIRED FIELD SAYS SO IN THE CONTROL, RATHER THAN AS "API 400" AFTER THE CLICK.

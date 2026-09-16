@@ -694,6 +694,13 @@
       "when": 1789587782678,
       "tag": "0098_formulary_adoption",
       "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1789593648596,
+      "tag": "0099_pharmacy_pharmacist_register",
+      "breakpoints": true
     }
   ]
 }

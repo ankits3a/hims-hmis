@@ -17,6 +17,8 @@ import { registerTariffApprovalTypes } from "../src/modules/tariff/approval-type
 import { createService } from "../src/modules/tariff/services";
 import { seedTariffConfig } from "../scripts/seed-tariff";
 import { ensurePharmacyCounter } from "../scripts/seed-pharmacy";
+import { currentRegistration, endPharmacistRegistration } from "../src/modules/pharmacy";
+import { istDayString } from "../src/kernel/approvals/cumulative";
 import { seedPharmacyBase } from "./helpers/pharmacy";
 import { ensureLabStandUp } from "../scripts/seed-lab";
 import { seedFormularyInteractions } from "../scripts/seed-formulary-interactions";
@@ -634,6 +636,23 @@ describe("standup:check — the readiness census (11i T2)", () => {
     await ensurePharmacyCounter(db, ACTOR);
     const rows = await runCensus(db, "pharmacy");
     expect(rows.find((r) => r.code === "pharmacy_batch_in_stock")?.verdict).toBe("RED");
+  });
+
+  /**
+   * PHARMACY P2 — the row that used to be NOT MODELLED. A role holder is not a registered
+   * pharmacist; the counter's verify refuses anyone without a registration on file.
+   */
+  it("the pharmacist row is green only while someone holding pharmacy has a current registration", async () => {
+    const fx = await seedPharmacyBase(db);
+    await ensurePharmacyCounter(db, ACTOR);
+    let rows = await runCensus(db, "pharmacy");
+    expect(rows.find((r) => r.code === "pharmacist_council_number")?.verdict).toBe("ok");
+    const reg = await currentRegistration(db, fx.pharmacist.id, istDayString(new Date()));
+    if (reg === null) throw new Error("fixture registration missing");
+    await withTx(db, (tx) => endPharmacistRegistration(tx, fx.incharge.actor, reg.id, "left the hospital"));
+    rows = await runCensus(db, "pharmacy");
+    expect(rows.find((r) => r.code === "pharmacist_council_number")?.verdict).toBe("RED");
+    fx.unregister();
   });
 
   /**

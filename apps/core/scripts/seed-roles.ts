@@ -449,6 +449,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "pharmacy.dispense.read",
       "pharmacy.dispense.scheduled",
       "pharmacy.sale_items.manage",
+      // PHARMACY P2 — the register of pharmacists: the pharmacist in charge files a colleague's state
+      // council registration. `recordPharmacistRegistration` refuses one's own whatever this says.
+      "pharmacy.pharmacists.manage",
       "orders.place",
       "orders.read",
       "orders.cancel",

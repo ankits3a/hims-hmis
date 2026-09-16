@@ -11,6 +11,7 @@ import { getEncounter, getPrescription, runRxChecks } from "../opd";
 import { PHARMACY_SUBSTITUTION_ENABLED, REFUSED_FLAGS, SCHEDULED_FLAGS, istDateOf } from "./config";
 import { dispenseCancelled, dispenseLineDeclined, dispenseVerified, substitutionRecorded } from "./events";
 import { PharmacyError } from "./errors";
+import { requireRegisteredPharmacist } from "./pharmacists";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
 import { getSaleItem } from "./sale-items";
 import { shelfByMedicine } from "./shelf";
@@ -224,6 +225,13 @@ export async function verifyDispense(
       orderingClinicianId: rx.doctorId, priority: "routine", placedAt: now,
       items: settled.map((s) => ({ serviceId: s.serviceId })),
     });
+    /*
+      P2 — THE PHARMACY ACT'S QUALIFICATION, after the permission. `placeOrder` has just asserted
+      the permission to place the order (a login that may not is refused there, as before); this
+      asks whether the person holds a current state council registration. A refusal rolls the
+      order back with everything else in this transaction.
+    */
+    const registration = await requireRegisteredPharmacist(tx, actor, now);
     for (const [i, s] of settled.entries()) {
       await tx.update(pharmacyDispenseLines).set({
         qtyBase: s.qtyBase, dispensedMedicineId: s.dispensedMedicineId, itemId: s.itemId, orderItemId: placed.itemIds[i]!,
@@ -251,6 +259,7 @@ export async function verifyDispense(
         allergyHits: outcome.allergyMatches.length, interactionHits: outcome.interactions.length, substitutions,
         // P3: "0 hits" is only as good as what the checks could see.
         partlyCheckedLineIdxs: outcome.unreviewedLineIndexes.map(origIdx),
+        pharmacistRegNo: registration.registrationNo,
       },
     }));
   });

@@ -14,6 +14,7 @@ import { getPatient } from "../patients";
 import { REFUSED_FLAGS, REGISTER_FLAGS, SCHEDULED_FLAGS, istDateOf } from "./config";
 import { dispenseHandedOver } from "./events";
 import { PharmacyError } from "./errors";
+import { registrationNoOf, requireRegisteredPharmacist } from "./pharmacists";
 import { batchTermsPerBase } from "./price";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
 import type { Actor } from "@hmis/contracts";
@@ -94,10 +95,14 @@ export async function handOverDispense(
   const patient = visible.patient;
 
   let identityConfirmedVia: "token" | "phone_last4" | null = null;
+  // P2 — the number the records carry: the scheduled path has just required it; the aide has none.
+  const pharmacistRegNo = actor.type === "user" ? await registrationNoOf(db, actor.id, now) : null;
   if (scheduled) {
     if (actor.type !== "user" || !(await hasPermission(db, actor.id, "pharmacy.dispense.scheduled", "hospital"))) {
       throw new PharmacyError("scheduled_needs_pharmacist", "a Schedule H/H1 dispense is completed by a registered pharmacist (Pharmacy Act 1948 §42) — call one to the window");
     }
+    // P2 — the permission says the login may; the register says the person is a registered pharmacist today.
+    await requireRegisteredPharmacist(db, actor, now);
     if (input.identity === undefined || input.identity.value.trim() === "") {
       throw new PharmacyError("identity_confirmation_required", "confirm the person at the window: today's token, or the last four digits of the phone on the record");
     }
@@ -213,6 +218,7 @@ export async function handOverDispense(
           prescriberName: doctor?.displayName ?? rx.doctorId, prescriberRegNo: doctor?.registrationNo ?? null,
           drugName: med === undefined ? (line.rxLine as RxLine).drug : `${med.brandName}${med.strengthLabel === null ? "" : ` ${med.strengthLabel}`} ${med.form}`,
           medicineId: line.dispensedMedicineId, batchNo: batch.batchNo, qtyBase: line.qtyBase, unit: item?.baseUom ?? "unit", recordedBy: actor.id,
+          pharmacistRegNo,
         });
         h1Rows += 1;
       }
@@ -227,7 +233,7 @@ export async function handOverDispense(
       actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
       payload: {
         dispenseId: d.id, dispenseNo: d.dispenseNo ?? d.id, patientId: d.patientId, encounterId: d.encounterId, handedOverBy: actor.id,
-        ledgerEntryIds, h1RegisterRows: h1Rows, identityConfirmedVia,
+        ledgerEntryIds, h1RegisterRows: h1Rows, identityConfirmedVia, pharmacistRegNo,
       },
     }));
   });

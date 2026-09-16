@@ -14,7 +14,8 @@ export { PharmacyError, PHARMACY_ERROR_CODES, pharmacyHttpStatus } from "./error
 export type { PharmacyErrorCode } from "./errors";
 export {
   PHARMACY_EVENTS, dispenseBilled, dispenseCancelled, dispenseClaimed, dispenseHandedOver, dispenseLineDeclined,
-  dispensePicked, dispenseQueued, dispenseVerified, substitutionRecorded,
+  dispensePicked, dispenseQueued, dispenseVerified, pharmacistRegistered, pharmacistRegistrationEnded,
+  substitutionRecorded,
 } from "./events";
 export {
   OPD_PHARMACY_STORE_CODE, PHARMACY_SUBSTITUTION_ENABLED, PICK_RESERVATION_MINUTES, REFUSED_FLAGS, REGISTER_FLAGS,
@@ -60,3 +61,12 @@ export type { LabelData, LabelLine } from "./label";
 
 // ── CLOSE REVIEW / F11 — the pick reservation expires (the worker's sixteenth job) ──
 export { PHARMACY_PICK_SWEEP_ACTOR, PICK_EXPIRED_REASON, sweepExpiredPicks } from "./expiry";
+/**
+ * P2 — the register of pharmacists (Pharmacy Act 1948 §42). `currentRegistration` is exported for
+ * the go-live census, which asks whether anyone who may complete a scheduled dispense holds one.
+ */
+export {
+  PHARMACIST_ROLE, currentRegistration, endPharmacistRegistration, listPharmacists, recordPharmacistRegistration,
+  requireRegisteredPharmacist,
+} from "./pharmacists";
+export type { PharmacistRegistration, PharmacistView } from "./pharmacists";

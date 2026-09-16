@@ -14,7 +14,7 @@ import { registerOpdEncounterResolver } from "../../src/modules/opd/opd.module";
 import { issuePrescription } from "../../src/modules/opd/prescriptions";
 import { callNext } from "../../src/modules/opd/queue";
 import { recordVitals } from "../../src/modules/opd/vitals";
-import { activatePharmacyDefinitions, registerSaleItem } from "../../src/modules/pharmacy";
+import { activatePharmacyDefinitions, recordPharmacistRegistration, registerSaleItem } from "../../src/modules/pharmacy";
 import { upsertGstCategory } from "../../src/modules/tariff";
 import { issuePaidInvoice, seedBillingBase } from "./billing";
 import type { BillingBaseFixture } from "./billing";
@@ -36,6 +36,8 @@ export type PharmacyFixture = {
   decls: readonly OrderKindDecl[];
   registry: ModuleRegistry;
   pharmacist: { id: string; token: string; actor: Actor };
+  /** P2 — the pharmacist in charge: holds `pharmacy`, files `pharmacist`'s council registration, has none of their own. */
+  incharge: { id: string; token: string; actor: Actor };
   aide: { id: string; token: string; actor: Actor };
   clerk: { id: string; token: string; actor: Actor };
   vd: { id: string; token: string; actor: Actor };
@@ -75,6 +77,7 @@ export async function seedPharmacyBase(db: Db): Promise<PharmacyFixture> {
   await ensureRole(db, "pharmacy_assistant");
   for (const p of [
     "pharmacy.dispense.place", "pharmacy.dispense.read", "pharmacy.dispense.scheduled", "pharmacy.sale_items.manage",
+    "pharmacy.pharmacists.manage",
     ORDERS_PLACE, "orders.read", "orders.cancel",
     "billing.invoice.issue", "billing.invoice.read", "billing.receipt.record", "billing.session.own",
     "patients.read", "formulary.read", "materials.stock.read", "opd.prescriptions.verify",
@@ -83,6 +86,11 @@ export async function seedPharmacyBase(db: Db): Promise<PharmacyFixture> {
     await grantPermissionToRole(db, registry, "pharmacy_assistant", p);
   }
   const pharmacist = await mkUser(db, "ph.mehta", ["pharmacy"]);
+  const incharge = await mkUser(db, "ph.incharge", ["pharmacy"]);
+  // P2 — the Act's acts need a current registration; the pharmacist in charge files it (never its holder).
+  await withTx(db, (tx) => recordPharmacistRegistration(tx, incharge.actor, {
+    userId: pharmacist.id, council: "Maharashtra State Pharmacy Council", registrationNo: "MSPC-123456", validUntil: null,
+  }, MON));
   const aide = await mkUser(db, "aide.ravi", ["pharmacy_assistant"]);
   const clerk = await mkUser(db, "clerk", ["front_office"]);
   const vd = await mkUser(db, "vd", ["vitals_desk"]);
@@ -123,7 +131,7 @@ export async function seedPharmacyBase(db: Db): Promise<PharmacyFixture> {
 
   const patient = await mkPatient(db, clerk.actor, { ageYears: undefined, dob: DOB });
   const unregister = registerOpdEncounterResolver();
-  return { decls: collectOrderKinds(registry), registry, pharmacist, aide, clerk, vd, doctor, deptId, storeId, med, item, patient, base, unregister };
+  return { decls: collectOrderKinds(registry), registry, pharmacist, incharge, aide, clerk, vd, doctor, deptId, storeId, med, item, patient, base, unregister };
 }
 
 /** open → vitals → call → start → issue: the production path a prescription actually takes. */

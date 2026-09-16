@@ -26,6 +26,13 @@ export function DispenseLabel({ label }: { label: WireLabel }): React.ReactEleme
           <div>{t("pharmacyCounter.qty")}: {l.qtyBase} {l.unit}{l.packs !== null ? ` (${l.packs})` : ""}</div>
           <div>{t("pharmacyCounter.directions")}: {l.directions}</div>
           <div className="small">{t("pharmacyCounter.batch")} {l.batchNo}{l.expiryDate !== null ? ` · ${t("pharmacyCounter.expiry")} ${l.expiryDate}` : ""}</div>
+          {/* P2 — the Pharmacy Act's pharmacist, named with the registration the dispense was checked under. */}
+          {label.pharmacist !== undefined && label.pharmacist !== null && (
+            <div className="small" data-testid={`label-pharmacist-${String(l.lineIdx)}`}>
+              {t("pharmacyCounter.dispensedBy", { name: label.pharmacist.name })}
+              {label.pharmacist.registrationNo !== null ? ` · ${t("pharmacyCounter.regNo", { no: label.pharmacist.registrationNo })}` : ""}
+            </div>
+          )}
         </div>
       ))}
     </div>

@@ -58,6 +58,7 @@ import { OtRecovery } from "./screens/ot-recovery";
 import { LabDesk } from "./screens/lab-desk";
 import { PharmacyCounter } from "./screens/pharmacy-counter";
 import { PharmacyItems } from "./screens/pharmacy-items";
+import { PharmacyPharmacists } from "./screens/pharmacy-pharmacists";
 import { RadiologyReception } from "./screens/radiology-reception";
 import { RadiologyWorklist } from "./screens/radiology-worklist";
 import { RadiologyStudy } from "./screens/radiology-study";
@@ -260,6 +261,8 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   // PLAN 16c T5 — the dispense counter beside the OPD stations it serves; sale items with the stores.
   { to: "/pharmacy/counter", label: "nav.pharmacyCounter", permission: "pharmacy.dispense.read", group: "opd" },
   { to: "/pharmacy/items", label: "nav.pharmacyItems", permission: "pharmacy.sale_items.manage", group: "stores" },
+  // PHARMACY P2 — the register of pharmacists, beside the pharmacy's other master data.
+  { to: "/pharmacy/pharmacists", label: "nav.pharmacyPharmacists", permission: "pharmacy.pharmacists.manage", group: "stores" },
 ];
 
 /**
@@ -828,6 +831,13 @@ const pharmacyItemsRoute = createRoute({
   component: PharmacyItems,
 });
 
+/** PHARMACY P2 — the register of pharmacists. Path matches `pharmacyManifest.menu`. */
+const pharmacyPharmacistsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/pharmacists",
+  component: PharmacyPharmacists,
+});
+
 const labDeskRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/lab/desk",
@@ -1168,7 +1178,7 @@ export const router = createRouter({
       pcpndtFormFRoute, radiationSafetyRoute,
       // PLAN 16c T5 — 45 -> 47, the pharmacy: the dispense counter and the sale-items admin. TWO routes
       // and two NAV links. `caddyfile-parity.test.ts` pins the count and joins this task's Files list.
-      pharmacyCounterRoute, pharmacyItemsRoute,
+      pharmacyCounterRoute, pharmacyItemsRoute, pharmacyPharmacistsRoute,
       // PHASE 11i T9 — 50 -> 53, and every one of the three is a REDIRECT with no screen. They exist
       // because the catch-up deploy deletes three paths production has been serving since
       // 2 September and the desk PCs have them bookmarked. Removed in the release after the

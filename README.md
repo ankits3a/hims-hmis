@@ -1226,6 +1226,11 @@ transition rather than trusting a screen to hide it. `pharmacy.sale_items.manage
 item to the tariff service it is billed as — is the pharmacist's too, because a wrong bridge is a
 wrong price on every strip that item ever sells. The pharmacy manifest also CLAIMS the `medication`
 order kind on the `P` series (`pharmacy_dispense`), which Plan 17 reserved by name.
+**Pharmacy P2 adds the register of pharmacists, because a role is not a registration.**
+`pharmacy.pharmacists.manage` goes to `pharmacy` alone. It lets the pharmacist in charge file and
+end a colleague's state council registration, and the act refuses anyone filing their own. The
+counter's verify, and the hand-over of a scheduled dispense, now also require the acting person to
+hold a current registration on that register, whatever role the login carries.
 
 | Permission | pharmacy | pharmacy_assistant |
 |---|---|---|
@@ -1233,6 +1238,7 @@ order kind on the `P` series (`pharmacy_dispense`), which Plan 17 reserved by na
 | `pharmacy.dispense.read` | ✓ | ✓ |
 | `pharmacy.dispense.scheduled` | ✓ | |
 | `pharmacy.sale_items.manage` | ✓ | |
+| `pharmacy.pharmacists.manage` | ✓ | |
 
 Ten grants are held outside that table. **`pharmacy` gains the kernel's `orders.place`,
 `orders.read` and `orders.cancel`** because the claim at the counter PLACES the `medication` order

@@ -138,7 +138,31 @@ export async function handOverDispense(id: string, identity: { via: "token" | "p
 export type WireLabel = {
   dispenseNo: string | null; status: string; patient: { display: string; uhid: string }; handedOverAt: string | null;
   lines: { lineIdx: number; drug: string; strength: string | null; form: string | null; qtyBase: number; unit: string; packs: string | null; batchNo: string; expiryDate: string | null; directions: string; substitutedFor: string | null }[];
+  /** P2 — who verified the dispense, and the registration current then. Absent from an older server. */
+  pharmacist?: { name: string; council: string | null; registrationNo: string | null } | null;
 };
 export async function fetchLabel(id: string): Promise<WireLabel> {
   return api<WireLabel>("GET", `/pharmacy/dispenses/${id}/label`);
+}
+
+// ── P2 — the register of pharmacists (Pharmacy Act 1948 §42) ──
+export type WirePharmacistRegistration = {
+  id: string; userId: string; council: string; registrationNo: string; validUntil: string | null;
+  recordedBy: string; recordedAt: string; endedAt: string | null; endedBy: string | null; endReason: string | null;
+};
+export type WirePharmacist = {
+  userId: string; username: string; fullName: string; active: boolean;
+  current: WirePharmacistRegistration | null; history: WirePharmacistRegistration[];
+};
+export async function fetchPharmacists(): Promise<WirePharmacist[]> {
+  const { items } = await api<{ items: WirePharmacist[] }>("GET", "/pharmacy/pharmacists");
+  return items;
+}
+export async function filePharmacistRegistration(
+  userId: string, body: { council: string; registrationNo: string; validUntil: string | null },
+): Promise<{ id: string; supersededId: string | null }> {
+  return api("POST", `/pharmacy/pharmacists/${userId}/registrations`, body);
+}
+export async function endPharmacistRegistration(registrationId: string, reason: string): Promise<void> {
+  await api("POST", `/pharmacy/pharmacists/registrations/${registrationId}/end`, { reason });
 }
