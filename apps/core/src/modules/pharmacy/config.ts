@@ -30,3 +30,17 @@ export const REGISTER_FLAGS = ["H1"] as const;
 export function istDateOf(at: Date): string {
   return new Date(at.getTime() + IST_UTC_OFFSET_MINUTES * 60_000).toISOString().slice(0, 10);
 }
+
+/**
+ * PHARMACY P4 — THE REORDER LIST'S THREE NUMBERS (doc 16 §9, Replenishment, drafting tier).
+ *
+ * An OPD counter is a sub-store: the standard Indian hospital practice is a short cover at the
+ * window, topped up from the main store, with the main store holding the month. So the counter
+ * reorders when it has under THREE days of its own recent use left, and tops up to SEVEN. Use is
+ * measured over the last THIRTY days, long enough to smooth a slow week and short enough to follow
+ * a season. DECIDED under the owner's 2026-09-16 instruction; they are constants rather than
+ * configuration until a pharmacist asks to change one.
+ */
+export const REORDER_WINDOW_DAYS = 30;
+export const REORDER_MIN_COVER_DAYS = 3;
+export const REORDER_TARGET_COVER_DAYS = 7;

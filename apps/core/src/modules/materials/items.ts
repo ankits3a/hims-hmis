@@ -460,6 +460,20 @@ export async function itemUomRows(db: Db | Tx, itemId: string): Promise<UomRow[]
     .from(itemUoms).where(eq(itemUoms.itemId, itemId));
 }
 
+/** PHARMACY P4 — every pack unit of the named items, keyed by item: the reorder list rounds to one. */
+export async function uomsByItems(
+  db: Db | Tx, itemIds: readonly string[],
+): Promise<Map<string, { uom: string; toBaseMultiplier: number; isIssueUom: boolean }[]>> {
+  const out = new Map<string, { uom: string; toBaseMultiplier: number; isIssueUom: boolean }[]>();
+  const wanted = [...new Set(itemIds)];
+  if (wanted.length === 0) return out;
+  const rows = await db.select({
+    itemId: itemUoms.itemId, uom: itemUoms.uom, toBaseMultiplier: itemUoms.toBaseMultiplier, isIssueUom: itemUoms.isIssueUom,
+  }).from(itemUoms).where(inArray(itemUoms.itemId, wanted));
+  for (const r of rows) out.set(r.itemId, [...(out.get(r.itemId) ?? []), { uom: r.uom, toBaseMultiplier: r.toBaseMultiplier, isIssueUom: r.isIssueUom }]);
+  return out;
+}
+
 export async function listItems(
   db: Db | Tx,
   filter: { class?: string; active?: boolean; search?: string } = {},

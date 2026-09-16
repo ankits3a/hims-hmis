@@ -27,6 +27,7 @@ export const pharmacyManifest: ModuleManifest = {
     { label: "Dispense counter", path: "/pharmacy/counter", permission: "pharmacy.dispense.read" },
     { label: "Sale items", path: "/pharmacy/items", permission: "pharmacy.sale_items.manage" },
     { label: "Pharmacists", path: "/pharmacy/pharmacists", permission: "pharmacy.pharmacists.manage" },
+    { label: "Reorder list", path: "/pharmacy/reorder", permission: "pharmacy.dispense.read" },
   ],
   permissions: [
     /** Claim a queued Rx at the counter, which places the `medication` order; verify, pick, bill. */

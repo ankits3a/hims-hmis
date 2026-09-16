@@ -50,6 +50,10 @@ describe("the OPD dispense counter over HTTP (16c T5)", () => {
     await request(server()).get("/pharmacy/queue").expect(401);
     await as(fx.clerk.token)(request(server()).get("/pharmacy/queue")).expect(403);
     await as(fx.aide.token)(request(server()).post("/pharmacy/sale-items").send({ itemId: fx.item.crocin })).expect(403);
+    // P4 — the reorder list is read by anyone at the counter, and by nobody else.
+    await as(fx.clerk.token)(request(server()).get("/pharmacy/reorder")).expect(403);
+    const reorder = await as(fx.aide.token)(request(server()).get("/pharmacy/reorder")).expect(200);
+    expect((reorder.body as { window: unknown }).window).toEqual({ days: 30, minCoverDays: 3, targetCoverDays: 7 });
     // P5 — the refund route is a money act: the aide holds no billing string at all.
     await as(fx.aide.token)(request(server()).post("/pharmacy/dispenses/d-any/refund").set("idempotency-key", "r-1")
       .send({ reason: "expired before collection", reasonClass: "genuine" })).expect(403);

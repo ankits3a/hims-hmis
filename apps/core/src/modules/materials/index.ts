@@ -30,7 +30,7 @@ export type { BlacklistReason } from "./config";
 // ── T3 — the item master, UoM conversion, barcodes and price regulations ──
 export {
   addBarcode, addItemUom, effectiveRegulation, getItem, itemUomRows, itemsByIds, listItems,
-  registerItem, resolveBarcode, setPriceRegulation, updateItem,
+  registerItem, resolveBarcode, setPriceRegulation, updateItem, uomsByItems,
 } from "./items";
 export type { ItemBarcodeRow, ItemRow, ItemUomRow, ItemWithUoms, PriceRegulationRow, RegisterItemInput } from "./items";
 /** DD7's one place a multiplier is applied. Pure; T6's gate and 16c's dispense both read it. */
@@ -51,7 +51,7 @@ export type {
 export { createStore, ensureTransitStore, findStoreByCode, listStores, requireStore } from "./stores";
 export type { StoreRow } from "./stores";
 export {
-  availableQty, availableQtyByItem, balances, batchLocations, consumeReservation, fefoPick, getBatch, movementsFor, postMovement,
+  availableQty, availableQtyByItem, balances, batchLocations, consumeReservation, consumedQtyByItem, fefoPick, getBatch, movementsFor, postMovement,
   postMovements, recallBatch, releaseReservation, reserveStock,
 } from "./ledger";
 export type { BalanceRow, BatchRow, LedgerRow, MovementInput, MovementReason, ReservationRow } from "./ledger";

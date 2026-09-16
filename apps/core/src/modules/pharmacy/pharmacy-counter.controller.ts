@@ -14,6 +14,8 @@ import { labelFor } from "./label";
 import { pickDispense } from "./pick";
 import { alternativesFor, cancelDispense, declineLine, verifyDispense } from "./verify";
 import { cancelBilledDispense } from "./refund";
+import { reorderAdvice } from "./replenishment";
+import type { ReorderAdvice } from "./replenishment";
 import type { CancelBilledResult } from "./refund";
 import type { Actor } from "@hmis/contracts";
 import type { AppConfig } from "../../kernel/config";
@@ -214,6 +216,17 @@ export class PharmacyCounterController {
     const { reason } = parsed(reasonBody, body);
     try {
       return await declineLine(this.db, actor, this.decls(), id, Number(idx), reason, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** P4 — the reorder list: what the counter will run out of, and where it can come from. Read-only. */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("reorder")
+  async reorder(): Promise<ReorderAdvice> {
+    try {
+      return await reorderAdvice(this.db, new Date());
     } catch (e) {
       return toHttp(e);
     }

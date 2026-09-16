@@ -172,3 +172,20 @@ export async function filePharmacistRegistration(
 export async function endPharmacistRegistration(registrationId: string, reason: string): Promise<void> {
   await api("POST", `/pharmacy/pharmacists/registrations/${registrationId}/end`, { reason });
 }
+
+// ── P4 — the reorder list ──
+export type WireReorderLine = {
+  itemId: string; code: string; name: string; baseUom: string;
+  status: "stock_out" | "reorder" | "ok" | "no_movement";
+  available: number; usedInWindow: number; daysOfCover: number | null;
+  suggestBase: number; suggestPacks: string | null;
+  source: { storeCode: string; storeName: string; available: number } | null;
+};
+export type WireReorderAdvice = {
+  asOf: string;
+  window: { days: number; minCoverDays: number; targetCoverDays: number };
+  items: WireReorderLine[];
+};
+export async function fetchReorderAdvice(): Promise<WireReorderAdvice> {
+  return api<WireReorderAdvice>("GET", "/pharmacy/reorder");
+}

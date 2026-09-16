@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import {
@@ -439,6 +439,36 @@ export async function availableQtyByItem(
   for (const r of await sellableBatchRows(db, resourceId, wanted, asOf)) {
     out.set(r.itemId, (out.get(r.itemId) ?? 0) + Math.max(0, r.onHand - r.reserved - r.frozen));
   }
+  return out;
+}
+
+/**
+ * PHARMACY P4 — how much of each item this store CONSUMED in `[since, until)`, keyed by item id; an
+ * item with none is absent. Bounded by the item ids and the window. `occurred_at` is the injected
+ * instant (a downtime back-entry lands on the day it happened, which is the day the velocity is
+ * about), and only `consume` rows count: an issue to another store is a move, not a use.
+ */
+export async function consumedQtyByItem(
+  db: Db | Tx,
+  resourceId: string,
+  itemIds: readonly string[],
+  since: Date,
+  until: Date,
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const wanted = [...new Set(itemIds)].filter((id) => id !== "");
+  if (wanted.length === 0) return out;
+  const rows = await db.select({
+    itemId: stockLedger.itemId,
+    used: sql<string>`coalesce(sum(-${stockLedger.qtyDelta}), 0)`,
+  }).from(stockLedger).where(and(
+    eq(stockLedger.resourceId, resourceId),
+    eq(stockLedger.reason, "consume"),
+    inArray(stockLedger.itemId, wanted),
+    sql`${stockLedger.occurredAt} >= ${since}`,
+    sql`${stockLedger.occurredAt} < ${until}`,
+  )).groupBy(stockLedger.itemId);
+  for (const r of rows) out.set(r.itemId, Number(r.used));
   return out;
 }
 
