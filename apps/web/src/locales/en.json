@@ -582,7 +582,32 @@
     "admitted": "{{name}} admitted to the formulary",
     "rejected": "{{name}} rejected",
     "stocked": "In the formulary",
-    "moieties": "moieties"
+    "moietyCount_one": "{{count}} moiety",
+    "moietyCount_other": "{{count}} moieties",
+    "catalogueShow": "Show the catalogue",
+    "catalogueHide": "Hide the catalogue",
+    "catalogueCost": "Nothing is fetched until you open it — the catalogue is read a page at a time.",
+    "catalogueMore": "Load more",
+    "catalogueLoading": "Loading…",
+    "catalogueEnd": "That is the end of the list.",
+    "compositionEmpty": "No moiety chosen yet.",
+    "saltSearchPlaceholder": "e.g. amoxicillin",
+    "saltSearchHint": "Type two letters of a moiety name to search.",
+    "saltSearching": "Searching…",
+    "saltNoHits": "No active moiety matches that name.",
+    "saltAlreadyChosen": "— chosen",
+    "saltRemove": "Remove {{name}}",
+    "census": {
+      "moieties": "Moieties",
+      "medicines": "Medicines",
+      "uncomposed": "No composition on file",
+      "activeOfTotal": "{{active}} active of {{total}}",
+      "uncomposedCount_one": "{{shown}} active medicine",
+      "uncomposedCount_other": "{{shown}} active medicines",
+      "uncomposedHint": "No interaction, allergy or substitution check can reason about a product with no moiety on file."
+    },
+    "saltSearchFailed": "That search could not be run — the moiety list is unavailable, so this is not an answer about what the formulary holds. Try again.",
+    "saltMoreMatches": "Showing the closest {{shown}} — type more of the name to narrow it."
   },
   "opdConsult": {
     "pickFromFormulary": "Pick from formulary",

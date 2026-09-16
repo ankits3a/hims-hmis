@@ -25,7 +25,7 @@ import {
   activeRegistrations, registeredMachines, registeredPersons,
 } from "../src/modules/pcpndt";
 import { istDayString } from "../src/kernel/approvals/cumulative";
-import { listInteractions, listSalts } from "../src/modules/formulary";
+import { catalogueCensus } from "../src/modules/formulary";
 import { SEED_CENSUS } from "./seed-formulary-interactions";
 import type { Db } from "../src/kernel/db/client";
 
@@ -219,10 +219,25 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
        * That is the pharmacy item master's path and its own gap; this row is honest about covering
        * the book and not the mapping.
        */
-      check: async (db) => (
-        (await listSalts(db, { activeOnly: true })).length >= SEED_CENSUS.salts
-        && (await listInteractions(db)).length >= SEED_CENSUS.pairs
-      ),
+      /**
+       * ═══ IT COUNTS; IT DOES NOT MEASURE A PAGE ═══
+       *
+       * The predicate used to be `(await listSalts(...)).length` and `(await listInteractions(db)).length`
+       * — two unbounded reads whose LENGTH was the only thing wanted, which is the defect this row's
+       * own comment warns about (#175) wearing the clothes of a harmless statistic. Their bounded
+       * replacements are PAGES, and `(await pageSalts(db)).items.length` would report 50 for a
+       * catalogue of 3,283: this row would go RED on a correctly seeded hospital, or — worse, once
+       * somebody "fixed" it by raising the limit — go green on a number that is not the one it names.
+       *
+       * `catalogueCensus` asks the database to count, in one statement of scalar subqueries with no
+       * row crossing the wire. `interactions` and not `activeInteractions`, matching the deleted
+       * `listInteractions(db)`, which took no `activeOnly`: this row certifies the book was LOADED,
+       * and a pair a hospital has deliberately retired is still a pair the seed put there.
+       */
+      check: async (db) => {
+        const census = await catalogueCensus(db);
+        return census.activeSalts >= SEED_CENSUS.salts && census.interactions >= SEED_CENSUS.pairs;
+      },
       fix: "run: pnpm --filter @hmis/core seed:formulary — an empty interaction book answers \"no interactions\" to every prescription",
     },
     {

@@ -12,7 +12,7 @@ import { testCfg } from "./helpers/opd";
 import { assertDemoDataAllowed, seedPharmacyDemo } from "../scripts/seed-pharmacy-demo";
 import { ensurePharmacyCounter } from "../scripts/seed-pharmacy";
 import { assignRole, grantPermissionToRole } from "../src/kernel/auth/permissions";
-import { listMedicines } from "../src/modules/formulary";
+import { medicineIdsByBrandNames } from "../src/modules/formulary";
 import { roleAssignments, stockBatches } from "../src/kernel/db/schema";
 import { availableQty, balances, findStoreByCode, listVendors } from "../src/modules/materials";
 import { listSaleItems } from "../src/modules/pharmacy";
@@ -168,7 +168,10 @@ describe("seed:pharmacy-demo — the synthetic catalogue and shelf", () => {
        seed's to change. So dispensing Crocin here would price at 12% and measure the fixture, not
        the seed. Pan 40 is one the seed itself created, so this is the seed's own null-slab
        behaviour end to end. */
-    const panMedicineId = (await listMedicines(db)).find((m) => m.brandName === "Pan 40")!.id;
+    /* The map is keyed by the LOWERCASED brand, so "Pan 40" is looked up as "pan 40". The `!` is
+       load-bearing: an absent key would mean the seed never created Pan 40, and the failure should
+       land here rather than as an opaque refusal three counter steps later. */
+    const panMedicineId = (await medicineIdsByBrandNames(db, ["Pan 40"])).get("pan 40")!;
     const { issued, tokenNo } = await issueRx(db, fx, [line({ drug: "Pan 40", medicineId: panMedicineId })]);
     const found = await findAtCounter(db, testCfg, fx.pharmacist.actor, issued.qrPayload, MON2);
     if (found.kind !== "dispense") throw new Error("the seeded Rx did not reach the counter");
