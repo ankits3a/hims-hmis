@@ -116,6 +116,37 @@ describe("PharmacyCounter (16c T3)", () => {
     expect(within(line0).queryByTestId("line-partly-checked-0")).toBeNull();
   });
 
+  /**
+   * PHARMACY P5 — a paid dispense that cannot be collected: the counter cancels it with a refund.
+   * The button waits for a reason, the request carries the class and an idempotency key, and the
+   * answer names the credit note the patient takes to billing.
+   */
+  it("P5 — cancels a billed dispense with a refund, and says which credit note was raised", async () => {
+    let current = dispense("billed", { invoiceId: "inv-1", dispenseNo: "P2608170001" });
+    mockRoutes({
+      "GET /api/pharmacy/queue": { status: 200, body: { items: [{ dispenseId: "d1", status: "billed", dispenseNo: "P2608170001", scheduled: true, lineCount: 2, createdAt: "2026-08-17T04:00:00.000Z", claimedAt: null, patient: PATIENT }] } },
+      "GET /api/pharmacy/dispenses/d1": () => ({ status: 200, body: current }),
+      "POST /api/pharmacy/dispenses/d1/refund": () => {
+        current = dispense("cancelled", { invoiceId: "inv-1", dispenseNo: "P2608170001", cancelReason: "batch expired before collection" });
+        return { status: 201, body: { dispense: current, creditNoteId: "cn-1", creditNoteNo: "CN-2608-0001", refundApprovalId: "ap-1" } };
+      },
+    });
+    renderWithProviders(<PharmacyCounter />);
+    await userEvent.click(await screen.findByText(/Sita Devi/));
+    const form = await screen.findByTestId("refund-form");
+    const submit = within(form).getByRole("button", { name: "Cancel & request refund" });
+    expect(submit).toBeDisabled();
+    await userEvent.type(within(form).getByRole("textbox", { name: "Reason" }), "batch expired before collection");
+    await userEvent.click(submit);
+    await waitFor(() => expect(bodiesOf("POST", "/pharmacy/dispenses/d1/refund")).toEqual([
+      { reason: "batch expired before collection", reasonClass: "genuine" },
+    ]));
+    const call = vi.mocked(fetch).mock.calls.find(([input, init]) => init?.method === "POST" && String(input).endsWith("/refund"));
+    expect(new Headers(call?.[1]?.headers).get("idempotency-key")).not.toBeNull();
+    expect(await screen.findByRole("status")).toHaveTextContent("Credit note CN-2608-0001 raised; the refund waits for approval at billing.");
+    expect(screen.queryByTestId("refund-form")).toBeNull();
+  });
+
   it("a refusal code from verify reads as the locale's sentence, and the queue offers today's rows", async () => {
     mockRoutes({
       "GET /api/pharmacy/queue": { status: 200, body: { items: [{ dispenseId: "d1", status: "queued", dispenseNo: null, scheduled: false, lineCount: 2, createdAt: "2026-08-17T04:00:00.000Z", claimedAt: null, patient: PATIENT }] } },

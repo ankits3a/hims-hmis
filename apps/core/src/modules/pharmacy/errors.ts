@@ -72,6 +72,9 @@ export const PHARMACY_ERROR_CODES = [
   "registration_in_use",
   "registration_ended",
   "not_a_pharmacist_role",
+  // ── P5: a paid dispense that cannot be collected ──
+  /** An act whose record a reviewer will read, attempted without saying why. */
+  "reason_required",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -129,6 +132,7 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   registration_in_use: 409,
   registration_ended: 409,
   not_a_pharmacist_role: 409,
+  reason_required: 400,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {

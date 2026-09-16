@@ -13,6 +13,8 @@ import { handOverDispense } from "./handover";
 import { labelFor } from "./label";
 import { pickDispense } from "./pick";
 import { alternativesFor, cancelDispense, declineLine, verifyDispense } from "./verify";
+import { cancelBilledDispense } from "./refund";
+import type { CancelBilledResult } from "./refund";
 import type { Actor } from "@hmis/contracts";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
@@ -33,6 +35,7 @@ const verifyBody = z.object({
   })),
 });
 const reasonBody = z.object({ reason: z.string().min(1).max(240) });
+const refundBody = z.object({ reason: z.string().min(3).max(500), reasonClass: z.enum(["mistake", "genuine"]) });
 const pickBody = z.object({
   lines: z.array(z.object({
     lineIdx: z.number().int().nonnegative(),
@@ -211,6 +214,22 @@ export class PharmacyCounterController {
     const { reason } = parsed(reasonBody, body);
     try {
       return await declineLine(this.db, actor, this.decls(), id, Number(idx), reason, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * P5 — a paid dispense that cannot be collected. The act asserts the Act's registration and both
+   * billing strings itself; this decorator is the first gate, not the only one.
+   */
+  @RequirePermission("billing.refund.request", "hospital")
+  @Post("dispenses/:id/refund")
+  async refund(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown, @Headers("idempotency-key") key?: string): Promise<CancelBilledResult> {
+    const input = parsed(refundBody, body);
+    try {
+      return await withIdempotency(this.db, { actorId: actor.id, route: PHARMACY_IDEMPOTENT_ROUTES.refund, key }, { id, ...input },
+        () => cancelBilledDispense(this.db, actor, this.decls(), id, input, new Date()));
     } catch (e) {
       return toHttp(e);
     }

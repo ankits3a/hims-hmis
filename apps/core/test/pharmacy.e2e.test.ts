@@ -50,6 +50,9 @@ describe("the OPD dispense counter over HTTP (16c T5)", () => {
     await request(server()).get("/pharmacy/queue").expect(401);
     await as(fx.clerk.token)(request(server()).get("/pharmacy/queue")).expect(403);
     await as(fx.aide.token)(request(server()).post("/pharmacy/sale-items").send({ itemId: fx.item.crocin })).expect(403);
+    // P5 — the refund route is a money act: the aide holds no billing string at all.
+    await as(fx.aide.token)(request(server()).post("/pharmacy/dispenses/d-any/refund").set("idempotency-key", "r-1")
+      .send({ reason: "expired before collection", reasonClass: "genuine" })).expect(403);
   });
 
   it("e-Rx → scan → claim → decline the unstocked line → verify (P number) → pick → bill → hand over → label; every row read back", async () => {

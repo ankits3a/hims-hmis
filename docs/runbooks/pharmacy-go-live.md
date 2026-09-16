@@ -201,9 +201,17 @@ left null bills the right amount and reports no output tax: read the column back
 > **3.10 A BATCH CAN EXPIRE BETWEEN THE BILL AND THE COLLECTION, AND THE COUNTER NOW REFUSES IT.**
 > Because a billed dispense is never swept, a patient who pays at 21:00 on a batch's last valid day
 > and collects the next morning meets `batch_expired_before_collection`. The stock stays on the
-> shelf, the dispense stays `billed` — **and the bill is already PAID, with no way to cancel it from
-> this counter.** Quarantine the strip and send the patient to the billing desk for a credit note.
-> The refund path is 16d's; this is the honest state until it lands.
+> shelf and the dispense stays `billed`, **and the bill is already PAID.**
+> - Quarantine the strip.
+> - Then, since pharmacy P5, **cancel the dispense with a refund** from the billed dispense's red
+>   panel: reason, and "genuine".
+> - That one act frees the reserved stock, credits the invoice in full, and files the refund request.
+> - The patient takes the credit-note number to billing, where an approver approves the refund and
+>   the cashier pays the voucher.
+> - If the patient still wants the medicine, scan the prescription again. That starts a fresh
+>   dispense, which picks from a batch still in date.
+> - Only a registered pharmacist (P2) holding `billing.credit_note.issue` and
+>   `billing.refund.request` can do it.
 
 ## 4. What refuses, and why — all 33 codes
 
@@ -237,7 +245,8 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `batch_not_saleable` | the named batch cannot be sold | pick again |
 | `short_stock` | the earliest IN-DATE batch cannot cover the line; the message gives both numbers | partial with a reason, or name a batch that covers it |
 | `batch_expired` | a batch was NAMED and its printed expiry has passed | quarantine it; pick again without naming a batch |
-| **`batch_expired_before_collection`** | in date at the pick, expired before the patient collected | §3.10 — quarantine, and the billing desk raises a credit note |
+| **`batch_expired_before_collection`** | in date at the pick, expired before the patient collected | §3.10 — quarantine; cancel with a refund at the counter (P5), then scan the Rx again if the patient still wants it |
+| `reason_required` | a paid dispense cancelled with no reason the refund approver can read | type the reason |
 | `fefo_override_unavailable` | a named batch is the wrong item, is recalled, or cannot cover the quantity | check the carton, or let FEFO choose |
 | `invoice_not_settled` | the money moved BACK after billing — a reversed allocation or a credit note | send the patient to the billing desk; the drug does not leave unpaid |
 
@@ -315,8 +324,8 @@ No migration is reversed and no table is dropped.
 
 ## 8. Not in 16c (do not look for it)
 
-IPD indents and ward stock; NDPS and Schedule X custody; **returns, refunds and credit notes** (which
-§3.10 now needs); cold chain; antimicrobial stewardship; the doctor ping on a held line; walk-in
+IPD indents and ward stock; NDPS and Schedule X custody; **returns of drugs already handed over**
+(a billed dispense that was never collected is cancelled with a refund since P5, §3.10); cold chain; antimicrobial stewardship; the doctor ping on a held line; walk-in
 retail and outside prescriptions; repeat dispensing; home delivery; counts; the Replenishment
 automation; realtime on the counter (it polls every 10 s).
 

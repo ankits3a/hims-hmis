@@ -74,6 +74,12 @@ export const dispenseHandedOver = defineEvent("dispense.handed_over", MODULE, z.
 
 export const dispenseCancelled = defineEvent("dispense.cancelled", MODULE, z.object({
   dispenseId: id, patientId: id, fromStatus: z.string().min(1), reason: z.string().min(1), reservationsReleased: z.number().int().nonnegative(),
+  /**
+   * P5 — a BILLED dispense is cancelled with the refund credit note it raised and the refund approval
+   * it filed. Null for a dispense cancelled before the bill, and on payloads written before P5.
+   */
+  creditNoteId: id.nullable().default(null),
+  refundApprovalId: id.nullable().default(null),
 }));
 
 /** P2 — a state council registration was filed for a pharmacist (a renewal names the row it ended). */

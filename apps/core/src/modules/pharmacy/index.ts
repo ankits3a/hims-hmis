@@ -70,3 +70,6 @@ export {
   requireRegisteredPharmacist,
 } from "./pharmacists";
 export type { PharmacistRegistration, PharmacistView } from "./pharmacists";
+/** P5 — a paid dispense that cannot be collected: cancelled, credited, a refund requested. */
+export { cancelBilledDispense } from "./refund";
+export type { CancelBilledInput, CancelBilledResult } from "./refund";

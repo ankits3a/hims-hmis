@@ -80,6 +80,7 @@ export async function seedPharmacyBase(db: Db): Promise<PharmacyFixture> {
     "pharmacy.pharmacists.manage",
     ORDERS_PLACE, "orders.read", "orders.cancel",
     "billing.invoice.issue", "billing.invoice.read", "billing.receipt.record", "billing.session.own",
+    "billing.credit_note.issue", "billing.refund.request",
     "patients.read", "formulary.read", "materials.stock.read", "opd.prescriptions.verify",
   ]) await grantPermissionToRole(db, registry, "pharmacy", p);
   for (const p of ["pharmacy.dispense.place", "pharmacy.dispense.read", "orders.read", "patients.read", "formulary.read"]) {

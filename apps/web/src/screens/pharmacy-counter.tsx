@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { newIdempotencyKey } from "../lib/api";
 import {
-  billDispense, cancelDispense, claimDispense, declineLine, fetchAlternatives, fetchDispense, fetchLabel, fetchQueue, findAtCounter,
+  billDispense, cancelBilledDispense, cancelDispense, claimDispense, declineLine, fetchAlternatives, fetchDispense, fetchLabel, fetchQueue, findAtCounter,
   handOverDispense, pharmacyErrorText, pickDispense, previewBill, verifyDispense,
 } from "../lib/pharmacy-api";
 import { DispenseLabel } from "../components/dispense-label";
@@ -29,6 +29,9 @@ export function PharmacyCounter(): React.ReactElement {
   const [edits, setEdits] = useState<Record<number, LineEdit>>({});
   const [alts, setAlts] = useState<Record<number, WireAlternative[]>>({});
   const [reason, setReason] = useState("");
+  // P5 — cancelling a PAID dispense: the refund approver reads the reason and the class.
+  const [refundReason, setRefundReason] = useState("");
+  const [refundClass, setRefundClass] = useState<"genuine" | "mistake">("genuine");
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   // T4 — the second half's state: partial picks, the priced draft, the tender, identity, the label
@@ -66,6 +69,8 @@ export function PharmacyCounter(): React.ReactElement {
     setIdentityValue("");
     setTenderAmount("");
     setReason("");
+    setRefundReason("");
+    setRefundClass("genuine");
     setError(null);
   };
 
@@ -418,6 +423,38 @@ export function PharmacyCounter(): React.ReactElement {
                     onClick={() => void handOver()}
                   >{t("pharmacyCounter.handover")}</Button>
                 </div>
+              )}
+              {/*
+                P5 — PAID, NOT COLLECTED. The one exit a billed dispense has: cancelled, the bill
+                credited, the refund requested for billing's approver. Hand-over stays above it,
+                because the usual answer to a billed dispense is still to hand it over.
+              */}
+              {inHand.status === "billed" && (
+                <form
+                  className="space-y-2 rounded border border-red-200 p-2 text-sm"
+                  data-testid="refund-form"
+                  onSubmit={(ev) => {
+                    ev.preventDefault();
+                    void run(async () => {
+                      const r = await cancelBilledDispense(inHand.id, { reason: refundReason.trim(), reasonClass: refundClass }, newIdempotencyKey());
+                      setNote(t("pharmacyCounter.refunded", { no: r.creditNoteNo }));
+                      return r.dispense;
+                    });
+                  }}
+                >
+                  <p className="font-medium">{t("pharmacyCounter.refundTitle")}</p>
+                  <div className="flex flex-wrap items-end gap-2">
+                    <label>
+                      {t("pharmacyCounter.refundReason")}
+                      <input aria-label={t("pharmacyCounter.refundReason")} className="ml-2 rounded border px-2 py-1" value={refundReason} onChange={(ev) => setRefundReason(ev.target.value)} />
+                    </label>
+                    <select aria-label={t("pharmacyCounter.refundClass")} className="rounded border px-2 py-1" value={refundClass} onChange={(ev) => setRefundClass(ev.target.value as "genuine" | "mistake")}>
+                      <option value="genuine">{t("pharmacyCounter.refundGenuine")}</option>
+                      <option value="mistake">{t("pharmacyCounter.refundMistake")}</option>
+                    </select>
+                    <Button type="submit" variant="destructive" size="sm" disabled={refundReason.trim().length < 3}>{t("pharmacyCounter.refundSubmit")}</Button>
+                  </div>
+                </form>
               )}
               {inHand.status === "handed_over" && (
                 <div className="space-y-2">

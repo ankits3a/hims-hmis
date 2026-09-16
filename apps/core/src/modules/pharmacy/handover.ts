@@ -177,13 +177,14 @@ export async function handOverDispense(
        * WHAT THIS LEAVES BEHIND, SAID OUT LOUD BECAUSE THE PR MUST CARRY IT: the patient has paid
        * and now cannot collect, and `cancelDispense` refuses a `billed` dispense (verify.ts:288)
        * while the sweep skips it — so there is no exit in the shipped UI. That is still the right
-       * trade (a stuck payment beats an expired drug in a patient) but it is a REFUND, and refunds
-       * are 16d's. Until 16d lands, the counter's answer is the billing desk's credit note.
+       * trade (a stuck payment beats an expired drug in a patient) but it is a REFUND. PHARMACY P5
+       * built the exit: `cancelBilledDispense` (refund.ts) cancels the dispense, frees its stock,
+       * credits the bill and files the approval-gated refund request.
        */
       if (batch.expiryDate !== null && batch.expiryDate < istDateOf(now)) {
         throw new PharmacyError(
           "batch_expired_before_collection",
-          `line ${String(line.lineIdx + 1)}: batch ${batch.batchNo} expired on ${batch.expiryDate} and cannot be handed over — it was in date when it was picked. Quarantine the strip and send the patient to the billing desk; the bill is already paid and needs a credit note.`,
+          `line ${String(line.lineIdx + 1)}: batch ${batch.batchNo} expired on ${batch.expiryDate} and cannot be handed over — it was in date when it was picked. Quarantine the strip, then cancel this dispense with a refund at the counter (the bill is credited and the refund goes to billing for approval); scan the prescription again to dispense from a batch in date.`,
           { lineIdx: line.lineIdx, batchId: line.batchId, batchNo: batch.batchNo, expiryDate: batch.expiryDate, asOf: istDateOf(now) },
         );
       }

@@ -114,6 +114,12 @@ export async function verifyDispense(id: string, lines: VerifyLine[], idempotenc
 export async function declineLine(id: string, lineIdx: number, reason: string): Promise<WireDispense> {
   return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/lines/${String(lineIdx)}/decline`, { reason });
 }
+/** P5 — a paid dispense that cannot be collected: cancelled, credited, the refund requested. */
+export async function cancelBilledDispense(
+  id: string, body: { reason: string; reasonClass: "mistake" | "genuine" }, idempotencyKey: string,
+): Promise<{ dispense: WireDispense; creditNoteId: string; creditNoteNo: string; refundApprovalId: string }> {
+  return api("POST", `/pharmacy/dispenses/${id}/refund`, body, idempotencyKey);
+}
 export async function cancelDispense(id: string, reason: string): Promise<WireDispense> {
   return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/cancel`, { reason });
 }

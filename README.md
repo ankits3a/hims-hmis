@@ -1231,6 +1231,11 @@ order kind on the `P` series (`pharmacy_dispense`), which Plan 17 reserved by na
 end a colleague's state council registration, and the act refuses anyone filing their own. The
 counter's verify, and the hand-over of a scheduled dispense, now also require the acting person to
 hold a current registration on that register, whatever role the login carries.
+**Pharmacy P5 lets the counter undo a paid dispense it cannot hand over.** `pharmacy` gains
+`billing.credit_note.issue` and `billing.refund.request`, two grants outside the table. A registered
+pharmacist cancels the billed dispense, credits its invoice in full and files the refund request.
+The payout is still the cashier's, behind billing's approval, so `pharmacy` does not gain
+`billing.refund.pay`.
 
 | Permission | pharmacy | pharmacy_assistant |
 |---|---|---|
