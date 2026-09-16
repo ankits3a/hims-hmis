@@ -181,6 +181,8 @@ type WirePrecheck = {
   duplicates: WireDuplicateHit[];
   notices: WireRxNotice[];
   unresolvedLineIndexes: number[];
+  /** Formulary phase 3. Optional: an older server sends nothing, and the screen then says nothing. */
+  unreviewedLineIndexes?: number[];
 };
 type WireCoverage = { coverage: number; noticeEnabled: boolean };
 
@@ -301,6 +303,12 @@ export function OpdConsult(): React.ReactElement {
   const [noticesDismissed, setNoticesDismissed] = useState(false);
   /** Line indexes the formulary could not resolve — the coverage-gated hint reads this (DD5). */
   const [unresolvedLines, setUnresolvedLines] = useState<number[]>([]);
+  /**
+   * Formulary phase 3: lines the server checked only in part, because a component is one pharmacy
+   * has not reviewed (no drug class, no interaction pairs). Not coverage-gated like the hint above:
+   * it is not a guess about the formulary, it is the server saying what it could not see.
+   */
+  const [unreviewedLines, setUnreviewedLines] = useState<number[]>([]);
   const [overrideError, setOverrideError] = useState<string | null>(null);
   const [rxPrint, setRxPrint] = useState<WireRxPrint | null>(null);
   const [followUp, setFollowUp] = useState("");
@@ -681,6 +689,7 @@ export function OpdConsult(): React.ReactElement {
     setNotices([]);
     setNoticesDismissed(false);
     setUnresolvedLines([]);
+    setUnreviewedLines([]);
     setFollowUp("");
     setTestsOrdered(false);
     setAdmissionAdvised(false);
@@ -1086,6 +1095,7 @@ export function OpdConsult(): React.ReactElement {
       const issued = await api<{
         prescriptionId: string; version: number;
         notices?: WireRxNotice[];
+        unreviewedLineIndexes?: number[];
       }>("POST", `/opd/visits/${active.encounterId}/prescriptions`, body);
       setMatches(null);
       setReasons([]);
@@ -1094,6 +1104,8 @@ export function OpdConsult(): React.ReactElement {
       setOverrideError(null);
       // Soft hits survive a successful issue: they are what the doctor should still know about.
       setNotices(issued.notices ?? []);
+      // The issue's own answer: when no hard warning paused it, the pre-check's was never shown.
+      setUnreviewedLines(issued.unreviewedLineIndexes ?? []);
       setNoticesDismissed(false);
       const print = await api<WireRxPrint>("GET", `/opd/prescriptions/${issued.prescriptionId}/print`);
       setRxPrint(print);
@@ -1162,6 +1174,7 @@ export function OpdConsult(): React.ReactElement {
       setNotices(pre.notices);
       setNoticesDismissed(false);
       setUnresolvedLines(pre.unresolvedLineIndexes);
+      setUnreviewedLines(pre.unreviewedLineIndexes ?? []);
       const severe = pre.interactions.filter((h) => h.severity === "severe");
       const hardDuplicates = pre.duplicates.filter((h) => h.hard);
       if (pre.allergyMatches.length > 0 || severe.length > 0 || hardDuplicates.length > 0) {
@@ -1179,6 +1192,7 @@ export function OpdConsult(): React.ReactElement {
       // M5 — but the stale hint indexes go: pointing the amber "not in formulary" note at a row
       // whose line has since changed is worse than showing nothing.
       setUnresolvedLines([]);
+      setUnreviewedLines([]);
     }
     await postRx(values.lines);
   });
@@ -2492,7 +2506,7 @@ export function OpdConsult(): React.ReactElement {
                     prescription, duplicates across route classes. They are data: dismissible, never
                     a gate, and they carry the in-system-only honesty line (design law 10).
                   */}
-                  {notices.length > 0 && !noticesDismissed && (
+                  {(notices.length > 0 || unreviewedLines.length > 0) && !noticesDismissed && (
                     <div data-testid="rx-notices" className="box" style={{ marginTop: 11, display: "flex", flexDirection: "column", gap: 5, padding: "10px 12px", fontSize: 12.5, borderColor: "var(--gold-line)", background: "var(--gold-soft)" }}>
                       {notices.map((hit, i) => (
                         <p key={`${String(hit.lineIndex)}-${String(i)}`} data-testid={`rx-notice-${String(i)}`} style={{ margin: 0 }}>
@@ -2503,6 +2517,18 @@ export function OpdConsult(): React.ReactElement {
                           <span style={{ color: "var(--dim)" }}>{againstLabel(hit)}</span>
                         </p>
                       ))}
+                      {/*
+                        FORMULARY PHASE 3 — the checks above could see these lines only in part. One
+                        sentence for all of them rather than one per line: it is the same fact.
+                      */}
+                      {unreviewedLines.length > 0 && (
+                        <p data-testid="rx-unreviewed" style={{ margin: 0 }}>
+                          {t("opdConsult.partlyChecked", {
+                            count: unreviewedLines.length,
+                            lines: unreviewedLines.map((i) => String(i + 1)).join(", "),
+                          })}
+                        </p>
+                      )}
                       <p style={{ margin: 0, fontSize: 11, color: "var(--dim)" }}>{t("opdConsult.inSystemOnly")}</p>
                       <button type="button" className="sec" style={{ alignSelf: "flex-start", padding: "2px 10px", fontSize: 11.5 }} onClick={() => setNoticesDismissed(true)}>
                         {t("opdConsult.dismiss")}

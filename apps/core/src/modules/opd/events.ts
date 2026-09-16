@@ -410,6 +410,13 @@ export const prescriptionIssued = defineEvent("prescription.issued", MODULE, z.o
    */
   interactionOverrideCount: z.number().int().nonnegative().default(0),
   duplicateOverrideCount: z.number().int().nonnegative().default(0),
+  /**
+   * FORMULARY PHASE 3 — the lines the checks could see only in part at issue time: a component no
+   * pharmacist had reviewed. Recorded because the live answer changes with the next attestation,
+   * and a retro-scan of what was issued before a decision needs the answer as it stood. Defaults to
+   * empty so every payload written before it still parses.
+   */
+  unreviewedLineIndexes: z.array(z.number().int().nonnegative()).default([]),
 }));
 
 export const referralIssued = defineEvent("referral.issued", MODULE, z.object({

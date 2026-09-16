@@ -6,7 +6,9 @@ import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
 import { opdDepartments, opdEncounters, opdPrescriptions, opdVitals } from "../../kernel/db/schema";
 import { getPatientSummaries, listAllergies } from "../patients";
-import { listInteractionsAmong, normalizeDrugName, resolveDrugTexts, resolveMedicines } from "../formulary";
+import {
+  listInteractionsAmong, normalizeDrugName, resolveDrugTexts, resolveMedicines, unreviewedSaltIds,
+} from "../formulary";
 import { checkDuplicateSalt, checkInteractions, matchAllergiesSaltAware } from "./rx-checks";
 import { loadOpdConfig } from "./config";
 import { requireTreatingDoctor } from "./consultation";
@@ -121,6 +123,19 @@ export type RxCheckOutcome = {
    * side that already knows the answer says so.
    */
   unresolvedLineIndexes: number[];
+  /**
+   * FORMULARY PHASE 3 — which lines the checks could see only IN PART, decided by the server.
+   *
+   * A resolved line with a component no pharmacist has reviewed: a national release entry with no
+   * drug class and no interaction pairs. The checks ran, and for that component they could find
+   * nothing whatever the truth is. Such a line used to come back exactly like a fully checked one.
+   * The doctor's picker already says "not yet reviewed by pharmacy". The check now says the same
+   * thing about the same products, because both ask `formulary`'s one predicate.
+   *
+   * It gates nothing (phase doc §3.4: the doctor is told, not asked), and it is disjoint from
+   * `unresolvedLineIndexes`: a line with no moieties has no component to be unreviewed.
+   */
+  unreviewedLineIndexes: number[];
 };
 
 /**
@@ -254,6 +269,9 @@ export async function runRxChecks(
     ...priors.flatMap((p) => p.lines.flatMap((l) => l.resolution?.salts.map((s) => s.saltId) ?? [])),
   ];
   const pairs = await listInteractionsAmong(db, saltIds);
+  const unreviewed = await unreviewedSaltIds(
+    db, checkLines.flatMap((l) => l.resolution?.salts.map((s) => s.saltId) ?? []),
+  );
 
   return {
     allergyMatches: matchAllergiesSaltAware(checkLines, allergies),
@@ -267,6 +285,9 @@ export async function runRxChecks(
      */
     unresolvedLineIndexes: checkLines
       .filter((l) => l.resolution === null || l.resolution.salts.length === 0)
+      .map((l) => l.lineIndex),
+    unreviewedLineIndexes: checkLines
+      .filter((l) => l.resolution?.salts.some((s) => unreviewed.has(s.saltId)) === true)
       .map((l) => l.lineIndex),
   };
 }
@@ -282,6 +303,8 @@ export type RxPrecheckResult = {
   notices: RxNotice[];
   /** Lines the formulary does not know — the coverage-gated hint's input (T6, DD5). */
   unresolvedLineIndexes: number[];
+  /** Lines with a component no pharmacist has reviewed (`RxCheckOutcome`). */
+  unreviewedLineIndexes: number[];
 };
 
 /**
@@ -304,6 +327,7 @@ export async function precheckPrescription(
     interactions: checks.interactions,
     duplicates: checks.duplicates,
     unresolvedLineIndexes: checks.unresolvedLineIndexes,
+    unreviewedLineIndexes: checks.unreviewedLineIndexes,
     notices: [
       ...checks.interactions.filter((h) => h.severity !== "severe"),
       ...checks.duplicates.filter((h) => !h.hard),
@@ -323,6 +347,12 @@ export type IssuedPrescription = {
   interactionOverrideCount: number; duplicateOverrideCount: number;
   /** Moderate interactions, vs-prior duplicates and route-differing duplicates. Data, never a gate. */
   notices: RxNotice[];
+  /**
+   * Lines the checks could see only in part (`RxCheckOutcome`). Returned here as well as by the
+   * pre-check, because the consult screen shows the pre-check only when a hard warning pauses the
+   * issue, and otherwise this response is the doctor's only answer.
+   */
+  unreviewedLineIndexes: number[];
 };
 
 /**
@@ -484,6 +514,7 @@ export async function issuePrescription(
         version, lineCount: lines.length, allergyOverrideCount: matchedOverrides.length,
         interactionOverrideCount: matchedInteractionOverrides.length,
         duplicateOverrideCount: matchedDuplicateOverrides.length,
+        unreviewedLineIndexes: checks.unreviewedLineIndexes,
       },
     }));
     return {
@@ -493,6 +524,7 @@ export async function issuePrescription(
       interactionOverrideCount: matchedInteractionOverrides.length,
       duplicateOverrideCount: matchedDuplicateOverrides.length,
       notices,
+      unreviewedLineIndexes: checks.unreviewedLineIndexes,
     };
   });
 }

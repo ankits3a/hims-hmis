@@ -684,6 +684,8 @@
     "hitAgainstPrior": "(prescribed {{days}} days ago)",
     "hitAgainstAssumed": "(prescribed {{days}} days ago — may no longer be current)",
     "inSystemOnly": "Checked against in-system prescriptions only",
+    "partlyChecked_one": "Line {{lines}}: checked only in part. A component is not yet reviewed by pharmacy, so its allergy class and interactions could not be checked.",
+    "partlyChecked_other": "Lines {{lines}}: checked only in part. A component of each is not yet reviewed by pharmacy, so its allergy class and interactions could not be checked.",
     "dismiss": "Dismiss",
     "title": "Consultation",
     "notADoctor": "You have no OPD doctor profile — ask OPD admin to add you before consulting.",
