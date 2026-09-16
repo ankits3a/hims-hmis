@@ -4,6 +4,7 @@ import { anyOfText } from "../../kernel/db/any-of";
 import { CursorError, decodeCursor, finishPage, pageLimit } from "../../kernel/db/page";
 import { formularyInteractions, formularyMedicineSalts, formularyMedicines, formularySalts } from "../../kernel/db/schema";
 import { FormularyError } from "./errors";
+import { isMoiety } from "./moiety";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Page, PageRequest } from "../../kernel/db/page";
 import type { InteractionRow, MedicineWithSalts, SaltRow } from "./masters";
@@ -118,7 +119,7 @@ export async function medicineExists(db: Db | Tx, id: string): Promise<boolean> 
  * it is. Same argument as `decodeCursor`'s refusal: an honest 400 terminates, a plausible answer
  * does not.
  */
-async function requireCursorRow(db: Db, table: string, id: string): Promise<void> {
+export async function requireCursorRow(db: Db, table: string, id: string): Promise<void> {
   const r = await db.execute<{ n: number }>(
     sql`select count(*)::int as n from ${sql.identifier(table)} where id = ${id}`,
   );
@@ -201,7 +202,7 @@ export async function pageMedicines(
  * duplicate this module spent a migration de-duplicating.
  */
 export async function pageSalts(
-  db: Db, opts: { activeOnly?: boolean; q?: string } & PageRequest = {},
+  db: Db, opts: { activeOnly?: boolean; moietiesOnly?: boolean; q?: string } & PageRequest = {},
 ): Promise<Page<SaltRow>> {
   const limit = pageLimit(opts.limit);
   const afterId = decodeCursor(opts.cursor);
@@ -227,6 +228,11 @@ export async function pageSalts(
 
   const where = [
     ...(opts.activeOnly === true ? [eq(formularySalts.active, true)] : []),
+    /*
+      The mapping worklist's picker: rows a person has said are moieties, and never an unreviewed
+      release entry, which the attestation would refuse anyway (`release_image_target`).
+    */
+    ...(opts.moietiesOnly === true ? [isMoiety(sql`${formularySalts}`)] : []),
     ...(afterId === null ? [] : [sql`(lower(${formularySalts.name}), ${formularySalts.id}) > (
       select lower(c.name), c.id from formulary_salts c where c.id = ${afterId}
     )`]),
@@ -293,6 +299,18 @@ export type CatalogueCensus = {
   /** Active medicines with NO composition row — the ones no safety check can reason about. */
   uncomposedActiveMedicines: number;
   interactions: number; activeInteractions: number;
+  /**
+   * THE MAPPING LOOP (phase 2). How many release substances wait for a pharmacist, how many are
+   * decided, and how many of the waiting ones already carry a draft.
+   */
+  substances: number; pendingSubstances: number; mappedSubstances: number; unmappableSubstances: number;
+  draftedPendingSubstances: number;
+  /**
+   * Active medicines with at least one component that is not yet a moiety (`moiety.ts`): products
+   * the doctor's picker marks "not yet reviewed by pharmacy". This is the number the attestation
+   * sittings drive down, and the only honest progress measure for them.
+   */
+  unreviewedActiveMedicines: number;
 };
 
 /**
@@ -319,7 +337,24 @@ export async function catalogueCensus(db: Db): Promise<CatalogueCensus> {
                and not exists (select 1 from formulary_medicine_salts l
                                 where l.medicine_id = m.id))                  as "uncomposedActiveMedicines",
            (select count(*)::int from formulary_interactions)                 as "interactions",
-           (select count(*)::int from formulary_interactions where active)    as "activeInteractions"
+           (select count(*)::int from formulary_interactions where active)    as "activeInteractions",
+           (select count(*)::int from formulary_substances)                   as "substances",
+           (select count(*)::int from formulary_substances
+             where mapping_status = 'pending')                                as "pendingSubstances",
+           (select count(*)::int from formulary_substances
+             where mapping_status = 'mapped')                                 as "mappedSubstances",
+           (select count(*)::int from formulary_substances
+             where mapping_status = 'unmappable')                             as "unmappableSubstances",
+           (select count(*)::int from formulary_substances s
+             where s.mapping_status = 'pending'
+               and exists (select 1 from formulary_mapping_proposals p
+                            where p.substance_id = s.id))                     as "draftedPendingSubstances",
+           (select count(*)::int from formulary_medicines m
+             where m.active
+               and exists (select 1 from formulary_medicine_salts l
+                             join formulary_salts s on s.id = l.salt_id
+                            where l.medicine_id = m.id
+                              and not ${isMoiety(sql`s`)}))                   as "unreviewedActiveMedicines"
   `);
   const row = rows.rows[0];
   if (row === undefined) throw new Error("catalogueCensus returned no row");

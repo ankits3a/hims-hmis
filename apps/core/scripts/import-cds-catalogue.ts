@@ -87,7 +87,7 @@ import { newId } from "@hmis/contracts";
 import { createDb, withTx } from "../src/kernel/db/client";
 import { requireEnv } from "../src/kernel/config";
 import { formularyMedicineSalts, formularyMedicines, formularySalts } from "../src/kernel/db/schema";
-import { normalizeDrugName } from "../src/modules/formulary";
+import { normalizeDrugName, projectSubstances, refreshRankSignals } from "../src/modules/formulary";
 import type { Tx } from "../src/kernel/db/client";
 
 type Substance = { sctid: string; name: string; synonyms: string[] };
@@ -384,7 +384,8 @@ function main(): void {
           if (saltId === undefined) {
             throw new Error(`"${p.name}" planned as whole but ref ${ref} did not resolve — plan and write disagree`);
           }
-          links.push({ medicineId: id, saltId, strength: p.strength, source: "derived" });
+          // `derivedFrom` is what lets a pharmacist's later mapping decision find this row again.
+          links.push({ medicineId: id, saltId, strength: p.strength, source: "derived", derivedFrom: ref });
         }
       }
       for (let i = 0; i < meds.length; i += 500) await tx.insert(formularyMedicines).values(meds.slice(i, i + 500));
@@ -394,28 +395,24 @@ function main(): void {
         await tx.insert(formularyMedicineSalts).values(links.slice(i, i + 500)).onConflictDoNothing();
       }
       /*
-        THE RANKING SIGNAL, RECOMPUTED FROM WHAT WAS JUST WRITTEN. It is derived data with exactly
-        one owner — this import — so it is set here and nowhere else, for every salt rather than
-        only the new ones: a second bundle that adds products to an existing moiety must move it.
+        A PHARMACIST MAY HAVE DECIDED SUBSTANCES BEFORE THIS CATALOGUE ARRIVED (the NRCeS release
+        tier loads first, and its worklist can be worked before any product exists). The rows just
+        written point at release images, so every mapped substance's rows are placed now, by the
+        same projection a decision runs. Otherwise they would sit on the image until somebody
+        happened to decide that substance again.
       */
-      await tx.execute(sql`
-        update formulary_salts s
-           set product_count = coalesce((
-                 select count(*) from formulary_medicine_salts l where l.salt_id = s.id
-               ), 0)
-      `);
-      /* And denormalised onto the product, which is where the typeahead sorts on it. */
-      await tx.execute(sql`
-        update formulary_medicines m
-           set salt_rank = coalesce((
-                 select max(s.product_count) from formulary_medicine_salts l
-                   join formulary_salts s on s.id = l.salt_id
-                  where l.medicine_id = m.id
-               ), 0)
-      `);
-      return { salts: newSalts.length, meds: meds.length, links: links.length };
+      const projection = await projectSubstances(tx, "all");
+      /*
+        THE RANKING SIGNAL, RECOMPUTED FROM WHAT WAS JUST WRITTEN, for every salt rather than only
+        the new ones: a second bundle that adds products to an existing moiety must move it. The
+        formula is `refreshRankSignals`', shared with the projection, which is the other writer.
+      */
+      await refreshRankSignals(tx, "all");
+      return { salts: newSalts.length, meds: meds.length, links: links.length, projection };
     });
     console.log(`\nAPPLIED · salts +${written.salts} · medicines +${written.meds} · compositions +${written.links}`);
+    console.log(`placed by existing mapping decisions · ${String(written.projection.rowsMoved)} rows on ${String(written.projection.medicinesMoved)} medicines`
+      + ` · ${String(written.projection.medicinesBlocked)} medicines left on the release image (a moiety named twice)`);
     const counts = await db.execute(sql`select
       (select count(*) from formulary_salts) as salts,
       (select count(*) from formulary_medicines) as meds,

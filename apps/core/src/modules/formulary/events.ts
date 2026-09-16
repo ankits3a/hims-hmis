@@ -71,6 +71,51 @@ export const stagingRejected = defineEvent("staging.rejected", MODULE, z.object(
 }));
 
 /**
+ * ═══ THE MAPPING LOOP (phase 2): A PHARMACIST SAYS WHAT A RELEASE SUBSTANCE IS ═══
+ *
+ * Both events carry what the projection DID, so a composition that moved under a product is never
+ * a silent side effect of a decision somebody else made. They also carry what the decision
+ * REPLACED (`fromStatus`, `fromSaltId`), because a correction is only auditable if the wrong answer
+ * is still on record.
+ *
+ * `agreedWithProposal` is the P&T committee's instrument for the drafter (ruling R1): the share of
+ * attestations that took the draft as offered, by basis. Null means no draft was on screen, which
+ * is a different fact from "disagreed".
+ *
+ * ONE event per decision, not one per moved product. Attesting amoxicillin trihydrate moves
+ * thousands of composition rows, and the importer's precedent (no per-row events for a catalogue
+ * write) applies. The retro-scan that `medicine.corrected` exists for is still a named deferral. It
+ * can find these products again from `sctid`, because every moved row keeps `derived_from`.
+ */
+const projection = z.object({
+  rowsMoved: z.number().int().nonnegative(),
+  medicinesMoved: z.number().int().nonnegative(),
+  /** Medicines left where they were because two of their components would name one moiety (E2). */
+  medicinesBlocked: z.number().int().nonnegative(),
+});
+const substanceStatus = z.enum(["pending", "mapped", "unmappable"]);
+
+export const substanceMapped = defineEvent("substance.mapped", MODULE, z.object({
+  substanceId: id, sctid: z.string().min(1), saltId: id,
+  fromStatus: substanceStatus, fromSaltId: id.nullable(),
+  /** True when the moiety was created in the same act ("create X and map"). */
+  createdMoiety: z.boolean(),
+  /** True when the pharmacist chose the substance's OWN release entry: "it is its own moiety". */
+  ownEntry: z.boolean(),
+  proposalId: id.nullable(), agreedWithProposal: z.boolean().nullable(),
+  /** Present exactly when a decided substance was changed. */
+  correctionReason: z.string().min(1).nullable(),
+  projection,
+}));
+
+export const substanceRuledUnmappable = defineEvent("substance.ruled_unmappable", MODULE, z.object({
+  substanceId: id, sctid: z.string().min(1),
+  fromStatus: substanceStatus, fromSaltId: id.nullable(),
+  reason: z.string().min(1),
+  projection,
+}));
+
+/**
  * The catalog, in source order. A later task that adds a `defineEvent` above adds it here too; the
  * membership precedent (`events.test.ts`) is what turns that convention into an assertion when a
  * task is allowed to own that file.
@@ -80,4 +125,5 @@ export const FORMULARY_EVENTS = [
   medicineAdded, medicineUpdated, medicineCorrected,
   interactionAdded, interactionUpdated,
   stagingApproved, stagingRejected,
+  substanceMapped, substanceRuledUnmappable,
 ] as const;

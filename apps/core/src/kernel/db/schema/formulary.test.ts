@@ -37,12 +37,14 @@ const AUDIT = { createdBy: "t", updatedBy: "t" };
 const CENSUS: Record<string, string[]> = {
   formulary_salts: ["active", "aliases", "atc_code", "created_at", "created_by", "drug_class", "id", "name", "product_count", "source_ref", "updated_at", "updated_by"],
   formulary_medicines: ["active", "brand_name", "code", "created_at", "created_by", "form", "id", "name_normalized", "route_class", "salt_rank", "schedule_flag", "source_ref", "staging_id", "strength_label", "updated_at", "updated_by"],
-  formulary_medicine_salts: ["medicine_id", "salt_id", "source", "strength"],
+  formulary_medicine_salts: ["derived_from", "medicine_id", "salt_id", "source", "strength"],
   formulary_interactions: ["active", "created_at", "created_by", "id", "note", "route_scope", "salt_a_id", "salt_b_id", "severity", "source", "updated_at", "updated_by"],
   formulary_staging: ["id", "kind", "medicine_id", "mined_at", "name", "payload", "reviewed_at", "reviewed_by", "source_url", "status"],
   formulary_generics: ["active", "composition_summary", "created_at", "created_by", "dose_form", "id", "name", "name_normalized", "route_of_administration", "sctid", "source", "updated_at", "updated_by"],
   formulary_generic_substances: ["generic_id", "strength", "substance_id", "unit"],
   formulary_substances: ["active", "created_at", "created_by", "id", "mapped_at", "mapped_by", "mapping_status", "name", "salt_id", "sctid", "source", "synonyms", "updated_at", "updated_by"],
+  // Formulary phase 2: the drafter's advice to the pharmacist (never read by a check).
+  formulary_mapping_proposals: ["basis", "created_at", "drafted_by", "evidence", "id", "moiety_name", "substance_id"],
 };
 
 describe("the formulary tables (Plan 16a T1)", () => {
@@ -244,5 +246,54 @@ describe("the formulary tables (Plan 16a T1)", () => {
       status: "approved", medicineId: "M-DELETED-LONG-AGO",
     });
     expect((await db.select().from(formularyStaging)).length).toBe(2);
+  });
+
+  // ─────────────────────────── formulary phase 2: the mapping loop ───────────────────────────
+
+  async function releaseSubstance(id: string, sctid: string, name: string): Promise<void> {
+    await db.execute(sql`
+      insert into formulary_substances (id, sctid, name, source, created_by, updated_by)
+      values (${id}, ${sctid}, ${name}, 'nrces-2026-09', 't', 't')
+    `);
+  }
+
+  /**
+   * The projection joins on `source_ref` to find where an undecided row goes back to. A second
+   * image of one substance would double every row it moves. A curated moiety carries null, so any
+   * number of them may exist.
+   */
+  it("one release image per release substance; curated moieties are not constrained", async () => {
+    await db.insert(formularySalts).values({ id: "IMG1", name: "Amoxicillin trihydrate", sourceRef: "96068000", ...AUDIT });
+    await expect(
+      db.insert(formularySalts).values({ id: "IMG2", name: "Amoxicillin trihydrate copy", sourceRef: "96068000", ...AUDIT }),
+    ).rejects.toThrow(/formulary_salts_source_ref_ux/);
+    await db.insert(formularySalts).values({ id: "C1", name: "amoxicillin", ...AUDIT });
+    await db.insert(formularySalts).values({ id: "C2", name: "clavulanic acid", ...AUDIT });
+    expect((await db.select().from(formularySalts)).length).toBe(3);
+  });
+
+  it("a pharmacist's composition row cannot claim to be derived from the release", async () => {
+    await db.insert(formularySalts).values({ id: "S1", name: "amoxicillin", ...AUDIT });
+    await db.insert(formularyMedicines).values({ id: "M1", brandName: "Novamox 500", nameNormalized: normalizeDrugName("Novamox 500"), form: "capsule", ...AUDIT });
+    await expect(
+      db.insert(formularyMedicineSalts).values({ medicineId: "M1", saltId: "S1", source: "curated", derivedFrom: "96068000" }),
+    ).rejects.toThrow(/formulary_medicine_salts_curated_underived_ck/);
+    await db.insert(formularyMedicineSalts).values({ medicineId: "M1", saltId: "S1", source: "derived", derivedFrom: "96068000" });
+  });
+
+  it("a draft has a known basis, a real name, and one row per substance per drafter", async () => {
+    await releaseSubstance("SUB1", "96068000", "Amoxicillin trihydrate (substance)");
+    const draft = (id: string, basis: string, moietyName: string, draftedBy: string) => db.execute(sql`
+      insert into formulary_mapping_proposals (id, substance_id, moiety_name, basis, evidence, drafted_by)
+      values (${id}, 'SUB1', ${moietyName}, ${basis}, '{}'::jsonb, ${draftedBy})
+    `);
+    await draft("P1", "release_boss", "amoxicillin", "drafter:release@1");
+    await draft("P2", "agent", "amoxicillin", "agent:claude-opus-5");
+    await expect(draft("P3", "release_boss", "amoxicillin", "drafter:release@1"))
+      .rejects.toThrow(/formulary_mapping_proposals_substance_drafter_ux/);
+    await expect(draft("P4", "guess", "amoxicillin", "drafter:other"))
+      .rejects.toThrow(/formulary_mapping_proposals_basis_ck/);
+    await expect(draft("P5", "agent", "   ", "agent:other"))
+      .rejects.toThrow(/formulary_mapping_proposals_moiety_name_ck/);
   });
 });
