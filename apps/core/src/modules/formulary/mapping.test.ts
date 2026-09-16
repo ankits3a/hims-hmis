@@ -452,22 +452,50 @@ describe("the formulary mapping loop (phase 2)", () => {
     });
 
     /**
-     * Two pharmacists open the same substance and both press. The row lock serialises them; the
-     * second reads the first one's decision and is told so. Neither is silently overwritten.
+     * Two pharmacists open the same substance and both press. The second must be told the first one
+     * decided it, and must never silently overwrite it.
+     *
+     * THE OVERLAP IS FORCED, NOT HOPED FOR. The first version of this test fired both decisions at
+     * once and passed with the row lock AND the conditional update both deleted. The second
+     * transaction's connection took long enough to open that the first had already committed, so
+     * the "race" was two decisions in sequence. Here the first transaction decides and then HOLDS,
+     * uncommitted, until the database reports the second one waiting on a lock. Only then is the
+     * first allowed to commit. Whichever guard the second one meets (the row lock at its read, or
+     * the conditional update at its write), it meets it while the first is still open.
      */
-    it("of two simultaneous decisions exactly one lands", async () => {
+    it("of two overlapping decisions exactly one lands, and the second is told why", async () => {
       const { amox, amoxTri } = await augmentinWorld();
       const warfarin = await moiety("warfarin");
+      let release: () => void = () => undefined;
+      const held = new Promise<void>((r) => { release = r; });
+      let decided: () => void = () => undefined;
+      const firstDecided = new Promise<void>((r) => { decided = r; });
 
-      const outcomes = await Promise.allSettled([
-        attest(PHARMACIST, amoxTri.id, { saltId: amox }),
-        attest(COLLEAGUE, amoxTri.id, { saltId: warfarin }),
-      ]);
+      const first = withTx(db, async (tx) => {
+        const d = await attestSubstance(tx, PHARMACIST, amoxTri.id, { saltId: amox });
+        decided();
+        await held;
+        return d;
+      });
+      await firstDecided;
+      const second = attest(COLLEAGUE, amoxTri.id, { saltId: warfarin });
+      const secondOutcome = second.then(() => "landed", (e: unknown) => (e instanceof FormularyError ? e.code : String(e)));
 
-      expect(outcomes.filter((o) => o.status === "fulfilled")).toHaveLength(1);
-      const rejected = outcomes.find((o) => o.status === "rejected");
-      expect((rejected as PromiseRejectedResult | undefined)?.reason).toBeInstanceOf(FormularyError);
-      expect(((rejected as PromiseRejectedResult).reason as FormularyError).code).toBe("substance_already_decided");
+      let waiting = 0;
+      for (let i = 0; i < 100 && waiting === 0; i += 1) {
+        await new Promise((r) => setTimeout(r, 50));
+        const r = await db.execute<{ n: number }>(sql`
+          select count(*)::int as n from pg_stat_activity
+           where datname = current_database() and wait_event_type = 'Lock'
+        `);
+        waiting = Number(r.rows[0]?.n ?? 0);
+      }
+      expect(waiting).toBe(1);
+      release();
+
+      await expect(first).resolves.toMatchObject({ status: "mapped", saltId: amox });
+      expect(await secondOutcome).toBe("substance_already_decided");
+      expect((await substance(amoxTri.id)).saltId).toBe(amox);
       expect(await payloads("substance.mapped")).toHaveLength(1);
     });
   });
