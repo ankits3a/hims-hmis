@@ -82,9 +82,11 @@ type PageAsk = { limit?: number; cursor?: string | null };
  * `active=false` and an absent `active` are the same request; sending the redundant one would
  * suggest a third state ("inactive only") that no route offers.
  */
-function pageQuery(ask: PageAsk & { activeOnly?: boolean; q?: string }): string {
+function pageQuery(ask: PageAsk & { activeOnly?: boolean; moietiesOnly?: boolean; status?: string; q?: string }): string {
   const params = new URLSearchParams();
   if (ask.activeOnly === true) params.set("active", "true");
+  if (ask.moietiesOnly === true) params.set("moieties", "true");
+  if (ask.status !== undefined) params.set("status", ask.status);
   const q = (ask.q ?? "").trim();
   if (q !== "") params.set("q", q);
   if (ask.limit !== undefined) params.set("limit", String(ask.limit));
@@ -93,9 +95,13 @@ function pageQuery(ask: PageAsk & { activeOnly?: boolean; q?: string }): string 
   return query === "" ? "" : `?${query}`;
 }
 
-/** A page of moieties. `q` is a substring of the NAME — the server does not search aliases here. */
+/**
+ * A page of moieties. `q` is a substring of the NAME — the server does not search aliases here.
+ * `moietiesOnly` leaves out every release entry nobody has reviewed: the mapping worklist's picker,
+ * where choosing one would be refused anyway.
+ */
 export async function fetchSaltsPage(
-  ask: PageAsk & { activeOnly?: boolean; q?: string } = {},
+  ask: PageAsk & { activeOnly?: boolean; moietiesOnly?: boolean; q?: string } = {},
 ): Promise<WirePage<WireSalt>> {
   return api<WirePage<WireSalt>>("GET", `/formulary/salts${pageQuery(ask)}`);
 }
@@ -121,10 +127,83 @@ export type WireCensus = {
   compositionRows: number;
   uncomposedActiveMedicines: number;
   interactions: number; activeInteractions: number;
+  /** The mapping loop: release substances by decision state, and how many waiting ones carry a draft. */
+  substances: number; pendingSubstances: number; mappedSubstances: number; unmappableSubstances: number;
+  draftedPendingSubstances: number;
+  /** Active products with a component nobody has reviewed: the number the attestation sittings drive down. */
+  unreviewedActiveMedicines: number;
 };
 
 export async function fetchCensus(): Promise<WireCensus> {
   return api<WireCensus>("GET", "/formulary/census");
+}
+
+/**
+ * ═══ THE MAPPING LOOP (phase 2) — `mapping.ts` on the server, transcribed ═══
+ *
+ * A DRAFT IS UNTRUSTED CONTENT, like a scraped staging payload. `rationale` is a model's output and
+ * `evidence.generics[].name` is the national release's text. The reader is a pharmacist holding
+ * `formulary.manage`. Everything here is rendered through React's text path, and the component's
+ * test drives a markup-bearing rationale through it.
+ */
+export type WireSubstanceStatus = "pending" | "mapped" | "unmappable";
+export type WireExistingState = "moiety" | "own_entry" | "other_entry" | "none";
+
+export type WireDraft = {
+  id: string;
+  moietyName: string;
+  basis: "release_boss" | "release_base" | "agent";
+  evidence: {
+    generics?: { sctid: string; name: string }[];
+    support?: number;
+    alternatives?: { name: string; support: number }[];
+    droppedWord?: string;
+    model?: string;
+    rationale?: string;
+  };
+  draftedBy: string;
+  existingSaltId: string | null;
+  existingState: WireExistingState;
+};
+
+export type WireWorklistItem = {
+  id: string; sctid: string; name: string; synonyms: string[];
+  status: WireSubstanceStatus;
+  saltId: string | null; saltName: string | null;
+  mappedBy: string | null; mappedAt: string | null;
+  coverage: number;
+  ownEntryId: string | null;
+  sampleGenerics: string[];
+  proposals: WireDraft[];
+};
+
+export async function fetchWorklistPage(
+  ask: PageAsk & { status: WireSubstanceStatus; q?: string },
+): Promise<WirePage<WireWorklistItem>> {
+  return api<WirePage<WireWorklistItem>>("GET", `/formulary/substances${pageQuery(ask)}`);
+}
+
+export type AttestTarget = { saltId: string } | { newMoiety: { name: string; drugClass?: string | null } };
+
+export type WireMappingDecision = {
+  substanceId: string;
+  status: "mapped" | "unmappable";
+  saltId: string | null;
+  projection: { rowsMoved: number; medicinesMoved: number; medicinesBlocked: number };
+};
+
+/** ONE substance per call. There is no bulk form of this, on the wire or here (owner ruling R1). */
+export async function attestSubstance(
+  substanceId: string,
+  body: { target: AttestTarget; proposalId?: string | null; correctionReason?: string | null },
+): Promise<WireMappingDecision> {
+  return api<WireMappingDecision>("POST", `/formulary/substances/${substanceId}/attest`, body);
+}
+
+export async function ruleSubstanceUnmappable(
+  substanceId: string, body: { reason: string; correction?: boolean },
+): Promise<WireMappingDecision> {
+  return api<WireMappingDecision>("POST", `/formulary/substances/${substanceId}/unmappable`, body);
 }
 
 /** Pull-based (spec §1.1): a name search. There is no route that lists every pending row. */
@@ -237,6 +316,11 @@ export type WireMedicineHit = {
   salts: string[];
   /** True when the NAME starts with what was typed — the field bolds that much of it. */
   prefix: boolean;
+  /**
+   * False when a component is a release entry no pharmacist has reviewed. Such a component carries
+   * no drug class and no interaction pairs, and the field says so beside the name.
+   */
+  reviewed: boolean;
 };
 
 export const searchMedicines = async (q: string, limit = 10): Promise<WireMedicineHit[]> =>

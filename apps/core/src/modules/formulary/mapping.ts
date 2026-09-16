@@ -498,6 +498,12 @@ export type WorklistItem = {
   mappedAt: Date | null;
   /** Products in the catalogue naming this substance's release image: the ordering, and the reason to do this one first. */
   coverage: number;
+  /**
+   * This substance's own release entry, if the catalogue importer wrote one. The screen offers it as
+   * "it is its own moiety" whether or not a draft says so. Null on a release-only database (E11),
+   * or where the importer reused a curated moiety of the same name (E8).
+   */
+  ownEntryId: string | null;
   /** Up to three clinical drugs containing it, as a prescriber reads them. */
   sampleGenerics: string[];
   /** Release drafts first, then model drafts. */
@@ -532,11 +538,11 @@ export async function pageMappingWorklist(
   const res = await db.execute<{
     id: string; sctid: string; name: string; synonyms: string[]; mapping_status: string;
     salt_id: string | null; salt_name: string | null; mapped_by: string | null; mapped_at: Date | string | null;
-    coverage: number;
+    coverage: number; own_entry_id: string | null;
   }>(sql`
     with ranked as (
       select s.id, s.sctid, s.name, s.synonyms, s.mapping_status, s.salt_id, s.mapped_by, s.mapped_at,
-             coalesce(img.product_count, 0) as coverage
+             coalesce(img.product_count, 0) as coverage, img.id as own_entry_id
         from formulary_substances s
         left join formulary_salts img on img.source_ref = s.sctid
     )
@@ -605,6 +611,7 @@ export async function pageMappingWorklist(
       mappedBy: r.mapped_by,
       mappedAt: r.mapped_at === null ? null : new Date(r.mapped_at),
       coverage: Number(r.coverage),
+      ownEntryId: r.own_entry_id,
       sampleGenerics: sampleOf.get(r.id) ?? [],
       proposals: bySubstance.get(r.id) ?? [],
     })),

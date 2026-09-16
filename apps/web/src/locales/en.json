@@ -604,10 +604,71 @@
       "activeOfTotal": "{{active}} active of {{total}}",
       "uncomposedCount_one": "{{shown}} active medicine",
       "uncomposedCount_other": "{{shown}} active medicines",
-      "uncomposedHint": "No interaction, allergy or substitution check can reason about a product with no moiety on file."
+      "uncomposedHint": "No interaction, allergy or substitution check can reason about a product with no moiety on file.",
+      "substances": "Release substances",
+      "substanceStates": "{{pending}} awaiting a pharmacist ({{drafted}} with a draft) · {{mapped}} mapped · {{unmappable}} not a moiety",
+      "unreviewed": "Not yet reviewed by pharmacy",
+      "unreviewedCount_one": "{{shown}} active product",
+      "unreviewedCount_other": "{{shown}} active products",
+      "unreviewedHint": "A product with a component nobody has reviewed carries no drug class and no interaction pairs for that component. The mapping worklist below drives this number down."
     },
     "saltSearchFailed": "That search could not be run — the moiety list is unavailable, so this is not an answer about what the formulary holds. Try again.",
-    "saltMoreMatches": "Showing the closest {{shown}} — type more of the name to narrow it."
+    "saltMoreMatches": "Showing the closest {{shown}} — type more of the name to narrow it.",
+    "mapping": {
+      "title": "Release substances: what each one is",
+      "intro": "The national release names substances, often as a salt (warfarin sodium). The safety checks need the moiety (warfarin). The system drafts; you decide, one substance at a time. A draft is advice: nothing is mapped until you press a button, and there is no way to accept many at once.",
+      "statusLabel": "Decision state",
+      "status": {
+        "pending": "Awaiting a decision",
+        "mapped": "Mapped",
+        "unmappable": "Not a moiety"
+      },
+      "searchLabel": "Find a release substance",
+      "searchPlaceholder": "Find a substance by name…",
+      "loading": "Loading…",
+      "more": "Load more",
+      "empty": {
+        "pending": "No release substance is waiting for a decision.",
+        "mapped": "No substance has been mapped yet.",
+        "unmappable": "No substance has been ruled not a moiety."
+      },
+      "coverage_one": "in {{shown}} product",
+      "coverage_other": "in {{shown}} products",
+      "inDrugs": "Clinical drugs containing it",
+      "drafts": "Drafts",
+      "noDrafts": "No draft for this one. Choose or create the moiety it is, or rule it not a moiety.",
+      "basis": {
+        "releaseBoss": "The release states it",
+        "releaseBase": "The release uses it as a base",
+        "agent": "Drafted by a model ({{model}}) — verify"
+      },
+      "support_one": "stated by {{count}} clinical drug",
+      "support_other": "stated by {{count}} clinical drugs",
+      "droppedWord": "“{{word}}” dropped",
+      "dissent": "The release also says: {{names}}",
+      "mapTo": "Map to {{name}}",
+      "ownMoiety": "{{name}} is its own moiety",
+      "createNamed": "Create {{name}} and map",
+      "decideFirst": "{{name}} is another release entry nobody has reviewed yet. Decide that substance first.",
+      "chooseMoiety": "Or choose a moiety…",
+      "noMoiety": "No moiety by that name. Create it instead.",
+      "newMoiety": "New moiety name",
+      "createAndMap": "Create and map",
+      "unmappableReason": "Why is this not a moiety? (a grouper, an excipient, a vehicle…)",
+      "unmappable": "Not a moiety",
+      "unmappableReasonRequired": "Say why this is not a moiety.",
+      "decidedMapped": "Mapped to {{moiety}} by {{by}}.",
+      "decidedUnmappable": "Ruled not a moiety by {{by}}.",
+      "correct": "Correct this decision",
+      "correctionReason": "Why is the earlier decision wrong?",
+      "correctionReasonRequired": "A correction needs a reason.",
+      "mappedTo": "{{substance}} is now {{moiety}}.",
+      "ruledUnmappable": "{{substance}} is ruled not a moiety.",
+      "moved_one": "{{count}} product row moved ({{medicines}} products).",
+      "moved_other": "{{count}} product rows moved ({{medicines}} products).",
+      "blocked_one": "{{count}} product was left as it was: two of its components would name the same moiety.",
+      "blocked_other": "{{count}} products were left as they were: two of their components would name the same moiety."
+    }
   },
   "opdConsult": {
     "pickFromFormulary": "Pick from formulary",
@@ -3968,5 +4029,9 @@
     "tooLarge": "That photograph is too large even after downscaling. Move closer and take it again.",
     "badImage": "That file could not be read as an image.",
     "failed": "It could not be filed. Try again."
+  },
+  "drugField": {
+    "unreviewed": "not yet reviewed by pharmacy",
+    "unreviewedTitle": "A component of this product has not been reviewed by pharmacy, so an allergy class or an interaction on that component cannot be checked."
   }
 }

@@ -587,6 +587,8 @@ describe("the formulary mapping loop (phase 2)", () => {
 
       // paracetamol 3, amoxicillin trihydrate 2, clavulanate 1, lactobacillus 0 (no entry at all: E11).
       expect(seen).toEqual([para.id, amoxTri.id, clav.id, lacto.id]);
+      const own = (await pageMappingWorklist(db, { limit: 10 })).items.map((i) => [i.id, i.ownEntryId]);
+      expect(own).toEqual([[para.id, para.image], [amoxTri.id, amoxTri.image], [clav.id, clav.image], [lacto.id, null]]);
 
       await attest(PHARMACIST, amoxTri.id, { saltId: amox });
       expect((await pageMappingWorklist(db, {})).items.map((i) => i.id)).toEqual([para.id, clav.id, lacto.id]);
