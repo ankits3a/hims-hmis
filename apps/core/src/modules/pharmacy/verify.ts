@@ -249,6 +249,8 @@ export async function verifyDispense(
         dispenseId: d.id, dispenseNo: placed.orderNo, orderId: placed.orderId, patientId: d.patientId, encounterId: d.encounterId,
         lineCount: settled.length, declinedCount, scheduled,
         allergyHits: outcome.allergyMatches.length, interactionHits: outcome.interactions.length, substitutions,
+        // P3: "0 hits" is only as good as what the checks could see.
+        partlyCheckedLineIdxs: outcome.unreviewedLineIndexes.map(origIdx),
       },
     }));
   });

@@ -31,6 +31,12 @@ export const dispenseVerified = defineEvent("dispense.verified", MODULE, z.objec
   lineCount: z.number().int().positive(), declinedCount: z.number().int().nonnegative(), scheduled: z.boolean(),
   allergyHits: z.number().int().nonnegative(), interactionHits: z.number().int().nonnegative(),
   substitutions: z.number().int().nonnegative(),
+  /**
+   * PHARMACY P3 — the lines whose checks could see only part of the medicine (a component nobody
+   * had reviewed), as they stood at the verify. Without it, `allergyHits: 0` read as "checked and
+   * clean". Defaults to empty so earlier payloads still parse.
+   */
+  partlyCheckedLineIdxs: z.array(z.number().int().nonnegative()).default([]),
 }));
 
 export const dispenseLineDeclined = defineEvent("dispense.line_declined", MODULE, z.object({

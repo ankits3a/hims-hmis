@@ -4,7 +4,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { opdPrescriptions, pharmacyDispenseLines, pharmacyDispenses } from "../../kernel/db/schema";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { withTx } from "../../kernel/db/client";
-import { medicinesByIds } from "../formulary";
+import { medicinesByIds, unreviewedSaltIds } from "../formulary";
 import { availableQty, itemsByIds, itemUomRows } from "../materials";
 import { getPatient, getPatientSummaries, listAllergies } from "../patients";
 import { dispenseQueued } from "./events";
@@ -156,6 +156,13 @@ export type DispenseLineView = {
   priceWinner: string | null;
   fefoOverride: boolean;
   pickNote: string | null;
+  /**
+   * PHARMACY P3 — the medicine this line hands over (the verified one, else the one ordered) has a
+   * component no one has reviewed: a national-release entry with no drug class and no interaction
+   * pairs. The checks ran on it, and for that component they could find nothing. Live, from the
+   * formulary's one predicate (`unreviewedSaltIds`), so it clears the moment the substance is decided.
+   */
+  partlyChecked: boolean;
 };
 
 export type DispenseView = {
@@ -243,6 +250,7 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
    * lines) scan to keep two rows, on the hottest path the module has. It asks for the two now.
    */
   const medicines = await medicinesByIds(db, medicineIds);
+  const unreviewed = await unreviewedSaltIds(db, [...medicines.values()].flatMap((m) => m.salts.map((s) => s.saltId)));
   const itemIds = [...new Set(lines.map((l) => l.itemId).filter((x): x is string => x !== null))];
   const items = itemIds.length === 0 ? new Map() : await itemsByIds(db, itemIds);
   const allergies = await listAllergies(db, d.patientId);
@@ -280,6 +288,7 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
       saleable, available, batchId: l.batchId, reservationId: l.reservationId, ledgerEntryId: l.ledgerEntryId,
       orderItemId: l.orderItemId, invoiceLineId: l.invoiceLineId, unitPaise: l.unitPaise, priceWinner: l.priceWinner,
       fefoOverride: l.fefoOverride, pickNote: l.pickNote,
+      partlyChecked: (dm ?? om)?.salts.some((s) => unreviewed.has(s.saltId)) ?? false,
     });
   }
   return {

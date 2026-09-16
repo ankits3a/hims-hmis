@@ -93,6 +93,29 @@ describe("PharmacyCounter (16c T3)", () => {
     expect(screen.getByText(/Dispense no\. P2608170001/)).toBeInTheDocument();
   });
 
+  /**
+   * PHARMACY P3 — a line whose medicine has a component nobody reviewed says so, beside the
+   * schedule. The flag is optional on the wire: an older server sends none and nothing is shown.
+   */
+  it("P3 — marks a line the checks could see only in part, and says nothing when the server does not", async () => {
+    const d = dispense("claimed");
+    const lines = [d.lines[0]!, { ...d.lines[1]!, partlyChecked: true }];
+    mockRoutes({
+      "GET /api/pharmacy/queue": { status: 200, body: { items: [{ dispenseId: "d1", status: "claimed", dispenseNo: null, scheduled: false, lineCount: 2, createdAt: "2026-08-17T04:00:00.000Z", claimedAt: null, patient: PATIENT }] } },
+      "GET /api/pharmacy/dispenses/d1": { status: 200, body: { ...d, lines } },
+      "GET /api/pharmacy/dispenses/d1/lines/0/alternatives": { status: 200, body: { items: [] } },
+      "GET /api/pharmacy/dispenses/d1/lines/1/alternatives": { status: 200, body: { items: [] } },
+    });
+    renderWithProviders(<PharmacyCounter />);
+    await userEvent.click(await screen.findByText(/Sita Devi/));
+    const line1 = (await screen.findByText(/2\. Azee 500/)).closest("li")!;
+    const chip = within(line1).getByTestId("line-partly-checked-1");
+    expect(chip).toHaveTextContent("Checked only in part");
+    expect(chip).toHaveAttribute("title", expect.stringContaining("not yet reviewed"));
+    const line0 = screen.getByText(/1\. Crocin 500/).closest("li")!;
+    expect(within(line0).queryByTestId("line-partly-checked-0")).toBeNull();
+  });
+
   it("a refusal code from verify reads as the locale's sentence, and the queue offers today's rows", async () => {
     mockRoutes({
       "GET /api/pharmacy/queue": { status: 200, body: { items: [{ dispenseId: "d1", status: "queued", dispenseNo: null, scheduled: false, lineCount: 2, createdAt: "2026-08-17T04:00:00.000Z", claimedAt: null, patient: PATIENT }] } },
