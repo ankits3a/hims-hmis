@@ -66,7 +66,7 @@ import type { MappingProposalEvidence } from "../../kernel/db/schema";
  * rather than arriving with whatever the last branch did (`kernel/orders/place.ts`, 22c-A).
  * It runs before anything is read: a refused actor learns nothing about the substance.
  */
-function attesterId(actor: Actor): string {
+export function attesterId(actor: Actor): string {
   switch (actor.type) {
     case "user":
       return actor.id;
@@ -78,6 +78,19 @@ function attesterId(actor: Actor): string {
         `a ${actor.type} actor may not decide what a release substance is — a drafter proposes, a pharmacist attests`,
       );
   }
+}
+
+/**
+ * A decision adopted in bulk names the resolution it was adopted under (phase-3 doc §1). A
+ * pharmacist's own decision, or correction, names none, and so clears the mark.
+ */
+export function adoptionRef(raw: string | null | undefined): string | null {
+  if (raw === undefined || raw === null) return null;
+  const ref = raw.trim();
+  if (ref === "" || ref.length > 200) {
+    throw new FormularyError("invalid_adoption", "an adoption names its resolution in 1 to 200 characters");
+  }
+  return ref;
 }
 
 type SubstanceStatus = "pending" | "mapped" | "unmappable";
@@ -163,10 +176,11 @@ export async function attestSubstance(
   actor: Actor,
   substanceId: string,
   target: AttestTarget,
-  opts: { proposalId?: string | null; correctionReason?: string | null } = {},
+  opts: { proposalId?: string | null; correctionReason?: string | null; adoptedUnder?: string | null } = {},
 ): Promise<MappingDecision> {
   const userId = attesterId(actor);
   const correctionReason = opts.correctionReason?.trim() || null;
+  const adoptedUnder = adoptionRef(opts.adoptedUnder);
   const current = await lockSubstance(tx, substanceId);
   requireDecisionState(current, correctionReason !== null);
 
@@ -212,7 +226,7 @@ export async function attestSubstance(
 
   const now = new Date();
   const updated = await tx.update(formularySubstances).set({
-    saltId, mappingStatus: "mapped", mappedBy: userId, mappedAt: now, updatedBy: userId, updatedAt: now,
+    saltId, mappingStatus: "mapped", mappedBy: userId, mappedAt: now, adoptedUnder, updatedBy: userId, updatedAt: now,
   }).where(and(
     eq(formularySubstances.id, substanceId), eq(formularySubstances.mappingStatus, current.status),
   )).returning({ id: formularySubstances.id });
@@ -230,6 +244,7 @@ export async function attestSubstance(
       createdMoiety, ownEntry,
       proposalId: opts.proposalId ?? null, agreedWithProposal,
       correctionReason,
+      adoptedUnder,
       projection,
     },
     actor, correlationId: substanceId,
@@ -246,10 +261,11 @@ export async function ruleSubstanceUnmappable(
   tx: Tx,
   actor: Actor,
   substanceId: string,
-  opts: { reason: string; correction?: boolean },
+  opts: { reason: string; correction?: boolean; adoptedUnder?: string | null },
 ): Promise<MappingDecision> {
   const userId = attesterId(actor);
   const reason = opts.reason.trim();
+  const adoptedUnder = adoptionRef(opts.adoptedUnder);
   const current = await lockSubstance(tx, substanceId);
   requireDecisionState(current, opts.correction === true);
   if (current.status === "unmappable") {
@@ -258,7 +274,7 @@ export async function ruleSubstanceUnmappable(
 
   const now = new Date();
   const updated = await tx.update(formularySubstances).set({
-    saltId: null, mappingStatus: "unmappable", mappedBy: userId, mappedAt: now, updatedBy: userId, updatedAt: now,
+    saltId: null, mappingStatus: "unmappable", mappedBy: userId, mappedAt: now, adoptedUnder, updatedBy: userId, updatedAt: now,
   }).where(and(
     eq(formularySubstances.id, substanceId), eq(formularySubstances.mappingStatus, current.status),
   )).returning({ id: formularySubstances.id });
@@ -271,7 +287,7 @@ export async function ruleSubstanceUnmappable(
     payload: {
       substanceId, sctid: current.sctid,
       fromStatus: current.status, fromSaltId: current.saltId,
-      reason, projection,
+      reason, adoptedUnder, projection,
     },
     actor, correlationId: substanceId,
   }));
@@ -511,6 +527,8 @@ export type WorklistItem = {
   saltName: string | null;
   mappedBy: string | null;
   mappedAt: Date | null;
+  /** The resolution a decision was adopted under; null when `mappedBy` decided it on this worklist. */
+  adoptedUnder: string | null;
   /** Products in the catalogue naming this substance's release image: the ordering, and the reason to do this one first. */
   coverage: number;
   /**
@@ -553,11 +571,12 @@ export async function pageMappingWorklist(
   const res = await db.execute<{
     id: string; sctid: string; name: string; synonyms: string[]; mapping_status: string;
     salt_id: string | null; salt_name: string | null; mapped_by: string | null; mapped_at: Date | string | null;
+    adopted_under: string | null;
     coverage: number; own_entry_id: string | null;
   }>(sql`
     with ranked as (
       select s.id, s.sctid, s.name, s.synonyms, s.mapping_status, s.salt_id, s.mapped_by, s.mapped_at,
-             coalesce(img.product_count, 0) as coverage, img.id as own_entry_id
+             s.adopted_under, coalesce(img.product_count, 0) as coverage, img.id as own_entry_id
         from formulary_substances s
         left join formulary_salts img on img.source_ref = s.sctid
     )
@@ -625,6 +644,7 @@ export async function pageMappingWorklist(
       saltId: r.salt_id, saltName: r.salt_name,
       mappedBy: r.mapped_by,
       mappedAt: r.mapped_at === null ? null : new Date(r.mapped_at),
+      adoptedUnder: r.adopted_under,
       coverage: Number(r.coverage),
       ownEntryId: r.own_entry_id,
       sampleGenerics: sampleOf.get(r.id) ?? [],

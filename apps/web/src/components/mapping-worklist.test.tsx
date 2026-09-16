@@ -307,6 +307,8 @@ describe("MappingWorklist", () => {
 
     await user.click(await screen.findByTestId("mapping-status-mapped"));
     expect(await screen.findByTestId("mapping-decision-sub-warf")).toHaveTextContent("Mapped to aspirin by 01HPHARMACIST0000000000001.");
+    // A person's own decision says nothing about an adoption.
+    expect(screen.getByTestId("mapping-decision-sub-warf")).not.toHaveTextContent("Adopted under");
     // Decided: no act is offered until the pharmacist asks to correct it.
     expect(screen.queryByTestId("mapping-accept-d-warf")).toBeNull();
 
@@ -322,6 +324,35 @@ describe("MappingWorklist", () => {
     expect(calls("POST", "/attest")[0]?.body).toEqual({
       target: { saltId: "s-warf" }, proposalId: "d-warf", correctionReason: "mis-click: warfarin sodium is warfarin",
     });
+  });
+
+  /**
+   * Formulary phase 3: a decision adopted under the owner's resolution says so on its card. The
+   * account in `mappedBy` adopted it; it did not review this substance one by one, and the screen
+   * must not let the one be read as the other.
+   */
+  it("says when a decision was adopted under a resolution rather than decided here", async () => {
+    const user = userEvent.setup();
+    const adopted = item({
+      id: "sub-nacl", sctid: "387390002", name: "NaCl - Sodium chloride", status: "mapped",
+      saltId: "s-nacl", saltName: "sodium chloride", mappedBy: "01HOWNER00000000000000001",
+      adoptedUnder: "owner-resolution-2026-09-16",
+    });
+    const ruled = item({
+      id: "sub-egg", sctid: "226913003", name: "Egg phospholipid", status: "unmappable",
+      mappedBy: "01HOWNER00000000000000001", adoptedUnder: "owner-resolution-2026-09-16",
+    });
+    mockRoutes({ "GET /api/formulary/substances": worklist([adopted, ruled]) });
+    renderWithProviders(<MappingWorklist />);
+
+    await user.click(await screen.findByTestId("mapping-status-mapped"));
+    expect(await screen.findByTestId("mapping-decision-sub-nacl")).toHaveTextContent(
+      "Mapped to sodium chloride by 01HOWNER00000000000000001. Adopted under owner-resolution-2026-09-16, not reviewed one by one.",
+    );
+    await user.click(screen.getByTestId("mapping-status-unmappable"));
+    expect(await screen.findByTestId("mapping-decision-sub-egg")).toHaveTextContent(
+      "Ruled not a moiety by 01HOWNER00000000000000001. Adopted under owner-resolution-2026-09-16, not reviewed one by one.",
+    );
   });
 
   it("shows the server's refusal on the card it belongs to", async () => {

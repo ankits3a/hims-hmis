@@ -351,6 +351,16 @@ export const formularySubstances = pgTable(
     mappingStatus: text("mapping_status").notNull().default("pending"),
     mappedBy: text("mapped_by"),
     mappedAt: timestamp("mapped_at", { withTimezone: true }),
+    /**
+     * FORMULARY PHASE 3: THE RESOLUTION A DECISION WAS ADOPTED UNDER, or null.
+     *
+     * Null means the person in `mapped_by` made this decision themselves, on the worklist. A value
+     * means `mapped_by` adopted it in bulk, under the named resolution, from drafts that nobody
+     * reviewed one by one (owner ruling 2026-09-16, phase-3 doc §1). Both are decisions, and the
+     * checks treat them alike. This column is what stops the second kind being read as the first.
+     * A pharmacist's later correction clears it, because that decision is then the pharmacist's.
+     */
+    adoptedUnder: text("adopted_under"),
     /** Which national release put this row here. */
     source: text("source").notNull(),
     active: boolean("active").notNull().default(true),
@@ -376,6 +386,11 @@ export const formularySubstances = pgTable(
     check(
       "formulary_substances_decided_audit_ck",
       sql`(${t.mappingStatus} = 'pending') = (${t.mappedBy} is null and ${t.mappedAt} is null)`,
+    ),
+    // Only a decision can have been adopted.
+    check(
+      "formulary_substances_adopted_decided_ck",
+      sql`${t.adoptedUnder} is null or ${t.mappingStatus} <> 'pending'`,
     ),
   ],
 );

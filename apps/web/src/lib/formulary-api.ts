@@ -171,6 +171,8 @@ export type WireWorklistItem = {
   status: WireSubstanceStatus;
   saltId: string | null; saltName: string | null;
   mappedBy: string | null; mappedAt: string | null;
+  /** Formulary phase 3: the resolution a decision was adopted under. Absent from an older server. */
+  adoptedUnder?: string | null;
   coverage: number;
   ownEntryId: string | null;
   sampleGenerics: string[];
