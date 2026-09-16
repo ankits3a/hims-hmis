@@ -143,6 +143,39 @@ describe("planReleaseDrafts", () => {
     expect(plan.report).toMatchObject({ statements: 4, unmatchedStatements: 2, dissonantStatements: 2 });
   });
 
+  /**
+   * FOUND IN A BROWSER WALK, ON THE REAL RELEASE. 38 clinical drugs say "clavulanic acid (as
+   * clavulanate potassium)", and one says the reverse, "Clavulanate potassium (as clavulanic
+   * acid)". The one reversed statement drafted the SALT as the moiety of the BASE, and the two
+   * cards then each told the pharmacist to decide the other first.
+   */
+  it("keeps only the direction most generics state when the release states a pair both ways", () => {
+    const clavAcid = { sctid: "395939008", name: "Clavulanic acid (substance)", synonyms: ["Clavulanate"] };
+    const reversed = {
+      sctid: "R1",
+      name: "Product containing precisely amoxicillin 200 milligram/5 milliliter and Clavulanate potassium (as clavulanic acid) 28.5 milligram/5 milliliter powder for conventional release oral suspension (clinical drug)",
+      substanceSctids: [clavAcid.sctid],
+    };
+    const plan = planReleaseDrafts([clav, clavAcid], [augmentin("A1"), augmentin("A2"), reversed]);
+
+    expect(plan.proposals.map((p) => [p.sctid, p.moietyName, p.basis])).toEqual([
+      [clav.sctid, "clavulanic acid", "release_boss"],
+      [clavAcid.sctid, "Clavulanic acid", "release_base"],
+    ]);
+    expect(plan.report.reversedStatements).toBe(1);
+  });
+
+  it("drops both directions of a pair the release states equally often", () => {
+    const clavAcid = { sctid: "395939008", name: "Clavulanic acid (substance)", synonyms: [] };
+    const one = { sctid: "F1", name: "Clavulanic acid (as clavulanate potassium) 125 mg", substanceSctids: [clav.sctid] };
+    const other = { sctid: "F2", name: "Clavulanate potassium (as clavulanic acid) 125 mg", substanceSctids: [clavAcid.sctid] };
+
+    const plan = planReleaseDrafts([clav, clavAcid], [one, other]);
+
+    expect(plan.proposals).toEqual([]);
+    expect(plan.report.reversedStatements).toBe(2);
+  });
+
   it("is deterministic: a tie goes to the alphabetically first base", () => {
     const one = { sctid: "T1", name: "Amoxicillin (as amoxicillin trihydrate) 250 mg", substanceSctids: [amoxTri.sctid] };
     const two = { sctid: "T2", name: "Amoxycillin (as amoxicillin trihydrate) 250 mg", substanceSctids: [amoxTri.sctid] };

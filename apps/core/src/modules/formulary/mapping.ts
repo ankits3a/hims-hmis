@@ -416,7 +416,7 @@ export type ProposalInput = {
   evidence: MappingProposalEvidence;
 };
 
-export type ProposalWriteResult = { written: number; unknownSctids: string[] };
+export type ProposalWriteResult = { written: number; withdrawn: number; unknownSctids: string[] };
 
 /**
  * Write one drafter's drafts. It replaces that drafter's earlier draft for the same substance and
@@ -428,9 +428,14 @@ export type ProposalWriteResult = { written: number; unknownSctids: string[] };
  *
  * `drafter` is a label, not an actor, because no actor is deciding anything here. It lands in
  * `drafted_by`, and the worklist shows it beside the draft.
+ *
+ * `withdrawOthers` is for a drafter whose run is the WHOLE of what it says (the release half): its
+ * drafts for substances this run does not draft are deleted, so a statement the drafter has since
+ * learned to distrust stops being shown. A model's file arrives in batches and never passes it.
+ * Only this drafter's rows are ever touched.
  */
 export async function writeProposals(
-  tx: Tx, drafter: string, proposals: readonly ProposalInput[],
+  tx: Tx, drafter: string, proposals: readonly ProposalInput[], opts: { withdrawOthers?: boolean } = {},
 ): Promise<ProposalWriteResult> {
   if (drafter.trim() === "") throw new Error("a drafter label is required");
   const sctids = [...new Set(proposals.map((p) => p.sctid))];
@@ -442,7 +447,7 @@ export async function writeProposals(
     for (const r of rows) known.set(r.sctid, r.id);
   }
   const unknownSctids = sctids.filter((s) => !known.has(s));
-  if (unknownSctids.length > 0) return { written: 0, unknownSctids };
+  if (unknownSctids.length > 0) return { written: 0, withdrawn: 0, unknownSctids };
 
   const values = proposals.map((p) => ({
     id: newId(), substanceId: known.get(p.sctid) as string, moietyName: p.moietyName.trim(),
@@ -458,7 +463,17 @@ export async function writeProposals(
         },
       });
   }
-  return { written: values.length, unknownSctids: [] };
+  let withdrawn = 0;
+  if (opts.withdrawOthers === true) {
+    const keep = [...known.values()];
+    const gone = await tx.execute(sql`
+      delete from formulary_mapping_proposals
+       where drafted_by = ${drafter}
+         and not (substance_id = any(${sql.param(keep)}::text[]))
+    `);
+    withdrawn = gone.rowCount ?? 0;
+  }
+  return { written: values.length, withdrawn, unknownSctids: [] };
 }
 
 // ─────────────────────────────── the worklist ───────────────────────────────
