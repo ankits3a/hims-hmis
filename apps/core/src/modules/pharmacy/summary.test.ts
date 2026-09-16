@@ -79,5 +79,7 @@ describe("the counter's day (pharmacy P7)", () => {
 
   it("refuses a day that is not a date", async () => {
     await expect(counterSummary(db, "17/08/2026")).rejects.toMatchObject({ code: "invalid_day" });
+    // V8's Date.parse reads this as 2 March; it is not a date.
+    await expect(counterSummary(db, "2026-02-30")).rejects.toMatchObject({ code: "invalid_day" });
   });
 });

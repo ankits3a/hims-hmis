@@ -1,6 +1,7 @@
 import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { events, pharmacyDispenses, pharmacyRegH1 } from "../../kernel/db/schema";
 import { istDayWindow } from "../../kernel/approvals/cumulative";
+import { isIsoDate } from "./config";
 import { PharmacyError } from "./errors";
 import type { Db } from "../../kernel/db/client";
 
@@ -39,7 +40,6 @@ export type CounterSummary = {
   scheduledHandovers: number;
 };
 
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const OPEN = ["queued", "claimed", "verified", "picked", "billed"] as const;
 
 function median(values: number[]): number | null {
@@ -52,7 +52,7 @@ function median(values: number[]): number | null {
 const minutes = (from: Date, to: Date): number => Math.round((to.getTime() - from.getTime()) / 60_000);
 
 export async function counterSummary(db: Db, day: string): Promise<CounterSummary> {
-  if (!DAY.test(day) || Number.isNaN(Date.parse(`${day}T00:00:00Z`))) {
+  if (!isIsoDate(day)) {
     throw new PharmacyError("invalid_day", `"${day}" is not a date (YYYY-MM-DD)`);
   }
   const { start, end } = istDayWindow(new Date(`${day}T12:00:00+05:30`));

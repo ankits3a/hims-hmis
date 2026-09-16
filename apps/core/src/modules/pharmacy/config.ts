@@ -27,6 +27,16 @@ export const REGISTER_FLAGS = ["H1"] as const;
  * The IST calendar date of an instant, `YYYY-MM-DD` — what `serviceDate` means everywhere in OPD.
  * Derived from the kernel's one exported offset (`ist-clock-parity.test.ts` pins every literal copy).
  */
+/**
+ * A real calendar date written YYYY-MM-DD. `Date.parse` alone is not the test: V8 reads
+ * "2026-02-30" as 2 March. So the parsed date must print back as the same string.
+ */
+export function isIsoDate(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const t = Date.parse(`${s}T00:00:00Z`);
+  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === s;
+}
+
 export function istDateOf(at: Date): string {
   return new Date(at.getTime() + IST_UTC_OFFSET_MINUTES * 60_000).toISOString().slice(0, 10);
 }
