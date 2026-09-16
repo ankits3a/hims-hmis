@@ -78,7 +78,8 @@ const CLAV = item({
 });
 const PARA = item({
   id: "sub-para", sctid: "387517004", name: "Paracetamol (substance)", coverage: 4866, ownEntryId: "img-para",
-  proposals: [draft({ id: "d-para", moietyName: "Paracetamol", basis: "release_base", existingSaltId: "img-para", existingState: "own_entry" })],
+  // Lower case, as a model drafts it; the button speaks in the substance's own spelling.
+  proposals: [draft({ id: "d-para", moietyName: "paracetamol", basis: "release_base", existingSaltId: "img-para", existingState: "own_entry" })],
 });
 const DICLO_NA = item({
   id: "sub-diclo-na", sctid: "62039007", name: "Diclofenac sodium (substance)", coverage: 1286, ownEntryId: "img-diclo-na",
@@ -149,7 +150,6 @@ describe("MappingWorklist", () => {
     expect(screen.getByTestId("mapping-accept-d-para")).toHaveTextContent("Paracetamol is its own moiety");
     // The draft already offers the own entry, so the card does not offer it twice.
     expect(screen.queryByTestId("mapping-own-entry-sub-para")).toBeNull();
-    expect(screen.getByTestId("mapping-own-entry-sub-clav")).toBeInTheDocument();
 
     await user.click(screen.getByTestId("mapping-accept-d-clav"));
     await user.click(screen.getByTestId("mapping-accept-d-para"));
@@ -159,6 +159,65 @@ describe("MappingWorklist", () => {
       { target: { newMoiety: { name: "clavulanic acid" } }, proposalId: "d-clav" },
       { target: { saltId: "img-para" }, proposalId: "d-para" },
     ]);
+  });
+
+  /**
+   * FOUND IN THE BROWSER, ON THE REAL RELEASE. The clavulanate card offered "Clavulanate potassium
+   * is its own moiety" as a plain button beside the release's statement that the moiety is
+   * clavulanic acid. One tap would record a salt form as a moiety.
+   */
+  it("withholds \"its own moiety\" while a draft names another moiety, and asks first", async () => {
+    const user = userEvent.setup();
+    mockRoutes({
+      "GET /api/formulary/substances": worklist([CLAV]),
+      "POST /api/formulary/substances/sub-clav/attest": DECISION("sub-clav"),
+    });
+    renderWithProviders(<MappingWorklist />);
+
+    await screen.findByTestId("mapping-card-sub-clav");
+    expect(screen.queryByTestId("mapping-own-entry-sub-clav")).toBeNull();
+    expect(screen.queryByTestId("mapping-own-entry-caution-sub-clav")).toBeNull();
+
+    await user.click(screen.getByTestId("mapping-own-entry-ask-sub-clav"));
+
+    expect(screen.getByTestId("mapping-own-entry-caution-sub-clav")).toHaveTextContent("Only if Clavulanate potassium is not a salt");
+    await user.click(screen.getByTestId("mapping-own-entry-sub-clav"));
+    await waitFor(() => { expect(calls("POST", "/attest")).toHaveLength(1); });
+    // The disagreement with the draft on screen is recorded.
+    expect(calls("POST", "/attest")[0]?.body).toEqual({ target: { saltId: "img-clav" }, proposalId: "d-clav" });
+  });
+
+  it("offers \"its own moiety\" at once where no draft says otherwise, and says nothing about rows that did not move", async () => {
+    const user = userEvent.setup();
+    const menthol = item({ id: "sub-menthol", sctid: "387414008", name: "Menthol (substance)", coverage: 840, ownEntryId: "img-menthol" });
+    mockRoutes({
+      "GET /api/formulary/substances": worklist([menthol]),
+      "POST /api/formulary/substances/sub-menthol/attest": {
+        status: 200,
+        body: { substanceId: "sub-menthol", status: "mapped", saltId: "img-menthol", projection: { rowsMoved: 0, medicinesMoved: 0, medicinesBlocked: 0 } },
+      },
+    });
+    renderWithProviders(<MappingWorklist />);
+
+    expect(screen.queryByTestId("mapping-own-entry-ask-sub-menthol")).toBeNull();
+    await user.click(await screen.findByTestId("mapping-own-entry-sub-menthol"));
+
+    expect(await screen.findByTestId("mapping-done")).toHaveTextContent("Menthol is now Menthol.");
+    expect(screen.getByTestId("mapping-done")).not.toHaveTextContent("moved");
+    expect(calls("POST", "/attest")[0]?.body).toEqual({ target: { saltId: "img-menthol" }, proposalId: null });
+  });
+
+  it("sends the pharmacist to the substance a draft says to decide first", async () => {
+    const user = userEvent.setup();
+    mockRoutes({ "GET /api/formulary/substances": worklist([DICLO_NA]) });
+    renderWithProviders(<MappingWorklist />);
+
+    await user.click(await screen.findByTestId("mapping-find-d-diclo"));
+
+    expect(screen.getByTestId("mapping-search")).toHaveValue("diclofenac");
+    await waitFor(() => {
+      expect(calls("GET", "/formulary/substances").some((c) => c.url.searchParams.get("q") === "diclofenac")).toBe(true);
+    });
   });
 
   it("says to decide the other substance first, shows the release's dissent, and offers no button for it", async () => {

@@ -667,7 +667,10 @@
       "moved_one": "{{count}} product row moved ({{medicines}} products).",
       "moved_other": "{{count}} product rows moved ({{medicines}} products).",
       "blocked_one": "{{count}} product was left as it was: two of its components would name the same moiety.",
-      "blocked_other": "{{count}} products were left as they were: two of their components would name the same moiety."
+      "blocked_other": "{{count}} products were left as they were: two of their components would name the same moiety.",
+      "ownMoietyAsk": "None of these — is {{name}} itself the moiety?",
+      "ownMoietyCaution": "Only if {{name}} is not a salt, ester or hydrate of another moiety. A salt recorded as a moiety splits every check that should group it with its base.",
+      "findIt": "Find {{name}}"
     }
   },
   "opdConsult": {

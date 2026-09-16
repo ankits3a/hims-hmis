@@ -292,8 +292,6 @@ export function FormularyAdmin(): React.ReactElement {
         </dl>
       )}
 
-      <MappingWorklist />
-
       {/* ——— the entry point: a name, never a queue ——— */}
       <div className="flex gap-2">
         <label className="sr-only" htmlFor="formulary-search">{t("formularyAdmin.searchLabel")}</label>
@@ -517,6 +515,14 @@ export function FormularyAdmin(): React.ReactElement {
           </div>
         </div>
       )}
+
+      {/*
+        The mapping worklist sits BELOW the stocking flow, not above it. Found in the browser: ten
+        tall cards between the census and the name search pushed the pharmacist's everyday act,
+        stocking a medicine, off the first screen. Mapping is done in sittings; stocking is done
+        all day.
+      */}
+      <MappingWorklist />
 
       {/* ——— T8: the curation worklist — the prescribing stream IS the queue ——— */}
       {coverage.data !== null && coverage.data !== undefined && (

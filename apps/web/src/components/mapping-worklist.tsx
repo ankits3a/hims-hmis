@@ -118,7 +118,7 @@ export function MappingWorklist(): React.ReactElement {
               <ul className="space-y-3">
                 {items.map((item) => (
                   <li key={item.id}>
-                    <SubstanceCard item={item} onDecided={setDone} />
+                    <SubstanceCard item={item} onDecided={setDone} onFind={(name) => { setQuery(name); setDone(null); }} />
                   </li>
                 ))}
               </ul>
@@ -138,8 +138,13 @@ export function MappingWorklist(): React.ReactElement {
 }
 
 function SubstanceCard({
-  item, onDecided,
-}: { item: WireWorklistItem; onDecided: (message: string) => void }): React.ReactElement {
+  item, onDecided, onFind,
+}: {
+  item: WireWorklistItem;
+  onDecided: (message: string) => void;
+  /** Put a name in the worklist's search: "decide that substance first" must say where it is. */
+  onFind: (name: string) => void;
+}): React.ReactElement {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const decided = item.status !== "pending";
@@ -164,7 +169,8 @@ function SubstanceCard({
 
   const finish = async (decision: WireMappingDecision, message: string): Promise<void> => {
     const p = decision.projection;
-    onDecided(`${message} ${t("formularyAdmin.mapping.moved", { count: p.rowsMoved, medicines: NUMBERS.format(p.medicinesMoved) })}`
+    onDecided(message
+      + (p.rowsMoved > 0 ? ` ${t("formularyAdmin.mapping.moved", { count: p.rowsMoved, medicines: NUMBERS.format(p.medicinesMoved) })}` : "")
       + (p.medicinesBlocked > 0 ? ` ${t("formularyAdmin.mapping.blocked", { count: p.medicinesBlocked })}` : ""));
     await qc.invalidateQueries({ queryKey: ["formulary"] });
   };
@@ -211,8 +217,23 @@ function SubstanceCard({
 
   /** The release's other names for it, without repeating the one in the heading. */
   const otherNames = [...new Set(item.synonyms.map(displayName))].filter((synonym) => synonym !== name);
-  /** The own entry, offered unless a draft already offers it. */
+  /**
+   * ═══ "IT IS ITS OWN MOIETY" IS NOT A NEUTRAL SHORTCUT WHEN A DRAFT DISAGREES ═══
+   *
+   * Found in the browser, on real data. The card for "Clavulanate potassium" offered "Clavulanate
+   * potassium is its own moiety" as a prominent button beside the release's own statement that
+   * the moiety is clavulanic acid. Pressing it records a SALT FORM as a moiety, which is the
+   * second-warfarin failure the schema header warns about, made one tap away.
+   *
+   * So the shortcut is offered plainly only where no draft names something else. Where one does,
+   * it sits behind a question the pharmacist has to answer first, with the salt-form caution
+   * beside it. It stays reachable, because a draft can be wrong, and without it "create
+   * <this name>" is refused: the entry already holds the name.
+   */
   const ownEntryOffered = item.proposals.some((p) => p.existingState === "own_entry");
+  const draftDisagrees = item.proposals.some((p) => p.existingState !== "own_entry");
+  const [ownEntryAsked, setOwnEntryAsked] = useState(false);
+  const ownEntryShown = item.ownEntryId !== null && !ownEntryOffered && (!draftDisagrees || ownEntryAsked);
 
   return (
     <article data-testid={`mapping-card-${item.id}`} className="space-y-2 rounded border p-3">
@@ -273,7 +294,7 @@ function SubstanceCard({
               <ul className="space-y-2" aria-label={t("formularyAdmin.mapping.drafts")}>
                 {item.proposals.map((p) => (
                   <DraftRow
-                    key={p.id} draft={p} busy={busy}
+                    key={p.id} draft={p} busy={busy} substanceName={name} onFind={onFind}
                     onMap={(target, label) => { void attest(target, label, p.id); }}
                   />
                 ))}
@@ -281,7 +302,21 @@ function SubstanceCard({
             )}
 
           <div className="flex flex-wrap items-center gap-2 border-t pt-2">
-            {item.ownEntryId !== null && !ownEntryOffered && (
+            {item.ownEntryId !== null && !ownEntryOffered && draftDisagrees && !ownEntryAsked && (
+              <Button
+                type="button" size="sm" variant="ghost"
+                data-testid={`mapping-own-entry-ask-${item.id}`}
+                onClick={() => { setOwnEntryAsked(true); }}
+              >
+                {t("formularyAdmin.mapping.ownMoietyAsk", { name })}
+              </Button>
+            )}
+            {ownEntryShown && draftDisagrees && (
+              <p className="w-full text-xs text-amber-800" data-testid={`mapping-own-entry-caution-${item.id}`}>
+                {t("formularyAdmin.mapping.ownMoietyCaution", { name })}
+              </p>
+            )}
+            {ownEntryShown && (
               <Button
                 type="button" size="sm" variant="outline" disabled={busy}
                 data-testid={`mapping-own-entry-${item.id}`}
@@ -365,8 +400,15 @@ function SubstanceCard({
 }
 
 function DraftRow({
-  draft, busy, onMap,
-}: { draft: WireDraft; busy: boolean; onMap: (target: AttestTarget, label: string) => void }): React.ReactElement {
+  draft, busy, substanceName, onFind, onMap,
+}: {
+  draft: WireDraft;
+  busy: boolean;
+  /** The card's own display name: "its own moiety" is said about the SUBSTANCE, in its own spelling. */
+  substanceName: string;
+  onFind: (name: string) => void;
+  onMap: (target: AttestTarget, label: string) => void;
+}): React.ReactElement {
   const { t } = useTranslation();
   const ev = draft.evidence;
   const model = draft.basis === "agent";
@@ -415,9 +457,9 @@ function DraftRow({
         {draft.existingState === "own_entry" && draft.existingSaltId !== null && (
           <Button
             type="button" size="sm" disabled={busy} data-testid={`mapping-accept-${draft.id}`}
-            onClick={() => { onMap({ saltId: draft.existingSaltId as string }, draft.moietyName); }}
+            onClick={() => { onMap({ saltId: draft.existingSaltId as string }, substanceName); }}
           >
-            {t("formularyAdmin.mapping.ownMoiety", { name: draft.moietyName })}
+            {t("formularyAdmin.mapping.ownMoiety", { name: substanceName })}
           </Button>
         )}
         {draft.existingState === "none" && (
@@ -429,8 +471,15 @@ function DraftRow({
           </Button>
         )}
         {draft.existingState === "other_entry" && (
-          <p data-testid={`mapping-decide-first-${draft.id}`} className="text-xs text-neutral-700">
+          <p data-testid={`mapping-decide-first-${draft.id}`} className="flex flex-wrap items-center gap-2 text-xs text-neutral-700">
             {t("formularyAdmin.mapping.decideFirst", { name: draft.moietyName })}
+            <Button
+              type="button" size="sm" variant="outline"
+              data-testid={`mapping-find-${draft.id}`}
+              onClick={() => { onFind(draft.moietyName); }}
+            >
+              {t("formularyAdmin.mapping.findIt", { name: draft.moietyName })}
+            </Button>
           </p>
         )}
       </div>
