@@ -4,7 +4,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { opdPrescriptions, pharmacyDispenseLines, pharmacyDispenses } from "../../kernel/db/schema";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { withTx } from "../../kernel/db/client";
-import { listMedicines } from "../formulary";
+import { medicinesByIds } from "../formulary";
 import { availableQty, itemsByIds, itemUomRows } from "../materials";
 import { getPatient, getPatientSummaries, listAllergies } from "../patients";
 import { dispenseQueued } from "./events";
@@ -237,7 +237,12 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
   });
   const lines = await linesOf(db, dispenseId);
   const medicineIds = [...new Set(lines.flatMap((l) => [l.orderedMedicineId, l.dispensedMedicineId]).filter((x): x is string => x !== null))];
-  const medicines = medicineIds.length === 0 ? new Map() : new Map((await listMedicines(db)).filter((m) => medicineIds.includes(m.id)).map((m) => [m.id, m]));
+  /**
+   * `getDispense` is the return value of every pharmacy mutation, and this line used to load the
+   * whole catalogue and then `.filter((m) => medicineIds.includes(m.id))` it — an O(catalogue x
+   * lines) scan to keep two rows, on the hottest path the module has. It asks for the two now.
+   */
+  const medicines = await medicinesByIds(db, medicineIds);
   const itemIds = [...new Set(lines.map((l) => l.itemId).filter((x): x is string => x !== null))];
   const items = itemIds.length === 0 ? new Map() : await itemsByIds(db, itemIds);
   const allergies = await listAllergies(db, d.patientId);

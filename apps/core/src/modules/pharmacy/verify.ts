@@ -5,14 +5,15 @@ import { withTx } from "../../kernel/db/client";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { placeOrder } from "../../kernel/orders/place";
 import { transition } from "../../kernel/workflow/instances";
-import { listMedicines, resolveMedicines } from "../formulary";
-import { availableQty, listItems, releaseReservation } from "../materials";
+import { equivalentMedicines, isEquivalentMedicine, medicinesByIds } from "../formulary";
+import { availableQtyByItem, listItems, releaseReservation } from "../materials";
 import { getEncounter, getPrescription, runRxChecks } from "../opd";
 import { PHARMACY_SUBSTITUTION_ENABLED, REFUSED_FLAGS, SCHEDULED_FLAGS, istDateOf } from "./config";
 import { dispenseCancelled, dispenseLineDeclined, dispenseVerified, substitutionRecorded } from "./events";
 import { PharmacyError } from "./errors";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
 import { getSaleItem } from "./sale-items";
+import { shelfByMedicine } from "./shelf";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
@@ -31,32 +32,33 @@ export async function alternativesFor(db: Db, dispenseId: string, lineIdx: numbe
   const line = (await linesOf(db, dispenseId)).find((l) => l.lineIdx === lineIdx);
   if (line === undefined) throw new PharmacyError("unknown_line", `line ${String(lineIdx)} not found`);
   if (line.dispensedMedicineId === null || (line.rxLine as RxLine).noSubstitution || !PHARMACY_SUBSTITUTION_ENABLED) return [];
-  const all = await listMedicines(db, { activeOnly: true });
-  const from = all.find((m) => m.id === line.dispensedMedicineId);
-  if (from === undefined) return [];
-  const resolvedAll = await resolveMedicines(db, all.map((m) => m.id));
-  const saltSet = (id: string): string => (resolvedAll.get(id)?.salts ?? []).map((s) => s.saltId).sort().join("|");
-  const wanted = saltSet(from.id);
-  if (wanted === "") return [];
-  const drugItems = await listItems(db, { class: "drug", active: true });
-  const itemByMedicine = new Map(drugItems.filter((i) => i.formularyMedicineId !== null).map((i) => [i.formularyMedicineId as string, i]));
-  const out: Alternative[] = [];
-  for (const m of all) {
-    if (m.id === from.id) continue;
-    if (saltSet(m.id) !== wanted || (m.strengthLabel ?? "") !== (from.strengthLabel ?? "") || m.form !== from.form || m.routeClass !== from.routeClass) continue;
-    // R-3 — what this counter may not dispense, it may not offer either (close review, §8.5 pass 1)
-    if (m.scheduleFlag !== null && (REFUSED_FLAGS as readonly string[]).includes(m.scheduleFlag)) continue;
-    const item = itemByMedicine.get(m.id);
-    if (item === undefined) continue;
-    const sale = await getSaleItem(db, item.id);
-    if (sale === undefined || !sale.active) continue;
-    // What the substitution dropdown PROMISES must be what the pick can deliver: a generic offered
-    // as "50 available" whose fifty are expired sends the pharmacist down a path that ends in
-    // `short_stock` after the substitution is already recorded. One definition, `availableQty`.
-    const available = d.storeResourceId === null ? 0 : await availableQty(db, d.storeResourceId, item.id);
-    out.push({ medicineId: m.id, brandName: m.brandName, strengthLabel: m.strengthLabel, form: m.form, itemId: item.id, itemCode: item.code, available });
-  }
-  return out;
+  /**
+   * THE SHELF IS THE UNIVERSE. This used to read every medicine in the catalogue and resolve every
+   * one of their compositions, then loop the result in JS. At the national catalogue's 103,383 rows
+   * that read does not merely cost a heap — it THROWS `08P01` on the wire, because drizzle emits
+   * one bind parameter per id and the protocol counts them in an Int16 (`kernel/db/any-of.ts`).
+   * What the counter can offer was never more than what it stocks, so that is what it asks about.
+   */
+  const shelf = await shelfByMedicine(db);
+  const candidates = await equivalentMedicines(db, line.dispensedMedicineId, { among: [...shelf.keys()] });
+  // R-3 — what this counter may not dispense, it may not offer either (close review, §8.5 pass 1).
+  const offered = candidates.filter((m) => m.scheduleFlag === null || !(REFUSED_FLAGS as readonly string[]).includes(m.scheduleFlag));
+  if (offered.length === 0) return [];
+  // Every candidate came FROM the shelf, so its entry is present by construction.
+  const entries = offered.map((m) => ({ m, e: shelf.get(m.id) as NonNullable<ReturnType<typeof shelf.get>> }));
+  /**
+   * What the substitution dropdown PROMISES must be what the pick can deliver: a generic offered as
+   * "50 available" whose fifty are expired sends the pharmacist down a path that ends in
+   * `short_stock` after the substitution is already recorded. One definition, and it is now asked
+   * once for the whole list rather than once per candidate.
+   */
+  const available = d.storeResourceId === null
+    ? new Map<string, number>()
+    : await availableQtyByItem(db, d.storeResourceId, entries.map((x) => x.e.item.id));
+  return entries.map(({ m, e }) => ({
+    medicineId: m.id, brandName: m.brandName, strengthLabel: m.strengthLabel, form: m.form,
+    itemId: e.item.id, itemCode: e.item.code, available: available.get(e.item.id) ?? 0,
+  }));
 }
 
 export type VerifyLineInput = {
@@ -106,7 +108,15 @@ export async function verifyDispense(
 
   const lines = await linesOf(db, dispenseId);
   const byIdx = new Map(input.lines.map((l) => [l.lineIdx, l]));
-  const medicines = new Map((await listMedicines(db)).map((m) => [m.id, m]));
+  /**
+   * The medicines THIS dispense names — the lines' own, plus any substitute the edit asks for. The
+   * only reads of this map are `.get(dispensedMedicineId)` and `.get(wanted)`, so the set is
+   * provably complete, and it is bounded by the prescription rather than by the catalogue.
+   */
+  const medicines = await medicinesByIds(db, [
+    ...lines.map((l) => l.dispensedMedicineId),
+    ...input.lines.map((l) => l.dispensedMedicineId ?? null),
+  ].filter((x): x is string => x !== null));
   const drugItems = await listItems(db, { class: "drug", active: true });
   const itemByMedicine = new Map(drugItems.filter((i) => i.formularyMedicineId !== null).map((i) => [i.formularyMedicineId as string, i]));
 
@@ -134,11 +144,12 @@ export async function verifyDispense(
       const from = medicines.get(dispensedMedicineId);
       const to = medicines.get(wanted);
       if (from === undefined || to === undefined) throw new PharmacyError("unresolved_medicine", `unknown medicine on line ${String(line.lineIdx + 1)}`, { lineIdx: line.lineIdx });
-      const resolvedPair = await resolveMedicines(db, [from.id, to.id]);
-      const saltSet = (id: string): string => (resolvedPair.get(id)?.salts ?? []).map((s) => s.saltId).sort().join("|");
-      const same = saltSet(from.id) !== "" && saltSet(from.id) === saltSet(to.id)
-        && (from.strengthLabel ?? "") === (to.strengthLabel ?? "") && from.form === to.form && from.routeClass === to.routeClass;
-      if (!same) {
+      /**
+       * THE SAME PREDICATE THE DROPDOWN OFFERS FROM. This was a hand-written JS conjunction and
+       * `alternativesFor` was another, and nothing asserted that the two agreed — so a counter
+       * could be offered a substitution this gate then refused. One definition, asked twice.
+       */
+      if (!await isEquivalentMedicine(db, from.id, to.id)) {
         throw new PharmacyError(
           "substitution_not_allowed",
           `${to.brandName} is not a generic equivalent of ${from.brandName} (same salts, strength, form and route) — a different medicine is a new prescription`,
