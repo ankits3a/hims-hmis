@@ -501,11 +501,17 @@ export const formularyGenericSubstances = pgTable(
 
 /** What a proposal rests on. Shown to the pharmacist verbatim; never read by any check. */
 export type MappingProposalEvidence = {
-  /** `release_boss`: the clinical drugs whose names state "precisely X (as <this substance>)". */
+  /** `release_*`: a few of the clinical drugs whose names make the statement, verbatim. */
   generics?: { sctid: string; name: string }[];
-  /** Other X values the release states for the same substance. The drafter keeps them all rather than choosing. */
-  alternatives?: string[];
-  /** A hydrate word the drafter removed from the release's X ("levofloxacin anhydrous" → "levofloxacin"). */
+  /** `release_*`: how many clinical drugs make the statement the draft chose. */
+  support?: number;
+  /**
+   * `release_boss`: every OTHER base the release states for the same substance, with its support.
+   * The release is not always right. Generic 1621000189106 says "Menthol (as guaifenesin)". So the
+   * drafter takes the majority and shows the dissent, and never hides it.
+   */
+  alternatives?: { name: string; support: number }[];
+  /** A hydrate word the drafter removed from the release's base ("levofloxacin anhydrous" → "levofloxacin"). */
   droppedWord?: string;
   /** `agent`: the model that drafted it, and why. */
   model?: string;
