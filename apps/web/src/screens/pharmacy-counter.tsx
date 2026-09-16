@@ -6,7 +6,10 @@ import {
   acceptReturn, billDispense, cancelBilledDispense, cancelDispense, claimDispense, declineLine, fetchAlternatives, fetchDispense, fetchLabel, fetchQueue, findAtCounter,
   handOverDispense, pharmacyErrorText, pickDispense, previewBill, verifyDispense,
 } from "../lib/pharmacy-api";
+import { fetchInvoicePrint } from "../lib/billing-api";
 import { CounterDayStrip } from "../components/counter-day-strip";
+import { InvoicePrint } from "../components/invoice-print";
+import { PharmacyBillAnnex } from "../components/pharmacy-bill-annex";
 import { DispenseLabel } from "../components/dispense-label";
 import { Button } from "@/components/ui/button";
 import type {
@@ -47,6 +50,18 @@ export function PharmacyCounter(): React.ReactElement {
   const [identityVia, setIdentityVia] = useState<"token" | "phone_last4">("token");
   const [identityValue, setIdentityValue] = useState("");
   const [label, setLabel] = useState<WireLabel | null>(null);
+  // P10 — the patient's bill on screen, in place of the counter (one printable document at a time).
+  const [billFor, setBillFor] = useState<{ dispenseId: string; invoiceId: string } | null>(null);
+  const billPrint = useQuery({
+    queryKey: ["pharmacy", "bill", billFor?.invoiceId],
+    queryFn: () => fetchInvoicePrint(billFor?.invoiceId ?? ""),
+    enabled: billFor !== null,
+  });
+  const billLabel = useQuery({
+    queryKey: ["pharmacy", "bill-label", billFor?.dispenseId],
+    queryFn: () => fetchLabel(billFor?.dispenseId ?? ""),
+    enabled: billFor !== null,
+  });
 
   const queue = useQuery({ queryKey: ["pharmacy", "queue"], queryFn: fetchQueue, refetchInterval: 10_000 });
 
@@ -180,6 +195,19 @@ export function PharmacyCounter(): React.ReactElement {
   const patientName = (p: { name: string | null; alias: string | null; uhid: string }): string => p.alias ?? p.name ?? p.uhid;
   const statusLabel = (s: string): string => t(`pharmacyCounter.s_${s}`);
   const lineTitle = (l: WireDispenseLine): string => l.dispensedMedicine === null ? l.rxLine.drug : `${l.dispensedMedicine.brandName} · ${l.dispensedMedicine.form}`;
+
+  if (billFor !== null) {
+    const failed = billPrint.error ?? billLabel.error;
+    return (
+      <div data-seat="pharmacy-counter" className="min-h-screen space-y-3 p-4">
+        <Button type="button" variant="outline" className="no-print" onClick={() => setBillFor(null)}>{t("pharmacyCounter.backToCounter")}</Button>
+        {failed !== null && <p role="alert" className="text-sm text-red-700">{pharmacyErrorText(failed, t)}</p>}
+        {billPrint.data !== undefined && billLabel.data !== undefined && (
+          <InvoicePrint data={billPrint.data} annex={<PharmacyBillAnnex label={billLabel.data} />} />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div data-seat="pharmacy-counter" className="min-h-screen space-y-6 p-4">
@@ -392,6 +420,12 @@ export function PharmacyCounter(): React.ReactElement {
                     <Button type="button" onClick={() => void bill()}>{t("pharmacyCounter.takePayment")}</Button>
                   </div>
                 </div>
+              )}
+              {inHand.invoiceId !== null && (inHand.status === "billed" || inHand.status === "handed_over") && (
+                <Button
+                  type="button" variant="outline" size="sm"
+                  onClick={() => { if (inHand.invoiceId !== null) setBillFor({ dispenseId: inHand.id, invoiceId: inHand.invoiceId }); }}
+                >{t("pharmacyCounter.printBill")}</Button>
               )}
               {inHand.status === "billed" && (
                 <div className="flex flex-wrap items-end gap-2 text-sm">

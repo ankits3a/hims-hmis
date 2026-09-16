@@ -25,7 +25,12 @@ import type { WireInvoicePrint } from "../lib/billing-api";
  * screen that mounts it MUST keep it mutually exclusive with any other `.print-doc` surface — the
  * TokenSlip/RxPrint precedent, and the counter screen honours it by REPLACING itself with the print.
  */
-export function InvoicePrint({ data }: { data: WireInvoicePrint }): React.ReactElement {
+/**
+ * `annex` — PHARMACY P10: a module's own block printed inside the same document, after the lines
+ * (the counter's batch and expiry per pack). Absent everywhere else, so every other caller prints
+ * exactly what it printed before.
+ */
+export function InvoicePrint({ data, annex }: { data: WireInvoicePrint; annex?: React.ReactNode }): React.ReactElement {
   const { t } = useTranslation();
   const { invoice, settlement } = data;
   const outstanding = settlement.outstandingPaise > 0;
@@ -77,6 +82,8 @@ export function InvoicePrint({ data }: { data: WireInvoicePrint }): React.ReactE
             ))}
           </tbody>
         </table>
+
+        {annex !== undefined && <section className="border-t pt-2" data-testid="invoice-annex">{annex}</section>}
 
         <section className="space-y-1 border-t pt-2 text-sm">
           <p data-testid="invoice-gross">{t("billing.print.grossTotal")}: {fmtPaise(invoice.grossPaise)}</p>
