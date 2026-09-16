@@ -10,6 +10,7 @@ import {
 } from "./sale-items";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
+import { normalizeDrugName } from "../formulary";
 
 const HEAD: Actor = { type: "user", id: "01HMATERIALSHEAD00000000001" };
 const PHARMACIST: Actor = { type: "user", id: "01HPHARMACIST000000000001" };
@@ -32,7 +33,8 @@ describe("sale items — the item → service bridge (16c T2)", () => {
     const id = newId();
     seq += 1;
     await db.insert(formularyMedicines).values({
-      id, brandName: `Brand #${String(seq)}`, form: "tablet", strengthLabel: "500 mg", createdBy: HEAD.id, updatedBy: HEAD.id,
+      id, brandName: `Brand #${String(seq)}`, nameNormalized: normalizeDrugName(`Brand #${String(seq)}`),
+      form: "tablet", strengthLabel: "500 mg", createdBy: HEAD.id, updatedBy: HEAD.id,
     });
     return id;
   }

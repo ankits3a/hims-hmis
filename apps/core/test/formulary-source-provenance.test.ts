@@ -59,9 +59,9 @@ describe("migration 0094 — composition provenance", () => {
     `);
     // One medicine from the release, one a pharmacist typed. The actor id shape is the real one.
     await db.execute(sql`
-      insert into formulary_medicines (id, brand_name, form, route_class, salt_rank, active, created_by, updated_by)
-      values ('M-REL', 'Novamox 500', 'capsule', 'systemic', 0, true, 'cds-import', 'cds-import'),
-             ('M-HUM', 'Mox 250',     'capsule', 'systemic', 0, true, '01HPHARMACIST0000000000001', '01HPHARMACIST0000000000001')
+      insert into formulary_medicines (id, brand_name, name_normalized, form, route_class, salt_rank, active, created_by, updated_by)
+      values ('M-REL', 'Novamox 500', 'novamox 500', 'capsule', 'systemic', 0, true, 'cds-import', 'cds-import'),
+             ('M-HUM', 'Mox 250',     'mox 250',     'capsule', 'systemic', 0, true, '01HPHARMACIST0000000000001', '01HPHARMACIST0000000000001')
     `);
     await db.execute(sql`
       insert into formulary_medicine_salts (medicine_id, salt_id, strength, source)

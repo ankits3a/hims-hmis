@@ -136,6 +136,26 @@ export const formularyMedicines = pgTable(
      */
     code: text("code"),
     /**
+     * ═══ THE BRAND NAME AS `normalizeDrugName` SEES IT, STORED ═══
+     *
+     * `resolveDrugTexts` names this column as its own extension point, in as many words: "a stored
+     * normalized column ... filled by the SAME function, so there is still one normalizer and the
+     * WHERE clause reads a column rather than re-deriving a value." This is that column.
+     *
+     * It is filled by the TypeScript `normalizeDrugName` at every write site — NOT by a generated
+     * SQL expression. That is the whole point: a `GENERATED ALWAYS AS (regexp_replace(...))` column
+     * would make a second normalizer permanent and authoritative, and §2.54's objection is that two
+     * copies of one fact drift. One function fills it; the only SQL copy is the one-shot backfill in
+     * the migration, and a test holds the two to one answer over an adversarial corpus.
+     *
+     * THE INDEX IS NOT UNIQUE, and the extension point's own wording ("with a unique index") is
+     * wrong about that — measured on the loaded national catalogue, 103,383 brand names collapse to
+     * 103,332 normalized keys, so 51 groups collide (`Ab-Xone` and `Abxone`, `A-Pan` and `Apan`).
+     * A unique index will not build. Same shape and same reason as
+     * `formulary_generics_name_norm_idx`, where 774 groups collide.
+     */
+    nameNormalized: text("name_normalized").notNull(),
+    /**
      * ═══ THE TYPEAHEAD'S SORT KEY, DENORMALISED ONTO THE PRODUCT ═══
      *
      * The largest `product_count` among this row's moieties. It belongs here rather than being
@@ -168,6 +188,8 @@ export const formularyMedicines = pgTable(
     */
     index("formulary_medicines_brand_trgm_idx").using("gin", sql`lower(${t.brandName}) gin_trgm_ops`),
     index("formulary_medicines_code_idx").using("btree", sql`lower(${t.code})`),
+    /* The free-text resolver's lane: `resolveDrugTexts` asks for a SET of normalized names. */
+    index("formulary_medicines_name_norm_idx").using("btree", t.nameNormalized),
     check("formulary_medicines_route_class_ck", sql`${t.routeClass} in ('systemic', 'topical')`),
     check(
       "formulary_medicines_schedule_flag_ck",

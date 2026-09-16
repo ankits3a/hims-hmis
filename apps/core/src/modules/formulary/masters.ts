@@ -5,6 +5,7 @@ import {
   formularyInteractions, formularyMedicineSalts, formularyMedicines, formularySalts,
 } from "../../kernel/db/schema";
 import { FormularyError } from "./errors";
+import { normalizeDrugName } from "./resolve";
 import {
   interactionAdded, interactionUpdated, medicineAdded, medicineCorrected, medicineUpdated,
   saltAdded, saltUpdated,
@@ -171,6 +172,7 @@ export async function addMedicine(
   try {
     await tx.insert(formularyMedicines).values({
       id: medicineId, brandName: input.brandName, form: input.form, routeClass: input.routeClass,
+      nameNormalized: normalizeDrugName(input.brandName),
       strengthLabel: input.strengthLabel ?? null, scheduleFlag: input.scheduleFlag ?? null,
       stagingId: input.stagingId ?? null, createdBy: actor.id, updatedBy: actor.id,
     });
@@ -277,8 +279,19 @@ export async function updateMedicine(
 
   if (changed.length > 0) {
     try {
+      /*
+        A RENAME MUST RE-NORMALIZE. `name_normalized` is a cache of `normalizeDrugName(brandName)`,
+        and the two going out of step is silent in the direction that matters: the row keeps
+        resolving under its OLD name and stops resolving under its new one, so a prescription typed
+        as the brand the pharmacist just corrected to falls through to `legacySubstringMatch` while
+        the screen reports that the advanced checks are unavailable.
+      */
       await tx.update(formularyMedicines)
-        .set({ ...attributes, updatedBy: actor.id, updatedAt: new Date() })
+        .set({
+          ...attributes,
+          ...(attributes.brandName === undefined ? {} : { nameNormalized: normalizeDrugName(attributes.brandName) }),
+          updatedBy: actor.id, updatedAt: new Date(),
+        })
         .where(eq(formularyMedicines.id, medicineId));
     } catch (e) {
       if (isUniqueViolation(e)) throw new FormularyError("duplicate_name", `that brand name already exists`);

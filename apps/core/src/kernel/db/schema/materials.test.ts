@@ -5,6 +5,7 @@ import {
   items, resources, stockBalances, stockBatches, stockLedger, vendorDocuments, vendors,
 } from "./index";
 import type { Db } from "../client";
+import { normalizeDrugName } from "../../../modules/formulary";
 
 /**
  * PLAN 14 T1 — the sixteen materials tables, pinned by EXECUTION against the real migration.
@@ -199,7 +200,7 @@ describe("the materials tables (Plan 14 T1)", () => {
    *  every one of the five refusals below be attempted. Deliberately NOT built through the module's
    *  write paths: T1 has none yet, and the point of this file is what the DATABASE refuses. */
   async function fixture(): Promise<{ itemId: string; storeId: string; vendorId: string; batchId: string; docId: string }> {
-    await db.insert(formularyMedicines).values({ id: "med1", brandName: "Crocin 500", form: "tablet", ...AUDIT });
+    await db.insert(formularyMedicines).values({ id: "med1", brandName: "Crocin 500", nameNormalized: normalizeDrugName("Crocin 500"), form: "tablet", ...AUDIT });
     await db.insert(items).values({
       id: "it1", code: "CROC500", name: "Crocin 500mg tablet", class: "drug",
       formularyMedicineId: "med1", baseUom: "tablet", batchTracked: true, ...AUDIT,

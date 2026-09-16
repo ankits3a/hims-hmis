@@ -10,6 +10,7 @@ import { balances, movementsFor, postMovements, recallBatch } from "./ledger";
 import { getTransfer, issueStock, listDiscrepancies, listTransfers, receiveStock } from "./transfers";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
+import { normalizeDrugName } from "../formulary";
 
 /**
  * PLAN 14 T7 / DD9 — two-sided issue, and the discrepancy that is a row rather than an adjustment.
@@ -35,7 +36,7 @@ describe("two-sided issue and receive (Plan 14 T7)", () => {
   async function anItem(code = "CROC500"): Promise<string> {
     const medicineId = newId();
     await db.insert(formularyMedicines).values({
-      id: medicineId, brandName: `Brand ${medicineId}`, form: "tablet",
+      id: medicineId, brandName: `Brand ${medicineId}`, nameNormalized: normalizeDrugName(`Brand ${medicineId}`), form: "tablet",
       createdBy: HEAD.id, updatedBy: HEAD.id,
     });
     const { itemId } = await withTx(db, (tx) => registerItem(tx, HEAD, {

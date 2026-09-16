@@ -15,6 +15,7 @@ import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
 import { materialsManifest, registerMaterialsApprovalTypes } from "../src/modules/materials";
 import type { Db } from "../src/kernel/db/client";
+import { normalizeDrugName } from "../src/modules/formulary";
 
 /**
  * PLAN 14 T8 — **THE HTTP SURFACE A BROWSER ACTUALLY CALLS.**
@@ -180,7 +181,8 @@ describe("materials over HTTP (Plan 14 T8)", () => {
 
     const medicineId = newId();
     await db.insert(formularyMedicines).values({
-      id: medicineId, brandName: "Crocin 500 m6", form: "tablet", createdBy: "t", updatedBy: "t",
+      id: medicineId, brandName: "Crocin 500 m6", nameNormalized: normalizeDrugName("Crocin 500 m6"),
+      form: "tablet", createdBy: "t", updatedBy: "t",
     });
     const itemRes = await cap(request(server()).post("/materials/items").send({
       code: "CROC-M6", name: "Crocin 500mg tablet", class: "drug",
@@ -311,7 +313,8 @@ describe("materials over HTTP (Plan 14 T8)", () => {
     // ── the masters ──
     const medicineId = newId();
     await db.insert(formularyMedicines).values({
-      id: medicineId, brandName: "Crocin 500 e2e", form: "tablet", createdBy: "t", updatedBy: "t",
+      id: medicineId, brandName: "Crocin 500 e2e", nameNormalized: normalizeDrugName("Crocin 500 e2e"),
+      form: "tablet", createdBy: "t", updatedBy: "t",
     });
     const itemRes = await auth(request(server()).post("/materials/items").send({
       code: "CROC500", name: "Crocin 500mg tablet", class: "drug",

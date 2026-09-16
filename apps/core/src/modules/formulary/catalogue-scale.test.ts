@@ -1,10 +1,12 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import * as schema from "../../kernel/db/schema";
 import { catalogueCensus, medicinesByIds, pageMedicines } from "./reads";
-import { resolveMedicines } from "./resolve";
+import { normalizeDrugName, resolveDrugTexts, resolveMedicines } from "./resolve";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -60,8 +62,9 @@ const BIND_CEILING = 65_535;
 
 async function seedCatalogueAtScale(db: Db, n: number): Promise<void> {
   await db.execute(sql`
-    insert into formulary_medicines (id, brand_name, form, route_class, salt_rank, active, created_by, updated_by)
+    insert into formulary_medicines (id, brand_name, name_normalized, form, route_class, salt_rank, active, created_by, updated_by)
     select 'SCALE' || lpad(g::text, 12, '0'), 'Scale Brand ' || lpad(g::text, 12, '0'),
+           'scale brand ' || lpad(g::text, 12, '0'),
            'tablet', 'systemic', 0, true, 'catalogue-scale-test', 'catalogue-scale-test'
       from generate_series(1, ${n}) g
   `);
@@ -170,6 +173,68 @@ describe("the catalogue at national scale", () => {
 
     const unbounded = issued.filter((q) => /from "formulary_salts"/.test(q) && !/= any\(/.test(q));
     expect(unbounded).toEqual([]);
+  });
+
+  /**
+   * ═══ RESOLVING FREE TEXT MUST NOT READ THE CATALOGUE EITHER ═══
+   *
+   * `resolveDrugTexts` used to `select ... from formulary_medicines where active` with no id filter
+   * at all, then normalize every brand in JavaScript to build its lookup map — on every prescription
+   * issue and every claim. It never threw (it takes no id list, so no bind-parameter ceiling), which
+   * is exactly why it outlived the reads that did.
+   *
+   * THE ASSERTION IS THE SQL ISSUED. A statement over `formulary_medicines` with no `= any(` is the
+   * unbounded read, by construction — the bounded form asks for the normalized names the caller
+   * wanted. `formulary_salts` is excluded from the filter because `resolveDrugTexts` legitimately
+   * reads all of it to build `byMoiety`/`byAlias`; that read is earned and is not what this pins.
+   */
+  it("resolves free text without reading the catalogue", async () => {
+    const issued: string[] = [];
+    const spied = drizzle(pool, {
+      schema, logger: { logQuery: (q: string) => { issued.push(q); } },
+    }) as unknown as Db;
+
+    const out = await resolveDrugTexts(spied, ["Scale Brand 000000000001", "not a drug at all"]);
+    expect(out.get("Scale Brand 000000000001")?.brandName).toBe("Scale Brand 000000000001");
+    expect(out.get("not a drug at all")).toBeNull();
+
+    const unbounded = issued.filter((q) => /from "formulary_medicines"/.test(q) && !/= any\(/.test(q));
+    expect(unbounded).toEqual([]);
+  });
+
+  /**
+   * ═══ THE SQL BACKFILL AND THE TYPESCRIPT NORMALIZER ARE ONE ANSWER ═══
+   *
+   * Migration 0095 fills `name_normalized` for rows that existed before the column, and it is the
+   * ONE place the normalizer is written in SQL. `resolve.ts`'s header names the hazard precisely:
+   * "two copies of one fact drift by construction ... the half that stops resolving is the SAFETY
+   * half."
+   *
+   * A test that writes through `addMedicine` cannot see this — those rows are filled by the
+   * TypeScript function, so the SQL copy is never exercised. A mutant proved that: changing the
+   * migration's character class to keep hyphens left every other case green. So the EXPRESSION is
+   * read out of the migration file and evaluated by Postgres against a corpus, and compared with
+   * what `normalizeDrugName` returns for the same strings.
+   */
+  it("the migration's backfill expression agrees with normalizeDrugName", async () => {
+    const file = readFileSync(
+      resolve(__dirname, "../../../drizzle/0095_formulary_medicine_name_normalized.sql"), "utf8",
+    );
+    const m = /SET "name_normalized" =([\s\S]*?)\n\s*WHERE/.exec(file);
+    if (m === null) throw new Error("could not find the backfill's SET expression in migration 0095");
+    const expr = (m[1] ?? "").trim().replace(/"brand_name"/g, "$1");
+
+    const corpus = [
+      "Augmentin-625", "Co.Amoxiclav (625)", "Amox  /  Clav", "  Crocin , 500  ",
+      "PARACETAMOL", "A-Ret 0.025%", "NS (sodium chloride) 9 mg/1 ml",
+    ];
+    // One round trip, all rows: the expression applied to the corpus as a VALUES list.
+    const rows = await db.execute<{ raw: string; sqlv: string }>(sql`
+      select v as raw, ${sql.raw(expr.replace(/\$1/g, "v"))} as sqlv
+        from (select unnest(${sql.param(corpus)}::text[]) as v) t
+    `);
+    expect(rows.rows).toHaveLength(corpus.length);
+    for (const row of rows.rows) expect(row.sqlv).toBe(normalizeDrugName(row.raw));
   });
 
   /** A HANDFUL COSTS A HANDFUL — the shape every pharmacy call site now uses. */

@@ -199,11 +199,34 @@ export async function resolveDrugTexts(db: Db, texts: string[]): Promise<Map<str
     }
   }
 
+  /*
+    ASK FOR THE NAMES WANTED, NOT FOR THE CATALOGUE. This used to read every active medicine —
+    measured at 103,383 rows on the loaded national catalogue, on EVERY prescription issue and every
+    claim — and then normalize each brand in JavaScript to build a lookup map. The normalized key is
+    stored now, so the set of texts the caller asked about goes into the WHERE clause instead.
+
+    `normalizeDrugName` is still called exactly ONCE in TypeScript, on the caller's texts, at
+    `wanted` above. The column holds what the same function produced at write time. That is the
+    arrangement this file's header asks for: one normalizer, and a WHERE clause that reads a column
+    rather than re-deriving a value.
+  */
   const medicines = await db.select({
     id: formularyMedicines.id, brandName: formularyMedicines.brandName,
-    routeClass: formularyMedicines.routeClass,
-  }).from(formularyMedicines).where(eq(formularyMedicines.active, true));
-  const byBrand = new Map(medicines.map((m) => [normalizeDrugName(m.brandName), m]));
+    routeClass: formularyMedicines.routeClass, nameNormalized: formularyMedicines.nameNormalized,
+  }).from(formularyMedicines).where(and(
+    eq(formularyMedicines.active, true),
+    anyOfText(formularyMedicines.nameNormalized, [...wanted]),
+  ));
+  /*
+    KEYED OFF THE STORED COLUMN, not off a re-normalized brand name. Keying off the latter would
+    make this map agree with itself while disagreeing with the WHERE clause that filled it, and the
+    disagreement would be invisible: a row would arrive and then fail to be found.
+
+    A collision keeps the LAST row, as it always did — 51 groups collide on the real catalogue, and
+    none of them differ in composition. That is a separate, recorded defect, not one this change
+    introduces or fixes.
+  */
+  const byBrand = new Map(medicines.map((m) => [m.nameNormalized, m]));
 
   const hitMedicineIds = [...wanted].map((t) => byBrand.get(t)?.id).filter((id): id is string => id !== undefined);
   const composition = await compositionOf(db, hitMedicineIds);

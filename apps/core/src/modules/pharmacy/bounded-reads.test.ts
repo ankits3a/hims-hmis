@@ -100,8 +100,9 @@ const CURATED = 10;
  */
 async function seedDecoyCatalogue(db: Db, n: number): Promise<void> {
   await db.execute(sql`
-    insert into formulary_medicines (id, brand_name, form, route_class, salt_rank, active, created_by, updated_by)
+    insert into formulary_medicines (id, brand_name, name_normalized, form, route_class, salt_rank, active, created_by, updated_by)
     select 'PHSCALE' || lpad(g::text, 12, '0'), 'Pharmacy Scale Decoy ' || lpad(g::text, 12, '0'),
+           'Pharmacy Scale Decoy ' || lpad(g::text, 12, '0'),
            'tablet', 'systemic', 0, true, 'bounded-reads-test', 'bounded-reads-test'
       from generate_series(1, ${n}) g
   `);
