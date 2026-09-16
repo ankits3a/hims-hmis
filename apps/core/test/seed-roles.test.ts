@@ -991,11 +991,11 @@ describe("seed:roles — the census pins, stated before anything is compared (§
        * and write a dose row without installing a department. One register for one inspector.
        */
       aerb: 3,
-      pharmacy: 5, // PLAN 16c T1; P2: +1, pharmacy.pharmacists.manage
+      pharmacy: 6, // PLAN 16c T1; P2: +1, pharmacy.pharmacists.manage; P9: +1, pharmacy.register.read
       radiology: 16, // PLAN 18b T1 — `radiology.mwl.read`
     });
     // VD-1 T4 — +1 with `opd.vitals.history.read` (vitals_desk + doctor).
-    expect(installedRegistry().allPermissions()).toHaveLength(167); // P2: +1, pharmacy.pharmacists.manage; FD-31: 162 -> 163 (opd.prescription.transcribe); FD-30: 161 -> 162; RC-1 T2: 146 -> 147; VD-1 T4: 148; RC-2 T4: 149; 18b T1: 150 (radiology.mwl.read); 16c T1: 154, the four pharmacy.* strings; 18c T1: 157, the three aerb.* strings; 17-E T1: 158 (lab.instruments.manage) // MERGE 2026-09-15: main's grants + the lane's, measured from the failing run
+    expect(installedRegistry().allPermissions()).toHaveLength(168); // P9: +1, pharmacy.register.read; P2: +1, pharmacy.pharmacists.manage; FD-31: 162 -> 163 (opd.prescription.transcribe); FD-30: 161 -> 162; RC-1 T2: 146 -> 147; VD-1 T4: 148; RC-2 T4: 149; 18b T1: 150 (radiology.mwl.read); 16c T1: 154, the four pharmacy.* strings; 18c T1: 157, the three aerb.* strings; 17-E T1: 158 (lab.instruments.manage) // MERGE 2026-09-15: main's grants + the lane's, measured from the failing run
   });
 
   it("the role model is thirty-eight roles, three hundred and twenty-four grants, one hundred and forty-two distinct permissions", () => {
@@ -1111,7 +1111,8 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // PLAN 16c T1: 8 -> 19, the counter (four pharmacy.*, three orders.*, four billing.*).
       // PHARMACY P2: 19 -> 20, pharmacy.pharmacists.manage (the register of pharmacists).
       // PHARMACY P5: 20 -> 22, billing.credit_note.issue and billing.refund.request (PHARMACY_REFUND_PAIRS).
-      pharmacy: 22,
+      // PHARMACY P9: 22 -> 23, pharmacy.register.read (the Schedule H1 register).
+      pharmacy: 23,
       // FD-25 / owner ruling 2026-09-04 — 11 -> 13: `tariff.read` (a live 403 on the deployed
       // counter) and `patients.read` (the DPDP ruling on reading patient identity). Close pass 1
       // removed the two `opd.visits.*` strings this comment used to list; see `CASHIER_SEAT_PAIRS`.
@@ -1218,7 +1219,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     // by the time it landed, 17-E T1 and T2 had taken main to 304. Adding the deltas (306 + 2) is
     // the one thing this file's own docstring forbids, so the merge took main's number and re-ran
     // the suite for the answer below.
-    expect(modelPairs()).toHaveLength(334); // P5: +2 (PHARMACY_REFUND_PAIRS); P2: +1 (pharmacy/pharmacy.pharmacists.manage); FD-31: +1 (opd_scribe/opd.prescription.transcribe); FD-30: +15 (opd_scribe’s 14, plus opd.prescription.draft to doctor); FD-27: +2, the two `opd.paper.reprint` grants (PAPER_REPRINT_PAIRS); 17c owner ruling: +1, approvals.requests.create to lab_reception; RC-2 T4: +2, the enrol grants; 18b T1: +2 (radiology.mwl.read); 16c T1: +16 (pharmacy +11, pharmacy_assistant +5); 17-E T1: +1 (lab.instruments.manage to pathologist); T2: +1 (lab.instruments.read to lab_bridge) // MERGE 2026-09-15: main's grants + the lane's, measured from the failing run
+    expect(modelPairs()).toHaveLength(335); // P9: +1 (pharmacy/pharmacy.register.read); P5: +2 (PHARMACY_REFUND_PAIRS); P2: +1 (pharmacy/pharmacy.pharmacists.manage); FD-31: +1 (opd_scribe/opd.prescription.transcribe); FD-30: +15 (opd_scribe’s 14, plus opd.prescription.draft to doctor); FD-27: +2, the two `opd.paper.reprint` grants (PAPER_REPRINT_PAIRS); 17c owner ruling: +1, approvals.requests.create to lab_reception; RC-2 T4: +2, the enrol grants; 18b T1: +2 (radiology.mwl.read); 16c T1: +16 (pharmacy +11, pharmacy_assistant +5); 17-E T1: +1 (lab.instruments.manage to pathologist); T2: +1 (lab.instruments.read to lab_bridge) // MERGE 2026-09-15: main's grants + the lane's, measured from the failing run
     // PLAN 07c T9 — 83 → 84 DISTINCT: one new string (`staff.reports.read`) across two roles.
     // 84 -> 85 DISTINCT: only `staff.reports.drill` is new to the MODEL. Every other string the
     // two rulings grant was already held by another role — the counter cover moves WHO may act,
@@ -1236,7 +1237,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     // VD-1 T4 — 126 -> 127 distinct model permissions.
     // 18c T1 — 134 -> 137: all three `aerb.*` strings are new to the model, because no role could
     // have held one before the manifest declaring them was installed.
-    expect(modelPermissions()).toHaveLength(147); // P2: +1, pharmacy.pharmacists.manage; FD-31: +1; FD-30: +1, opd.prescription.draft; FD-27: +1, opd.paper.reprint; 17c owner ruling: +1, approvals.requests.create; RC-2 T4: +1, membership.instrument.enrol; 18b T1: +1, radiology.mwl.read; 16c T1: +4, pharmacy.*; 17-E T1: +1, lab.instruments.manage // MERGE 2026-09-15: measured from the failing run
+    expect(modelPermissions()).toHaveLength(148); // P9: +1, pharmacy.register.read; P2: +1, pharmacy.pharmacists.manage; FD-31: +1; FD-30: +1, opd.prescription.draft; FD-27: +1, opd.paper.reprint; 17c owner ruling: +1, approvals.requests.create; RC-2 T4: +1, membership.instrument.enrol; 18b T1: +1, radiology.mwl.read; 16c T1: +4, pharmacy.*; 17-E T1: +1, lab.instruments.manage // MERGE 2026-09-15: measured from the failing run
     // No role lists the same permission twice — a duplicate would inflate the counts above
     // without changing a single row of `role_permissions`.
     for (const role of ROLE_MODEL) {
@@ -1247,7 +1248,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
   it("the reachability census closes: 161 declared = 147 held + 14 not yet modelled", () => {
     // VD-1 T4 — 147 -> 148 declared and 132 -> 133 held, NOT_YET_MODELLED UNCHANGED at fifteen:
     // the permission is granted in the same commit that declares it, so it never passes through.
-    expect(installedRegistry().allPermissions()).toHaveLength(167); // P2: +1; FD-31: +1; FD-30: +1 // MERGE 2026-09-15: main's grants + the lane's, measured from the failing run
+    expect(installedRegistry().allPermissions()).toHaveLength(168); // P9: +1, pharmacy.register.read; P2: +1; FD-31: +1; FD-30: +1 // MERGE 2026-09-15: main's grants + the lane's, measured from the failing run
     // 42 + 13 until the 2026-08-23 ruling moved the four `workflow.definitions.*` strings across;
     // 46 + 13 until Plan 09 declared fourteen and DD18 granted four of them.
     // 50 until `auth.elevation.review` was declared; it is held from the first deploy because
@@ -1307,11 +1308,11 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     // `orders.cancel` cross from one side of this sum to the other exactly as phase 0's entries
     // predicted they would. **`orders.read.restricted` stays**, deliberately — see the note in
     // `seed-roles.ts` where those three entries were removed.
-    expect(heldPermissions()).toHaveLength(153); // P2: +1, granted where it is declared; FD-31: +1; FD-30: 148, opd.prescription.draft, granted in the commit that declares it; FD-27: 147, `opd.paper.reprint`, granted in the commit that declares it; 17c owner ruling: 140 (approvals.requests.create); PLAN 18a T2: 111 -> 131; VD-1 T4: 133; RC-2 T4: 134; 18b T1: 135; 16c T1: 139, the four pharmacy.* strings, granted in the commit that declares them; 18c T1: 143; 17-E T1: 144, the three aerb.* strings, likewise granted where they are declared // MERGE 2026-09-15: measured from the failing run
+    expect(heldPermissions()).toHaveLength(154); // P9: +1, granted where it is declared; P2: +1, granted where it is declared; FD-31: +1; FD-30: 148, opd.prescription.draft, granted in the commit that declares it; FD-27: 147, `opd.paper.reprint`, granted in the commit that declares it; 17c owner ruling: 140 (approvals.requests.create); PLAN 18a T2: 111 -> 131; VD-1 T4: 133; RC-2 T4: 134; 18b T1: 135; 16c T1: 139, the four pharmacy.* strings, granted in the commit that declares them; 18c T1: 143; 17-E T1: 144, the three aerb.* strings, likewise granted where they are declared // MERGE 2026-09-15: measured from the failing run
     // RC-1 T2 — 146 -> 147 declared and 131 -> 132 held, NOT_YET_MODELLED UNCHANGED at fifteen:
     // the flow lock is granted in the same commit that declares it.
     expect(NOT_YET_MODELLED).toHaveLength(14); // 17c owner ruling: approvals.requests.create is held now
-    expect(heldPermissions().length + NOT_YET_MODELLED.length).toBe(167); // P2: +1; FD-31: +1; FD-30: +1; FD-27: +1, `opd.paper.reprint`; 18b T1: +1; 16c T1: +4; 18c T1: +3; 17-E T1: +1 // MERGE 2026-09-15: measured from the failing run
+    expect(heldPermissions().length + NOT_YET_MODELLED.length).toBe(168); // P9: +1; P2: +1; FD-31: +1; FD-30: +1; FD-27: +1, `opd.paper.reprint`; 18b T1: +1; 16c T1: +4; 18c T1: +3; 17-E T1: +1 // MERGE 2026-09-15: measured from the failing run
   });
 
   it("the README carries exactly four permission tables, of the measured shapes", () => {
@@ -1396,12 +1397,13 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     expect(otTable.cells.get("ot.definitions.manage")).toBeUndefined();
 
     expect(pharmacyTable.roles).toEqual(["pharmacy", "pharmacy_assistant"]);
-    expect(pharmacyTable.rowCount).toBe(5); // P2: +1, pharmacy.pharmacists.manage
-    expect(pharmacyTable.cells.size).toBe(5);
-    expect(tablePairs(pharmacyTable)).toHaveLength(7);
+    expect(pharmacyTable.rowCount).toBe(6); // P2: +1, pharmacy.pharmacists.manage; P9: +1, pharmacy.register.read
+    expect(pharmacyTable.cells.size).toBe(6);
+    expect(tablePairs(pharmacyTable)).toHaveLength(8);
     expect(pharmacyTable.cells.get("pharmacy.dispense.scheduled")).toEqual(["pharmacy"]);
     expect(pharmacyTable.cells.get("pharmacy.sale_items.manage")).toEqual(["pharmacy"]);
     expect(pharmacyTable.cells.get("pharmacy.pharmacists.manage")).toEqual(["pharmacy"]);
+    expect(pharmacyTable.cells.get("pharmacy.register.read")).toEqual(["pharmacy"]);
     expect(otTable.cells.get("ot.bill.compose")).toBeUndefined();
 
     // ── PLAN 17 T2 / DD16 — THE FIFTH TABLE, and the four separations it exists to show ──
@@ -1829,9 +1831,9 @@ describe("seed:roles — executed against a database (V5)", () => {
     // 37 entries where FD-25 measured 36 and every position after the insertion shifted. That is
     // precisely why the merge took main's array wholesale and re-ran the suite rather than editing
     // the eighth entry of a list that had changed length underneath it.
-    expect(first.roles.map((r) => r.granted.length)).toEqual([13, 17, 6, 21, 15, 8, 1, 22, 14, 20, 12, 11, 1, 3, 3, 3, 5, 1, 11, 6, 15, 9, 4, 4, 3, 6, 17, 9, 4, 17, 15, 10, 13, 4, 3, 1, 2, 5]); // P5: INDEX 7 pharmacy 20 -> 22 (the two refund strings). P2: INDEX 7 pharmacy 19 -> 20 (pharmacy.pharmacists.manage). FD-27: INDEX 0 front_office 12 -> 13 and INDEX 7 cashier 13 -> 14, both `opd.paper.reprint`. Located BY NAME against ROLE_MODEL (front_office is its first entry, cashier its eighth) and cross-checked against the per-role pins above, which read 12 and 13 before this phase — this array gives no name to check, which is why both legs were done. 17c owner ruling: lab_reception 16 -> 17; 18b T1: radiographer 9, modality_bridge 1; 16c T1: pharmacy 8 -> 19, pharmacy_assistant 5; 18c T1: radiologist 14 -> 15, radiographer 9 -> 10, and radiation_safety_officer's 3 inserted after pcpndt_incharge; 17-E T1: INDEX 25, pathologist 16 -> 17 (lab.instruments.manage) — located by the diff's surrounding context, since the other 16 in this array is lab_reception's and a bare-integer census gives no name to check
+    expect(first.roles.map((r) => r.granted.length)).toEqual([13, 17, 6, 21, 15, 8, 1, 23, 14, 20, 12, 11, 1, 3, 3, 3, 5, 1, 11, 6, 15, 9, 4, 4, 3, 6, 17, 9, 4, 17, 15, 10, 13, 4, 3, 1, 2, 5]); // P9: INDEX 7 pharmacy 22 -> 23 (pharmacy.register.read). P5: INDEX 7 pharmacy 20 -> 22 (the two refund strings). P2: INDEX 7 pharmacy 19 -> 20 (pharmacy.pharmacists.manage). FD-27: INDEX 0 front_office 12 -> 13 and INDEX 7 cashier 13 -> 14, both `opd.paper.reprint`. Located BY NAME against ROLE_MODEL (front_office is its first entry, cashier its eighth) and cross-checked against the per-role pins above, which read 12 and 13 before this phase — this array gives no name to check, which is why both legs were done. 17c owner ruling: lab_reception 16 -> 17; 18b T1: radiographer 9, modality_bridge 1; 16c T1: pharmacy 8 -> 19, pharmacy_assistant 5; 18c T1: radiologist 14 -> 15, radiographer 9 -> 10, and radiation_safety_officer's 3 inserted after pcpndt_incharge; 17-E T1: INDEX 25, pathologist 16 -> 17 (lab.instruments.manage) — located by the diff's surrounding context, since the other 16 in this array is lab_reception's and a bare-integer census gives no name to check
     expect(first.roles.every((r) => r.already.length === 0)).toBe(true);
-    expect(first.declared).toBe(167); // P2: +1, pharmacy.pharmacists.manage; FD-31: +1; FD-30: +1, opd.prescription.draft; FD-27: +1, opd.paper.reprint; RC-1 T2's flow lock, VD-1 T4's history read, RC-2 T4's enrol, 18b T1's mwl read, 16c T1's four pharmacy.* strings, 18c T1's three aerb.* strings, 17-E T1's lab.instruments.manage, 17-E T2's lab.instruments.read // MERGE 2026-09-15: main's grants + the lane's, measured from the failing run
+    expect(first.declared).toBe(168); // P9: +1, pharmacy.register.read; P2: +1, pharmacy.pharmacists.manage; FD-31: +1; FD-30: +1, opd.prescription.draft; FD-27: +1, opd.paper.reprint; RC-1 T2's flow lock, VD-1 T4's history read, RC-2 T4's enrol, 18b T1's mwl read, 16c T1's four pharmacy.* strings, 18c T1's three aerb.* strings, 17-E T1's lab.instruments.manage, 17-E T2's lab.instruments.read // MERGE 2026-09-15: main's grants + the lane's, measured from the failing run
     // MEASURED from role_permissions, not derived from the model. On this database only seed:roles
     // has run, so what is held is exactly what the model granted — 57, not the 63 the model CLAIMS
     // once seed:admin and seed:ops have also run. That SEVEN-permission gap IS MAJOR 1 (it was ten
@@ -1840,9 +1842,9 @@ describe("seed:roles — executed against a database (V5)", () => {
     // 84 -> 85: `staff.reports.drill` is the one string these rulings add to the MODEL.
     // 87 -> 105: the lab's fifteen plus the kernel's three `orders.*`, all granted in the commit
     // that declares them.
-    expect(first.held).toBe(147); // P2: +1, pharmacy.pharmacists.manage; FD-31: +1; FD-30: 141 -> 142, opd.prescription.draft; FD-27: 140 -> 141, opd.paper.reprint; 17c owner ruling: 133 -> 134 (approvals.requests.create); RC-1 T2 — 125 -> 126, flow lock; VD-1 T4 -> 127; RC-2 T4 -> 128; 18b T1 -> 129; 16c T1 -> 133; 17-E T1 -> 138; T2 -> 139 // MERGE 2026-09-15: measured from the failing run
+    expect(first.held).toBe(148); // P9: +1, pharmacy.register.read; P2: +1, pharmacy.pharmacists.manage; FD-31: +1; FD-30: 141 -> 142, opd.prescription.draft; FD-27: 140 -> 141, opd.paper.reprint; 17c owner ruling: 133 -> 134 (approvals.requests.create); RC-1 T2 — 125 -> 126, flow lock; VD-1 T4 -> 127; RC-2 T4 -> 128; 18b T1 -> 129; 16c T1 -> 133; 17-E T1 -> 138; T2 -> 139 // MERGE 2026-09-15: measured from the failing run
     expect(first.held).toBe(modelPermissions().length);
-    expect(heldPermissions()).toHaveLength(153); // P2: +1; FD-31: +1; FD-30: 148, opd.prescription.draft, granted in the commit that declares it; FD-27: +1, opd.paper.reprint; 17c owner ruling; RC-1 T2, VD-1 T4, RC-2 T4's enrol, 18b T1's mwl read, 16c T1's four pharmacy.* strings, then 18c T1's three aerb.* strings // MERGE 2026-09-15: measured from the failing run
+    expect(heldPermissions()).toHaveLength(154); // P9: +1, granted where it is declared; P2: +1; FD-31: +1; FD-30: 148, opd.prescription.draft, granted in the commit that declares it; FD-27: +1, opd.paper.reprint; 17c owner ruling; RC-1 T2, VD-1 T4, RC-2 T4's enrol, 18b T1's mwl read, 16c T1's four pharmacy.* strings, then 18c T1's three aerb.* strings // MERGE 2026-09-15: measured from the failing run
     // PLAN 17 PHASE 0 T5 — 16 -> 20. All four `orders.*` strings, unheld on purpose (§8.11).
     // PLAN 17 T2 — 18 -> 15: three of those four are granted here and `orders.read.restricted`
     // stays, which is the one that needed an owner rather than a plan.
@@ -1869,7 +1871,7 @@ describe("seed:roles — executed against a database (V5)", () => {
     // FD-25 — `cashier` again. This is the SECOND of the two places, and the comment below is why it
     // is called out rather than quietly edited: nothing names this array and no grep finds it from
     // the grant that moved it. Taken from main at the merge for the same reason as its twin above.
-    expect(second.roles.map((r) => r.already.length)).toEqual([13, 17, 6, 21, 15, 8, 1, 22, 14, 20, 12, 11, 1, 3, 3, 3, 5, 1, 11, 6, 15, 9, 4, 4, 3, 6, 17, 9, 4, 17, 15, 10, 13, 4, 3, 1, 2, 5]); // P5: INDEX 7 pharmacy 22. P2: INDEX 7 pharmacy 20. FD-27: the twin of the array above — INDEX 0 front_office and INDEX 7 cashier, both +1 for `opd.paper.reprint`. 17c owner ruling: lab_reception 16 -> 17; 18b T1: radiographer 9, modality_bridge 1; 16c T1: pharmacy 19, pharmacy_assistant 5; 17-E T1: INDEX 25, pathologist 16 -> 17
+    expect(second.roles.map((r) => r.already.length)).toEqual([13, 17, 6, 21, 15, 8, 1, 23, 14, 20, 12, 11, 1, 3, 3, 3, 5, 1, 11, 6, 15, 9, 4, 4, 3, 6, 17, 9, 4, 17, 15, 10, 13, 4, 3, 1, 2, 5]); // P5: INDEX 7 pharmacy 22. P2: INDEX 7 pharmacy 20. FD-27: the twin of the array above — INDEX 0 front_office and INDEX 7 cashier, both +1 for `opd.paper.reprint`. 17c owner ruling: lab_reception 16 -> 17; 18b T1: radiographer 9, modality_bridge 1; 16c T1: pharmacy 19, pharmacy_assistant 5; 17-E T1: INDEX 25, pathologist 16 -> 17
     // The SAME bare-integer array as the granted-length pin above, duplicated for the idempotence
     // leg — so every permission moves it TWICE. Nothing names it and no grep finds it.
 

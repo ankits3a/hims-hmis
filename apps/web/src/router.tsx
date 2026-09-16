@@ -60,6 +60,7 @@ import { PharmacyCounter } from "./screens/pharmacy-counter";
 import { PharmacyItems } from "./screens/pharmacy-items";
 import { PharmacyPharmacists } from "./screens/pharmacy-pharmacists";
 import { PharmacyReorder } from "./screens/pharmacy-reorder";
+import { PharmacyH1Register } from "./screens/pharmacy-h1-register";
 import { RadiologyReception } from "./screens/radiology-reception";
 import { RadiologyWorklist } from "./screens/radiology-worklist";
 import { RadiologyStudy } from "./screens/radiology-study";
@@ -266,6 +267,8 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   { to: "/pharmacy/pharmacists", label: "nav.pharmacyPharmacists", permission: "pharmacy.pharmacists.manage", group: "stores" },
   // PHARMACY P4 — the reorder list: what the counter will run out of, and where it can come from.
   { to: "/pharmacy/reorder", label: "nav.pharmacyReorder", permission: "pharmacy.dispense.read", group: "stores" },
+  // PHARMACY P9 — the Schedule H1 register, the pharmacist's statutory read.
+  { to: "/pharmacy/registers/h1", label: "nav.pharmacyH1", permission: "pharmacy.register.read", group: "stores" },
 ];
 
 /**
@@ -848,6 +851,13 @@ const pharmacyReorderRoute = createRoute({
   component: PharmacyReorder,
 });
 
+/** PHARMACY P9 — the Schedule H1 register. Path matches `pharmacyManifest.menu`. */
+const pharmacyH1RegisterRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/registers/h1",
+  component: PharmacyH1Register,
+});
+
 const labDeskRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/lab/desk",
@@ -1188,7 +1198,7 @@ export const router = createRouter({
       pcpndtFormFRoute, radiationSafetyRoute,
       // PLAN 16c T5 — 45 -> 47, the pharmacy: the dispense counter and the sale-items admin. TWO routes
       // and two NAV links. `caddyfile-parity.test.ts` pins the count and joins this task's Files list.
-      pharmacyCounterRoute, pharmacyItemsRoute, pharmacyPharmacistsRoute, pharmacyReorderRoute,
+      pharmacyCounterRoute, pharmacyItemsRoute, pharmacyPharmacistsRoute, pharmacyReorderRoute, pharmacyH1RegisterRoute,
       // PHASE 11i T9 — 50 -> 53, and every one of the three is a REDIRECT with no screen. They exist
       // because the catch-up deploy deletes three paths production has been serving since
       // 2 September and the desk PCs have them bookmarked. Removed in the release after the

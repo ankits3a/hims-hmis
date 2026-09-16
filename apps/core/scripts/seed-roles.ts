@@ -452,6 +452,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY P2 — the register of pharmacists: the pharmacist in charge files a colleague's state
       // council registration. `recordPharmacistRegistration` refuses one's own whatever this says.
       "pharmacy.pharmacists.manage",
+      // PHARMACY P9 — the Schedule H1 register, read and printed for an inspector. The pharmacist's:
+      // it lists patients by name and what they were given.
+      "pharmacy.register.read",
       // PHARMACY P5 — a paid dispense that cannot be collected: the counter that issued the invoice
       // credits it and REQUESTS the refund. The payout stays the cashier's, behind billing's approval.
       "billing.credit_note.issue",

@@ -230,9 +230,10 @@ left null bills the right amount and reports no output tax: read the column back
 >   - a batch with under 30 days to expiry, or recalled. Quarantine that one instead.
 >   - more than was dispensed, net of earlier returns.
 
-## 4. What refuses, and why — all 33 codes
+## 4. What refuses, and why — all 50 codes
 
-`errors.ts` declares 33; the table here used to name 13, and the drill above provokes several of the
+`errors.ts` declares 50, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
+table falls behind it. The table used to name 13, and the drill above provokes several of the
 missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/en.json` under
 `pharmacyErrors.*`; that file and `errors.ts` are pinned against each other in BOTH directions by
 `apps/web/src/lib/error-strings.test.ts`.
@@ -266,6 +267,8 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `reason_required` | a paid dispense cancelled with no reason the refund approver can read | type the reason |
 | `return_window_closed` · `return_not_sealed` · `return_cut_strip` · `return_not_accepted` · `return_short_expiry` · `return_exceeds_dispensed` | a sales return outside O-7: more than 7 days after the hand-over, not attested sealed, a cut strip, a cold-chain/frozen/narcotic item, a batch too near expiry or recalled, or more than was dispensed | §3.11 — refuse the return; quarantine a short-dated or recalled batch |
 | `fefo_override_unavailable` | a named batch is the wrong item, is recalled, or cannot cover the quantity | check the carton, or let FEFO choose |
+| `slip_not_confirmed` | the prescription was typed from the doctor's paper slip and nobody has checked it against the slip | check the lines against the slip (the photo on the visit, or the patient's paper), confirm, then bill |
+| `invalid_day` · `invalid_range` | the counter's day (P7) or the H1 register's period (P9) is not a real date, runs backwards, or covers more than 31 days | choose the date or the month again |
 | `invoice_not_settled` | the money moved BACK after billing — a reversed allocation or a credit note | send the patient to the billing desk; the drug does not leave unpaid |
 
 **Six refusals the counter surfaces that are NOT pharmacy's**, and staff will meet them:
@@ -345,12 +348,17 @@ No migration is reversed and no table is dropped.
 IPD indents and ward stock; NDPS and Schedule X custody; returns of cold-chain, frozen and
 narcotic items (sealed ambient packs come back since P6, §3.11; a billed dispense never collected is
 cancelled with a refund since P5, §3.10); cold chain; antimicrobial stewardship; the doctor ping on a held line; walk-in
-retail and outside prescriptions; repeat dispensing; home delivery; counts; the Replenishment
-automation; realtime on the counter (it polls every 10 s).
+retail and outside prescriptions; repeat dispensing; home delivery; counts; a Replenishment agent
+that ORDERS (P4 and P8 give the reorder list, a read that proposes and moves nothing); realtime on
+the counter (it polls every 10 s).
 
-**No READ surface for the H1 register.** `pharmacy_reg_h1` is written by `handOver` and read by
-nothing — no route, no screen, no export. Until 16d it is read with `psql`, and that is the only way
-to answer an inspector.
+**The H1 register has a reader since P9.** `/pharmacy/registers/h1` shows a month of it, in the
+order the entries were written, and prints it with the rule, the period, a line for the drug licence
+number and the pharmacist's signature. It needs `pharmacy.register.read` (the `pharmacy` role).
+Every patient it shows is logged as a PHI access. **A sealed patient's name and address are
+withheld** unless the reader also holds `patients.confidential.read`, which no role holds. Handing
+an inspector an unredacted copy is therefore the owner's grant to the pharmacist in charge, made
+deliberately. Until then, the sealed rows print as the alias, marked "sealed record".
 
 **No patient's copy of the pharmacy invoice.** `billDispense` issues a real invoice with real tax
 heads and `daily-close` folds it into GSTR-1, so the tax side is intact — but no screen in the
@@ -359,7 +367,8 @@ documents, none of them an invoice. §3.10 makes this worse rather than better: 
 and cannot collect needs a document showing what they paid for.
 
 **Careful with "the Expiry Watchman":** the automation that WATCHES SHELF STOCK for approaching
-expiry and raises alerts is not in 16c. But three expiry behaviours ARE, and they are not it — FEFO
+expiry and raises ALERTS is not in 16c. The reorder screen READS it (P8): what will expire at the
+counter before it sells, and expired stock still on the shelf. But three expiry behaviours ARE, and they are not it — FEFO
 excludes already-expired batches from every pick (§3.5), `sweepExpiredPharmacyPicks` cancels
 abandoned PICK RESERVATIONS after 30 minutes, and hand over refuses a batch that expired after it was
 picked (§3.10). Do not read this line as "16c does nothing about expiry".

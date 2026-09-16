@@ -77,7 +77,7 @@ export async function seedPharmacyBase(db: Db): Promise<PharmacyFixture> {
   await ensureRole(db, "pharmacy_assistant");
   for (const p of [
     "pharmacy.dispense.place", "pharmacy.dispense.read", "pharmacy.dispense.scheduled", "pharmacy.sale_items.manage",
-    "pharmacy.pharmacists.manage",
+    "pharmacy.pharmacists.manage", "pharmacy.register.read",
     ORDERS_PLACE, "orders.read", "orders.cancel",
     "billing.invoice.issue", "billing.invoice.read", "billing.receipt.record", "billing.session.own",
     "billing.credit_note.issue", "billing.refund.request",

@@ -401,7 +401,8 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // PHARMACY P2 — 55 -> 56 with `/pharmacy/pharmacists`, the register of pharmacists; raised in
     // the same edit as the route.
     // PHARMACY P4 — 56 -> 57 with `/pharmacy/reorder`, the reorder list; raised with the route.
-    expect(routes).toHaveLength(57); // MERGE 2026-09-15: main's grants + the lane's, measured from the failing run
+    // PHARMACY P9 — 57 -> 58 with `/pharmacy/registers/h1`, the Schedule H1 register.
+    expect(routes).toHaveLength(58); // MERGE 2026-09-15: main's grants + the lane's, measured from the failing run
     expect(routes).toContain("/opd/slips");
     expect(routes).toContain("/radiology/radiation-safety");
     /*

@@ -81,4 +81,7 @@ export { acceptReturn } from "./returns";
 export type { ReturnInput, ReturnResult } from "./returns";
 /** P7 — the counter's day (doc 16 §8 KPIs, 16f's first strip). Read-only. */
 export { counterSummary } from "./summary";
+/** P9 — the Schedule H1 register, read (Drugs and Cosmetics Rules 1945 r.65(3A)). */
+export { H1_REGISTER_MAX_DAYS, h1Register } from "./registers";
+export type { H1Register, H1RegisterRow } from "./registers";
 export type { CounterSummary } from "./summary";

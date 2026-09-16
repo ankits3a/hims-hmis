@@ -28,6 +28,7 @@ export const pharmacyManifest: ModuleManifest = {
     { label: "Sale items", path: "/pharmacy/items", permission: "pharmacy.sale_items.manage" },
     { label: "Pharmacists", path: "/pharmacy/pharmacists", permission: "pharmacy.pharmacists.manage" },
     { label: "Reorder list", path: "/pharmacy/reorder", permission: "pharmacy.dispense.read" },
+    { label: "H1 register", path: "/pharmacy/registers/h1", permission: "pharmacy.register.read" },
   ],
   permissions: [
     /** Claim a queued Rx at the counter, which places the `medication` order; verify, pick, bill. */
@@ -42,6 +43,11 @@ export const pharmacyManifest: ModuleManifest = {
      * one's own: the act refuses `self_registration` whatever this grant says.
      */
     "pharmacy.pharmacists.manage",
+    /**
+     * P9 — read the Schedule H1 register (Drugs and Cosmetics Rules 1945 r.65(3A)): patients by name,
+     * and what they were given. The pharmacist's, not the aide's.
+     */
+    "pharmacy.register.read",
   ],
   /** T3 — D10: the Rx is at the counter before the patient is. Handler, worker install and census landed in the same commit. */
   subscriptions: [{ event: "prescription.issued", consumer: PHARMACY_RX_ISSUED_CONSUMER }],
