@@ -15,6 +15,7 @@ import { consumptionsFor, handleConsignmentDeployed } from "./consumption";
 import type { MovementInput } from "./ledger";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
+import { normalizeDrugName } from "../formulary";
 
 /**
  * PLAN 14 T7 / DD13 — the consignment consumer, and the interface Plan 15 imports.
@@ -57,7 +58,7 @@ describe("the consignment consumer (Plan 14 T7 / DD13)", () => {
   async function anItem(code = "IMPLANT-X"): Promise<string> {
     const medicineId = newId();
     await db.insert(formularyMedicines).values({
-      id: medicineId, brandName: `Brand ${medicineId}`, form: "tablet",
+      id: medicineId, brandName: `Brand ${medicineId}`, nameNormalized: normalizeDrugName(`Brand ${medicineId}`), form: "tablet",
       createdBy: HEAD.id, updatedBy: HEAD.id,
     });
     const { itemId } = await withTx(db, (tx) => registerItem(tx, HEAD, {

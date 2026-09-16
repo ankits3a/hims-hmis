@@ -87,6 +87,7 @@ import { newId } from "@hmis/contracts";
 import { createDb, withTx } from "../src/kernel/db/client";
 import { requireEnv } from "../src/kernel/config";
 import { formularyMedicineSalts, formularyMedicines, formularySalts } from "../src/kernel/db/schema";
+import { normalizeDrugName } from "../src/modules/formulary";
 import type { Tx } from "../src/kernel/db/client";
 
 type Substance = { sctid: string; name: string; synonyms: string[] };
@@ -367,6 +368,7 @@ function main(): void {
         const id = newId();
         meds.push({
           id, brandName: p.name, form: p.form, routeClass: routeClassOf(p.route),
+          nameNormalized: normalizeDrugName(p.name),
           strengthLabel: p.strength, code: p.code, sourceRef: p.sourceRef,
           createdBy: "cds-import", updatedBy: "cds-import",
         });

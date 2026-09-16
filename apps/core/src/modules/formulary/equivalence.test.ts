@@ -9,6 +9,7 @@ import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { PharmacyFixture } from "../../../test/helpers/pharmacy";
 import type { RouteClass } from "./masters";
+import { normalizeDrugName } from "./resolve";
 
 /**
  * ═══ GENERIC EQUIVALENCE — THE RULE THAT USED TO BE WRITTEN TWICE ═══
@@ -84,7 +85,7 @@ describe("generic equivalence — one predicate for the offer and the gate", () 
   async function mkUncomposedMed(brandName: string): Promise<string> {
     const id = newId();
     await db.insert(formularyMedicines).values({
-      id, brandName, form: "tablet", routeClass: "systemic",
+      id, brandName, nameNormalized: normalizeDrugName(brandName), form: "tablet", routeClass: "systemic",
       createdBy: "catalogue-import", updatedBy: "catalogue-import",
     });
     return id;

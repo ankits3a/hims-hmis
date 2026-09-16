@@ -666,6 +666,13 @@
       "when": 1789555035276,
       "tag": "0094_formulary_composition_provenance",
       "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1789567126695,
+      "tag": "0095_formulary_medicine_name_normalized",
+      "breakpoints": true
     }
   ]
 }

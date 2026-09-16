@@ -9,6 +9,7 @@ import { postMovements } from "./ledger";
 import { expiringBatches, sweepBatchExpiry, thresholdToAnnounce } from "./expiry";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
+import { normalizeDrugName } from "../formulary";
 
 /**
  * PLAN 14 T8 / DD14 — the expiry sweep.
@@ -41,7 +42,7 @@ describe("the batch-expiry sweep (Plan 14 T8 / DD14)", () => {
   async function anItem(): Promise<string> {
     const medicineId = newId();
     await db.insert(formularyMedicines).values({
-      id: medicineId, brandName: `Brand ${medicineId}`, form: "tablet",
+      id: medicineId, brandName: `Brand ${medicineId}`, nameNormalized: normalizeDrugName(`Brand ${medicineId}`), form: "tablet",
       createdBy: HEAD.id, updatedBy: HEAD.id,
     });
     const { itemId } = await withTx(db, (tx) => registerItem(tx, HEAD, {

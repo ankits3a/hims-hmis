@@ -237,9 +237,15 @@ export interface Plan {
   generics: GenericPlan[];
   compositions: CompositionPlan[];
   release: string;
+  /**
+   * How many existing moieties were skipped as auto-link targets because they are themselves images
+   * of a published release. Carried on the plan and PRINTED, so an operator can see that a worklist
+   * stayed full for a reason rather than discover it as an empty screen.
+   */
+  withheldReleaseImage: number;
 }
 
-interface ExistingSalt { id: string; name: string }
+interface ExistingSalt { id: string; name: string; sourceRef: string | null }
 
 export function planImport(
   substancesCsv: string,
@@ -265,8 +271,31 @@ export function planImport(
   // MANY SUBSTANCES MAY MAP TO ONE MOIETY AND THAT IS NOT A CONFLICT. An earlier cut REFUSED the
   // whole import when two release rows matched one curated moiety; under this model that is the
   // intended shape (four doxycycline salt forms, one moiety), so it links both.
+  //
+  // ═══ THE PREMISE ABOVE IS CONDITIONAL, AND THE CONDITION STOPPED HOLDING ═══
+  //
+  // "It is the same word" is a safe thing to say about a moiety a PHARMACIST curated. It is not a
+  // safe thing to say about a moiety a LOADER wrote: then it is the same word because it is the
+  // same row, and the link asserts a clinical equivalence that nobody made.
+  //
+  // That is the world as it stands. `import-cds-catalogue.ts` loads the same national release's
+  // 3,283 substances straight into `formulary_salts`, and MEASURED on the loaded catalogue every
+  // one of the 3,283 rows carries a `source_ref` - it is the release, verbatim, with 437 salt-form
+  // names and no drug classes. Left alone, this arm would match all 3,283 substances to the rows
+  // that ARE those substances, stamp them `mapped`, and empty the pharmacist's worklist before a
+  // human ever opened it. A machine would have recorded three thousand clinical decisions.
+  //
+  // So a moiety that is itself an image of a published release is NOT a match target.
+  // `formulary_salts.source_ref` is the discriminator because it has exactly ONE writer in the tree
+  // - the catalogue loader - and `addSalt` does not set it, so a null means a human made this row.
+  // It is withheld rather than refused: withholding costs a pharmacist a decision they were always
+  // going to make, and the other direction costs them the decision itself.
   const byName = new Map<string, ExistingSalt>();
-  for (const s of existingSalts) byName.set(s.name.trim().toLowerCase(), s);
+  let withheldReleaseImage = 0;
+  for (const s of existingSalts) {
+    if (s.sourceRef !== null) { withheldReleaseImage += 1; continue; }
+    byName.set(s.name.trim().toLowerCase(), s);
+  }
 
   const substancePlans: SubstancePlan[] = [];
   const seenSctid = new Set<string>();
@@ -359,7 +388,7 @@ export function planImport(
     });
   }
 
-  return { substances: substancePlans, generics: genericPlans, compositions: compositionPlans, release };
+  return { substances: substancePlans, generics: genericPlans, compositions: compositionPlans, release, withheldReleaseImage };
 }
 
 /**
@@ -429,6 +458,7 @@ export function renderReport(plan: Plan, applied: boolean): string {
     `  substances     ${String(plan.substances.length)} imported as released`,
     `    mapped       ${String(mapped)} auto-linked to a curated moiety by EXACT name or synonym`,
     `    pending      ${String(pending)} awaiting a pharmacist`,
+    `    withheld     ${String(plan.withheldReleaseImage)} moieties skipped as match targets - they are release images, not curated rows`,
     `  generics       ${String(newGenerics)} new, ${String(skipped)} already present (skipped)`,
     `  compositions   ${String(plan.compositions.length)}`,
     "",
@@ -466,7 +496,7 @@ async function main(): Promise<void> {
   const read = (f: string): string => readFileSync(`${dir}/${f}`, "utf8");
 
   const existingSalts = await db.select({
-    id: formularySalts.id, name: formularySalts.name,
+    id: formularySalts.id, name: formularySalts.name, sourceRef: formularySalts.sourceRef,
   }).from(formularySalts);
   const existingSubstances = await db.select({ sctid: formularySubstances.sctid }).from(formularySubstances);
   const existingGenerics = await db.select({ sctid: formularyGenerics.sctid }).from(formularyGenerics);

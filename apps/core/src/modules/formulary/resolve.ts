@@ -93,7 +93,6 @@ async function activeSalts(db: Db): Promise<SaltRow[]> {
 async function compositionOf(
   db: Db,
   medicineIds: string[],
-  saltsById: Map<string, SaltRow>,
 ): Promise<Map<string, SaltRef[]>> {
   const out = new Map<string, SaltRef[]>();
   if (medicineIds.length === 0) return out;
@@ -110,9 +109,21 @@ async function compositionOf(
     }).from(formularySalts).where(anyOfText(formularySalts.id, referenced));
   const byId = new Map(allSalts.map((s) => [s.id, s]));
   for (const row of rows) {
-    const salt = byId.get(row.saltId) ?? saltsById.get(row.saltId);
-    // A composition row whose salt has been DELETED (not merely deactivated) is a broken reference
-    // the schema's foreign key makes impossible; skipping is unreachable and safe.
+    const salt = byId.get(row.saltId);
+    /*
+      UNREACHABLE, AND THE REASON IS LOCAL RATHER THAN A FOREIGN KEY. `byId` is built four lines up
+      from `formulary_salts where id = any(referenced)` with NO `active` filter, and `referenced` IS
+      the distinct set of salt ids just read from the composition — so every key in this loop is
+      covered by construction. `Map.get` is typed `| undefined`, which is why the branch is written
+      at all. (The foreign key says the same thing more weakly: it is `NO ACTION`, and a count of
+      composition rows whose salt is absent is 0 over the 142,759 on the loaded catalogue.)
+
+      IT USED TO FALL BACK to an `activeSalts()` map passed in by the caller, and that arm was worse
+      than unreachable: the map is ACTIVE-ONLY, a strict subset of what `byId` already holds, and it
+      was read EARLIER — so in the only race that could have reached it, it answered with staler
+      data than the lookup it was "backing". Deleting it removed a full 3,283-row read of
+      `formulary_salts` from `resolveMedicines`, which runs on every prescription check.
+    */
     if (salt === undefined) continue;
     const list = out.get(row.medicineId) ?? [];
     list.push({ saltId: salt.id, moiety: salt.name, drugClass: salt.drugClass });
@@ -143,8 +154,7 @@ export async function resolveMedicines(db: Db, medicineIds: string[]): Promise<M
   ));
   if (medicines.length === 0) return out;
 
-  const saltsById = new Map((await activeSalts(db)).map((s) => [s.id, s]));
-  const composition = await compositionOf(db, medicines.map((m) => m.id), saltsById);
+  const composition = await compositionOf(db, medicines.map((m) => m.id));
   for (const medicine of medicines) {
     out.set(medicine.id, {
       medicineId: medicine.id, brandName: medicine.brandName,
@@ -173,8 +183,10 @@ export async function resolveDrugTexts(db: Db, texts: string[]): Promise<Map<str
   const wanted = new Set([...out.keys()].map(normalizeDrugName).filter((t) => t !== ""));
   if (wanted.size === 0) return out;
 
+  /* `activeSalts` is EARNED here and only here: `byMoiety`/`byAlias` below are built from it, which
+     is the DD2 resolution path. It is no longer read by `resolveMedicines`, so the dispensing gate's
+     two-medicine call no longer pays for the whole moiety table. */
   const salts = await activeSalts(db);
-  const saltsById = new Map(salts.map((s) => [s.id, s]));
 
   /** normalized moiety name → salt, and normalized alias → salt. Names win over aliases. */
   const byMoiety = new Map<string, SaltRow>();
@@ -187,14 +199,37 @@ export async function resolveDrugTexts(db: Db, texts: string[]): Promise<Map<str
     }
   }
 
+  /*
+    ASK FOR THE NAMES WANTED, NOT FOR THE CATALOGUE. This used to read every active medicine —
+    measured at 103,383 rows on the loaded national catalogue, on EVERY prescription issue and every
+    claim — and then normalize each brand in JavaScript to build a lookup map. The normalized key is
+    stored now, so the set of texts the caller asked about goes into the WHERE clause instead.
+
+    `normalizeDrugName` is still called exactly ONCE in TypeScript, on the caller's texts, at
+    `wanted` above. The column holds what the same function produced at write time. That is the
+    arrangement this file's header asks for: one normalizer, and a WHERE clause that reads a column
+    rather than re-deriving a value.
+  */
   const medicines = await db.select({
     id: formularyMedicines.id, brandName: formularyMedicines.brandName,
-    routeClass: formularyMedicines.routeClass,
-  }).from(formularyMedicines).where(eq(formularyMedicines.active, true));
-  const byBrand = new Map(medicines.map((m) => [normalizeDrugName(m.brandName), m]));
+    routeClass: formularyMedicines.routeClass, nameNormalized: formularyMedicines.nameNormalized,
+  }).from(formularyMedicines).where(and(
+    eq(formularyMedicines.active, true),
+    anyOfText(formularyMedicines.nameNormalized, [...wanted]),
+  ));
+  /*
+    KEYED OFF THE STORED COLUMN, not off a re-normalized brand name. Keying off the latter would
+    make this map agree with itself while disagreeing with the WHERE clause that filled it, and the
+    disagreement would be invisible: a row would arrive and then fail to be found.
+
+    A collision keeps the LAST row, as it always did — 51 groups collide on the real catalogue, and
+    none of them differ in composition. That is a separate, recorded defect, not one this change
+    introduces or fixes.
+  */
+  const byBrand = new Map(medicines.map((m) => [m.nameNormalized, m]));
 
   const hitMedicineIds = [...wanted].map((t) => byBrand.get(t)?.id).filter((id): id is string => id !== undefined);
-  const composition = await compositionOf(db, hitMedicineIds, saltsById);
+  const composition = await compositionOf(db, hitMedicineIds);
 
   for (const text of out.keys()) {
     const key = normalizeDrugName(text);
