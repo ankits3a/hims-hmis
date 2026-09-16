@@ -257,6 +257,16 @@ export function PharmacyCounter(): React.ReactElement {
                         <p className="font-medium">
                           {l.lineIdx + 1}. {lineTitle(l)}
                           {l.scheduleFlag !== null ? <span className="ml-2 rounded bg-muted px-1 text-xs">{l.scheduleFlag}</span> : null}
+                          {/* P3: the checks re-run at verify could see only part of this medicine. */}
+                          {l.partlyChecked === true ? (
+                            <span
+                              data-testid={`line-partly-checked-${String(l.lineIdx)}`}
+                              title={t("pharmacyCounter.partlyCheckedTitle")}
+                              className="ml-2 rounded border border-amber-400 px-1 text-xs text-amber-800"
+                            >
+                              {t("pharmacyCounter.partlyChecked")}
+                            </span>
+                          ) : null}
                           {l.substitutionType === "generic" ? <span className="ml-2 text-xs">{t("pharmacyCounter.substituted")}</span> : null}
                         </p>
                         <p className="text-xs text-muted-foreground">

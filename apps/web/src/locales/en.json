@@ -3339,6 +3339,8 @@
     "batch_expired_before_collection": "This batch was in date when it was picked and expired before the patient collected it, so it cannot be handed over. Quarantine the strip, then send the patient to the billing desk — the bill is already paid and needs a credit note."
   },
   "pharmacyCounter": {
+    "partlyChecked": "Checked only in part",
+    "partlyCheckedTitle": "A component of this medicine is not yet reviewed in the formulary, so its allergy class and interactions could not be checked. Check the patient's allergies and current medicines yourself.",
     "title": "Dispense counter",
     "find": "Scan the e-Rx or patient card, or type a token (T-14) or UHID",
     "findButton": "Find",

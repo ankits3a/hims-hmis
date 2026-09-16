@@ -70,6 +70,8 @@ export type WireDispenseLine = {
   saleable: boolean; available: number | null; batchId: string | null; reservationId: string | null; ledgerEntryId: string | null;
   orderItemId: string | null; invoiceLineId: string | null; unitPaise: number | null; priceWinner: string | null;
   fefoOverride: boolean; pickNote: string | null;
+  /** Pharmacy P3: a component of this line's medicine is not yet reviewed. Absent from an older server. */
+  partlyChecked?: boolean;
 };
 export type WirePatientSummary = { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean };
 export type WireDispense = {

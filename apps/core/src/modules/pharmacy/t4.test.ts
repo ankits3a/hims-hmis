@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { openSessionFor } from "../../../test/helpers/billing";
 import { MON2, MON3, issueRx, line, seedPharmacyBase, stockIn } from "../../../test/helpers/pharmacy";
@@ -15,7 +15,7 @@ import { handOverDispense } from "./handover";
 import { labelFor } from "./label";
 import { pickDispense } from "./pick";
 import { getDispense } from "./queue";
-import { verifyDispense } from "./verify";
+import { declineLine, verifyDispense } from "./verify";
 import type { PharmacyFixture } from "../../../test/helpers/pharmacy";
 import type { Db } from "../../kernel/db/client";
 import type { DispenseView } from "./queue";
@@ -55,6 +55,33 @@ describe("the dispense counter — pick, bill, hand over (16c T4)", () => {
     return verifyDispense(db, fx.pharmacist.actor, fx.decls, r.dispense.id, { lines: qty.map((q, i) => ({ lineIdx: i, qtyBase: q })) }, MON2);
   }
   const twoLines = () => [line({ drug: "Crocin 500", medicineId: fx.med.crocin }), line({ drug: "Azee 500", medicineId: fx.med.azithro, frequency: "OD", durationDays: 3 })];
+
+  /**
+   * PHARMACY P3 — THE PHARMACIST IS TOLD WHICH LINES THE CHECKS COULD SEE ONLY IN PART.
+   *
+   * The verify step re-runs the prescription checks, and its permanent record used to say
+   * "allergyHits: 0, interactionHits: 0" for a medicine whose component no one had reviewed, when
+   * the checks had nothing to find with. The counter line now says so, and so does the record.
+   * Azithromycin is made a release entry nobody decided (a `source_ref`, no mapped substance).
+   */
+  it("P3 — a line whose medicine has a component nobody reviewed is marked at the counter and in the verified record", async () => {
+    await db.execute(sql`update formulary_salts set source_ref = '999000001' where lower(name) = 'azithromycin'`);
+    const v = await verified(twoLines(), [20, 3]);
+    expect(v.lines.map((l) => [l.lineIdx, l.partlyChecked])).toEqual([[0, false], [1, true]]);
+    const [ev] = await db.select().from(events).where(eq(events.name, "dispense.verified"));
+    expect(ev?.payload).toMatchObject({ allergyHits: 0, interactionHits: 0, partlyCheckedLineIdxs: [1] });
+    // A claimed line, before any verify, says the same thing about the medicine it will hand over.
+    const { issued } = await issueRx(db, fx, twoLines());
+    const r = await findAtCounter(db, testCfg, fx.pharmacist.actor, issued.qrPayload, MON2);
+    if (r.kind !== "dispense") throw new Error("no dispense");
+    const claimed = await claimDispense(db, fx.pharmacist.actor, { dispenseId: r.dispense.id, door: "rx_qr" }, MON2);
+    expect(claimed.lines.map((l) => l.partlyChecked)).toEqual([false, true]);
+    // With the first line declined, the record still names the prescription's line 2, not the check's line 1.
+    await declineLine(db, fx.pharmacist.actor, fx.decls, r.dispense.id, 0, "patient has paracetamol at home", MON2);
+    await verifyDispense(db, fx.pharmacist.actor, fx.decls, r.dispense.id, { lines: [{ lineIdx: 1, qtyBase: 3 }] }, MON2);
+    const records = await db.select().from(events).where(eq(events.name, "dispense.verified"));
+    expect(records.map((e) => (e.payload as { partlyCheckedLineIdxs: number[] }).partlyCheckedLineIdxs)).toEqual([[1], [1]]);
+  });
 
   it("pick takes the EARLIEST-expiring batch, holds a reservation per line, and moves the envelope to in_progress", async () => {
     const v = await verified(twoLines(), [20, 3]);
