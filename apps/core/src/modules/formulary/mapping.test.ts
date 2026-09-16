@@ -271,6 +271,26 @@ describe("the formulary mapping loop (phase 2)", () => {
       expect((await substance(lacto.id)).saltId).toBe(calcium);
     });
 
+    /**
+     * A decision's event is the audit record of what THAT decision moved. A product of another,
+     * earlier-mapped substance that is still out of place (loaded after its decision) is the
+     * importer's to place. Sweeping it up here would record it against the wrong pharmacist and
+     * turn every attestation into a scan of the whole catalogue.
+     */
+    it("moves and counts only the decided substance's rows", async () => {
+      const { amox, clav } = await augmentinWorld();
+      const warfarin = await moiety("warfarin");
+      const warfNa = await releaseSubstance(SCT.warfarinSodium, "Warfarin sodium (substance)", "Warfarin sodium");
+      await attest(PHARMACIST, warfNa.id, { saltId: warfarin });
+      const loadedLater = await catalogueProduct("Warf 5", [{ salt: warfNa.image, sctid: SCT.warfarinSodium }]);
+
+      const decision = await attest(PHARMACIST, clav.id, { newMoiety: { name: "clavulanic acid" } });
+
+      expect(decision.projection).toEqual({ rowsMoved: 1, medicinesMoved: 1, medicinesBlocked: 0 });
+      expect(await saltsOf(loadedLater)).toEqual([warfNa.image]);
+      expect(amox).toBeDefined();
+    });
+
     it("places a product loaded after the decision when the importer projects the whole catalogue", async () => {
       const amox = await moiety("amoxicillin", "penicillin");
       const amoxTri = await releaseSubstance(SCT.amoxTrihydrate, "Amoxicillin trihydrate (substance)", "Amoxicillin trihydrate");
