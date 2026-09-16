@@ -161,20 +161,23 @@ nothing on the safety path does.
 
 ### 3.2 Attestation: the only write that sets `salt_id`
 
-`attestSubstance(tx, actor, substanceId, { saltId } | { newMoiety }, { proposalId?, reason? })`:
-- the actor must be a user (`attester_not_user`), and the route requires `formulary.manage`;
-- the target must be an active **curated** moiety. A release image is refused
-  (`release_image_target`): mapping a substance onto a copy of itself decides nothing;
-- `newMoiety` creates the moiety in the same transaction, through `addSalt`, so it is one act;
-- a **pending** substance becomes `mapped`. A **mapped** substance may be re-attested only with a
-  `reason`: that is a correction, and it re-projects (below). A conditional update means two
-  pharmacists racing on one row cannot both win (`substance_not_pending`);
-- `substance.mapped` records `{substanceId, sctid, saltId, fromSaltId, proposalId,
-  agreedWithProposal, reason, projected}`.
+`attestSubstance(tx, actor, substanceId, { saltId } | { newMoiety }, { proposalId?, correctionReason? })`:
+- **The actor must be a person.** `attester_not_user` is checked before any read. The route also
+  requires `formulary.manage`.
+- **The target** must be an active **moiety** (§3.6), or this substance's **own** release entry
+  ("it is its own moiety"). Another substance's entry that nobody has reviewed is refused
+  (`release_image_target`): decide that substance first.
+- **`newMoiety`** creates the moiety in the same transaction, through `addSalt`, so it is one act.
+- **Pending versus correction.** A pending substance becomes `mapped` with no reason. A decided
+  substance changes only through a correction, and a correction needs a reason
+  (`substance_already_decided` / `substance_not_decided`). A row lock plus a conditional update
+  keep two pharmacists from overwriting each other.
+- **`substance.mapped`** records `{substanceId, sctid, saltId, fromStatus, fromSaltId,
+  createdMoiety, ownEntry, proposalId, agreedWithProposal, correctionReason, projection}`.
 
-`ruleUnmappable(tx, actor, substanceId, reason)` does the same for `unmappable` (a grouper concept,
-an excipient, a vehicle) and emits `substance.ruled_unmappable`. A mapped substance ruled unmappable
-reverts its products to the release image.
+`ruleSubstanceUnmappable(tx, actor, substanceId, { reason, correction? })` does the same for
+`unmappable` (a grouper concept, an excipient, a vehicle, an organism) and emits
+`substance.ruled_unmappable`. Its rows go back to the release entry.
 
 ### 3.3 Projection (W6): a derived composition row names the moiety its substance was mapped to
 
@@ -183,44 +186,77 @@ states it, and the migration backfills it for rows that sit on a release image (
 `source_ref` of their salt). **The projection is a total function of the release composition and
 the mappings.** For a derived row whose `derived_from = X`:
 
-- target = `X`'s curated moiety if `X` is mapped, otherwise `X`'s release image;
-- **per row, not per medicine.** A composition whose rows are partly curated moieties and partly
-  release images is **complete**: no component is missing. DECIDED 3's complete-or-nothing rule
-  is about dropping components, and projection drops none. Projecting row by row puts a moiety's
-  class and interactions on the checks the moment it is attested;
-- **collision refuses the whole medicine.** If two rows of one medicine would name the same moiety
-  (two salt forms of one drug in one product), that medicine is not projected at all and is
-  counted. The primary key cannot hold both rows, and merging two strengths is a clinical
-  representation choice, not a loader's;
-- never touches a medicine with a `curated` row (DECIDED 3's rule for any derivation writer);
-- runs **inside the attesting transaction**, set-based, and refreshes `product_count` / `salt_rank`
-  for the salts it touched. That refresh becomes a single formulary function shared with the
-  importer, so the two can no longer disagree about how the rank is computed.
+- **Target:** `X`'s moiety if `X` is mapped, otherwise `X`'s release entry, otherwise the row stays
+  where it is (E8).
+- **Per row, not per medicine.** A composition whose rows are partly moieties and partly release
+  entries is **complete**: no component is missing. DECIDED 3's complete-or-nothing rule is about
+  dropping components, and projection drops none. Projecting row by row puts a moiety's class and
+  interactions on the checks the moment it is attested.
+- **A collision leaves the whole medicine alone.** If two rows of one medicine would name the same
+  moiety (Calcium Sandoz: glubionate + lactobionate), that medicine is not projected and is
+  counted.
+- **A medicine with any `curated` row** is never touched.
+- **One statement, inside the attesting transaction, scoped to the decided substance.** It
+  refreshes `product_count` / `salt_rank` through `refreshRankSignals`, which the importer now
+  shares. The importer calls `projectSubstances("all")` after a load, so a product loaded after its
+  substance was decided is placed too.
 
-A correction is therefore just a re-projection of the rows `derived_from` that substance. The
-release image is never deleted (W10 stays refused), so any projection can be reverted.
+A correction is a re-projection of the rows `derived_from` that substance. The release entry is
+never deleted (W10 stays refused), so any projection can be reverted.
 
-### 3.4 `checked` (W9)
+### 3.4 `reviewed` (W9)
 
-`searchMedicines` returns `checked: boolean`: true when no component is a release image. The
-doctor's picker marks an unchecked product as *"not yet reviewed by pharmacy"*. **What this phase
-does not do:** change the prescribing checks' verdict for a line that has release-image salts. That
-is DECIDED 2(a) of the previous phase: the owner is told, not asked. Until it ships, such a line's
-allergy check matches text against the release name, and its interaction check finds nothing
-because release images carry no pairs.
+`searchMedicines` returns **`reviewed`**, true when every component is a moiety (§3.6). It is named
+`reviewed`, not the handoff's `checked`: a curated moiety with no class and no pairs is reviewed,
+but nothing has been checked against it either. The doctor's field says *"not yet reviewed by
+pharmacy"* beside such a product. An absent flag (an older server) shows nothing. The census counts
+`unreviewedActiveMedicines`.
 
-### 3.5 The drafter (T2)
+**What this phase does not do:** change the prescribing checks' verdict for a line with an
+unreviewed component. That is DECIDED 2(a) of the previous phase: the owner is told, not asked.
 
-`scripts/draft-substance-mappings.ts [--agent-file <json>] [--apply]`. It is a planner and a
-dry run first, as the loaders are:
-- **release half:** parses the stored generic names (`formulary_generics.name`) for `precisely X
-  (as Y)`, taking X as the last clause before `(as`. It rejects any X carrying a strength, drops a
-  trailing hydrate word (`anhydrous`, `monohydrate`, …) and records that it did. Several distinct
-  X values for one Y is a conflict, and it carries all of them as evidence rather than choosing;
-- **model half:** `--agent-file` ingests `{model, draftedAt, items: [{sctid, moietyName,
-  rationale}]}`, which is written by an agent outside the server (Plan 12a still owns
-  `InferenceClient.complete`, so the server makes no model call here). A `rationale` is required.
-  An unknown `sctid` is refused and named.
+### 3.5 The drafter (T2), as built
+
+`scripts/draft-substance-mappings.ts [--apply] [--agent-file f] [--export-undrafted f --top n]`.
+It writes drafts only, labelled by drafter, and has no actor.
+- **Release half.** Reads "BASE (as INGREDIENT)" in both of the release's grammars: the SNOMED
+  FSN, and the shorter trade form "Amlodipine (as amlodipine besylate) 5 mg".
+  - A statement counts only if its ingredient is one of that generic's own substances **and**
+    shares a name stem with the base. The release misaligns some components itself: generic
+    1621000189106 says "Menthol (as guaifenesin)".
+  - Where statements disagree, the majority wins and the dissent is carried with counts. A
+    hydrate word is dropped and recorded.
+  - `release_base` covers only substances the release names **as a base**. Strength stated as a
+    salt is not evidence of being a moiety.
+  - Measured: 2,359 statements, 53 dropped as misaligned, 569 `release_boss` (15 contested), 474
+    `release_base`.
+- **Model half.** `--export-undrafted` writes the pending substances nobody has drafted,
+  most-used first. `--agent-file` takes a model's drafts back: `{model, release, items: [{sctid,
+  moietyName, rationale}]}`, strict. An unknown sctid refuses the whole file. The server makes no
+  model call; Plan 12a owns `kernel/inference`.
+
+### 3.6 What makes a salt row a moiety, and why the data forced a second clause
+
+`formulary_salts` is unique on `lower(name)`, and the importer's release entry `Paracetamol` (4,866
+products) already holds that name. So **a curated `paracetamol` cannot be created**, and the same
+is true of most base substances. The design therefore says a row is a moiety when it is curated
+(`source_ref is null`) **or** some mapped substance points at it. That is one predicate,
+`modules/formulary/moiety.ts`, and the target check, `reviewed`, the census and the moiety picker
+all use it. "It is its own moiety" moves no rows and renames nothing. Ruling it otherwise later
+makes the entry unreviewed again.
+
+### 3.7 Two seam defects the build found, both fixed before merge
+
+- **A decision silenced an allergy check that was firing.** An allergy is stored as text, and
+  "Amoxicillin trihydrate" resolves by exact name to the release entry. After the decision moved
+  the product to `amoxicillin`, all three allergy layers missed. Proven red through the real
+  `runRxChecks`: the warning fired before the decision and not after. **Fixed:** wherever a mapped
+  entry is named (a text, or a medicine composed by hand from the entry), the moiety it was mapped
+  to is named beside it, as a union and never a swap.
+- **An ambiguous brand chose a product.** 51 normalized names collide, `resolveDrugTexts` kept the
+  last row, and `pharmacy/claim.ts` dispensed it for a free-typed line; 6 of the 51 differ in
+  strength, form or route. **DECIDED (DD2 + FD-35):** a shared name resolves to the union of the
+  products' moieties, to no product, and to systemic if any of them is.
 
 ---
 
@@ -228,42 +264,51 @@ dry run first, as the loaders are:
 
 | # | case | answer |
 |---|---|---|
-| E1 | target is a release image | refused, `release_image_target` |
-| E2 | two components of one product map to one moiety | that product is not projected; counted in the attest result and in census |
-| E3 | product has a `curated` row | never projected |
-| E4 | component ruled unmappable | its row stays on the release image; the product stays unchecked |
-| E5 | two pharmacists attest one substance | conditional update; the second gets `substance_not_pending` |
-| E6 | wrong mapping | re-attest with a reason: re-projects its rows; the event carries `fromSaltId` |
-| E7 | target moiety inactive | refused, `unknown_salt` (an inactive moiety cannot be newly used) |
-| E8 | substance with no release image (the loader reused a curated row by name) | mapping still recorded; nothing to project |
-| E9 | an agent actor calls attest | refused, `attester_not_user`, before any read |
-| E10 | a medicine loaded before this migration (`derived_from` null on a curated-reuse row) | already names a curated moiety; the projection ignores it |
-| E11 | a release-only database (no cds load) | worklist coverage is 0 everywhere and ordering falls back to name; attest still works |
-| E12 | a proposal names a moiety that doesn't exist yet | the worklist offers "create *X* and map", one act |
+| E1 | target is ANOTHER substance's unreviewed release entry | refused, `release_image_target`: decide that substance first |
+| E1b | target is this substance's own release entry | accepted: "it is its own moiety"; no rows move |
+| E2 | two components of one product map to one moiety | that product is not projected; counted in the decision's `projection` |
+| E3 | product has any `curated` row | never projected |
+| E4 | substance ruled unmappable | its rows go back to the release entry; the product is unreviewed |
+| E5 | two pharmacists decide one substance | row lock + conditional update; the second gets `substance_already_decided` |
+| E6 | wrong decision | a correction with a reason; rows re-project; the event carries `fromSaltId` |
+| E7 | target moiety inactive | refused, `unknown_salt` |
+| E8 | substance with no release entry (the importer reused a curated row by name) | decision recorded; nothing to project |
+| E9 | an agent, system or patient actor | refused, `attester_not_user`, before any read |
+| E10 | a derived row on a curated-reuse moiety, loaded before this migration | `derived_from` null; already names a moiety; left alone |
+| E11 | a release-only database (no cds load) | coverage 0 everywhere; `ownEntryId` null; decisions still work |
+| E12 | a draft names a moiety that doesn't exist | "create *X* and map", one act |
+| E13 | a draft names a moiety already held by a release entry | `existingState` says which kind; the screen offers the right act |
+| E14 | an allergy text names a mapped release entry | resolves to the entry **and** its moiety (§3.7) |
+| E15 | a brand name two products share | union of moieties, no product, systemic if any (§3.7) |
 
 ---
 
-## 5. TASKS
+## 5. TASKS, AND WHERE EACH ONE IS
 
-Each task is a PR, and this lane has one migration in total (T1). Serial taken at rebase.
+- **T1 + T2 + the §3.7 fixes: PR #210** (backend, migration `0097`). 30 + 24 + 5 new tests, and
+  24 mutants (22 killed as predicted, 1 dropping only the row lock surviving by design, 1 invalid
+  and redone).
+- **T3 + T4 (web):** the worklist screen in `formulary-admin`, the census figures, and the
+  `DrugField` chip. The branch is `lane/formulary-web`, and it opens as a PR once #210 merges. 12 +
+  2 new tests, and 6 mutants, all killed as predicted.
+- **T5 residuals.** The 51 collisions are **done** (§3.7). The 15 MB prose is **done** in `search.ts`
+  and `drug-field.tsx`; `opd-consult.tsx` is still not this lane's to edit (live lanes).
+  **Still open:** `cds/allergens.ts` reads `formulary_salts` in raw SQL, invisible to the lint
+  rule, and its `like` does not use `escapeLike`.
+- **T6: the drafting run.** An agent drafts the top 500 undrafted substances into an agent file.
+  The owner or pharmacist applies it with `--agent-file … --apply`, after R3's load.
 
-- **T1: proposals, attestation, projection (backend).** Migration: `formulary_mapping_proposals`,
-  `formulary_medicine_salts.derived_from` + backfill. `attest`/`unmappable`/worklist in a new
-  `mapping.ts`; the shared rank refresh; importer states `derived_from`; routes under
-  `formulary.manage`; census gains substance counts. Tests: the actor gate, E1–E12, a projection
-  pin that reads the real migration's backfill, and mutants.
-- **T2: the drafter** (`draft-substance-mappings.ts`, release half + agent-file ingest).
-  Measured partition printed on dry run.
-- **T3: the worklist screen** (in `formulary-admin`): one substance at a time, evidence
-  visible, three acts, keyboard-first, no bulk accept.
-- **T4: `checked` in the picker** (W9): `searchMedicines` + `DrugField` chip.
-- **T5: residuals.** The 51 colliding normalized brands, the raw-SQL read in `cds/allergens.ts`,
-  and the 15 MB prose in the three files no live lane is editing.
-- **T6 (owner): the drafting run.** An agent drafts the top ~300 substances with no release
-  evidence into an agent file, and the owner or pharmacist runs `--apply`. Then R3's load, then
-  the attestation sittings.
+**Owner's deploy order, once the web PR is merged:** deploy → `import:nrces` (R3) →
+`draft-substance-mappings --apply` → `draft-substance-mappings --agent-file <file> --apply` →
+attestation sittings of about 50 → `import-cds-catalogue --apply` only after this phase is deployed.
+The importer projects every decision already made, so sittings may come before or after the
+catalogue load.
 
-**Not in this phase:** the prescribing checks' verdict for release-image lines (§3.4); the
-retro-scan of prescriptions issued before a projection (a named deferral since 16a, and
-`substance.mapped` is what makes it buildable); drug classes and interaction pairs for the newly
-curated moieties (the P&T committee's, and the RFQ's).
+**Not in this phase:**
+- the prescribing checks' verdict for unreviewed lines (§3.4);
+- the retro-scan of prescriptions issued before a projection (a named deferral since 16a;
+  `substance.mapped` plus `derived_from` make it buildable);
+- drug classes and interaction pairs for newly attested moieties (the P&T committee's, and the
+  RFQ's);
+- `activeSalts()` still reads the whole moiety table on every free-text resolution (a PR-A residual,
+  bounded at 3,287 rows).
