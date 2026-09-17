@@ -5,8 +5,10 @@ import { newIdempotencyKey } from "../lib/api";
 import { fmtIst } from "../lib/format";
 import { fetchInvoicePrint } from "../lib/billing-api";
 import { duplicateCandidates } from "../lib/patients-api";
+import { todayIst } from "../lib/opd-api";
 import {
-  fetchRetailSale, fetchRetailSales, fetchRetailState, pharmacyErrorText, previewRetailSale, searchRetailShelf, sellRetail,
+  acceptRetailReturn, fetchRetailSale, fetchRetailSaleByBill, fetchRetailSales, fetchRetailState, pharmacyErrorText, previewRetailSale,
+  searchRetailShelf, sellRetail,
 } from "../lib/pharmacy-api";
 import { InvoicePrint } from "../components/invoice-print";
 import { PatientPicker } from "../components/patient-picker";
@@ -35,8 +37,112 @@ type RxDraft = { prescriberName: string; prescriberRegNo: string; prescriberAddr
 const EMPTY_NEW: NewCustomer = { name: "", sex: "female", age: "", phone: "", address: "" };
 const EMPTY_RX: RxDraft = { prescriberName: "", prescriberRegNo: "", prescriberAddress: "", rxDate: "", photo: null };
 const rupees = (paise: number): string => `₹${(paise / 100).toFixed(2)}`;
+/** "15/09/2026, 10:30", in the hospital's time whatever the desk machine's zone. */
+const soldOn = (iso: string): string => {
+  const d = todayIst(new Date(iso));
+  return `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}, ${fmtIst(iso)}`;
+};
 
 /** The chemist's annex, from the sale: batch, expiry and the pharmacist, as the counter's bill carries them. */
+/**
+ * P19b — a sealed pack comes back against its bill. The server judges O-7 (the 7 days, the sealed
+ * pack, whole strips, the storage class, the batch's shelf life, what is left to return); this form
+ * offers only what is left, and sends nothing until the pharmacist attests the pack is sealed.
+ */
+function RetailReturn(): React.ReactElement {
+  const { t } = useTranslation();
+  const [billNo, setBillNo] = useState("");
+  const [sale, setSale] = useState<WireRetailSale | null>(null);
+  const [qty, setQty] = useState<Record<number, string>>({});
+  const [sealed, setSealed] = useState(false);
+  const [reason, setReason] = useState("");
+  const [reasonClass, setReasonClass] = useState<"genuine" | "mistake">("genuine");
+  const [done, setDone] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [key, setKey] = useState(newIdempotencyKey);
+
+  const leftOf = (l: WireRetailSale["lines"][number]): number => l.qtyBase - (l.returnedQtyBase ?? 0);
+  const wanted = sale === null ? [] : sale.lines.filter((l) => (qty[l.lineIdx] ?? "") !== "");
+  const valid = sale !== null && wanted.length > 0 && sealed && reason.trim().length >= 3
+    && wanted.every((l) => /^\d+$/.test(qty[l.lineIdx]!) && Number(qty[l.lineIdx]) > 0 && Number(qty[l.lineIdx]) <= leftOf(l));
+
+  const find = async (): Promise<void> => {
+    setError(null); setDone(null); setSale(null);
+    try {
+      setSale(await fetchRetailSaleByBill(billNo.trim()));
+      setQty({}); setSealed(false); setReason(""); setReasonClass("genuine"); setKey(newIdempotencyKey());
+    } catch (e) {
+      setError(pharmacyErrorText(e, t));
+    }
+  };
+  const accept = async (): Promise<void> => {
+    if (sale === null || !valid) return;
+    setError(null);
+    try {
+      const r = await acceptRetailReturn(sale.id, {
+        lines: wanted.map((l) => ({ lineIdx: l.lineIdx, qtyBase: Number(qty[l.lineIdx]) })),
+        sealedIntact: true, reason: reason.trim(), reasonClass,
+      }, key);
+      setSale(r.sale); setDone(r.creditNoteNo);
+      setQty({}); setSealed(false); setReason(""); setKey(newIdempotencyKey());
+    } catch (e) {
+      setError(pharmacyErrorText(e, t));
+    }
+  };
+
+  return (
+    <section className="space-y-2 rounded border p-3">
+      <h2 className="font-semibold">{t("pharmacyRetail.returnTitle")}</h2>
+      <p className="max-w-3xl text-xs text-muted-foreground">{t("pharmacyRetail.returnIntro")}</p>
+      <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (billNo.trim() !== "") void find(); }}>
+        <Input aria-label={t("pharmacyRetail.billNo")} placeholder={t("pharmacyRetail.billNo")} value={billNo} onChange={(e) => setBillNo(e.target.value)} className="max-w-xs" />
+        <Button type="submit" variant="outline">{t("pharmacyRetail.findBill")}</Button>
+      </form>
+      {error !== null && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      {sale !== null && (
+        <div className="space-y-2" data-testid="retail-return">
+          <p className="text-sm font-medium">{t("pharmacyRetail.returnSale", { no: sale.invoiceNo, name: sale.patient.name, when: soldOn(sale.soldAt) })}</p>
+          <table className="text-sm">
+            <tbody>
+              {sale.lines.map((l) => (
+                <tr key={l.lineIdx} data-testid={`return-line-${String(l.lineIdx)}`}>
+                  <td className="pr-3">{l.drugName}</td>
+                  <td className="whitespace-nowrap pr-3 font-mono">{l.batchNo}</td>
+                  <td className="whitespace-nowrap pr-3">{t("pharmacyRetail.returnLineState", { sold: l.qtyBase, back: l.returnedQtyBase ?? 0 })}</td>
+                  <td>
+                    {leftOf(l) > 0 && (
+                      <Input aria-label={t("pharmacyRetail.returnQty", { drug: l.drugName })} inputMode="numeric" className="w-20" value={qty[l.lineIdx] ?? ""}
+                        onChange={(e) => setQty({ ...qty, [l.lineIdx]: e.target.value.replace(/\D/g, "") })} />
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="text-sm">{t("pharmacyRetail.returnReason")}
+              <Input aria-label={t("pharmacyRetail.returnReason")} value={reason} onChange={(e) => setReason(e.target.value)} />
+            </label>
+            <label className="text-sm">{t("pharmacyRetail.returnClass")}
+              <select aria-label={t("pharmacyRetail.returnClass")} className="ml-1 rounded border px-2 py-1" value={reasonClass}
+                onChange={(e) => setReasonClass(e.target.value as "genuine" | "mistake")}>
+                <option value="genuine">{t("pharmacyRetail.returnClass_genuine")}</option>
+                <option value="mistake">{t("pharmacyRetail.returnClass_mistake")}</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-1 text-sm">
+              <input type="checkbox" checked={sealed} onChange={(e) => setSealed(e.target.checked)} />
+              {t("pharmacyRetail.returnSealed")}
+            </label>
+            <Button type="button" disabled={!valid} onClick={() => { void accept(); }}>{t("pharmacyRetail.returnSubmit")}</Button>
+          </div>
+          {done !== null && <p className="text-sm text-green-800" data-testid="retail-returned">{t("pharmacyRetail.returned", { no: done })}</p>}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function annexOf(sale: WireRetailSale): WireLabel {
   return {
     dispenseNo: null, status: "sold", patient: { display: sale.patient.name, uhid: sale.patient.uhid }, handedOverAt: sale.soldAt,
@@ -413,6 +519,8 @@ export function PharmacyRetail(): React.ReactElement {
           )}
         </>
       )}
+
+      <RetailReturn />
 
       <section className="space-y-1">
         <h2 className="font-semibold">{t("pharmacyRetail.today")}</h2>

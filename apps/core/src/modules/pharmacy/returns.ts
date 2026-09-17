@@ -11,7 +11,7 @@ import { PharmacyError } from "./errors";
 import { requireRegisteredPharmacist } from "./pharmacists";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
 import type { Actor } from "@hmis/contracts";
-import type { Db } from "../../kernel/db/client";
+import type { Db, Tx } from "../../kernel/db/client";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
 import type { DispenseView } from "./queue";
 
@@ -48,41 +48,54 @@ export type ReturnResult = { dispense: DispenseView; creditNoteId: string; credi
 const DAY_MS = 24 * 60 * 60 * 1000;
 const dayNumber = (isoDate: string): number => Math.floor(Date.parse(`${isoDate}T00:00:00Z`) / DAY_MS);
 
-export async function acceptReturn(
-  db: Db, actor: Actor, _decls: readonly OrderKindDecl[], dispenseId: string, input: ReturnInput, now: Date,
-): Promise<ReturnResult> {
-  const d = await getDispenseRow(db, dispenseId);
-  if (d.status !== "handed_over" || d.handedOverAt === null || d.invoiceId === null) {
-    throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} is ${d.status}: only a handed-over dispense takes a return`, { status: d.status });
-  }
+/** A line that left the counter and was billed: the only kind a return may name. */
+export type ReturnableLine = { id: string; lineIdx: number; qtyBase: number; itemId: string; batchId: string; invoiceLineId: string };
+export type ReturnPlanLine = { lineId: string; lineIdx: number; qtyBase: number; batchId: string; invoiceLineId: string };
+export type ReturnedLine = { lineIdx: number; qtyBase: number; batchId: string; ledgerEntryId: string };
+
+/**
+ * Who takes a pack back (P6-4): a registered pharmacist, holding the two billing strings the act
+ * uses. P19b shares it.
+ */
+export async function requireReturnTaker(db: Db, actor: Actor, now: Date): Promise<void> {
   await requireRegisteredPharmacist(db, actor, now);
   for (const permission of ["billing.credit_note.issue", "billing.refund.request"] as const) {
     if (actor.type !== "user" || !(await hasPermission(db, actor.id, permission, "hospital"))) {
       throw new PharmacyError("permission_denied", `a return raises a credit note and a refund request, which needs ${permission}`);
     }
   }
+}
+
+/** O-7's clauses about the act: the reason, the attestation, the window from when the pack left. */
+export function judgeReturnAct(input: ReturnInput, leftAt: Date, now: Date): string {
   const reason = input.reason.trim();
   if (reason.length < 3) throw new PharmacyError("reason_required", "a return records why, for the refund approver");
   if (input.sealedIntact !== true) {
     throw new PharmacyError("return_not_sealed", "only a sealed, intact pack comes back on the shelf — inspect it and confirm");
   }
-  const today = istDateOf(now);
-  if (dayNumber(today) - dayNumber(istDateOf(d.handedOverAt)) > RETURN_WINDOW_DAYS) {
-    throw new PharmacyError("return_window_closed", `returns are accepted within ${String(RETURN_WINDOW_DAYS)} days of the hand-over`, { handedOverAt: d.handedOverAt });
+  if (dayNumber(istDateOf(now)) - dayNumber(istDateOf(leftAt)) > RETURN_WINDOW_DAYS) {
+    throw new PharmacyError("return_window_closed", `returns are accepted within ${String(RETURN_WINDOW_DAYS)} days of the hand-over`, { handedOverAt: leftAt });
   }
   if (input.lines.length === 0) throw new PharmacyError("nothing_to_dispense", "name at least one line to return");
+  return reason;
+}
 
-  const lines = await linesOf(db, dispenseId);
-  const already = await returnedQtyByRef(db, RETURN_REF_TYPE, lines.map((l) => l.id));
-  const itemIds = lines.map((l) => l.itemId).filter((x): x is string => x !== null);
+/**
+ * O-7's clauses about each line: named, not more than is left after earlier returns (counted from the
+ * ledger rows of `refType`), not a refused storage class, whole packs, and a batch that can go back
+ * on the shelf.
+ */
+export async function judgeReturnLines(
+  db: Db, lines: readonly ReturnableLine[], wanted: ReturnInput["lines"], refType: string, now: Date,
+): Promise<ReturnPlanLine[]> {
+  const today = istDateOf(now);
+  const already = await returnedQtyByRef(db, refType, lines.map((l) => l.id));
+  const itemIds = lines.map((l) => l.itemId);
   const [items, uoms] = await Promise.all([itemsByIds(db, itemIds), uomsByItems(db, itemIds)]);
-  if (d.storeResourceId === null) throw new PharmacyError("store_missing", "the dispense names no store to return to");
-  const storeId = d.storeResourceId;
-
-  const plan: { lineId: string; lineIdx: number; qtyBase: number; batchId: string; invoiceLineId: string }[] = [];
-  for (const want of input.lines) {
+  const plan: ReturnPlanLine[] = [];
+  for (const want of wanted) {
     const l = lines.find((x) => x.lineIdx === want.lineIdx);
-    if (l === undefined || l.status !== "open" || l.qtyBase === null || l.batchId === null || l.itemId === null || l.invoiceLineId === null) {
+    if (l === undefined) {
       throw new PharmacyError("unknown_line", `line ${String(want.lineIdx + 1)} was not handed over`, { lineIdx: want.lineIdx });
     }
     if (!Number.isSafeInteger(want.qtyBase) || want.qtyBase <= 0) throw new PharmacyError("qty_required", `line ${String(want.lineIdx + 1)} needs a quantity`);
@@ -105,34 +118,74 @@ export async function acceptReturn(
     }
     plan.push({ lineId: l.id, lineIdx: l.lineIdx, qtyBase: want.qtyBase, batchId: l.batchId, invoiceLineId: l.invoiceLineId });
   }
+  return plan;
+}
+
+/**
+ * P6-2 and P6-3, inside the caller's transaction: each pack back into `storeId` as a `return` row of
+ * `refType` naming its line, one `refund` credit note for exactly those quantities, and the refund
+ * requested.
+ */
+export async function restockAndRefund(
+  tx: Tx, actor: Actor,
+  args: {
+    storeId: string; refType: string; patientId: string; encounterId: string | null; invoiceId: string;
+    plan: readonly ReturnPlanLine[]; reason: string; reasonClass: ReturnInput["reasonClass"]; now: Date;
+  },
+): Promise<{ returned: ReturnedLine[]; creditNoteId: string; creditNoteNo: string; refundApprovalId: string }> {
+  const { plan, now } = args;
+  const returned: ReturnedLine[] = [];
+  for (const p of plan) {
+    const moved = await postMovement(tx, actor, {
+      resourceId: args.storeId, batchId: p.batchId, qtyDelta: p.qtyBase, reason: "return",
+      refType: args.refType, refId: p.lineId, patientId: args.patientId, encounterId: args.encounterId, occurredAt: now,
+    });
+    returned.push({ lineIdx: p.lineIdx, qtyBase: p.qtyBase, batchId: p.batchId, ledgerEntryId: moved.ledgerEntryId });
+  }
+  // Billing's own transactions are savepoints inside this one (the `bill.ts` cast).
+  const credit = await issueCreditNote(tx as unknown as Db, actor, {
+    kind: "refund", invoiceId: args.invoiceId, reason: `pharmacy return: ${args.reason}`,
+    lines: plan.map((p) => ({ invoiceLineId: p.invoiceLineId, qty: p.qtyBase })),
+  }, now);
+  const refund = await requestRefund(tx as unknown as Db, actor, {
+    kind: "invoice_refund", creditNoteId: credit.creditNoteId, amountPaise: credit.netPaise,
+    reasonClass: args.reasonClass, reason: `pharmacy return: ${args.reason}`,
+  });
+  return { returned, creditNoteId: credit.creditNoteId, creditNoteNo: credit.creditNoteNo, refundApprovalId: refund.approvalId };
+}
+
+export async function acceptReturn(
+  db: Db, actor: Actor, _decls: readonly OrderKindDecl[], dispenseId: string, input: ReturnInput, now: Date,
+): Promise<ReturnResult> {
+  const d = await getDispenseRow(db, dispenseId);
+  if (d.status !== "handed_over" || d.handedOverAt === null || d.invoiceId === null) {
+    throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} is ${d.status}: only a handed-over dispense takes a return`, { status: d.status });
+  }
+  await requireReturnTaker(db, actor, now);
+  const reason = judgeReturnAct(input, d.handedOverAt, now);
+  if (d.storeResourceId === null) throw new PharmacyError("store_missing", "the dispense names no store to return to");
+  const storeId = d.storeResourceId;
+  const returnable: ReturnableLine[] = [];
+  for (const l of await linesOf(db, dispenseId)) {
+    if (l.status !== "open" || l.qtyBase === null || l.batchId === null || l.itemId === null || l.invoiceLineId === null) continue;
+    returnable.push({ id: l.id, lineIdx: l.lineIdx, qtyBase: l.qtyBase, itemId: l.itemId, batchId: l.batchId, invoiceLineId: l.invoiceLineId });
+  }
+  const plan = await judgeReturnLines(db, returnable, input.lines, RETURN_REF_TYPE, now);
   const invoiceId = d.invoiceId;
 
   const result = await withTx(db, async (tx) => {
-    const returned: { lineIdx: number; qtyBase: number; batchId: string; ledgerEntryId: string }[] = [];
-    for (const p of plan) {
-      const moved = await postMovement(tx, actor, {
-        resourceId: storeId, batchId: p.batchId, qtyDelta: p.qtyBase, reason: "return",
-        refType: RETURN_REF_TYPE, refId: p.lineId, patientId: d.patientId, encounterId: d.encounterId, occurredAt: now,
-      });
-      returned.push({ lineIdx: p.lineIdx, qtyBase: p.qtyBase, batchId: p.batchId, ledgerEntryId: moved.ledgerEntryId });
-    }
-    // Billing's own transactions are savepoints inside this one (the `bill.ts` cast).
-    const credit = await issueCreditNote(tx as unknown as Db, actor, {
-      kind: "refund", invoiceId, reason: `pharmacy return: ${reason}`,
-      lines: plan.map((p) => ({ invoiceLineId: p.invoiceLineId, qty: p.qtyBase })),
-    }, now);
-    const refund = await requestRefund(tx as unknown as Db, actor, {
-      kind: "invoice_refund", creditNoteId: credit.creditNoteId, amountPaise: credit.netPaise,
-      reasonClass: input.reasonClass, reason: `pharmacy return: ${reason}`,
+    const done = await restockAndRefund(tx, actor, {
+      storeId, refType: RETURN_REF_TYPE, patientId: d.patientId, encounterId: d.encounterId, invoiceId, plan,
+      reason, reasonClass: input.reasonClass, now,
     });
     await appendEvent(tx, dispenseLineReturned.make({
       occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
       payload: {
-        dispenseId: d.id, patientId: d.patientId, lines: returned, sealedIntact: true, reason,
-        reasonClass: input.reasonClass, creditNoteId: credit.creditNoteId, refundApprovalId: refund.approvalId,
+        dispenseId: d.id, patientId: d.patientId, lines: done.returned, sealedIntact: true, reason,
+        reasonClass: input.reasonClass, creditNoteId: done.creditNoteId, refundApprovalId: done.refundApprovalId,
       },
     }));
-    return { creditNoteId: credit.creditNoteId, creditNoteNo: credit.creditNoteNo, refundApprovalId: refund.approvalId };
+    return { creditNoteId: done.creditNoteId, creditNoteNo: done.creditNoteNo, refundApprovalId: done.refundApprovalId };
   });
   return { dispense: await getDispense(db, actor, d.id, now), ...result };
 }

@@ -64,4 +64,6 @@ export const PHARMACY_IDEMPOTENT_ROUTES = {
   retailSale: "POST /pharmacy/retail/sales",
   /** P20 — a paper dispense entered after an outage: once per sheet, and once per click. */
   paperDispense: "POST /pharmacy/downtime/dispenses",
+  /** P19b — a walk-in return credits and refunds: a retried click must not return a pack twice. */
+  retailReturn: "POST /pharmacy/retail/sales/:id/returns",
 } as const;

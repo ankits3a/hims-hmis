@@ -5,7 +5,7 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { withIdempotency } from "../billing";
 import { claimDispense, findAtCounter } from "./claim";
-import { istDateOf } from "./config";
+import { OPD_PHARMACY_STORE_CODE, istDateOf } from "./config";
 import { PHARMACY_IDEMPOTENT_ROUTES, idSchema, parsed, toHttp } from "./pharmacy-http";
 import { confirmSlip, getDispense, listQueue } from "./queue";
 import { billDispense, previewDispenseBill } from "./bill";
@@ -18,7 +18,7 @@ import { cancelBilledDispense } from "./refund";
 import { reorderAdvice } from "./replenishment";
 import { acceptReturn } from "./returns";
 import { h1Register } from "./registers";
-import { pharmacyLeakage } from "./leakage";
+import { LEAKAGE_STORE_CODES, pharmacyLeakage } from "./leakage";
 import type { LeakageReport } from "./leakage";
 import { counterSummary } from "./summary";
 import type { CounterSummary } from "./summary";
@@ -292,13 +292,14 @@ export class PharmacyCounterController {
 
   /**
    * P12 — the leakage triangle for one IST day (today when absent). The Leakage Auditor's report is
-   * the billing supervisor's and the owner's, not the counter's: `billing.reports.read`.
+   * the billing supervisor's and the owner's, not the counter's: `billing.reports.read`. P19b:
+   * `store` picks the counter, `PHARM-OPD` (the default) or `PHARM-RETAIL`.
    */
   @RequirePermission("billing.reports.read", "hospital")
   @Get("leakage")
-  async leakage(@Query("day") day?: string): Promise<LeakageReport> {
+  async leakage(@Query("day") day?: string, @Query("store") store?: string): Promise<LeakageReport> {
     try {
-      return await pharmacyLeakage(this.db, day ?? istDateOf(new Date()));
+      return await pharmacyLeakage(this.db, day ?? istDateOf(new Date()), parsed(z.enum(LEAKAGE_STORE_CODES), store ?? OPD_PHARMACY_STORE_CODE));
     } catch (e) {
       return toHttp(e);
     }

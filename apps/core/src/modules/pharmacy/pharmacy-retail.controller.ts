@@ -4,11 +4,13 @@ import { CONFIG, DB, DOCUMENT_STORE } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { istDateOf } from "./config";
 import { idSchema, parsed, toHttp } from "./pharmacy-http";
+import { acceptRetailReturn, findRetailSaleByInvoiceNo } from "./retail-returns";
 import {
   counterBatches, enterPaperDispense, getRetailSale, inspectSheet, listPaperDispenses, listRetailLicences, listRetailSales,
   pharmacyStaff, previewPaperDispense, previewRetailSale, recordRetailLicence, retailLicenceState, searchCounterShelf,
   searchRetailShelf, sellRetail,
 } from "./retail";
+import type { RetailReturnResult } from "./retail-returns";
 import type { Actor } from "@hmis/contracts";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
@@ -66,6 +68,12 @@ const paperBody = saleBody.extend({
   occurredAt: instant,
   dispensedBy: idSchema,
   lines: z.array(lineSchema.extend({ batchId: idSchema })).min(1).max(50),
+});
+const returnBody = z.object({
+  lines: z.array(z.object({ lineIdx: z.number().int().nonnegative(), qtyBase: z.number().int().positive() })).min(1).max(50),
+  sealedIntact: z.literal(true),
+  reason: z.string().min(3).max(500),
+  reasonClass: z.enum(["mistake", "genuine"]),
 });
 const licenceBody = z.object({
   form20No: z.string().max(60),
@@ -143,6 +151,32 @@ export class PharmacyRetailController {
   async list(@CurrentActor() actor: Actor, @Query("day") day?: string): Promise<{ items: RetailSaleRow[] }> {
     try {
       return { items: await listRetailSales(this.db, actor, day ?? istDateOf(new Date())) };
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** P19b — the sale a bill belongs to, when the customer brings it back. `no` is the bill's number. */
+  @RequirePermission("pharmacy.retail.sell", "hospital")
+  @Get("bill")
+  async byBill(@CurrentActor() actor: Actor, @Query("no") no?: string): Promise<RetailSaleView> {
+    try {
+      return await findRetailSaleByInvoiceNo(this.db, actor, (no ?? "").slice(0, 60));
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * P19b — a sealed pack comes back: restocked, credited, its refund requested. The act asserts
+   * `pharmacy.retail.sell`, the council registration and the credit-note string itself.
+   */
+  @RequirePermission("billing.refund.request", "hospital")
+  @Post("sales/:id/returns")
+  async returns(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown, @Headers("idempotency-key") key?: string): Promise<RetailReturnResult> {
+    const input = parsed(returnBody, body);
+    try {
+      return await acceptRetailReturn(this.db, actor, parsed(idSchema, id), input, key, new Date());
     } catch (e) {
       return toHttp(e);
     }
