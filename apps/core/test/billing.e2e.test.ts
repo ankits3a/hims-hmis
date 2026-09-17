@@ -7,7 +7,7 @@ import { configureApp } from "../src/app.bootstrap";
 import { setupTestDb, truncateAll } from "./helpers/db";
 import { mkDoctor, mkUser, seedOpdBase, seedOpdMasters, activateOpdVisitDefinition } from "./helpers/opd";
 import { mkBillingManager, mkCashier, seedBillingBase } from "./helpers/billing";
-import { billingConfig, events, invoices, receipts, refundVouchers } from "../src/kernel/db/schema";
+import { billingConfig, events, invoices, opdConfig, receipts, refundVouchers } from "../src/kernel/db/schema";
 import { assignRole, createRole, grantPermissionToRole, syncPermissions } from "../src/kernel/auth/permissions";
 import { DEFAULT_LETTERHEAD } from "../src/modules/opd/config";
 import { authManifest } from "../src/kernel/auth/manifest";
@@ -321,6 +321,14 @@ describe("billing e2e", () => {
     expect(printed.body.patient.uhid).toEqual(expect.any(String));
     expect(printed.body.qrPayload.startsWith(`bil1.invoice.${invoiceId}.`)).toBe(true);
     expect(printed.body.qrPayload.split(".")).toHaveLength(4); // bil1 . invoice . <id> . <sig>
+    expect(printed.body.supplierState).toBeNull(); // no GSTIN on the letterhead yet
+
+    // 2026-09-17 — the trust's legal name and GSTIN on the letterhead reach the printed invoice, with
+    // the state read off the GSTIN (tax invoice r.46).
+    await db.update(opdConfig).set({ letterhead: { ...DEFAULT_LETTERHEAD, legalName: "LEELAWATI DEVI EDUCATIONAL TRUST", gstin: "10AAATL6484H1ZP" } });
+    const withGstin = await http().get(`/billing/invoices/${invoiceId}/print`).set(...auth(cashier.token)).expect(200);
+    expect(withGstin.body.letterhead).toMatchObject({ legalName: "LEELAWATI DEVI EDUCATIONAL TRUST", gstin: "10AAATL6484H1ZP" });
+    expect(withGstin.body.supplierState).toEqual({ code: "10", name: "Bihar" });
 
     expect(await eventNames()).toEqual(expect.arrayContaining(["invoice.issued", "receipt.recorded", "payment.received"]));
   });

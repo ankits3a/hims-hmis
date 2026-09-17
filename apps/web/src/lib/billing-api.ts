@@ -243,7 +243,10 @@ export type WireBillingPatient = {
 
 /** `GET /billing/invoices/:id/print` — letterhead, alias-safe patient, stored lines, signed QR. */
 export type WireInvoicePrint = {
-  letterhead: { name: string; addressLines: string[] };
+  /** `legalName` and `gstin`: the registered person behind the letterhead (tax invoice r.46); absent until set. */
+  letterhead: { name: string; addressLines: string[]; legalName?: string; gstin?: string };
+  /** The state the supplier's GSTIN is registered in, derived by the server. Absent from an older server. */
+  supplierState?: { code: string; name: string } | null;
   invoice: WireInvoice;
   lines: WireInvoiceLine[];
   patient: WireBillingPatient | null;

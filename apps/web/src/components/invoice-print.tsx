@@ -30,19 +30,51 @@ import type { WireInvoicePrint } from "../lib/billing-api";
  * (the counter's batch and expiry per pack). Absent everywhere else, so every other caller prints
  * exactly what it printed before.
  */
+/**
+ * ═══ WHAT THE DOCUMENT IS, AND WHO ISSUED IT (2026-09-17) ═══
+ *
+ * CGST Rules r.46 (tax invoice), r.49 (bill of supply) and r.46A (invoice-cum-bill of supply):
+ * - The title follows the lines. All exempt (a consultation) is a BILL OF SUPPLY, all taxable (a
+ *   strip of medicine) is a TAX INVOICE, and a mix is an INVOICE-CUM-BILL OF SUPPLY.
+ * - The supplier is named with its legal name, GSTIN and state, from the letterhead.
+ * - A registered buyer's GSTIN is printed.
+ * - The document ends with the authorised signatory.
+ *
+ * Nothing is printed for a GSTIN the letterhead does not carry; the readiness census reports that
+ * gap instead (`supplier_gstin_on_invoice`).
+ */
+export function documentTitleKey(lines: readonly { exempt: boolean }[]): "taxInvoice" | "billOfSupply" | "invoiceCumBill" {
+  const exempt = lines.filter((l) => l.exempt).length;
+  if (exempt === 0) return "taxInvoice";
+  return exempt === lines.length ? "billOfSupply" : "invoiceCumBill";
+}
+
 export function InvoicePrint({ data, annex }: { data: WireInvoicePrint; annex?: React.ReactNode }): React.ReactElement {
   const { t } = useTranslation();
-  const { invoice, settlement } = data;
+  const { invoice, settlement, letterhead } = data;
   const outstanding = settlement.outstandingPaise > 0;
+  const supplierState = data.supplierState ?? null;
 
   return (
     <div className="space-y-3">
       <div className="print-doc w-[640px] space-y-2 rounded-lg border p-4">
         <header className="space-y-1 border-b pb-2">
-          <h2 className="text-lg font-bold">{data.letterhead.name}</h2>
-          {data.letterhead.addressLines.map((line) => (
+          <h2 className="text-lg font-bold">{letterhead.name}</h2>
+          {letterhead.legalName !== undefined && (
+            <p className="text-xs" data-testid="invoice-legal-name">{t("billing.print.unitOf", { legalName: letterhead.legalName })}</p>
+          )}
+          {letterhead.addressLines.map((line) => (
             <p key={line} className="text-xs text-neutral-600">{line}</p>
           ))}
+          {letterhead.gstin !== undefined && (
+            <p className="font-mono text-xs" data-testid="invoice-supplier-gstin">
+              {t("billing.print.gstin")}: {letterhead.gstin}
+              {supplierState !== null && ` · ${t("billing.print.state", { name: supplierState.name, code: supplierState.code })}`}
+            </p>
+          )}
+          <p className="pt-1 text-center text-sm font-semibold uppercase tracking-wide" data-testid="invoice-title">
+            {t(`billing.print.${documentTitleKey(data.lines)}`)}
+          </p>
         </header>
 
         <section className="grid grid-cols-2 gap-1 border-b py-2 text-sm">
@@ -50,6 +82,11 @@ export function InvoicePrint({ data, annex }: { data: WireInvoicePrint; annex?: 
           <p data-testid="invoice-day">{t("billing.print.date")}: {invoice.serviceDay}</p>
           <p data-testid="invoice-patient">{billingPatientLabel(data.patient)}</p>
           <p className="font-mono text-xs">{t("billing.print.uhid")}: {data.patient?.uhid ?? "—"}</p>
+          {invoice.buyerGstin !== null && (
+            <p className="col-span-2 text-xs" data-testid="invoice-buyer-gstin">
+              {t("billing.print.buyer", { name: invoice.buyerLegalName ?? "" })} · {t("billing.print.gstin")}: <span className="font-mono">{invoice.buyerGstin}</span>
+            </p>
+          )}
         </section>
 
         <table className="w-full text-sm">
@@ -109,7 +146,12 @@ export function InvoicePrint({ data, annex }: { data: WireInvoicePrint; annex?: 
               </p>
             )}
           </div>
-          <QRCodeSVG value={data.qrPayload} size={96} />
+          <div className="flex flex-col items-end gap-1">
+            <QRCodeSVG value={data.qrPayload} size={96} />
+            <p className="text-xs" data-testid="invoice-signatory">
+              {t("billing.print.signatory", { legalName: letterhead.legalName ?? letterhead.name })}
+            </p>
+          </div>
         </section>
       </div>
       <Button type="button" className="no-print" onClick={() => window.print()}>

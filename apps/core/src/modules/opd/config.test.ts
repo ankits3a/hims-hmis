@@ -54,6 +54,17 @@ describe("opd config", () => {
     await expect(loadOpdConfig(db)).rejects.toMatchObject({ code: "opd_config_invalid" });
   });
 
+  it("the letterhead carries the trust's legal name and a checked GSTIN (tax invoice r.46), and refuses a mistyped one", async () => {
+    await db.insert(opdConfig).values({ id: "main", followUpExtensionDays: [15, 21, 30], dangerRanges: DEFAULT_DANGER_RANGES, letterhead: DEFAULT_LETTERHEAD, updatedBy: "t" });
+    const actor: Actor = { type: "user", id: "u-admin" };
+    const letterhead = { ...DEFAULT_LETTERHEAD, legalName: "LEELAWATI DEVI EDUCATIONAL TRUST", gstin: "10AAATL6484H1ZP" };
+    const patched = await withTx(db, (tx) => updateOpdConfig(tx, actor, { letterhead }));
+    expect(patched.letterhead).toEqual(letterhead);
+    await expect(withTx(db, (tx) => updateOpdConfig(tx, actor, { letterhead: { ...letterhead, gstin: "10AAATL6484H1ZQ" } })))
+      .rejects.toMatchObject({ code: "invalid_config" });
+    expect((await loadOpdConfig(db)).letterhead.gstin).toBe("10AAATL6484H1ZP");
+  });
+
   it("an invalid danger_ranges JSON hard-fails with opd_config_invalid (a band without an adult tail)", async () => {
     const bad = { weightRequiredUnderYears: 18, bands: [{ key: "adult", upToAgeYears: 13, required: [], ranges: {} }] };
     expect(dangerRangesSchema.safeParse(bad).success).toBe(false);
