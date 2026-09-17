@@ -17,7 +17,7 @@ import { registerTariffApprovalTypes } from "../src/modules/tariff/approval-type
 import { createService } from "../src/modules/tariff/services";
 import { seedTariffConfig } from "../scripts/seed-tariff";
 import { ensurePharmacyCounter } from "../scripts/seed-pharmacy";
-import { currentRegistration, endPharmacistRegistration } from "../src/modules/pharmacy";
+import { currentRegistration, endPharmacistRegistration, recordPharmacistRegistration } from "../src/modules/pharmacy";
 import { istDayString } from "../src/kernel/approvals/cumulative";
 import { seedPharmacyBase } from "./helpers/pharmacy";
 import { ensureLabStandUp } from "../scripts/seed-lab";
@@ -652,6 +652,30 @@ describe("standup:check — the readiness census (11i T2)", () => {
     await withTx(db, (tx) => endPharmacistRegistration(tx, fx.incharge.actor, reg.id, "left the hospital"));
     rows = await runCensus(db, "pharmacy");
     expect(rows.find((r) => r.code === "pharmacist_council_number")?.verdict).toBe("RED");
+    fx.unregister();
+  });
+
+  /**
+   * PHARMACY P15 — a registration about to lapse is a row, because the day it lapses verify refuses
+   * that pharmacist at the counter. Sixty days' notice; filing the renewal turns it green.
+   */
+  it("the renewal row is red while a pharmacist's registration lapses within sixty days, and green once it is renewed", async () => {
+    const fx = await seedPharmacyBase(db);
+    await ensurePharmacyCounter(db, ACTOR);
+    const DAY = 24 * 60 * 60 * 1000;
+    const inDays = (n: number): string => istDayString(new Date(Date.now() + n * DAY));
+    let rows = await runCensus(db, "pharmacy");
+    expect(rows.find((r) => r.code === "pharmacist_registration_not_lapsing")?.verdict).toBe("ok");
+    await withTx(db, (tx) => recordPharmacistRegistration(tx, fx.pharmacist.actor, {
+      userId: fx.incharge.id, council: "Maharashtra State Pharmacy Council", registrationNo: "MSPC-555", validUntil: inDays(20),
+    }, new Date()));
+    rows = await runCensus(db, "pharmacy");
+    expect(rows.find((r) => r.code === "pharmacist_registration_not_lapsing")?.verdict).toBe("RED");
+    await withTx(db, (tx) => recordPharmacistRegistration(tx, fx.pharmacist.actor, {
+      userId: fx.incharge.id, council: "Maharashtra State Pharmacy Council", registrationNo: "MSPC-555", validUntil: inDays(61),
+    }, new Date()));
+    rows = await runCensus(db, "pharmacy");
+    expect(rows.find((r) => r.code === "pharmacist_registration_not_lapsing")?.verdict).toBe("ok");
     fx.unregister();
   });
 

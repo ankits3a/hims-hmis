@@ -81,6 +81,9 @@ export { acceptReturn } from "./returns";
 export type { ReturnInput, ReturnResult } from "./returns";
 /** P7 — the counter's day (doc 16 §8 KPIs, 16f's first strip). Read-only. */
 export { counterSummary } from "./summary";
+/** P15 — the renewal notice and the arithmetic the census shares with the register screen. */
+export { REGISTRATION_RENEWAL_NOTICE_DAYS } from "./config";
+export { renewalDaysLeft } from "./pharmacists";
 /** P12 — the leakage triangle (doc 16 I1). Read-only. */
 export { pharmacyLeakage } from "./leakage";
 export type { LeakageMismatch, LeakageReport } from "./leakage";

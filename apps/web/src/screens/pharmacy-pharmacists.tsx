@@ -81,6 +81,11 @@ export function PharmacyPharmacists(): React.ReactElement {
                     council: p.current.council, no: p.current.registrationNo,
                     until: p.current.validUntil ?? t("pharmacyPharmacists.noEndDate"),
                   })}
+                {p.renewalDueInDays !== undefined && p.renewalDueInDays !== null && (
+                  <span className="ml-2 rounded bg-amber-100 px-1 text-xs text-amber-900" data-testid={`pharmacist-renewal-${p.userId}`}>
+                    {p.renewalDueInDays === 0 ? t("pharmacyPharmacists.renewToday") : t("pharmacyPharmacists.renewIn", { count: p.renewalDueInDays })}
+                  </span>
+                )}
               </p>
             </div>
             <div className="mt-2 flex flex-wrap gap-2">

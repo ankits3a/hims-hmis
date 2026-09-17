@@ -3338,7 +3338,10 @@
     "filed": "Registration filed for {{name}}.",
     "ended": "Registration ended for {{name}}.",
     "history": "Earlier registrations",
-    "endedBecause": "ended: {{reason}}"
+    "endedBecause": "ended: {{reason}}",
+    "renewToday": "last valid day — file the renewal today",
+    "renewIn_one": "renew within {{count}} day",
+    "renewIn_other": "renew within {{count}} days"
   },
   "pharmacyReorder": {
     "title": "Reorder list",

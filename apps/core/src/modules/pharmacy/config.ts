@@ -28,6 +28,13 @@ export const REGISTER_FLAGS = ["H1"] as const;
  * Derived from the kernel's one exported offset (`ist-clock-parity.test.ts` pins every literal copy).
  */
 /**
+ * PHARMACY P15 — a state council registration inside its last this-many days is due for renewal. The
+ * day after it lapses, verify refuses the pharmacist at the counter (`pharmacist_not_registered`),
+ * so the register screen and the go-live census say so two months ahead.
+ */
+export const REGISTRATION_RENEWAL_NOTICE_DAYS = 60;
+
+/**
  * A real calendar date written YYYY-MM-DD. `Date.parse` alone is not the test: V8 reads
  * "2026-02-30" as 2 March. So the parsed date must print back as the same string.
  */

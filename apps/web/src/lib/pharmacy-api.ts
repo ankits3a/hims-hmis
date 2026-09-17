@@ -171,6 +171,8 @@ export type WirePharmacistRegistration = {
 export type WirePharmacist = {
   userId: string; username: string; fullName: string; active: boolean;
   current: WirePharmacistRegistration | null; history: WirePharmacistRegistration[];
+  /** P15 — days left once inside the renewal window; absent from an older server. */
+  renewalDueInDays?: number | null;
 };
 export async function fetchPharmacists(): Promise<WirePharmacist[]> {
   const { items } = await api<{ items: WirePharmacist[] }>("GET", "/pharmacy/pharmacists");
