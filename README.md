@@ -1019,7 +1019,7 @@ split is what those pairs will hang on.
 | `materials.grn.capture` | ✓ | ✓ | |
 | `materials.grn.qc` | ✓ | | ✓ |
 | `materials.stock.issue` | ✓ | ✓ | |
-| `materials.stock.receive` | ✓ | ✓ | |
+| `materials.stock.receive` | ✓ | ✓ | ✓ |
 | `materials.recall.manage` | ✓ | | |
 | `materials.counts.manage` | ✓ | | |
 | `materials.counts.perform` | ✓ | ✓ | ✓ |
@@ -1035,6 +1035,11 @@ precedent — so this table mints live authority to nobody until a storekeeper a
 the person who scheduled the count, or anyone who moved stock at that store in the last 30 days, so
 a storekeeper counts the pharmacy and a pharmacist counts the main store. No count posts an
 adjustment: writing a variance off needs a second key, and runbook O1 is open.
+
+**The transfer screen (2026-09-17) gives `pharmacy` `materials.stock.receive`**: the stores issue and
+the dispensary acknowledges what reached its shelf, the two signatures of an indent voucher. The act
+refuses the issuer as the receiver, and a store that names its keepers is received into only by one
+of them, so the pharmacy, not the storekeeper, confirms a transfer into `PHARM-OPD` or `PHARM-RETAIL`.
 
 **Two approval types, registered by `seed:materials` in the deploy path.**
 `materials_near_expiry_acceptance` (approver `materials_head`, 240-minute SLA) gates posting a GRN
