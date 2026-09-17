@@ -105,6 +105,11 @@ export const PHARMACY_ERROR_CODES = [
   "registration_not_permitted",
   "duplicate_suspected",
   "unknown_retail_sale",
+  /**
+   * The prescription photo could not be written (the kernel document store is not writable). The
+   * sale is refused whole: a Schedule H sale without its prescription on file is not a sale.
+   */
+  "document_store_unavailable",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -184,6 +189,7 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   registration_not_permitted: 403,
   duplicate_suspected: 409,
   unknown_retail_sale: 404,
+  document_store_unavailable: 503,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {

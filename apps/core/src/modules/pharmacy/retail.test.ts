@@ -15,6 +15,8 @@ import {
   getRetailSale, listRetailSales, previewRetailSale, recordRetailLicence, retailLicenceState, searchRetailShelf, sellRetail,
 } from "./retail";
 import { registerSaleItem } from "./sale-items";
+import { DocumentStoreError } from "../../kernel/documents/store";
+import { toHttp } from "./pharmacy-http";
 import type { Actor } from "@hmis/contracts";
 import type { PharmacyFixture } from "../../../test/helpers/pharmacy";
 import type { Db } from "../../kernel/db/client";
@@ -188,6 +190,18 @@ describe("walk-in retail sales (P19)", () => {
       .rejects.toMatchObject({ code: "invalid_prescription" });
     await expect(sellRetail(db, docs, fx.pharmacist.actor, { customer, lines, tenders, prescription: { ...RX, prescriberAddress: " " } }, undefined, MON))
       .rejects.toMatchObject({ code: "invalid_prescription" });
+    // A store that cannot take the photo refuses the sale whole, and says so as a 503, not a 500.
+    const broken: DocumentStore = {
+      put: async () => { throw new DocumentStoreError("unwritable", "EACCES"); },
+      get: async () => Buffer.alloc(0), remove: async () => undefined,
+    };
+    const refusal = await sellRetail(db, broken, fx.pharmacist.actor, { customer, lines, tenders, prescription: RX }, undefined, MON).catch((e: unknown) => e);
+    expect(refusal).toBeInstanceOf(DocumentStoreError);
+    let status = 0;
+    try { toHttp(refusal); } catch (e) { status = (e as { getStatus: () => number }).getStatus(); }
+    expect(status).toBe(503);
+    expect(await db.select().from(pharmacyRetailSales)).toEqual([]);
+    expect(await db.select().from(patientDocuments)).toEqual([]);
     // Holds `pharmacy`, has no council registration on file.
     await expect(sellRetail(db, docs, fx.incharge.actor, { customer, lines, tenders, prescription: RX }, undefined, MON))
       .rejects.toMatchObject({ code: "pharmacist_not_registered" });

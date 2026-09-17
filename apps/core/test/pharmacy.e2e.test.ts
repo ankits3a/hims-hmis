@@ -1,6 +1,9 @@
 import { Test } from "@nestjs/testing";
 import { INestApplication } from "@nestjs/common";
 import request from "supertest";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { AppModule } from "../src/app.module";
 import { setupTestDb, truncateAll } from "./helpers/db";
@@ -36,6 +39,9 @@ describe("the OPD dispense counter over HTTP (16c T5)", () => {
     const workerUrl = new URL(requireEnv("TEST_DATABASE_URL"));
     workerUrl.pathname = `${workerUrl.pathname}_${process.env.JEST_WORKER_ID ?? "1"}`;
     process.env.DATABASE_URL = workerUrl.toString();
+    // P19 — a walk-in H1 sale files the prescription photo: the app gets a store it can write, as it
+    // gets a database of its own. CI's default path (/var/lib/hmis/documents) is not writable.
+    process.env.DOCUMENT_STORE_PATH = mkdtempSync(join(tmpdir(), "hmis-pharmacy-e2e-docs-"));
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
     await app.init();

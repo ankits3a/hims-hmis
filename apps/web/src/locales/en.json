@@ -3479,7 +3479,8 @@
     "invalid_prescription": "Enter the prescriber's name, registration number and address, and a prescription date that is not in the future",
     "registration_not_permitted": "You may sell but not register a customer — find them by mobile or UHID",
     "duplicate_suspected": "Someone already registered looks like this customer — pick them, or confirm this is someone new",
-    "unknown_retail_sale": "No such walk-in sale"
+    "unknown_retail_sale": "No such walk-in sale",
+    "document_store_unavailable": "The prescription photo could not be saved, so nothing was sold — tell IT, then try again"
   },
   "pharmacyCounter": {
     "partlyChecked": "Checked only in part",

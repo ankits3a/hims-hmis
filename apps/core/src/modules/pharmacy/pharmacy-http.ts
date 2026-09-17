@@ -1,6 +1,7 @@
 import { BadRequestException, HttpException } from "@nestjs/common";
 import { z } from "zod";
 import { ApprovalError } from "../../kernel/approvals/types";
+import { DocumentStoreError } from "../../kernel/documents/store";
 import { OrderError, orderHttpStatus } from "../../kernel/orders/errors";
 import { ResourceError, resourceHttpStatus } from "../../kernel/resources/errors";
 import { WorkflowError } from "../../kernel/workflow/instances";
@@ -25,6 +26,11 @@ export function toHttp(e: unknown): never {
   if (e instanceof BillingError) throw httpError(billingHttpStatus(e.code), e.message, e.code, e.detail);
   if (e instanceof TariffError) throw httpError(tariffHttpStatus(e.code), e.message, e.code);
   if (e instanceof OpdError) throw httpError(409, e.message, e.code);
+  // P19 — a walk-in sale files the prescription photo; a store that cannot take it is the server's
+  // fault, said as a sentence rather than a 500.
+  if (e instanceof DocumentStoreError) {
+    throw httpError(pharmacyHttpStatus("document_store_unavailable"), `the prescription photo could not be stored (${e.reason}) — nothing was sold; tell IT`, "document_store_unavailable");
+  }
   // P19 — a walk-in sale registers its customer and files the prescription photo.
   if (e instanceof PatientError) {
     const status = e.code === "document_too_large" ? 413 : e.code === "patient_not_found" ? 404 : 400;

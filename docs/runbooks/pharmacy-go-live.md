@@ -237,9 +237,9 @@ A blank slab still bills as exempt.
 >   - a batch with under 30 days to expiry, or recalled. Quarantine that one instead.
 >   - more than was dispensed, net of earlier returns.
 
-## 4. What refuses, and why — all 63 codes
+## 4. What refuses, and why — all 64 codes
 
-`errors.ts` declares 63, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
+`errors.ts` declares 64, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
 table falls behind it. The table used to name 13, and the drill above provokes several of the
 missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/en.json` under
 `pharmacyErrors.*`; that file and `errors.ts` are pinned against each other in BOTH directions by
@@ -283,6 +283,7 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `prescription_required` · `invalid_prescription` | a walk-in Schedule H/H1 line with no outside prescription captured; or the prescriber's name, registration number or address is blank, or the date is after today | §9 — capture the prescription, or remove the line |
 | `registration_not_permitted` · `duplicate_suspected` | registering a walk-in customer without `patients.register`; or someone already registered closely matches | find the customer by mobile or UHID; pick the match, or confirm they are someone new |
 | `unknown_retail_sale` | the walk-in sale id does not resolve | re-open it from the day's list |
+| `document_store_unavailable` | the prescription photo could not be written: the document store (`DOCUMENT_STORE_PATH`) is not writable. Nothing was sold | IT: in production the image owns `/var/lib/hmis/documents` and the `hmis_prod_documents` volume is mounted there; check the mount (the API logs a `DOCUMENT_STORE_PATH is not writable` warning at boot), then sell again |
 
 **Six refusals the counter surfaces that are NOT pharmacy's**, and staff will meet them:
 `version_not_active` (§1.7) · `no_open_session` (§1.8) · `billing_not_configured` ·
