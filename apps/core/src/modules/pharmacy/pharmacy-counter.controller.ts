@@ -12,6 +12,7 @@ import { billDispense, previewDispenseBill } from "./bill";
 import { handOverDispense } from "./handover";
 import { labelFor } from "./label";
 import { pickDispense } from "./pick";
+import { checkPickScan } from "./scan";
 import { alternativesFor, cancelDispense, declineLine, verifyDispense } from "./verify";
 import { cancelBilledDispense } from "./refund";
 import { reorderAdvice } from "./replenishment";
@@ -58,6 +59,8 @@ const pickBody = z.object({
     qtyBase: z.number().int().positive().optional(),
     pickNote: z.string().max(240).optional(),
     batchId: idSchema.optional(),
+    /** P13 — the code read off the pack in hand. */
+    scan: z.string().min(1).max(200).optional(),
   })).optional(),
 });
 const billBody = z.object({
@@ -107,6 +110,18 @@ export class PharmacyCounterController {
   async one(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<DispenseView> {
     try {
       return await getDispense(this.db, actor, id);
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** P13 — what a pack scan says about a line, as the pack is scanned. Nothing is reserved. */
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Get("dispenses/:id/lines/:idx/scan")
+  async scan(@Param("id") id: string, @Param("idx") idx: string, @Query("code") code?: string): Promise<{ itemCode: string; batchNo: string | null; expiryDate: string | null }> {
+    const q = parsed(z.object({ idx: z.coerce.number().int().nonnegative(), code: z.string().min(1).max(200) }), { idx, code });
+    try {
+      return await checkPickScan(this.db, id, q.idx, q.code);
     } catch (e) {
       return toHttp(e);
     }

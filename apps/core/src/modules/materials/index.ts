@@ -48,11 +48,11 @@ export type {
 } from "./vendors";
 
 // ── T5 — stores, and the stock ledger: movements, balances under lock, FEFO, reservations, recall ──
-export { createStore, ensureTransitStore, findStoreByCode, listStores, requireStore } from "./stores";
+export { createStore, ensureTransitStore, findStoreByCode, listStores, requireStore, setStoreCustodianRoles, storeCustodianRoles } from "./stores";
 export type { StoreRow } from "./stores";
 export {
   availableQty, availableQtyByItem, balances, batchLocations, consumeReservation, consumedQtyByItem, fefoPick, getBatch, movementsFor, postMovement, returnedQtyByRef,
-  consumptionRowsAt, ledgerQtyByIds, refIdsWithMovementBetween,
+  consumptionRowsAt, ledgerQtyByIds, refIdsWithMovementBetween, batchesByNo,
   postMovements, recallBatch, releaseReservation, reserveStock, expiredStockAt, sellableBatchesByItem,
 } from "./ledger";
 export type { BalanceRow, BatchRow, LedgerRow, MovementInput, MovementReason, ReservationRow } from "./ledger";

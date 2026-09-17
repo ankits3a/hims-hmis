@@ -7,13 +7,13 @@ import {
   items, rolePermissions, stockBalances, stockBatches, stockCountLines, stockCounts, stockLedger, users,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
-import { usersHoldingRoleAtScope } from "../../kernel/workflow/roles";
+import { usersHoldingRole, usersHoldingRoleAtScope } from "../../kernel/workflow/roles";
 import {
   COUNT_CUSTODY_DAYS, COUNT_EMPTY_LOOKBACK_DAYS, COUNT_RECOUNT_FRACTION_BPS, COUNT_RECOUNT_PAISE, TRANSIT_STORE_CODE,
 } from "./config";
 import { MaterialsError } from "./errors";
 import { stockCountCancelled, stockCountClosed, stockCountScheduled, stockCounted, stockVarianceFlagged } from "./events";
-import { requireStore } from "./stores";
+import { requireStore, storeCustodianRoles } from "./stores";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -30,8 +30,9 @@ import type { Db, Tx } from "../../kernel/db/client";
  * The system chooses, at random, among active holders of `materials.counts.perform` at hospital
  * scope, leaving out:
  *   - the person scheduling the count (the table's CHECK says so too);
- *   - the store's custodians. There is no custody master, so custody is read off the ledger:
- *     whoever posted a movement at the store in the last COUNT_CUSTODY_DAYS keeps it (S10).
+ *   - the store's custodians (S10): whoever posted a movement at the store in the last
+ *     COUNT_CUSTODY_DAYS, and every holder of the roles the store names as its keepers
+ *     (`attributes.custodianRoles`; `PHARM-OPD` names `pharmacy` and `pharmacy_assistant`).
  * A recount prefers someone other than the first counter, and falls back to them.
  *
  * ═══ WHAT IS COMPARED WITH WHAT ═══
@@ -164,6 +165,10 @@ async function eligibleCounters(db: Db | Tx, resourceId: string, exclude: Readon
     sql`greatest(${stockLedger.occurredAt}, ${stockLedger.recordedAt}) >= ${since}`,
   ));
   const custodians = new Set(keepers.map((k) => k.actorId));
+  // The store's own staff, at any scope, whether or not they posted a movement (see `stores.ts`).
+  for (const roleKey of storeCustodianRoles(await requireStore(db, resourceId))) {
+    for (const userId of await usersHoldingRole(db as Tx, roleKey)) custodians.add(userId);
+  }
   const active = await db.select({ id: users.id }).from(users)
     .where(and(inArray(users.id, [...holders]), eq(users.active, true)));
   return active.map((u) => u.id).filter((id) => !exclude.has(id) && !custodians.has(id)).sort();

@@ -230,9 +230,9 @@ left null bills the right amount and reports no output tax: read the column back
 >   - a batch with under 30 days to expiry, or recalled. Quarantine that one instead.
 >   - more than was dispensed, net of earlier returns.
 
-## 4. What refuses, and why — all 50 codes
+## 4. What refuses, and why — all 54 codes
 
-`errors.ts` declares 50, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
+`errors.ts` declares 54, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
 table falls behind it. The table used to name 13, and the drill above provokes several of the
 missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/en.json` under
 `pharmacyErrors.*`; that file and `errors.ts` are pinned against each other in BOTH directions by
@@ -269,6 +269,7 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `fefo_override_unavailable` | a named batch is the wrong item, is recalled, or cannot cover the quantity | check the carton, or let FEFO choose |
 | `slip_not_confirmed` | the prescription was typed from the doctor's paper slip and nobody has checked it against the slip | check the lines against the slip (the photo on the visit, or the patient's paper), confirm, then bill |
 | `invalid_day` · `invalid_range` | the counter's day (P7) or the H1 register's period (P9) is not a real date, runs backwards, or covers more than 31 days | choose the date or the month again |
+| `scan_unknown` · `scan_wrong_item` · `scan_batch_unknown` · `scan_batch_mismatch` | a pack scanned at the pick (P13): a code no item carries, another medicine's pack, a batch the counter does not hold, or a printed expiry that disagrees with the books | register the barcode at `/materials/items`, or pick without scanning; put the wrong pack back; check the GRN |
 | `invoice_not_settled` | the money moved BACK after billing — a reversed allocation or a credit note | send the patient to the billing desk; the drug does not leave unpaid |
 
 **Six refusals the counter surfaces that are NOT pharmacy's**, and staff will meet them:

@@ -133,7 +133,11 @@ export async function cancelDispense(id: string, reason: string): Promise<WireDi
 }
 
 // ── T4 — pick, bill, hand over, the label ──
-export type PickLine = { lineIdx: number; qtyBase?: number; pickNote?: string; batchId?: string };
+export type PickLine = { lineIdx: number; qtyBase?: number; pickNote?: string; batchId?: string; scan?: string };
+/** P13 — what the pack in hand is, checked as it is scanned. */
+export async function checkPickScan(id: string, lineIdx: number, code: string): Promise<{ itemCode: string; batchNo: string | null; expiryDate: string | null }> {
+  return api("GET", `/pharmacy/dispenses/${id}/lines/${String(lineIdx)}/scan${qs({ code })}`);
+}
 export async function pickDispense(id: string, lines: PickLine[], idempotencyKey: string): Promise<WireDispense> {
   return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/pick`, { lines }, idempotencyKey);
 }

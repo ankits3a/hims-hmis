@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { newIdempotencyKey } from "../lib/api";
 import {
-  acceptReturn, billDispense, cancelBilledDispense, cancelDispense, claimDispense, declineLine, fetchAlternatives, fetchDispense, fetchLabel, fetchQueue, findAtCounter,
+  acceptReturn, billDispense, cancelBilledDispense, cancelDispense, checkPickScan, claimDispense, declineLine, fetchAlternatives, fetchDispense, fetchLabel, fetchQueue, findAtCounter,
   handOverDispense, pharmacyErrorText, pickDispense, previewBill, verifyDispense,
 } from "../lib/pharmacy-api";
 import { fetchInvoicePrint } from "../lib/billing-api";
@@ -43,7 +43,8 @@ export function PharmacyCounter(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   // T4 — the second half's state: partial picks, the priced draft, the tender, identity, the label
-  const [picks, setPicks] = useState<Record<number, { qtyBase: string; pickNote: string }>>({});
+  // P13 — `scan` is the code read off the pack; `scanned` what the server said it is, or `scanError`.
+  const [picks, setPicks] = useState<Record<number, { qtyBase: string; pickNote: string; scan?: string; scanned?: string; scanError?: string }>>({});
   const [draft, setDraft] = useState<WirePricedDraft | null>(null);
   const [tenderMode, setTenderMode] = useState<"cash" | "upi" | "card">("cash");
   const [tenderAmount, setTenderAmount] = useState("");
@@ -170,8 +171,13 @@ export function PharmacyCounter(): React.ReactElement {
   const pick = (): Promise<void> => run(async () => {
     if (inHand === null) return null;
     const lines: PickLine[] = Object.entries(picks)
-      .filter(([, p]) => p.qtyBase.trim() !== "")
-      .map(([idx, p]) => ({ lineIdx: Number(idx), qtyBase: Number(p.qtyBase), ...(p.pickNote.trim() === "" ? {} : { pickNote: p.pickNote.trim() }) }));
+      .filter(([, p]) => p.qtyBase.trim() !== "" || p.scanned !== undefined)
+      .map(([idx, p]) => ({
+        lineIdx: Number(idx),
+        ...(p.qtyBase.trim() === "" ? {} : { qtyBase: Number(p.qtyBase) }),
+        ...(p.pickNote.trim() === "" ? {} : { pickNote: p.pickNote.trim() }),
+        ...(p.scanned === undefined || p.scan === undefined ? {} : { scan: p.scan }),
+      }));
     return pickDispense(inHand.id, lines, newIdempotencyKey());
   });
 
@@ -381,6 +387,26 @@ export function PharmacyCounter(): React.ReactElement {
                     return (
                       <div key={l.lineIdx} className="flex flex-wrap items-end gap-2 text-sm">
                         <span>{l.lineIdx + 1}. {lineTitle(l)} · {l.qtyBase} {l.item?.baseUom ?? ""}{l.available !== null ? ` · ${t("pharmacyCounter.available", { n: l.available })}` : ""}</span>
+                        <label>{t("pharmacyCounter.scanPack")}
+                          <input
+                            aria-label={`${t("pharmacyCounter.scanPack")} ${String(l.lineIdx + 1)}`}
+                            className="ml-1 w-48 rounded border px-2 py-1 font-mono"
+                            value={p.scan ?? ""}
+                            onChange={(ev) => setPicks({ ...picks, [l.lineIdx]: { ...p, scan: ev.target.value, scanned: undefined, scanError: undefined } })}
+                            onKeyDown={(ev) => {
+                              if (ev.key !== "Enter") return;
+                              ev.preventDefault();
+                              const code = (p.scan ?? "").trim();
+                              if (code === "") return;
+                              checkPickScan(inHand.id, l.lineIdx, code).then(
+                                (r) => setPicks((cur) => ({ ...cur, [l.lineIdx]: { ...(cur[l.lineIdx] ?? p), scan: code, scanned: [r.itemCode, r.batchNo, r.expiryDate].filter((x): x is string => x !== null).join(" · "), scanError: undefined } })),
+                                (e: unknown) => setPicks((cur) => ({ ...cur, [l.lineIdx]: { ...(cur[l.lineIdx] ?? p), scan: code, scanned: undefined, scanError: pharmacyErrorText(e, t) } })),
+                              );
+                            }}
+                          />
+                        </label>
+                        {p.scanned !== undefined && <span data-testid={`scan-ok-${String(l.lineIdx)}`} className="rounded bg-green-100 px-1 text-xs text-green-800">✓ {p.scanned}</span>}
+                        {p.scanError !== undefined && <span role="alert" data-testid={`scan-bad-${String(l.lineIdx)}`} className="rounded bg-red-100 px-1 text-xs text-red-800">{p.scanError}</span>}
                         <label>{t("pharmacyCounter.partialQty")}
                           <input aria-label={`${t("pharmacyCounter.partialQty")} ${String(l.lineIdx + 1)}`} className="ml-1 w-20 rounded border px-2 py-1" inputMode="numeric" value={p.qtyBase}
                             onChange={(ev) => setPicks({ ...picks, [l.lineIdx]: { ...p, qtyBase: ev.target.value } })} />
@@ -394,7 +420,8 @@ export function PharmacyCounter(): React.ReactElement {
                       </div>
                     );
                   })}
-                  <Button type="button" onClick={() => void pick()}>{t("pharmacyCounter.pick")}</Button>
+                  {/* P13 — a pack refused at the scan is still in someone's hand: no pick until it is cleared or re-scanned. */}
+                  <Button type="button" disabled={Object.values(picks).some((p) => p.scanError !== undefined)} onClick={() => void pick()}>{t("pharmacyCounter.pick")}</Button>
                 </div>
               )}
               {inHand.status === "picked" && draft !== null && (

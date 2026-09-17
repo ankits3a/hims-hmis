@@ -87,6 +87,11 @@ export const PHARMACY_ERROR_CODES = [
   "invalid_day",
   // ── P9 ──
   "invalid_range",
+  // ── P13 ──
+  "scan_unknown",
+  "scan_wrong_item",
+  "scan_batch_unknown",
+  "scan_batch_mismatch",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -153,6 +158,10 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   return_exceeds_dispensed: 409,
   invalid_day: 400,
   invalid_range: 400,
+  scan_unknown: 409,
+  scan_wrong_item: 409,
+  scan_batch_unknown: 409,
+  scan_batch_mismatch: 409,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {
