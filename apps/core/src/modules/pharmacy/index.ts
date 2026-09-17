@@ -87,6 +87,11 @@ export { renewalDaysLeft } from "./pharmacists";
 /** P12 — the leakage triangle (doc 16 I1). Read-only. */
 export { pharmacyLeakage } from "./leakage";
 export type { LeakageMismatch, LeakageReport } from "./leakage";
+/** P16 — each drug's GST slab from the notification, and the sale category that follows it. */
+export {
+  GST_NOTIFICATION, NIL_RATED_DRUGS, applyGstSlabPlan, gstSlabPlan, setItemGstSlab, suggestGstSlab, syncSaleItemCategory,
+} from "./gst-slab";
+export type { GstSlabPlanRow, GstSuggestion } from "./gst-slab";
 /** P9 — the Schedule H1 register, read (Drugs and Cosmetics Rules 1945 r.65(3A)). */
 export { H1_REGISTER_MAX_DAYS, h1Register } from "./registers";
 export type { H1Register, H1RegisterRow } from "./registers";

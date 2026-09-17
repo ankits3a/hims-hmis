@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { fetchSaleCandidates, fetchSaleItems, patchSaleItem, pharmacyErrorText, registerSaleItem } from "../lib/pharmacy-api";
 import { Button } from "@/components/ui/button";
+import { GstSlabPanel } from "../components/gst-slab-panel";
 import type { WireSaleItem } from "../lib/pharmacy-api";
 
 /**
@@ -124,6 +125,7 @@ export function PharmacyItems(): React.ReactElement {
           </ul>
         )}
       </section>
+      <GstSlabPanel />
     </div>
   );
 }
