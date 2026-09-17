@@ -113,7 +113,9 @@ export const dispenseLineReturned = defineEvent("dispense.line_returned", MODULE
  * customer was registered by the sale when `registeredHere`.
  */
 export const retailSold = defineEvent("retail.sold", MODULE, z.object({
-  saleId: id, patientId: id, invoiceId: id, storeResourceId: id, licenceId: id,
+  saleId: id, patientId: id, invoiceId: id, storeResourceId: id,
+  /** P20 — null for a paper dispense at the OPD counter, which sells under the hospital's licence. */
+  licenceId: id.nullable(),
   registeredHere: z.boolean(), scheduled: z.boolean(), h1RegisterRows: z.number().int().nonnegative(),
   lines: z.array(z.object({
     lineIdx: z.number().int().nonnegative(), medicineId: id, itemId: id, batchId: id,
@@ -121,6 +123,16 @@ export const retailSold = defineEvent("retail.sold", MODULE, z.object({
   })).min(1),
   netPaise: z.number().int().nonnegative(),
   pharmacistRegNo: z.string().min(1).nullable(),
+  /**
+   * P20 — `downtime` for a paper dispense entered after an outage: `soldAt` is the time on the
+   * sheet, `soldBy` who handed it over, and a clinical hit is recorded here rather than refused.
+   */
+  channel: z.enum(["walk_in", "downtime"]).default("walk_in"),
+  soldAt: z.string().min(1).nullable().default(null),
+  soldBy: id.nullable().default(null),
+  sheet: z.object({ kitId: id, serial: z.number().int().positive(), desk: z.string().min(1) }).nullable().default(null),
+  checkHits: z.object({ allergies: z.number().int().nonnegative(), severeInteractions: z.number().int().nonnegative() })
+    .default({ allergies: 0, severeInteractions: 0 }),
 }));
 
 /** P19 — a Form 20/21 retail licence was recorded for a store. */

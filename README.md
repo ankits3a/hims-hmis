@@ -1253,6 +1253,9 @@ the drug licence, held with `pharmacy`), and to `owner` and `medical_superintend
 `pharmacy.retail.sell` goes to `pharmacy`, which also gains `patients.register`, because every walk-in
 bill names a registered person. `pharmacy.retail.manage` records the Form 20/21 licence; it goes to
 `pharmacy_incharge`, and to `owner` and `medical_superintendent`.
+**Pharmacy P20 lets a pharmacist enter what was dispensed on paper during an outage.**
+`pharmacy.downtime.enter` goes to `pharmacy` alone: the pharmacist types in each downtime-kit sheet,
+and the invoice is issued at entry.
 **Pharmacy P9 gives the Schedule H1 register a reader.** `pharmacy.register.read` goes to `pharmacy`
 alone, because the register lists patients by name and what they were given. It reads at most a
 month at a time, logs one PHI access row per patient shown, and keeps a sealed patient's name
@@ -1269,6 +1272,7 @@ behind `patients.confidential.read`.
 | `pharmacy.register.read_sealed` | | | ✓ |
 | `pharmacy.retail.sell` | ✓ | | |
 | `pharmacy.retail.manage` | | | ✓ |
+| `pharmacy.downtime.enter` | ✓ | | |
 
 Ten grants are held outside that table. **`pharmacy` gains the kernel's `orders.place`,
 `orders.read` and `orders.cancel`** because the claim at the counter PLACES the `medication` order

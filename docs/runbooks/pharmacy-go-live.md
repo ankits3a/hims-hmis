@@ -237,9 +237,9 @@ A blank slab still bills as exempt.
 >   - a batch with under 30 days to expiry, or recalled. Quarantine that one instead.
 >   - more than was dispensed, net of earlier returns.
 
-## 4. What refuses, and why — all 64 codes
+## 4. What refuses, and why — all 71 codes
 
-`errors.ts` declares 64, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
+`errors.ts` declares 71, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
 table falls behind it. The table used to name 13, and the drill above provokes several of the
 missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/en.json` under
 `pharmacyErrors.*`; that file and `errors.ts` are pinned against each other in BOTH directions by
@@ -284,6 +284,9 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `registration_not_permitted` · `duplicate_suspected` | registering a walk-in customer without `patients.register`; or someone already registered closely matches | find the customer by mobile or UHID; pick the match, or confirm they are someone new |
 | `unknown_retail_sale` | the walk-in sale id does not resolve | re-open it from the day's list |
 | `document_store_unavailable` | the prescription photo could not be written: the document store (`DOCUMENT_STORE_PATH`) is not writable. Nothing was sold | IT: in production the image owns `/var/lib/hmis/documents` and the `hmis_prod_documents` volume is mounted there; check the mount (the API logs a `DOCUMENT_STORE_PATH is not writable` warning at boot), then sell again |
+| `sheet_invalid` · `sheet_already_entered` | a paper dispense (P20) scanned from something that is not a downtime kit's receipt sheet, or a sheet already entered | §10 — scan the QR on the receipt sheet; open the entry already made |
+| `invalid_dispense_time` · `not_in_downtime` · `backfill_window_closed` | the time on the sheet is in the future, before the kit was printed, outside a declared outage, or more than 7 days ago | §10 — check the time written on the sheet; an older sheet is an incident for the pharmacist in charge |
+| `batch_required` · `unknown_pharmacist` | a paper line without its batch, or a person named as handing it over who is not pharmacy staff | copy the batch from the sheet; name the pharmacist who was on duty |
 
 **Six refusals the counter surfaces that are NOT pharmacy's**, and staff will meet them:
 `version_not_active` (§1.7) · `no_open_session` (§1.8) · `billing_not_configured` ·
@@ -436,3 +439,50 @@ licence is an offence under the Drugs and Cosmetics Act 1940 §18(c). The OPD co
 
 **Not yet at the walk-in counter:** returns and refunds of a walk-in sale (take them at the billing
 desk for now), and the leakage report, which reads `PHARM-OPD` only.
+
+## 10. Paper dispenses after an outage (P20)
+
+When the duty manager declares **downtime** at `/ops/mode`, the counters keep working on paper.
+- **Before an outage.** Keep a downtime kit printed from `/ops/downtime-kit` at each counter, with
+  **receipt** sheets for the desks `pharmacy-counter` and `pharmacy-retail`. Every sheet carries a
+  serial and a signed QR.
+- **During the outage.** Write each dispense on its own receipt sheet:
+  - the patient's name and UHID (or name, age and mobile);
+  - each medicine with its **batch** and quantity;
+  - the time;
+  - who handed it over;
+  - the amount and how it was paid;
+  - for Schedule H/H1, the prescriber's name, registration number and address, and the
+    prescription's date.
+
+  Keep the cash with the sheets.
+- **After recovery**, at `/pharmacy/downtime` (**`pharmacy`**, permission `pharmacy.downtime.enter`),
+  enter each sheet within **7 days**:
+  1. Scan the sheet's QR. The screen says which desk it came from, or that it was already entered.
+  2. Choose the counter the medicine left from, and type the time on the sheet.
+  3. Name who handed it over.
+  4. Find or register the customer.
+  5. Add each line with the batch written on the sheet.
+  6. For Schedule H/H1, add the prescription details and a photo of the sheet or prescription.
+  7. Enter what was paid. Stamp the sheet "entered" and file it.
+
+**What the entry does:**
+- Stock leaves the named batch **at the time on the sheet**.
+- The H1 register is written with that date and the handing-over pharmacist's registration number.
+- The invoice is issued **at entry**, with a number from the day of entry. The sheet's serial is a
+  reconciliation key, not an invoice number.
+
+**What it refuses:**
+- a sheet that is not a kit receipt;
+- a sheet entered twice;
+- a time outside the declared outage, before the kit was printed, or in the future;
+- a batch that had expired by the time on the sheet;
+- a Schedule H/H1 line without its prescription, or handed over by someone with no council
+  registration that day;
+- a walk-in counter sheet with no retail licence that day.
+
+**What it only records:** an allergy or interaction the entry finds. The medicine has already been
+taken, so the pharmacist in charge follows up with the patient.
+
+**A queued OPD prescription that was dispensed on paper** stays in the counter's queue. Cancel it
+there with the reason "dispensed on paper, sheet N", so it is not dispensed twice.

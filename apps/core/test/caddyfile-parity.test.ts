@@ -405,7 +405,8 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // PLAN 14c first slice — 58 -> 59 with `/materials/counts`.
     // PHARMACY P12 — 59 -> 60 with `/pharmacy/leakage`.
     // PHARMACY P19 — 60 -> 62 with `/pharmacy/retail` and `/pharmacy/retail-licence`.
-    expect(routes).toHaveLength(62); // MERGE 2026-09-15: main's grants + the lane's, measured from the failing run
+    // PHARMACY P20 — 62 -> 63 with `/pharmacy/downtime`.
+    expect(routes).toHaveLength(63); // MERGE 2026-09-15: main's grants + the lane's, measured from the failing run
     expect(routes).toContain("/opd/slips");
     expect(routes).toContain("/radiology/radiation-safety");
     /*

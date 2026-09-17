@@ -97,13 +97,14 @@ export { H1_REGISTER_MAX_DAYS, h1Register } from "./registers";
 export type { H1Register, H1RegisterRow } from "./registers";
 export type { CounterSummary } from "./summary";
 /** P19 — walk-in retail sales (doc 16 §3.1b, register row R-174). */
-export { RETAIL_PHARMACY_STORE_CODE, RETAIL_REF_TYPE } from "./config";
+export { DOWNTIME_BACKFILL_DAYS, RETAIL_PHARMACY_STORE_CODE, RETAIL_REF_TYPE } from "./config";
 export { retailLicenceRecorded, retailSold } from "./events";
 export {
-  getRetailSale, listRetailLicences, listRetailSales, previewRetailSale, recordRetailLicence, retailLicenceState,
-  retailStore, searchRetailShelf, sellRetail,
+  counterBatches, enterPaperDispense, getRetailSale, inspectSheet, pharmacyStaff, listPaperDispenses, listRetailLicences, listRetailSales,
+  previewPaperDispense, previewRetailSale, recordRetailLicence, retailLicenceState, retailStore, searchCounterShelf,
+  searchRetailShelf, sellRetail,
 } from "./retail";
 export type {
-  RecordLicenceInput, RetailCustomerInput, RetailLicenceState, RetailLicenceView, RetailLineInput, RetailPrescriptionInput,
+  CounterBatch, PaperDispenseInput, PharmacyStaffMember, SheetCheck, RecordLicenceInput, RetailCustomerInput, RetailLicenceState, RetailLicenceView, RetailLineInput, RetailPrescriptionInput,
   RetailPreview, RetailSaleInput, RetailSaleRow, RetailSaleView, RetailShelfEntry,
 } from "./retail";

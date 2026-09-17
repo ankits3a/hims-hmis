@@ -318,6 +318,9 @@ export type RetailSaleBody = {
 };
 export type WireRetailSale = {
   id: string; soldAt: string; soldBy: string; soldByName: string;
+  /** P20 — absent from an older server. */
+  channel?: "walk_in" | "downtime"; enteredBy?: string; enteredAt?: string; storeCode?: string;
+  sheet?: { kitId: string; serial: number; desk: string } | null;
   patient: { id: string; uhid: string; name: string; phone: string | null; registeredHere: boolean };
   invoiceId: string; invoiceNo: string; netPaise: number; scheduled: boolean;
   prescription: { prescriberName: string; prescriberRegNo: string; prescriberAddress: string; rxDate: string; documentId: string | null } | null;
@@ -330,6 +333,8 @@ export type WireRetailSale = {
 export type WireRetailSaleRow = {
   id: string; soldAt: string; soldBy: string; invoiceId: string; invoiceNo: string; netPaise: number;
   scheduled: boolean; lineCount: number; registeredHere: boolean;
+  /** P20 — absent from an older server. */
+  channel?: "walk_in" | "downtime"; enteredAt?: string; sheet?: { desk: string; serial: number } | null;
 };
 /** The near-match refusal carries who matched (`duplicate_suspected`). */
 export type WireDuplicateCandidate = { id: string; uhid: string; name: string | null; phone: string | null };
@@ -361,4 +366,40 @@ export async function recordRetailLicence(body: {
   form20No: string; form21No: string; validFrom: string; validTo: string; pharmacistInCharge: string; note?: string;
 }): Promise<WireRetailLicence> {
   return api<WireRetailLicence>("POST", "/pharmacy/retail/licences", body);
+}
+
+// ── P20 — paper dispenses entered after an outage ──
+export type CounterStoreCode = "PHARM-OPD" | "PHARM-RETAIL";
+export type WireSheetCheck = { valid: boolean; desk: string | null; serial: number | null; kitGeneratedAt: string | null; enteredSaleId: string | null };
+export type WirePharmacyStaff = { userId: string; fullName: string; username: string; registered: boolean };
+export type WireCounterBatch = { batchId: string; batchNo: string; expiryDate: string | null; onHand: number; available: number; recalled: boolean };
+export type PaperDispenseBody = Omit<RetailSaleBody, "lines"> & {
+  sheetQr: string; storeCode: CounterStoreCode; occurredAt: string; dispensedBy: string;
+  lines: { medicineId: string; qtyBase: number; batchId: string }[];
+};
+
+export async function checkDowntimeSheet(qr: string): Promise<WireSheetCheck> {
+  return api<WireSheetCheck>("GET", `/pharmacy/downtime/sheet${qs({ qr })}`);
+}
+export async function fetchPharmacyStaff(): Promise<WirePharmacyStaff[]> {
+  const { items } = await api<{ items: WirePharmacyStaff[] }>("GET", "/pharmacy/downtime/staff");
+  return items;
+}
+export async function searchCounterShelf(store: CounterStoreCode, q: string): Promise<WireRetailShelfEntry[]> {
+  const { items } = await api<{ items: WireRetailShelfEntry[] }>("GET", `/pharmacy/downtime/shelf${qs({ store, q })}`);
+  return items;
+}
+export async function fetchCounterBatches(store: CounterStoreCode, itemId: string): Promise<WireCounterBatch[]> {
+  const { items } = await api<{ items: WireCounterBatch[] }>("GET", `/pharmacy/downtime/batches${qs({ store, itemId })}`);
+  return items;
+}
+export async function previewPaperDispense(body: { storeCode: CounterStoreCode; occurredAt: string; patientId?: string; lines: RetailLine[] }): Promise<WireRetailPreview> {
+  return api<WireRetailPreview>("POST", "/pharmacy/downtime/preview", body);
+}
+export async function enterPaperDispense(body: PaperDispenseBody, idempotencyKey: string): Promise<WireRetailSale> {
+  return api<WireRetailSale>("POST", "/pharmacy/downtime/dispenses", body, idempotencyKey);
+}
+export async function fetchPaperDispenses(): Promise<WireRetailSaleRow[]> {
+  const { items } = await api<{ items: WireRetailSaleRow[] }>("GET", "/pharmacy/downtime/dispenses");
+  return items;
 }

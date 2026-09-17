@@ -9,8 +9,10 @@ import { AppModule } from "../src/app.module";
 import { setupTestDb, truncateAll } from "./helpers/db";
 import { openSessionFor } from "./helpers/billing";
 import { MON2, addAllergy, issueRx, line, seedPharmacyBase, stockIn } from "./helpers/pharmacy";
-import { requireEnv } from "../src/kernel/config";
-import { events, orderItems, pharmacyRegH1, stockBalances, stockLedger } from "../src/kernel/db/schema";
+import { loadConfig, requireEnv } from "../src/kernel/config";
+import { events, operatingModeChanges, orderItems, pharmacyRegH1, stockBalances, stockLedger } from "../src/kernel/db/schema";
+import { generateDowntimeKit, getKitPrintPayload } from "../src/kernel/ops/downtime-kit";
+import { newId } from "@hmis/contracts";
 import { grantPermissionToRole } from "../src/kernel/auth/permissions";
 import { withTx } from "../src/kernel/db/client";
 import { createStore } from "../src/modules/materials";
@@ -255,5 +257,43 @@ describe("the OPD dispense counter over HTTP (16c T5)", () => {
     expect((day.body as { items: unknown[] }).items).toHaveLength(2);
     expect((await ph(request(server()).get(`/pharmacy/retail/sales/${sale.id}`)).expect(200)).body).toMatchObject({ id: sale.id, invoiceNo: sale.invoiceNo });
     await as(fx.clerk.token)(request(server()).get(`/pharmacy/retail/sales/${sale.id}`)).expect(403);
+  });
+
+  /**
+   * PHARMACY P20 — a paper dispense over HTTP, signed with the key the API itself uses: the sheet is
+   * checked, the entry is recorded at the time on the sheet, and the sheet is then spent.
+   */
+  it("P20 — a downtime sheet: checked, entered at the time written on it, and refused the second time", async () => {
+    const cfg = loadConfig({ DATABASE_URL: "postgres://unused", SECRET_KEY: process.env.SECRET_KEY! });
+    const now = Date.now();
+    const duty = { type: "user" as const, id: "01HDUTYMANAGER000000000010" };
+    const mode = (from: string, to: string, at: number) => ({ id: newId(), fromMode: from, toMode: to, note: to === "downtime" ? "UPS failure" : null, reportId: null, actorId: duty.id, at: new Date(at) });
+    await db.insert(operatingModeChanges).values([
+      mode("commissioning", "normal", now - 3 * 3_600_000), mode("normal", "downtime", now - 2 * 3_600_000), mode("downtime", "normal", now - 3_600_000),
+    ]);
+    const kit = await withTx(db, (tx) => generateDowntimeKit(tx, duty, { note: null, desks: [{ desk: "pharmacy-counter", counts: { receipt: 2 } }] }, new Date(now - 150 * 60_000)));
+    const [sheetQr] = (await getKitPrintPayload(db, cfg.secretKey, kit.id)).ranges[0]!.forms.map((f) => f.qr);
+    const batchId = await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "CR-P", qtyBase: 40 });
+    const ph = as(fx.pharmacist.token);
+
+    await as(fx.aide.token)(request(server()).get(`/pharmacy/downtime/sheet?qr=${encodeURIComponent(sheetQr!)}`)).expect(403);
+    expect((await ph(request(server()).get(`/pharmacy/downtime/sheet?qr=${encodeURIComponent(sheetQr!)}`)).expect(200)).body)
+      .toMatchObject({ valid: true, desk: "pharmacy-counter", serial: 1, enteredSaleId: null });
+    const occurredAt = new Date(now - 90 * 60_000).toISOString();
+    const body = {
+      sheetQr, storeCode: "PHARM-OPD", occurredAt, dispensedBy: fx.pharmacist.id, customer: { existingId: fx.patient.id },
+      lines: [{ medicineId: fx.med.crocin, qtyBase: 10, batchId }], tenders: [{ mode: "cash", amountPaise: 12000 }],
+    };
+    await ph(request(server()).post("/pharmacy/downtime/dispenses").send({ ...body, lines: [{ medicineId: fx.med.crocin, qtyBase: 10 }] })).expect(400);
+    await ph(request(server()).post("/pharmacy/downtime/dispenses").send({ ...body, storeCode: "MAIN" })).expect(400);
+    const entered = await ph(request(server()).post("/pharmacy/downtime/dispenses").set("idempotency-key", "pd-1").send(body)).expect(201);
+    expect(entered.body).toMatchObject({ channel: "downtime", soldAt: occurredAt, sheet: { serial: 1, desk: "pharmacy-counter" }, netPaise: 12000 });
+    const again = await ph(request(server()).post("/pharmacy/downtime/dispenses").send(body)).expect(409);
+    expect((again.body as { code: string }).code).toBe("sheet_already_entered");
+    const outside = await ph(request(server()).post("/pharmacy/downtime/dispenses")
+      .send({ ...body, sheetQr: (await getKitPrintPayload(db, cfg.secretKey, kit.id)).ranges[0]!.forms[1]!.qr, occurredAt: new Date(now - 30 * 60_000).toISOString() })).expect(409);
+    expect((outside.body as { code: string }).code).toBe("not_in_downtime");
+    const listed = await ph(request(server()).get("/pharmacy/downtime/dispenses")).expect(200);
+    expect((listed.body as { items: { id: string }[] }).items.map((r) => r.id)).toEqual([(entered.body as { id: string }).id]);
   });
 });
