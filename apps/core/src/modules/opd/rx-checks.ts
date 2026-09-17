@@ -1,4 +1,4 @@
-import { allergyClassKeys, normalizeDrugName } from "../formulary";
+import { THERAPEUTIC_DUPLICATE_CLASSES, allergyClassKeys, normalizeDrugName } from "../formulary";
 import type { InteractionPair, ResolvedDrug, SaltRef } from "../formulary";
 import type { RxLine } from "./fhir";
 import type { AllergyMatch } from "./prescriptions";
@@ -52,6 +52,12 @@ export type DuplicateHit = {
   lineIndex: number;
   hard: boolean;
   against: HitAgainst;
+  /**
+   * FORMULARY P23 — set on a CLASS duplicate: the therapeutic class both moieties share, and `with`,
+   * the other moiety. Absent on a same-moiety duplicate.
+   */
+  drugClass?: string;
+  with?: string;
 };
 
 /** A line with no duration is treated as chronic for this many days, and the hit says so. */
@@ -299,6 +305,75 @@ export function checkDuplicateSalt(lines: RxCheckLine[], priors: PriorRx[], now:
               scope: "prior", prescriptionId: prior.prescriptionId,
               issuedAt: prior.issuedAt, assumedCurrent: currency.assumedCurrent,
             },
+          });
+        }
+      }
+    }
+  }
+  return hits;
+}
+
+/**
+ * FORMULARY P23 — the classes of which a patient should be on ONE agent, from the owner's clinical
+ * master (`therapeutic_subclass_groups`, `max_allowed_agents = 1`): proton pump inhibitors, ACE
+ * inhibitors, angiotensin receptor blockers, statins and systemic NSAIDs (the formulary module owns
+ * the list). A moiety's class is its `drug_class`, adopted by resolution
+ * (`scripts/data/therapeutic-classes-*.ts`).
+ */
+const DUPLICATE_THERAPY_CLASSES: readonly string[] = THERAPEUTIC_DUPLICATE_CLASSES;
+
+/**
+ * Low-dose aspirin is an antiplatelet here, not the analgesic the NSAID group is about; an NSAID
+ * beside it is the interaction book's question, not a duplicate. Its `drug_class` stays `nsaid`,
+ * which the allergy path needs.
+ */
+const NOT_A_CLASS_DUPLICATE = new Set(["aspirin"]);
+
+/**
+ * FORMULARY P23 — a second agent of the same therapeutic class, against another line of this
+ * prescription or a current prior one. ALWAYS SOFT: a planned switch overlaps on purpose, and the
+ * source's "duplicate therapy alert" is advice rather than a stop. The same moiety twice is
+ * `checkDuplicateSalt`'s hit and is not repeated here. A topical line beside a systemic one is not
+ * a duplicate (a diclofenac gel with an oral coxib).
+ */
+export function checkDuplicateClass(lines: RxCheckLine[], priors: PriorRx[], now: Date): DuplicateHit[] {
+  const hits: DuplicateHit[] = [];
+  const classed = (salts: SaltRef[]): SaltRef[] => salts.filter((s) => s.drugClass !== null
+    && DUPLICATE_THERAPY_CLASSES.includes(s.drugClass) && !NOT_A_CLASS_DUPLICATE.has(s.moiety));
+  const clash = (mine: SaltRef, theirs: SaltRef[]): SaltRef | undefined =>
+    theirs.find((t) => t.drugClass === mine.drugClass && t.saltId !== mine.saltId && t.moiety !== mine.moiety);
+  const routesDiffer = (a: ResolvedDrug | null, b: ResolvedDrug | null): boolean =>
+    a?.routeClass != null && b?.routeClass != null && a.routeClass !== b.routeClass;
+
+  for (let j = 0; j < lines.length; j += 1) {
+    const line = lines[j];
+    if (line === undefined) continue;
+    const mineAll = classed(saltsOf(line.resolution));
+    if (mineAll.length === 0) continue;
+    for (let i = 0; i < j; i += 1) {
+      const other = lines[i];
+      if (other === undefined || routesDiffer(line.resolution, other.resolution)) continue;
+      const theirs = classed(saltsOf(other.resolution));
+      for (const mine of mineAll) {
+        const hit = clash(mine, theirs);
+        if (hit === undefined) continue;
+        hits.push({
+          moiety: mine.moiety, drugClass: mine.drugClass!, with: hit.moiety, lineIndex: line.lineIndex, hard: false,
+          against: { scope: "in_rx", lineIndex: other.lineIndex },
+        });
+      }
+    }
+    for (const prior of priors) {
+      for (const priorLine of prior.lines) {
+        const currency = isCurrent(priorLine.line.durationDays, prior.issuedAt, now);
+        if (!currency.current || routesDiffer(line.resolution, priorLine.resolution)) continue;
+        const theirs = classed(saltsOf(priorLine.resolution));
+        for (const mine of mineAll) {
+          const hit = clash(mine, theirs);
+          if (hit === undefined) continue;
+          hits.push({
+            moiety: mine.moiety, drugClass: mine.drugClass!, with: hit.moiety, lineIndex: line.lineIndex, hard: false,
+            against: { scope: "prior", prescriptionId: prior.prescriptionId, issuedAt: prior.issuedAt, assumedCurrent: currency.assumedCurrent },
           });
         }
       }

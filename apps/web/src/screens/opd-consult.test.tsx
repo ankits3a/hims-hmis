@@ -1576,6 +1576,11 @@ describe("OpdConsult", () => {
       moiety: "paracetamol", lineIndex: 0, hard: false,
       against: { scope: "prior", prescriptionId: "rx-old", issuedAt: "2026-08-08T04:00:00.000Z", assumedCurrent: true },
     };
+    // FORMULARY P23 — a second agent of a class is a notice too, and it says which class.
+    const CLASS_SOFT = {
+      moiety: "rosuvastatin", drugClass: "statin", with: "atorvastatin", lineIndex: 0, hard: false,
+      against: { scope: "prior", prescriptionId: "rx-statin", issuedAt: "2026-08-08T04:00:00.000Z", assumedCurrent: false },
+    };
     mockRoutes({
       ...baseRoutes(),
       "GET /api/formulary/medicines/search": { status: 200, body: DRUG_HITS },
@@ -1593,7 +1598,7 @@ describe("OpdConsult", () => {
         status: 201,
         body: {
           prescriptionId: "rx-1", version: 1, qrPayload: PRINT_DATA.qrPayload,
-          allergyOverrideCount: 0, interactionOverrideCount: 0, duplicateOverrideCount: 0, notices: [SOFT],
+          allergyOverrideCount: 0, interactionOverrideCount: 0, duplicateOverrideCount: 0, notices: [SOFT, CLASS_SOFT],
         },
       },
       "GET /api/opd/prescriptions/rx-1/print": { status: 200, body: PRINT_DATA },
@@ -1613,6 +1618,7 @@ describe("OpdConsult", () => {
 
     const panel = await screen.findByTestId("rx-notices");
     expect(within(panel).getByTestId("rx-notice-0")).toHaveTextContent("already contains paracetamol");
+    expect(within(panel).getByTestId("rx-notice-1")).toHaveTextContent("Line 1: rosuvastatin is a second statin, with atorvastatin");
     // The assumed-currency label, and the in-system-only honesty line (design law 10).
     expect(within(panel).getByText(/may no longer be current/)).toBeInTheDocument();
     expect(within(panel).getByText("Checked against in-system prescriptions only")).toBeInTheDocument();

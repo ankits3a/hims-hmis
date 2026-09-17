@@ -1,5 +1,5 @@
 import {
-  checkDuplicateSalt, checkInteractions, isCurrent, matchAllergiesSaltAware,
+  checkDuplicateClass, checkDuplicateSalt, checkInteractions, isCurrent, matchAllergiesSaltAware,
 } from "./rx-checks";
 import type { PriorRx, RxCheckLine } from "./rx-checks";
 import type { InteractionPair, ResolvedDrug } from "../formulary";
@@ -189,6 +189,49 @@ describe("rx-checks: allergy classes (formulary P22)", () => {
     const lines = [line(0, "Mox 500", drug("Mox 500", [MOX]))];
     expect(matchAllergiesSaltAware(lines, [typed("penicillin rash as a child")])).toEqual([]);
     expect(matchAllergiesSaltAware(lines, [{ substance: "Latex", resolution: null, allergenClass: "Latex" }])).toEqual([]);
+  });
+});
+
+/**
+ * FORMULARY P23 — duplicate therapy by CLASS, from the clinical master's `therapeutic_subclass_groups`
+ * (one agent each of PPIs, ACE inhibitors, ARBs, statins, systemic NSAIDs). A notice, never a gate:
+ * a switch between two statins overlaps for a day on purpose.
+ */
+describe("rx-checks: duplicate therapy classes (formulary P23)", () => {
+  const ATOR = { saltId: "S-ATOR", moiety: "atorvastatin", drugClass: "statin" };
+  const ROSU = { saltId: "S-ROSU", moiety: "rosuvastatin", drugClass: "statin" };
+  const PANTO = { saltId: "S-PAN", moiety: "pantoprazole", drugClass: "ppi" };
+  const OMEP = { saltId: "S-OME", moiety: "omeprazole", drugClass: "ppi" };
+  const ETORI = { saltId: "S-ETO", moiety: "etoricoxib", drugClass: "nsaid" };
+  const GTN = { saltId: "S-GTN", moiety: "glyceryl trinitrate", drugClass: "nitrate" };
+  const ISMN = { saltId: "S-ISMN", moiety: "isosorbide mononitrate", drugClass: "nitrate" };
+
+  it("a second agent of a class in one prescription is a notice naming the class and the agent already there", () => {
+    const lines = [line(0, "Lipitor 10", drug("Lipitor 10", [ATOR])), line(1, "Rosuvas 10", drug("Rosuvas 10", [ROSU]))];
+    expect(checkDuplicateClass(lines, [], NOW)).toEqual([{
+      moiety: "rosuvastatin", drugClass: "statin", with: "atorvastatin", lineIndex: 1, hard: false,
+      against: { scope: "in_rx", lineIndex: 0 },
+    }]);
+  });
+
+  it("against a current prior course as well, and never against an expired one", () => {
+    const lines = [line(0, "Omez 20", drug("Omez 20", [OMEP]))];
+    const current = priorRx("rx-1", daysAgo(3), [{ drug: "Pan 40", durationDays: 30, resolution: drug("Pan 40", [PANTO]) }]);
+    const expired = priorRx("rx-0", daysAgo(40), [{ drug: "Pan 40", durationDays: 10, resolution: drug("Pan 40", [PANTO]) }]);
+    expect(checkDuplicateClass(lines, [current, expired], NOW)).toEqual([expect.objectContaining({
+      moiety: "omeprazole", drugClass: "ppi", with: "pantoprazole", hard: false,
+      against: expect.objectContaining({ scope: "prior", prescriptionId: "rx-1" }),
+    })]);
+  });
+
+  it("is quiet for the same moiety, a gel beside a tablet, low-dose aspirin, and a class outside the five", () => {
+    const quiet = (a: RxCheckLine, b: RxCheckLine) => checkDuplicateClass([a, b], [], NOW);
+    expect(quiet(line(0, "Lipitor 10", drug("Lipitor 10", [ATOR])), line(1, "Storvas 10", drug("Storvas 10", [ATOR])))).toEqual([]);
+    expect(quiet(line(0, "Volini gel", drug("Volini gel", [DICLOFENAC], "topical")), line(1, "Etoshine 90", drug("Etoshine 90", [ETORI])))).toEqual([]);
+    expect(quiet(line(0, "Ecosprin 75", drug("Ecosprin 75", [ASPIRIN])), line(1, "Etoshine 90", drug("Etoshine 90", [ETORI])))).toEqual([]);
+    expect(quiet(line(0, "Sorbitrate", drug("Sorbitrate", [GTN])), line(1, "Monotrate", drug("Monotrate", [ISMN])))).toEqual([]);
+    // Two systemic NSAIDs are the duplication the class exists for.
+    expect(quiet(line(0, "Voveran 50", drug("Voveran 50", [DICLOFENAC])), line(1, "Etoshine 90", drug("Etoshine 90", [ETORI])))).toHaveLength(1);
   });
 });
 

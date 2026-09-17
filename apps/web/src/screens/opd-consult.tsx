@@ -2512,7 +2512,12 @@ export function OpdConsult(): React.ReactElement {
                         <p key={`${String(hit.lineIndex)}-${String(i)}`} data-testid={`rx-notice-${String(i)}`} style={{ margin: 0 }}>
                           {isInteractionHit(hit)
                             ? t("opdConsult.noticeInteraction", { n: hit.lineIndex + 1, note: hit.note })
-                            : t("opdConsult.noticeDuplicate", { n: hit.lineIndex + 1, moiety: hit.moiety })}
+                            : hit.drugClass !== undefined
+                              ? t("opdConsult.noticeDuplicateClass", {
+                                n: hit.lineIndex + 1, moiety: hit.moiety, with: hit.with ?? "",
+                                cls: t(`opdConsult.therapyClass_${hit.drugClass}`, { defaultValue: hit.drugClass }),
+                              })
+                              : t("opdConsult.noticeDuplicate", { n: hit.lineIndex + 1, moiety: hit.moiety })}
                           {" "}
                           <span style={{ color: "var(--dim)" }}>{againstLabel(hit)}</span>
                         </p>
