@@ -151,6 +151,15 @@ describe("the drug-disease gate, end to end (P24)", () => {
       alternatives: [{ moiety: "amlodipine", label: "Amlodipine 5 mg" }],
     }]));
 
+  async function inConsultWith(diagnoses: { text: string; icd10Code: string }[]): Promise<EncounterRow> {
+    const opened = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    await recordVitals(db, vd.actor, opened.encounter.id, adultOk, MON);
+    await callNext(db, dra.actor, opened.sessionId, MON);
+    const { encounter } = await startConsultation(db, dra.actor, opened.encounter.id, MON);
+    await saveConsultNote(db, dra.actor, encounter.id, { diagnoses });
+    return encounter;
+  }
+
   async function inConsultWithAsthma(): Promise<EncounterRow> {
     const opened = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
     await recordVitals(db, vd.actor, opened.encounter.id, adultOk, MON);
@@ -232,6 +241,50 @@ describe("the drug-disease gate, end to end (P24)", () => {
     const pre = await precheckPrescription(db, dra.actor, enc.id, rxLines(), MON);
     expect(pre.drugDisease).toHaveLength(1);
     expect(pre.drugDisease[0]?.severity).toBe("moderate");
+  });
+
+  /**
+   * ═══ D6, THE WHOLE REASON THE OFFER IS NOT A STRING ═══
+   *
+   * A patient with heart failure AND asthma. The book's `I50` rule offers carvedilol; its own `J45`
+   * rule forbids it. Rendered verbatim, the one-tap switch would hand this patient a critical
+   * contraindication in one tap. The offer is re-run against this patient, and only amlodipine
+   * survives.
+   */
+  it("withholds an offer that this patient's OTHER diagnosis forbids", async () => {
+    const { saltId: verapamil } = await withTx(db, (tx) => addSalt(tx, PHARMACIST, { name: "verapamil" }));
+    await withTx(db, (tx) => addSalt(tx, PHARMACIST, { name: "carvedilol" }));
+    const { medicineId: calaptin } = await withTx(db, (tx) => addMedicine(tx, PHARMACIST, {
+      brandName: "Calaptin 40", form: "tablet", routeClass: "systemic", salts: [{ saltId: verapamil }],
+    }));
+    await withTx(db, (tx) => adoptDrugDisease(tx, PHARMACIST, "owner-resolution-test", [
+      {
+        rule: "icd10_contraindications#2", prefix: "I50", title: "Heart failure", moieties: ["verapamil"],
+        severity: "severe", note: "Verapamil depresses the failing ventricle.",
+        alternatives: [
+          { moiety: "carvedilol", label: "Carvedilol 6.25 mg" },
+          { moiety: "amlodipine", label: "Amlodipine 5 mg" },
+        ],
+      },
+      {
+        rule: "icd10_contraindications#0", prefix: "J45", title: "Asthma", moieties: ["carvedilol"],
+        severity: "severe", note: "A non-selective beta-blocker can trigger bronchospasm in asthma.",
+      },
+    ]));
+    const enc = await inConsultWith([
+      { text: "Heart failure", icd10Code: "I50.9" },
+      { text: "Bronchial asthma", icd10Code: "J45.909" },
+    ]);
+
+    const pre = await precheckPrescription(db, dra.actor, enc.id, [{
+      drug: "Calaptin 40", dose: "1 tab", route: "oral", frequency: "OD", durationDays: 5,
+      instructions: null, noSubstitution: false, medicineId: calaptin,
+    }], MON);
+
+    expect(pre.drugDisease).toHaveLength(1);
+    expect(pre.drugDisease[0]?.icd10Prefix).toBe("I50");
+    // Carvedilol is gone. The alert still says what to do; it just does not offer the danger.
+    expect(pre.drugDisease[0]?.alternatives).toEqual([{ moiety: "amlodipine", label: "Amlodipine 5 mg" }]);
   });
 
   it("says nothing about a diagnosis no rule reaches", async () => {

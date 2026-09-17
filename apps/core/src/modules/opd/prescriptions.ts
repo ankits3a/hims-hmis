@@ -29,6 +29,7 @@ import { ageYearsAt } from "./time";
 import type { Letterhead } from "./config";
 import type { PrescriptionRow, VitalsRow } from "./encounters";
 import type { RxLine } from "./fhir";
+import type { DrugDiseaseAlternative } from "../formulary";
 import type { DrugDiseaseHit, DuplicateHit, InteractionHit, PriorRx, RxCheckLine } from "./rx-checks";
 import type { ResolvedDrug } from "../formulary";
 import type { AppConfig } from "../../kernel/config";
@@ -347,6 +348,63 @@ export type RxPrecheckResult = {
 };
 
 /**
+ * ═══ D6 — AN OFFER IS RE-CHECKED AGAINST THIS PATIENT BEFORE IT IS SHOWN ═══
+ *
+ * The book contradicts itself, on purpose and correctly. Its heart-failure rule offers CARVEDILOL;
+ * its asthma rule forbids carvedilol. Both are right — carvedilol is a cornerstone of heart failure
+ * and a danger in asthma — and a patient with both diseases is an ordinary OPD patient. A one-tap
+ * switch that rendered the column verbatim would hand that patient a critical contraindication with
+ * one tap, which is worse than offering nothing at all.
+ *
+ * So every offer is run through the SAME engine, with the offending line replaced by the offer, and
+ * an offer that raises a hard warning of its own is not shown. Where every offer falls, the alert
+ * keeps its clinical line and shows no button — which is the honest outcome, not a failure.
+ *
+ * It costs one check run per distinct offered moiety, cached and capped. That cost is paid on the
+ * PRECHECK only: the issue path gates, and a gate does not need to suggest anything.
+ */
+const MAX_OFFERS_VETTED = 6;
+
+async function vetOffers(
+  db: Db, patientId: string, lines: RxLine[], hits: DrugDiseaseHit[], now: Date,
+  opts: { excludeEncounterId?: string },
+): Promise<DrugDiseaseHit[]> {
+  const verdict = new Map<string, boolean>();
+  let vetted = 0;
+
+  const survives = async (hit: DrugDiseaseHit, offer: DrugDiseaseAlternative): Promise<boolean> => {
+    const key = `${String(hit.lineIndex)}|${offer.moiety}`;
+    const cached = verdict.get(key);
+    if (cached !== undefined) return cached;
+    if (vetted >= MAX_OFFERS_VETTED) return false;
+    vetted += 1;
+
+    const swapped = lines.map((line, i) => i !== hit.lineIndex
+      ? line
+      // The offer names a MOIETY, so the id of the drug being replaced must go with the text; a
+      // stale medicineId would have the engine check the drug we are trying to get rid of.
+      : { ...line, drug: offer.moiety, medicineId: undefined });
+    const after = await runRxChecks(db, patientId, swapped, now, opts);
+    const clean = after.allergyMatches.every((m) => m.lineIndex !== hit.lineIndex)
+      && after.interactions.every((h) => h.lineIndex !== hit.lineIndex || h.severity !== "severe")
+      && after.duplicates.every((h) => h.lineIndex !== hit.lineIndex || !h.hard)
+      && after.drugDisease.every((h) => h.lineIndex !== hit.lineIndex || h.severity !== "severe");
+    verdict.set(key, clean);
+    return clean;
+  };
+
+  const vettedHits: DrugDiseaseHit[] = [];
+  for (const hit of hits) {
+    const kept: DrugDiseaseAlternative[] = [];
+    for (const offer of hit.alternatives) {
+      if (await survives(hit, offer)) kept.push(offer);
+    }
+    vettedHits.push({ ...hit, alternatives: kept });
+  }
+  return vettedHits;
+}
+
+/**
  * The pre-check route's function. It authorises exactly as the issue path does — the same
  * encounter lookup and the same treating-doctor check — because the answer describes what this
  * patient is taking, and "it only reads" has never been a reason to skip an authorisation.
@@ -361,10 +419,13 @@ export async function precheckPrescription(
   if (!encounter) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
   await requireTreatingDoctor(db, actor, encounter);
   const checks = await runRxChecks(db, encounter.patientId, lines, now, { excludeEncounterId: encounterId });
+  const drugDisease = await vetOffers(
+    db, encounter.patientId, lines, checks.drugDisease, now, { excludeEncounterId: encounterId },
+  );
   return {
     allergyMatches: checks.allergyMatches,
     interactions: checks.interactions,
-    drugDisease: checks.drugDisease,
+    drugDisease,
     duplicates: checks.duplicates,
     unresolvedLineIndexes: checks.unresolvedLineIndexes,
     unreviewedLineIndexes: checks.unreviewedLineIndexes,
