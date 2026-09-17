@@ -730,6 +730,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        */
       "staff.reports.read",
       "staff.reports.history.full",
+      // PHARMACY P17 — the Schedule H1 register, and its unredacted copy for an inspector: the
+      // licensee answers for the register.
+      "pharmacy.register.read",
+      "pharmacy.register.read_sealed",
     ],
   },
   {
@@ -788,6 +792,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // lines up, applied to a definition instead of a patient.
       "ot.definitions.read",
       "ot.definitions.manage",
+      // PHARMACY P17 — the administrative head answers the drug inspector too.
+      "pharmacy.register.read",
+      "pharmacy.register.read_sealed",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -1414,6 +1421,17 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "patients.read",
       "formulary.read",
     ],
+  },  /**
+   * PHARMACY P17 — THE PHARMACIST IN CHARGE, held IN ADDITION to `pharmacy`. The pharmacist named on
+   * the drug licence maintains the statutory registers and produces them to the inspector, so the
+   * unredacted H1 copy is theirs; every other pharmacist reads the sealed rows as the alias.
+   */
+  {
+    roleKey: "pharmacy_incharge",
+    permissions: [
+      "pharmacy.register.read",
+      "pharmacy.register.read_sealed",
+    ],
   },
 ];
 
@@ -1658,6 +1676,7 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   lab_bridge: "Laboratory instrument bridge (a MACHINE account: asks what to run on a tube and posts what it measured; holds nothing else)",
   // PLAN 16c T1 — the aide's title names the one thing the role cannot do.
   pharmacy_assistant: "Pharmacy Assistant (claims, picks and labels; completes NO Schedule H/H1 dispense)",
+  pharmacy_incharge: "Pharmacist in Charge (held with pharmacy; the unredacted H1 register for the inspector)",
 };
 
 /** The title for a model role key. Throws rather than inventing one — an unresolved role is a defect. */

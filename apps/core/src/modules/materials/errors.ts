@@ -178,7 +178,17 @@ export type MaterialsErrorCode =
   /** The sheet's time is before the freeze or after the submission. */
   | "invalid_count_time"
   | "count_not_submitted"
-  | "reason_required";
+  | "reason_required"
+  // ── Plan 14c, second slice: adjustments ──
+  /** Only a variance line of a submitted or closed count is booked; a match has nothing to book. */
+  | "nothing_to_adjust"
+  /** A line flagged for recount is booked from its recount, never from the count that flagged it. */
+  | "recount_pending"
+  | "already_requested"
+  /** The reason does not fit the direction: `found` books stock on, the loss reasons write it off. */
+  | "invalid_adjustment_reason"
+  | "adjustment_unapproved"
+  | "unknown_adjustment";
 
 /**
  * 404 for a thing that is not there, 409 for a state conflict the caller can act on.
@@ -193,7 +203,7 @@ export type MaterialsErrorCode =
  */
 const NOT_FOUND_CODES = new Set<MaterialsErrorCode>([
   "unknown_item", "unknown_vendor", "unknown_store", "unknown_batch",
-  "unknown_document", "unknown_count",
+  "unknown_document", "unknown_count", "unknown_adjustment",
 ]);
 
 export function materialsHttpStatus(code: MaterialsErrorCode): number {

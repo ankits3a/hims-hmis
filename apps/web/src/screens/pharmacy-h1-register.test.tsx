@@ -50,7 +50,7 @@ describe("PharmacyH1Register (P9)", () => {
     const sealed = screen.getByTestId("h1-row-42");
     expect(sealed).toHaveTextContent("19-08-2026 00:15");
     expect(sealed).toHaveTextContent("Patient R-17(sealed record)");
-    expect(screen.getByText(/unredacted copy needs the patients.confidential.read grant/)).toBeInTheDocument();
+    expect(screen.getByText(/printed by the pharmacist in charge, the medical superintendent or the owner/)).toBeInTheDocument();
     expect(screen.getByText("Period: 01-08-2026 to 31-08-2026")).toBeInTheDocument();
     expect(screen.getByText(/Drug licence no\./)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Print register" })).toBeEnabled();

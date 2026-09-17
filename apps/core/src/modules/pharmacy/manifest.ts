@@ -50,6 +50,11 @@ export const pharmacyManifest: ModuleManifest = {
      * and what they were given. The pharmacist's, not the aide's.
      */
     "pharmacy.register.read",
+    /**
+     * P17 — the same register with a sealed patient's real name and address: the copy an inspector
+     * is handed. The pharmacist in charge, the medical superintendent and the owner.
+     */
+    "pharmacy.register.read_sealed",
   ],
   /** T3 — D10: the Rx is at the counter before the patient is. Handler, worker install and census landed in the same commit. */
   subscriptions: [{ event: "prescription.issued", consumer: PHARMACY_RX_ISSUED_CONSUMER }],

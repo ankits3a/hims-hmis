@@ -8,6 +8,7 @@ import {
   scheduleCount, submitCount,
 } from "../lib/materials-api";
 import { todayIst } from "../lib/opd-api";
+import { CountAdjustments } from "../components/count-adjustments";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { WireCountHeader } from "../lib/materials-api";
@@ -234,6 +235,7 @@ export function MaterialsCounts(): React.ReactElement {
                   </tbody>
                 </table>
               </div>
+              <CountAdjustments review={review.data} />
               {review.data.status === "submitted" && (
                 <div className="flex flex-wrap items-end gap-2 text-sm">
                   <label>{t("materialsCounts.closeNote")}

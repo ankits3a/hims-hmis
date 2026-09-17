@@ -1245,19 +1245,24 @@ hold a current registration on that register, whatever role the login carries.
 pharmacist cancels the billed dispense, credits its invoice in full and files the refund request.
 The payout is still the cashier's, behind billing's approval, so `pharmacy` does not gain
 `billing.refund.pay`.
+**Pharmacy P17 decides who may print the H1 register with a sealed patient's real name.**
+`pharmacy.register.read_sealed` goes to the new role `pharmacy_incharge` (the pharmacist named on
+the drug licence, held with `pharmacy`), and to `owner` and `medical_superintendent`, who also gain
+`pharmacy.register.read`. Every sealed row they read is logged as a sealed PHI access.
 **Pharmacy P9 gives the Schedule H1 register a reader.** `pharmacy.register.read` goes to `pharmacy`
 alone, because the register lists patients by name and what they were given. It reads at most a
 month at a time, logs one PHI access row per patient shown, and keeps a sealed patient's name
 behind `patients.confidential.read`.
 
-| Permission | pharmacy | pharmacy_assistant |
-|---|---|---|
-| `pharmacy.dispense.place` | ✓ | ✓ |
-| `pharmacy.dispense.read` | ✓ | ✓ |
-| `pharmacy.dispense.scheduled` | ✓ | |
-| `pharmacy.sale_items.manage` | ✓ | |
-| `pharmacy.pharmacists.manage` | ✓ | |
-| `pharmacy.register.read` | ✓ | |
+| Permission | pharmacy | pharmacy_assistant | pharmacy_incharge |
+|---|---|---|---|
+| `pharmacy.dispense.place` | ✓ | ✓ | |
+| `pharmacy.dispense.read` | ✓ | ✓ | |
+| `pharmacy.dispense.scheduled` | ✓ | | |
+| `pharmacy.sale_items.manage` | ✓ | | |
+| `pharmacy.pharmacists.manage` | ✓ | | |
+| `pharmacy.register.read` | ✓ | | ✓ |
+| `pharmacy.register.read_sealed` | | | ✓ |
 
 Ten grants are held outside that table. **`pharmacy` gains the kernel's `orders.place`,
 `orders.read` and `orders.cancel`** because the claim at the counter PLACES the `medication` order

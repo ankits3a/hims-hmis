@@ -84,6 +84,10 @@ export { MaterialsController } from "./materials.controller";
 export { MaterialsModule } from "./materials.module";
 export { expiringBatches, sweepBatchExpiry, thresholdToAnnounce } from "./expiry";
 /** Plan 14c, first slice — blind counts and the variance register. No adjustment (runbook O1). */
+/** Plan 14c, second slice — booking a count's variance with a second key. */
+export { ADJUSTMENT_REASONS, listAdjustments, postAdjustments, requestCountAdjustment } from "./adjustments";
+export type { AdjustmentReason, AdjustmentView } from "./adjustments";
+export { STOCK_ADJUSTMENT_APPROVAL_TYPE } from "./approval-types";
 export { cancelCount, closeCount, countSheet, countVariancesBetween, getCount, listCounts, myCounts, scheduleCount, submitCount } from "./counts";
 export type { CountFlag, CountHeader, CountReview, CountReviewLine, CountSheet, CountSheetLine, CountStatus, SubmitCountInput } from "./counts";
 export type { ExpiringBatch } from "./expiry";

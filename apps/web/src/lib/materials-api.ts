@@ -328,3 +328,21 @@ export async function closeCount(id: string, note: string): Promise<WireCountHea
 export async function cancelCount(id: string, reason: string): Promise<WireCountHeader> {
   return api<WireCountHeader>("POST", `/materials/counts/${encodeURIComponent(id)}/cancel`, { reason });
 }
+
+// ── Plan 14c, second slice — booking a count's variance with a second key ──
+export type AdjustmentReason = "shrinkage" | "damage" | "expiry" | "entry_error" | "found";
+export type WireAdjustment = {
+  id: string; countId: string; countLineId: string; batchId: string; batchNo: string; itemId: string; itemCode: string;
+  qtyDelta: number; valuePaise: number; reasonCode: AdjustmentReason; note: string | null;
+  approvalId: string; approvalStatus: string; status: "requested" | "posted" | "refused";
+  requestedBy: string; requestedAt: string; postedAt: string | null; ledgerEntryId: string | null;
+};
+export async function requestAdjustment(countId: string, body: { lines: { lineId: string; reasonCode: AdjustmentReason }[]; note?: string }): Promise<{ approvalId: string; adjustments: WireAdjustment[] }> {
+  return api("POST", `/materials/counts/${encodeURIComponent(countId)}/adjustments`, body);
+}
+export async function fetchAdjustments(countId: string): Promise<WireAdjustment[]> {
+  return (await api<{ items: WireAdjustment[] }>("GET", `/materials/counts/${encodeURIComponent(countId)}/adjustments`)).items;
+}
+export async function postAdjustment(approvalId: string): Promise<{ posted: number; refused: number }> {
+  return api("POST", `/materials/adjustments/${encodeURIComponent(approvalId)}/post`, {});
+}

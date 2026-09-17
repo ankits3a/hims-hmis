@@ -518,6 +518,17 @@ describe("materials over HTTP (Plan 14 T8)", () => {
     expect((closed.body as { status: string }).status).toBe("closed");
     const refused = await as(head.token)(request(server()).post(`/materials/counts/${count.id}/close`).send({ note: "again" })).expect(409);
     expect((refused.body as { code: string }).code).toBe("count_not_submitted");
+
+    // 14c, second slice — the head asks to book the variance; nothing posts before the approval.
+    const line = (review.body as { lines: { lineId: string }[] }).lines[0]!.lineId;
+    await as(keeper.token)(request(server()).post(`/materials/counts/${count.id}/adjustments`).send({ lines: [{ lineId: line, reasonCode: "shrinkage" }] })).expect(403);
+    await as(head.token)(request(server()).post(`/materials/counts/${count.id}/adjustments`).send({ lines: [{ lineId: line, reasonCode: "stolen" }] })).expect(400);
+    const asked = await as(head.token)(request(server()).post(`/materials/counts/${count.id}/adjustments`).send({ lines: [{ lineId: line, reasonCode: "shrinkage" }] })).expect(201);
+    const approvalId = (asked.body as { approvalId: string }).approvalId;
+    const listed = await as(head.token)(request(server()).get(`/materials/counts/${count.id}/adjustments`)).expect(200);
+    expect((listed.body as { items: unknown[] }).items).toMatchObject([{ qtyDelta: -2, valuePaise: -1800, status: "requested", approvalStatus: "pending" }]);
+    const early = await as(head.token)(request(server()).post(`/materials/adjustments/${approvalId}/post`).send({})).expect(409);
+    expect((early.body as { code: string }).code).toBe("adjustment_unapproved");
   });
 
   /** DD13's read, mounted. Plan 15 calls exactly this to compose a discharge bill. */

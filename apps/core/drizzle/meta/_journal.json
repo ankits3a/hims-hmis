@@ -708,6 +708,13 @@
       "when": 1789600627776,
       "tag": "0100_materials_stock_counts",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1789628327640,
+      "tag": "0101_materials_stock_adjustments",
+      "breakpoints": true
     }
   ]
 }

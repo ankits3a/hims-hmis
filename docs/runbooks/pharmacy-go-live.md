@@ -298,7 +298,7 @@ still a daily query.
 | `dispense.cancelled` with an expiry reason | abandoned picks; if this is high, the 30-minute sweep is surprising people |
 | `batch_expired_before_collection` refusals | paid-and-uncollected; each one is a credit note somebody must raise |
 | `short_stock` refusals per item | the stock-out list |
-| a **blind count** of `PHARM-OPD` each week (`/materials/counts`, scheduled by the materials head, counted by a storekeeper) | the ledger and the shelf agreeing, line by line, with sales during the count reconciled |
+| a **blind count** of `PHARM-OPD` each week (`/materials/counts`, scheduled by the materials head, counted by a storekeeper) | the ledger and the shelf agreeing, line by line, with sales during the count reconciled. A variance is booked only after the medical superintendent approves it (the head asks on the count's review; the MS decides in the approvals inbox; the head books it) |
 
 **Close the window when the last three are empty for a week.**
 
@@ -358,19 +358,24 @@ No migration is reversed and no table is dropped.
 IPD indents and ward stock; NDPS and Schedule X custody; returns of cold-chain, frozen and
 narcotic items (sealed ambient packs come back since P6, §3.11; a billed dispense never collected is
 cancelled with a refund since P5, §3.10); cold chain; antimicrobial stewardship; the doctor ping on a held line; walk-in
-retail and outside prescriptions; repeat dispensing; home delivery; stock ADJUSTMENT after a count
-(blind counts and the variance review exist since Plan 14c's first slice, at `/materials/counts`;
-writing a variance off waits for runbook O1's second key); a Replenishment agent
+retail and outside prescriptions; repeat dispensing; home delivery; a Replenishment agent
 that ORDERS (P4 and P8 give the reorder list, a read that proposes and moves nothing); realtime on
 the counter (it polls every 10 s).
 
 **The H1 register has a reader since P9.** `/pharmacy/registers/h1` shows a month of it, in the
 order the entries were written, and prints it with the rule, the period, a line for the drug licence
-number and the pharmacist's signature. It needs `pharmacy.register.read` (the `pharmacy` role).
-Every patient it shows is logged as a PHI access. **A sealed patient's name and address are
-withheld** unless the reader also holds `patients.confidential.read`, which no role holds. Handing
-an inspector an unredacted copy is therefore the owner's grant to the pharmacist in charge, made
-deliberately. Until then, the sealed rows print as the alias, marked "sealed record".
+number and the pharmacist's signature. It needs `pharmacy.register.read` (the `pharmacy` role, the
+pharmacist in charge, the medical superintendent and the owner). Every patient it shows is logged as
+a PHI access.
+
+**Who prints the unredacted copy (P17).** A sealed patient's name and address print only for
+holders of `pharmacy.register.read_sealed`:
+- the pharmacist in charge (role `pharmacy_incharge`, held with `pharmacy`), who is named on the
+  drug licence and produces the register to the inspector;
+- the medical superintendent;
+- the owner.
+Every sealed row they read is logged as a sealed access. Other pharmacists see the alias, marked
+"sealed record". To let the `admin` login print it, give `admin` the `owner` role at `/admin/users`.
 
 **The patient's copy of the bill is printed at the counter since P10.** A billed or handed-over
 dispense shows **Print bill**. It opens billing's own printed invoice (letterhead, lines, tax heads,
