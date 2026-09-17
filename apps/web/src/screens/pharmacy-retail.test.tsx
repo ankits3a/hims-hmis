@@ -84,6 +84,17 @@ describe("PharmacyRetail (P19)", () => {
     expect(screen.getByText("No walk-in sale yet today.")).toBeInTheDocument();
   });
 
+  it("lists the day's sales in the hospital's time", async () => {
+    mockRoutes({
+      "GET /api/pharmacy/retail/state": { status: 200, body: CURRENT },
+      "GET /api/pharmacy/retail/sales": { status: 200, body: { items: [
+        { id: "s1", soldAt: "2026-09-17T09:00:00.000Z", soldBy: "u", invoiceId: "inv-1", invoiceNo: "INV-26-000123", netPaise: 12000, scheduled: true, lineCount: 1, registeredHere: false },
+      ] } },
+    });
+    renderWithProviders(<PharmacyRetail />);
+    expect(await screen.findByTestId("retail-row-s1")).toHaveTextContent("14:30INV-26-000123₹120.00on prescription");
+  });
+
   it("registers a new customer, prices the cart, takes cash with change, and offers the bill", async () => {
     mockRoutes({
       "GET /api/pharmacy/retail/state": { status: 200, body: CURRENT },

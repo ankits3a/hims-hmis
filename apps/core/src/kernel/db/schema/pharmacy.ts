@@ -317,13 +317,21 @@ export const pharmacyRetailLicences = pgTable(
 /**
  * One walk-in sale: sold, billed and handed over in one act. The outside prescription's fields are
  * present exactly when a line is Schedule H or H1 (`scheduled`).
+ *
+ * PHARMACY P20 — the same record holds a PAPER DISPENSE entered after an outage (`channel`
+ * `downtime`): the medicine left on paper, at either counter, while the screens were dark, and it
+ * can no longer be attached to an order. Its `sold_at` is the time written on the sheet, `sold_by`
+ * is the pharmacist who handed it over, `entered_by` is who typed it in, and the kit sheet it was
+ * written on is named, once. A walk-in sale needs the retail licence; an OPD counter sheet does not.
  */
 export const pharmacyRetailSales = pgTable(
   "pharmacy_retail_sales",
   {
     id: text("id").primaryKey(),
     storeResourceId: text("store_resource_id").notNull().references(() => resources.id),
-    licenceId: text("licence_id").notNull().references(() => pharmacyRetailLicences.id),
+    /** `walk_in` (P19) or `downtime` (P20). */
+    channel: text("channel").notNull().default("walk_in"),
+    licenceId: text("licence_id").references(() => pharmacyRetailLicences.id),
     patientId: text("patient_id").notNull().references(() => patients.id),
     /** The customer was registered by this sale. */
     registeredHere: boolean("registered_here").notNull().default(false),
@@ -339,10 +347,23 @@ export const pharmacyRetailSales = pgTable(
     pharmacistRegNo: text("pharmacist_reg_no"),
     soldBy: text("sold_by").notNull().references(() => users.id),
     soldAt: timestamp("sold_at", { withTimezone: true }).notNull(),
+    /** P20 — who entered the row; the seller for a walk-in sale. */
+    enteredBy: text("entered_by").references(() => users.id),
+    /** P20 — the downtime kit sheet (a `receipt` form) the paper dispense was written on. */
+    downtimeKitId: text("downtime_kit_id"),
+    downtimeSerial: integer("downtime_serial"),
+    downtimeDesk: text("downtime_desk"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex("pharmacy_retail_sales_invoice_ux").on(t.invoiceId),
+    uniqueIndex("pharmacy_retail_sales_sheet_ux").on(t.downtimeKitId, t.downtimeSerial).where(sql`${t.downtimeKitId} is not null`),
+    check("pharmacy_retail_sales_channel_ck", sql`${t.channel} in ('walk_in', 'downtime')`),
+    check("pharmacy_retail_sales_licence_ck", sql`${t.channel} <> 'walk_in' or ${t.licenceId} is not null`),
+    check(
+      "pharmacy_retail_sales_sheet_ck",
+      sql`(${t.channel} = 'downtime') = (${t.downtimeKitId} is not null and ${t.downtimeSerial} is not null and ${t.downtimeDesk} is not null and ${t.enteredBy} is not null)`,
+    ),
     index("pharmacy_retail_sales_sold_idx").on(t.soldAt),
     index("pharmacy_retail_sales_patient_idx").on(t.patientId),
     check(

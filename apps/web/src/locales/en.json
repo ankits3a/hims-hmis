@@ -71,7 +71,8 @@
     "materialsCounts": "Stock counts",
     "pharmacyLeakage": "Pharmacy leakage",
     "pharmacyRetail": "Walk-in sales",
-    "pharmacyRetailLicence": "Retail licence"
+    "pharmacyRetailLicence": "Retail licence",
+    "pharmacyDowntime": "Paper dispenses"
   },
   "palette": {
     "title": "Search",
@@ -3488,7 +3489,14 @@
     "registration_not_permitted": "You may sell but not register a customer — find them by mobile or UHID",
     "duplicate_suspected": "Someone already registered looks like this customer — pick them, or confirm this is someone new",
     "unknown_retail_sale": "No such walk-in sale",
-    "document_store_unavailable": "The prescription photo could not be saved, so nothing was sold — tell IT, then try again"
+    "document_store_unavailable": "The prescription photo could not be saved, so nothing was sold — tell IT, then try again",
+    "sheet_invalid": "This is not a receipt sheet from a downtime kit — scan the QR printed on the sheet the dispense was written on",
+    "sheet_already_entered": "This sheet has already been entered",
+    "invalid_dispense_time": "The time on the sheet must be after the kit was printed and not in the future",
+    "not_in_downtime": "The hospital was not in downtime at that time — a paper entry is only for a declared outage",
+    "backfill_window_closed": "This sheet is more than 7 days old — take it to the pharmacist in charge as an incident",
+    "batch_required": "Enter the batch written on the sheet for every line",
+    "unknown_pharmacist": "The person named as handing it over is not pharmacy staff"
   },
   "pharmacyCounter": {
     "partlyChecked": "Checked only in part",
@@ -4427,5 +4435,40 @@
     "none": "No licence recorded yet.",
     "latest": "Latest",
     "row": "Form 20 {{f20}} · Form 21 {{f21}} · {{from}} to {{to}} · {{pharmacist}}"
+  },
+  "pharmacyDowntime": {
+    "title": "Paper dispenses",
+    "intro": "Enter each dispense written on a downtime kit's receipt sheet while the screens were dark, within 7 days. Stock leaves the batch on the sheet at the time on the sheet; the bill is issued now.",
+    "sheet": "Sheet",
+    "scanSheet": "Scan the QR on the receipt sheet",
+    "check": "Check",
+    "sheetInvalid": "This is not a receipt sheet from a downtime kit.",
+    "sheetEntered": "Sheet {{serial}} has already been entered.",
+    "sheetOk": "Receipt sheet {{serial}} from {{desk}} — not yet entered.",
+    "counter": "Counter",
+    "store_opd": "OPD dispense counter",
+    "store_retail": "Walk-in counter",
+    "when": "Time on the sheet",
+    "by": "Handed over by",
+    "choose": "Choose…",
+    "notRegistered": "(no council registration)",
+    "someoneNew": "Someone new — enter",
+    "lines": "What left the counter",
+    "results": "Held at this counter",
+    "notHeld": "This counter holds no such medicine.",
+    "batch": "Batch…",
+    "batchOf": "Batch of {{name}}",
+    "billed": "The bill for this sheet: {{amount}}",
+    "allergyRecorded": "Recorded allergic to {{substance}}. This is recorded, not refused, because the medicine has already been taken: tell the pharmacist in charge.",
+    "rxTitle": "The prescription (for Schedule H and H1)",
+    "photo": "Photo of the sheet or the prescription",
+    "paid": "Paid (₹)",
+    "enter": "Enter this sheet",
+    "entered": "Sheet {{serial}} entered: bill {{invoice}}, {{amount}}.",
+    "stampSheet": "Write \"entered\" and the bill number on the sheet, and file it with the kit.",
+    "nextSheet": "Next sheet",
+    "recent": "Entered sheets",
+    "noneYet": "No paper dispense entered yet.",
+    "row": "{{desk}} #{{serial}} · {{when}} · bill {{invoice}} · {{amount}}"
   }
 }

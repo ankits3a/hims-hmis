@@ -110,6 +110,19 @@ export const PHARMACY_ERROR_CODES = [
    * sale is refused whole: a Schedule H sale without its prescription on file is not a sale.
    */
   "document_store_unavailable",
+  // ── P20: paper dispenses entered after an outage ──
+  /** Not a downtime kit's receipt sheet, or a serial the kit never reserved. */
+  "sheet_invalid",
+  "sheet_already_entered",
+  /** The time on the sheet is in the future, or before the kit was printed. */
+  "invalid_dispense_time",
+  /** The time on the sheet fell while the hospital was not in downtime or degraded mode. */
+  "not_in_downtime",
+  "backfill_window_closed",
+  /** A paper line must name the batch written on the sheet. */
+  "batch_required",
+  /** The person named as handing the medicine over is not pharmacy staff. */
+  "unknown_pharmacist",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -190,6 +203,13 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   duplicate_suspected: 409,
   unknown_retail_sale: 404,
   document_store_unavailable: 503,
+  sheet_invalid: 409,
+  sheet_already_entered: 409,
+  invalid_dispense_time: 400,
+  not_in_downtime: 409,
+  backfill_window_closed: 409,
+  batch_required: 400,
+  unknown_pharmacist: 409,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {

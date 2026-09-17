@@ -54,6 +54,7 @@ const SURFACE = [
   "addSalt",
   "admitStaging",
   "adoptDecisions",
+  "adoptInteractions", // P21 — interaction pairs adopted under a named resolution
   "attestSubstance",
   "catalogueCensus",
   "countSalts",

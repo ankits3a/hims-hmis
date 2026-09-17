@@ -34,6 +34,8 @@ export const pharmacyManifest: ModuleManifest = {
     /** P19 — the walk-in retail counter, and its Form 20/21 licence. */
     { label: "Walk-in sales", path: "/pharmacy/retail", permission: "pharmacy.retail.sell" },
     { label: "Retail licence", path: "/pharmacy/retail-licence", permission: "pharmacy.retail.manage" },
+    /** P20 — paper dispenses entered after an outage. */
+    { label: "Paper dispenses", path: "/pharmacy/downtime", permission: "pharmacy.downtime.enter" },
   ],
   permissions: [
     /** Claim a queued Rx at the counter, which places the `medication` order; verify, pick, bill. */
@@ -65,6 +67,8 @@ export const pharmacyManifest: ModuleManifest = {
     "pharmacy.retail.sell",
     /** P19 — record the retail store's Form 20/21 licence. The owner, the MS and the pharmacist in charge. */
     "pharmacy.retail.manage",
+    /** P20 — enter a dispense written on a downtime kit's sheet while the screens were dark. */
+    "pharmacy.downtime.enter",
   ],
   /** T3 — D10: the Rx is at the counter before the patient is. Handler, worker install and census landed in the same commit. */
   subscriptions: [{ event: "prescription.issued", consumer: PHARMACY_RX_ISSUED_CONSUMER }],

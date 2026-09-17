@@ -17,6 +17,12 @@ export const RETAIL_PHARMACY_STORE_CODE = "PHARM-RETAIL";
 /** P19 — the ledger's `ref_type` for a walk-in sale's `consume` row: `ref_id` is the sale LINE. */
 export const RETAIL_REF_TYPE = "pharmacy_retail_sale";
 
+/**
+ * PHARMACY P20 — how long after an outage a paper dispense may still be entered. A week covers a
+ * long outage and the weekend after it; an older sheet is an incident, not a backlog.
+ */
+export const DOWNTIME_BACKFILL_DAYS = 7;
+
 /** D2 — how long a pick holds a batch before the ledger may release it to somebody else. */
 export const PICK_RESERVATION_MINUTES = 30;
 

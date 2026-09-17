@@ -64,6 +64,9 @@ export {
  */
 export { adoptDecisions } from "./adoption";
 export type { AdoptionItem, AdoptionReport } from "./adoption";
+/** P21 — interaction pairs adopted from a reference under a named resolution. */
+export { adoptInteractions } from "./interaction-adoption";
+export type { InteractionAdoptionReport, InteractionRule } from "./interaction-adoption";
 export type {
   AttestTarget, MappingDecision, ProjectionResult, ProposalBasis, ProposalInput, ProposalWriteResult,
   WorklistItem, WorklistProposal, WorklistStatus,

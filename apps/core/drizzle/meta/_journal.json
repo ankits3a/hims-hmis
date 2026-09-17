@@ -722,6 +722,13 @@
       "when": 1789629653248,
       "tag": "0102_pharmacy_retail_sales",
       "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1789632288063,
+      "tag": "0103_pharmacy_paper_dispenses",
+      "breakpoints": true
     }
   ]
 }

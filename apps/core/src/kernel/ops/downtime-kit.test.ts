@@ -5,8 +5,9 @@ import { downtimeFormCounters, downtimeKitRanges, events } from "../db/schema";
 import { kitGenerated } from "./events";
 import {
   DOWNTIME_FORM_KINDS, DowntimeKitError, KIT_QR_PREFIX, LOCK_ORDER, generateDowntimeKit,
-  getKitPrintPayload, listDowntimeKits, verifyKitSerial,
+  getKitPrintPayload, kitSheetOf, listDowntimeKits, verifyKitSerial,
 } from "./downtime-kit";
+import { hmacSign } from "../crypto";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
 import type { DowntimeFormKind, DowntimeKitRange, DowntimeKitRequest } from "./downtime-kit";
@@ -280,6 +281,28 @@ describe("kernel ops — the downtime kit (11c D7/D9)", () => {
       for (const bad of ["", "dtk1", `${reg.qr}.extra`, reg.qr.replace("dtk1.", "dtk2."), reg.qr.slice(0, -1)]) {
         expect([bad, verifyKitSerial(KEY, bad)]).toEqual([bad, null]);
       }
+    });
+
+    /**
+     * PHARMACY P20 — a signature proves the kernel signed the payload, not that the serial was ever
+     * reserved. A recovery desk asks for the range too.
+     */
+    it("kitSheetOf finds the desk of a reserved sheet, and nothing for a serial outside every range, however well signed", async () => {
+      const k = await generate(kit([{ desk: "pharmacy-counter", counts: { receipt: 3 } }, { desk: "front-desk", counts: { receipt: 2 } }]));
+      const payload = await getKitPrintPayload(db, KEY, k.id);
+      const counter = payload.ranges.find((r) => r.desk === "pharmacy-counter")!;
+      const second = verifyKitSerial(KEY, counter.forms[1]!.qr)!;
+      expect(await kitSheetOf(db, second)).toEqual({ ...second, desk: "pharmacy-counter", kitGeneratedAt: NOW });
+      const front = payload.ranges.find((r) => r.desk === "front-desk")!;
+      expect((await kitSheetOf(db, verifyKitSerial(KEY, front.forms[0]!.qr)!))?.desk).toBe("front-desk");
+
+      // Serial 99 of this kit, signed with the real key: it verifies, and no range holds it.
+      const forged = `${KIT_QR_PREFIX}.${k.id}.receipt.99`;
+      const verified = verifyKitSerial(KEY, `${forged}.${hmacSign(KEY, forged)}`);
+      expect(verified).toEqual({ kitId: k.id, formKind: "receipt", serial: 99 });
+      expect(await kitSheetOf(db, verified!)).toBeNull();
+      // The right serial under the wrong kind is not the sheet either.
+      expect(await kitSheetOf(db, { ...second, formKind: "registration" })).toBeNull();
     });
 
     it("every sheet in a kit carries its own verifiable QR — the whole print run, not a sample", async () => {

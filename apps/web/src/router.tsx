@@ -65,6 +65,7 @@ import { PharmacyH1Register } from "./screens/pharmacy-h1-register";
 import { PharmacyLeakage } from "./screens/pharmacy-leakage";
 import { PharmacyRetail } from "./screens/pharmacy-retail";
 import { PharmacyRetailLicence } from "./screens/pharmacy-retail-licence";
+import { PharmacyDowntime } from "./screens/pharmacy-downtime";
 import { RadiologyReception } from "./screens/radiology-reception";
 import { RadiologyWorklist } from "./screens/radiology-worklist";
 import { RadiologyStudy } from "./screens/radiology-study";
@@ -280,6 +281,8 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   // PHARMACY P19 — the walk-in retail counter, and the licence that opens it.
   { to: "/pharmacy/retail", label: "nav.pharmacyRetail", permission: "pharmacy.retail.sell", group: "opd" },
   { to: "/pharmacy/retail-licence", label: "nav.pharmacyRetailLicence", permission: "pharmacy.retail.manage", group: "stores" },
+  // PHARMACY P20 — entering what left on paper while the screens were dark.
+  { to: "/pharmacy/downtime", label: "nav.pharmacyDowntime", permission: "pharmacy.downtime.enter", group: "stores" },
 ];
 
 /**
@@ -896,6 +899,13 @@ const pharmacyRetailLicenceRoute = createRoute({
   component: PharmacyRetailLicence,
 });
 
+/** PHARMACY P20 — paper dispenses. Path matches `pharmacyManifest.menu`. */
+const pharmacyDowntimeRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/downtime",
+  component: PharmacyDowntime,
+});
+
 const labDeskRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/lab/desk",
@@ -1237,7 +1247,7 @@ export const router = createRouter({
       // PLAN 16c T5 — 45 -> 47, the pharmacy: the dispense counter and the sale-items admin. TWO routes
       // and two NAV links. `caddyfile-parity.test.ts` pins the count and joins this task's Files list.
       pharmacyCounterRoute, pharmacyItemsRoute, pharmacyPharmacistsRoute, pharmacyReorderRoute, pharmacyH1RegisterRoute, materialsCountsRoute, pharmacyLeakageRoute,
-      pharmacyRetailRoute, pharmacyRetailLicenceRoute,
+      pharmacyRetailRoute, pharmacyRetailLicenceRoute, pharmacyDowntimeRoute,
       // PHASE 11i T9 — 50 -> 53, and every one of the three is a REDIRECT with no screen. They exist
       // because the catch-up deploy deletes three paths production has been serving since
       // 2 September and the desk PCs have them bookmarked. Removed in the release after the

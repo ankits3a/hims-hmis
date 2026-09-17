@@ -142,8 +142,8 @@ describe("walk-in retail sales (P19)", () => {
     expect(sold).toHaveLength(1);
     expect(sold[0]!.payload).toMatchObject({ saleId: sale.id, registeredHere: true, scheduled: false, h1RegisterRows: 0, lines: [{ ledgerEntryId: ledger!.id }] });
 
-    // A retried request is the same sale.
-    const again = await sellRetail(db, docs, fx.pharmacist.actor, { customer: newCustomer(), lines, tenders: [{ mode: "cash", amountPaise: 12000 }] }, "k-1", MON);
+    // A retried request is the same sale, even a moment later (the clock is the server's, not the request's).
+    const again = await sellRetail(db, docs, fx.pharmacist.actor, { customer: newCustomer(), lines, tenders: [{ mode: "cash", amountPaise: 12000 }] }, "k-1", new Date(MON.getTime() + 5_000));
     expect(again.id).toBe(sale.id);
     expect(await db.select().from(pharmacyRetailSales)).toHaveLength(1);
 

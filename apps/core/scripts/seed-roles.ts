@@ -465,6 +465,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // `sellRetail` asserts `patients.register` itself, and only on the branch that registers.
       "pharmacy.retail.sell",
       "patients.register",
+      // PHARMACY P20 — a pharmacist enters the paper dispenses written while the screens were dark.
+      "pharmacy.downtime.enter",
       "orders.place",
       "orders.read",
       "orders.cancel",
