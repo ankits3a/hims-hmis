@@ -10,7 +10,7 @@ import { ALL_MANIFESTS } from "../../kernel/modules/manifests";
 import { cancelCount, closeCount, countSheet, getCount, scheduleCount, submitCount } from "./counts";
 import { registerItem } from "./items";
 import { balances, postMovement } from "./ledger";
-import { createStore, ensureTransitStore } from "./stores";
+import { createStore, ensureTransitStore, setStoreCustodianRoles } from "./stores";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -224,6 +224,15 @@ describe("blind stock counts (Plan 14c, first slice)", () => {
     // today, and that makes them a custodian as much as a movement dated today would.
     await move(keeper.actor, again.resourceId, a1, 5, "grn", new Date(T0.getTime() - 60 * DAY));
     await expect(scheduleCount(db, head.actor, { storeResourceId: again.resourceId }, T0)).rejects.toMatchObject({ code: "no_eligible_counter" });
+
+    // A department's staff keep its store whether or not they posted today: the store says whose it
+    // is, and those roles never count it. WARD-B's stock was moved by the head alone.
+    const wardB = await withTx(db, (tx) => createStore(tx, head.actor, { code: "WARD-B", name: "Ward B" }));
+    await move(head.actor, wardB.resourceId, a1, 5, "grn", T0);
+    await withTx(db, (tx) => setStoreCustodianRoles(tx, head.actor, wardB.resourceId, ["storekeeper", "pharmacy_assistant"]));
+    await expect(scheduleCount(db, head.actor, { storeResourceId: wardB.resourceId }, T0)).rejects.toMatchObject({ code: "no_eligible_counter" });
+    await withTx(db, (tx) => setStoreCustodianRoles(tx, head.actor, wardB.resourceId, ["storekeeper"]));
+    await expect(scheduleCount(db, head.actor, { storeResourceId: wardB.resourceId }, T0)).resolves.toMatchObject({ counterUserId: aide.id });
 
     const transit = await withTx(db, (tx) => ensureTransitStore(tx));
     await expect(scheduleCount(db, head.actor, { storeResourceId: transit }, T0)).rejects.toMatchObject({ code: "not_countable" });

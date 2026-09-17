@@ -1,5 +1,5 @@
 import { and, asc, eq, ne, sql } from "drizzle-orm";
-import { createResource } from "../../kernel/resources/registry";
+import { createResource, updateResource } from "../../kernel/resources/registry";
 import { collectResourceKinds } from "../../kernel/resources/kinds";
 import { resources } from "../../kernel/db/schema";
 import { MATERIALS_RESOURCE_KINDS } from "./kinds";
@@ -63,6 +63,27 @@ export async function createStore(
     parentId: input.parentId ?? null,
     siteId: input.siteId,
     attributes: input.attributes,
+  });
+}
+
+/**
+ * ═══ COUNTS — WHOSE STORE IT IS (14c, found by the 2026-09-17 rehearsal) ═══
+ *
+ * The ledger names who MOVED stock at a store, but a department's staff keep its store whether or
+ * not they posted a movement this month: the pharmacist in charge is accountable for the pharmacy's
+ * shelf on a day they dispensed nothing. So a store may name its custodian ROLES in
+ * `attributes.custodianRoles`, and a blind count never goes to a holder of one. `seed:pharmacy`
+ * names them for `PHARM-OPD`. The setter MERGES into the attributes, keeping every other key.
+ */
+export function storeCustodianRoles(store: Pick<StoreRow, "attributes">): string[] {
+  const raw = (store.attributes as Record<string, unknown>).custodianRoles;
+  return Array.isArray(raw) ? raw.filter((r): r is string => typeof r === "string" && r !== "") : [];
+}
+
+export async function setStoreCustodianRoles(tx: Tx, actor: Actor, storeId: string, roleKeys: readonly string[]): Promise<void> {
+  const store = await requireStore(tx, storeId);
+  await updateResource(tx, actor, STORE_KINDS, storeId, {
+    attributes: { ...(store.attributes as Record<string, unknown>), custodianRoles: [...new Set(roleKeys)].sort() },
   });
 }
 

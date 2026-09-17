@@ -3,7 +3,7 @@ import { createDb, withTx } from "../src/kernel/db/client";
 import { requireEnv } from "../src/kernel/config";
 import { seedSodPairs } from "../src/kernel/auth/sod";
 import { resources, sodPairs } from "../src/kernel/db/schema";
-import { createStore } from "../src/modules/materials";
+import { createStore, requireStore, setStoreCustodianRoles, storeCustodianRoles } from "../src/modules/materials";
 import { OPD_PHARMACY_STORE_CODE, activatePharmacyDefinitions } from "../src/modules/pharmacy";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../src/kernel/db/client";
@@ -22,7 +22,15 @@ import type { Db, Tx } from "../src/kernel/db/client";
  */
 const activator: Actor = { type: "user", id: "seed-pharmacy" };
 
-export type PharmacySeedResult = { storeId: string; created: string[]; found: string[]; definitions: { activated: string[]; alreadyActive: string[] } };
+export type PharmacySeedResult = {
+  storeId: string; created: string[]; found: string[];
+  /** 14c — the store's custodian roles were written on this run (a new store, or one seeded before them). */
+  custodiansSet: boolean;
+  definitions: { activated: string[]; alreadyActive: string[] };
+};
+
+/** 14c — the pharmacy's own staff keep `PHARM-OPD`, so a blind count of it never goes to them. */
+export const PHARMACY_CUSTODIAN_ROLES = ["pharmacy", "pharmacy_assistant"] as const;
 
 async function findStore(exec: Tx, code: string, siteId = "main"): Promise<string | undefined> {
   const rows = await exec.select({ id: resources.id }).from(resources)
@@ -41,9 +49,15 @@ export async function ensurePharmacyCounter(db: Db, actor: Actor): Promise<Pharm
     created.push(OPD_PHARMACY_STORE_CODE);
     return resourceId;
   });
+  const custodiansSet = await withTx(db, async (tx) => {
+    const have = storeCustodianRoles(await requireStore(tx, storeId));
+    if (PHARMACY_CUSTODIAN_ROLES.every((r) => have.includes(r))) return false;
+    await setStoreCustodianRoles(tx, actor, storeId, [...have, ...PHARMACY_CUSTODIAN_ROLES]);
+    return true;
+  });
   if ((await db.select({ k: sodPairs.pairKey }).from(sodPairs).limit(1)).length === 0) await seedSodPairs(db);
   const definitions = await activatePharmacyDefinitions(db, actor);
-  return { storeId, created, found, definitions };
+  return { storeId, created, found, custodiansSet, definitions };
 }
 
 async function main(): Promise<void> {

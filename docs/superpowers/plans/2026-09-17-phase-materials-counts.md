@@ -118,3 +118,36 @@ Without counts, three things have no detector:
 - The pharmacy leakage triangle report. It is the next slice and now has its third leg.
 - The aide's grant (C-8).
 - Printing the blank sheet is a browser print of the screen, not a server document.
+
+## 5. ADDENDUM — a store names its keepers (found by the 2026-09-17 rehearsal)
+
+**What the rehearsal found.** The deploy's seed sequence was run on a fresh dev-cluster database
+(`hmis_rehearsal_p13`, migrations through 0100), then the pharmacy demo shelf and four synthetic
+staff. A count of `PHARM-OPD` went to the **pharmacist in charge**.
+
+That is correct by C-1's ledger rule: the demo stock was received by the materials head, so the
+in-charge had moved nothing. It is wrong by the hospital's: the pharmacy's staff keep the
+pharmacy's shelf on a day they post nothing, and S10's pair is about the department.
+
+**Decision C-10.**
+- A store may name its custodian **roles** in `attributes.custodianRoles`. Every holder of one, at
+  any scope, is a custodian of that store, in addition to the ledger rule.
+- `seed:pharmacy` names `pharmacy` and `pharmacy_assistant` for `PHARM-OPD`. On an existing store
+  (production's) it merges them into the attributes on the next deploy, keeping every other key,
+  and reports `custodiansSet`.
+- `setStoreCustodianRoles` and `storeCustodianRoles` live in `materials/stores.ts`.
+
+**Proof.**
+- `counts.test.ts`: a store whose custodian roles cover every other counter refuses with
+  `no_eligible_counter`; with one role removed, it goes to the one remaining counter.
+- `seed-pharmacy.test.ts`: a new store is created with the roles, and an existing one gets them
+  with its other attributes intact.
+- 3 mutants, each with a written prediction, all killed: the roles ignored, the setter dropping
+  other keys, and a partial set taken as complete.
+- **Re-run on the rehearsal database:**
+  - `seed:pharmacy` reported `custodiansSet: true` on the existing store.
+  - Five schedules in a row all went to the storekeeper.
+  - A 16-line count (fresh and expired batches) submitted with one line 3 short: 1.5%, ₹7.50, a
+    variance and not a recount.
+  - The leakage report for the day shows `countVarianceUnits: -3`.
+  - The census reads 7 rows, 0 red, once a registration was filed.
