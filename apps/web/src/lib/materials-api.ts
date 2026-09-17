@@ -207,6 +207,40 @@ export async function fetchExpiring(): Promise<WireExpiringBatch[]> {
   return batches;
 }
 
+// ── the transfer screen (2026-09-17) ──
+export type WireTransferView = {
+  id: string; ref: string; status: "in_transit" | "received" | "discrepancy"; note: string | null;
+  from: { id: string; code: string; name: string }; to: { id: string; code: string; name: string };
+  issuedBy: { id: string; name: string }; issuedAt: string;
+  receivedBy: { id: string; name: string } | null; receivedAt: string | null;
+  lines: {
+    id: string; itemId: string; itemCode: string; itemName: string; baseUom: string;
+    batchId: string; batchNo: string; expiryDate: string | null;
+    qtyIssued: number; qtyReceived: number | null; discrepancyReason: string | null;
+  }[];
+};
+export async function fetchTransferWorklist(storeId?: string): Promise<{ awaiting: WireTransferView[]; recent: WireTransferView[] }> {
+  const q = storeId === undefined || storeId === "" ? "" : `?${new URLSearchParams({ storeId }).toString()}`;
+  return api<{ awaiting: WireTransferView[]; recent: WireTransferView[] }>("GET", `/materials/transfers/worklist${q}`);
+}
+/** What a store can give of an item now: on hand, less reserved and frozen, over every batch. */
+export async function fetchAvailableAt(resourceId: string, itemId: string): Promise<number> {
+  const { balances } = await api<{ balances: { qtyOnHand: number; qtyReserved: number; qtyFrozen: number }[] }>(
+    "GET", `/materials/stock/balances?${new URLSearchParams({ resourceId, itemId }).toString()}`,
+  );
+  return balances.reduce((sum, b) => sum + Math.max(0, b.qtyOnHand - b.qtyReserved - b.qtyFrozen), 0);
+}
+export async function issueTransfer(input: {
+  fromResourceId: string; toResourceId: string; note?: string; lines: { itemId: string; qtyBase: number }[];
+}): Promise<{ transferId: string; lines: { transferLineId: string; batchId: string; qtyIssued: number }[] }> {
+  return api("POST", "/materials/transfers", input);
+}
+export async function receiveTransfer(
+  transferId: string, lines: { lineId: string; qtyReceived: number }[],
+): Promise<{ status: string; shortfalls: { transferLineId: string; qtyShort: number }[] }> {
+  return api("POST", `/materials/transfers/${transferId}/receive`, { lines });
+}
+
 export async function fetchDiscrepancies(): Promise<WireTransfer[]> {
   const { transfers } = await api<{ transfers: WireTransfer[] }>("GET", "/materials/transfers/discrepancies");
   return transfers;

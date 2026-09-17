@@ -440,6 +440,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "materials.items.read",
       "materials.stock.read",
       "materials.grn.qc",
+      // THE TRANSFER SCREEN (2026-09-17) — the dispensary acknowledges what the stores sent to its
+      // shelf; `receiveStock` refuses the issuer and anyone who does not keep the destination.
+      "materials.stock.receive",
       // PLAN 16c T1 — THE DISPENSING COUNTER, +11. The four `pharmacy.*` strings are the counter's
       // own; `orders.place/read/cancel` because the claim PLACES the `medication` order (D1, the
       // `lab_reception` shape); and the four billing strings `lab_reception` holds for the same

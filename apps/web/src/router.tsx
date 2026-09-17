@@ -50,6 +50,7 @@ import { MaterialsItems } from "./screens/materials-items";
 import { MaterialsVendors } from "./screens/materials-vendors";
 import { MaterialsGrn } from "./screens/materials-grn";
 import { MaterialsCounts } from "./screens/materials-counts";
+import { MaterialsTransfers } from "./screens/materials-transfers";
 import { PartnerReceivables } from "./screens/partner-receivables";
 import { PartnerPnl } from "./screens/partner-pnl";
 import { OtList } from "./screens/ot-list";
@@ -239,6 +240,8 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   { to: "/materials/grn", label: "nav.materialsGrn", permission: "materials.stock.read", group: "stores" },
   // PLAN 14c, first slice — blind counts; the counter's grant opens it, the head's shows the review.
   { to: "/materials/counts", label: "nav.materialsCounts", permission: "materials.counts.perform", group: "stores" },
+  // 2026-09-17 — stock transfers: the stores send, the receiving store confirms. Read opens it.
+  { to: "/materials/transfers", label: "nav.materialsTransfers", permission: "materials.stock.read", group: "stores" },
   /**
    * PLAN 15 T8 — the mini-OT. Each path and permission matches `otManifest.menu`'s own entry
    * exactly, which is where the authoritative pairing lives and which `nav-parity.test.ts` now
@@ -872,6 +875,13 @@ const materialsCountsRoute = createRoute({
   component: MaterialsCounts,
 });
 
+/** 2026-09-17 — stock transfers. Path matches `materialsManifest.menu`. */
+const materialsTransfersRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/materials/transfers",
+  component: MaterialsTransfers,
+});
+
 /** PHARMACY P12 — the leakage triangle. Path matches `pharmacyManifest.menu`. */
 const pharmacyLeakageRoute = createRoute({
   getParentRoute: () => authedRoute,
@@ -1246,7 +1256,7 @@ export const router = createRouter({
       pcpndtFormFRoute, radiationSafetyRoute,
       // PLAN 16c T5 — 45 -> 47, the pharmacy: the dispense counter and the sale-items admin. TWO routes
       // and two NAV links. `caddyfile-parity.test.ts` pins the count and joins this task's Files list.
-      pharmacyCounterRoute, pharmacyItemsRoute, pharmacyPharmacistsRoute, pharmacyReorderRoute, pharmacyH1RegisterRoute, materialsCountsRoute, pharmacyLeakageRoute,
+      pharmacyCounterRoute, pharmacyItemsRoute, pharmacyPharmacistsRoute, pharmacyReorderRoute, pharmacyH1RegisterRoute, materialsCountsRoute, materialsTransfersRoute, pharmacyLeakageRoute,
       pharmacyRetailRoute, pharmacyRetailLicenceRoute, pharmacyDowntimeRoute,
       // PHASE 11i T9 — 50 -> 53, and every one of the three is a REDIRECT with no screen. They exist
       // because the catch-up deploy deletes three paths production has been serving since

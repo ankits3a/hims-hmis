@@ -22,7 +22,8 @@ import { balances, movementsFor, recallBatch } from "./ledger";
 import {
   captureGrn, getGrn, listGrns, postGrn, requestNearExpiryAcceptance, runGateQc,
 } from "./grn";
-import { getTransfer, issueStock, listDiscrepancies, listTransfers, receiveStock } from "./transfers";
+import { getTransfer, issueStock, listDiscrepancies, listTransfers, receiveStock, transferWorklist } from "./transfers";
+import type { TransferView } from "./transfers";
 import { consumptionsFor } from "./consumption";
 import { expiringBatches } from "./expiry";
 import { cancelCount, closeCount, countSheet, getCount, listCounts, myCounts, scheduleCount, submitCount } from "./counts";
@@ -698,6 +699,17 @@ export class MaterialsController {
       status: z.string().max(32).optional(), fromResourceId: id.optional(), toResourceId: id.optional(),
     }), query);
     return { transfers: await listTransfers(this.db, q) };
+  }
+
+  /**
+   * The transfer screen's read (2026-09-17): what awaits receipt and the latest moves, with store,
+   * item, batch and person names. `storeId` narrows both to one store.
+   */
+  @RequirePermission("materials.stock.read", "hospital")
+  @Get("transfers/worklist")
+  async transferBoard(@Query() query: unknown): Promise<{ awaiting: TransferView[]; recent: TransferView[] }> {
+    const q = parsed(z.object({ storeId: id.optional() }), query);
+    return transferWorklist(this.db, q);
   }
 
   @RequirePermission("materials.stock.read", "hospital")
