@@ -22,6 +22,8 @@ import { RxPrint } from "../components/rx-print";
 import { flagTone, provisionalResultsForEncounter, resultsForEncounter } from "../lib/lab-api";
 import { CheckboxField, FormKit, SelectField, TextField } from "../components/form-kit";
 import { PaperScreen, ScreenTitle } from "../components/paper-screen";
+import { useCopilot } from "../lib/use-copilot";
+import { CopilotReport } from "../components/copilot-report";
 import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
 import { DeskModal } from "../components/desk-modal";
@@ -1348,18 +1350,34 @@ export function OpdConsult(): React.ReactElement {
     apology — a doctor who asks something this screen cannot see is told so in one sentence, and can
     stop wondering whether the silence meant "no".
   */
-  const [agentAnswer, setAgentAnswer] = useState<string | null>(null);
   const [agentLog, setAgentLog] = useState<AgentLine[]>([]);
 
-  const agentState = useRef({ view, activeAllergies, latestVitals, advisedTests, restricted });
-  agentState.current = { view, activeAllergies, latestVitals, advisedTests, restricted };
+  const agentState = useRef({ view, activeAllergies, latestVitals, advisedTests, restricted, patient: patient.data?.patient ?? null });
+  agentState.current = { view, activeAllergies, latestVitals, advisedTests, restricted, patient: patient.data?.patient ?? null };
 
-  const ask = useCallback((question: string): void => {
+  /*
+    ═══ FD-COPILOT — THE DOCK NOW HAS REACH, AND THE PARAGRAPH ABOVE STILL HOLDS ═══
+
+    That header's rule — *"the dock reads, it never infers"* — is unchanged and is the reason this
+    chain survives intact rather than being replaced. What changed is what happens to a question it
+    cannot see: it used to end at `agent.cannot`, and now it goes to the copilot first, which can
+    answer from the hospital's own readers under THIS doctor's own permissions.
+
+    Nothing model-written reaches a prescriber by this route. The model, when one is configured,
+    picks a TOOL NAME from a closed menu; the tool runs a real query; the sentence comes from the
+    locale file. The five branches below still answer everything about the screen itself — the
+    queue, the allergies on file, what Bay One charted, what the doctor has typed — and those are
+    exactly the questions no server was asked.
+
+    The doctor's own seat (the toggles, the pre-read, the pending pile) is the brainstorm at
+    `docs/superpowers/brainstorms/2026-09-17-doctor-copilot/`. This is only its T2: reach.
+  */
+  const localAnswer = useCallback((question: string): string | null => {
     const q = question.toLowerCase();
     const st = agentState.current;
     const lines = rxForm.getValues("lines").filter((l) => l.drug.trim() !== "");
 
-    const answer = ((): string => {
+    return ((): string | null => {
       if (/queue|waiting|next|token|katar|line/.test(q)) {
         const v = st.view;
         if (v === null) return t("opdConsult.agent.noQueue");
@@ -1394,12 +1412,22 @@ export function OpdConsult(): React.ReactElement {
           ? t("opdConsult.agent.noAdvised")
           : t("opdConsult.agent.advised", { count: st.advisedTests.length });
       }
-      return t("opdConsult.agent.cannot");
+      return null;
     })();
-
-    setAgentAnswer(answer);
-    setAgentLog((l) => logged(l, question));
   }, [rxForm, t]);
+
+  const copilot = useCopilot({
+    /*
+      The patient in the room, masked BY VALUE before anything could leave. A doctor types the name
+      of the person in front of them more readily than their UHID, and this screen knows it.
+    */
+    terms: () => {
+      const p = agentState.current.patient;
+      return [p?.name, p?.uhid].filter((x): x is string => typeof x === "string" && x !== "");
+    },
+    fallback: localAnswer,
+    onNote: (text) => { setAgentLog((l) => logged(l, text)); },
+  });
 
   // ——— this screen's OWN shortcuts; lib/keyboard.tsx owns the global ones and is NOT touched ———
 
@@ -3158,7 +3186,10 @@ export function OpdConsult(): React.ReactElement {
         rather than a failure.
       */}
       <AgentDock
-        answer={agentAnswer} log={agentLog} onAsk={ask}
+        answer={copilot.answer} log={agentLog} onAsk={copilot.ask}
+        panel={copilot.report === null ? undefined : (
+          <CopilotReport report={copilot.report} onDismiss={copilot.dismissReport} />
+        )}
         placeholder={t("opdConsult.askPlaceholder")} idle={t("opdConsult.agentIdle")}
       />
     </PaperScreen>

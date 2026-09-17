@@ -24,6 +24,8 @@ import type {
 } from "../lib/billing-api";
 import { PaperScreen, ScreenTitle } from "../components/paper-screen";
 import { usePaletteOptional } from "../components/command-palette";
+import { useCopilot } from "../lib/use-copilot";
+import { CopilotReport } from "../components/copilot-report";
 import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
 import { listCoverages } from "../lib/patients-api";
@@ -222,7 +224,6 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
   /* FD-25 — the artboard's three keyed lanes; a nonce so pressing the same lane twice re-seeds. */
   const [lane, setLane] = useState<{ mode: TenderMode; amountPaise: number; nonce: number } | null>(null);
   const [log, setLog] = useState<AgentLine[]>([]);
-  const [answer, setAnswer] = useState<string | null>(null);
   // Line ids are per-counter and sequential: they are the key `discountApprovals` binds an approval
   // to, so they must be stable for the life of the draft and must not leak across bills.
   const lineSeq = useRef(0);
@@ -749,6 +750,58 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
 
   // ——— the printed invoice REPLACES the counter (exactly one `.print-doc` is ever mounted) ———
 
+  /*
+    ═══ FD-COPILOT — DECLARED ABOVE THE EARLY RETURN, WHICH IS WHY IT READS A MIRROR ═══
+
+    `useCopilot` is a hook and the receipt branch below returns before the counter's own state is
+    computed, so calling it where that state lives would make it a CONDITIONAL hook — React's rule,
+    and the linter caught it. `admin-users.tsx:230` already solved this exact shape: a `useRef`
+    mirror, written each render where the values exist, read by the fallback.
+
+    The benefit and the panel are facts about the QUOTE ON THIS SCREEN, which no server was asked
+    about, so they stay as they were and answer when the copilot does not recognise the question.
+    One collision worth naming: `"why"` is captured by the benefit branch, so "why is this panel…"
+    answers about discounts. The server sees the question first now, which NARROWS that rather than
+    curing it; curing it belongs with the other chains.
+  */
+  const agentState = useRef<{
+    benefitPaise: number;
+    panel: WireCoverage | null;
+    duesCount: number;
+    shown: { name: string | null; uhid: string; phone?: string | null } | null;
+  }>({ benefitPaise: 0, panel: null, duesCount: 0, shown: null });
+
+  const copilot = useCopilot({
+    /*
+      The person this counter is actually about — `shown` is the RESOLVED one, which FD-36 made the
+      single source after two roads could name two people. Their name goes to the masker by value,
+      so a cashier who types it never sends it anywhere.
+    */
+    terms: () => {
+      const { shown: who } = agentState.current;
+      return [who?.name, who?.uhid, who?.phone].filter((x): x is string => typeof x === "string" && x !== "");
+    },
+    fallback: (question: string): string | null => {
+      const q = question.trim().toLowerCase();
+      if (q === "") return null;
+      const st = agentState.current;
+      if (q.includes("benefit") || q.includes("discount") || q.includes("why")) {
+        return st.benefitPaise === 0
+          ? t("billingSeat.agent.noBenefit")
+          : t("billingSeat.agent.benefit", { amount: fmtPaise(st.benefitPaise) });
+      }
+      if (q.includes("panel") || q.includes("corporate") || q.includes("tpa")) {
+        return st.panel === null
+          ? t("billingSeat.agent.noPanel")
+          : t("billingSeat.agent.panel", { payer: st.panel.payerName ?? "—", id: st.panel.employeeId ?? st.panel.beneficiaryId ?? "—" });
+      }
+      if (q.includes("owe") || q.includes("due") || q.includes("outstanding")) {
+        return t("billingSeat.agent.dues", { count: st.duesCount });
+      }
+      return null;
+    },
+  });
+
   if (issued !== null) {
     /*
       Still populated: `setIssued` does not clear the field, and the reset below only runs when the
@@ -871,23 +924,21 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
     .find((c) => c.kind === "corporate" || c.kind === "tpa" || c.kind === "cghs" || c.kind === "esic") ?? null;
   const panelPays = quote?.intendedPayer !== undefined && quote.intendedPayer !== "self";
 
-  const ask = (question: string): void => {
-    const q = question.trim().toLowerCase();
-    if (q === "") return;
-    if (q.includes("benefit") || q.includes("discount") || q.includes("why")) {
-      setAnswer(benefitPaise === 0
-        ? t("billingSeat.agent.noBenefit")
-        : t("billingSeat.agent.benefit", { amount: fmtPaise(benefitPaise) }));
-    } else if (q.includes("panel") || q.includes("corporate") || q.includes("tpa")) {
-      setAnswer(panel === null
-        ? t("billingSeat.agent.noPanel")
-        : t("billingSeat.agent.panel", { payer: panel.payerName ?? "—", id: panel.employeeId ?? panel.beneficiaryId ?? "—" }));
-    } else if (q.includes("owe") || q.includes("due") || q.includes("outstanding")) {
-      setAnswer(t("billingSeat.agent.dues", { count: (dues.data?.dues ?? []).length }));
-    } else {
-      setAnswer(t("billingSeat.agent.scope"));
-    }
-  };
+  /*
+    ═══ FD-COPILOT — THIS COUNTER'S OWN STATE, NOW THE FALLBACK ═══
+
+    The benefit and the panel are facts about the QUOTE ON THIS SCREEN, which no server was asked
+    about, so they stay exactly as they were and run when the copilot does not recognise the
+    question. One consequence worth naming: `"why"` used to be captured by the benefit branch, so
+    "why is this panel…" answered about discounts. The server now sees the question first, and the
+    branch only gets what the catalog could not route — which narrows that collision rather than
+    curing it. Curing it belongs with the other nine chains.
+  */
+  /*
+    The mirror is filled HERE, where the values exist, and read by the fallback declared above the
+    early return. `admin-users.tsx` does exactly this for the same reason.
+  */
+  agentState.current = { benefitPaise, panel, duesCount: (dues.data?.dues ?? []).length, shown };
 
   const headerActions = (
     <>
@@ -1846,11 +1897,14 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
       </DeskModal>
 
       <AgentDock
-        answer={answer}
+        answer={copilot.answer}
         log={log}
-        onAsk={ask}
+        onAsk={copilot.ask}
         placeholder={t("billingSeat.agent.placeholder")}
         idle={t("billingSeat.agent.idle")}
+        panel={copilot.report === null ? undefined : (
+          <CopilotReport report={copilot.report} onDismiss={copilot.dismissReport} />
+        )}
       />
     </PaperScreen>
   );

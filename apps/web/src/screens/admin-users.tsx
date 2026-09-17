@@ -6,6 +6,8 @@ import { z } from "zod";
 import { useTranslation } from "react-i18next";
 import { FormKit, TextField } from "../components/form-kit";
 import { PaperScreen, ScreenTitle } from "../components/paper-screen";
+import { useCopilot } from "../lib/use-copilot";
+import { CopilotReport } from "../components/copilot-report";
 import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
 import { DeskModal } from "../components/desk-modal";
@@ -225,33 +227,40 @@ export function AdminUsers(): React.ReactElement {
     model behind it, and on this screen of all screens that is the feature: an agent that could
     invent a role holding would be inventing a permission.
   */
-  const [agentAnswer, setAgentAnswer] = useState<string | null>(null);
   const [agentLog, setAgentLog] = useState<AgentLine[]>([]);
   const agentState = useRef({ rows, fullAdmins });
   agentState.current = { rows, fullAdmins };
 
-  const ask = useCallback((question: string): void => {
+  /*
+    ═══ FD-COPILOT — THE ROLE BOOK'S OWN FACTS, NOW THE FALLBACK ═══
+
+    Every branch here is about the USER LIST ON THIS SCREEN — who holds admin, whose roles are
+    scoped to nothing, who has none. No copilot tool answers those and none should: they are an
+    administrator's questions about the administration, not a clerk's about a patient.
+  */
+  const localAnswer = useCallback((question: string): string | null => {
     const q = question.toLowerCase();
     const { rows: list, fullAdmins: admins } = agentState.current;
-    const answer = ((): string => {
-      if (/admin|owner|full/.test(q)) return t("adminUsers.agent.admins", { count: admins ?? 0 });
-      if (/inert|scope/.test(q)) {
-        const n = list.reduce((acc, u) => acc + u.roles.filter((r) => r.scopeType !== "hospital").length, 0);
-        return n === 0 ? t("adminUsers.agent.noInert") : t("adminUsers.agent.inert", { count: n });
-      }
-      if (/role|permission|access|can do/.test(q)) {
-        const none = list.filter((u) => u.roles.length === 0).map((u) => u.username);
-        return none.length === 0 ? t("adminUsers.agent.allHaveRoles") : t("adminUsers.agent.noRoles", { list: none.join(", ") });
-      }
-      if (/how many|count|user|account|active|inactive|list/.test(q)) {
-        const active = list.filter((u) => u.active).length;
-        return t("adminUsers.agent.counts", { count: list.length, active, inactive: list.length - active });
-      }
-      return t("adminUsers.agent.cannot");
-    })();
-    setAgentAnswer(answer);
-    setAgentLog((l) => logged(l, question));
+    if (/admin|owner|full/.test(q)) return t("adminUsers.agent.admins", { count: admins ?? 0 });
+    if (/inert|scope/.test(q)) {
+      const n = list.reduce((acc, u) => acc + u.roles.filter((r) => r.scopeType !== "hospital").length, 0);
+      return n === 0 ? t("adminUsers.agent.noInert") : t("adminUsers.agent.inert", { count: n });
+    }
+    if (/role|permission|access|can do/.test(q)) {
+      const none = list.filter((u) => u.roles.length === 0).map((u) => u.username);
+      return none.length === 0 ? t("adminUsers.agent.allHaveRoles") : t("adminUsers.agent.noRoles", { list: none.join(", ") });
+    }
+    if (/how many|count|user|account|active|inactive|list/.test(q)) {
+      const active = list.filter((u) => u.active).length;
+      return t("adminUsers.agent.counts", { count: list.length, active, inactive: list.length - active });
+    }
+    return null;
   }, [t]);
+
+  const copilot = useCopilot({
+    fallback: localAnswer,
+    onNote: (text) => { setAgentLog((l) => logged(l, text)); },
+  });
 
   return (
     <PaperScreen testId="admin-users" style={{ padding: "18px 22px", gap: 18 }}>
@@ -589,7 +598,10 @@ export function AdminUsers(): React.ReactElement {
       </section>
 
       <AgentDock
-        answer={agentAnswer} log={agentLog} onAsk={ask}
+        answer={copilot.answer} log={agentLog} onAsk={copilot.ask}
+        panel={copilot.report === null ? undefined : (
+          <CopilotReport report={copilot.report} onDismiss={copilot.dismissReport} />
+        )}
         placeholder={t("adminUsers.askPlaceholder")} idle={t("adminUsers.agentIdle")}
       />
     </PaperScreen>
