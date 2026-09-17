@@ -131,10 +131,50 @@ the cursor and nothing on screen says so. The rule for any entry that does get a
 - each entry names a moiety that exists here, checked at adoption the way P24's book is;
 - entries are adopted under a resolution, with their source recorded — not invented by the agent.
 
-**What is actually missing, measured:** `ors` finds only brands that happen to contain those three
-letters (`Orsodic-SP`, `Orsofin-Plus`, `Orsimox CV`). Oral rehydration salts are **not in the
-catalogue at all** — zero rows for `rehydration`. That is the `CDS` protocol-item gap below, not an
-abbreviation gap.
+**A second claim this doc retracts, and it was mine.** An earlier draft said oral rehydration salts
+are "not in the catalogue at all — zero rows for `rehydration`". **Wrong, and the probe was the
+reason:** the NRCeS generic is named by its formula, not by the word rehydration. It is there —
+
+    D5230  Product containing precisely glucose 13.5 gram and potassium chloride 1.5 gram and
+           sodium chloride 2.6 gram and sodium citrate 2.9 gram/1 sachet …
+
+— together with the brands `Electral`, `Walyte`, `Rejulyte`, `Glenvita` and `Ajantas`. So `ors`
+failing is a RANKING problem, not a data gap: `Orsodic-SP` and `Orsimox CV` merely contain the
+letters, and the real sachet never reaches the top. A query that is a standalone token or an exact
+brand should outrank an incidental substring. That is the next search change, and it is cheap.
+
+An empty result is evidence about the SEARCH before it is evidence about the data — and here the
+search was mine.
+
+## Never adopt a code binding from a document — check it against THIS catalogue
+
+The other model proposed binding the syndromic one-tap items to catalogue codes, which is the right
+instinct (it is what "one drug list, one safety layer" demands). **Six of its eight bindings check
+out against `hmis_formulary_dev`. Two do not, and one of those is dangerous:**
+
+| proposed | what that code is HERE | |
+|---|---|---|
+| `D5230` WHO ORS sachet | the ORS formula row | ok |
+| **`D5231` "WHO ORS sachet / Electral"** | **Hyoscine methylbromide 2.5 mg oral tablet** | **a different drug** |
+| `D2197` zinc sulfate 20 mg/5 mL syrup | exactly that | ok |
+| `D5845` racecadotril 15 mg sachet | exactly that | ok |
+| `D3021` racecadotril 100 mg capsule | exactly that | ok |
+| `D6461` ofloxacin 200 + ornidazole 500 | exactly that | ok |
+| `D4392` ondansetron 4 mg orodispersible TABLET | orodispersible FILM | wrong form |
+| **`D2364` ondansetron SYRUP 2 mg/5 mL** | **oromucosal SPRAY, 2 mg/actuation** | **wrong form** |
+
+A paediatric diarrhoea bundle bound to `D5231` hands a child an anticholinergic antispasmodic
+instead of rehydration salts — and hyoscine is in P24's own book as contraindicated in
+angle-closure glaucoma and in benign prostatic hyperplasia. `D2364` pairs a "3.5 mL" dose with a
+metered spray.
+
+The two may simply be different releases: their SQLite export and this Postgres import can disagree
+about which product a code names. That is exactly the point. **A code binding is a clinical claim,
+and it is verified against the catalogue the doctor will actually be prescribing from, by a test
+that fails when a code names something else.** Never by reading it off a document, whoever wrote it.
+
+Any protocol-item work therefore ships with a binding test: for each item, the code must resolve,
+and the resolved product's composition must contain the moieties the item claims.
 
 **A claim this doc retracts.** An earlier draft called `amox clav 625` a ranking defect for putting
 `Bjoclav-625 LB` above Augmentin. It is not a defect: those rows ARE amoxicillin 500 + clavulanate
