@@ -54,6 +54,65 @@ const KEYWORDS: { keys: string[]; departments: string[]; label: string }[] = [
   { keys: ["pregnan", "garbh", "period", "गर्भ"], departments: ["Obstetrics & Gynaecology"], label: "antenatal / gynae" },
   { keys: ["child", "baccha", "बच्च", "teeka", "vaccin"], departments: ["Paediatrics"], label: "child illness / vaccination" },
   { keys: ["sugar", "bp", "pressure", "diabet", "शुगर"], departments: ["General Medicine", "Cardiology"], label: "BP / sugar follow-up" },
+  /*
+    ═══════════════════════════════════════════════════════════════════════════════════════════════
+    THE OTHER SEVEN DEPARTMENTS, added 2026-09-17 after the owner hit the hole on the live screen
+    ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+    Owner, testing `/appointment`: *"I wrote 'aankh me dard', but the system showed 'Nobody in the
+    shortest department is on today's board'… there's a doctor in ophthalmology and still the agent
+    failed to pick the department."*
+
+    The seven rows above reach FIVE of the twelve departments `DEFAULT_DEPARTMENTS` seeds. `aankh`
+    matched nothing, the ranker returned an empty list, the seat fell back to "the shortest
+    department" and told the clerk the ROSTER was empty — a sentence about a fault that did not
+    exist, describing a routing failure that did. Half the hospital was unreachable by complaint and
+    nothing said so, because a table that returns nothing looks exactly like a complaint nobody
+    recognises.
+
+    `triage.test.ts` now carries a CENSUS over `DEFAULT_DEPARTMENTS`: a department no complaint can
+    reach fails the build. That is what makes this list maintainable rather than merely longer.
+
+    ═══ WHY THE KEYS LOOK OVER-SPELLED ═══
+
+    The matcher is `q.includes(key)`, so a key matches inside any longer word. Two of the obvious
+    short keys are actively dangerous here and both are spelled around rather than shortened:
+      - `"ear"` would route **heart** pain to ENT.
+      - `"tension"` would route **hypertension** to Psychiatry.
+    Both are among the commonest complaints in this book, and both have a test.
+  */
+  {
+    keys: ["aankh", "ankh", "आँख", "आंख", "eye", "vision", "nazar", "नज़र", "dikhai", "motiyabind", "मोतियाबिंद", "chashm"],
+    departments: ["Ophthalmology"], label: "eye",
+  },
+  {
+    // `ear pain` / `earache` rather than `ear` — see the note above about heart.
+    keys: ["kaan", "कान", "ear pain", "earache", "gala", "gale", "गला", "throat", "naak", "नाक", "sunai", "tonsil", "sinus"],
+    departments: ["ENT"], label: "ear / nose / throat",
+  },
+  {
+    keys: ["daant", "dant", "दाँत", "दांत", "tooth", "teeth", "masuda", "मसूड़ा", "cavity", "dental"],
+    departments: ["Dental"], label: "teeth / gums",
+  },
+  {
+    keys: ["khujli", "खुजली", "skin", "twacha", "त्वचा", "rash", "daane", "दाने", "phunsi", "daad", "fungal", "pimple", "eczema"],
+    departments: ["Dermatology"], label: "skin",
+  },
+  {
+    // `tanav` rather than `tension` — see the note above about hypertension.
+    keys: ["neend", "नींद", "sleep", "depress", "anxiety", "ghabrahat", "घबराहट", "tanav", "तनाव", "mansik", "मानसिक", "nasha", "panic"],
+    departments: ["Psychiatry"], label: "sleep / mood / mind",
+  },
+  {
+    keys: ["hernia", "bawaseer", "बवासीर", "piles", "gaanth", "ganth", "गांठ", "fistula", "appendix", "phoda", "फोड़ा", "lump"],
+    departments: ["General Surgery"], label: "lump / piles / hernia",
+  },
+  {
+    // `rehab` catches "stroke rehabilitation"; bare `stroke` is deliberately absent, because an
+    // acute stroke is an emergency for Medicine and must not be routed to a physiotherapy bench.
+    keys: ["physio", "rehab", "exercise", "akadan", "stiffness", "lakwa", "लकवा"],
+    departments: ["Physiotherapy"], label: "physiotherapy / rehabilitation",
+  },
 ];
 
 /** The deterministic ranking. Pure, synchronous, and the answer whenever the model cannot be reached. */

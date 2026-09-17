@@ -998,7 +998,28 @@ function StageAppointment(): React.ReactElement {
           </AgentLine>
         ) : pickDoctor === null ? (
           <AgentLine>
-            {suggested ? <><b>{pick.departmentName}</b> fits the complaint, but nobody there is on today's board.</> : "Nobody in the shortest department is on today's board — try another."}
+            {/*
+              ═══ THREE OUTCOMES, BECAUSE THE OLD TWO BLAMED THE ROSTER FOR A ROUTING FAILURE ═══
+
+              Owner, 2026-09-17, on the live screen: he typed "aankh me dard" and was told *"Nobody
+              in the shortest department is on today's board"*. The roster was fine — Ophthalmology
+              had doctors. The complaint had simply matched nothing, the seat fell back to the
+              shortest department, and then reported on THAT. A clerk reading it goes looking for a
+              roster fault that does not exist.
+
+              The fix in the table (`triage.ts`, all twelve departments) makes the empty ranking
+              rarer; it does not make it impossible, and a sentence that lies whenever routing fails
+              is a defect on its own. So the three cases are now separate: a department WAS
+              suggested; a complaint was typed and matched NOTHING; or no complaint was typed at all
+              and the shortest line is simply empty.
+            */}
+            {suggested ? (
+              <><b>{pick.departmentName}</b> fits the complaint, but nobody there is on today's board.</>
+            ) : s.complaint.trim() !== "" ? (
+              <>I could not match <b>{s.complaint.trim()}</b> to a department — pick one above. (<b>{pick.departmentName}</b> has the shortest line and nobody on today's board either.)</>
+            ) : (
+              "Nobody in the shortest department is on today's board — try another."
+            )}
           </AgentLine>
         ) : (
           <>

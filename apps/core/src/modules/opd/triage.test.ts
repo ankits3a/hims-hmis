@@ -32,6 +32,107 @@ function reply(content: string, ok = true): typeof fetch {
   })) as unknown as typeof fetch;
 }
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * THE HOSPITAL'S WHOLE BOOK, because half of it was unreachable
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner, 2026-09-17, testing the live appointment screen: *"I wrote 'aankh me dard', but the system
+ * showed 'Nobody in the shortest department is on today's board'… there's a doctor in ophthalmology
+ * and still the agent failed to pick the department."*
+ *
+ * The keyword table had SEVEN rows reaching FIVE of the hospital's twelve departments. `aankh`
+ * matched nothing, so the ranker returned an empty list, the seat fell back to "the shortest
+ * department", and the clerk was told the ROSTER was empty — a sentence about a fault that did not
+ * exist, for a routing failure that did.
+ *
+ * `DEFAULT_DEPARTMENTS` (`modules/opd/config.ts`) is the twelve this hospital seeds, and this
+ * fixture is all of them so a row that reaches nothing fails HERE rather than at a counter.
+ */
+const ALL_DEPTS: TriageDepartment[] = [
+  { id: "d-gm", name: "General Medicine" }, { id: "d-sur", name: "General Surgery" },
+  { id: "d-paed", name: "Paediatrics" }, { id: "d-obg", name: "Obstetrics & Gynaecology" },
+  { id: "d-ortho", name: "Orthopaedics" }, { id: "d-ent", name: "ENT" },
+  { id: "d-oph", name: "Ophthalmology" }, { id: "d-der", name: "Dermatology" },
+  { id: "d-psy", name: "Psychiatry" }, { id: "d-card", name: "Cardiology" },
+  { id: "d-den", name: "Dental" }, { id: "d-phy", name: "Physiotherapy" },
+];
+
+describe("keywordRank — every department this hospital seeds is reachable", () => {
+  /** The complaint that started it, in all three ways a clerk writes it. */
+  it.each([["aankh me dard"], ["ankh mein dard"], ["eye pain"], ["आँख में दर्द"], ["आंख में दर्द"]])(
+    "routes %s to Ophthalmology", (complaint: string) => {
+      expect(keywordRank(complaint, ALL_DEPTS).map((s) => s.departmentId)).toContain("d-oph");
+    },
+  );
+
+  it.each([
+    ["kaan me dard", "d-ent"], ["ear pain", "d-ent"], ["gala kharab hai", "d-ent"],
+    ["कान में दर्द", "d-ent"], ["naak band hai", "d-ent"],
+    ["daant me dard", "d-den"], ["tooth pain", "d-den"], ["दाँत में दर्द", "d-den"],
+    ["khujli ho rahi hai", "d-der"], ["skin rash", "d-der"], ["खुजली", "d-der"],
+    ["neend nahi aati", "d-psy"], ["depression", "d-psy"], ["ghabrahat", "d-psy"],
+    ["bawaseer", "d-sur"], ["piles", "d-sur"], ["gaanth hai", "d-sur"],
+    ["physiotherapy chahiye", "d-phy"], ["stroke rehabilitation", "d-phy"],
+  ])("routes %s to %s", (complaint: string, departmentId: string) => {
+    expect(keywordRank(complaint, ALL_DEPTS).map((s) => s.departmentId)).toContain(departmentId);
+  });
+
+  /**
+   * ═══ `dard` IS NOT A DEPARTMENT, AND THAT IS THE TRAP THIS TABLE HAS TO AVOID ═══
+   *
+   * Pain is the commonest word in every one of these complaints — "aankh me dard", "daant me dard",
+   * "ghutne me dard". The BODY PART carries the routing and the pain word carries none of it. A
+   * table that scored `dard` would send every complaint to whichever row was written first, which
+   * is the defect Desk One's own chain already has with `kitna`.
+   */
+  it("routes on the body part and not on the word for pain", () => {
+    expect(keywordRank("dard", ALL_DEPTS)).toEqual([]);
+    expect(keywordRank("bahut dard ho raha hai", ALL_DEPTS)).toEqual([]);
+  });
+
+  /**
+   * ═══ SHORT LATIN KEYS ARE TRAPS, AND THESE TWO ARE THE ONES THAT BIT ═══
+   *
+   * The matcher is `q.includes(key)`, so a key is matched inside any longer word. Writing `"ear"`
+   * for ENT would route **heart** pain to ENT, and `"tension"` for Psychiatry would route
+   * **hypertension** there. Both are the commonest complaints in this hospital's book. The table
+   * therefore spells `ear pain` / `earache` and `tanav` / `ghabrahat`, and these two tests are what
+   * stop somebody shortening them later.
+   */
+  it("does not send heart pain to ENT", () => {
+    const hit = keywordRank("heart pain", ALL_DEPTS).map((s) => s.departmentId);
+    expect(hit).toContain("d-card");
+    expect(hit).not.toContain("d-ent");
+  });
+
+  it("does not send hypertension to Psychiatry", () => {
+    expect(keywordRank("hypertension", ALL_DEPTS).map((s) => s.departmentId)).not.toContain("d-psy");
+  });
+
+  it("still never names a department the hospital lacks", () => {
+    // The original guarantee, re-asserted over the bigger table: a four-department hospital.
+    expect(keywordRank("aankh me dard", DEPTS)).toEqual([]);
+    expect(keywordRank("daant me dard", DEPTS)).toEqual([]);
+  });
+
+  /**
+   * THE CENSUS. A row whose department name does not match the seeded book reaches nothing and is
+   * invisible — exactly the state `Ophthalmology` was in. This fails the build instead.
+   */
+  it("every seeded department is reachable by at least one complaint", () => {
+    const reachable = new Set(
+      [
+        "seene mein dard", "bukhar", "ghutne mein dard", "khansi", "pregnancy", "baccha ko teeka",
+        "sugar bp", "aankh me dard", "kaan me dard", "daant me dard", "khujli", "neend nahi aati",
+        "bawaseer", "physiotherapy",
+      ].flatMap((c) => keywordRank(c, ALL_DEPTS).map((s) => s.departmentId)),
+    );
+    const missing = ALL_DEPTS.filter((d) => !reachable.has(d.id)).map((d) => d.name);
+    expect(missing).toEqual([]);
+  });
+});
+
 describe("triage — the complaint, in the patient's own words", () => {
   /* ── the deterministic floor ─────────────────────────────────────────────────────────────── */
 
