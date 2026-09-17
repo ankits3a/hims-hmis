@@ -1,4 +1,5 @@
 import { keywordRank, parseSuggestions, suggestDepartments } from "./triage";
+import { createTriageCache } from "./triage-cache";
 import type { TriageConfig, TriageDepartment } from "./triage";
 
 /**
@@ -57,6 +58,45 @@ const ALL_DEPTS: TriageDepartment[] = [
   { id: "d-psy", name: "Psychiatry" }, { id: "d-card", name: "Cardiology" },
   { id: "d-den", name: "Dental" }, { id: "d-phy", name: "Physiotherapy" },
 ];
+
+describe("suggestDepartments — the brake runs before everything", () => {
+  /**
+   * These pin the ORDERING, which is the whole safety property. A red flag that ran after the model
+   * would be a red flag that can arrive late, or not at all, on the day a provider is slow — and
+   * that is the day it matters.
+   */
+  it("returns the flag and NO suggestions, rather than ranking Casualty first", async () => {
+    const out = await suggestDepartments("seene mein dard", ALL_DEPTS, CONFIG, reply("{}"), createTriageCache(), { ageYears: 55 });
+    expect(out.redFlag?.reasonKey).toBe("opdTriage.redFlag.chestPain");
+    expect(out.suggestions).toEqual([]);
+  });
+
+  it("never calls the model on a red flag", async () => {
+    let called = false;
+    const spy = (async () => { called = true; return { ok: true, json: async () => ({}) }; }) as unknown as typeof fetch;
+    await suggestDepartments("saans nahi aa rahi", ALL_DEPTS, CONFIG, spy, createTriageCache(), { ageYears: 40 });
+    expect(called).toBe(false);
+  });
+
+  it("does not let the cache answer for a different patient", async () => {
+    /*
+      The same words are an emergency at 55 and not at 6, and `triageCacheKey` is built from the
+      complaint and the department list — it knows nothing about the patient. Running the brake
+      before the cache is what stops one child's answer being served to an adult.
+    */
+    const cache = createTriageCache();
+    const adult = await suggestDepartments("seene mein dard", ALL_DEPTS, CONFIG, reply("{}"), cache, { ageYears: 55 });
+    const child = await suggestDepartments("seene mein dard", ALL_DEPTS, CONFIG, reply('{"suggestions":[{"index":0,"reason":"r"}]}'), cache, { ageYears: 6 });
+    expect(adult.redFlag).toBeDefined();
+    expect(child.redFlag).toBeUndefined();
+  });
+
+  it("routes an ordinary complaint exactly as before", async () => {
+    const out = await suggestDepartments("aankh me dard", ALL_DEPTS, { ...CONFIG, baseUrl: null, apiKey: null }, reply("{}"), createTriageCache(), { ageYears: 35 });
+    expect(out.redFlag).toBeUndefined();
+    expect(out.suggestions.map((x) => x.departmentId)).toContain("d-oph");
+  });
+});
 
 describe("keywordRank — every department this hospital seeds is reachable", () => {
   /** The complaint that started it, in all three ways a clerk writes it. */
@@ -163,10 +203,16 @@ describe("triage — the complaint, in the patient's own words", () => {
       "{ not json at all",
       '{"suggestions":"cardiology"}',
     ]) {
-      const r = await suggestDepartments("seene mein dard", DEPTS, CONFIG, reply(bad));
+      /*
+        The fixture was "seene mein dard" until red flags landed, and chest pain now STOPS the
+        router before the model is reached — correctly, and it is why this test changed rather than
+        the brake. These two cases are about what happens when the MODEL misbehaves, so they need a
+        complaint that actually reaches it.
+      */
+      const r = await suggestDepartments("ghutne mein dard", DEPTS, CONFIG, reply(bad));
       // Falls back to the table — and SAYS it did.
       expect({ input: bad.slice(0, 20), source: r.source, first: r.suggestions[0]?.departmentId })
-        .toEqual({ input: bad.slice(0, 20), source: "keywords", first: "d-card" });
+        .toEqual({ input: bad.slice(0, 20), source: "keywords", first: "d-ortho" });
     }
   });
 
@@ -214,8 +260,9 @@ describe("triage — the complaint, in the patient's own words", () => {
     const throwing = (async () => { throw new Error("ECONNREFUSED"); }) as unknown as typeof fetch;
     const refused = reply("{}", false);
     for (const f of [throwing, refused]) {
-      const r = await suggestDepartments("seene mein dard", DEPTS, CONFIG, f);
-      expect({ source: r.source, first: r.suggestions[0]?.departmentId }).toEqual({ source: "keywords", first: "d-card" });
+      // Not chest pain — see the note above: a red flag never reaches the model at all.
+      const r = await suggestDepartments("ghutne mein dard", DEPTS, CONFIG, f);
+      expect({ source: r.source, first: r.suggestions[0]?.departmentId }).toEqual({ source: "keywords", first: "d-ortho" });
     }
   });
 

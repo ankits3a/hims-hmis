@@ -26,6 +26,9 @@
 import { defaultTriageCache, triageCacheKey } from "./triage-cache";
 import type { TriageCache } from "./triage-cache";
 
+import { redFlagFor } from "./red-flags";
+import type { RedFlag } from "./red-flags";
+
 /** A department as the hospital actually has it. The model sees these and nothing else. */
 export type TriageDepartment = { id: string; name: string };
 
@@ -39,7 +42,18 @@ export type TriageResult = {
   suggestions: TriageSuggestion[];
   /** `"model"` or `"keywords"` — the seat SAYS which, because advice whose origin is hidden is trusted too much. */
   source: "model" | "keywords";
+  /**
+   * ═══ SET WHEN THE DESK MUST NOT BOOK AT ALL ═══
+   *
+   * `red-flags.ts` carries the reasoning. When this is present `suggestions` is EMPTY by
+   * construction: a red flag refuses to route rather than ranking Casualty first, because ranking
+   * offers a choice and this is not a choice a non-medico clerk should be handed.
+   */
+  redFlag?: RedFlag;
 };
+
+/** What the desk knows about the patient when the complaint is typed. Both may be absent. */
+export type TriagePatient = { ageYears: number | null };
 
 /**
  * Desk One's own table, carried over verbatim in intent: Hindi and English keys, because the clerk
@@ -212,7 +226,30 @@ export async function suggestDepartments(
   config: TriageConfig,
   fetchImpl: typeof fetch = fetch,
   cache: TriageCache = defaultTriageCache,
+  patient: TriagePatient = { ageYears: null },
 ): Promise<TriageResult> {
+  /*
+    ═══ THE BRAKE RUNS FIRST, AND IT RETURNS BEFORE ANYTHING ELSE CAN ═══
+
+    Before the keyword table, before the cache, and — deliberately — before the model. Three
+    reasons, in order of how much each costs if ignored:
+
+      1. A red flag must not depend on a provider being reachable. `askModel`'s timeout is an
+         ordinary outcome, which is the right shape for choosing between Ophthalmology and ENT and
+         completely the wrong shape for an emergency.
+      2. It must not be cacheable against a complaint string alone: the same words are an emergency
+         at 55 and not at 6, and `triageCacheKey` knows nothing about the patient.
+      3. It is instant and free, and a clerk who has typed "saans nahi aa rahi" should not watch a
+         spinner.
+
+    `suggestions` is left EMPTY rather than filled with Casualty. See `red-flags.ts`: this refuses,
+    it does not rank.
+  */
+  const redFlag = redFlagFor(text, patient.ageYears);
+  if (redFlag !== undefined && redFlag !== null) {
+    return { suggestions: [], source: "keywords", redFlag };
+  }
+
   const keywords = keywordRank(text, departments);
   if (config.baseUrl === null || config.apiKey === null || text.trim() === "" || departments.length === 0) {
     return { suggestions: keywords, source: "keywords" };
