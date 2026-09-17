@@ -48,6 +48,7 @@ describe("searchMedicines — the typeahead over the imported catalogue", () => 
       { id: "S3", name: "Amoxapine", productCount: 14, ...AUDIT },
       { id: "S4", name: "Paracetamol", productCount: 4866, ...AUDIT },
       { id: "S5", name: "Sodium chloride", productCount: 126, ...AUDIT },
+      { id: "S6", name: "Metformin hydrochloride", productCount: 1272, ...AUDIT },
     ]);
     await db.insert(formularyMedicines).values([
       { id: "M1", brandName: "Amoxil 500", nameNormalized: normalizeDrugName("Amoxil 500"), form: "Capsule", routeClass: "systemic", saltRank: 3830, ...AUDIT },
@@ -72,6 +73,12 @@ describe("searchMedicines — the typeahead over the imported catalogue", () => 
       // rides paracetamol's 4,866.
       { id: "M9", brandName: "Ors (glucose and potassium chloride and sodium chloride)", nameNormalized: normalizeDrugName("Ors (glucose and potassium chloride and sodium chloride)"), form: "Sachet", strengthLabel: "13.5 g", code: "D5230", routeClass: "systemic", saltRank: 126, ...AUDIT },
       { id: "M10", brandName: "Orsodic-SP (diclofenac and paracetamol)", nameNormalized: normalizeDrugName("Orsodic-SP (diclofenac and paracetamol)"), form: "Tablet", strengthLabel: "50 mg", routeClass: "systemic", saltRank: 4866, ...AUDIT },
+      // S11's three, as the real catalogue holds them: a brand merely SPELT met… riding
+      // paracetamol's market share, a met… combination that also carries paracetamol, and the
+      // molecule the doctor actually meant.
+      { id: "M11", brandName: "Metacin (paracetamol) 500 mg oral tablet", nameNormalized: normalizeDrugName("Metacin (paracetamol) 500 mg oral tablet"), form: "Tablet", strengthLabel: "500 mg", routeClass: "systemic", saltRank: 4866, ...AUDIT },
+      { id: "M12", brandName: "Metopar (metoclopramide and paracetamol) 5 mg + 500 mg oral tablet", nameNormalized: normalizeDrugName("Metopar"), form: "Tablet", strengthLabel: "5 mg", routeClass: "systemic", saltRank: 4866, ...AUDIT },
+      { id: "M13", brandName: "Metformin hydrochloride 500 mg oral tablet", nameNormalized: normalizeDrugName("Metformin hydrochloride 500 mg oral tablet"), form: "Tablet", strengthLabel: "500 mg", code: "D1246", routeClass: "systemic", saltRank: 1272, ...AUDIT },
     ]);
     await db.insert(formularyMedicineSalts).values([
       { medicineId: "M1", saltId: "S1", strength: "500 mg", source: "curated" },
@@ -84,6 +91,10 @@ describe("searchMedicines — the typeahead over the imported catalogue", () => 
       { medicineId: "M8", saltId: "S4", strength: "100 mg", source: "curated" },
       { medicineId: "M9", saltId: "S5", strength: "13.5 g", source: "curated" },
       { medicineId: "M10", saltId: "S4", strength: "50 mg", source: "curated" },
+      { medicineId: "M11", saltId: "S4", strength: "500 mg", source: "curated" },
+      { medicineId: "M12", saltId: "S4", strength: "500 mg", source: "curated" },
+      { medicineId: "M12", saltId: "S6", strength: "5 mg", source: "curated" },
+      { medicineId: "M13", saltId: "S6", strength: "500 mg", source: "curated" },
     ]);
   }
 
@@ -131,12 +142,14 @@ describe("searchMedicines — the typeahead over the imported catalogue", () => 
   it("S6: `para 500` finds the 500, and `500 para` is the same request", async () => {
     await seed();
 
+    // The pure 500 leads. Brands that merely CARRY paracetamol at 500 mg (M11, M12) match too and
+    // belong below it — this assertion is about which row a doctor gets FIRST.
     const typed = await searchMedicines(db, "para 500");
-    expect(typed.map((h) => h.id)).toEqual(["M6"]);
+    expect(typed[0]!.id).toBe("M6");
 
     // Length picks the anchor, not position: a doctor who says the strength first is not punished.
     const reversed = await searchMedicines(db, "500 para");
-    expect(reversed.map((h) => h.id)).toEqual(["M6"]);
+    expect(reversed[0]!.id).toBe("M6");
   });
 
   it("S7: every token must match — `para 650` does not offer the 500", async () => {
@@ -174,6 +187,19 @@ describe("searchMedicines — the typeahead over the imported catalogue", () => 
     const hits = await searchMedicines(db, "ors");
     expect(hits[0]!.id).toBe("M9");
     expect(hits.map((h) => h.id)).toContain("M10"); // the impostor is still reachable, just lower
+  });
+
+  /**
+   * `met` returned four PARACETAMOL products — Metacin, Metalgin and two combinations — and no
+   * metformin, metronidazole or metoprolol at all. 58 moieties begin with `met`, but paracetamol's
+   * 4,866 products let any brand merely SPELT that way outrank every one of them.
+   */
+  it("S11: `met` is the molecule, not a brand that merely starts the same way", async () => {
+    await seed();
+    const hits = await searchMedicines(db, "met");
+    // The molecule the doctor named, above the brand coincidence and above the combination.
+    expect(hits[0]!.id).toBe("M13");
+    expect(hits.map((h) => h.id)).toContain("M11"); // still reachable, just no longer first
   });
 
   it("S4: an inactive medicine is never offered", async () => {

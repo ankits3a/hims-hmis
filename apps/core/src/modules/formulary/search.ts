@@ -186,6 +186,36 @@ export async function searchMedicines(db: Db, query: string, limit = 10): Promis
     The moiety names are resolved only for the rows that SURVIVE the limit — ten array_aggs instead
     of several thousand, which was the other half of the 575 ms.
   */
+  /*
+    ═══ A MOLECULE THE DOCTOR NAMED BEATS A BRAND THAT MERELY STARTS THE SAME WAY ═══
+
+    Measured on the real catalogue: `met` returned "Methionine and paracetamol", "Metoclopramide
+    and paracetamol", "Metacin (paracetamol)" and "Metalgin (paracetamol)" — four paracetamol
+    products, and no metformin, metronidazole or metoprolol anywhere. 58 moieties begin with `met`,
+    led by metformin hydrochloride's 1,272 products, but paracetamol's 4,866 let any brand merely
+    SPELT met… outrank every one of them. The doctor named a molecule; the ranking answered with a
+    brand coincidence.
+
+    So a row whose own MOIETY begins with the query outranks one where only the label does, placed
+    above `salt_rank` because market share is exactly what was drowning it.
+
+    It is inert where it should be. For `amox` both amoxicillin and amoxapine qualify, so the tie
+    falls through to `salt_rank` and S3 still holds. For `telma` and `ors` no moiety qualifies at
+    all, so the brand ranking is untouched and S10 still holds.
+
+    ═══ AND THEN THE SIMPLER PRODUCT WINS THE TIE ═══
+
+    That alone was not enough. `met` then returned "Metoclopramide and paracetamol" combinations,
+    which DO carry a met… moiety — and which inherit paracetamol's 4,866 through `salt_rank`, so
+    they still buried pure metformin. A doctor who names one molecule is asking for that molecule,
+    not for it packaged with another, so the row with FEWER moieties wins the tie before market
+    share is consulted.
+
+    This is the one idea worth taking from the other model's "purity shield", and it is worth
+    taking narrowly: it is a TIE-BREAK under an explicit molecule match, not a blanket penalty on
+    combinations. `amox clav 625` still reaches its two-moiety product, because both of its tokens
+    have to match in the first place.
+  */
   const res = await db.execute(sql`
     with intent as (
       select exists (
@@ -208,11 +238,25 @@ export async function searchMedicines(db: Db, query: string, limit = 10): Promis
             where l.medicine_id = m.id and lower(s.name) like ${like}
          )
     ),
+    scored as (
+      /* A MOLECULE THE DOCTOR NAMED BEATS A BRAND THAT MERELY STARTS THE SAME WAY.
+         Written above this query, not here: this is inside a tagged template, where a backtick in
+         a comment closes the template -- the trap the header already records, walked into again. */
+      select h.*,
+             (select count(*) from formulary_medicine_salts l where l.medicine_id = h.id) as salt_count,
+             exists (
+        select 1 from formulary_medicine_salts l join formulary_salts s on s.id = l.salt_id
+         where l.medicine_id = h.id and lower(s.name) like ${starts}
+      ) as moiety_prefix
+        from hits h where ${restFilter}
+    ),
     ranked as (
-      select * from hits h where ${restFilter}
+      select * from scored h
        order by (case when (select molecule from intent) then false
                        else lower(brand_name) ~ ${word} end) desc,
                 (lower(brand_name) like ${starts}) desc,
+                moiety_prefix desc,
+                salt_count asc,
                 salt_rank desc,
                 (code is not null) desc,
                 similarity(lower(brand_name), ${q}) desc,
@@ -234,6 +278,8 @@ export async function searchMedicines(db: Db, query: string, limit = 10): Promis
      order by (case when (select molecule from intent) then false
                      else lower(r.brand_name) ~ ${word} end) desc,
               (lower(r.brand_name) like ${starts}) desc,
+              r.moiety_prefix desc,
+              r.salt_count asc,
               r.salt_rank desc,
               (r.code is not null) desc,
               length(r.brand_name) asc
