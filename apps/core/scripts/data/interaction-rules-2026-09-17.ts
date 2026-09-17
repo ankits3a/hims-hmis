@@ -37,7 +37,10 @@ const NSAIDS = ["ibuprofen", "diclofenac", "aceclofenac", "naproxen", "ketorolac
 const ANTICOAGULANTS = ["warfarin", "acenocoumarol", "apixaban", "rivaroxaban", "dabigatran etexilate"];
 const DOACS = ["apixaban", "rivaroxaban", "dabigatran etexilate"];
 const QUINOLONES = ["ciprofloxacin", "levofloxacin", "ofloxacin", "norfloxacin", "moxifloxacin"];
-const CATION_BINDERS = ["aluminum hydroxide", "magnesium hydroxide", "calcium carbonate", "ferrous sulfate", "ferrous fumarate"];
+// The release's spellings: "aluminium hydroxide", and "calcium" (the moiety of every calcium salt,
+// carbonate included). "aluminum hydroxide" and "calcium carbonate" resolved to nothing and their 10
+// pairs were skipped (found 2026-09-17 against the rehearsal database).
+const CATION_BINDERS = ["aluminium hydroxide", "magnesium hydroxide", "calcium", "ferrous sulfate", "ferrous fumarate"];
 const BETA_BLOCKERS = ["propranolol", "atenolol", "metoprolol", "bisoprolol", "carvedilol", "nebivolol"];
 const CONTRAST = ["iohexol", "iopamidol", "iodixanol"];
 
