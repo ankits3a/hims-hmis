@@ -26,6 +26,7 @@
 import { defaultTriageCache, triageCacheKey } from "./triage-cache";
 import type { TriageCache } from "./triage-cache";
 
+import { rankBook } from "./complaint-ranker";
 import { redFlagFor } from "./red-flags";
 import type { RedFlag } from "./red-flags";
 
@@ -131,6 +132,67 @@ const KEYWORDS: { keys: string[]; departments: string[]; label: string }[] = [
 
 /** The deterministic ranking. Pure, synchronous, and the answer whenever the model cannot be reached. */
 export function keywordRank(text: string, departments: TriageDepartment[]): TriageSuggestion[] {
+  const table = tableRank(text, departments);
+  if (table.length > 0) return table;
+
+  /*
+    ═══ THE HARVESTED BOOK ANSWERS WHAT THE TABLE HAS NEVER SEEN ═══
+
+    Table FIRST and the book only when the table is silent, which is a deliberate ordering rather
+    than a hedge:
+
+      - The table is fourteen hand-written rows whose every key was chosen so a clerk can be told
+        why, and it is the ONLY half that reads Devanagari — the harvested book is romanised (five
+        Devanagari characters across 782 variants, measured). Letting the book override it would
+        trade a curated answer for a scored one.
+      - The book is 82 syndromes of owner-supplied regional vocabulary. It is what lets
+        "thehuna me dard ba" and "motiyabind" reach a department at all, which no list written here
+        was ever going to cover.
+
+    So this is a pure ADDITION: every complaint the table answered before, it still answers
+    identically, and the gap it used to fall into now has something in it. `rankBook` returns null
+    rather than guessing, so a complaint neither half recognises still produces an empty list and
+    the seat still says so honestly.
+  */
+  const book = rankBook(text);
+  if (book === null) return [];
+
+  /*
+    ═══ IF THE PRIMARY DEPARTMENT IS NOT IN THIS HOSPITAL, THE BOOK SAYS NOTHING ═══
+
+    Found by an existing test, and it was a genuine defect. At a hospital with no Obs & Gynae, an
+    antenatal complaint fell through to the entry's SECONDARY department — Paediatrics, which the
+    book lists because of the newborn — and the seat cheerfully proposed sending a pregnant woman
+    to the children's OPD.
+
+    A secondary department means "also consider", never "instead of". So the book's strongest claim
+    has to exist here or the book abstains and the seat falls back to what it does when nothing is
+    recognised. The harvest already folded 34 specialities onto the twelve this hospital seeds;
+    this is the case where a hospital has DEACTIVATED one of its own, and the honest answer is that
+    we have nowhere to send them rather than somewhere wrong.
+  */
+  const primary = book.departments[0];
+  if (primary === undefined) return [];
+  if (!departments.some((x) => x.name.toLowerCase() === primary.department.toLowerCase())) return [];
+
+  const out: TriageSuggestion[] = [];
+  for (const d of book.departments) {
+    const dept = departments.find((x) => x.name.toLowerCase() === d.department.toLowerCase());
+    if (dept === undefined || out.some((o) => o.departmentId === dept.id)) continue;
+    /*
+      The reason NAMES THE WORD THAT DECIDED IT where there is one. "eye — from 'motiyabind'" is
+      something a clerk can repeat to a patient and disagree with; a bare department name is not.
+    */
+    out.push({
+      departmentId: dept.id,
+      reason: book.because.length > 0 ? `${book.label} — from "${book.because[0] ?? ""}"` : book.label,
+    });
+  }
+  return out;
+}
+
+/** The hand-written floor, unchanged. Kept as its own function so its behaviour stays testable alone. */
+function tableRank(text: string, departments: TriageDepartment[]): TriageSuggestion[] {
   const q = text.trim().toLowerCase();
   if (q === "") return [];
   const out: TriageSuggestion[] = [];

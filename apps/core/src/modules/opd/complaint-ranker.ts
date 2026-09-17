@@ -35,6 +35,20 @@ const STOPWORDS = new Set([
   "karna", "karwana", "karana", "lag", "laga", "lagi", "jaisa", "bahut", "thoda", "sa", "si",
   "ek", "do", "wala", "wali", "mera", "meri", "uska", "uski", "is", "in", "the", "a", "an",
   "of", "for", "and", "with", "to", "my", "has", "have", "had", "it", "on", "at", "from",
+  /*
+    ═══ QUESTION AND TIME WORDS, ADDED AFTER THE EVALUATION CAUGHT A FALSE POSITIVE ═══
+
+    "aaj ka din kaisa hai" — small talk — routed to ANTENATAL CARE. `kaisa` is a question word, but
+    it appears in exactly ONE syndrome's variants, so inverse document frequency scored it as the
+    rarest and most decisive word in the book.
+
+    That is the failure mode of idf on hand-written phrases: conversational filler that happens to
+    survive into a variant becomes spuriously precious. A word that is common in the LANGUAGE has
+    to be stopped even when it is rare in the CORPUS, and no amount of tuning the thresholds does
+    that — it is a vocabulary fact, not a scoring one.
+  */
+  "kaisa", "kaise", "kaisi", "kya", "kab", "kahan", "kaun", "kyun", "kyu", "kitna", "kitne",
+  "aaj", "kal", "din", "raat", "subah", "sham", "baar", "abhi", "phir", "bhi", "koi", "kuch",
 ]);
 
 function tokens(text: string): string[] {

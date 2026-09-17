@@ -127,7 +127,15 @@ const RULES: Rule[] = [
   },
   {
     key: "babyBlue",
-    phrases: ["neela pad", "नीला पड़", "baby is blue", "bachcha neela", "not feeding at all", "doodh nahi pi raha"],
+    /*
+      `dudh` as well as `doodh`: the evaluation typed "bachcha dudh nahi pi raha" and the brake
+      missed it on a vowel. A red flag that depends on one transliteration of a word with two
+      common spellings is a red flag that fires for half the clerks who need it.
+    */
+    phrases: [
+      "neela pad", "नीला पड़", "baby is blue", "bachcha neela", "not feeding at all",
+      "doodh nahi pi", "dudh nahi pi", "doodh nai pi", "dudh nai pi", "feed nahi kar",
+    ],
   },
   {
     key: "pregnancyBleeding",
