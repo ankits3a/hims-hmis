@@ -1,5 +1,5 @@
 import type { CopilotIntent } from "./phrasebook";
-import type { Actor } from "@hmis/contracts";
+import type { Actor, CopilotAnswerKey } from "@hmis/contracts";
 import type { Db } from "../db/client";
 
 /**
@@ -32,8 +32,16 @@ import type { Db } from "../db/client";
 
 /** What a tool hands back. Never a sentence — see the header. */
 export type CopilotAnswer = {
-  /** An i18n key under `copilot.answer.*`, rendered by the web in the operator's own language. */
-  key: string;
+  /**
+   * An i18n key under `copilot.answer.*`, rendered by the web in the operator's own language.
+   *
+   * Typed to the CLOSED set in `@hmis/contracts`, so a tool cannot invent a key. An invented one
+   * would not fail anywhere — `lib/i18n.ts` sets no `parseMissingKeyHandler`, so i18next renders
+   * the key itself and a clerk reads `copilot.answer.whatever` where a sentence should be, with
+   * every suite green. `contracts/copilot.ts` explains why that particular defect cannot be caught
+   * by the test that catches all the others.
+   */
+  key: CopilotAnswerKey;
   /** Interpolations for that key. Values are already display-ready (formatted money, counts, names). */
   params: Record<string, string | number>;
   /**
