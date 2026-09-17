@@ -98,7 +98,7 @@ export type { H1Register, H1RegisterRow } from "./registers";
 export type { CounterSummary } from "./summary";
 /** P19 — walk-in retail sales (doc 16 §3.1b, register row R-174). */
 export { DOWNTIME_BACKFILL_DAYS, RETAIL_PHARMACY_STORE_CODE, RETAIL_REF_TYPE } from "./config";
-export { retailLicenceRecorded, retailSold } from "./events";
+export { retailLicenceRecorded, retailLineReturned, retailSold } from "./events";
 export {
   counterBatches, enterPaperDispense, getRetailSale, inspectSheet, pharmacyStaff, listPaperDispenses, listRetailLicences, listRetailSales,
   previewPaperDispense, previewRetailSale, recordRetailLicence, retailLicenceState, retailStore, searchCounterShelf,
@@ -108,3 +108,6 @@ export type {
   CounterBatch, PaperDispenseInput, PharmacyStaffMember, SheetCheck, RecordLicenceInput, RetailCustomerInput, RetailLicenceState, RetailLicenceView, RetailLineInput, RetailPrescriptionInput,
   RetailPreview, RetailSaleInput, RetailSaleRow, RetailSaleView, RetailShelfEntry,
 } from "./retail";
+/** P19b — a sealed pack back at the walk-in counter, found by its bill. */
+export { acceptRetailReturn, findRetailSaleByInvoiceNo } from "./retail-returns";
+export type { RetailReturnInput, RetailReturnResult } from "./retail-returns";

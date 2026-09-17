@@ -89,3 +89,5 @@ export const RETURN_MIN_SHELF_DAYS = 30;
 export const RETURN_REFUSED_STORAGE = ["cold_2_8", "frozen", "narcotic"] as const;
 /** The ledger's `ref_type` for a counter's sales return: `ref_id` is the dispense LINE. */
 export const RETURN_REF_TYPE = "pharmacy_return";
+/** P19b — the same for a pack back from a walk-in sale or a paper dispense: `ref_id` is the SALE line. */
+export const RETAIL_RETURN_REF_TYPE = "pharmacy_retail_return";

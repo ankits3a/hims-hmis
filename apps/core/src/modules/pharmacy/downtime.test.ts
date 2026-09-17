@@ -8,10 +8,12 @@ import { events, operatingModeChanges, pharmacyRegH1, pharmacyRetailSales, stock
 import { hmacSign } from "../../kernel/crypto";
 import { generateDowntimeKit, getKitPrintPayload } from "../../kernel/ops/downtime-kit";
 import { createStore } from "../materials";
-import { RETAIL_PHARMACY_STORE_CODE, RETAIL_REF_TYPE } from "./config";
+import { RETAIL_PHARMACY_STORE_CODE, RETAIL_REF_TYPE, RETAIL_RETURN_REF_TYPE } from "./config";
+import { pharmacyLeakage } from "./leakage";
 import {
   enterPaperDispense, inspectSheet, listPaperDispenses, listRetailSales, pharmacyStaff, previewPaperDispense,
 } from "./retail";
+import { acceptRetailReturn } from "./retail-returns";
 import type { Actor } from "@hmis/contracts";
 import type { PharmacyFixture } from "../../../test/helpers/pharmacy";
 import type { Db } from "../../kernel/db/client";
@@ -168,5 +170,26 @@ describe("paper dispenses entered after an outage (P20)", () => {
     expect(sold.map((e) => (e.payload as { checkHits: unknown }).checkHits)).toEqual([
       { allergies: 0, severeInteractions: 0 }, { allergies: 1, severeInteractions: 0 },
     ]);
+  });
+
+  it("is a sold line in the OPD counter's leakage triangle, and its sealed strip comes back into the OPD store (P19b)", async () => {
+    const sale = await enter();
+    // Before P19b the report listed this consume row as stock that left with no dispense behind it.
+    const report = await pharmacyLeakage(db, "2026-08-17");
+    expect(report.otherConsumption).toEqual([]);
+    expect(report.dispensed).toEqual({ lines: 1, units: 10 });
+    expect(report.mismatches).toEqual([]);
+
+    await openSessionFor(db, { id: fx.pharmacist.id }, 0);
+    const back = await acceptRetailReturn(db, fx.pharmacist.actor, sale.id, {
+      lines: [{ lineIdx: 0, qtyBase: 10 }], sealedIntact: true, reason: "the patient was admitted", reasonClass: "genuine",
+    }, undefined, new Date(ENTRY.getTime() + HOUR));
+    expect(back.sale.lines.map((l) => l.returnedQtyBase)).toEqual([10]);
+    const [row] = await db.select().from(stockLedger).where(eq(stockLedger.refType, RETAIL_RETURN_REF_TYPE));
+    expect(row).toMatchObject({ reason: "return", resourceId: fx.storeId, batchId: batch, qtyDelta: 10 });
+    const [returned] = await db.select().from(events).where(eq(events.name, "retail.line_returned"));
+    expect(returned!.payload).toMatchObject({ saleId: sale.id, channel: "downtime", storeResourceId: fx.storeId });
+    // Restocked and credited: the day still balances.
+    expect((await pharmacyLeakage(db, "2026-08-17")).mismatches).toEqual([]);
   });
 });

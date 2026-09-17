@@ -47,7 +47,7 @@ const SALE: WireRetailSale = {
   id: "s1", soldAt: "2026-09-17T05:00:00.000Z", soldBy: "u-ph", soldByName: "Rohit Mehta",
   patient: { id: "p-new", uhid: "U0000123", name: "Ramesh Patil", phone: "9822001122", registeredHere: true },
   invoiceId: "inv-1", invoiceNo: "INV-26-000123", netPaise: 12000, scheduled: false, prescription: null, pharmacistRegNo: null,
-  lines: [{ lineIdx: 0, medicineId: "m-croc", drugName: "Crocin 500 500 mg tablet", itemId: "i-croc", itemCode: "CROC500", itemName: "Crocin", batchId: "b1", batchNo: "R-1", expiryDate: "2027-06-30", qtyBase: 10, baseUom: "tablet", unitPaise: 1200, scheduleFlag: "OTC", fefoOverride: false }],
+  lines: [{ lineIdx: 0, medicineId: "m-croc", drugName: "Crocin 500 500 mg tablet", itemId: "i-croc", itemCode: "CROC500", itemName: "Crocin", batchId: "b1", batchNo: "R-1", expiryDate: "2027-06-30", qtyBase: 10, baseUom: "tablet", unitPaise: 1200, scheduleFlag: "OTC", fefoOverride: false, returnedQtyBase: 0 }],
 };
 
 async function addToCart(entry: WireRetailShelfEntry, qty: string): Promise<void> {
@@ -189,5 +189,75 @@ describe("PharmacyRetail (P19)", () => {
     await userEvent.click(screen.getByRole("button", { name: "Take payment and sell" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Recorded allergy that no prescriber has overridden");
     expect((bodiesOf("POST", "/pharmacy/retail/sales")[1] as { customer: unknown }).customer).toEqual({ existingId: "p-old" });
+  });
+});
+
+/**
+ * PHARMACY P19b — a sealed pack comes back: the bill finds the sale, only what is left can come back,
+ * and nothing is sent until the pharmacist attests the pack is sealed.
+ */
+describe("PharmacyRetail — returns (P19b)", () => {
+  beforeEach(() => { setToken("t"); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  const TWO_LINES: WireRetailSale = {
+    ...SALE, soldAt: "2026-09-15T05:00:00.000Z", netPaise: 36000,
+    lines: [
+      { ...SALE.lines[0]!, qtyBase: 20, returnedQtyBase: 10 },
+      { ...SALE.lines[0]!, lineIdx: 1, drugName: "Pan 40 40 mg tablet", itemCode: "PAN40", batchNo: "P-9", qtyBase: 15, returnedQtyBase: 15 },
+    ],
+  };
+
+  it("finds the sale by its bill, returns what is left, and says where the refund goes", async () => {
+    mockRoutes({
+      "GET /api/pharmacy/retail/state": { status: 200, body: { ...CURRENT, state: "lapsed" } },
+      "GET /api/pharmacy/retail/sales": { status: 200, body: { items: [] } },
+      "GET /api/pharmacy/retail/bill": { status: 200, body: TWO_LINES },
+      "POST /api/pharmacy/retail/sales/s1/returns": {
+        status: 201,
+        body: { sale: { ...TWO_LINES, lines: [{ ...TWO_LINES.lines[0]!, returnedQtyBase: 20 }, TWO_LINES.lines[1]] }, creditNoteId: "cn1", creditNoteNo: "CN-26-000009", refundApprovalId: "a1" },
+      },
+    });
+    renderWithProviders(<PharmacyRetail />);
+    // A shut counter still takes a pack back: a return sells nothing.
+    await screen.findByTestId("retail-shut");
+    await userEvent.type(screen.getByRole("textbox", { name: "Bill number" }), " INV-26-000123 ");
+    await userEvent.click(screen.getByRole("button", { name: "Find the bill" }));
+    const found = await screen.findByTestId("retail-return");
+    expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes("/api/pharmacy/retail/bill?no=INV-26-000123"))).toBe(true);
+    expect(found).toHaveTextContent("Bill INV-26-000123 · Ramesh Patil · sold 15/09/2026, 10:30");
+    expect(within(found).getByTestId("return-line-0")).toHaveTextContent("Crocin 500 500 mg tabletR-120 sold, 10 back");
+    // Everything of the second line is already back: nothing to type there.
+    expect(within(found).getByTestId("return-line-1")).toHaveTextContent("15 sold, 15 back");
+    expect(within(found).queryByRole("textbox", { name: "Return qty, Pan 40 40 mg tablet" })).toBeNull();
+
+    const submit = within(found).getByRole("button", { name: "Accept return" });
+    await userEvent.type(within(found).getByRole("textbox", { name: "Return qty, Crocin 500 500 mg tablet" }), "10");
+    await userEvent.type(within(found).getByRole("textbox", { name: "Reason for the return" }), "bought the wrong strength");
+    await userEvent.selectOptions(within(found).getByRole("combobox", { name: "Whose reason" }), "mistake");
+    expect(submit).toBeDisabled();
+    await userEvent.click(within(found).getByRole("checkbox", { name: "I have inspected it: sealed and intact" }));
+    await userEvent.click(submit);
+
+    expect(await screen.findByTestId("retail-returned")).toHaveTextContent("Return accepted. Credit note CN-26-000009 raised; the refund waits for approval at billing.");
+    expect(bodiesOf("POST", "/pharmacy/retail/sales/s1/returns")).toEqual([{
+      lines: [{ lineIdx: 0, qtyBase: 10 }], sealedIntact: true, reason: "bought the wrong strength", reasonClass: "mistake",
+    }]);
+    const call = vi.mocked(fetch).mock.calls.find(([input, init]) => init?.method === "POST" && String(input).endsWith("/returns"));
+    expect(new Headers(call?.[1]?.headers).get("Idempotency-Key")).toBeTruthy();
+    expect(within(screen.getByTestId("retail-return")).getByTestId("return-line-0")).toHaveTextContent("20 sold, 20 back");
+  });
+
+  it("says so when no sale carries the bill", async () => {
+    mockRoutes({
+      "GET /api/pharmacy/retail/state": { status: 200, body: CURRENT },
+      "GET /api/pharmacy/retail/sales": { status: 200, body: { items: [] } },
+      "GET /api/pharmacy/retail/bill": { status: 404, body: { statusCode: 404, code: "unknown_retail_sale", message: "x" } },
+    });
+    renderWithProviders(<PharmacyRetail />);
+    await userEvent.type(await screen.findByRole("textbox", { name: "Bill number" }), "INV-NOPE");
+    await userEvent.click(screen.getByRole("button", { name: "Find the bill" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("No walk-in sale or paper dispense carries that bill number.");
+    expect(screen.queryByTestId("retail-return")).toBeNull();
   });
 });

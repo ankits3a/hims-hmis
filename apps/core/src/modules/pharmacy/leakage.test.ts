@@ -96,7 +96,7 @@ describe("the pharmacy leakage triangle (P12)", () => {
     expect(report.store.code).toBe("PHARM-OPD");
     expect(report.dispensed).toEqual({ lines: 2, units: 30 });
     expect(report.mismatches).toEqual([{
-      dispenseId: leaky.id, dispenseNo: expect.any(String), itemCode: "CROC500", batchNo: "CR-1",
+      source: "dispense", dispenseId: leaky.id, dispenseNo: expect.any(String), saleId: null, invoiceNo: null, itemCode: "CROC500", batchNo: "CR-1",
       issued: 10, returned: 0, billed: 10, credited: 3, unbilledUnits: 3, unbilledPaise: 3 * leaky.unitPaise,
     }]);
     expect(report.otherConsumption).toEqual([{

@@ -135,6 +135,17 @@ export const retailSold = defineEvent("retail.sold", MODULE, z.object({
     .default({ allergies: 0, severeInteractions: 0 }),
 }));
 
+/**
+ * P19b — sealed packs of a walk-in sale (or of a paper dispense) came back: restocked into the
+ * sale's store, credited, the refund requested. The sale stays as it was; this event is the record.
+ */
+export const retailLineReturned = defineEvent("retail.line_returned", MODULE, z.object({
+  saleId: id, patientId: id, storeResourceId: id, channel: z.enum(["walk_in", "downtime"]),
+  lines: z.array(z.object({ lineIdx: z.number().int().nonnegative(), qtyBase: z.number().int().positive(), batchId: id, ledgerEntryId: id })).min(1),
+  sealedIntact: z.literal(true), reason: z.string().min(1), reasonClass: z.enum(["mistake", "genuine"]),
+  creditNoteId: id, refundApprovalId: id,
+}));
+
 /** P19 — a Form 20/21 retail licence was recorded for a store. */
 export const retailLicenceRecorded = defineEvent("retail.licence_recorded", MODULE, z.object({
   licenceId: id, storeResourceId: id, form20No: z.string().min(1), form21No: z.string().min(1),
@@ -146,5 +157,5 @@ export const PHARMACY_EVENTS = [
   dispenseQueued, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded,
   dispensePicked, dispenseBilled, dispenseHandedOver, dispenseCancelled,
   pharmacistRegistered, pharmacistRegistrationEnded, dispenseLineReturned,
-  retailSold, retailLicenceRecorded,
+  retailSold, retailLicenceRecorded, retailLineReturned,
 ] as const;
