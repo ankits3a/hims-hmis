@@ -236,6 +236,20 @@ describe("searchMedicines — the typeahead over the imported catalogue", () => 
     expect(hits[0]!.name).toMatch(/^Product containing precisely/);
   });
 
+  /**
+   * `%` and `_` are LIKE's own wildcards. Unescaped, `p_r` took 1,647 ms against the real catalogue
+   * and `par%` 426 ms — one stray keystroke turning a typeahead into a scan, on every keystroke
+   * after it. A character a doctor typed is a character, not an instruction.
+   */
+  it("S13: a wildcard character is matched literally, not obeyed", async () => {
+    await seed();
+    expect(await searchMedicines(db, "par%")).toEqual([]);
+    expect(await searchMedicines(db, "p_r")).toEqual([]);
+    expect(await searchMedicines(db, "amox_")).toEqual([]);
+    // and the real query beside them still answers
+    expect((await searchMedicines(db, "par")).length).toBeGreaterThan(0);
+  });
+
   it("S4: an inactive medicine is never offered", async () => {
     await seed();
     const hits = await searchMedicines(db, "amoxi");

@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { escapeLike } from "../../kernel/search/text";
 import { isReviewedComponent } from "./moiety";
 import type { Db } from "../../kernel/db/client";
 
@@ -109,8 +110,17 @@ export async function searchMedicines(db: Db, query: string, limit = 10): Promis
     if (!anchorTaken && t === anchor) { anchorTaken = true; continue; }
     rest.push(t);
   }
-  const like = `%${anchor}%`;
-  const starts = `${anchor}%`;
+  /*
+    ═══ A PERCENT SIGN IS A CHARACTER A DOCTOR TYPED, NOT AN INSTRUCTION ═══
+
+    These went into LIKE unescaped. Measured on the real catalogue: `p_r` took **1,647 ms** and
+    `par%` 426 ms, because `_` and `%` are LIKE's own wildcards — one stray keystroke turned the
+    typeahead into a scan and kept doing it on every keystroke after. `escapeLike` is the helper
+    this module already uses in `suggest.ts` and `mapping.ts`; this query never called it.
+  */
+  const safeAnchor = escapeLike(anchor);
+  const like = `%${safeAnchor}%`;
+  const starts = `${safeAnchor}%`;
   /*
     ═══ A WHOLE WORD BEATS AN ACCIDENT OF SPELLING ═══
 
@@ -148,7 +158,7 @@ export async function searchMedicines(db: Db, query: string, limit = 10): Promis
     : sql.join(
       rest.map((t) => sql`lower(
         h.brand_name || ' ' || coalesce(h.strength_label, '') || ' ' || h.form
-      ) like ${`%${t}%`}`),
+      ) like ${`%${escapeLike(t)}%`} escape '\\'`),
       sql` and `,
     );
 
@@ -232,6 +242,28 @@ export async function searchMedicines(db: Db, query: string, limit = 10): Promis
     So the prefix and whole-word tests read the name with that lead-in removed. Nothing else is
     touched: the stored value, the displayed name and every other rank term are unchanged.
   */
+  /*
+    ═══ A RANK TERM THAT RUNS ONCE PER ROW IS A TABLE SCAN WEARING A DISGUISE ═══
+
+    The first draft of these terms — the moiety-prefix test and the component count — ran as
+    correlated subqueries over every candidate row, before the limit. Measured against
+    `origin/main` on the real catalogue, that cost:
+
+        am   950 ms -> 2,200 ms        me   375 ms -> 1,680 ms        500  280 ms -> 1,570 ms
+
+    which is the very thing the note above already records paying for once: the moiety names are
+    resolved only for rows that SURVIVE the limit, "ten array_aggs instead of several thousand".
+    A rank term deserves the same discipline as a projection.
+
+    A SHORTLIST was tried first and was wrong: ranked on the cheap keys alone, the rows these terms
+    exist to PROMOTE never reached the stage that would have promoted them — `met` went back to
+    metoclopramide and `ors` to Orsopan, on the real catalogue, while every fixture test still
+    passed. A cheap pre-rank cannot pre-rank by the thing it is too cheap to know.
+
+    So the terms are made cheap instead. Both become SETS, computed once and hash-joined: the
+    medicines carrying a moiety that starts with the query, and the component count per candidate.
+    Same answers as the correlated form, one pass each.
+  */
   const res = await db.execute(sql`
     with intent as (
       select exists (
@@ -242,7 +274,8 @@ export async function searchMedicines(db: Db, query: string, limit = 10): Promis
       select m.id, m.brand_name, m.form, m.strength_label, m.code, m.route_class, m.salt_rank
         from formulary_medicines m
        where m.active
-         and (lower(m.brand_name) like ${like} or lower(coalesce(m.code, '')) like ${starts})
+         and (lower(m.brand_name) like ${like} escape '\\'
+              or lower(coalesce(m.code, '')) like ${starts} escape '\\')
          and exists (select 1 from formulary_medicine_salts l where l.medicine_id = m.id)
       union
       select m.id, m.brand_name, m.form, m.strength_label, m.code, m.route_class, m.salt_rank
@@ -251,34 +284,55 @@ export async function searchMedicines(db: Db, query: string, limit = 10): Promis
          and exists (
            select 1 from formulary_medicine_salts l
              join formulary_salts s on s.id = l.salt_id
-            where l.medicine_id = m.id and lower(s.name) like ${like}
+            where l.medicine_id = m.id and lower(s.name) like ${like} escape '\\'
          )
     ),
-    scored as (
-      /* A MOLECULE THE DOCTOR NAMED BEATS A BRAND THAT MERELY STARTS THE SAME WAY.
-         Written above this query, not here: this is inside a tagged template, where a backtick in
-         a comment closes the template -- the trap the header already records, walked into again. */
-      select h.*,
-             regexp_replace(lower(h.brand_name), '^product containing precisely ', '') as plain_name,
-             (select count(*) from formulary_medicine_salts l where l.medicine_id = h.id) as salt_count,
-             exists (
-        select 1 from formulary_medicine_salts l join formulary_salts s on s.id = l.salt_id
-         where l.medicine_id = h.id and lower(s.name) like ${starts}
-      ) as moiety_prefix
+    candidates as (
+      /* The cheap keys — the two that PROMOTE (whole word, prefix) and the three that order what
+         is left — decide which 1,000 go forward. The first shortlist ranked on market share alone
+         and dropped the very rows the expensive terms exist to raise; these two cost nothing and
+         are exactly the ones that were missing. 1,000 is forty times the largest page this route
+         returns. */
+      select h.*, regexp_replace(lower(h.brand_name), '^product containing precisely ', '') as plain_name
         from hits h where ${restFilter}
+       order by (case when (select molecule from intent) then false
+                       else regexp_replace(lower(h.brand_name), '^product containing precisely ', '') ~ ${word} end) desc,
+                (regexp_replace(lower(h.brand_name), '^product containing precisely ', '') like ${starts} escape '\\') desc,
+                h.salt_rank desc,
+                (h.code is not null) desc,
+                length(h.brand_name) asc
+       limit 1000
+    ),
+    /* The medicines carrying a moiety that STARTS with the query — one set, hash-joined, rather
+       than a correlated exists() per candidate row. */
+    moiety_hits as (
+      select distinct l.medicine_id
+        from formulary_medicine_salts l join formulary_salts s on s.id = l.salt_id
+       where s.active and lower(s.name) like ${starts} escape '\\'
+         and l.medicine_id in (select id from candidates)
+    ),
+    /* How many components each candidate has — one grouped pass over the candidates' rows. */
+    counts as (
+      select l.medicine_id, count(*) as n
+        from formulary_medicine_salts l
+       where l.medicine_id in (select id from candidates)
+       group by l.medicine_id
     ),
     ranked as (
-      select * from scored h
+      select c.*, coalesce(k.n, 1) as salt_count, (mh.medicine_id is not null) as moiety_prefix
+        from candidates c
+        left join counts k on k.medicine_id = c.id
+        left join moiety_hits mh on mh.medicine_id = c.id
        order by (case when (select molecule from intent) then false
-                       else plain_name ~ ${word} end) desc,
-                (plain_name like ${starts}) desc,
-                moiety_prefix desc,
-                salt_count asc,
-                salt_rank desc,
-                (code is not null) desc,
-                similarity(lower(brand_name), ${q}) desc,
-                length(plain_name) asc,
-                brand_name asc
+                       else c.plain_name ~ ${word} end) desc,
+                (c.plain_name like ${starts} escape '\\') desc,
+                (mh.medicine_id is not null) desc,
+                coalesce(k.n, 1) asc,
+                c.salt_rank desc,
+                (c.code is not null) desc,
+                similarity(lower(c.brand_name), ${q}) desc,
+                length(c.plain_name) asc,
+                c.brand_name asc
        limit ${capped}
     )
     select r.*,
