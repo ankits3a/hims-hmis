@@ -226,6 +226,31 @@ medicines"), with its own place and its own moment, and it is not built here.
 
 Shipped as two PRs: T1–T5 (the axis), T6–T7 (the switch).
 
+## Status, 2026-09-17
+
+All seven tasks BUILT on `lane/drug-disease`:
+
+| commit | what |
+|---|---|
+| `27a90c4e` | T1–T2 the book, its adoption, the table and migration 0105 |
+| `cc855456` | T3–T5 the script, the reads, the check and the gate |
+| `b914678a` | the whole shipped book adopted in a test: 148 rows, 0 waiting, 0 dead offers |
+| `261e37ea` | D6 — an offer re-checked against this patient before it is shown |
+| `97206304` | T6–T7 the screen: the dialog row, the soft notice, the one-tap switch |
+
+Measured: **925 core tests** green (opd + formulary + schema), **96 web tests** green, typecheck
+clean, lint 0 errors. **Nine mutants, nine killed by the exact test predicted** — seven on the book
+and its adoption, two on the screen.
+
+Still owed before the PR is ready:
+
+1. **A browser walk at 1280 and 400 px.** The dialog grew a row of offer buttons; `flexWrap` is set
+   but the method's own record is that a browser walk found 400 px overflow twice, and a `flexWrap`
+   that was reasoned about is not a `flexWrap` that was looked at.
+2. **Rebase on `origin/main`,** taking the next free migration serial at that moment rather than
+   this one — 0105 is free now and may not be when the PR opens.
+3. The prior-drug review card (D7) stays deferred, by name.
+
 ## Verification
 
 - Test first, and prove the red: `git show HEAD:<path>` back, run, read why it fails.
