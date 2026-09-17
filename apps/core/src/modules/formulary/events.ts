@@ -34,6 +34,11 @@ export const saltAllergyClassesAdopted = defineEvent("salt.allergy_classes_adopt
   saltId: id, added: z.array(z.string().min(1)).min(1), allergyClasses: z.array(z.string().min(1)).min(1), source: z.string().min(1),
 }));
 
+/** FORMULARY P23 — a moiety's therapeutic class set by a named resolution, where none was recorded. */
+export const saltTherapeuticClassAdopted = defineEvent("salt.therapeutic_class_adopted", MODULE, z.object({
+  saltId: id, drugClass: z.string().min(1), source: z.string().min(1),
+}));
+
 export const saltUpdated = defineEvent("salt.updated", MODULE, z.object({
   saltId: id, changed: z.array(z.string()).min(1),
 }));
@@ -135,7 +140,7 @@ export const substanceRuledUnmappable = defineEvent("substance.ruled_unmappable"
  * task is allowed to own that file.
  */
 export const FORMULARY_EVENTS = [
-  saltAdded, saltUpdated, saltAllergyClassesAdopted,
+  saltAdded, saltUpdated, saltAllergyClassesAdopted, saltTherapeuticClassAdopted,
   medicineAdded, medicineUpdated, medicineCorrected,
   interactionAdded, interactionUpdated,
   stagingApproved, stagingRejected,

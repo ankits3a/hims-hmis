@@ -9,7 +9,7 @@ import { getPatientSummaries, listAllergies } from "../patients";
 import {
   listInteractionsAmong, normalizeDrugName, resolveDrugTexts, resolveMedicines, unreviewedSaltIds,
 } from "../formulary";
-import { checkDuplicateSalt, checkInteractions, matchAllergiesSaltAware } from "./rx-checks";
+import { checkDuplicateClass, checkDuplicateSalt, checkInteractions, matchAllergiesSaltAware } from "./rx-checks";
 import { loadOpdConfig } from "./config";
 import { requireTreatingDoctor } from "./consultation";
 import { hasPermission } from "../../kernel/auth/permissions";
@@ -278,7 +278,8 @@ export async function runRxChecks(
   return {
     allergyMatches: matchAllergiesSaltAware(checkLines, allergies),
     interactions: checkInteractions(checkLines, priors, pairs, now),
-    duplicates: checkDuplicateSalt(checkLines, priors, now),
+    // P23 — class duplicates are always soft, so they reach the notices and gate nothing.
+    duplicates: [...checkDuplicateSalt(checkLines, priors, now), ...checkDuplicateClass(checkLines, priors, now)],
     /**
      * A resolution with NO moieties is not a checked line — it is a line about which nothing can be
      * said, and reporting it as covered is how the coverage figure and the safety path came to

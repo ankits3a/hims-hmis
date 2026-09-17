@@ -234,6 +234,8 @@ export type WireInteractionHit = {
 
 export type WireDuplicateHit = {
   moiety: string; lineIndex: number; hard: boolean; against: WireHitAgainst;
+  /** FORMULARY P23 — a second agent of this therapeutic class, beside `with`. Absent on a same-moiety duplicate. */
+  drugClass?: string; with?: string;
 };
 
 /** A soft hit is either kind: the screen renders them together and never gates on them (DD3). */

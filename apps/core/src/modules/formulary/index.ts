@@ -73,6 +73,9 @@ export type { InteractionAdoptionReport, InteractionRule } from "./interaction-a
  */
 export { ALLERGY_CLASSES, adoptAllergyClasses, allergyClassKeys } from "./allergy-classes";
 export type { AllergyClassAdoptionReport, AllergyClassEntry, AllergyClassKey } from "./allergy-classes";
+/** P23 — therapeutic classes for duplicate-therapy notices, adopted under a named resolution. */
+export { THERAPEUTIC_DUPLICATE_CLASSES, adoptTherapeuticClasses } from "./therapeutic-classes";
+export type { TherapeuticClassAdoptionReport, TherapeuticClassEntry } from "./therapeutic-classes";
 export type {
   AttestTarget, MappingDecision, ProjectionResult, ProposalBasis, ProposalInput, ProposalWriteResult,
   WorklistItem, WorklistProposal, WorklistStatus,
