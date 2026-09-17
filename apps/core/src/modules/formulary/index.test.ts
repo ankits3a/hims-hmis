@@ -44,6 +44,7 @@ import * as formulary from "./index";
 
 /** Sorted by `Array.prototype.sort`'s default UTF-16 order, so SCREAMING and Pascal names lead. */
 const SURFACE = [
+  "ALLERGY_CLASSES", // P22 — the allergy class vocabulary the prescribing check reads
   "FORMULARY_EVENTS",
   "FormularyError",
   "MAX_IDS",
@@ -53,8 +54,10 @@ const SURFACE = [
   "addMedicine",
   "addSalt",
   "admitStaging",
+  "adoptAllergyClasses", // P22 — allergy class memberships adopted under a named resolution
   "adoptDecisions",
   "adoptInteractions", // P21 — interaction pairs adopted under a named resolution
+  "allergyClassKeys", // P22 — pure: the classes an allergy record names
   "attestSubstance",
   "catalogueCensus",
   "countSalts",

@@ -28,7 +28,7 @@ const daysAgo = (n: number): Date => new Date(NOW.getTime() - n * 24 * 60 * 60 *
 
 function drug(
   brandName: string | null,
-  salts: { saltId: string; moiety: string; drugClass: string | null }[],
+  salts: { saltId: string; moiety: string; drugClass: string | null; allergyClasses?: readonly string[] }[],
   routeClass: "systemic" | "topical" | null = "systemic",
 ): ResolvedDrug {
   return { medicineId: brandName === null ? null : `M-${brandName}`, brandName, routeClass, salts };
@@ -131,6 +131,64 @@ describe("rx-checks: salt-aware allergy matching (Plan 16a T4)", () => {
       { substance: "dust", resolution: null },
       { substance: "   ", resolution: null },
     ])).toEqual([]);
+  });
+});
+
+/**
+ * FORMULARY P22 — the allergy classes of the owner's clinical master, on the prescribing check.
+ *
+ * The doctor's allergen picker records the bundle's own class name ("Penicillins / Beta-Lactams") as
+ * both the substance and `allergenClass`. Neither string is a moiety or a `drug_class`, so until P22
+ * the hard warning never fired for a PICKED class allergy. Each moiety now carries the classes it
+ * belongs to for allergy purposes, adopted by resolution from the clinical master (corrected where
+ * the reference over-reaches).
+ */
+describe("rx-checks: allergy classes (formulary P22)", () => {
+  const MOX = { saltId: "S-AMOX2", moiety: "amoxicillin", drugClass: null, allergyClasses: ["penicillin"] };
+  const CEFALEXIN = { saltId: "S-CFX", moiety: "cefalexin", drugClass: null, allergyClasses: ["penicillin"] };
+  const CEFUROXIME = { saltId: "S-CFU", moiety: "cefuroxime", drugClass: null };
+  const SMX = { saltId: "S-SMX", moiety: "sulfamethoxazole", drugClass: null, allergyClasses: ["sulfonamide_antibiotic"] };
+  const FUROSEMIDE = { saltId: "S-FURO", moiety: "furosemide", drugClass: null };
+  const NAPROXEN = { saltId: "S-NAP", moiety: "naproxen", drugClass: null, allergyClasses: ["nsaid"] };
+  const ETORICOXIB = { saltId: "S-ETO", moiety: "etoricoxib", drugClass: null };
+  const CODEINE = { saltId: "S-COD", moiety: "codeine", drugClass: null, allergyClasses: ["opioid_morphinan"] };
+  const FENTANYL = { saltId: "S-FEN", moiety: "fentanyl", drugClass: null };
+  const PROXY = { saltId: "S-PXM", moiety: "proxymetacaine", drugClass: null, allergyClasses: ["ester_local_anaesthetic"] };
+  const ROSU = { saltId: "S-ROS", moiety: "rosuvastatin", drugClass: null, allergyClasses: ["statin"] };
+  const picked = (cls: string) => ({ substance: cls, resolution: null, allergenClass: cls });
+  const typed = (text: string) => ({ substance: text, resolution: null, allergenClass: null });
+
+  it("a PICKED class warns on every member, a same-side-chain cephalosporin included, and on nothing else", () => {
+    const lines = [
+      line(0, "Mox 500", drug("Mox 500", [MOX])),
+      line(1, "Sporidex 500", drug("Sporidex 500", [CEFALEXIN])),
+      line(2, "Zinnat 500", drug("Zinnat 500", [CEFUROXIME])),
+    ];
+    expect(matchAllergiesSaltAware(lines, [picked("Penicillins / Beta-Lactams")]).map((m) => m.lineIndex)).toEqual([0, 1]);
+    expect(matchAllergiesSaltAware([line(0, "Crocin", drug("Crocin", [ROSU]))], [picked("Statins")])).toHaveLength(1);
+    expect(matchAllergiesSaltAware([line(0, "Paracaine", drug("Paracaine", [PROXY]))], [picked("Ester Local Anesthetics")])).toHaveLength(1);
+  });
+
+  it("typed words that name a class reach it, whatever the plural or the spelling", () => {
+    const cases: [string, typeof MOX][] = [
+      ["Penicillins", MOX], ["beta-lactam", MOX], ["Sulpha drugs", SMX], ["sulfa", SMX],
+      ["NSAIDs", NAPROXEN], ["Opioids", CODEINE], ["opiates", CODEINE], ["statins", ROSU],
+    ];
+    for (const [text, salt] of cases) {
+      expect([text, matchAllergiesSaltAware([line(0, "X 1", drug("X 1", [salt]))], [typed(text)]).length]).toEqual([text, 1]);
+    }
+  });
+
+  it("does not warn where the reference over-reached: loop diuretics under sulfa, fentanyl under opioids, a coxib under AERD", () => {
+    expect(matchAllergiesSaltAware([line(0, "Lasix 40", drug("Lasix 40", [FUROSEMIDE]))], [picked("Sulfonamides (Sulfa)")])).toEqual([]);
+    expect(matchAllergiesSaltAware([line(0, "Fentanyl inj", drug("Fentanyl inj", [FENTANYL]))], [picked("Opioids")])).toEqual([]);
+    expect(matchAllergiesSaltAware([line(0, "Etoshine 90", drug("Etoshine 90", [ETORICOXIB]))], [picked("NSAIDs / Aspirin (AERD)")])).toEqual([]);
+  });
+
+  it("a class word inside a longer phrase, or an unknown picked class, matches nothing by class", () => {
+    const lines = [line(0, "Mox 500", drug("Mox 500", [MOX]))];
+    expect(matchAllergiesSaltAware(lines, [typed("penicillin rash as a child")])).toEqual([]);
+    expect(matchAllergiesSaltAware(lines, [{ substance: "Latex", resolution: null, allergenClass: "Latex" }])).toEqual([]);
   });
 });
 

@@ -1,4 +1,4 @@
-import { normalizeDrugName } from "../formulary";
+import { allergyClassKeys, normalizeDrugName } from "../formulary";
 import type { InteractionPair, ResolvedDrug, SaltRef } from "../formulary";
 import type { RxLine } from "./fhir";
 import type { AllergyMatch } from "./prescriptions";
@@ -122,7 +122,7 @@ function legacySubstringMatch(substanceRaw: string, drugRaw: string): boolean {
  */
 export function matchAllergiesSaltAware(
   lines: RxCheckLine[],
-  allergies: { substance: string; resolution: ResolvedDrug | null }[],
+  allergies: { substance: string; resolution: ResolvedDrug | null; allergenClass?: string | null }[],
 ): AllergyMatch[] {
   const matches: AllergyMatch[] = [];
   for (const line of lines) {
@@ -136,10 +136,14 @@ export function matchAllergiesSaltAware(
       const shared = saltsOf(allergy.resolution).some((s) => lineSaltIds.has(s.saltId));
 
       // 2. The class path: the substance text names a moiety or a whole class the line contains.
+      //    P22: or the allergy names an allergy class (picked, or typed as the class itself) that
+      //    one of the line's moieties belongs to.
       const key = normalizeDrugName(substance);
+      const classKeys: readonly string[] = allergyClassKeys(substance, allergy.allergenClass);
       const classHit = key !== "" && lineSalts.some((s) => (
         normalizeDrugName(s.moiety) === key
         || (s.drugClass !== null && normalizeDrugName(s.drugClass) === key)
+        || (s.allergyClasses ?? []).some((c) => classKeys.includes(c))
       ));
 
       // 3. The layer that needs no formulary coverage at all.

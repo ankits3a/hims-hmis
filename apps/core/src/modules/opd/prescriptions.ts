@@ -255,6 +255,8 @@ export async function runRxChecks(
     : new Map<string, ResolvedDrug | null>();
   const allergies = active.map((a) => ({
     substance: a.substance, resolution: substanceResolutions.get(a.substance) ?? null,
+    // P22 — the class the doctor PICKED, which the text alone does not carry to the check.
+    allergenClass: a.allergenClass,
   }));
 
   // ── 3. what the patient is already taking (DD4: resolved LIVE, against today's formulary) ──

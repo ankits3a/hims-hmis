@@ -7,7 +7,7 @@ import {
 import { withTx } from "../src/kernel/db/client";
 import { events } from "../src/kernel/db/schema";
 import {
-  addMedicine, addSalt, attestSubstance, catalogueCensus, normalizeDrugName, refreshRankSignals, resolveDrugTexts,
+  addMedicine, addSalt, adoptAllergyClasses, attestSubstance, catalogueCensus, normalizeDrugName, refreshRankSignals, resolveDrugTexts,
   ruleSubstanceUnmappable, searchMedicines,
 } from "../src/modules/formulary";
 import { runRxChecks } from "../src/modules/opd";
@@ -83,11 +83,11 @@ describe("formulary mapping × prescription checks", () => {
     return { amox, substance, image, mox, novamox };
   }
 
-  async function patientAllergicTo(substance: string): Promise<string> {
+  async function patientAllergicTo(substance: string, allergenClass: string | null = null): Promise<string> {
     await seedOpdBase(db);
     const clerk = await mkUser(db, "clerk", []);
     const patient = await mkPatient(db, clerk.actor);
-    await withTx(db, (tx) => addAllergy(tx, clerk.actor, patient.id, { substance, severity: "severe", source: "consult" }));
+    await withTx(db, (tx) => addAllergy(tx, clerk.actor, patient.id, { substance, severity: "severe", source: "consult", allergenClass }));
     return patient.id;
   }
 
@@ -114,6 +114,25 @@ describe("formulary mapping × prescription checks", () => {
 
     const after = await runRxChecks(db, patientId, [line("Novamox 500", w.novamox)], new Date());
     expect(after.allergyMatches).toEqual([{ lineIndex: 0, substance: "penicillin" }]);
+  });
+
+  it("a class the doctor PICKED reaches the product once the allergy classes are adopted (formulary P22)", async () => {
+    const w = await world();
+    await withTx(db, (tx) => attestSubstance(tx, PHARMACIST, w.substance, { saltId: w.amox }));
+    // The doctor picked the class and kept their own words for the substance.
+    const patientId = await patientAllergicTo("Penicillin (rash, 2019)", "Penicillins / Beta-Lactams");
+    const before = await runRxChecks(db, patientId, [line("Mox 250 Kid", w.mox)], new Date());
+    // The picked class is neither a moiety nor a drug class: silent until the classes are adopted.
+    expect(before.allergyMatches).toEqual([]);
+
+    await withTx(db, (tx) => adoptAllergyClasses(tx, PHARMACIST, "P&T resolution 2026-09-17/3", [
+      { classKey: "penicillin", rule: "allergy_cross_reactivity_rules#1", moieties: ["amoxicillin"] },
+    ]));
+
+    const after = await runRxChecks(db, patientId, [line("Mox 250 Kid", w.mox), line("Novamox 500", w.novamox)], new Date());
+    expect(after.allergyMatches).toEqual([
+      { lineIndex: 0, substance: "Penicillin (rash, 2019)" }, { lineIndex: 1, substance: "Penicillin (rash, 2019)" },
+    ]);
   });
 
   it("a text naming a mapped release entry resolves to the entry AND the moiety it was mapped to", async () => {
