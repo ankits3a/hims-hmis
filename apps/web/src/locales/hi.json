@@ -4579,7 +4579,8 @@
       "visitNoneToday": "उस मरीज़ की {{date}} को कोई विज़िट नहीं है।",
       "visitUnknown": "वह विज़िट नहीं मिली।",
       "queueShortest": "सबसे छोटी खुली लाइन {{doctor}} की है — {{waiting}} इंतज़ार में, करीब {{minutes}} मिनट।",
-      "queueNoneOpen": "आज कोई डॉक्टर बैठे नहीं हैं।"
+      "queueNoneOpen": "आज कोई डॉक्टर बैठे नहीं हैं।",
+      "uhidCheckFailed": "यह UHID सही नहीं लग रहा — अंक दोबारा देख लीजिए। ({{uhid}})"
     }
   }
 }

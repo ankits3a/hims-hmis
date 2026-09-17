@@ -4579,7 +4579,8 @@
       "visitNoneToday": "That patient has no visit on {{date}}.",
       "visitUnknown": "I could not find that visit.",
       "queueShortest": "Shortest open line is {{doctor}} — {{waiting}} waiting, about {{minutes}} minutes.",
-      "queueNoneOpen": "No doctor is holding a clinic today."
+      "queueNoneOpen": "No doctor is holding a clinic today.",
+      "uhidCheckFailed": "That UHID does not look right — check the digits. ({{uhid}})"
     }
   }
 }

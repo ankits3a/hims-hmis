@@ -42,20 +42,53 @@ const ANSWER_FOR_STATUS: Record<string, CopilotAnswerKey> = {
  * "no such patient" for a sealed record — the same answer the patient picker gives them, rather
  * than a copilot that is quietly more powerful than the screens.
  */
+/**
+ * THE SHAPE OF A UHID, WHICH IS NOT THE SAME QUESTION AS WHETHER IT IS VALID.
+ *
+ * `<prefix><7-digit serial><check digit>` — mirrors `UHID_FULL_RE` in `patients/search.ts`. Kept
+ * separate from `isValidUhid` because the two answer different things and collapsing them is the
+ * defect below.
+ */
+const UHID_SHAPE_RE = /^[A-Za-z]{1,5}\d{8}$/;
+
 async function encounterIdFor(ctx: CopilotToolCtx): Promise<
   { kind: "encounter"; encounterId: string; patientId: string | null }
   | { kind: "unknown_patient" }
+  | { kind: "bad_uhid"; typed: string }
   | { kind: "no_visit_today"; patientId: string }
 > {
-  const subject = (ctx.subject ?? "").trim();
+  /*
+    UPPERCASED, because `isValidUhid` matches `[A-Z]` only and a clerk types in whatever case the
+    keyboard was left in. `searchPatients` already uppercases before its exact lane; doing it here
+    too means the check digit and the lookup agree about what was typed.
+  */
+  const subject = (ctx.subject ?? "").trim().toUpperCase();
 
   /*
-    A VISIT NUMBER IS PASSED STRAIGHT THROUGH. `counterState` accepts one (it calls `getEncounter`,
-    which routes on `VISIT_NO_RE`), and that path reads no patient record at all — the cheapest and
-    least disclosing way to answer, which is why it is tried first.
+    ═══ SHAPE FIRST, THEN THE CHECK DIGIT — AND THE ORDER IS THE BUG THE E2E FOUND ═══
+
+    The first version asked `isValidUhid` alone and sent everything it rejected down the visit-number
+    path. But `isValidUhid` is shape AND a Verhoeff check digit, so a MISTYPED UHID — the single
+    commonest error at a counter, and the exact thing the check digit exists to catch — was silently
+    treated as a visit number and answered "I could not find that visit", about a patient. The e2e
+    suite caught it by asking about an invented UHID; no unit test could, because every unit fixture
+    used a UHID that was real.
+
+    Three outcomes now, because there are three cases:
+      - not UHID-shaped        → it is a visit number; pass it straight through
+      - UHID-shaped, bad digit → say so. The number is wrong and we can prove it.
+      - UHID-shaped, valid     → look the patient up
   */
-  if (!isValidUhid(subject)) {
+  if (!UHID_SHAPE_RE.test(subject)) {
+    /*
+      A VISIT NUMBER IS PASSED STRAIGHT THROUGH. `counterState` accepts one (it calls `getEncounter`,
+      which routes on `VISIT_NO_RE`), and that path reads no patient record at all — the cheapest and
+      least disclosing way to answer, which is why it is tried first.
+    */
     return { kind: "encounter", encounterId: subject, patientId: null };
+  }
+  if (!isValidUhid(subject)) {
+    return { kind: "bad_uhid", typed: subject };
   }
 
   const hits = await searchPatients(ctx.db, ctx.actor, subject, 1);
@@ -87,6 +120,13 @@ export const opdCopilotTools: readonly CopilotToolDecl[] = [
       const found = await encounterIdFor(ctx);
       if (found.kind === "unknown_patient") {
         return { key: "copilot.answer.visitUnknownPatient", params: {} };
+      }
+      if (found.kind === "bad_uhid") {
+        /*
+          Echoing what they typed is safe and useful: it came from this clerk's own keyboard a
+          moment ago, and seeing it back is how somebody spots a transposed pair of digits.
+        */
+        return { key: "copilot.answer.uhidCheckFailed", params: { uhid: found.typed } };
       }
       if (found.kind === "no_visit_today") {
         await recordVisitLookup(ctx, found.patientId, null);

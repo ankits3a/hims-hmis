@@ -68,6 +68,17 @@ export const COPILOT_ANSWER_KEYS = [
   "copilot.answer.visitNoneToday",
   /** A visit number that resolves to nothing, or a status outside the six. */
   "copilot.answer.visitUnknown",
+  /**
+   * THE UHID IS THE RIGHT SHAPE AND THE CHECK DIGIT SAYS IT WAS MISTYPED.
+   *
+   * Found by the e2e suite, which asked about an invented UHID and got told the VISIT was unknown.
+   * A UHID is `<prefix><7-digit serial><Verhoeff check digit>` and `isValidUhid` validates the
+   * digit — so a typo is DETECTABLE, and the first implementation threw that away: anything failing
+   * the check fell through to the visit-number path and came back as "I could not find that visit",
+   * about a patient. Telling a clerk the number is wrong is the entire reason the check digit is in
+   * the number.
+   */
+  "copilot.answer.uhidCheckFailed",
 
   /* ═══ queue_depth ═══ */
   "copilot.answer.queueShortest",
