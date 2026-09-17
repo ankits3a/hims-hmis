@@ -88,6 +88,13 @@ describe("adopting interaction pairs by resolution (P21)", () => {
     // Azithromycin is not a meaningful CYP3A4 inhibitor: the source named it, the list does not.
     expect(rules.some((r) => r.a === "azithromycin" || r.b === "azithromycin")).toBe(false);
     expect(rules.find((r) => r.a === "paracetamol" && r.b === "isoniazid")?.severity).toBe("moderate");
+    // Pairs name moieties as the national release spells them. There "aluminum hydroxide" is a release
+    // entry that is not a moiety and "calcium carbonate" does not exist: the moieties are "aluminium
+    // hydroxide" and "calcium". With the first spellings the adoption skipped 10 quinolone pairs
+    // (measured on the rehearsal database `hmis_formulary_prodlike`, 2026-09-17: the other 70 names resolve).
+    const names = new Set(rules.flatMap((r) => [r.a, r.b]));
+    expect(["aluminum hydroxide", "calcium carbonate"].filter((n) => names.has(n))).toEqual([]);
+    expect(["aluminium hydroxide", "calcium"].filter((n) => !names.has(n))).toEqual([]);
     // Nothing is in this formulary yet, so everything waits; the list itself validates.
     const report = await adopt(rules);
     expect(report.created).toEqual({ severe: 0, moderate: 0 });
