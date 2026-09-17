@@ -1,7 +1,7 @@
 # Request for Quotation — Embedded Drug Knowledge Dataset
 
-**Issued by:** [Hospital legal name], a multispecialty hospital in India (current: ~100 OPD/day; target: 610 beds, 2,000+ OPD/day, 10 operating theatres by 2027)
-**Date:** 2026-08-23 · **Responses requested by:** [date + 4 weeks]
+**Issued by:** [Hospital name], a multispecialty hospital in Bihar, India, operated by LEELAWATI DEVI EDUCATIONAL TRUST (GSTIN 10AAATL6484H1ZP) (current: ~100 OPD/day; target: 610 beds, 2,000+ OPD/day, 10 operating theatres by 2027)
+**Date:** 2026-08-23, revised 2026-09-17 (§2 M5, §2A) · **Responses requested by:** [date + 4 weeks]
 **Contact:** [name, email, phone]
 
 ## 1. What we are licensing
@@ -26,6 +26,24 @@ Responses not meeting these will not be evaluated:
 | M2 | **Salt/ingredient-level join keys** | Content keyed at the active-ingredient (INN/salt) level, with ATC classification (or a documented mapping to ATC). We map our own item master (Indian brands, fixed-dose combinations) to salt level; we do not require Indian brand-name coverage, but it is a scoring advantage (see E1). |
 | M3 | **Documented, stable severity scale** | Your interaction severity levels must be enumerable and stable across releases, so our clinical governance can map them to our own blocking/warning configuration. Include the scale's definition document. |
 | M4 | **Versioned releases with changelogs** | Each content release carries a version identifier and a machine-readable or structured changelog. State your release cadence. Our governance re-validates clinical behaviour on every content update. |
+| M5 | **A licence for clinical use in a fee-charging hospital** | The licence must permit showing the content to our doctors and pharmacists, inside prescribing, dispensing and retail sale, in a hospital that charges patients. Research-only and non-commercial licences (for example CC BY-NC) do not qualify, whatever the price. |
+| M6 | **Management advice, not only a level** | Every interaction record carries what the clinician should do: avoid, adjust the dose (by how much), separate the doses (by how long), or monitor (what, and when). A pair with a level and no advice is not a usable alert. |
+
+## 2A. Coverage we will measure (benchmark, 2026-09-17)
+
+We measured our own formulary against a public research interaction database. The hospital may not
+use that database clinically, so it serves only as a benchmark. The offered dataset will be scored
+against the same benchmark in the technical evaluation (§5).
+
+| # | Target | Basis |
+|---|---|---|
+| C1 | Recognise the **1,429** active ingredients of our formulary that the benchmark covers | our national-release moiety list (NRCeS CD-India 2026-09): 2,178 moieties |
+| C2 | Also cover the high-volume Indian molecules the benchmark lacks: aceclofenac, ornidazole, serratiopeptidase, domperidone, etoricoxib, nimesulide, gliclazide, tenofovir, vildagliptin, teneligliptin, candesartan, dabigatran | 641 of our moieties sold in India had no benchmark entry |
+| C3 | A rated record, with advice (M6), for at least **95% of the 28,697** ingredient pairs the benchmark rates major among our ingredients; a pair you rate lower carries its reason | the benchmark's major pairs among our moieties |
+| C4 | Every one of a **2,132-pair** priority list of major pairs among commonly stocked essential medicines | our shortlist (for example quinolone × tramadol, SSRI × linezolid, dual RAAS blockade) |
+| C5 | Every one of the **179** pairs the hospital has already adopted | our current interaction book (157 adopted by the owner's resolution, plus the starter pairs) |
+| C6 | No "unknown" severity level: every listed pair is rated | the benchmark leaves 18% of its pairs unrated |
+| C7 | The route and formulation each record applies to (an eye drop is not a tablet; intrathecal contrast is not intravenous) | the benchmark records no route |
 
 ## 3. Evaluation criteria (scored)
 
@@ -49,4 +67,7 @@ Responses not meeting these will not be evaluated:
 
 ## 5. Process
 
-Shortlisted vendors will be invited to a technical evaluation: we load the sample dataset, run our own test suite against it (known-interaction fixtures, pediatric dose cases, allergy-class cases), and assess integration effort. Commercial closure follows technical acceptance.
+Shortlisted vendors will be invited to a technical evaluation. We load the sample dataset and run our
+own test suite against it: known-interaction fixtures, pediatric dose cases, allergy-class cases,
+and the §2A coverage measures. We also assess the integration effort. Commercial closure follows
+technical acceptance.
