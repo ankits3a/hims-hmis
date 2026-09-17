@@ -1498,6 +1498,102 @@ describe("OpdConsult", () => {
   });
 
   /**
+   * ═══ FORMULARY P24 — THE FOURTH AXIS, AND THE ONE-TAP SWITCH ═══
+   *
+   * The alternative on this hit has ALREADY been vetted server-side against this patient (D6), so
+   * what the button offers is safe. What is asserted here is the screen's half: that the alert
+   * names the diagnosis and the date it was coded — a doctor overrides a fact they can see — and
+   * that one tap rewrites the line and does NOT submit on the doctor's behalf.
+   */
+  const DISEASE_HIT = {
+    severity: "severe", lineIndex: 0, moiety: "propranolol",
+    icd10Prefix: "J45", icd10Title: "Asthma",
+    diagnosis: { code: "J45.909", text: "Bronchial asthma", codedOn: "2026-08-01" },
+    note: "A non-selective beta-blocker can trigger severe bronchospasm in asthma.",
+    alternatives: [{ moiety: "amlodipine", label: "Amlodipine 5 mg" }],
+    stale: false,
+  };
+
+  const diseaseRoutes = (rxBody: unknown) => ({
+    ...baseRoutes(),
+    "GET /api/formulary/medicines/search": { status: 200, body: DRUG_HITS },
+    "GET /api/formulary/coverage": { status: 200, body: { coverage: 0.92, noticeEnabled: true } },
+    "POST /api/opd/visits/enc-1/rx-precheck": {
+      status: 201,
+      body: {
+        allergyMatches: [], interactions: [], duplicates: [], notices: [],
+        drugDisease: [DISEASE_HIT], unresolvedLineIndexes: [],
+      },
+    },
+    "POST /api/opd/visits/enc-1/prescriptions": { status: 201, body: rxBody },
+    "GET /api/opd/prescriptions/rx-1/print": { status: 200, body: PRINT_DATA },
+  });
+
+  async function toTheDialog(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await screen.findByLabelText("Drug");
+    await user.type(screen.getByLabelText("Drug"), "warf");
+    await user.click(await screen.findByTestId("rx-drug-0-hit-m-warf"));
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+    return screen.findByRole("dialog");
+  }
+
+  it("P24: the diagnosis that forbids the drug is named with its code and date, and one tap switches the line", async () => {
+    mockRoutes(diseaseRoutes({ prescriptionId: "rx-1", version: 1, notices: [] }));
+    const user = userEvent.setup();
+    const path = "/api/opd/visits/enc-1/prescriptions";
+
+    const dialog = await toTheDialog(user);
+
+    expect(within(dialog).getByText(/contraindicated in Asthma/)).toBeInTheDocument();
+    // The evidence, not just the verdict: WHICH code, and WHEN it was recorded.
+    expect(within(dialog).getByText(/recorded J45\.909 on 2026-08-01/)).toBeInTheDocument();
+    expect(callsTo("POST", path)).toHaveLength(0);
+
+    await user.click(within(dialog).getByTestId("disease-switch-0-amlodipine"));
+
+    expect(screen.getByLabelText("Drug")).toHaveValue("Amlodipine 5 mg");
+    // The switch does NOT issue. The doctor decides; the next Issue re-runs every check server-side.
+    expect(callsTo("POST", path)).toHaveLength(0);
+  });
+
+  it("P24: the dialog does not call a drug-disease warning an allergy", async () => {
+    mockRoutes(diseaseRoutes({ prescriptionId: "rx-1", version: 1, notices: [] }));
+    const user = userEvent.setup();
+
+    const dialog = await toTheDialog(user);
+
+    // A browser walk at 400 px found "Allergy conflict" over this warning, above a hint telling the
+    // doctor the patient was recorded allergic — for a patient with no allergy at all.
+    expect(within(dialog).getByRole("heading", { name: "Prescribing warnings" })).toBeInTheDocument();
+    expect(within(dialog).queryByText(/recorded as allergic/)).not.toBeInTheDocument();
+  });
+
+  it("P24: overriding it carries the reason, the moiety AND the ruling that was cleared", async () => {
+    mockRoutes(diseaseRoutes({ prescriptionId: "rx-1", version: 1, notices: [] }));
+    const user = userEvent.setup();
+    const path = "/api/opd/visits/enc-1/prescriptions";
+
+    const dialog = await toTheDialog(user);
+    await user.type(
+      within(dialog).getByTestId("disease-reason-0"),
+      "asthma quiescent 6 years, cardiology advised, salbutamol to hand",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Override and issue" }));
+
+    await waitFor(() => expect(callsTo("POST", path)).toHaveLength(1));
+    const body = bodiesOf("POST", path)[0]! as {
+      drugDiseaseOverrides: { lineIndex: number; reason: string; moiety: string; icd10Prefix: string }[];
+    };
+    expect(body.drugDiseaseOverrides).toEqual([{
+      lineIndex: 0, reason: "asthma quiescent 6 years, cardiology advised, salbutamol to hand",
+      moiety: "propranolol", icd10Prefix: "J45",
+    }]);
+  });
+
+  /**
    * C7 (independent review) — 16a's STATE MUST NOT OUTLIVE THE PATIENT IT BELONGS TO.
    *
    * `resetPanel` cleared the shipped allergy state and none of the seven fields T6 added. The

@@ -57,6 +57,7 @@ const SURFACE = [
   "admitStaging",
   "adoptAllergyClasses", // P22 — allergy class memberships adopted under a named resolution
   "adoptDecisions",
+  "adoptDrugDisease", // P24 — what a diagnosis forbids, adopted under a named resolution
   "adoptInteractions", // P21 — interaction pairs adopted under a named resolution
   "adoptTherapeuticClasses", // P23 — therapeutic classes adopted under a named resolution
   "allergyClassKeys", // P22 — pure: the classes an allergy record names
@@ -68,6 +69,7 @@ const SURFACE = [
   "formularyManifest",
   "getStagingRow",
   "isEquivalentMedicine",
+  "listDrugDiseaseFor", // P24 — the rules that reach these moieties and these diagnosis codes
   "listInteractionsAmong",
   "medicineExists",
   "medicineIdsByBrandNames",

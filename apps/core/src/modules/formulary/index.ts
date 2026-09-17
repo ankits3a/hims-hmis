@@ -80,3 +80,11 @@ export type {
   AttestTarget, MappingDecision, ProjectionResult, ProposalBasis, ProposalInput, ProposalWriteResult,
   WorklistItem, WorklistProposal, WorklistStatus,
 } from "./mapping";
+
+/** P24 — what a patient's diagnosis forbids, adopted from a reference under a named resolution. */
+export { adoptDrugDisease } from "./drug-disease-adoption";
+export type { DrugDiseaseAdoptionReport, DrugDiseaseRule } from "./drug-disease-adoption";
+export { listDrugDiseaseFor } from "./resolve";
+export type { DrugDiseaseRow } from "./resolve";
+/** The offer a drug-disease alert carries. Declared with the table; the checks read it here. */
+export type { DrugDiseaseAlternative } from "../../kernel/db/schema";

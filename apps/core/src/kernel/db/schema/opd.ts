@@ -920,6 +920,12 @@ export const opdPrescriptions = pgTable(
      */
     interactionOverrides: jsonb("interaction_overrides").notNull().default(sql`'[]'::jsonb`),
     duplicateOverrides: jsonb("duplicate_overrides").notNull().default(sql`'[]'::jsonb`),
+    /**
+     * P24 — and the same law for the fourth axis. A doctor who prescribes a drug this patient's
+     * recorded DISEASE forbids types why, and that reason is the record: it says a clinician saw
+     * the diagnosis, weighed it, and decided anyway. Defaults to `[]` like its two neighbours.
+     */
+    drugDiseaseOverrides: jsonb("drug_disease_overrides").notNull().default(sql`'[]'::jsonb`),
     status: text("status").notNull().default("active"), // 'active' | 'superseded'
     /**
      * ═══ FD-31 — TYPED FROM A PAPER SLIP, AND BY WHOM (OWNER RULING 2026-09-12) ═══

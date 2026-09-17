@@ -1,5 +1,8 @@
 import { THERAPEUTIC_DUPLICATE_CLASSES, allergyClassKeys, normalizeDrugName } from "../formulary";
-import type { InteractionPair, ResolvedDrug, SaltRef } from "../formulary";
+import type {
+  DrugDiseaseAlternative, DrugDiseaseRow, InteractionPair, ResolvedDrug, SaltRef,
+} from "../formulary";
+import type { CodedDiagnosis } from "./diagnosis-history";
 import type { RxLine } from "./fhir";
 import type { AllergyMatch } from "./prescriptions";
 
@@ -374,6 +377,95 @@ export function checkDuplicateClass(lines: RxCheckLine[], priors: PriorRx[], now
           hits.push({
             moiety: mine.moiety, drugClass: mine.drugClass!, with: hit.moiety, lineIndex: line.lineIndex, hard: false,
             against: { scope: "prior", prescriptionId: prior.prescriptionId, issuedAt: prior.issuedAt, assumedCurrent: currency.assumedCurrent },
+          });
+        }
+      }
+    }
+  }
+  return hits;
+}
+
+/**
+ * ═══ THE FOURTH AXIS: WHAT THE PATIENT'S DIAGNOSIS FORBIDS (P24) ═══
+ *
+ * The other three checks ask about the prescription. This one asks about the PATIENT, which is why
+ * it takes diagnoses rather than priors, and why it is the only check whose severity can be
+ * softened by the calendar.
+ *
+ * ═══ A CODE OVER A YEAR OLD MAY NOTICE, BUT MAY NOT GATE ═══
+ *
+ * There is no problem list, so nothing ever retires a diagnosis: a code typed once is on the record
+ * for good. Gating on one forever would mean a patient coded `J45` in error in 2026 can never be
+ * given a beta-blocker without an override, for the rest of their life, by every doctor who ever
+ * sees them. That is how a safety system becomes a formality.
+ *
+ * So the ruling (phase doc D2): a code recorded within a year gates at the book's severity; an
+ * older one is downgraded to a notice and carries `stale`, and the alert names the date either way.
+ * The prescriber can see a 2019 diagnosis for what it is. The check does not pretend to know.
+ */
+export type DrugDiseaseHit = {
+  /** The book's severity, DOWNGRADED to 'moderate' when the diagnosis is older than a year. */
+  severity: "severe" | "moderate";
+  lineIndex: number;
+  /** The moiety in this line that the rule names. */
+  moiety: string;
+  /** The rule's prefix and the catalogue's title for it: which ruling fired, `N18` or `N18.4`. */
+  icd10Prefix: string;
+  icd10Title: string;
+  /** The patient's own diagnosis that matched it — the doctor's words, the code, and the date. */
+  diagnosis: { code: string; text: string; codedOn: string };
+  note: string;
+  alternatives: DrugDiseaseAlternative[];
+  /** True when the diagnosis is over a year old, which is WHY a severe rule came back moderate. */
+  stale: boolean;
+};
+
+/** A diagnosis older than this may raise a notice but may never gate. Phase doc D2. */
+export const DIAGNOSIS_GATES_FOR_DAYS = 365;
+
+export function checkDrugDisease(
+  lines: RxCheckLine[],
+  diagnoses: readonly CodedDiagnosis[],
+  rules: readonly DrugDiseaseRow[],
+  now: Date,
+): DrugDiseaseHit[] {
+  if (rules.length === 0 || diagnoses.length === 0) return [];
+  const bySalt = new Map<string, DrugDiseaseRow[]>();
+  for (const r of rules) {
+    const held = bySalt.get(r.saltId);
+    if (held === undefined) bySalt.set(r.saltId, [r]);
+    else held.push(r);
+  }
+
+  const cutoff = now.getTime() - DIAGNOSIS_GATES_FOR_DAYS * 24 * 60 * 60 * 1000;
+  const hits: DrugDiseaseHit[] = [];
+  const seen = new Set<string>();
+
+  for (const line of lines) {
+    if (line.resolution === null) continue;
+    // A `systemic_only` rule does not apply to a gel or a drop. An UNRESOLVED route counts as
+    // systemic, for `routeSuppresses`'s reason: suppressing on a guess is the wrong way to guess.
+    const topical = line.resolution.routeClass === "topical";
+    for (const salt of line.resolution.salts) {
+      for (const rule of bySalt.get(salt.saltId) ?? []) {
+        if (rule.routeScope === "systemic_only" && topical) continue;
+        for (const dx of diagnoses) {
+          if (!dx.code.startsWith(rule.icd10Prefix)) continue;
+          // One hit per line, moiety and rule: two visits carrying the same code say nothing new.
+          const key = `${String(line.lineIndex)}|${salt.saltId}|${rule.icd10Prefix}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const stale = Date.parse(`${dx.codedOn}T00:00:00Z`) < cutoff;
+          hits.push({
+            severity: stale ? "moderate" : rule.severity,
+            lineIndex: line.lineIndex,
+            moiety: salt.moiety,
+            icd10Prefix: rule.icd10Prefix,
+            icd10Title: rule.icd10Title,
+            diagnosis: { code: dx.code, text: dx.text, codedOn: dx.codedOn },
+            note: rule.note,
+            alternatives: rule.alternatives,
+            stale,
           });
         }
       }
