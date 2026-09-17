@@ -3,6 +3,7 @@ import { isValidUhid, searchPatients } from "../patients";
 import { counterState, listVisits } from "./encounters";
 import { summaryByDoctor } from "./queue";
 import type { CopilotAnswer, CopilotToolCtx, CopilotToolDecl } from "../../kernel/copilot/types";
+import type { CopilotAnswerKey } from "@hmis/contracts";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -19,7 +20,7 @@ import type { CopilotAnswer, CopilotToolCtx, CopilotToolDecl } from "../../kerne
  */
 
 /** Which of the six visit states counts as "the doctor has seen them". */
-const ANSWER_FOR_STATUS: Record<string, string> = {
+const ANSWER_FOR_STATUS: Record<string, CopilotAnswerKey> = {
   completed: "copilot.answer.visitSeen",
   in_consultation: "copilot.answer.visitInConsult",
   awaiting_results: "copilot.answer.visitAwaitingResults",

@@ -17,7 +17,7 @@ const tool = (over: Partial<CopilotToolDecl> = {}): CopilotToolDecl => ({
   intent: "queue_depth",
   permission: "opd.queue.read",
   needsSubject: false,
-  run: () => Promise.resolve({ key: "copilot.answer.queueDepth", params: { count: 3 } }),
+  run: () => Promise.resolve({ key: "copilot.answer.queueShortest", params: { count: 3 } }),
   ...over,
 });
 
@@ -92,7 +92,7 @@ const ctx = (over: Partial<CopilotToolCtx> = {}): CopilotToolCtx => ({
 describe("runTool", () => {
   it("runs the tool when the asking user holds the permission", async () => {
     const out = await runTool(tool(), ctx(), () => Promise.resolve(true));
-    expect(out.key).toBe("copilot.answer.queueDepth");
+    expect(out.key).toBe("copilot.answer.queueShortest");
   });
 
   it("refuses — and does NOT run the tool — when they do not", async () => {
@@ -102,7 +102,7 @@ describe("runTool", () => {
       having a permission at all.
     */
     let ran = false;
-    const t = tool({ run: () => { ran = true; return Promise.resolve({ key: "x", params: {} }); } });
+    const t = tool({ run: () => { ran = true; return Promise.resolve({ key: "copilot.answer.failed", params: {} }); } });
     const out = await runTool(t, ctx(), () => Promise.resolve(false));
     expect(out.key).toBe("copilot.answer.notPermitted");
     expect(ran).toBe(false);
@@ -117,7 +117,7 @@ describe("runTool", () => {
     const t = tool({
       intent: "visit_status",
       needsSubject: true,
-      run: (c) => Promise.resolve({ key: "seen", params: { who: c.subject ?? "" } }),
+      run: (c) => Promise.resolve({ key: "copilot.answer.visitSeen", params: { who: c.subject ?? "" } }),
     });
     const out = await runTool(t, ctx({ subject: "U00110012" }), () => Promise.resolve(true));
     expect(out.params.who).toBe("U00110012");
@@ -127,7 +127,7 @@ describe("runTool", () => {
     let asked = false;
     const t = tool({ permission: null });
     const out = await runTool(t, ctx(), () => { asked = true; return Promise.resolve(false); });
-    expect(out.key).toBe("copilot.answer.queueDepth");
+    expect(out.key).toBe("copilot.answer.queueShortest");
     expect(asked).toBe(false);
   });
 

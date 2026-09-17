@@ -7,6 +7,7 @@ import { api } from "../lib/api";
 import { listDepartments, listDoctors, listRooms, opdErrorMessage, todayIst } from "../lib/opd-api";
 import type { WireAppointment, WireDepartment, WireDoctor, WireOpenVisitResult, WireRoom, WireSlot } from "../lib/opd-api";
 import { useRealtime } from "../lib/realtime";
+import { useCopilot } from "../lib/use-copilot";
 import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
 import { PatientPicker } from "../components/patient-picker";
@@ -440,7 +441,6 @@ export function OpdAppointments(): React.ReactElement {
 
   const [tab, setTab] = useState<"day" | "needsRebooking">("day");
   const [log, setLog] = useState<AgentLine[]>([]);
-  const [answer, setAnswer] = useState<string | null>(null);
   const note = useCallback((text: string, kind: AgentLine["kind"] = "did") => {
     setLog((prev) => logged(prev, text, kind));
   }, []);
@@ -453,28 +453,52 @@ export function OpdAppointments(): React.ReactElement {
   const roomItems = rooms.data?.items ?? [];
 
   /**
-   * WHAT THE AGENT CAN HONESTLY ANSWER, and it says which of those it used. Everything here is
-   * already on the screen — the filters, the master lists — so the answer is instant and true.
-   * There is no model call and no guess: an unrecognised question says so rather than inventing.
+   * ═══ FD-COPILOT — WHAT THIS SCREEN KNOWS, WHICH IS NOW THE *FALLBACK* RATHER THAN THE WHOLE ═══
+   *
+   * This chain used to be the entire agent, and its old header said so: *"There is no model call and
+   * no guess."* It is unchanged in what it answers and demoted in when it runs. `useCopilot` asks
+   * the SERVER first — which can say whether a patient anywhere in the hospital has been seen, how
+   * the queues look, and can pull the clerk's day report — and this runs only when the server says
+   * it did not understand.
+   *
+   * That split is the right one and it is not a compromise: these four answers are about the
+   * FILTERS ON THIS SCREEN, which no server can see. "Which doctor's book am I looking at" is a
+   * question about a dropdown. The hospital's questions go to the hospital; the screen's stay here.
    */
-  const ask = useCallback((question: string): void => {
+  const localAnswer = useCallback((question: string): string | null => {
     const q = question.trim().toLowerCase();
-    if (q === "") return;
+    if (q === "") return null;
     const doctorName = allDoctorItems.find((doc) => doc.id === doctorId)?.displayName ?? null;
     if (q.includes("doctor") && doctorName !== null) {
-      setAnswer(`You are looking at ${doctorName}'s book for ${date}. — from the filters on this screen.`);
-    } else if (q.includes("department")) {
-      setAnswer(
-        departmentId === ""
-          ? "No department is picked, so the doctor list is empty. Pick one above. — from the filters on this screen."
-          : `${departmentItems.find((dep) => dep.id === departmentId)?.name ?? "That department"} has ${String(doctorItems.length)} ${doctorItems.length === 1 ? "doctor" : "doctors"} on file. — from the doctor master.`,
-      );
-    } else if (q.includes("today") || q.includes("date")) {
-      setAnswer(`This book is showing ${date}; today is ${todayIst()}. Check-in is only offered on today's bookings. — from the filters and the K42 rule.`);
-    } else {
-      setAnswer("I answer from what is on this screen — the department and doctor you have picked, the date, and the doctor master. I cannot look anything else up.");
+      return `You are looking at ${doctorName}'s book for ${date}. — from the filters on this screen.`;
     }
+    if (q.includes("department")) {
+      return departmentId === ""
+        ? "No department is picked, so the doctor list is empty. Pick one above. — from the filters on this screen."
+        : `${departmentItems.find((dep) => dep.id === departmentId)?.name ?? "That department"} has ${String(doctorItems.length)} ${doctorItems.length === 1 ? "doctor" : "doctors"} on file. — from the doctor master.`;
+    }
+    if (q.includes("today") || q.includes("date")) {
+      return `This book is showing ${date}; today is ${todayIst()}. Check-in is only offered on today's bookings. — from the filters and the K42 rule.`;
+    }
+    return null;
   }, [allDoctorItems, doctorId, date, departmentId, departmentItems, doctorItems.length]);
+
+  /*
+    ═══ THE NAMES THIS SCREEN IS SHOWING — AND THIS SCREEN HAS NONE TO GIVE ═══
+
+    The server masks identifiers by SHAPE (UHID, visit number, phone, long digit runs) and names by
+    VALUE, from a list the screen supplies, because a name has no shape a pattern can find. This
+    component is not the one that holds them: the day list and the rebooking rail each run their own
+    query inside a child, so the only names in scope up here are doctors'.
+
+    That is stated rather than quietly skipped, because it is the one gap in the guarantee. A clerk
+    who types a UHID is covered completely; a clerk who types "has Farida been seen" on THIS screen
+    sends that word to the router on a phrasebook miss. Closing it means lifting the appointment
+    list to this component, or passing terms from the child — a real change with its own tests, not
+    a line to sneak in here. `patient-detail.tsx` and Desk One both hold the name already and pass
+    it when they are wired.
+  */
+  const copilot = useCopilot({ fallback: localAnswer, onNote: note, date });
 
   /**
    * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -595,14 +619,19 @@ export function OpdAppointments(): React.ReactElement {
       </div>
 
       {/*
-        THE AGENT, along the bottom exactly as it is on the counter. No model behind it — it answers
-        from what is already on this screen and names the source, which is the only honest answer a
-        clerk with a queue can be given in under a second.
+        THE AGENT, along the bottom exactly as it is on the counter.
+
+        FD-COPILOT changed what is behind it and this comment is rewritten rather than left to rot:
+        it used to say "No model behind it — it answers from what is already on this screen", and
+        that is no longer true. It now asks the server, which can answer about any patient, any
+        queue and the clerk's own day, and falls back to this screen's own knowledge when the
+        server does not recognise the question. The instant-and-true property survives: the
+        phrasebook answers the common questions with no model call at all.
       */}
       <AgentDock
-        answer={answer}
+        answer={copilot.answer}
         log={log}
-        onAsk={ask}
+        onAsk={copilot.ask}
         placeholder={t("opdAppt.askPlaceholder")}
         idle={t("opdAppt.agentIdle")}
       />
