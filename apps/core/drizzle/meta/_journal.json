@@ -736,6 +736,13 @@
       "when": 1789647718084,
       "tag": "0104_formulary_salt_allergy_classes",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1789671335840,
+      "tag": "0105_formulary_drug_disease",
+      "breakpoints": true
     }
   ]
 }

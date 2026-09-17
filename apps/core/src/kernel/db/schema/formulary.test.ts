@@ -47,6 +47,8 @@ const CENSUS: Record<string, string[]> = {
   formulary_substances: ["active", "adopted_under", "created_at", "created_by", "id", "mapped_at", "mapped_by", "mapping_status", "name", "salt_id", "sctid", "source", "synonyms", "updated_at", "updated_by"],
   // Formulary phase 2: the drafter's advice to the pharmacist (never read by a check).
   formulary_mapping_proposals: ["basis", "created_at", "drafted_by", "evidence", "id", "moiety_name", "substance_id"],
+  // Formulary P24 (0105): what the patient's DIAGNOSIS forbids, keyed on an ICD-10 code PREFIX.
+  formulary_drug_disease: ["active", "alternatives", "created_at", "created_by", "icd10_prefix", "icd10_title", "id", "note", "route_scope", "salt_id", "severity", "source", "updated_at", "updated_by"],
 };
 
 describe("the formulary tables (Plan 16a T1)", () => {
