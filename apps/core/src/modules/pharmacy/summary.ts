@@ -18,7 +18,10 @@ import type { Db } from "../../kernel/db/client";
  *   - declined lines, with the five commonest reasons. Doc 16 calls declines "the replenishment list
  *     nobody has yet", and P4's reorder list is its other half;
  *   - substitutions, cancellations (and how many came after the bill, i.e. P5's refunds), returns
- *     (P6), partly-checked lines (P3), and Schedule H1 hand-overs (the register's rows).
+ *     (P6), partly-checked lines (P3), and Schedule H1 hand-overs (the register's rows);
+ *   - P14: prescriptions that reached the counter that day and how many of them did not leave it
+ *     (doc 16's first negative-space signal, the runbook's first pilot harvest row), and how many
+ *     picked lines had their pack scanned (P13; doc 16 C2's manual-entry rate).
  *
  * Every figure is the counter's own. Rows are windowed on the columns the acts wrote with their
  * injected clock, and events on `occurred_at`, which the counter now stamps with that same clock.
@@ -38,6 +41,9 @@ export type CounterSummary = {
   returns: number;
   partlyCheckedLines: number;
   scheduledHandovers: number;
+  queuedToday: number;
+  notCollected: number;
+  scan: { pickedLines: number; scannedLines: number };
 };
 
 const OPEN = ["queued", "claimed", "verified", "picked", "billed"] as const;
@@ -68,7 +74,7 @@ export async function counterSummary(db: Db, day: string): Promise<CounterSummar
 
   const evs = await db.select({ name: events.name, payload: events.payload }).from(events).where(and(
     eq(events.module, "pharmacy"),
-    inArray(events.name, ["dispense.billed", "dispense.line_declined", "substitution.recorded", "dispense.cancelled", "dispense.line_returned", "dispense.verified"]),
+    inArray(events.name, ["dispense.billed", "dispense.line_declined", "substitution.recorded", "dispense.cancelled", "dispense.line_returned", "dispense.verified", "dispense.picked"]),
     gte(events.occurredAt, start), lt(events.occurredAt, end),
     gte(events.recordedAt, start),
   ));
@@ -80,6 +86,8 @@ export async function counterSummary(db: Db, day: string): Promise<CounterSummar
   let refundedAfterBilling = 0;
   let returns = 0;
   let partlyCheckedLines = 0;
+  let pickedLines = 0;
+  let scannedLines = 0;
   for (const e of evs) {
     const p = e.payload as Record<string, unknown>;
     switch (e.name) {
@@ -99,8 +107,18 @@ export async function counterSummary(db: Db, day: string): Promise<CounterSummar
       case "dispense.verified":
         partlyCheckedLines += Array.isArray(p.partlyCheckedLineIdxs) ? p.partlyCheckedLineIdxs.length : 0;
         break;
+      case "dispense.picked":
+        for (const l of Array.isArray(p.lines) ? (p.lines as { scanned?: unknown }[]) : []) {
+          pickedLines += 1;
+          if (l.scanned === true) scannedLines += 1;
+        }
+        break;
     }
   }
+  const [arrived] = await db.select({
+    n: sql<number>`count(*)::int`,
+    notCollected: sql<number>`count(*) filter (where ${pharmacyDispenses.status} <> 'handed_over')::int`,
+  }).from(pharmacyDispenses).where(and(gte(pharmacyDispenses.createdAt, start), lt(pharmacyDispenses.createdAt, end)));
   const h1 = await db.select({ n: sql<number>`count(*)::int` }).from(pharmacyRegH1)
     .where(and(gte(pharmacyRegH1.dispensedAt, start), lt(pharmacyRegH1.dispensedAt, end)));
 
@@ -121,5 +139,8 @@ export async function counterSummary(db: Db, day: string): Promise<CounterSummar
     returns,
     partlyCheckedLines,
     scheduledHandovers: h1[0]?.n ?? 0,
+    queuedToday: arrived?.n ?? 0,
+    notCollected: arrived?.notCollected ?? 0,
+    scan: { pickedLines, scannedLines },
   };
 }

@@ -286,7 +286,7 @@ still a daily query.
 
 | harvest | why it matters |
 |---|---|
-| `dispense.queued` vs `dispense.handed_over`, same day | prescriptions that reached the counter and never left it |
+| `dispense.queued` vs `dispense.handed_over`, same day (the day strip's "not collected N of M", P14) | prescriptions that reached the counter and never left it |
 | `dispense.line_declined` grouped by reason | what the shelf does not carry. The day strip names the top reason, and `/pharmacy/reorder` is the list |
 | `dispense.cancelled` with an expiry reason | abandoned picks; if this is high, the 30-minute sweep is surprising people |
 | `batch_expired_before_collection` refusals | paid-and-uncollected; each one is a credit note somebody must raise |

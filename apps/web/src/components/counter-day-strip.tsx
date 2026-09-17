@@ -18,6 +18,7 @@ export function CounterDayStrip(): React.ReactElement | null {
   const open = s.open.queued + s.open.claimed + s.open.verified + s.open.picked + s.open.billed;
   const parts = [
     t("pharmacyDay.handedOver", { n: s.handedOver }),
+    ...(s.notCollected === undefined || s.notCollected === 0 ? [] : [t("pharmacyDay.notCollected", { n: s.notCollected, of: s.queuedToday ?? 0 })]),
     ...(s.medianMinutes.queueToHandover === null ? [] : [t("pharmacyDay.wait", { m: s.medianMinutes.queueToHandover })]),
     t("pharmacyDay.open", { n: open }),
     t("pharmacyDay.billed", { amount: fmtPaise(s.billedPaise) }),
@@ -27,6 +28,7 @@ export function CounterDayStrip(): React.ReactElement | null {
     t("pharmacyDay.refunds", { n: s.refundedAfterBilling }),
     ...(s.partlyCheckedLines === 0 ? [] : [t("pharmacyDay.partly", { n: s.partlyCheckedLines })]),
     t("pharmacyDay.h1", { n: s.scheduledHandovers }),
+    ...(s.scan === undefined || s.scan.pickedLines === 0 ? [] : [t("pharmacyDay.scanned", { n: s.scan.scannedLines, of: s.scan.pickedLines })]),
   ];
   return (
     <p data-testid="counter-day-strip" className="rounded border bg-muted/40 px-3 py-1 text-xs">

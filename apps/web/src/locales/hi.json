@@ -3386,7 +3386,9 @@
     "returns": "वापसी {{n}}",
     "refunds": "रिफंड {{n}}",
     "partly": "आंशिक जाँच {{n}}",
-    "h1": "H1 {{n}}"
+    "h1": "H1 {{n}}",
+    "notCollected": "{{of}} में से {{n}} नहीं ले गए",
+    "scanned": "{{of}} में से {{n}} पिक स्कैन"
   },
   "pharmacyErrors": {
     "permission_denied": "आपको इसकी अनुमति नहीं है",

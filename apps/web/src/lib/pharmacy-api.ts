@@ -234,6 +234,8 @@ export type WireCounterSummary = {
   declinedLines: number; declinedTop: { reason: string; lines: number }[];
   substitutions: number; cancelled: number; refundedAfterBilling: number; returns: number;
   partlyCheckedLines: number; scheduledHandovers: number;
+  /** P14 — absent from an older server. */
+  queuedToday?: number; notCollected?: number; scan?: { pickedLines: number; scannedLines: number };
 };
 export async function fetchCounterSummary(day?: string): Promise<WireCounterSummary> {
   return api<WireCounterSummary>("GET", `/pharmacy/summary${qs({ day })}`);
