@@ -1249,6 +1249,10 @@ export function OpdConsult(): React.ReactElement {
     setOverrideError(null);
   };
 
+  /** The dialog carries four kinds now; only the allergy-only case may call itself an allergy. */
+  const allergyOnly = matches !== null
+    && interactionHits.length === 0 && duplicateHits.length === 0 && diseaseHits.length === 0;
+
   const confirmOverride = async (): Promise<void> => {
     const allReasons = [
       ...(matches === null ? [] : reasons.slice(0, matches.length)),
@@ -2958,7 +2962,16 @@ export function OpdConsult(): React.ReactElement {
       {/* the allergy hard-warning: a reason per matched line, then the re-post carries them (K48) */}
       <DeskModal
         open={matches !== null || interactionHits.length > 0 || duplicateHits.length > 0 || diseaseHits.length > 0}
-        title={t("opdConsult.overrideTitle")} titleId="override-title" testId="override-dialog"
+        /*
+          THE TITLE MUST NAME WHAT IS ACTUALLY IN THE DIALOG. A browser walk at 400 px found this
+          reading "Allergy conflict" over a drug-disease warning, above a hint that told the doctor
+          the patient "is recorded as allergic to the substances below" — for a patient with no
+          allergy at all. It has been imprecise since the interaction and duplicate kinds joined
+          (P16a); the fourth kind is what made it visibly false. The allergy wording is kept for the
+          allergy-only case, which is the commonest one and the one it was written for.
+        */
+        title={allergyOnly ? t("opdConsult.overrideTitle") : t("opdConsult.overrideTitleChecks")}
+        titleId="override-title" testId="override-dialog"
         onClose={() => {
           setMatches(null);
           setReasons([]);
@@ -2972,7 +2985,9 @@ export function OpdConsult(): React.ReactElement {
         }}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-          <p style={{ margin: 0, fontSize: 12.5 }}>{t("opdConsult.overrideHint")}</p>
+          <p style={{ margin: 0, fontSize: 12.5 }}>
+            {allergyOnly ? t("opdConsult.overrideHint") : t("opdConsult.overrideHintChecks")}
+          </p>
           {(matches ?? []).map((m, i) => (
             <div key={`${String(m.lineIndex)}-${m.substance}`}>
               <label style={{ display: "block", marginBottom: 5, fontSize: 12.5, fontWeight: 600 }} htmlFor={`override-reason-${String(i)}`}>

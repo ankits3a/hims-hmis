@@ -1559,6 +1559,18 @@ describe("OpdConsult", () => {
     expect(callsTo("POST", path)).toHaveLength(0);
   });
 
+  it("P24: the dialog does not call a drug-disease warning an allergy", async () => {
+    mockRoutes(diseaseRoutes({ prescriptionId: "rx-1", version: 1, notices: [] }));
+    const user = userEvent.setup();
+
+    const dialog = await toTheDialog(user);
+
+    // A browser walk at 400 px found "Allergy conflict" over this warning, above a hint telling the
+    // doctor the patient was recorded allergic — for a patient with no allergy at all.
+    expect(within(dialog).getByRole("heading", { name: "Prescribing warnings" })).toBeInTheDocument();
+    expect(within(dialog).queryByText(/recorded as allergic/)).not.toBeInTheDocument();
+  });
+
   it("P24: overriding it carries the reason, the moiety AND the ruling that was cleared", async () => {
     mockRoutes(diseaseRoutes({ prescriptionId: "rx-1", version: 1, notices: [] }));
     const user = userEvent.setup();

@@ -750,6 +750,8 @@
     "issue": "Issue & print",
     "overrideTitle": "Allergy conflict",
     "overrideHint": "This patient is recorded as allergic to the substances below. Record a reason for each line to issue anyway.",
+    "overrideTitleChecks": "Prescribing warnings",
+    "overrideHintChecks": "Record a reason for each warning below to issue anyway.",
     "overrideMatch": "Line {{n}}: {{substance}}",
     "overrideReasonRequired": "A reason is required for every conflict",
     "overrideConfirm": "Override and issue",
