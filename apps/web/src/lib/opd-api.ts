@@ -238,6 +238,29 @@ export type WireDuplicateHit = {
   drugClass?: string; with?: string;
 };
 
+/**
+ * FORMULARY P24 — what the patient's own coded DIAGNOSIS forbids.
+ *
+ * Deliberately NOT part of `WireRxNotice`. That union is discriminated by `"severity" in hit`, and
+ * a drug-disease hit carries a severity too — folding it in would make every one of them render as
+ * an interaction. It travels in its own field and the screen renders it in its own block.
+ */
+export type WireDrugDiseaseAlternative = { moiety: string; label: string };
+
+export type WireDrugDiseaseHit = {
+  severity: "severe" | "moderate";
+  lineIndex: number;
+  moiety: string;
+  icd10Prefix: string;
+  icd10Title: string;
+  diagnosis: { code: string; text: string; codedOn: string };
+  note: string;
+  /** Already VETTED by the server against this patient — an offer here is safe to show (D6). */
+  alternatives: WireDrugDiseaseAlternative[];
+  /** The diagnosis is over a year old, which is why a severe rule arrived as a notice. */
+  stale: boolean;
+};
+
 /** A soft hit is either kind: the screen renders them together and never gates on them (DD3). */
 export type WireRxNotice = WireInteractionHit | WireDuplicateHit;
 

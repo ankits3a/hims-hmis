@@ -577,7 +577,9 @@ export async function issuePrescription(
     throw new OpdError(
       "drug_disease_conflict",
       `${uncoveredDrugDisease.length} line(s) are contraindicated by a diagnosis this patient carries`,
-      { hits: severeDrugDisease },
+      // NOT `hits`: the three older refusals put interaction and duplicate hits under that name and
+      // the browser filters them with `isInteractionHit`, which a drug-disease hit would fool.
+      { diseaseHits: severeDrugDisease },
     );
   }
 
