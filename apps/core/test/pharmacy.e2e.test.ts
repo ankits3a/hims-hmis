@@ -56,6 +56,9 @@ describe("the OPD dispense counter over HTTP (16c T5)", () => {
     expect((reorder.body as { window: unknown }).window).toEqual({ days: 30, minCoverDays: 3, targetCoverDays: 7, nearExpiryDays: 90 });
     // P8 — both shelf-risk lists travel with it.
     expect(reorder.body).toMatchObject({ expiring: expect.any(Array), expiredOnShelf: expect.any(Array) });
+    // P13 — the scan check is the picker's, and a missing code is refused before anything is read.
+    await as(fx.clerk.token)(request(server()).get("/pharmacy/dispenses/nope/lines/0/scan?code=8901234567897")).expect(403);
+    await as(fx.aide.token)(request(server()).get("/pharmacy/dispenses/nope/lines/0/scan")).expect(400);
     // P12 — the leakage triangle is the billing supervisor's read, not the counter's.
     await as(fx.pharmacist.token)(request(server()).get("/pharmacy/leakage?day=2026-08-17")).expect(403);
     // P9 — the H1 register: the pharmacist's read, never the aide's; a period that is not dates is refused.

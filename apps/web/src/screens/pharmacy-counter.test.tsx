@@ -238,6 +238,40 @@ describe("PharmacyCounter (16c T3)", () => {
     expect(screen.queryByRole("button", { name: "Print bill" })).toBeNull();
   });
 
+  /** PHARMACY P13 — the pack in hand is scanned before the pick; a wrong pack is said at once and never sent. */
+  it("P13 — a scanned pack is checked as it is scanned, and the pick carries only the scan that matched", async () => {
+    const current = dispense("verified", { dispenseNo: "P2608170001", orderId: "o1" });
+    mockRoutes({
+      "GET /api/pharmacy/queue": { status: 200, body: { items: [{ dispenseId: "d1", status: "verified", dispenseNo: "P2608170001", scheduled: true, lineCount: 2, createdAt: "2026-08-17T04:00:00.000Z", claimedAt: null, patient: PATIENT }] } },
+      "GET /api/pharmacy/dispenses/d1": { status: 200, body: current },
+      "GET /api/pharmacy/dispenses/d1/lines/0/scan": { status: 200, body: { itemCode: "CROC500", batchNo: "CR-2", expiryDate: "2027-12-31" } },
+      "GET /api/pharmacy/dispenses/d1/lines/1/scan": { status: 409, body: { code: "scan_wrong_item", message: "no" } },
+      "POST /api/pharmacy/dispenses/d1/pick": { status: 201, body: dispense("picked", { dispenseNo: "P2608170001" }) },
+      "GET /api/pharmacy/dispenses/d1/bill/preview": { status: 200, body: { lines: [], totals: { grossPaise: 0, discountPaise: 0, cgstPaise: 0, sgstPaise: 0, rawTotalPaise: 0, netPayablePaise: 0, roundingPaise: 0 } } },
+    });
+    renderWithProviders(<PharmacyCounter />);
+    await userEvent.click(await screen.findByText(/Sita Devi/));
+    await userEvent.type(await screen.findByRole("textbox", { name: "Scan pack 1" }), "(01)08901234567897(17)271231(10)CR-2{enter}");
+    expect(await screen.findByTestId("scan-ok-0")).toHaveTextContent("CROC500 · CR-2 · 2027-12-31");
+    await userEvent.type(screen.getByRole("textbox", { name: "Scan pack 2" }), "8909876543217{enter}");
+    expect(await screen.findByTestId("scan-bad-1")).toHaveTextContent("This pack is a different medicine — put it back");
+
+    // The wrong pack is still in hand: no pick until its scan is cleared.
+    const pickButton = screen.getByRole("button", { name: "Pick from shelf" });
+    expect(pickButton).toBeDisabled();
+    await userEvent.type(screen.getByRole("textbox", { name: "Dispense fewer 2" }), "2");
+    await userEvent.type(screen.getByRole("textbox", { name: "Why fewer? 2" }), "only two left in the strip");
+    await userEvent.clear(screen.getByRole("textbox", { name: "Scan pack 2" }));
+    expect(screen.queryByTestId("scan-bad-1")).toBeNull();
+    await userEvent.click(pickButton);
+    await waitFor(() => expect(bodiesOf("POST", "/pharmacy/dispenses/d1/pick")).toEqual([{
+      lines: [
+        { lineIdx: 0, scan: "(01)08901234567897(17)271231(10)CR-2" },
+        { lineIdx: 1, qtyBase: 2, pickNote: "only two left in the strip" },
+      ],
+    }]));
+  });
+
   it("a refusal code from verify reads as the locale's sentence, and the queue offers today's rows", async () => {
     mockRoutes({
       "GET /api/pharmacy/queue": { status: 200, body: { items: [{ dispenseId: "d1", status: "queued", dispenseNo: null, scheduled: false, lineCount: 2, createdAt: "2026-08-17T04:00:00.000Z", claimedAt: null, patient: PATIENT }] } },

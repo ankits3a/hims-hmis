@@ -54,7 +54,11 @@ export const substitutionRecorded = defineEvent("substitution.recorded", MODULE,
 /** D2 — every line holds a reservation on the ledger; a FEFO override is named, never silent. */
 export const dispensePicked = defineEvent("dispense.picked", MODULE, z.object({
   dispenseId: id, patientId: id,
-  lines: z.array(z.object({ lineIdx: z.number().int().nonnegative(), batchId: id, qtyBase: z.number().int().positive(), fefoOverride: z.boolean() })).min(1),
+  lines: z.array(z.object({
+    lineIdx: z.number().int().nonnegative(), batchId: id, qtyBase: z.number().int().positive(), fefoOverride: z.boolean(),
+    /** P13 — the pack was scanned and matched the line's item. Absent on older events. */
+    scanned: z.boolean().default(false),
+  })).min(1),
 }));
 
 export const dispenseBilled = defineEvent("dispense.billed", MODULE, z.object({

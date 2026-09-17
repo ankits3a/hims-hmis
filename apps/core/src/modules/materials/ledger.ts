@@ -822,6 +822,12 @@ export async function movementsFor(
 }
 
 /** The batch, or `undefined`. A read; `requireBatch` is the refusing form and is private. */
+/** PHARMACY P13 — the batches of an item printed with this number (any ownership), case-insensitive. */
+export async function batchesByNo(db: Db | Tx, itemId: string, batchNo: string): Promise<BatchRow[]> {
+  return db.select().from(stockBatches)
+    .where(and(eq(stockBatches.itemId, itemId), sql`lower(${stockBatches.batchNo}) = ${batchNo.trim().toLowerCase()}`));
+}
+
 export async function getBatch(db: Db | Tx, batchId: string): Promise<BatchRow | undefined> {
   const rows = await db.select().from(stockBatches).where(eq(stockBatches.id, batchId));
   return rows[0];

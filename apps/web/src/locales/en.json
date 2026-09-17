@@ -3438,7 +3438,11 @@
     "return_short_expiry": "This batch is too close to expiry (or recalled) to go back on the shelf — quarantine it",
     "return_exceeds_dispensed": "That is more than was dispensed on this line, less what already came back",
     "invalid_day": "That is not a date",
-    "invalid_range": "The period must be real dates, running forwards, at most 31 days"
+    "invalid_range": "The period must be real dates, running forwards, at most 31 days",
+    "scan_unknown": "No item carries this barcode — register the pack's barcode on the item, or pick without scanning",
+    "scan_wrong_item": "This pack is a different medicine — put it back",
+    "scan_batch_unknown": "The counter holds no such batch of this medicine — check the goods receipt",
+    "scan_batch_mismatch": "The pack's expiry does not match the books for this batch — check the goods receipt before it goes out"
   },
   "pharmacyCounter": {
     "partlyChecked": "Checked only in part",
@@ -3533,7 +3537,8 @@
     "expiry": "Exp",
     "substitutedFor": "in place of {{brand}}",
     "printBill": "Print bill",
-    "backToCounter": "Back to the counter"
+    "backToCounter": "Back to the counter",
+    "scanPack": "Scan pack"
   },
   "appointmentSeat": {
     "title": "Appointment",
