@@ -252,7 +252,7 @@ export type WireLeakageReport = {
     dispenseId: string; dispenseNo: string | null; itemCode: string; batchNo: string;
     issued: number; returned: number; billed: number; credited: number; unbilledUnits: number; unbilledPaise: number;
   }[];
-  otherConsumption: { itemCode: string; batchNo: string; units: number; refType: string | null; refId: string | null; actorId: string; occurredAt: string }[];
+  otherConsumption: { itemCode: string; batchNo: string; units: number; refType: string | null; refId: string | null; actorId: string; actorName?: string; occurredAt: string }[];
   counted: { counts: number; varianceUnits: number; variancePaise: number; lines: { countId: string; itemCode: string; batchNo: string; varianceQty: number; variancePaise: number }[] };
   summary: { unbilledUnits: number; unbilledPaise: number; otherUnits: number; countVarianceUnits: number; countVariancePaise: number };
 };

@@ -76,7 +76,7 @@ export function PharmacyLeakage(): React.ReactElement {
               <ul className="text-sm" data-testid="leak-other">
                 {r.otherConsumption.map((c, i) => (
                   <li key={i}>
-                    {fmtIst(c.occurredAt)} · {c.itemCode} · {t("pharmacyLeakage.batch")} {c.batchNo} · {c.units} {t("pharmacyLeakage.units")} · {t("pharmacyLeakage.ref")} {c.refType ?? "—"}{c.refId !== null ? ` ${c.refId}` : ""} · {t("pharmacyLeakage.by")} {c.actorId}
+                    {fmtIst(c.occurredAt)} · {c.itemCode} · {t("pharmacyLeakage.batch")} {c.batchNo} · {c.units} {t("pharmacyLeakage.units")} · {t("pharmacyLeakage.ref")} {c.refType ?? "—"}{c.refId !== null ? ` ${c.refId}` : ""} · {t("pharmacyLeakage.by")} {c.actorName ?? c.actorId}
                   </li>
                 ))}
               </ul>

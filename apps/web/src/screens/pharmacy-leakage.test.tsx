@@ -8,7 +8,7 @@ const REPORT: WireLeakageReport = {
   day: "2026-08-17", store: { code: "PHARM-OPD", name: "OPD pharmacy" },
   dispensed: { lines: 2, units: 30 },
   mismatches: [{ dispenseId: "d2", dispenseNo: "P2608170002", itemCode: "CROC500", batchNo: "CR-1", issued: 10, returned: 0, billed: 10, credited: 3, unbilledUnits: 3, unbilledPaise: 3600 }],
-  otherConsumption: [{ itemCode: "CROC500", batchNo: "CR-1", units: 4, refType: "ward_emergency", refId: "slip-7", actorId: "ph.mehta", occurredAt: "2026-08-17T07:40:00.000Z" }],
+  otherConsumption: [{ itemCode: "CROC500", batchNo: "CR-1", units: 4, refType: "ward_emergency", refId: "slip-7", actorId: "01M2PBFFV4ZJBY236NN0N7Z5JQ", actorName: "Meena Joshi", occurredAt: "2026-08-17T07:40:00.000Z" }],
   counted: { counts: 1, varianceUnits: -2, variancePaise: -1000, lines: [{ countId: "c1", itemCode: "CROC500", batchNo: "CR-1", varianceQty: -2, variancePaise: -1000 }] },
   summary: { unbilledUnits: 3, unbilledPaise: 3600, otherUnits: 4, countVarianceUnits: -2, countVariancePaise: -1000 },
 };
@@ -40,7 +40,8 @@ describe("PharmacyLeakage (P12)", () => {
     expect(asked.some((u) => u.includes("/api/pharmacy/leakage?day=2026-08-17"))).toBe(true);
     expect(screen.getByTestId("leakage-summary")).toHaveTextContent("Unbilled 3 units");
     expect(screen.getByTestId("leakage-summary")).toHaveTextContent("consumed outside a dispense 4 units · counted -2 units");
-    expect(screen.getByTestId("leak-other")).toHaveTextContent("13:10 · CROC500 · Batch CR-1 · 4 Units · Reference ward_emergency slip-7 · Posted by ph.mehta");
+    expect(screen.getByTestId("leak-other")).toHaveTextContent("13:10 · CROC500 · Batch CR-1 · 4 units · Reference ward_emergency slip-7 · Posted by Meena Joshi");
+    expect(screen.getByTestId("leak-other")).not.toHaveTextContent("01M2PBFFV4ZJBY236NN0N7Z5JQ");
     expect(screen.getByTestId("leak-counted")).toHaveTextContent("CROC500 · Batch CR-1 · Variance -2");
   });
 

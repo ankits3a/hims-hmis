@@ -1,5 +1,5 @@
 import { and, eq, gte, inArray, lt, or } from "drizzle-orm";
-import { pharmacyDispenseLines, pharmacyDispenses } from "../../kernel/db/schema";
+import { pharmacyDispenseLines, pharmacyDispenses, users } from "../../kernel/db/schema";
 import { istDayWindow } from "../../kernel/approvals/cumulative";
 import { creditedInvoiceLineIdsBetween, invoiceLineCredits } from "../billing";
 import {
@@ -50,7 +50,7 @@ export type LeakageReport = {
   store: { code: string; name: string };
   dispensed: { lines: number; units: number };
   mismatches: LeakageMismatch[];
-  otherConsumption: { itemCode: string; batchNo: string; units: number; refType: string | null; refId: string | null; actorId: string; occurredAt: string }[];
+  otherConsumption: { itemCode: string; batchNo: string; units: number; refType: string | null; refId: string | null; actorId: string; actorName: string; occurredAt: string }[];
   counted: { counts: number; varianceUnits: number; variancePaise: number; lines: { countId: string; itemCode: string; batchNo: string; varianceQty: number; variancePaise: number }[] };
   summary: { unbilledUnits: number; unbilledPaise: number; otherUnits: number; countVarianceUnits: number; countVariancePaise: number };
 };
@@ -123,9 +123,14 @@ export async function pharmacyLeakage(db: Db, day: string): Promise<LeakageRepor
   }
   mismatches.sort((a, b) => b.unbilledPaise - a.unbilledPaise || (a.dispenseNo ?? "").localeCompare(b.dispenseNo ?? ""));
 
-  const otherConsumption = consumption
-    .filter((c) => c.refType !== DISPENSE_REF_TYPE)
-    .map((c) => ({ itemCode: c.itemCode, batchNo: c.batchNo, units: c.units, refType: c.refType, refId: c.refId, actorId: c.actorId, occurredAt: c.occurredAt.toISOString() }));
+  const outside = consumption.filter((c) => c.refType !== DISPENSE_REF_TYPE);
+  const posters = [...new Set(outside.map((c) => c.actorId))];
+  const nameOf = new Map((posters.length === 0 ? [] : await db.select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, posters)))
+    .map((u) => [u.id, u.fullName] as const));
+  const otherConsumption = outside.map((c) => ({
+    itemCode: c.itemCode, batchNo: c.batchNo, units: c.units, refType: c.refType, refId: c.refId,
+    actorId: c.actorId, actorName: nameOf.get(c.actorId) ?? c.actorId, occurredAt: c.occurredAt.toISOString(),
+  }));
   const varianceUnits = counted.lines.reduce((s, l) => s + l.varianceQty, 0);
   const variancePaise = counted.lines.reduce((s, l) => s + l.variancePaise, 0);
 
