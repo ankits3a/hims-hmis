@@ -1,4 +1,4 @@
-import { asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { newId } from "@hmis/contracts";
 import { downtimeFormCounters, downtimeKitRanges, downtimeKits } from "../db/schema";
@@ -439,4 +439,29 @@ export function verifyKitSerial(key: Buffer, qr: string): VerifiedKitSerial | nu
   const serial = Number(serialPart);
   if (!Number.isInteger(serial) || serial < 1) return null;
   return { kitId, formKind: formKind as DowntimeFormKind, serial };
+}
+
+export type KitSheet = VerifiedKitSerial & { desk: string; kitGeneratedAt: Date };
+
+/**
+ * PHARMACY P20 — THE RESERVED RANGE A VERIFIED SHEET BELONGS TO, or `null`.
+ *
+ * A signature proves the kernel printed this payload; it does not prove the serial fell inside a
+ * range the kit reserved, because the signing key also signs any serial a caller hands it. So a
+ * recovery desk asks both: the mac (`verifyKitSerial`), then this.
+ */
+export async function kitSheetOf(exec: Db | Tx, sheet: VerifiedKitSerial): Promise<KitSheet | null> {
+  const rows = await exec
+    .select({ desk: downtimeKitRanges.desk, generatedAt: downtimeKits.generatedAt })
+    .from(downtimeKitRanges)
+    .innerJoin(downtimeKits, eq(downtimeKits.id, downtimeKitRanges.kitId))
+    .where(and(
+      eq(downtimeKitRanges.kitId, sheet.kitId),
+      eq(downtimeKitRanges.formKind, sheet.formKind),
+      lte(downtimeKitRanges.startSerial, sheet.serial),
+      gte(downtimeKitRanges.endSerial, sheet.serial),
+    ))
+    .limit(1);
+  const row = rows[0];
+  return row === undefined ? null : { ...sheet, desk: row.desk, kitGeneratedAt: row.generatedAt };
 }

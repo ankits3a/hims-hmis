@@ -62,4 +62,6 @@ export const PHARMACY_IDEMPOTENT_ROUTES = {
   returns: "POST /pharmacy/dispenses/:id/returns",
   /** P19 — a walk-in sale moves stock and money: a retried click must not sell twice. */
   retailSale: "POST /pharmacy/retail/sales",
+  /** P20 — a paper dispense entered after an outage: once per sheet, and once per click. */
+  paperDispense: "POST /pharmacy/downtime/dispenses",
 } as const;

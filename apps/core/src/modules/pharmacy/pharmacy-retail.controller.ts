@@ -1,18 +1,21 @@
 import { Body, Controller, Get, Headers, Inject, Param, Post, Query } from "@nestjs/common";
 import { z } from "zod";
-import { DB, DOCUMENT_STORE } from "../../kernel/tokens";
+import { CONFIG, DB, DOCUMENT_STORE } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { istDateOf } from "./config";
 import { idSchema, parsed, toHttp } from "./pharmacy-http";
 import {
-  getRetailSale, listRetailLicences, listRetailSales, previewRetailSale, recordRetailLicence, retailLicenceState,
+  counterBatches, enterPaperDispense, getRetailSale, inspectSheet, listPaperDispenses, listRetailLicences, listRetailSales,
+  pharmacyStaff, previewPaperDispense, previewRetailSale, recordRetailLicence, retailLicenceState, searchCounterShelf,
   searchRetailShelf, sellRetail,
 } from "./retail";
 import type { Actor } from "@hmis/contracts";
+import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
 import type { DocumentStore } from "../../kernel/documents/store";
 import type {
-  RetailLicenceState, RetailLicenceView, RetailPreview, RetailSaleRow, RetailSaleView, RetailShelfEntry,
+  CounterBatch, PharmacyStaffMember, RetailLicenceState, RetailLicenceView, RetailPreview, RetailSaleRow, RetailSaleView,
+  RetailShelfEntry, SheetCheck,
 } from "./retail";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -53,6 +56,16 @@ const saleBody = z.object({
   panNumber: z.string().max(10).optional(),
   form60: z.boolean().optional(),
   changeGivenPaise: z.number().int().nonnegative().optional(),
+});
+const storeCode = z.enum(["PHARM-OPD", "PHARM-RETAIL"]);
+const instant = z.string().datetime({ offset: true });
+const paperPreviewBody = previewBody.extend({ storeCode, occurredAt: instant });
+const paperBody = saleBody.extend({
+  sheetQr: z.string().min(1).max(300),
+  storeCode,
+  occurredAt: instant,
+  dispensedBy: idSchema,
+  lines: z.array(lineSchema.extend({ batchId: idSchema })).min(1).max(50),
 });
 const licenceBody = z.object({
   form20No: z.string().max(60),
@@ -161,6 +174,106 @@ export class PharmacyRetailController {
     const input = parsed(licenceBody, body);
     try {
       return await recordRetailLicence(this.db, actor, input, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+}
+
+/**
+ * PHARMACY P20 — paper dispenses entered after an outage. Every route is `pharmacy.downtime.enter`;
+ * the sheet's signature is checked with the kernel's secret key, the one that printed it.
+ */
+@Controller("pharmacy/downtime")
+export class PharmacyDowntimeController {
+  constructor(
+    @Inject(DB) private readonly db: Db,
+    @Inject(DOCUMENT_STORE) private readonly documents: DocumentStore,
+    @Inject(CONFIG) private readonly cfg: AppConfig,
+  ) {}
+
+  /** What a scanned sheet is, and whether it was already entered. */
+  @RequirePermission("pharmacy.downtime.enter", "hospital")
+  @Get("sheet")
+  async sheet(@CurrentActor() actor: Actor, @Query("qr") qr?: string): Promise<SheetCheck> {
+    try {
+      return await inspectSheet(this.db, actor, this.cfg.secretKey, (qr ?? "").slice(0, 300));
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  @RequirePermission("pharmacy.downtime.enter", "hospital")
+  @Get("staff")
+  async staff(@CurrentActor() actor: Actor): Promise<{ items: PharmacyStaffMember[] }> {
+    try {
+      return { items: await pharmacyStaff(this.db, actor, new Date()) };
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  @RequirePermission("pharmacy.downtime.enter", "hospital")
+  @Get("shelf")
+  async counterShelf(@CurrentActor() actor: Actor, @Query("store") store?: string, @Query("q") q?: string): Promise<{ items: RetailShelfEntry[] }> {
+    const code = parsed(storeCode, store);
+    try {
+      return { items: await searchCounterShelf(this.db, actor, code, (q ?? "").slice(0, 200), new Date()) };
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  @RequirePermission("pharmacy.downtime.enter", "hospital")
+  @Get("batches")
+  async batches(@CurrentActor() actor: Actor, @Query("store") store?: string, @Query("itemId") itemId?: string): Promise<{ items: CounterBatch[] }> {
+    const code = parsed(storeCode, store);
+    const item = parsed(idSchema, itemId);
+    try {
+      return { items: await counterBatches(this.db, actor, code, item) };
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  @RequirePermission("pharmacy.downtime.enter", "hospital")
+  @Post("preview")
+  async paperPreview(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<RetailPreview> {
+    const input = parsed(paperPreviewBody, body);
+    try {
+      return await previewPaperDispense(this.db, actor, { ...input, occurredAt: new Date(input.occurredAt) }, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  @RequirePermission("pharmacy.downtime.enter", "hospital")
+  @Post("dispenses")
+  async enterPaper(@CurrentActor() actor: Actor, @Body() body: unknown, @Headers("idempotency-key") key?: string): Promise<RetailSaleView> {
+    const input = parsed(paperBody, body);
+    const { prescription, occurredAt, ...rest } = input;
+    try {
+      return await enterPaperDispense(this.db, this.documents, this.cfg.secretKey, actor, {
+        ...rest,
+        occurredAt: new Date(occurredAt),
+        ...(prescription === undefined ? {} : {
+          prescription: {
+            prescriberName: prescription.prescriberName, prescriberRegNo: prescription.prescriberRegNo,
+            prescriberAddress: prescription.prescriberAddress, rxDate: prescription.rxDate,
+            photo: { mimeType: prescription.photo.mimeType, bytes: Buffer.from(prescription.photo.imageBase64, "base64") },
+          },
+        }),
+      }, key, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  @RequirePermission("pharmacy.downtime.enter", "hospital")
+  @Get("dispenses")
+  async paperList(@CurrentActor() actor: Actor): Promise<{ items: RetailSaleRow[] }> {
+    try {
+      return { items: await listPaperDispenses(this.db, actor) };
     } catch (e) {
       return toHttp(e);
     }

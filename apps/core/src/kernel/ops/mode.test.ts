@@ -4,7 +4,7 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../db/client";
 import { configValidationReports, events, operatingModeChanges } from "../db/schema";
 import {
-  ModeError, VALIDATION_FRESH_HOURS, changeOperatingMode, getOperatingMode,
+  ModeError, VALIDATION_FRESH_HOURS, changeOperatingMode, getOperatingMode, operatingModeAt,
 } from "./mode";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
@@ -640,5 +640,29 @@ describe("kernel ops — the operating-mode service (11c D1-D3)", () => {
     expect(await db.select().from(events).where(eq(events.name, "ops.mode_changed"))).toEqual([]);
     // And still nothing to read: the gate was never satisfied because there was nothing to satisfy it.
     expect(await db.select().from(configValidationReports)).toEqual([]);
+  });
+
+  /**
+   * PHARMACY P20 — the mode in force at an instant in the past, which a recovery desk asks before it
+   * accepts a paper entry. The timeline is written as rows (the history the service would have
+   * written); the question is only about reading it.
+   */
+  it("operatingModeAt reads the timeline: the last change at or before the instant, commissioning before any", async () => {
+    const row = (from: string, to: string, when: Date) => ({
+      id: newId(), fromMode: from, toMode: to, note: to === "downtime" ? "power cut" : null, reportId: null, actorId: DUTY.id, at: when,
+    });
+    await db.insert(operatingModeChanges).values([
+      row("commissioning", "normal", at(-3 * HOUR)),
+      row("normal", "downtime", at(-2 * HOUR)),
+      row("downtime", "normal", at(-1 * HOUR)),
+    ]);
+    expect(await Promise.all([
+      at(-4 * HOUR), at(-3 * HOUR), at(-150 * 60_000), at(-2 * HOUR), at(-90 * 60_000), at(-1 * HOUR), NOW,
+    ].map((t) => operatingModeAt(db, t)))).toEqual([
+      "commissioning", "normal", "normal", "downtime", "downtime", "normal", "normal",
+    ]);
+    // Two changes stamped with one instant: the one written second is the one in force.
+    await db.insert(operatingModeChanges).values([row("normal", "degraded", at(HOUR)), row("degraded", "downtime", at(HOUR))]);
+    expect(await operatingModeAt(db, at(HOUR))).toBe("downtime");
   });
 });
