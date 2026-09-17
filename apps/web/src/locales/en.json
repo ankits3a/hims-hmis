@@ -860,7 +860,7 @@
       "who": "Typed at the door from the paper slip. It is not a prescription until you issue it.",
       "refusedHint": "load it into the editor below to resolve this and issue."
     },
-    "drugPlaceholder": "type 3 letters — e.g. par, amox, clav",
+    "drugPlaceholder": "name, strength or code — e.g. par, para 500, amox clav, D0230",
     "complaintPlaceholder": "type a symptom, press Enter to add it",
     "complaintHint": "Enter adds exactly what you typed · → completes the suggestion · × removes a tag",
     "addAllergy": "+ Add allergy",
