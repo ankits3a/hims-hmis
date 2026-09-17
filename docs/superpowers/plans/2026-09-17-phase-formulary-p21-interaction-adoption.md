@@ -48,9 +48,18 @@ Micromedex) holds. The hospital should still license one; this adoption is a flo
   - A name that is not a moiety yet (absent from the formulary, or a release entry still pending) is
     reported and skipped.
   - The adoption is re-run after the substance adoption, and it is idempotent.
-  - Some names are not in the national release at all (for example isoniazid, candesartan,
-    amiloride, acenocoumarol, bupropion, fluvoxamine, calcium carbonate). Their pairs wait until a
-    curator adds them.
+  - ~~Some names are not in the national release at all (for example isoniazid, candesartan,
+    amiloride, acenocoumarol, bupropion, fluvoxamine, calcium carbonate).~~ **Corrected
+    2026-09-17.** That list was read off `hmis_formulary_dev`, where those substances were still
+    pending, not off the release.
+    - On the rehearsal database `hmis_formulary_prodlike` (the owner's decisions applied), a
+      read-only query found 70 of the 72 names as moieties.
+    - The two misses were spellings. "aluminum hydroxide" there is a release entry that is not a
+      moiety; the moiety is "aluminium hydroxide". "calcium carbonate" does not exist; the moiety is
+      "calcium". Their 10 quinolone pairs would have been skipped silently.
+    - Both are fixed in the rule file, and the list test pins the spellings.
+  - **After the substance adoption, a dry run that reports any missing name is a defect.** Report it;
+    do not apply around it.
 
 ## 4. WHAT WAS BUILT
 
