@@ -81,10 +81,23 @@ describe("adopting interaction pairs by resolution (P21)", () => {
     expect(await db.select().from(formularyInteractions)).toEqual([]);
   });
 
-  it("the 2026-09-17 list is well formed: 157 distinct pairs, every one with a note and a source rule", async () => {
+  it("the 2026-09-17 list is well formed: 387 distinct pairs, every one with a note and a source rule", async () => {
     const rules = INTERACTION_RULES_2026_09_17;
-    expect(rules).toHaveLength(157);
-    expect(rules.filter((r) => r.severity === "severe")).toHaveLength(122);
+    // P21: 157 pairs (122 severe) from the clinical master; P21b: +230 (+169 severe) from the owner's clinical matrix.
+    expect(rules).toHaveLength(387);
+    expect(rules.filter((r) => r.severity === "severe")).toHaveLength(291);
+    expect(rules.filter((r) => r.rule.startsWith("clinical_matrix#"))).toHaveLength(230);
+    const severityOf = (a: string, b: string) => rules.find((r) => (r.a === a && r.b === b) || (r.a === b && r.b === a))?.severity;
+    // P21b's departures from the matrix, pinned (scripts/data/interaction-rules-2026-09-17.ts).
+    expect(severityOf("digoxin", "diltiazem")).toBe("moderate");
+    expect(severityOf("digoxin", "spironolactone")).toBe("moderate");
+    expect(severityOf("methotrexate", "amoxicillin")).toBe("moderate");
+    expect(severityOf("methotrexate", "diclofenac")).toBe("severe");
+    expect(severityOf("sertraline", "dextromethorphan")).toBe("moderate");
+    expect(severityOf("etoricoxib", "warfarin")).toBe("moderate");
+    expect(severityOf("labetalol", "diltiazem")).toBe("moderate");
+    expect(severityOf("tadalafil", "isosorbide mononitrate")).toBe("severe");
+    expect(severityOf("tramadol", "alprazolam")).toBe("severe");
     // Azithromycin is not a meaningful CYP3A4 inhibitor: the source named it, the list does not.
     expect(rules.some((r) => r.a === "azithromycin" || r.b === "azithromycin")).toBe(false);
     expect(rules.find((r) => r.a === "paracetamol" && r.b === "isoniazid")?.severity).toBe("moderate");
@@ -98,7 +111,7 @@ describe("adopting interaction pairs by resolution (P21)", () => {
     // Nothing is in this formulary yet, so everything waits; the list itself validates.
     const report = await adopt(rules);
     expect(report.created).toEqual({ severe: 0, moderate: 0 });
-    expect(report.skipped).toBe(157);
+    expect(report.skipped).toBe(387);
     expect(await db.select().from(formularyInteractions)).toEqual([]);
   });
 });
