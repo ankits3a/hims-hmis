@@ -96,3 +96,14 @@ export type { GstSlabPlanRow, GstSuggestion } from "./gst-slab";
 export { H1_REGISTER_MAX_DAYS, h1Register } from "./registers";
 export type { H1Register, H1RegisterRow } from "./registers";
 export type { CounterSummary } from "./summary";
+/** P19 — walk-in retail sales (doc 16 §3.1b, register row R-174). */
+export { RETAIL_PHARMACY_STORE_CODE, RETAIL_REF_TYPE } from "./config";
+export { retailLicenceRecorded, retailSold } from "./events";
+export {
+  getRetailSale, listRetailLicences, listRetailSales, previewRetailSale, recordRetailLicence, retailLicenceState,
+  retailStore, searchRetailShelf, sellRetail,
+} from "./retail";
+export type {
+  RecordLicenceInput, RetailCustomerInput, RetailLicenceState, RetailLicenceView, RetailLineInput, RetailPrescriptionInput,
+  RetailPreview, RetailSaleInput, RetailSaleRow, RetailSaleView, RetailShelfEntry,
+} from "./retail";

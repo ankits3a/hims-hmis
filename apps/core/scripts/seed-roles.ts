@@ -461,6 +461,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // credits it and REQUESTS the refund. The payout stays the cashier's, behind billing's approval.
       "billing.credit_note.issue",
       "billing.refund.request",
+      // PHARMACY P19 — the walk-in counter: sell, and register the customer who has no UHID yet.
+      // `sellRetail` asserts `patients.register` itself, and only on the branch that registers.
+      "pharmacy.retail.sell",
+      "patients.register",
       "orders.place",
       "orders.read",
       "orders.cancel",
@@ -734,6 +738,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // licensee answers for the register.
       "pharmacy.register.read",
       "pharmacy.register.read_sealed",
+      // PHARMACY P19 — the retail licence is the licensee's document.
+      "pharmacy.retail.manage",
     ],
   },
   {
@@ -795,6 +801,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY P17 — the administrative head answers the drug inspector too.
       "pharmacy.register.read",
       "pharmacy.register.read_sealed",
+      // PHARMACY P19 — and records the retail licence when the owner is away.
+      "pharmacy.retail.manage",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -1431,6 +1439,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     permissions: [
       "pharmacy.register.read",
       "pharmacy.register.read_sealed",
+      // P19 — the pharmacist named on the Form 20/21 licence records it.
+      "pharmacy.retail.manage",
     ],
   },
 ];

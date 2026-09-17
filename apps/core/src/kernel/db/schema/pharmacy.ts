@@ -196,13 +196,21 @@ export const pharmacyRegH1 = pgTable(
   {
     seq: bigserial("seq", { mode: "number" }).notNull(),
     id: text("id").primaryKey(),
-    dispenseLineId: text("dispense_line_id").notNull().references(() => pharmacyDispenseLines.id),
+    /** The counter's line, or (P19) null when `retail_line_id` names a walk-in sale's line. Exactly one is set. */
+    dispenseLineId: text("dispense_line_id").references(() => pharmacyDispenseLines.id),
+    retailLineId: text("retail_line_id").references(() => pharmacyRetailSaleLines.id),
     dispensedAt: timestamp("dispensed_at", { withTimezone: true }).notNull(),
     patientId: text("patient_id").notNull().references(() => patients.id),
     patientName: text("patient_name").notNull(),
     patientAddress: text("patient_address"),
     prescriberName: text("prescriber_name").notNull(),
     prescriberRegNo: text("prescriber_reg_no"),
+    /**
+     * PHARMACY P19 — Rule 65(3) asks for the prescriber's name AND ADDRESS. A walk-in's prescriber
+     * practises elsewhere, so the address is copied from the prescription. Null on counter rows,
+     * whose prescriber practises at this hospital.
+     */
+    prescriberAddress: text("prescriber_address"),
     drugName: text("drug_name").notNull(),
     medicineId: text("medicine_id").references(() => formularyMedicines.id),
     batchNo: text("batch_no").notNull(),
@@ -219,6 +227,7 @@ export const pharmacyRegH1 = pgTable(
   (t) => [
     index("pharmacy_reg_h1_dispensed_idx").on(t.dispensedAt),
     check("pharmacy_reg_h1_qty_ck", sql`${t.qtyBase} > 0`),
+    check("pharmacy_reg_h1_one_source_ck", sql`(${t.dispenseLineId} is null) <> (${t.retailLineId} is null)`),
   ],
 );
 
@@ -266,5 +275,105 @@ export const pharmacyPharmacistRegistrations = pgTable(
       sql`(${t.endedAt} is null) = (${t.endedBy} is null) and (${t.endedAt} is null) = (${t.endReason} is null)`),
     check("pharmacy_pharmacist_reg_not_self_ck", sql`${t.recordedBy} <> ${t.userId}`),
     check("pharmacy_pharmacist_reg_text_ck", sql`btrim(${t.council}) <> '' and btrim(${t.registrationNo}) <> ''`),
+  ],
+);
+
+/**
+ * ═══ PHARMACY P19 — WALK-IN RETAIL SALES ═══
+ *
+ * Phase doc `docs/superpowers/plans/2026-09-17-phase-pharmacy-p19-retail-sales.md`. A walk-in sale is
+ * not a dispense: it has no visit and no prescriber in this hospital, so it places no order. It
+ * shares the ledger, the price rule, billing and the H1 register with the counter.
+ *
+ * The licence (R-2): no sale to the public without a current Form 20/21 licence for the retail
+ * store. A row is never edited; a renewal or a correction is a new row and the latest row is the
+ * licence.
+ */
+export const pharmacyRetailLicences = pgTable(
+  "pharmacy_retail_licences",
+  {
+    id: text("id").primaryKey(),
+    storeResourceId: text("store_resource_id").notNull().references(() => resources.id),
+    /** Form 20: retail sale of drugs other than those in Schedules C, C1 and X. */
+    form20No: text("form20_no").notNull(),
+    /** Form 21: retail sale of drugs in Schedules C and C1, other than Schedule X. */
+    form21No: text("form21_no").notNull(),
+    validFrom: date("valid_from", { mode: "string" }).notNull(),
+    validTo: date("valid_to", { mode: "string" }).notNull(),
+    /** The registered pharmacist named on the licence, as printed. */
+    pharmacistInCharge: text("pharmacist_in_charge").notNull(),
+    note: text("note"),
+    recordedBy: text("recorded_by").notNull().references(() => users.id),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("pharmacy_retail_licences_store_idx").on(t.storeResourceId, t.recordedAt),
+    check("pharmacy_retail_licences_dates_ck", sql`${t.validTo} >= ${t.validFrom}`),
+    check("pharmacy_retail_licences_text_ck",
+      sql`btrim(${t.form20No}) <> '' and btrim(${t.form21No}) <> '' and btrim(${t.pharmacistInCharge}) <> ''`),
+  ],
+);
+
+/**
+ * One walk-in sale: sold, billed and handed over in one act. The outside prescription's fields are
+ * present exactly when a line is Schedule H or H1 (`scheduled`).
+ */
+export const pharmacyRetailSales = pgTable(
+  "pharmacy_retail_sales",
+  {
+    id: text("id").primaryKey(),
+    storeResourceId: text("store_resource_id").notNull().references(() => resources.id),
+    licenceId: text("licence_id").notNull().references(() => pharmacyRetailLicences.id),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    /** The customer was registered by this sale. */
+    registeredHere: boolean("registered_here").notNull().default(false),
+    scheduled: boolean("scheduled").notNull(),
+    rxPrescriberName: text("rx_prescriber_name"),
+    rxPrescriberRegNo: text("rx_prescriber_reg_no"),
+    rxPrescriberAddress: text("rx_prescriber_address"),
+    rxDate: date("rx_date", { mode: "string" }),
+    /** The photo, filed on the customer's record as `outside_prescription`. */
+    rxDocumentId: text("rx_document_id"),
+    invoiceId: text("invoice_id").notNull().references(() => invoices.id),
+    /** The seller's council registration number when a scheduled line was sold (P2). */
+    pharmacistRegNo: text("pharmacist_reg_no"),
+    soldBy: text("sold_by").notNull().references(() => users.id),
+    soldAt: timestamp("sold_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("pharmacy_retail_sales_invoice_ux").on(t.invoiceId),
+    index("pharmacy_retail_sales_sold_idx").on(t.soldAt),
+    index("pharmacy_retail_sales_patient_idx").on(t.patientId),
+    check(
+      "pharmacy_retail_sales_rx_ck",
+      sql`not ${t.scheduled} or (${t.rxPrescriberName} is not null and ${t.rxPrescriberRegNo} is not null and ${t.rxPrescriberAddress} is not null and ${t.rxDate} is not null and ${t.rxDocumentId} is not null and ${t.pharmacistRegNo} is not null)`,
+    ),
+  ],
+);
+
+export const pharmacyRetailSaleLines = pgTable(
+  "pharmacy_retail_sale_lines",
+  {
+    id: text("id").primaryKey(),
+    saleId: text("sale_id").notNull().references(() => pharmacyRetailSales.id),
+    lineIdx: integer("line_idx").notNull(),
+    medicineId: text("medicine_id").notNull().references(() => formularyMedicines.id),
+    itemId: text("item_id").notNull().references(() => items.id),
+    batchId: text("batch_id").notNull().references(() => stockBatches.id),
+    qtyBase: integer("qty_base").notNull(),
+    ledgerEntryId: text("ledger_entry_id").notNull().references(() => stockLedger.id),
+    invoiceLineId: text("invoice_line_id").notNull().references(() => invoiceLines.id),
+    unitPaise: bigint("unit_paise", { mode: "number" }).notNull(),
+    priceWinner: text("price_winner").notNull(),
+    scheduleFlag: text("schedule_flag"),
+    fefoOverride: boolean("fefo_override").notNull().default(false),
+  },
+  (t) => [
+    uniqueIndex("pharmacy_retail_sale_lines_idx_ux").on(t.saleId, t.lineIdx),
+    index("pharmacy_retail_sale_lines_batch_idx").on(t.batchId),
+    check("pharmacy_retail_sale_lines_qty_ck", sql`${t.qtyBase} > 0`),
+    check("pharmacy_retail_sale_lines_winner_ck", sql`${t.priceWinner} in ('batch_mrp', 'ceiling', 'tariff')`),
+    check("pharmacy_retail_sale_lines_schedule_ck", sql`${t.scheduleFlag} is null or ${t.scheduleFlag} in ('H', 'H1', 'OTC')`),
   ],
 );

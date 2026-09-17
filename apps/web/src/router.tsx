@@ -63,6 +63,8 @@ import { PharmacyPharmacists } from "./screens/pharmacy-pharmacists";
 import { PharmacyReorder } from "./screens/pharmacy-reorder";
 import { PharmacyH1Register } from "./screens/pharmacy-h1-register";
 import { PharmacyLeakage } from "./screens/pharmacy-leakage";
+import { PharmacyRetail } from "./screens/pharmacy-retail";
+import { PharmacyRetailLicence } from "./screens/pharmacy-retail-licence";
 import { RadiologyReception } from "./screens/radiology-reception";
 import { RadiologyWorklist } from "./screens/radiology-worklist";
 import { RadiologyStudy } from "./screens/radiology-study";
@@ -275,6 +277,9 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   { to: "/pharmacy/reorder", label: "nav.pharmacyReorder", permission: "pharmacy.dispense.read", group: "stores" },
   // PHARMACY P9 — the Schedule H1 register, the pharmacist's statutory read.
   { to: "/pharmacy/registers/h1", label: "nav.pharmacyH1", permission: "pharmacy.register.read", group: "stores" },
+  // PHARMACY P19 — the walk-in retail counter, and the licence that opens it.
+  { to: "/pharmacy/retail", label: "nav.pharmacyRetail", permission: "pharmacy.retail.sell", group: "opd" },
+  { to: "/pharmacy/retail-licence", label: "nav.pharmacyRetailLicence", permission: "pharmacy.retail.manage", group: "stores" },
 ];
 
 /**
@@ -878,6 +883,19 @@ const pharmacyH1RegisterRoute = createRoute({
   component: PharmacyH1Register,
 });
 
+/** PHARMACY P19 — the walk-in retail counter and its licence. Paths match `pharmacyManifest.menu`. */
+const pharmacyRetailRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/retail",
+  component: PharmacyRetail,
+});
+
+const pharmacyRetailLicenceRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/retail-licence",
+  component: PharmacyRetailLicence,
+});
+
 const labDeskRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/lab/desk",
@@ -1219,6 +1237,7 @@ export const router = createRouter({
       // PLAN 16c T5 — 45 -> 47, the pharmacy: the dispense counter and the sale-items admin. TWO routes
       // and two NAV links. `caddyfile-parity.test.ts` pins the count and joins this task's Files list.
       pharmacyCounterRoute, pharmacyItemsRoute, pharmacyPharmacistsRoute, pharmacyReorderRoute, pharmacyH1RegisterRoute, materialsCountsRoute, pharmacyLeakageRoute,
+      pharmacyRetailRoute, pharmacyRetailLicenceRoute,
       // PHASE 11i T9 — 50 -> 53, and every one of the three is a REDIRECT with no screen. They exist
       // because the catch-up deploy deletes three paths production has been serving since
       // 2 September and the desk PCs have them bookmarked. Removed in the release after the

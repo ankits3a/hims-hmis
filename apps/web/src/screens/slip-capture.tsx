@@ -78,7 +78,7 @@ export function fitsBudget(b64: string): boolean {
   return base64Bytes(b64) <= TARGET_BYTES;
 }
 
-async function downscaleToJpeg(source: CanvasImageSource, width: number, height: number): Promise<string | null> {
+export async function downscaleToJpeg(source: CanvasImageSource, width: number, height: number): Promise<string | null> {
   /*
     A source with no area cannot be a photograph of anything. This matters because a 0x0 canvas
     still ENCODES — to a couple of dozen bytes that sail through the size budget — so without this
