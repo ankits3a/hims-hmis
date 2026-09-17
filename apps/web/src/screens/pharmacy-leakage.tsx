@@ -5,30 +5,42 @@ import { fmtIst, fmtPaise } from "../lib/format";
 import { todayIst } from "../lib/opd-api";
 import { fetchLeakage, pharmacyErrorText } from "../lib/pharmacy-api";
 import { Input } from "@/components/ui/input";
+import type { LeakageStore } from "../lib/pharmacy-api";
 
 /**
  * ═══ PHARMACY P12 — THE LEAKAGE TRIANGLE ═══
  *
  * Doc 16 I1's Leakage Auditor, as a read for the billing supervisor and the owner
- * (`billing.reports.read`). One day at the OPD counter's store: stock that left against a bill that
- * no longer pays for it, stock that left with no dispense, and what the blind counts found. It
- * names dispense numbers, never patients.
+ * (`billing.reports.read`). One day at one counter's store (P19b: the OPD counter's or the walk-in
+ * counter's): stock that left against a bill that no longer pays for it, stock that left with no
+ * dispense or sale, and what the blind counts found. It names dispense and bill numbers, never
+ * patients.
  */
+const STORES: readonly LeakageStore[] = ["PHARM-OPD", "PHARM-RETAIL"];
 const signed = (n: number): string => (n > 0 ? `+${String(n)}` : String(n));
 
 export function PharmacyLeakage(): React.ReactElement {
   const { t } = useTranslation();
   const [day, setDay] = useState(todayIst());
-  const report = useQuery({ queryKey: ["pharmacy", "leakage", day], queryFn: () => fetchLeakage(day), enabled: /^\d{4}-\d{2}-\d{2}$/.test(day) });
+  const [store, setStore] = useState<LeakageStore>("PHARM-OPD");
+  const report = useQuery({ queryKey: ["pharmacy", "leakage", store, day], queryFn: () => fetchLeakage(day, store), enabled: /^\d{4}-\d{2}-\d{2}$/.test(day) });
   const r = report.data;
   return (
     <div className="space-y-4 p-4">
       <h1 className="text-xl font-semibold">{t("pharmacyLeakage.title")}</h1>
       <p className="max-w-3xl text-sm text-muted-foreground">{t("pharmacyLeakage.intro")}</p>
-      <label className="text-sm">
-        {t("pharmacyLeakage.day")}
-        <Input type="date" aria-label={t("pharmacyLeakage.day")} value={day} onChange={(e) => setDay(e.target.value)} className="w-44" />
-      </label>
+      <div className="flex flex-wrap items-center gap-4">
+        <label className="text-sm">
+          {t("pharmacyLeakage.store")}
+          <select aria-label={t("pharmacyLeakage.store")} className="ml-2 rounded border px-2 py-1" value={store} onChange={(e) => setStore(e.target.value as LeakageStore)}>
+            {STORES.map((code) => <option key={code} value={code}>{t(`pharmacyLeakage.store_${code}`)}</option>)}
+          </select>
+        </label>
+        <label className="text-sm">
+          {t("pharmacyLeakage.day")}
+          <Input type="date" aria-label={t("pharmacyLeakage.day")} value={day} onChange={(e) => setDay(e.target.value)} className="w-44" />
+        </label>
+      </div>
       {report.error !== null && <p role="alert" className="text-sm text-red-700">{pharmacyErrorText(report.error, t)}</p>}
       {r !== undefined && (
         <>
@@ -51,9 +63,14 @@ export function PharmacyLeakage(): React.ReactElement {
                     </tr>
                   </thead>
                   <tbody>
-                    {r.mismatches.map((m) => (
-                      <tr key={`${m.dispenseId}-${m.itemCode}-${m.batchNo}`} data-testid={`leak-${m.dispenseNo ?? m.dispenseId}`} className="bg-red-50">
-                        <td className="pr-3 font-mono">{m.dispenseNo ?? m.dispenseId}</td>
+                    {r.mismatches.map((m) => {
+                      const ref = m.dispenseNo ?? m.invoiceNo ?? m.dispenseId ?? m.saleId ?? "";
+                      return (
+                      <tr key={`${ref}-${m.itemCode}-${m.batchNo}`} data-testid={`leak-${ref}`} className="bg-red-50">
+                        <td className="pr-3">
+                          {m.source !== undefined && m.source !== "dispense" && <><span className="text-xs">{t(`pharmacyLeakage.source_${m.source}`)}</span>{" "}</>}
+                          <span className="whitespace-nowrap font-mono">{ref}</span>
+                        </td>
                         <td className="pr-3">{m.itemCode}</td>
                         <td className="pr-3 font-mono">{m.batchNo}</td>
                         <td className="pr-3">{m.issued}</td>
@@ -63,7 +80,8 @@ export function PharmacyLeakage(): React.ReactElement {
                         <td className="pr-3 font-medium">{m.unbilledUnits}</td>
                         <td className="pr-3">{fmtPaise(m.unbilledPaise)}</td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

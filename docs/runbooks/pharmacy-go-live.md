@@ -272,7 +272,7 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `batch_expired` | a batch was NAMED and its printed expiry has passed | quarantine it; pick again without naming a batch |
 | **`batch_expired_before_collection`** | in date at the pick, expired before the patient collected | §3.10 — quarantine; cancel with a refund at the counter (P5), then scan the Rx again if the patient still wants it |
 | `reason_required` | a paid dispense cancelled with no reason the refund approver can read | type the reason |
-| `return_window_closed` · `return_not_sealed` · `return_cut_strip` · `return_not_accepted` · `return_short_expiry` · `return_exceeds_dispensed` | a sales return outside O-7: more than 7 days after the hand-over, not attested sealed, a cut strip, a cold-chain/frozen/narcotic item, a batch too near expiry or recalled, or more than was dispensed | §3.11 — refuse the return; quarantine a short-dated or recalled batch |
+| `return_window_closed` · `return_not_sealed` · `return_cut_strip` · `return_not_accepted` · `return_short_expiry` · `return_exceeds_dispensed` | a sales return outside O-7: more than 7 days after the hand-over (or the walk-in sale), not attested sealed, a cut strip, a cold-chain/frozen/narcotic item, a batch too near expiry or recalled, or more than was dispensed or sold | §3.11 (counter), §9 (walk-in) — refuse the return; quarantine a short-dated or recalled batch |
 | `fefo_override_unavailable` | a named batch is the wrong item, is recalled, or cannot cover the quantity | check the carton, or let FEFO choose |
 | `slip_not_confirmed` | the prescription was typed from the doctor's paper slip and nobody has checked it against the slip | check the lines against the slip (the photo on the visit, or the patient's paper), confirm, then bill |
 | `invalid_day` · `invalid_range` | the counter's day (P7) or the H1 register's period (P9) is not a real date, runs backwards, or covers more than 31 days | choose the date or the month again |
@@ -282,7 +282,7 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `retail_store_missing` | `seed-pharmacy` did not create `PHARM-RETAIL` | §1.2 |
 | `prescription_required` · `invalid_prescription` | a walk-in Schedule H/H1 line with no outside prescription captured; or the prescriber's name, registration number or address is blank, or the date is after today | §9 — capture the prescription, or remove the line |
 | `registration_not_permitted` · `duplicate_suspected` | registering a walk-in customer without `patients.register`; or someone already registered closely matches | find the customer by mobile or UHID; pick the match, or confirm they are someone new |
-| `unknown_retail_sale` | the walk-in sale id does not resolve | re-open it from the day's list |
+| `unknown_retail_sale` | the walk-in sale id, or the bill number typed to take a pack back, does not resolve | re-open it from the day's list, or read the number off the bill again (a counter dispense's bill is returned at the counter, §3.11) |
 | `document_store_unavailable` | the prescription photo could not be written: the document store (`DOCUMENT_STORE_PATH`) is not writable. Nothing was sold | IT: in production the image owns `/var/lib/hmis/documents` and the `hmis_prod_documents` volume is mounted there; check the mount (the API logs a `DOCUMENT_STORE_PATH is not writable` warning at boot), then sell again |
 | `sheet_invalid` · `sheet_already_entered` | a paper dispense (P20) scanned from something that is not a downtime kit's receipt sheet, or a sheet already entered | §10 — scan the QR on the receipt sheet; open the entry already made |
 | `invalid_dispense_time` · `not_in_downtime` · `backfill_window_closed` | the time on the sheet is in the future, before the kit was printed, outside a declared outage, or more than 7 days ago | §10 — check the time written on the sheet; an older sheet is an incident for the pharmacist in charge |
@@ -367,9 +367,9 @@ No migration is reversed and no table is dropped.
 ## 8. Not in 16c (do not look for it)
 
 IPD indents and ward stock; NDPS and Schedule X custody; returns of cold-chain, frozen and
-narcotic items (sealed ambient packs come back since P6, §3.11; a billed dispense never collected is
-cancelled with a refund since P5, §3.10); cold chain; antimicrobial stewardship; the doctor ping on a held line; returns and refunds of a
-walk-in sale (walk-in retail itself is §9, since P19); repeat dispensing; home delivery; a Replenishment agent
+narcotic items (sealed ambient packs come back since P6, §3.11, and at the walk-in counter since
+P19b, §9; a billed dispense never collected is cancelled with a refund since P5, §3.10); cold chain;
+antimicrobial stewardship; the doctor ping on a held line; repeat dispensing; home delivery; a Replenishment agent
 that ORDERS (P4 and P8 give the reorder list, a read that proposes and moves nothing); realtime on
 the counter (it polls every 10 s).
 
@@ -437,8 +437,26 @@ licence is an offence under the Drugs and Cosmetics Act 1940 §18(c). The OPD co
 - Each line takes one batch, earliest in-date first. A quantity the first batch cannot cover is
   refused with what it holds: sell less, or add a second line.
 
-**Not yet at the walk-in counter:** returns and refunds of a walk-in sale (take them at the billing
-desk for now), and the leakage report, which reads `PHARM-OPD` only.
+**A sealed pack comes back (P19b).** At `/pharmacy/retail`, under "Take back a sealed pack", type the
+bill number and find the sale. The rules are the counter's (§3.11), counted from the time of the sale:
+- within **7 days**, sealed and intact (inspect it and tick the box), in whole strips;
+- never a cold-chain, frozen or narcotic item, and never a batch recalled or under 30 days to expiry
+  (quarantine it instead);
+- never more than was sold on the line, less what already came back. The screen shows both numbers.
+
+Say why, and whose reason it is: the customer no longer needs it, or the counter sold the wrong item.
+Only a pharmacist with a current council registration accepts it. The pack goes back on the shelf it
+was sold from, a credit note is raised for exactly that quantity, and the refund waits for billing's
+approval; the cashier pays it by voucher. **A return does not need a current retail licence**: it
+sells nothing, and a restocked pack cannot be sold again until the licence is current. The H1
+register keeps its row, as at the counter; the return is recorded against the sale.
+
+A paper dispense (§10) is returned the same way, by its bill number, into the counter it left from.
+
+**The leakage report (P12) reads either counter** since P19b. At `/pharmacy/leakage`, choose
+"Walk-in retail (PHARM-RETAIL)" to see a walk-in bill whose stock and money do not agree (it is named
+by its bill number), and stock that left the walk-in shelf with no sale behind it. A paper dispense
+is a sold line in its counter's report, not stock "consumed outside a dispense".
 
 ## 10. Paper dispenses after an outage (P20)
 

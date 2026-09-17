@@ -264,15 +264,18 @@ export type WireLeakageReport = {
   store: { code: string; name: string };
   dispensed: { lines: number; units: number };
   mismatches: {
-    dispenseId: string; dispenseNo: string | null; itemCode: string; batchNo: string;
+    /** P19b — absent from an older server, which only read counter dispenses. */
+    source?: "dispense" | "walk_in" | "downtime";
+    dispenseId: string | null; dispenseNo: string | null; saleId?: string | null; invoiceNo?: string | null; itemCode: string; batchNo: string;
     issued: number; returned: number; billed: number; credited: number; unbilledUnits: number; unbilledPaise: number;
   }[];
   otherConsumption: { itemCode: string; batchNo: string; units: number; refType: string | null; refId: string | null; actorId: string; actorName?: string; occurredAt: string }[];
   counted: { counts: number; varianceUnits: number; variancePaise: number; lines: { countId: string; itemCode: string; batchNo: string; varianceQty: number; variancePaise: number }[] };
   summary: { unbilledUnits: number; unbilledPaise: number; otherUnits: number; countVarianceUnits: number; countVariancePaise: number };
 };
-export async function fetchLeakage(day: string): Promise<WireLeakageReport> {
-  return api<WireLeakageReport>("GET", `/pharmacy/leakage${qs({ day })}`);
+export type LeakageStore = "PHARM-OPD" | "PHARM-RETAIL";
+export async function fetchLeakage(day: string, store: LeakageStore = "PHARM-OPD"): Promise<WireLeakageReport> {
+  return api<WireLeakageReport>("GET", `/pharmacy/leakage${qs({ day, store })}`);
 }
 
 // ── P19 — the walk-in retail counter ──
@@ -328,6 +331,8 @@ export type WireRetailSale = {
   lines: {
     lineIdx: number; medicineId: string; drugName: string; itemId: string; itemCode: string; itemName: string; batchId: string;
     batchNo: string; expiryDate: string | null; qtyBase: number; baseUom: string; unitPaise: number; scheduleFlag: string | null; fefoOverride: boolean;
+    /** P19b — absent from an older server. */
+    returnedQtyBase?: number;
   }[];
 };
 export type WireRetailSaleRow = {
@@ -358,6 +363,18 @@ export async function fetchRetailSales(day?: string): Promise<WireRetailSaleRow[
 }
 export async function fetchRetailSale(id: string): Promise<WireRetailSale> {
   return api<WireRetailSale>("GET", `/pharmacy/retail/sales/${id}`);
+}
+/** P19b — the sale a bill belongs to, when the customer brings the bill back. */
+export async function fetchRetailSaleByBill(no: string): Promise<WireRetailSale> {
+  return api<WireRetailSale>("GET", `/pharmacy/retail/bill${qs({ no })}`);
+}
+/** P19b — a sealed pack of a walk-in sale (or a paper dispense) comes back. */
+export async function acceptRetailReturn(
+  saleId: string,
+  body: { lines: { lineIdx: number; qtyBase: number }[]; sealedIntact: true; reason: string; reasonClass: "mistake" | "genuine" },
+  idempotencyKey: string,
+): Promise<{ sale: WireRetailSale; creditNoteId: string; creditNoteNo: string; refundApprovalId: string }> {
+  return api("POST", `/pharmacy/retail/sales/${saleId}/returns`, body, idempotencyKey);
 }
 export async function fetchRetailLicences(): Promise<{ items: WireRetailLicence[]; state: WireRetailState }> {
   return api("GET", "/pharmacy/retail/licences");

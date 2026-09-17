@@ -220,7 +220,7 @@ describe("the OPD dispense counter over HTTP (16c T5)", () => {
     await as(licensee.token)(request(server()).post("/pharmacy/retail/licences").send(licence)).expect(201);
     expect((await as(licensee.token)(request(server()).get("/pharmacy/retail/licences")).expect(200)).body).toMatchObject({ state: { state: "current" }, items: [{ form20No: "RLF20-1" }] });
 
-    await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "R-1", qtyBase: 50, resourceId: retailId });
+    await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "R-1", qtyBase: 50, expiryDate: "2099-12-31", resourceId: retailId });
     await stockIn(db, fx, { itemId: fx.item.azithro, batchNo: "AZ-1", qtyBase: 30, resourceId: retailId });
     const shelf = await ph(request(server()).get("/pharmacy/retail/shelf?q=croc")).expect(200);
     expect((shelf.body as { items: { itemCode: string; available: number }[] }).items).toEqual([expect.objectContaining({ itemCode: "CROC500", available: 50 })]);
@@ -257,6 +257,28 @@ describe("the OPD dispense counter over HTTP (16c T5)", () => {
     expect((day.body as { items: unknown[] }).items).toHaveLength(2);
     expect((await ph(request(server()).get(`/pharmacy/retail/sales/${sale.id}`)).expect(200)).body).toMatchObject({ id: sale.id, invoiceNo: sale.invoiceNo });
     await as(fx.clerk.token)(request(server()).get(`/pharmacy/retail/sales/${sale.id}`)).expect(403);
+
+    // P19b — the bill comes back: found by its number, and a sealed strip returned once, whatever the retries.
+    const bill = `/pharmacy/retail/bill?no=${encodeURIComponent(sale.invoiceNo)}`;
+    expect((await ph(request(server()).get(bill)).expect(200)).body).toMatchObject({ id: sale.id, lines: [{ qtyBase: 10, returnedQtyBase: 0 }] });
+    await as(fx.clerk.token)(request(server()).get(bill)).expect(403);
+    await ph(request(server()).get("/pharmacy/retail/bill?no=INV-NOPE")).expect(404);
+    const returns = `/pharmacy/retail/sales/${sale.id}/returns`;
+    const giveBack = { lines: [{ lineIdx: 0, qtyBase: 10 }], sealedIntact: true, reason: "bought the wrong strength", reasonClass: "mistake" };
+    await as(fx.aide.token)(request(server()).post(returns).send(giveBack)).expect(403);
+    await ph(request(server()).post(returns).send({ ...giveBack, sealedIntact: false })).expect(400);
+    const back = await ph(request(server()).post(returns).set("idempotency-key", "wr-1").send(giveBack)).expect(201);
+    expect(back.body).toMatchObject({ sale: { id: sale.id, lines: [{ returnedQtyBase: 10 }] }, creditNoteNo: expect.any(String) });
+    const again = await ph(request(server()).post(returns).set("idempotency-key", "wr-1").send(giveBack)).expect(201);
+    expect((again.body as { creditNoteId: string }).creditNoteId).toBe((back.body as { creditNoteId: string }).creditNoteId);
+    const more = await ph(request(server()).post(returns).send(giveBack)).expect(409);
+    expect((more.body as { code: string }).code).toBe("return_exceeds_dispensed");
+
+    // P19b — the walk-in store's leakage triangle, read by whoever reads the counter's.
+    await grantPermissionToRole(db, fx.registry, "pharmacy_incharge", "billing.reports.read");
+    const leak = await as(licensee.token)(request(server()).get(`/pharmacy/leakage?day=${today}&store=PHARM-RETAIL`)).expect(200);
+    expect(leak.body).toMatchObject({ store: { code: "PHARM-RETAIL" }, dispensed: { lines: 2 }, mismatches: [], otherConsumption: [] });
+    await as(licensee.token)(request(server()).get(`/pharmacy/leakage?day=${today}&store=MAIN`)).expect(400);
   });
 
   /**

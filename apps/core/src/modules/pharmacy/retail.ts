@@ -14,14 +14,14 @@ import { getInvoice, issueInvoice, previewInvoice, withIdempotency } from "../bi
 import { medicinesByIds } from "../formulary";
 import {
   MaterialsError, availableQty, availableQtyByItem, balances, fefoPick, findStoreByCode, getBatch, itemsByIds, postMovements,
-  requireStore, resolveBarcode,
+  requireStore, resolveBarcode, returnedQtyByRef,
 } from "../materials";
 import { runRxChecks } from "../opd";
 import { captureDocument, getPatient, nearMatches, registerPatient, resolvePatientId } from "../patients";
 import { gstCategoryMap, priceBatchLine, winnerOf } from "./bill";
 import {
   DOWNTIME_BACKFILL_DAYS, OPD_PHARMACY_STORE_CODE, REFUSED_FLAGS, REGISTER_FLAGS, RETAIL_PHARMACY_STORE_CODE, RETAIL_REF_TYPE,
-  SCHEDULED_FLAGS, isIsoDate, istDateOf,
+  RETAIL_RETURN_REF_TYPE, SCHEDULED_FLAGS, isIsoDate, istDateOf,
 } from "./config";
 import { PharmacyError } from "./errors";
 import { retailLicenceRecorded, retailSold } from "./events";
@@ -61,7 +61,7 @@ const SELL = "pharmacy.retail.sell";
 const MANAGE = "pharmacy.retail.manage";
 const DOWNTIME_ENTER = "pharmacy.downtime.enter";
 
-async function requirePermission(db: Db, actor: Actor, permission: string, what: string): Promise<string> {
+export async function requirePermission(db: Db, actor: Actor, permission: string, what: string): Promise<string> {
   if (actor.type !== "user" || !(await hasPermission(db, actor.id, permission, "hospital"))) {
     throw new PharmacyError("permission_denied", `${what} needs ${permission}`);
   }
@@ -875,6 +875,8 @@ export type RetailSaleView = {
   lines: {
     lineIdx: number; medicineId: string; drugName: string; itemId: string; itemCode: string; itemName: string; batchId: string; batchNo: string;
     expiryDate: string | null; qtyBase: number; baseUom: string; unitPaise: number; scheduleFlag: string | null; fefoOverride: boolean;
+    /** P19b — what has come back of this line so far. */
+    returnedQtyBase: number;
   }[];
 };
 
@@ -891,6 +893,7 @@ export async function getRetailSale(db: Db, actor: Actor, saleId: string): Promi
   const items = await itemsByIds(db, lines.map((l) => l.itemId));
   const medicines = await medicinesByIds(db, lines.map((l) => l.medicineId));
   const [seller] = await db.select({ fullName: users.fullName }).from(users).where(eq(users.id, sale.soldBy));
+  const returned = await returnedQtyByRef(db, RETAIL_RETURN_REF_TYPE, lines.map((l) => l.id));
   const out: RetailSaleView["lines"] = [];
   for (const l of lines) {
     const batch = await getBatch(db, l.batchId);
@@ -900,6 +903,7 @@ export async function getRetailSale(db: Db, actor: Actor, saleId: string): Promi
       itemId: l.itemId, itemCode: item?.code ?? "", itemName: item?.name ?? "",
       batchId: l.batchId, batchNo: batch?.batchNo ?? "", expiryDate: batch?.expiryDate ?? null, qtyBase: l.qtyBase,
       baseUom: item?.baseUom ?? "unit", unitPaise: l.unitPaise, scheduleFlag: l.scheduleFlag, fefoOverride: l.fefoOverride,
+      returnedQtyBase: returned.get(l.id) ?? 0,
     });
   }
   return {
