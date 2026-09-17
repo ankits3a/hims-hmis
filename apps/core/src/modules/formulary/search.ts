@@ -70,8 +70,56 @@ export async function searchMedicines(db: Db, query: string, limit = 10): Promis
   const q = query.trim().toLowerCase();
   if (q.length < 2) return [];
   const capped = Math.min(Math.max(limit, 1), 25);
-  const like = `%${q}%`;
-  const starts = `${q}%`;
+
+  /*
+    ═══ A DOCTOR TYPES WHAT THEY MEAN, IN ANY ORDER: "para 500", "amox clav 625" ═══
+
+    Until now this was ONE substring: `like '%para 500%'`. Measured against the real catalogue,
+    `para 500` returned **0 rows** and `par 5` returned **0 rows**, because neither string appears
+    anywhere in "Paracetamol 500 mg oral tablet" — the words are there, the phrase is not. A doctor
+    who types the molecule and the strength, which is how a drug is said out loud, got nothing and
+    had to guess what the field wanted instead.
+
+    So the query is TOKENS, and every one of them must match — the AND a person means by typing two
+    words.
+
+    ═══ ONE TOKEN GETS THE INDEX: THE LONGEST ═══
+
+    Only one predicate can drive the trigram index over 103,383 products, so the ANCHOR is the
+    longest token — the one that narrows hardest — and it keeps the two indexed branches the
+    UNION was built for (the comment below says why that union exists). The remaining tokens filter
+    the rows that survive, which is cheap because the anchor has already cut the set.
+
+    Length, not position: `500 para` and `para 500` are the same request, and a doctor who types
+    the strength first should not fall off the index.
+
+    ═══ THE OTHER TOKENS DO NOT SEE THE CODE, DELIBERATELY ═══
+
+    Their haystack is the name, the strength and the form — NOT the catalogue code. `par 5` with the
+    code included returned "Paracetamol 100 mg oral tablet" as its first row, because its code is
+    `D9225` and that contains a `5`. A bare digit matching a catalogue code is noise dressed as a
+    match. A doctor searching BY code types the whole code, which is then the longest token and is
+    matched by the anchor branch, where codes belong.
+  */
+  const tokens = q.split(/\s+/).filter((t) => t !== "");
+  const anchor = tokens.reduce((a, b) => (b.length > a.length ? b : a), tokens[0] ?? q);
+  const rest: string[] = [];
+  let anchorTaken = false;
+  for (const t of tokens) {
+    if (!anchorTaken && t === anchor) { anchorTaken = true; continue; }
+    rest.push(t);
+  }
+  const like = `%${anchor}%`;
+  const starts = `${anchor}%`;
+  /** Every remaining token must appear in the name, the strength or the form. */
+  const restFilter = rest.length === 0
+    ? sql`true`
+    : sql.join(
+      rest.map((t) => sql`lower(
+        h.brand_name || ' ' || coalesce(h.strength_label, '') || ' ' || h.form
+      ) like ${`%${t}%`}`),
+      sql` and `,
+    );
 
   /*
     ═══ THE MOIETY IS THE STRONGER SIGNAL, AND THE FIRST DRAFT PROVED IT ═══
@@ -125,7 +173,7 @@ export async function searchMedicines(db: Db, query: string, limit = 10): Promis
          )
     ),
     ranked as (
-      select * from hits
+      select * from hits h where ${restFilter}
        order by (lower(brand_name) like ${starts}) desc,
                 salt_rank desc,
                 (code is not null) desc,

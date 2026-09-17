@@ -46,6 +46,7 @@ describe("searchMedicines — the typeahead over the imported catalogue", () => 
       { id: "S1", name: "Amoxicillin", productCount: 3830, ...AUDIT },
       { id: "S2", name: "Clavulanic acid", productCount: 900, ...AUDIT },
       { id: "S3", name: "Amoxapine", productCount: 14, ...AUDIT },
+      { id: "S4", name: "Paracetamol", productCount: 4866, ...AUDIT },
     ]);
     await db.insert(formularyMedicines).values([
       { id: "M1", brandName: "Amoxil 500", nameNormalized: normalizeDrugName("Amoxil 500"), form: "Capsule", routeClass: "systemic", saltRank: 3830, ...AUDIT },
@@ -59,6 +60,12 @@ describe("searchMedicines — the typeahead over the imported catalogue", () => 
       { id: "M4", brandName: "Amoxy Mystery Syrup", nameNormalized: normalizeDrugName("Amoxy Mystery Syrup"), form: "Syrup", routeClass: "systemic", saltRank: 0, ...AUDIT },
       // Inactive: withdrawn, and never offered however well it matches.
       { id: "M5", brandName: "Amoxi Withdrawn", nameNormalized: normalizeDrugName("Amoxi Withdrawn"), form: "Tablet", routeClass: "systemic", saltRank: 3830, active: false, ...AUDIT },
+      // THE ROWS THE TOKEN CASES EXIST FOR — shaped like the real catalogue, where the strength is
+      // part of the NAME and the words a doctor says are never adjacent in it.
+      { id: "M6", brandName: "Paracetamol 500 mg oral tablet", nameNormalized: normalizeDrugName("Paracetamol 500 mg oral tablet"), form: "Tablet", strengthLabel: "500 mg", code: "D0230", routeClass: "systemic", saltRank: 4866, ...AUDIT },
+      { id: "M7", brandName: "Paracetamol 650 mg oral tablet", nameNormalized: normalizeDrugName("Paracetamol 650 mg oral tablet"), form: "Tablet", strengthLabel: "650 mg", code: "D0231", routeClass: "systemic", saltRank: 4866, ...AUDIT },
+      // Its ONLY `5` is in the catalogue code. `par 5` must not reach it — see S8.
+      { id: "M8", brandName: "Paracetamol 100 mg oral tablet", nameNormalized: normalizeDrugName("Paracetamol 100 mg oral tablet"), form: "Tablet", strengthLabel: "100 mg", code: "D9225", routeClass: "systemic", saltRank: 4866, ...AUDIT },
     ]);
     await db.insert(formularyMedicineSalts).values([
       { medicineId: "M1", saltId: "S1", strength: "500 mg", source: "curated" },
@@ -66,6 +73,9 @@ describe("searchMedicines — the typeahead over the imported catalogue", () => 
       { medicineId: "M2", saltId: "S2", strength: "125 mg", source: "curated" },
       { medicineId: "M3", saltId: "S3", strength: "50 mg", source: "curated" },
       { medicineId: "M5", saltId: "S1", strength: "500 mg", source: "curated" },
+      { medicineId: "M6", saltId: "S4", strength: "500 mg", source: "curated" },
+      { medicineId: "M7", saltId: "S4", strength: "650 mg", source: "curated" },
+      { medicineId: "M8", saltId: "S4", strength: "100 mg", source: "curated" },
     ]);
   }
 
@@ -100,6 +110,48 @@ describe("searchMedicines — the typeahead over the imported catalogue", () => 
     expect(prefixed).toEqual(["M1", "M3"]);
     /* And the moiety-only match — the brand name says nothing about amoxicillin — sorts below both. */
     expect(hits[hits.length - 1]!.id).toBe("M2");
+  });
+
+  /**
+   * ═══ THE OWNER'S OWN EXAMPLES, 2026-09-17 ═══
+   *
+   * "para 500" and "par 5". Measured against the real catalogue BEFORE this change, both returned
+   * **0 rows** — the words are in "Paracetamol 500 mg oral tablet", the phrase is not, and the
+   * search was one substring. A doctor types the molecule and the strength because that is how a
+   * drug is said out loud.
+   */
+  it("S6: `para 500` finds the 500, and `500 para` is the same request", async () => {
+    await seed();
+
+    const typed = await searchMedicines(db, "para 500");
+    expect(typed.map((h) => h.id)).toEqual(["M6"]);
+
+    // Length picks the anchor, not position: a doctor who says the strength first is not punished.
+    const reversed = await searchMedicines(db, "500 para");
+    expect(reversed.map((h) => h.id)).toEqual(["M6"]);
+  });
+
+  it("S7: every token must match — `para 650` does not offer the 500", async () => {
+    await seed();
+    const hits = await searchMedicines(db, "para 650");
+    expect(hits.map((h) => h.id)).toEqual(["M7"]);
+  });
+
+  /**
+   * `par 5` with the code in the haystack returned "Paracetamol 100 mg" first, because its code is
+   * `D9225`. A bare digit matching a catalogue code is noise dressed as a match.
+   */
+  it("S8: a loose digit does not reach a row whose only match is its catalogue CODE", async () => {
+    await seed();
+    const hits = await searchMedicines(db, "par 5");
+    expect(hits.map((h) => h.id)).not.toContain("M8");
+    expect(hits.map((h) => h.id).sort()).toEqual(["M6", "M7"]); // 500 mg and 650 mg
+  });
+
+  it("S9: a code is still searchable when the doctor types the whole of it", async () => {
+    await seed();
+    const hits = await searchMedicines(db, "D0230");
+    expect(hits.map((h) => h.id)).toEqual(["M6"]);
   });
 
   it("S4: an inactive medicine is never offered", async () => {
