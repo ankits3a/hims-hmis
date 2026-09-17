@@ -8,6 +8,7 @@ import { listDepartments, listDoctors, listRooms, opdErrorMessage, todayIst } fr
 import type { WireAppointment, WireDepartment, WireDoctor, WireOpenVisitResult, WireRoom, WireSlot } from "../lib/opd-api";
 import { useRealtime } from "../lib/realtime";
 import { useCopilot } from "../lib/use-copilot";
+import { CopilotReport } from "../components/copilot-report";
 import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
 import { PatientPicker } from "../components/patient-picker";
@@ -634,6 +635,9 @@ export function OpdAppointments(): React.ReactElement {
         onAsk={copilot.ask}
         placeholder={t("opdAppt.askPlaceholder")}
         idle={t("opdAppt.agentIdle")}
+        panel={copilot.report === null ? undefined : (
+          <CopilotReport report={copilot.report} onDismiss={copilot.dismissReport} />
+        )}
       />
     </PaperScreen>
   );

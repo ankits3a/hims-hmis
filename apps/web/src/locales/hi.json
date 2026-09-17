@@ -4581,6 +4581,14 @@
       "queueShortest": "सबसे छोटी खुली लाइन {{doctor}} की है — {{waiting}} इंतज़ार में, करीब {{minutes}} मिनट।",
       "queueNoneOpen": "आज कोई डॉक्टर बैठे नहीं हैं।",
       "uhidCheckFailed": "यह UHID सही नहीं लग रहा — अंक दोबारा देख लीजिए। ({{uhid}})"
+    },
+    "report": {
+      "title": "आपका दिन — {{date}}",
+      "provisional": "अस्थायी",
+      "download": "CSV डाउनलोड करें",
+      "downloadFailed": "डाउनलोड शुरू नहीं हुआ। दोबारा कोशिश करें, या मेरा दिन खोलें।",
+      "dismiss": "बंद करें",
+      "emptySection": "इस हिस्से में कुछ नहीं है।"
     }
   }
 }

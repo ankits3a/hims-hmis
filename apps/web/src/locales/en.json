@@ -4581,6 +4581,14 @@
       "queueShortest": "Shortest open line is {{doctor}} — {{waiting}} waiting, about {{minutes}} minutes.",
       "queueNoneOpen": "No doctor is holding a clinic today.",
       "uhidCheckFailed": "That UHID does not look right — check the digits. ({{uhid}})"
+    },
+    "report": {
+      "title": "Your day — {{date}}",
+      "provisional": "provisional",
+      "download": "Download CSV",
+      "downloadFailed": "The download did not start. Try again, or use My Day.",
+      "dismiss": "Close",
+      "emptySection": "Nothing in this section."
     }
   }
 }
