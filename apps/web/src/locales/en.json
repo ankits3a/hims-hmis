@@ -3338,7 +3338,10 @@
     "filed": "Registration filed for {{name}}.",
     "ended": "Registration ended for {{name}}.",
     "history": "Earlier registrations",
-    "endedBecause": "ended: {{reason}}"
+    "endedBecause": "ended: {{reason}}",
+    "renewToday": "last valid day — file the renewal today",
+    "renewIn_one": "renew within {{count}} day",
+    "renewIn_other": "renew within {{count}} days"
   },
   "pharmacyReorder": {
     "title": "Reorder list",
@@ -3386,7 +3389,9 @@
     "returns": "returns {{n}}",
     "refunds": "refunds {{n}}",
     "partly": "partly checked {{n}}",
-    "h1": "H1 {{n}}"
+    "h1": "H1 {{n}}",
+    "notCollected": "not collected {{n}} of {{of}}",
+    "scanned": "scanned {{n}}/{{of}} picks"
   },
   "pharmacyErrors": {
     "permission_denied": "You are not allowed to do that",
@@ -4265,7 +4270,7 @@
     "noOther": "Nothing left the shelf except through dispenses.",
     "ref": "Reference",
     "by": "Posted by",
-    "units": "Units",
+    "units": "units",
     "when": "When",
     "counted": "Blind counts",
     "noCount": "No count was taken this day.",

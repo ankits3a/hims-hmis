@@ -69,6 +69,21 @@ describe("PharmacyPharmacists (P2)", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("filed and ended by someone else, never by its holder");
   });
 
+  /** P15 — a registration inside its last sixty days says so; one beyond it says nothing. */
+  it("marks a registration that must be renewed soon, and one on its last day", async () => {
+    mockRoutes({
+      "GET /api/pharmacy/pharmacists": { status: 200, body: { items: [
+        { ...PEOPLE[1]!, renewalDueInDays: 12 },
+        { ...PEOPLE[1]!, userId: "u-last", fullName: "Last Day", renewalDueInDays: 0 },
+        { ...PEOPLE[1]!, userId: "u-far", fullName: "Far Off", renewalDueInDays: null },
+      ] } },
+    });
+    renderWithProviders(<PharmacyPharmacists />);
+    expect(await screen.findByTestId("pharmacist-renewal-u-mehta")).toHaveTextContent("renew within 12 days");
+    expect(screen.getByTestId("pharmacist-renewal-u-last")).toHaveTextContent("last valid day — file the renewal today");
+    expect(screen.queryByTestId("pharmacist-renewal-u-far")).toBeNull();
+  });
+
   it("ends a registration only with a reason", async () => {
     mockRoutes({
       "GET /api/pharmacy/pharmacists": { status: 200, body: { items: PEOPLE } },

@@ -100,7 +100,9 @@ describe("the pharmacy leakage triangle (P12)", () => {
       issued: 10, returned: 0, billed: 10, credited: 3, unbilledUnits: 3, unbilledPaise: 3 * leaky.unitPaise,
     }]);
     expect(report.otherConsumption).toEqual([{
-      itemCode: "CROC500", batchNo: "CR-1", units: 4, refType: "ward_emergency", refId: "slip-7", actorId: fx.pharmacist.id, occurredAt: hour(3).toISOString(),
+      itemCode: "CROC500", batchNo: "CR-1", units: 4, refType: "ward_emergency", refId: "slip-7", actorId: fx.pharmacist.id,
+      // The reviewer reads a person, not a ULID (found by the 2026-09-17 browser walk).
+      actorName: "ph.mehta", occurredAt: hour(3).toISOString(),
     }]);
     expect(report.counted).toMatchObject({ counts: 1, varianceUnits: -2, variancePaise: -1000 });
     expect(report.counted.lines).toEqual([{ countId: count.id, itemCode: "CROC500", batchNo: "CR-1", varianceQty: -2, variancePaise: -1000 }]);

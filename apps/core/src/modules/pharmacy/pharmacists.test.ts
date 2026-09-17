@@ -155,8 +155,22 @@ describe("the register of pharmacists (pharmacy P2)", () => {
 
   it("lists every pharmacy role holder with what the register says about them", async () => {
     const list = await listPharmacists(db, MON2);
-    expect(list.map((p) => [p.username, p.current?.registrationNo ?? null]).sort()).toEqual([
-      ["ph.incharge", null], ["ph.mehta", "MSPC-123456"],
+    expect(list.map((p) => [p.username, p.current?.registrationNo ?? null, p.renewalDueInDays]).sort()).toEqual([
+      ["ph.incharge", null, null], ["ph.mehta", "MSPC-123456", null],
     ]);
+  });
+
+  /** P15 — a registration inside its last sixty days says how many are left; one beyond it, or with no end, says nothing. */
+  it("says how many days a registration has left once it is inside its renewal window", async () => {
+    await file(fx.pharmacist, fx.incharge.id, { validUntil: "2026-09-16" });
+    // MON2 is 2026-08-17 (IST): thirty days to 2026-09-16.
+    expect((await listPharmacists(db, MON2)).find((p) => p.username === "ph.incharge")?.renewalDueInDays).toBe(30);
+    await file(fx.pharmacist, fx.incharge.id, { registrationNo: "MSPC-777777-R", validUntil: "2026-10-17" }, MON2);
+    expect((await listPharmacists(db, MON2)).find((p) => p.username === "ph.incharge")?.renewalDueInDays).toBeNull();
+    // On the last day it is 0, and the day after there is no current registration at all.
+    const last = new Date("2026-10-17T06:00:00.000Z");
+    expect((await listPharmacists(db, last)).find((p) => p.username === "ph.incharge")?.renewalDueInDays).toBe(0);
+    const after = new Date("2026-10-18T06:00:00.000Z");
+    expect((await listPharmacists(db, after)).find((p) => p.username === "ph.incharge")).toMatchObject({ current: null, renewalDueInDays: null });
   });
 });

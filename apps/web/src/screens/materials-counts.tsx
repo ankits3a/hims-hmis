@@ -188,7 +188,7 @@ export function MaterialsCounts(): React.ReactElement {
                     <td className="pr-3">{c.storeName}{c.recountOf !== null ? ` · ${t("materialsCounts.recount")}` : ""}</td>
                     <td className="pr-3">{statusText(t, c)}</td>
                     <td className="pr-3">{c.counterName}</td>
-                    <td className="pr-3">{c.frozenAt.slice(0, 10)} {fmtIst(c.frozenAt)}</td>
+                    <td className="pr-3">{todayIst(new Date(c.frozenAt))} {fmtIst(c.frozenAt)}</td>
                     <td><Button type="button" size="sm" variant="outline" onClick={() => { setReviewId(c.id); setClosing(""); setCancelling(""); }}>{t("materialsCounts.review")}</Button></td>
                   </tr>
                 ))}

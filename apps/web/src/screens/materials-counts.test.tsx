@@ -83,7 +83,8 @@ describe("MaterialsCounts (14c)", () => {
     mockRoutes({
       "GET /api/auth/me": me(["materials.counts.perform", "materials.counts.manage"]),
       "GET /api/materials/counts/mine": { items: [] },
-      "GET /api/materials/counts": { items: [{ ...HEADER, status: "submitted" }] },
+      // The second row was frozen at 01:30 IST on the 17th, which is still the 16th in UTC.
+      "GET /api/materials/counts": { items: [{ ...HEADER, status: "submitted" }, { ...HEADER, id: "c9", status: "closed", frozenAt: "2026-09-16T20:00:00.000Z" }] },
       "GET /api/materials/stores": { stores: [{ id: "s1", code: "PHARM-OPD", name: "OPD pharmacy", status: "active" }] },
       "POST /api/materials/counts": { ...HEADER, counterName: "Ravi Kumar" },
       "GET /api/materials/counts/c1": review,
@@ -96,6 +97,7 @@ describe("MaterialsCounts (14c)", () => {
     await waitFor(() => expect(posted("/materials/counts")).toEqual([{ storeResourceId: "s1" }]));
     expect(await screen.findByRole("status")).toHaveTextContent("OPD pharmacy will be counted by Ravi Kumar.");
 
+    expect(await screen.findByTestId("count-row-c9")).toHaveTextContent("2026-09-17 01:30");
     await userEvent.click(within(await screen.findByTestId("count-row-c1")).getByRole("button", { name: "Review" }));
     const box = await screen.findByTestId("count-review");
     expect(within(box).getByTestId("count-totals")).toHaveTextContent("2 lines · 0 match · 2 out · 1 recounted");

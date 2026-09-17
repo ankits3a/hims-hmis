@@ -7,6 +7,8 @@ import { claimDispense, findAtCounter } from "./claim";
 import { handOverDispense } from "./handover";
 import { pickDispense } from "./pick";
 import { counterSummary } from "./summary";
+import { withTx } from "../../kernel/db/client";
+import { addBarcode } from "../materials";
 import { declineLine, verifyDispense } from "./verify";
 import type { PharmacyFixture } from "../../../test/helpers/pharmacy";
 import type { Db } from "../../kernel/db/client";
@@ -30,6 +32,7 @@ describe("the counter's day (pharmacy P7)", () => {
     fx = await seedPharmacyBase(db);
     await openSessionFor(db, { id: fx.pharmacist.id }, 0);
     await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "CR-1", qtyBase: 100, expiryDate: "2027-12-31", at: MON });
+    await withTx(db, (tx) => addBarcode(tx, { type: "user", id: "01HMATERIALSHEAD00000000001" }, fx.item.crocin, { code: "8901234567897", packUom: "strip" }));
   });
   afterEach(() => { fx.unregister(); });
 
@@ -47,12 +50,16 @@ describe("the counter's day (pharmacy P7)", () => {
     const done = await claimed([line({ drug: "Crocin 500", medicineId: fx.med.crocin }), line({ drug: "Azee 500", medicineId: fx.med.azithro })]);
     await declineLine(db, fx.pharmacist.actor, fx.decls, done, 1, "out of stock", MON2);
     await verifyDispense(db, fx.pharmacist.actor, fx.decls, done, { lines: [{ lineIdx: 0, qtyBase: 10 }] }, MON2);
-    await pickDispense(db, fx.pharmacist.actor, fx.decls, done, {}, MON2);
+    // P14 — this pack is scanned at the pick.
+    await pickDispense(db, fx.pharmacist.actor, fx.decls, done, { lines: [{ lineIdx: 0, scan: "8901234567897" }] }, MON2);
     const preview = await previewDispenseBill(db, fx.pharmacist.actor, done, MON2);
     await billDispense(db, fx.pharmacist.actor, done, { tenders: [{ mode: "cash", amountPaise: preview.totals.netPayablePaise }] }, MON2);
     await handOverDispense(db, fx.pharmacist.actor, fx.decls, done, {}, MON3);
-    // One left at the claim.
+    // One left at the claim, and one picked without a scan and never collected.
     await claimed([line({ drug: "Crocin 500", medicineId: fx.med.crocin })]);
+    const unscanned = await claimed([line({ drug: "Crocin 500", medicineId: fx.med.crocin })]);
+    await verifyDispense(db, fx.pharmacist.actor, fx.decls, unscanned, { lines: [{ lineIdx: 0, qtyBase: 10 }] }, MON2);
+    await pickDispense(db, fx.pharmacist.actor, fx.decls, unscanned, {}, MON2);
 
     const s = await counterSummary(db, "2026-08-17");
 
@@ -70,11 +77,17 @@ describe("the counter's day (pharmacy P7)", () => {
       scheduledHandovers: 0,
     });
     // The backlog is the five open states, exactly: a closed dispense never leaks into it.
-    expect(s.open).toEqual({ queued: 0, claimed: 1, verified: 0, picked: 0, billed: 0 });
+    expect(s.open).toEqual({ queued: 0, claimed: 1, verified: 0, picked: 1, billed: 0 });
+    // P14 — three prescriptions reached the counter today and two of them did not leave it; one of
+    // the two picked lines was scanned.
+    expect(s.queuedToday).toBe(3);
+    expect(s.notCollected).toBe(2);
+    expect(s.scan).toEqual({ pickedLines: 2, scannedLines: 1 });
     // Queued at the scan (MON2), claimed ten minutes later, handed over at MON3: 20 and 10 minutes.
     expect([s.medianMinutes.queueToHandover, s.medianMinutes.claimToHandover]).toEqual([20, 10]);
     // Another day is another day.
-    expect((await counterSummary(db, "2026-08-18")).handedOver).toBe(0);
+    const quiet = await counterSummary(db, "2026-08-18");
+    expect([quiet.handedOver, quiet.queuedToday, quiet.notCollected, quiet.scan]).toEqual([0, 0, 0, { pickedLines: 0, scannedLines: 0 }]);
   });
 
   it("refuses a day that is not a date", async () => {

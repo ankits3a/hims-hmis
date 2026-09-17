@@ -88,3 +88,19 @@ this comes after #220.
 - Ward and IPD locations (16d).
 - Dyads: which staff pairs recur in the mismatches (doc 16's "pattern per location").
 - Valuing count variance at MRP rather than landed cost.
+
+## 5. ADDENDUM — the browser walk (2026-09-17)
+
+Seven screens were screenshotted in headless Chromium against a stub API that served the tests'
+fixtures: the counter, the reorder list (also at 400 px), the H1 register, the leakage report,
+pharmacists, and stock counts. Three defects were found and fixed:
+
+- **The leakage report named the poster by user id.** On real data "Posted by" would have shown a
+  ULID. The report now carries `actorName`, resolved from `users`, and the screen prints it.
+- **"4 Units"** was capitalised mid-sentence (en locale).
+- **The counts list printed the freeze date in UTC** (`frozenAt.slice(0, 10)`). A count frozen
+  between 00:00 and 05:30 IST read as the day before. It now uses the IST date.
+
+Each fix has a test that fails without it: 3 mutants, each with a written prediction, all killed.
+The walk found nothing else: the H1 sheet reads as a register; the renewal badge and the day strip
+wrap cleanly; the reorder table scrolls sideways at phone width, as a table may.

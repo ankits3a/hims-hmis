@@ -67,3 +67,18 @@ declined and why, and what money came back.
   proper scope, and it needs the data first.
 - The value of refunds and returns. The events carry the credit-note ids, and the value is billing's
   to report.
+
+## 5. ADDENDUM — P14 (2026-09-17): what did not leave the counter, and how much was scanned
+
+- `queuedToday` and `notCollected`: the dispenses created on the day (their `created_at` is the
+  injected instant), and how many of them are not handed over. This is doc 16's first
+  negative-space signal and the runbook's first pilot harvest row, until now a hand query. The
+  strip shows "not collected N of M" only when N > 0.
+- `scan`: the lines picked on the day (`dispense.picked`) and how many had their pack scanned (P13).
+  This is doc 16 C2's manual-entry rate. The strip shows "scanned X/Y picks" once anything was
+  picked.
+- **Tests.** The summary test gained a third dispense (picked unscanned, never collected) and a
+  scanned pick: 3 arrived, 2 not collected, 1 of 2 picks scanned, and the next day reads zero. The
+  web strip test covers both phrases.
+- **Mutants: 4, each with a written prediction, all killed:** every arrival counted as not
+  collected, every pick counted as scanned, arrivals counted by hand-over, and the phrase hidden.

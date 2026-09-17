@@ -171,6 +171,8 @@ export type WirePharmacistRegistration = {
 export type WirePharmacist = {
   userId: string; username: string; fullName: string; active: boolean;
   current: WirePharmacistRegistration | null; history: WirePharmacistRegistration[];
+  /** P15 — days left once inside the renewal window; absent from an older server. */
+  renewalDueInDays?: number | null;
 };
 export async function fetchPharmacists(): Promise<WirePharmacist[]> {
   const { items } = await api<{ items: WirePharmacist[] }>("GET", "/pharmacy/pharmacists");
@@ -234,6 +236,8 @@ export type WireCounterSummary = {
   declinedLines: number; declinedTop: { reason: string; lines: number }[];
   substitutions: number; cancelled: number; refundedAfterBilling: number; returns: number;
   partlyCheckedLines: number; scheduledHandovers: number;
+  /** P14 — absent from an older server. */
+  queuedToday?: number; notCollected?: number; scan?: { pickedLines: number; scannedLines: number };
 };
 export async function fetchCounterSummary(day?: string): Promise<WireCounterSummary> {
   return api<WireCounterSummary>("GET", `/pharmacy/summary${qs({ day })}`);
@@ -248,7 +252,7 @@ export type WireLeakageReport = {
     dispenseId: string; dispenseNo: string | null; itemCode: string; batchNo: string;
     issued: number; returned: number; billed: number; credited: number; unbilledUnits: number; unbilledPaise: number;
   }[];
-  otherConsumption: { itemCode: string; batchNo: string; units: number; refType: string | null; refId: string | null; actorId: string; occurredAt: string }[];
+  otherConsumption: { itemCode: string; batchNo: string; units: number; refType: string | null; refId: string | null; actorId: string; actorName?: string; occurredAt: string }[];
   counted: { counts: number; varianceUnits: number; variancePaise: number; lines: { countId: string; itemCode: string; batchNo: string; varianceQty: number; variancePaise: number }[] };
   summary: { unbilledUnits: number; unbilledPaise: number; otherUnits: number; countVarianceUnits: number; countVariancePaise: number };
 };

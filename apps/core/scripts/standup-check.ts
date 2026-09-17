@@ -14,7 +14,7 @@ import {
   LAB_DEF_KEYS, RELEASE_UNPAID_APPROVAL_TYPE, analytesFor, listOrderables, rangesFor,
 } from "../src/modules/lab";
 import {
-  OPD_PHARMACY_STORE_CODE, PHARMACIST_ROLE, PHARMACY_DEF_KEYS, currentRegistration, listSaleItems,
+  OPD_PHARMACY_STORE_CODE, PHARMACIST_ROLE, PHARMACY_DEF_KEYS, currentRegistration, listSaleItems, renewalDaysLeft,
 } from "../src/modules/pharmacy";
 import {
   DAYCARE_CASE_DEF_KEY, DEFINITION_PUBLISH_APPROVAL_TYPE, DEPOSIT_EXCEPTION_APPROVAL_TYPE,
@@ -531,6 +531,28 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
         return false;
       },
       fix: "§1.10: the pharmacist in charge files each pharmacist's state council registration at /pharmacy/pharmacists (never their own) — verify and a Schedule H/H1 hand-over refuse anyone without one",
+    },
+    {
+      gate: "G4", code: "pharmacist_registration_not_lapsing",
+      /**
+       * PHARMACY P15 — RED while any `pharmacy` holder's current registration ends within
+       * REGISTRATION_RENEWAL_NOTICE_DAYS, and while nobody has one at all (red until an act). The act that turns it green is filing the renewed
+       * certificate; the day it lapses, verify refuses that pharmacist at the counter.
+       */
+      check: async (db) => {
+        const holders = await withTx(db, (tx) => usersHoldingRoleAtScope(tx, PHARMACIST_ROLE, "hospital"));
+        const today = istDayString(new Date());
+        // Red until an act (the census grammar): with nothing on file there is nothing to vouch for.
+        let anyCurrent = false;
+        for (const userId of holders) {
+          const reg = await currentRegistration(db, userId, today);
+          if (reg === null) continue;
+          anyCurrent = true;
+          if (reg.validUntil != null && renewalDaysLeft(today, reg.validUntil) !== null) return false;
+        }
+        return anyCurrent;
+      },
+      fix: "§1.10: file each pharmacist's council registration, and renew any that ends within 60 days, at /pharmacy/pharmacists (the register screen names who) — the day one lapses, verify refuses that pharmacist",
     },
   ],
 

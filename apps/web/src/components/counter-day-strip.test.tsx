@@ -9,6 +9,7 @@ const DAY: WireCounterSummary = {
   open: { queued: 2, claimed: 1, verified: 1, picked: 0, billed: 1 },
   declinedLines: 3, declinedTop: [{ reason: "out of stock", lines: 2 }],
   substitutions: 4, cancelled: 1, refundedAfterBilling: 1, returns: 2, partlyCheckedLines: 0, scheduledHandovers: 7,
+  queuedToday: 50, notCollected: 8, scan: { pickedLines: 60, scannedLines: 45 },
 };
 
 /** PHARMACY P7 — the strip says the day in one line, and nothing when the read fails. */
@@ -20,7 +21,8 @@ describe("CounterDayStrip (P7)", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(DAY), { status: 200, headers: { "Content-Type": "application/json" } })));
     renderWithProviders(<CounterDayStrip />);
     const strip = await screen.findByTestId("counter-day-strip");
-    expect(strip).toHaveTextContent("handed over 42 · median wait 11 min · open 5");
+    expect(strip).toHaveTextContent("handed over 42 · not collected 8 of 50 · median wait 11 min · open 5");
+    expect(strip).toHaveTextContent("H1 7 · scanned 45/60 picks");
     expect(strip).toHaveTextContent("declined 3 · mostly: out of stock · returns 2 · refunds 1");
     expect(strip).not.toHaveTextContent("partly checked");
     expect(strip).toHaveTextContent("H1 7");

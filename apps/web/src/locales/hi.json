@@ -3338,7 +3338,10 @@
     "filed": "{{name}} का पंजीकरण दर्ज हुआ।",
     "ended": "{{name}} का पंजीकरण समाप्त हुआ।",
     "history": "पिछले पंजीकरण",
-    "endedBecause": "समाप्त: {{reason}}"
+    "endedBecause": "समाप्त: {{reason}}",
+    "renewToday": "आज आख़िरी वैध दिन — आज ही नवीनीकरण दर्ज करें",
+    "renewIn_one": "{{count}} दिन में नवीनीकरण करें",
+    "renewIn_other": "{{count}} दिन में नवीनीकरण करें"
   },
   "pharmacyReorder": {
     "title": "पुनः ऑर्डर सूची",
@@ -3386,7 +3389,9 @@
     "returns": "वापसी {{n}}",
     "refunds": "रिफंड {{n}}",
     "partly": "आंशिक जाँच {{n}}",
-    "h1": "H1 {{n}}"
+    "h1": "H1 {{n}}",
+    "notCollected": "{{of}} में से {{n}} नहीं ले गए",
+    "scanned": "{{of}} में से {{n}} पिक स्कैन"
   },
   "pharmacyErrors": {
     "permission_denied": "आपको इसकी अनुमति नहीं है",

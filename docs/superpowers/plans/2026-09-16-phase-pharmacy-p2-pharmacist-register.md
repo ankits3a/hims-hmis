@@ -115,3 +115,28 @@ only knows who holds a **role**, not who holds a **registration**.
 - Verification against the council's register. No state council publishes an API.
 - Expiry reminders. The Expiry Watchman already reads licences in doc 16 §9; a `valid_until`
   within 30 days is a candidate for it later.
+
+## ADDENDUM — P15 (2026-09-17): renewal before the lapse
+
+A registration with a `valid_until` lapses silently. The next morning, verify refuses that
+pharmacist at the counter, which is a bad way to learn about a renewal.
+
+- **P15-1. Sixty days' notice** (`REGISTRATION_RENEWAL_NOTICE_DAYS`). `listPharmacists` returns
+  `renewalDueInDays`: 0 on the last valid day, and null outside the window or with no end date. The
+  register screen marks the card "renew within N days", or "last valid day — file the renewal
+  today" on the last day.
+- **P15-2. A census row, `pharmacist_registration_not_lapsing` (G4).** It is red while any
+  `pharmacy` holder's current registration ends within the window, and also red when nobody has a
+  registration at all.
+  - The census's own grammar test caught the first draft, which read green on a fresh database
+    ("red until an act").
+  - Filing the renewal (a new row that ends the old one, P2-1) turns it green.
+- **Tests.**
+  - `pharmacists.test.ts`: 30 days out, a renewal beyond the window, the last day, and the day
+    after.
+  - `standup-check.test.ts`: red at 20 days, green after renewal at 61; the fresh-database and
+    post-seed grammar tests hold.
+  - Web: the two badges, and silence when not due.
+- **Mutants: 5, each with a written prediction, all killed, each by the predicted count:** the window
+  unbounded, the last day dropped, the census ignoring the lapse, the census vacuously green (2
+  tests), and a badge on null.

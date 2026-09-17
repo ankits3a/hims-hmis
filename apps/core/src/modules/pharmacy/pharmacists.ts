@@ -4,7 +4,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { pharmacyPharmacistRegistrations, users } from "../../kernel/db/schema";
 import { usersHoldingRoleAtScope } from "../../kernel/workflow/roles";
 import { withTx } from "../../kernel/db/client";
-import { istDateOf } from "./config";
+import { REGISTRATION_RENEWAL_NOTICE_DAYS, istDateOf } from "./config";
 import { PharmacyError } from "./errors";
 import { pharmacistRegistered, pharmacistRegistrationEnded } from "./events";
 import type { Actor } from "@hmis/contracts";
@@ -157,11 +157,19 @@ export type PharmacistView = {
   active: boolean;
   /** The registration that lets this person dispense today, or null. */
   current: PharmacistRegistration | null;
+  /** P15 — days left on `current` once inside REGISTRATION_RENEWAL_NOTICE_DAYS (0 = its last day); null otherwise. */
+  renewalDueInDays: number | null;
   /** Every row on file for the person, newest first: renewals and ended ones included. */
   history: PharmacistRegistration[];
 };
 
 /** Everyone who holds `pharmacy`, with what the register says about them — the screen's one read. */
+/** P15 — days from `today` to `validUntil` when that is within the renewal notice, else null. */
+export function renewalDaysLeft(today: string, validUntil: string): number | null {
+  const days = Math.round((Date.parse(`${validUntil}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
+  return days >= 0 && days <= REGISTRATION_RENEWAL_NOTICE_DAYS ? days : null;
+}
+
 export async function listPharmacists(db: Db, now: Date = new Date()): Promise<PharmacistView[]> {
   const holders = await withTx(db, (tx) => usersHoldingRoleAtScope(tx, PHARMACIST_ROLE, "hospital"));
   if (holders.length === 0) return [];
@@ -174,7 +182,8 @@ export async function listPharmacists(db: Db, now: Date = new Date()): Promise<P
   return people.map((p) => {
     const history = rows.filter((r) => r.userId === p.id);
     const current = history.find((r) => r.endedAt === null && (r.validUntil === null || r.validUntil >= today)) ?? null;
-    return { userId: p.id, username: p.username, fullName: p.fullName, active: p.active, current, history };
+    const left = current?.validUntil == null ? null : renewalDaysLeft(today, current.validUntil);
+    return { userId: p.id, username: p.username, fullName: p.fullName, active: p.active, current, renewalDueInDays: left, history };
   });
 }
 
