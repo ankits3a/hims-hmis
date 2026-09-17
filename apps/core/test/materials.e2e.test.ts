@@ -398,9 +398,18 @@ describe("materials over HTTP (Plan 14 T8)", () => {
       .toEqual(["MAIN", "WARD-A"]);
 
     // ── RECEIVE SHORT: 70 of 100. THIRTY stay in transit (A18). ──
-    const recvRes = await auth(request(server()).post(`/materials/transfers/${transferId}/receive`).send({
+    // The issuer never signs the receipt (the transfer screen, 2026-09-17): the ward's own person does.
+    const selfReceipt = await auth(request(server()).post(`/materials/transfers/${transferId}/receive`).send({
       lines: [{ lineId, qtyReceived: 70 }],
-    })).expect(201);
+    })).expect(409);
+    expect((selfReceipt.body as { code: string }).code).toBe("transfer_self_receipt");
+    const ward2 = await userWith(["materials.stock.receive", "materials.stock.read"]);
+    const recvRes = await request(server()).post(`/materials/transfers/${transferId}/receive`)
+      .set("Authorization", `Bearer ${ward2.token}`).send({ lines: [{ lineId, qtyReceived: 70 }] }).expect(201);
+    // The screen's read names what moved, with no ids to decode.
+    const board = await auth(request(server()).get("/materials/transfers/worklist")).expect(200);
+    expect((board.body as { recent: { id: string; to: { code: string }; lines: { batchNo: string; qtyReceived: number }[] }[] }).recent[0])
+      .toMatchObject({ id: transferId, to: { code: "WARD-A" }, lines: [{ qtyReceived: 70 }] });
     expect((recvRes.body as { status: string }).status).toBe("discrepancy");
 
     balances = await auth(request(server()).get(`/materials/stock/balances?resourceId=${ward}`)).expect(200);

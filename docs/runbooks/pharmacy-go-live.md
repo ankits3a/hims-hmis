@@ -413,7 +413,7 @@ register of pharmacists and H1 register as the counter. Phase doc
 |---|---|---|---|
 | 9.1 | `seed-pharmacy.js` (every deploy) creates the `PHARM-RETAIL` store, kept by `pharmacy` and `pharmacy_assistant` | deploy | census row **`pharmacy_retail_store_present`** green |
 | 9.2 | **Record the retail licence**: the Form 20 and Form 21 numbers, valid from and to, and the pharmacist in charge named on it. A renewal is a new entry | **`pharmacy_incharge`**, the MS or the owner | `/pharmacy/retail-licence` | census row **`pharmacy_retail_licence`** green; the counter's banner goes away |
-| 9.3 | Stock the shelf: post the goods receipt into `PHARM-RETAIL` as §2 step 5c does for `PHARM-OPD`. There is no transfer screen yet; a transfer from the main store goes through `POST /materials/transfers`. The OPD counter's shelf is never sold from | **`storekeeper`** | `/materials/grn` | the walk-in screen shows "N available" |
+| 9.3 | Stock the shelf: post the goods receipt into `PHARM-RETAIL` as §2 step 5c does for `PHARM-OPD`, or send it from the main store at **Stock transfers** and have a pharmacist confirm what arrived there (the storekeeper who sent it cannot, and only pharmacy staff receive into a pharmacy store). The OPD counter's shelf is never sold from | **`storekeeper`** sends; **`pharmacy`** confirms | `/materials/grn` or `/materials/transfers` | the walk-in screen shows "N available" |
 | 9.4 | Sell | **`pharmacy`** | `/pharmacy/retail` | a paid bill, printed from the sale |
 
 **Until 9.2 is done every walk-in sale refuses** (`retail_licence_missing`), and the day after the

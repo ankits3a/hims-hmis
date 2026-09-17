@@ -72,7 +72,8 @@
     "pharmacyLeakage": "Pharmacy leakage",
     "pharmacyRetail": "Walk-in sales",
     "pharmacyRetailLicence": "Retail licence",
-    "pharmacyDowntime": "Paper dispenses"
+    "pharmacyDowntime": "Paper dispenses",
+    "materialsTransfers": "Stock transfers"
   },
   "palette": {
     "title": "Search",
@@ -1709,7 +1710,9 @@
     "already_requested": "That line's variance is already asked for or booked",
     "invalid_adjustment_reason": "That reason does not fit the direction: 'found' books stock on, the loss reasons write it off",
     "adjustment_unapproved": "Nothing is booked until the medical superintendent approves the request",
-    "unknown_adjustment": "That adjustment does not exist"
+    "unknown_adjustment": "That adjustment does not exist",
+    "transfer_self_receipt": "You sent this transfer. Someone at the receiving store confirms it.",
+    "not_store_keeper": "Only the receiving store's own staff confirm what reached it."
   },
   "materialsGrn": {
     "title": "Goods receipt",
@@ -4490,5 +4493,42 @@
     "recent": "Entered sheets",
     "noneYet": "No paper dispense entered yet.",
     "row": "{{desk}} #{{serial}} · {{when}} · bill {{invoice}} · {{amount}}"
+  },
+  "materialsTransfers": {
+    "title": "Stock transfers",
+    "intro": "The stores send stock to a counter or a ward, and the receiving store confirms what reached it. Batches are picked earliest expiry first. Whatever is not confirmed stays in transit and on the discrepancy list.",
+    "store": "Store",
+    "allStores": "All stores",
+    "send": "Send stock",
+    "from": "From",
+    "to": "To",
+    "choose": "Choose…",
+    "itemSearch": "Item name or code",
+    "find": "Find",
+    "noItem": "No item matches.",
+    "add": "Add",
+    "remove": "Remove",
+    "pickSource": "choose the source store to see stock",
+    "available": "{{qty}} {{unit}} available",
+    "qty": "Quantity, {{code}}",
+    "note": "Note",
+    "issue": "Issue stock",
+    "sent": "Sent {{ref}} to {{to}}. It is in transit until the receiving store confirms it.",
+    "awaiting": "Awaiting receipt",
+    "noneAwaiting": "Nothing is in transit.",
+    "sentBy": "sent by {{name}} at {{time}}",
+    "receivedBy": "received by {{name}} at {{time}}",
+    "lineSent": "{{qty}} {{unit}} sent",
+    "lineOf": "{{got}} of {{sent}} {{unit}}",
+    "receivedQty": "Received, batch {{batch}}",
+    "short": "{{qty}} short",
+    "confirm": "Confirm receipt",
+    "receivedAll": "{{ref}} received in full.",
+    "receivedShort": "{{ref}} received with a shortfall of {{short}}. It stays on the discrepancy list for the materials head.",
+    "recent": "Recent transfers",
+    "noneRecent": "No transfer yet.",
+    "s_in_transit": "In transit",
+    "s_received": "Received",
+    "s_discrepancy": "Short"
   }
 }

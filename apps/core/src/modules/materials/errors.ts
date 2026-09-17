@@ -188,7 +188,12 @@ export type MaterialsErrorCode =
   /** The reason does not fit the direction: `found` books stock on, the loss reasons write it off. */
   | "invalid_adjustment_reason"
   | "adjustment_unapproved"
-  | "unknown_adjustment";
+  | "unknown_adjustment"
+  // ── The transfer screen (2026-09-17): two signatures, and the destination's own keeper ──
+  /** The person who issued a transfer tries to receive it. DD9's two signatures are two people. */
+  | "transfer_self_receipt"
+  /** The destination names its keepers (`attributes.custodianRoles`) and the receiver holds none of them. */
+  | "not_store_keeper";
 
 /**
  * 404 for a thing that is not there, 409 for a state conflict the caller can act on.
