@@ -173,6 +173,34 @@ describe("adopting drug-disease rules by resolution (P24)", () => {
     expect(rows[0]?.alternatives).toEqual([{ moiety: "amlodipine", label: "Amlodipine 5 mg" }]);
   });
 
+  /**
+   * THE WHOLE BOOK, ADOPTED. The unit tests above use a fixture; this one runs the shipped rules
+   * against a formulary that holds every moiety they name. It is what the production dry run should
+   * print, asserted here so a name that stops resolving is a red suite and not a surprise on the
+   * night somebody runs the script.
+   */
+  it("adopts the shipped book completely: 148 rows, nothing waiting, no offer that cannot resolve", async () => {
+    const names = new Set<string>();
+    for (const r of DRUG_DISEASE_RULES_2026_09_17) {
+      for (const m of r.moieties) names.add(m.toLowerCase());
+      for (const a of r.alternatives ?? []) names.add(a.moiety.toLowerCase());
+    }
+    for (const name of names) await salt(name);
+
+    const report = await adopt(DRUG_DISEASE_RULES_2026_09_17);
+
+    expect(report.created).toEqual({ severe: 142, moderate: 6 });
+    expect(report.skipped).toBe(0);
+    expect(report.missing).toEqual([]);
+    expect(report.alternativesUnknown).toEqual([]);
+    expect(await db.select().from(formularyDrugDisease)).toHaveLength(148);
+
+    // And again: a resolution re-run adopts nothing new.
+    const again = await adopt(DRUG_DISEASE_RULES_2026_09_17);
+    expect(again.created).toEqual({ severe: 0, moderate: 0 });
+    expect(again.alreadyRecorded).toBe(148);
+  });
+
   it("refuses an actor who may not attest, and a rule the column would refuse anyway", async () => {
     await salt("propranolol");
     await expect(adopt([rule()], { type: "agent", id: "agent:claude" })).rejects.toThrow(/attester_not_user|may not decide/);
