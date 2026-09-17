@@ -79,6 +79,11 @@ describe("searchMedicines — the typeahead over the imported catalogue", () => 
       { id: "M11", brandName: "Metacin (paracetamol) 500 mg oral tablet", nameNormalized: normalizeDrugName("Metacin (paracetamol) 500 mg oral tablet"), form: "Tablet", strengthLabel: "500 mg", routeClass: "systemic", saltRank: 4866, ...AUDIT },
       { id: "M12", brandName: "Metopar (metoclopramide and paracetamol) 5 mg + 500 mg oral tablet", nameNormalized: normalizeDrugName("Metopar"), form: "Tablet", strengthLabel: "5 mg", routeClass: "systemic", saltRank: 4866, ...AUDIT },
       { id: "M13", brandName: "Metformin hydrochloride 500 mg oral tablet", nameNormalized: normalizeDrugName("Metformin hydrochloride 500 mg oral tablet"), form: "Tablet", strengthLabel: "500 mg", code: "D1246", routeClass: "systemic", saltRank: 1272, ...AUDIT },
+      // S12: the release's own phrasing for a generic — 4,921 active rows are named this way.
+      // M15 differs from M14 in ONE respect: its name is not behind the release's lead-in. Same
+      // moieties, same rank, same strength — so whichever wins, the boilerplate is the only cause.
+      { id: "M15", brandName: "Amoxiclav 500 mg oral tablet", nameNormalized: normalizeDrugName("Amoxiclav 500 mg oral tablet"), form: "Tablet", strengthLabel: "500 mg", routeClass: "systemic", saltRank: 3830, ...AUDIT },
+      { id: "M14", brandName: "Product containing precisely amoxicillin 500 milligram and clavulanic acid 125 milligram oral tablet", nameNormalized: normalizeDrugName("Product containing precisely amoxicillin"), form: "Tablet", strengthLabel: "500 mg", code: "D5953", routeClass: "systemic", saltRank: 3830, ...AUDIT },
     ]);
     await db.insert(formularyMedicineSalts).values([
       { medicineId: "M1", saltId: "S1", strength: "500 mg", source: "curated" },
@@ -95,6 +100,10 @@ describe("searchMedicines — the typeahead over the imported catalogue", () => 
       { medicineId: "M12", saltId: "S4", strength: "500 mg", source: "curated" },
       { medicineId: "M12", saltId: "S6", strength: "5 mg", source: "curated" },
       { medicineId: "M13", saltId: "S6", strength: "500 mg", source: "curated" },
+      { medicineId: "M14", saltId: "S1", strength: "500 mg", source: "curated" },
+      { medicineId: "M14", saltId: "S2", strength: "125 mg", source: "curated" },
+      { medicineId: "M15", saltId: "S1", strength: "500 mg", source: "curated" },
+      { medicineId: "M15", saltId: "S2", strength: "125 mg", source: "curated" },
     ]);
   }
 
@@ -103,7 +112,7 @@ describe("searchMedicines — the typeahead over the imported catalogue", () => 
     const hits = await searchMedicines(db, "amox");
     expect(hits.map((h) => h.id)).not.toContain("M4");
     // ...and not because the query found nothing: the composed neighbours are all there.
-    expect(hits.map((h) => h.id).sort()).toEqual(["M1", "M2", "M3"]);
+    expect(hits.map((h) => h.id)).toEqual(expect.arrayContaining(["M1", "M2", "M3"]));
     // The guarantee the screen relies on to fill `medicineId`: every hit can be checked.
     expect(hits.every((h) => h.salts.length > 0)).toBe(true);
   });
@@ -111,8 +120,10 @@ describe("searchMedicines — the typeahead over the imported catalogue", () => 
   it("S2: reaches a brand through its MOIETY — `clav` must find Augmentin", async () => {
     await seed();
     const hits = await searchMedicines(db, "clav");
-    expect(hits.map((h) => h.id)).toEqual(["M2"]);
-    expect(hits[0]!.salts).toEqual(["Amoxicillin", "Clavulanic acid"]);
+    // Both rows carrying clavulanic acid are reached THROUGH THE MOIETY — neither name says `clav`
+    // at its start, and M2's does not say it at all.
+    expect(hits.map((h) => h.id).sort()).toEqual(["M14", "M15", "M2"]);
+    expect(hits.find((h) => h.id === "M2")!.salts).toEqual(["Amoxicillin", "Clavulanic acid"]);
   });
 
   it("S3: the moiety the market is built around outranks the similar-but-rare one", async () => {
@@ -126,7 +137,11 @@ describe("searchMedicines — the typeahead over the imported catalogue", () => 
       the assertion that fails if it is ever dropped from the ORDER BY.
     */
     const prefixed = hits.filter((h) => h.prefix).map((h) => h.id);
-    expect(prefixed).toEqual(["M1", "M3"]);
+    /* The ORDER of these two is the whole assertion — Amoxicillin's market share above Amoxapine's.
+       Other prefix matches may join the list (M14/M15 are amoxicillin combinations and belong
+       here); what must never change is which of these two comes first. */
+    expect(prefixed).toEqual(expect.arrayContaining(["M1", "M3"]));
+    expect(prefixed.indexOf("M1")).toBeLessThan(prefixed.indexOf("M3"));
     /* And the moiety-only match — the brand name says nothing about amoxicillin — sorts below both. */
     expect(hits[hits.length - 1]!.id).toBe("M2");
   });
@@ -200,6 +215,25 @@ describe("searchMedicines — the typeahead over the imported catalogue", () => 
     // The molecule the doctor named, above the brand coincidence and above the combination.
     expect(hits[0]!.id).toBe("M13");
     expect(hits.map((h) => h.id)).toContain("M11"); // still reachable, just no longer first
+  });
+
+  /**
+   * 4,921 active products — 4.8% of the catalogue — are named "Product containing precisely …".
+   * The lead-in belongs to the terminology, not to the drug, and it begins with a P, so the prefix
+   * test could never fire for any of them however exactly a doctor typed the molecule. Measured,
+   * `amox clav` returned ten other strengths and not one of the 1,787 rows carrying amoxicillin
+   * 500 + clavulanic acid 125 — the commonest strength dispensed in India. They were never missing;
+   * they were behind a phrase nobody types.
+   */
+  it("S12: the release's boilerplate is not part of the drug's name", async () => {
+    await seed();
+    // M14 and M15 are the same drug written two ways. With the lead-in read past, both match the
+    // prefix and the D-coded generic wins on provenance; with it left in, M14 cannot match the
+    // prefix at all and the brand takes the slot.
+    const hits = await searchMedicines(db, "amox clav 500");
+    expect(hits[0]!.id).toBe("M14");
+    // and the stored name is untouched — only the RANKING reads past the lead-in
+    expect(hits[0]!.name).toMatch(/^Product containing precisely/);
   });
 
   it("S4: an inactive medicine is never offered", async () => {

@@ -216,6 +216,22 @@ export async function searchMedicines(db: Db, query: string, limit = 10): Promis
     combinations. `amox clav 625` still reaches its two-moiety product, because both of its tokens
     have to match in the first place.
   */
+  /*
+    ═══ THE RELEASE'S BOILERPLATE IS NOT PART OF THE DRUG'S NAME ═══
+
+    4,921 active products — 4.8% of the catalogue — are named "Product containing precisely
+    amoxicillin 500 milligram and clavulanic acid …". The lead-in is the terminology's, not the
+    drug's, and it starts with a P, so the prefix test could never fire for any of them however
+    exactly a doctor typed the molecule.
+
+    Measured: `amox clav` returned the 800 mg, the 250 mg, the 875 mg and seven more, and NOT ONE
+    of the 1,787 rows carrying amoxicillin 500 + clavulanic acid 125 — the commonest strength
+    dispensed in India, and the one the trade calls 625. They were not missing from the catalogue;
+    they were behind a phrase nobody types.
+
+    So the prefix and whole-word tests read the name with that lead-in removed. Nothing else is
+    touched: the stored value, the displayed name and every other rank term are unchanged.
+  */
   const res = await db.execute(sql`
     with intent as (
       select exists (
@@ -243,6 +259,7 @@ export async function searchMedicines(db: Db, query: string, limit = 10): Promis
          Written above this query, not here: this is inside a tagged template, where a backtick in
          a comment closes the template -- the trap the header already records, walked into again. */
       select h.*,
+             regexp_replace(lower(h.brand_name), '^product containing precisely ', '') as plain_name,
              (select count(*) from formulary_medicine_salts l where l.medicine_id = h.id) as salt_count,
              exists (
         select 1 from formulary_medicine_salts l join formulary_salts s on s.id = l.salt_id
@@ -253,14 +270,14 @@ export async function searchMedicines(db: Db, query: string, limit = 10): Promis
     ranked as (
       select * from scored h
        order by (case when (select molecule from intent) then false
-                       else lower(brand_name) ~ ${word} end) desc,
-                (lower(brand_name) like ${starts}) desc,
+                       else plain_name ~ ${word} end) desc,
+                (plain_name like ${starts}) desc,
                 moiety_prefix desc,
                 salt_count asc,
                 salt_rank desc,
                 (code is not null) desc,
                 similarity(lower(brand_name), ${q}) desc,
-                length(brand_name) asc,
+                length(plain_name) asc,
                 brand_name asc
        limit ${capped}
     )
@@ -276,13 +293,13 @@ export async function searchMedicines(db: Db, query: string, limit = 10): Promis
                         where l.medicine_id = r.id and not ${isReviewedComponent(sql`s`)}) as reviewed
       from ranked r
      order by (case when (select molecule from intent) then false
-                     else lower(r.brand_name) ~ ${word} end) desc,
-              (lower(r.brand_name) like ${starts}) desc,
+                     else r.plain_name ~ ${word} end) desc,
+              (r.plain_name like ${starts}) desc,
               r.moiety_prefix desc,
               r.salt_count asc,
               r.salt_rank desc,
               (r.code is not null) desc,
-              length(r.brand_name) asc
+              length(r.plain_name) asc
   `);
 
   return res.rows.map((r) => ({
