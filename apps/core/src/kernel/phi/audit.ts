@@ -134,6 +134,21 @@ export type PhiSurface =
    */
   | "opd.vitals_prestage"
   /**
+   * ═══ FD-COPILOT — A CLERK ASKED THE DESK AGENT ABOUT SOMEBODY BY NAME ═══
+   *
+   * Its own name rather than a reuse of `opd.visit`, and the distinction is the one this log exists
+   * to make. `opd.visit` is a screen a clerk opened; this is a QUESTION a clerk typed — "has
+   * U00110012 been seen yet" — answered without any record being opened at all. The disclosure is
+   * small (are they here, have they seen the doctor, what is their token) and the act is different
+   * in kind: it is cheap, it leaves no other trace, and it can be repeated about anybody whose UHID
+   * somebody has. An enquiry asking "who was looking this patient up" must be able to see that.
+   *
+   * `counterState`, which produces the answer, deliberately reads no patient record and writes no
+   * row — right for a screen polling it every few seconds, and not enough when a person has
+   * deliberately asked about somebody by name.
+   */
+  | "copilot.visit_status"
+  /**
    * ═══ PLAN 18a T3 / DD11 — THE FOUR IMAGING SURFACES, AND THIS IS AN APPEND AND NOTHING ELSE ═══
    *
    * The line above predicted this edit in as many words: *"18a appends `radiology.*` and rebases if
