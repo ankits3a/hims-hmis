@@ -84,7 +84,7 @@ lane". Nothing read a sheet back yet: `verifyKitSerial` had no caller.
   `dispenses` (GET and POST), all on `pharmacy.downtime.enter`.
 - **Web screen** `/pharmacy/downtime`: scan the sheet → counter, time (IST), who handed it over →
   customer → lines with batches → price → prescription → money → enter; the entered sheets below.
-- **Runbook §10**, and 7 refusal codes in §4 (70 in all).
+- **Runbook §10**, and 7 refusal codes in §4 (71 in all, with P19's `document_store_unavailable`).
 
 ## 5. MUTANTS (19, each with a written prediction; 19 killed, every count as predicted)
 
