@@ -26,6 +26,8 @@ import { getTransfer, issueStock, listDiscrepancies, listTransfers, receiveStock
 import { consumptionsFor } from "./consumption";
 import { expiringBatches } from "./expiry";
 import { cancelCount, closeCount, countSheet, getCount, listCounts, myCounts, scheduleCount, submitCount } from "./counts";
+import { ADJUSTMENT_REASONS, listAdjustments, postAdjustments, requestCountAdjustment } from "./adjustments";
+import type { AdjustmentView } from "./adjustments";
 import type { CountHeader, CountReview, CountSheet } from "./counts";
 import { BLACKLIST_REASONS } from "./config";
 import type { BlacklistReason } from "./config";
@@ -552,6 +554,31 @@ export class MaterialsController {
   async cancelCount(@CurrentActor() actor: Actor, @Param("id") countId: string, @Body() body: unknown): Promise<CountHeader> {
     const b = parsed(z.object({ reason: z.string().max(500) }), body);
     try { return await cancelCount(this.db, actor, countId, b, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  // ═══ 14c, SECOND SLICE — booking a count's variance, after the medical superintendent grants it ═══
+
+  @RequirePermission("materials.counts.manage", "hospital")
+  @Post("counts/:id/adjustments")
+  async requestAdjustment(@CurrentActor() actor: Actor, @Param("id") countId: string, @Body() body: unknown): Promise<{ approvalId: string; adjustments: AdjustmentView[] }> {
+    const b = parsed(z.object({
+      lines: z.array(z.object({ lineId: id, reasonCode: z.enum(ADJUSTMENT_REASONS) })).max(500),
+      note: z.string().max(500).optional(),
+    }), body);
+    try { return await requestCountAdjustment(this.db, actor, countId, b, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.counts.manage", "hospital")
+  @Get("counts/:id/adjustments")
+  async countAdjustments(@CurrentActor() actor: Actor, @Param("id") countId: string): Promise<{ items: AdjustmentView[] }> {
+    try { return { items: await listAdjustments(this.db, actor, { countId }) }; } catch (e) { toHttp(e); }
+  }
+
+  /** Books a granted request's lines; a rejected one marks them refused. Idempotent. */
+  @RequirePermission("materials.counts.manage", "hospital")
+  @Post("adjustments/:approvalId/post")
+  async postAdjustment(@CurrentActor() actor: Actor, @Param("approvalId") approvalId: string): Promise<{ posted: number; refused: number }> {
+    try { return await postAdjustments(this.db, actor, approvalId, new Date()); } catch (e) { toHttp(e); }
   }
 
   /** DD14's worklist. A read route, not an alert — see `expiry.ts`'s header. */

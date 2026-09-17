@@ -143,8 +143,12 @@ export const ITEM_CLASS_VALUES = [
 /** DD5's four. `owned` is the default nothing states; the other three all have a counterparty. */
 export const OWNERSHIP_VALUES = ["owned", "consignment", "loaner", "donated"] as const;
 
-/** DD6's five reasons. Every ledger row is one of them and the sign is the reason's business. */
-export const LEDGER_REASON_VALUES = ["grn", "issue", "receive", "consume", "return"] as const;
+/**
+ * DD6's five reasons, and 14c's sixth: `adjust`, a count's variance written off or on after a second
+ * person approved it (`stock_adjustments`). Every ledger row is one of them and the sign is the
+ * reason's business.
+ */
+export const LEDGER_REASON_VALUES = ["grn", "issue", "receive", "consume", "return", "adjust"] as const;
 
 // ═══════════════════════════════════ THE ITEM MASTER ═══════════════════════════════════
 
@@ -547,7 +551,7 @@ export const stockLedger = pgTable(
     index("stock_ledger_encounter_idx").on(t.encounterId), // `consumptionsFor(encounterId)` (T7)
     /** One of the five CHECKs `materials.test.ts` reads out of `pg_constraint` BY NAME. */
     check("stock_ledger_qty_delta_ck", sql`${t.qtyDelta} <> 0`),
-    check("stock_ledger_reason_ck", sql`${t.reason} in ('grn', 'issue', 'receive', 'consume', 'return')`),
+    check("stock_ledger_reason_ck", sql`${t.reason} in ('grn', 'issue', 'receive', 'consume', 'return', 'adjust')`),
   ],
 );
 
@@ -826,5 +830,51 @@ export const stockCountLines = pgTable(
     check("stock_count_lines_counted_ck", sql`${t.countedQty} is null or ${t.countedQty} >= 0`),
     check("stock_count_lines_flag_ck", sql`${t.flag} is null or ${t.flag} in ('match', 'variance', 'recount')`),
     check("stock_count_lines_settled_ck", sql`(${t.countedQty} is null) = (${t.flag} is null) and (${t.flag} is null) = (${t.varianceQty} is null)`),
+  ],
+);
+
+/**
+ * 14c, SECOND SLICE — A COUNT'S VARIANCE, WRITTEN OFF (OR ON) WITH A SECOND KEY.
+ * Phase doc `docs/superpowers/plans/2026-09-17-phase-materials-adjustments.md`.
+ *
+ * One row per count line whose variance is to be booked. Rows requested together share one approval
+ * (`materials_stock_adjustment`, decided by the medical superintendent), and nothing is posted until
+ * it is granted. Posting writes one `adjust` ledger row per line (`ledger_entry_id`) and never
+ * updates an earlier one. A count line is booked at most once; a refused request frees it.
+ *   - `qty_delta`: the variance being booked: negative writes stock off, positive books found stock.
+ *   - `value_paise`: that quantity at the batch's landed cost, for the approver and the report.
+ *   - `reason_code`: `shrinkage` (unexplained loss), `damage`, `expiry`, `entry_error`, `found`.
+ *   - `status`: `requested` → `posted`, or `refused` when the approval was rejected.
+ */
+export const stockAdjustments = pgTable(
+  "stock_adjustments",
+  {
+    id: text("id").primaryKey(),
+    resourceId: text("resource_id").notNull().references(() => resources.id),
+    countId: text("count_id").notNull().references(() => stockCounts.id),
+    countLineId: text("count_line_id").notNull().references(() => stockCountLines.id),
+    batchId: text("batch_id").notNull().references(() => stockBatches.id),
+    itemId: text("item_id").notNull().references(() => items.id),
+    qtyDelta: integer("qty_delta").notNull(),
+    valuePaise: bigint("value_paise", { mode: "number" }).notNull(),
+    reasonCode: text("reason_code").notNull(),
+    note: text("note"),
+    approvalId: text("approval_id").notNull(),
+    status: text("status").notNull(),
+    requestedBy: text("requested_by").notNull(),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull(),
+    postedBy: text("posted_by"),
+    postedAt: timestamp("posted_at", { withTimezone: true }),
+    ledgerEntryId: text("ledger_entry_id"),
+  },
+  (t) => [
+    // A line is booked at most once; a refused request leaves it free to be asked again.
+    uniqueIndex("stock_adjustments_line_live_uq").on(t.countLineId).where(sql`${t.status} <> 'refused'`),
+    index("stock_adjustments_approval_idx").on(t.approvalId),
+    check("stock_adjustments_qty_ck", sql`${t.qtyDelta} <> 0`),
+    check("stock_adjustments_status_ck", sql`${t.status} in ('requested', 'posted', 'refused')`),
+    check("stock_adjustments_reason_ck", sql`${t.reasonCode} in ('shrinkage', 'damage', 'expiry', 'entry_error', 'found')`),
+    check("stock_adjustments_posted_ck", sql`(${t.status} = 'posted') = (${t.ledgerEntryId} is not null) and (${t.postedAt} is null) = (${t.postedBy} is null) and (${t.status} = 'posted') = (${t.postedAt} is not null)`),
+    check("stock_adjustments_found_ck", sql`(${t.reasonCode} = 'found') = (${t.qtyDelta} > 0) or ${t.reasonCode} = 'entry_error'`),
   ],
 );

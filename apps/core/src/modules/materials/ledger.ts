@@ -18,7 +18,7 @@ export type BatchRow = typeof stockBatches.$inferSelect;
 export type ReservationRow = typeof stockReservations.$inferSelect;
 
 /** DD6's five reasons. The sign is the reason's business, not the caller's. */
-export type MovementReason = "grn" | "issue" | "receive" | "consume" | "return";
+export type MovementReason = "grn" | "issue" | "receive" | "consume" | "return" | "adjust";
 
 export type MovementInput = {
   resourceId: string;

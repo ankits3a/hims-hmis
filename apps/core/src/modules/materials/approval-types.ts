@@ -55,6 +55,20 @@ export const MATERIALS_APPROVAL_TYPES: (ApprovalTypeSpec & { closureSlaMinutes: 
     closureSlaMinutes: 240,
   },
   {
+    /**
+     * 14c, second slice — a count's variance written off or on. Approver: the MEDICAL
+     * SUPERINTENDENT, the administrative head who signs condemnation and write-off in an Indian
+     * hospital, and never the materials head who reviewed the count and asks for it (the kernel's
+     * requester/approver pair refuses that anyway). A day to decide: nothing is waiting in a bay.
+     */
+    typeKey: "materials_stock_adjustment",
+    title: "Stock Adjustment After a Count",
+    approverRole: "medical_superintendent",
+    urgencyClass: "routine",
+    actFirstAllowed: false,
+    closureSlaMinutes: 1440,
+  },
+  {
     typeKey: "materials_vendor_bank_change",
     title: "Vendor Bank Account Change",
     /** O-6 RULED 2026-08-27 — owner approval ALWAYS. See the header for why not `materials_head`. */
@@ -68,6 +82,7 @@ export const MATERIALS_APPROVAL_TYPES: (ApprovalTypeSpec & { closureSlaMinutes: 
 /** The two type keys, for callers that must not retype a string the engine matches exactly. */
 export const NEAR_EXPIRY_APPROVAL_TYPE = "materials_near_expiry_acceptance";
 export const VENDOR_BANK_CHANGE_APPROVAL_TYPE = "materials_vendor_bank_change";
+export const STOCK_ADJUSTMENT_APPROVAL_TYPE = "materials_stock_adjustment";
 
 /**
  * The DRAFTER half of each `approval_<typeKey>` definition. `createDraft` runs no actor-type check,

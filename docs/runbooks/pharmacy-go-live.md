@@ -298,7 +298,7 @@ still a daily query.
 | `dispense.cancelled` with an expiry reason | abandoned picks; if this is high, the 30-minute sweep is surprising people |
 | `batch_expired_before_collection` refusals | paid-and-uncollected; each one is a credit note somebody must raise |
 | `short_stock` refusals per item | the stock-out list |
-| a **blind count** of `PHARM-OPD` each week (`/materials/counts`, scheduled by the materials head, counted by a storekeeper) | the ledger and the shelf agreeing, line by line, with sales during the count reconciled |
+| a **blind count** of `PHARM-OPD` each week (`/materials/counts`, scheduled by the materials head, counted by a storekeeper) | the ledger and the shelf agreeing, line by line, with sales during the count reconciled. A variance is booked only after the medical superintendent approves it (the head asks on the count's review; the MS decides in the approvals inbox; the head books it) |
 
 **Close the window when the last three are empty for a week.**
 
@@ -358,9 +358,7 @@ No migration is reversed and no table is dropped.
 IPD indents and ward stock; NDPS and Schedule X custody; returns of cold-chain, frozen and
 narcotic items (sealed ambient packs come back since P6, §3.11; a billed dispense never collected is
 cancelled with a refund since P5, §3.10); cold chain; antimicrobial stewardship; the doctor ping on a held line; walk-in
-retail and outside prescriptions; repeat dispensing; home delivery; stock ADJUSTMENT after a count
-(blind counts and the variance review exist since Plan 14c's first slice, at `/materials/counts`;
-writing a variance off waits for runbook O1's second key); a Replenishment agent
+retail and outside prescriptions; repeat dispensing; home delivery; a Replenishment agent
 that ORDERS (P4 and P8 give the reorder list, a read that proposes and moves nothing); realtime on
 the counter (it polls every 10 s).
 
