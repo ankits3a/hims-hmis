@@ -145,6 +145,15 @@ export function DrugField({
           data-testid={`${inputId}-hits`}
           style={{
             position: "absolute", zIndex: 20, top: 37, left: 0, right: 0, margin: 0, padding: 0,
+            /*
+              A FLOOR, BECAUSE THE COLUMN IS NOT THE LIST'S BUSINESS. Pinned left-to-right, this
+              list inherits the width of the Drug column — about 170 px at phone width, where a
+              browser walk showed "Amoxicillin + Clavulanic acid · 625 mg · D1680" wrapping onto
+              FOUR lines and the third suggestion cut off below the fold. The input may be narrow;
+              what it is offering must still be readable. Capped at 88vw so it cannot leave the
+              screen it just grew past.
+            */
+            minWidth: "min(300px, 88vw)",
             listStyle: "none", background: "var(--card)", border: "1px solid var(--line)",
             borderRadius: 7, boxShadow: "0 6px 18px rgba(19,36,32,.10)", maxHeight: 292, overflowY: "auto",
           }}

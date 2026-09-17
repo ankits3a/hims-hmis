@@ -3052,6 +3052,8 @@ describe("OpdConsult — the drug typeahead", () => {
     items: [
       { id: "m-pcm500", name: "Paracetamol 500 mg oral capsule", form: "Oral capsule", strength: "500 mg", code: "D7611", routeClass: "systemic", salts: ["Paracetamol"], prefix: true },
       { id: "m-pcm1g", name: "Paracetamol 1 g oral tablet", form: "Oral tablet", strength: "1 g", code: "D10146", routeClass: "systemic", salts: ["Paracetamol"], prefix: true },
+      // The case the second line EXISTS for: a brand whose name hides what is in it.
+      { id: "m-aug", name: "Augmentin 625", form: "Tablet", strength: "625 mg", code: "D1680", routeClass: "systemic", salts: ["Amoxicillin", "Clavulanic acid"], prefix: false },
     ],
   };
   function drugRoutes(over: Record<string, Handler> = {}): Record<string, Handler> {
@@ -3077,7 +3079,16 @@ describe("OpdConsult — the drug typeahead", () => {
     expect(callsTo("GET", "/api/formulary/medicines/search").at(-1)!.url).toContain("q=par");
   });
 
-  it("D2: the row shows the moiety, strength and the hospital's own code — not just a name", async () => {
+  /**
+   * D2 — WHAT THE ROW SAYS BEYOND THE NAME, AND NOTHING IT HAS ALREADY SAID.
+   *
+   * This asserted `Paracetamol · 500 mg · D7611` beside `Paracetamol 500 mg oral capsule`, and the
+   * owner named that on 2026-09-17: "remove the duplicacy in sentence while autosuggesting". The
+   * PROPERTY it was written for is unchanged — the row still tells a doctor more than the name, and
+   * the hospital's own code is still there, which is the part no name carries. What it no longer
+   * does is repeat the molecule, the strength and the form back at a doctor already reading them.
+   */
+  it("D2: the row adds the code a name cannot carry, and repeats nothing the name already says", async () => {
     mockRoutes(drugRoutes());
     const user = userEvent.setup();
     await openPanel(user);
@@ -3086,8 +3097,14 @@ describe("OpdConsult — the drug typeahead", () => {
 
     const row = await screen.findByTestId("rx-drug-0-hit-m-pcm500");
     expect(row).toHaveTextContent("Paracetamol 500 mg oral capsule");
-    expect(row).toHaveTextContent("Paracetamol · 500 mg · D7611");
-    expect(row).toHaveTextContent("Oral capsule");
+    expect(row).toHaveTextContent("D7611"); // still more than a name
+    expect(row.textContent).not.toMatch(/Paracetamol\s*·/); // and not the molecule twice
+    expect(row.textContent).not.toMatch(/500 mg\s*·/);
+
+    // The combination is the case the second line exists for, and it keeps everything.
+    const combo = await screen.findByTestId("rx-drug-0-hit-m-aug");
+    expect(combo).toHaveTextContent("Amoxicillin + Clavulanic acid · 625 mg · D1680");
+    expect(combo).toHaveTextContent("Tablet");
   });
 
   it("D3: tapping a row fills the name AND the id — which is what makes the line checkable", async () => {
