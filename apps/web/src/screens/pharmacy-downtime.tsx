@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { newIdempotencyKey } from "../lib/api";
+import { fmtIst } from "../lib/format";
+import { todayIst } from "../lib/opd-api";
 import { duplicateCandidates } from "../lib/patients-api";
 import {
   checkDowntimeSheet, enterPaperDispense, fetchCounterBatches, fetchPaperDispenses, fetchPharmacyStaff, pharmacyErrorText,
@@ -375,7 +377,9 @@ export function PharmacyDowntime(): React.ReactElement {
           {(entered.data ?? []).map((r) => (
             <li key={r.id} data-testid={`paper-row-${r.id}`}>
               {t("pharmacyDowntime.row", {
-                desk: r.sheet?.desk ?? "", serial: r.sheet?.serial ?? "", when: new Date(r.soldAt).toLocaleString("en-IN"),
+                desk: r.sheet?.desk ?? "", serial: r.sheet?.serial ?? "",
+                // The hospital's clock, whatever the desk machine's timezone says.
+                when: `${todayIst(new Date(r.soldAt)).split("-").reverse().join("-")} ${fmtIst(r.soldAt)}`,
                 invoice: r.invoiceNo, amount: rupees(r.netPaise),
               })}
             </li>

@@ -114,7 +114,8 @@ describe("PharmacyDowntime (P20)", () => {
       "GET /api/pharmacy/downtime/sheet": { status: 200, body: { valid: true, desk: "pharmacy-counter", serial: 1, kitGeneratedAt: "2026-08-17T03:30:00.000Z", enteredSaleId: "s-9" } },
     });
     renderWithProviders(<PharmacyDowntime />);
-    expect(await screen.findByTestId("paper-row-s-9")).toHaveTextContent("pharmacy-counter #1");
+    // 04:30 UTC is 10:00 at the hospital, whatever the desk machine's timezone.
+    expect(await screen.findByTestId("paper-row-s-9")).toHaveTextContent("pharmacy-counter #1 · 17-08-2026 10:00 · bill INV-26-000900 · ₹120.00");
     await userEvent.type(screen.getByRole("textbox", { name: "Scan the QR on the receipt sheet" }), "dtk1.k1.receipt.1.sig");
     await userEvent.click(screen.getByRole("button", { name: "Check" }));
     expect(await screen.findByTestId("sheet-status")).toHaveTextContent("Sheet 1 has already been entered.");

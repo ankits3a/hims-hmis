@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { newIdempotencyKey } from "../lib/api";
+import { fmtIst } from "../lib/format";
 import { fetchInvoicePrint } from "../lib/billing-api";
 import { duplicateCandidates } from "../lib/patients-api";
 import {
@@ -335,6 +336,14 @@ export function PharmacyRetail(): React.ReactElement {
           {preview !== null && (
             <section className="space-y-2" data-testid="retail-preview">
               <table className="text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-muted-foreground">
+                    <th className="pr-3 font-normal">{t("pharmacyBill.drug")}</th>
+                    <th className="pr-3 font-normal">{t("pharmacyBill.batch")}</th>
+                    <th className="pr-3 font-normal">{t("pharmacyBill.expiry")}</th>
+                    <th className="text-right font-normal">{t("pharmacyBill.qty")}</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {preview.lines.map((l) => (
                     <tr key={l.lineIdx}>
@@ -411,7 +420,7 @@ export function PharmacyRetail(): React.ReactElement {
         <ul className="text-sm">
           {(today.data ?? []).map((s) => (
             <li key={s.id} className="flex items-center gap-2" data-testid={`retail-row-${s.id}`}>
-              <span>{new Date(s.soldAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
+              <span>{fmtIst(s.soldAt)}</span>
               <span className="font-mono">{s.invoiceNo}</span>
               <span>{rupees(s.netPaise)}</span>
               {s.scheduled && <span className="rounded bg-red-100 px-1 text-xs text-red-800">{t("pharmacyRetail.onRx")}</span>}
