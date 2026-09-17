@@ -1,4 +1,3 @@
-import { describe, expect, it } from "@jest/globals";
 import { matchIntent } from "./phrasebook";
 
 /**
@@ -55,7 +54,7 @@ describe("matchIntent — the rest of the counter's language", () => {
     ["my day report", "my_day_report"],
     ["aaj maine kitne register kiye", "my_day_report"],
     ["today's figures", "my_day_report"],
-  ])("routes %s", (question, intent) => {
+  ])("routes %s", (question: string, intent: string) => {
     expect(matchIntent(question)?.intent).toBe(intent);
   });
 });
