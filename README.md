@@ -1249,6 +1249,10 @@ The payout is still the cashier's, behind billing's approval, so `pharmacy` does
 `pharmacy.register.read_sealed` goes to the new role `pharmacy_incharge` (the pharmacist named on
 the drug licence, held with `pharmacy`), and to `owner` and `medical_superintendent`, who also gain
 `pharmacy.register.read`. Every sealed row they read is logged as a sealed PHI access.
+**Pharmacy P19 opens a walk-in retail counter, shut until its licence is recorded.**
+`pharmacy.retail.sell` goes to `pharmacy`, which also gains `patients.register`, because every walk-in
+bill names a registered person. `pharmacy.retail.manage` records the Form 20/21 licence; it goes to
+`pharmacy_incharge`, and to `owner` and `medical_superintendent`.
 **Pharmacy P9 gives the Schedule H1 register a reader.** `pharmacy.register.read` goes to `pharmacy`
 alone, because the register lists patients by name and what they were given. It reads at most a
 month at a time, logs one PHI access row per patient shown, and keeps a sealed patient's name
@@ -1263,6 +1267,8 @@ behind `patients.confidential.read`.
 | `pharmacy.pharmacists.manage` | ✓ | | |
 | `pharmacy.register.read` | ✓ | | ✓ |
 | `pharmacy.register.read_sealed` | | | ✓ |
+| `pharmacy.retail.sell` | ✓ | | |
+| `pharmacy.retail.manage` | | | ✓ |
 
 Ten grants are held outside that table. **`pharmacy` gains the kernel's `orders.place`,
 `orders.read` and `orders.cancel`** because the claim at the counter PLACES the `medication` order

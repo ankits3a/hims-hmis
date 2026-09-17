@@ -284,7 +284,7 @@ describe("PharmacyCounter (16c T3)", () => {
     await userEvent.click(await screen.findByText(/Sita Devi/));
     await userEvent.type(await screen.findByRole("textbox", { name: "Qty 2" }), "3");
     await userEvent.click(screen.getByRole("button", { name: "Verify & place order" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Recorded allergy, not overridden by the prescriber");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Recorded allergy that no prescriber has overridden");
   });
 
   it("T4 — pick, bill at the previewed payable, hand over with the token, and print labels", async () => {

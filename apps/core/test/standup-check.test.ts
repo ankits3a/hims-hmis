@@ -5,7 +5,7 @@ import { setupTestDb, truncateAll } from "./helpers/db";
 import { activateOpdVisitDefinition, ensureRole, mkUser, seedOpdBase, seedOpdMasters } from "./helpers/opd";
 import { seedSodPairs } from "../src/kernel/auth/sod";
 import { createUser } from "../src/kernel/auth/identity";
-import { assignRole } from "../src/kernel/auth/permissions";
+import { assignRole, grantPermissionToRole } from "../src/kernel/auth/permissions";
 import { withTx } from "../src/kernel/db/client";
 import {
   billingConfig, formularyInteractions, labOrderables, opdDepartments, opdDoctors, resources,
@@ -17,7 +17,9 @@ import { registerTariffApprovalTypes } from "../src/modules/tariff/approval-type
 import { createService } from "../src/modules/tariff/services";
 import { seedTariffConfig } from "../scripts/seed-tariff";
 import { ensurePharmacyCounter } from "../scripts/seed-pharmacy";
-import { currentRegistration, endPharmacistRegistration, recordPharmacistRegistration } from "../src/modules/pharmacy";
+import {
+  currentRegistration, endPharmacistRegistration, recordPharmacistRegistration, recordRetailLicence,
+} from "../src/modules/pharmacy";
 import { istDayString } from "../src/kernel/approvals/cumulative";
 import { seedPharmacyBase } from "./helpers/pharmacy";
 import { ensureLabStandUp } from "../scripts/seed-lab";
@@ -653,6 +655,32 @@ describe("standup:check — the readiness census (11i T2)", () => {
     rows = await runCensus(db, "pharmacy");
     expect(rows.find((r) => r.code === "pharmacist_council_number")?.verdict).toBe("RED");
     fx.unregister();
+  });
+
+  it("the walk-in counter's licence row is red after the deploy, and green only once a current licence is recorded (P19)", async () => {
+    const fx = await seedPharmacyBase(db);
+    try {
+      await ensurePharmacyCounter(db, ACTOR);
+      let rows = await runCensus(db, "pharmacy");
+      expect(rows.find((r) => r.code === "pharmacy_retail_store_present")?.verdict).toBe("ok");
+      expect(rows.find((r) => r.code === "pharmacy_retail_licence")?.verdict).toBe("RED");
+      await ensureRole(db, "pharmacy_incharge");
+      await grantPermissionToRole(db, fx.registry, "pharmacy_incharge", "pharmacy.retail.manage");
+      const licensee = await mkUser(db, "ph.licensee", ["pharmacy_incharge"]);
+      const today = istDayString(new Date());
+      await recordRetailLicence(db, licensee.actor, {
+        form20No: "F20-1", form21No: "F21-1", validFrom: "2020-01-01", validTo: "2020-12-31", pharmacistInCharge: "A. Kulkarni",
+      }, new Date());
+      rows = await runCensus(db, "pharmacy");
+      expect(rows.find((r) => r.code === "pharmacy_retail_licence")?.verdict).toBe("RED"); // lapsed
+      await recordRetailLicence(db, licensee.actor, {
+        form20No: "F20-2", form21No: "F21-2", validFrom: today, validTo: "2099-12-31", pharmacistInCharge: "A. Kulkarni",
+      }, new Date());
+      rows = await runCensus(db, "pharmacy");
+      expect(rows.find((r) => r.code === "pharmacy_retail_licence")?.verdict).toBe("ok");
+    } finally {
+      fx.unregister();
+    }
   });
 
   /**

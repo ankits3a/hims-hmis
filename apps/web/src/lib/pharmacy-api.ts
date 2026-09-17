@@ -231,7 +231,10 @@ export async function fetchReorderAdvice(): Promise<WireReorderAdvice> {
 // ── P9 — the Schedule H1 register ──
 export type WireH1RegisterRow = {
   entryNo: number; dispensedAt: string; patientId: string; patientName: string; patientAddress: string | null;
-  restricted: boolean; prescriberName: string; prescriberRegNo: string | null; drugName: string;
+  restricted: boolean; prescriberName: string; prescriberRegNo: string | null;
+  /** P19 — a walk-in's outside prescriber, and where the row came from. Absent from an older server. */
+  prescriberAddress?: string | null; source?: "counter" | "walk_in";
+  drugName: string;
   batchNo: string; qtyBase: number; unit: string; pharmacistRegNo: string | null;
 };
 export type WireH1Register = { period: { from: string; to: string }; rows: WireH1RegisterRow[] };
@@ -270,4 +273,92 @@ export type WireLeakageReport = {
 };
 export async function fetchLeakage(day: string): Promise<WireLeakageReport> {
   return api<WireLeakageReport>("GET", `/pharmacy/leakage${qs({ day })}`);
+}
+
+// ── P19 — the walk-in retail counter ──
+export type WireRetailLicence = {
+  id: string; form20No: string; form21No: string; validFrom: string; validTo: string;
+  pharmacistInCharge: string; note: string | null; recordedBy: string; recordedAt: string;
+};
+export type WireRetailState = {
+  storeCode: string; storePresent: boolean;
+  state: "no_store" | "missing" | "not_yet_valid" | "lapsed" | "current";
+  licence: WireRetailLicence | null; daysLeft: number | null;
+};
+export type WireRetailShelfEntry = {
+  medicineId: string; brandName: string; strengthLabel: string | null; form: string; scheduleFlag: string | null;
+  itemId: string; itemCode: string; itemName: string; baseUom: string; available: number; scannedBatchId: string | null;
+};
+export type RetailLine = { medicineId: string; qtyBase: number; batchId?: string };
+export type WireRetailPreview = {
+  licence: WireRetailState;
+  prescriptionRequired: boolean;
+  lines: {
+    lineIdx: number; medicineId: string; brandName: string; strengthLabel: string | null; form: string; scheduleFlag: string | null;
+    itemId: string; batchId: string; batchNo: string; expiryDate: string | null; qtyBase: number; fefoOverride: boolean;
+  }[];
+  totals: { grossPaise: number; discountPaise: number; taxPaise: number; netPayablePaise: number };
+  checks: {
+    allergies: { lineIdx: number; substance: string }[];
+    interactions: { lineIdx: number; severity: string; note: string }[];
+    duplicates: number; partlyCheckedLineIdxs: number[];
+  } | null;
+};
+export type RetailCustomer =
+  | { existingId: string }
+  | { register: { name: string; sex: "male" | "female" | "other" | "unknown"; ageYears?: number; phone?: string; addressLine?: string }; acknowledgedDuplicates?: boolean };
+export type RetailPrescription = {
+  prescriberName: string; prescriberRegNo: string; prescriberAddress: string; rxDate: string;
+  photo: { mimeType: "image/jpeg" | "image/png" | "application/pdf"; imageBase64: string };
+};
+export type RetailSaleBody = {
+  customer: RetailCustomer; lines: RetailLine[]; prescription?: RetailPrescription;
+  tenders: { mode: "cash" | "upi" | "card"; amountPaise: number; refText?: string }[];
+  changeGivenPaise?: number;
+};
+export type WireRetailSale = {
+  id: string; soldAt: string; soldBy: string; soldByName: string;
+  patient: { id: string; uhid: string; name: string; phone: string | null; registeredHere: boolean };
+  invoiceId: string; invoiceNo: string; netPaise: number; scheduled: boolean;
+  prescription: { prescriberName: string; prescriberRegNo: string; prescriberAddress: string; rxDate: string; documentId: string | null } | null;
+  pharmacistRegNo: string | null;
+  lines: {
+    lineIdx: number; medicineId: string; drugName: string; itemId: string; itemCode: string; itemName: string; batchId: string;
+    batchNo: string; expiryDate: string | null; qtyBase: number; baseUom: string; unitPaise: number; scheduleFlag: string | null; fefoOverride: boolean;
+  }[];
+};
+export type WireRetailSaleRow = {
+  id: string; soldAt: string; soldBy: string; invoiceId: string; invoiceNo: string; netPaise: number;
+  scheduled: boolean; lineCount: number; registeredHere: boolean;
+};
+/** The near-match refusal carries who matched (`duplicate_suspected`). */
+export type WireDuplicateCandidate = { id: string; uhid: string; name: string | null; phone: string | null };
+
+export async function fetchRetailState(): Promise<WireRetailState> {
+  return api<WireRetailState>("GET", "/pharmacy/retail/state");
+}
+export async function searchRetailShelf(q: string): Promise<WireRetailShelfEntry[]> {
+  const { items } = await api<{ items: WireRetailShelfEntry[] }>("GET", `/pharmacy/retail/shelf${qs({ q })}`);
+  return items;
+}
+export async function previewRetailSale(body: { patientId?: string; lines: RetailLine[] }): Promise<WireRetailPreview> {
+  return api<WireRetailPreview>("POST", "/pharmacy/retail/preview", body);
+}
+export async function sellRetail(body: RetailSaleBody, idempotencyKey: string): Promise<WireRetailSale> {
+  return api<WireRetailSale>("POST", "/pharmacy/retail/sales", body, idempotencyKey);
+}
+export async function fetchRetailSales(day?: string): Promise<WireRetailSaleRow[]> {
+  const { items } = await api<{ items: WireRetailSaleRow[] }>("GET", `/pharmacy/retail/sales${qs({ day })}`);
+  return items;
+}
+export async function fetchRetailSale(id: string): Promise<WireRetailSale> {
+  return api<WireRetailSale>("GET", `/pharmacy/retail/sales/${id}`);
+}
+export async function fetchRetailLicences(): Promise<{ items: WireRetailLicence[]; state: WireRetailState }> {
+  return api("GET", "/pharmacy/retail/licences");
+}
+export async function recordRetailLicence(body: {
+  form20No: string; form21No: string; validFrom: string; validTo: string; pharmacistInCharge: string; note?: string;
+}): Promise<WireRetailLicence> {
+  return api<WireRetailLicence>("POST", "/pharmacy/retail/licences", body);
 }

@@ -8,6 +8,15 @@ import { IST_UTC_OFFSET_MINUTES } from "../../kernel/approvals/cumulative";
 /** The materials store the OPD counter picks from (D2). Created by the go-live runbook via `createStore`. */
 export const OPD_PHARMACY_STORE_CODE = "PHARM-OPD";
 
+/**
+ * PHARMACY P19 (R-174) — the walk-in retail counter's own store. Created by `seed:pharmacy` beside
+ * the OPD counter's, stocked by transfer, and never the OPD counter's shelf.
+ */
+export const RETAIL_PHARMACY_STORE_CODE = "PHARM-RETAIL";
+
+/** P19 — the ledger's `ref_type` for a walk-in sale's `consume` row: `ref_id` is the sale LINE. */
+export const RETAIL_REF_TYPE = "pharmacy_retail_sale";
+
 /** D2 — how long a pick holds a batch before the ledger may release it to somebody else. */
 export const PICK_RESERVATION_MINUTES = 30;
 

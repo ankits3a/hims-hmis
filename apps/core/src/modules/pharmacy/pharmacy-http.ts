@@ -7,6 +7,7 @@ import { WorkflowError } from "../../kernel/workflow/instances";
 import { BillingError, billingHttpStatus } from "../billing";
 import { MaterialsError, materialsHttpStatus } from "../materials";
 import { OpdError } from "../opd";
+import { PatientError } from "../patients";
 import { TariffError, tariffHttpStatus } from "../tariff";
 import { PharmacyError, pharmacyHttpStatus } from "./errors";
 
@@ -24,6 +25,11 @@ export function toHttp(e: unknown): never {
   if (e instanceof BillingError) throw httpError(billingHttpStatus(e.code), e.message, e.code, e.detail);
   if (e instanceof TariffError) throw httpError(tariffHttpStatus(e.code), e.message, e.code);
   if (e instanceof OpdError) throw httpError(409, e.message, e.code);
+  // P19 — a walk-in sale registers its customer and files the prescription photo.
+  if (e instanceof PatientError) {
+    const status = e.code === "document_too_large" ? 413 : e.code === "patient_not_found" ? 404 : 400;
+    throw httpError(status, e.message, e.code);
+  }
   if (e instanceof ApprovalError) throw httpError(409, e.message, e.code);
   if (e instanceof ResourceError) throw httpError(resourceHttpStatus(e.code), e.message, e.code);
   if (e instanceof WorkflowError) throw httpError(e.code === "role_denied" ? 403 : 409, e.message, e.code);
@@ -48,4 +54,6 @@ export const PHARMACY_IDEMPOTENT_ROUTES = {
   refund: "POST /pharmacy/dispenses/:id/refund",
   /** P6 — a return credits and refunds: a retried click must not return a pack twice. */
   returns: "POST /pharmacy/dispenses/:id/returns",
+  /** P19 — a walk-in sale moves stock and money: a retried click must not sell twice. */
+  retailSale: "POST /pharmacy/retail/sales",
 } as const;

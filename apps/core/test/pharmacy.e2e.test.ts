@@ -8,6 +8,11 @@ import { openSessionFor } from "./helpers/billing";
 import { MON2, addAllergy, issueRx, line, seedPharmacyBase, stockIn } from "./helpers/pharmacy";
 import { requireEnv } from "../src/kernel/config";
 import { events, orderItems, pharmacyRegH1, stockBalances, stockLedger } from "../src/kernel/db/schema";
+import { grantPermissionToRole } from "../src/kernel/auth/permissions";
+import { withTx } from "../src/kernel/db/client";
+import { createStore } from "../src/modules/materials";
+import { RETAIL_PHARMACY_STORE_CODE, istDateOf } from "../src/modules/pharmacy";
+import { ensureRole, mkUser } from "./helpers/opd";
 import type { PharmacyFixture } from "./helpers/pharmacy";
 import type { Db } from "../src/kernel/db/client";
 
@@ -186,4 +191,63 @@ describe("the OPD dispense counter over HTTP (16c T5)", () => {
     await as(fx.pharmacist.token)(request(server()).post(`/pharmacy/pharmacists/registrations/${id}/end`).send({ reason: "typed against the wrong person" })).expect(201);
   });
 
+  /**
+   * PHARMACY P19 — the walk-in counter over HTTP: shut until the licence is recorded, an OTC sale to
+   * a customer registered at the counter (once, whatever the retries), and an H1 sale only on a
+   * captured prescription, written to the register with the prescriber's address.
+   */
+  it("P19 — the walk-in counter: the licence, an OTC sale to a new customer, and an H1 sale on an outside prescription", async () => {
+    const { resourceId: retailId } = await withTx(db, (tx) => createStore(tx, { type: "user", id: "01HMATERIALSHEAD00000000001" }, { code: RETAIL_PHARMACY_STORE_CODE, name: "Walk-in retail pharmacy" }));
+    await ensureRole(db, "pharmacy_incharge");
+    await grantPermissionToRole(db, fx.registry, "pharmacy_incharge", "pharmacy.retail.manage");
+    const licensee = await mkUser(db, "ph.licensee", ["pharmacy_incharge"]);
+    const ph = as(fx.pharmacist.token);
+    const today = istDateOf(new Date());
+
+    await as(fx.aide.token)(request(server()).get("/pharmacy/retail/state")).expect(403);
+    expect((await ph(request(server()).get("/pharmacy/retail/state")).expect(200)).body).toMatchObject({ state: "missing" });
+    const licence = { form20No: "RLF20-1", form21No: "RLF21-1", validFrom: "2020-01-01", validTo: "2099-12-31", pharmacistInCharge: "A. Kulkarni" };
+    await ph(request(server()).post("/pharmacy/retail/licences").send(licence)).expect(403);
+    await as(licensee.token)(request(server()).post("/pharmacy/retail/licences").send({ ...licence, validTo: "2019-12-31" })).expect(400);
+    await as(licensee.token)(request(server()).post("/pharmacy/retail/licences").send(licence)).expect(201);
+    expect((await as(licensee.token)(request(server()).get("/pharmacy/retail/licences")).expect(200)).body).toMatchObject({ state: { state: "current" }, items: [{ form20No: "RLF20-1" }] });
+
+    await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "R-1", qtyBase: 50, resourceId: retailId });
+    await stockIn(db, fx, { itemId: fx.item.azithro, batchNo: "AZ-1", qtyBase: 30, resourceId: retailId });
+    const shelf = await ph(request(server()).get("/pharmacy/retail/shelf?q=croc")).expect(200);
+    expect((shelf.body as { items: { itemCode: string; available: number }[] }).items).toEqual([expect.objectContaining({ itemCode: "CROC500", available: 50 })]);
+
+    const otc = [{ medicineId: fx.med.crocin, qtyBase: 10 }];
+    const preview = await ph(request(server()).post("/pharmacy/retail/preview").send({ lines: otc })).expect(201);
+    const net = (preview.body as { totals: { netPayablePaise: number } }).totals.netPayablePaise;
+    const customer = { register: { name: "Ramesh Patil", sex: "male", ageYears: 52, phone: "9822001122" } };
+    await ph(request(server()).post("/pharmacy/retail/sales").send({ customer: { register: { ...customer.register, phone: "12345" } }, lines: otc, tenders: [{ mode: "cash", amountPaise: net }] })).expect(400);
+    const sold = await ph(request(server()).post("/pharmacy/retail/sales").set("idempotency-key", "ws-1")
+      .send({ customer, lines: otc, tenders: [{ mode: "cash", amountPaise: net }] })).expect(201);
+    const sale = sold.body as { id: string; patient: { id: string; registeredHere: boolean }; netPaise: number; invoiceNo: string };
+    expect(sale).toMatchObject({ patient: { registeredHere: true }, netPaise: net });
+    const retried = await ph(request(server()).post("/pharmacy/retail/sales").set("idempotency-key", "ws-1")
+      .send({ customer, lines: otc, tenders: [{ mode: "cash", amountPaise: net }] })).expect(201);
+    expect((retried.body as { id: string }).id).toBe(sale.id);
+
+    const h1 = [{ medicineId: fx.med.azithro, qtyBase: 3 }];
+    const h1Net = ((await ph(request(server()).post("/pharmacy/retail/preview").send({ patientId: sale.patient.id, lines: h1 })).expect(201)).body as { totals: { netPayablePaise: number } }).totals.netPayablePaise;
+    const noRx = await ph(request(server()).post("/pharmacy/retail/sales")
+      .send({ customer: { existingId: sale.patient.id }, lines: h1, tenders: [{ mode: "upi", amountPaise: h1Net, refText: "UPI-1" }] })).expect(409);
+    expect((noRx.body as { code: string }).code).toBe("prescription_required");
+    const prescription = {
+      prescriberName: "Dr R. Joshi", prescriberRegNo: "MMC-2011-04417", prescriberAddress: "Joshi Clinic, FC Road, Pune", rxDate: today,
+      photo: { mimeType: "image/jpeg", imageBase64: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]).toString("base64") },
+    };
+    const withRx = await ph(request(server()).post("/pharmacy/retail/sales")
+      .send({ customer: { existingId: sale.patient.id }, lines: h1, prescription, tenders: [{ mode: "upi", amountPaise: h1Net, refText: "UPI-1" }] })).expect(201);
+    expect(withRx.body).toMatchObject({ scheduled: true, pharmacistRegNo: "MSPC-123456", prescription: { prescriberAddress: "Joshi Clinic, FC Road, Pune" } });
+    const [reg] = await db.select().from(pharmacyRegH1);
+    expect(reg).toMatchObject({ dispenseLineId: null, prescriberAddress: "Joshi Clinic, FC Road, Pune", patientName: "Ramesh Patil" });
+
+    const day = await ph(request(server()).get(`/pharmacy/retail/sales?day=${today}`)).expect(200);
+    expect((day.body as { items: unknown[] }).items).toHaveLength(2);
+    expect((await ph(request(server()).get(`/pharmacy/retail/sales/${sale.id}`)).expect(200)).body).toMatchObject({ id: sale.id, invoiceNo: sale.invoiceNo });
+    await as(fx.clerk.token)(request(server()).get(`/pharmacy/retail/sales/${sale.id}`)).expect(403);
+  });
 });
