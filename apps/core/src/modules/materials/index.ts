@@ -52,6 +52,7 @@ export { createStore, ensureTransitStore, findStoreByCode, listStores, requireSt
 export type { StoreRow } from "./stores";
 export {
   availableQty, availableQtyByItem, balances, batchLocations, consumeReservation, consumedQtyByItem, fefoPick, getBatch, movementsFor, postMovement, returnedQtyByRef,
+  consumptionRowsAt, ledgerQtyByIds, refIdsWithMovementBetween,
   postMovements, recallBatch, releaseReservation, reserveStock, expiredStockAt, sellableBatchesByItem,
 } from "./ledger";
 export type { BalanceRow, BatchRow, LedgerRow, MovementInput, MovementReason, ReservationRow } from "./ledger";
@@ -83,6 +84,6 @@ export { MaterialsController } from "./materials.controller";
 export { MaterialsModule } from "./materials.module";
 export { expiringBatches, sweepBatchExpiry, thresholdToAnnounce } from "./expiry";
 /** Plan 14c, first slice — blind counts and the variance register. No adjustment (runbook O1). */
-export { cancelCount, closeCount, countSheet, getCount, listCounts, myCounts, scheduleCount, submitCount } from "./counts";
+export { cancelCount, closeCount, countSheet, countVariancesBetween, getCount, listCounts, myCounts, scheduleCount, submitCount } from "./counts";
 export type { CountFlag, CountHeader, CountReview, CountReviewLine, CountSheet, CountSheetLine, CountStatus, SubmitCountInput } from "./counts";
 export type { ExpiringBatch } from "./expiry";

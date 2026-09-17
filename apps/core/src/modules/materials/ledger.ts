@@ -2,7 +2,7 @@ import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import {
-  stockBalances, stockBatches, stockLedger, stockReservations,
+  items, stockBalances, stockBatches, stockLedger, stockReservations,
 } from "../../kernel/db/schema";
 import { MaterialsError } from "./errors";
 import { batchRecalled } from "./events";
@@ -441,6 +441,50 @@ export async function availableQtyByItem(
     out.set(r.itemId, (out.get(r.itemId) ?? 0) + Math.max(0, r.onHand - r.reserved - r.frozen));
   }
   return out;
+}
+
+/**
+ * PHARMACY P12 — the leakage triangle's ISSUED leg.
+ *   - `ledgerQtyByIds`: the signed quantity of each named ledger row (a dispense line names its
+ *     `consume` row, so the triangle reads what the ledger moved, not what the line says).
+ *   - `consumptionRowsAt`: every `consume` row at one store in `[start, end)`, with the item code
+ *     and batch number, for "what left the shelf, and on whose paper".
+ *   - `refIdsWithMovementBetween`: the references a reason/refType pair touched in the window (a
+ *     return today on a line handed over last week).
+ */
+export async function ledgerQtyByIds(db: Db | Tx, ids: readonly string[]): Promise<Map<string, number>> {
+  const wanted = [...new Set(ids)].filter((id) => id !== "");
+  if (wanted.length === 0) return new Map();
+  const rows = await db.select({ id: stockLedger.id, qty: stockLedger.qtyDelta }).from(stockLedger).where(inArray(stockLedger.id, wanted));
+  return new Map(rows.map((r) => [r.id, r.qty] as const));
+}
+
+export async function consumptionRowsAt(
+  db: Db | Tx, resourceId: string, start: Date, end: Date,
+): Promise<{ id: string; itemId: string; itemCode: string; batchId: string; batchNo: string; units: number; refType: string | null; refId: string | null; actorId: string; occurredAt: Date }[]> {
+  const rows = await db.select({
+    id: stockLedger.id, itemId: stockLedger.itemId, itemCode: items.code, batchId: stockLedger.batchId, batchNo: stockBatches.batchNo,
+    delta: stockLedger.qtyDelta, refType: stockLedger.refType, refId: stockLedger.refId, actorId: stockLedger.actorId, occurredAt: stockLedger.occurredAt,
+  })
+    .from(stockLedger)
+    .innerJoin(items, eq(items.id, stockLedger.itemId))
+    .innerJoin(stockBatches, eq(stockBatches.id, stockLedger.batchId))
+    .where(and(
+      eq(stockLedger.resourceId, resourceId), eq(stockLedger.reason, "consume"),
+      sql`${stockLedger.occurredAt} >= ${start}`, sql`${stockLedger.occurredAt} < ${end}`,
+    ))
+    .orderBy(asc(stockLedger.seq));
+  return rows.map(({ delta, ...r }) => ({ ...r, units: -delta }));
+}
+
+export async function refIdsWithMovementBetween(
+  db: Db | Tx, reason: MovementReason, refType: string, start: Date, end: Date,
+): Promise<string[]> {
+  const rows = await db.selectDistinct({ refId: stockLedger.refId }).from(stockLedger).where(and(
+    eq(stockLedger.reason, reason), eq(stockLedger.refType, refType),
+    sql`${stockLedger.occurredAt} >= ${start}`, sql`${stockLedger.occurredAt} < ${end}`,
+  ));
+  return rows.map((r) => r.refId).filter((x): x is string => x !== null).sort();
 }
 
 /**

@@ -234,3 +234,20 @@ export type WireCounterSummary = {
 export async function fetchCounterSummary(day?: string): Promise<WireCounterSummary> {
   return api<WireCounterSummary>("GET", `/pharmacy/summary${qs({ day })}`);
 }
+
+// ── P12 — the leakage triangle ──
+export type WireLeakageReport = {
+  day: string;
+  store: { code: string; name: string };
+  dispensed: { lines: number; units: number };
+  mismatches: {
+    dispenseId: string; dispenseNo: string | null; itemCode: string; batchNo: string;
+    issued: number; returned: number; billed: number; credited: number; unbilledUnits: number; unbilledPaise: number;
+  }[];
+  otherConsumption: { itemCode: string; batchNo: string; units: number; refType: string | null; refId: string | null; actorId: string; occurredAt: string }[];
+  counted: { counts: number; varianceUnits: number; variancePaise: number; lines: { countId: string; itemCode: string; batchNo: string; varianceQty: number; variancePaise: number }[] };
+  summary: { unbilledUnits: number; unbilledPaise: number; otherUnits: number; countVarianceUnits: number; countVariancePaise: number };
+};
+export async function fetchLeakage(day: string): Promise<WireLeakageReport> {
+  return api<WireLeakageReport>("GET", `/pharmacy/leakage${qs({ day })}`);
+}

@@ -29,6 +29,8 @@ export const pharmacyManifest: ModuleManifest = {
     { label: "Pharmacists", path: "/pharmacy/pharmacists", permission: "pharmacy.pharmacists.manage" },
     { label: "Reorder list", path: "/pharmacy/reorder", permission: "pharmacy.dispense.read" },
     { label: "H1 register", path: "/pharmacy/registers/h1", permission: "pharmacy.register.read" },
+    /** P12 — the leakage triangle: the billing supervisor's and the owner's read, not the counter's. */
+    { label: "Pharmacy leakage", path: "/pharmacy/leakage", permission: "billing.reports.read" },
   ],
   permissions: [
     /** Claim a queued Rx at the counter, which places the `medication` order; verify, pick, bill. */

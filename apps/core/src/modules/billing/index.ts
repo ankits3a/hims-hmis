@@ -37,6 +37,8 @@ export type { EncounterResolver, IssueInvoiceInput, IssueInvoiceResult, InvoiceR
 export { recordReceipt, allocateReceipt, reverseAllocation, patientBalance, listDues, markEnteredInError, advanceOf, receiptUnallocatedPaise } from "./receipts";
 export type { PatientBalance, DueRow, ReceiptRow, AllocationRow } from "./receipts";
 export { issueCreditNote, listCreditNotes } from "./credit-notes";
+/** PHARMACY P12 — the leakage triangle's billed leg (read-only). */
+export { creditedInvoiceLineIdsBetween, invoiceLineCredits } from "./credit-notes";
 export type { IssueCreditNoteInput, IssueCreditNoteResult, CreditNoteKind } from "./credit-notes";
 export { requestRefund, issueRefundVoucher, payRefundVoucher } from "./refunds";
 export type { RefundKind, RefundMethod, RefundVoucherRow } from "./refunds";

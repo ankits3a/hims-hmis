@@ -62,6 +62,7 @@ import { PharmacyItems } from "./screens/pharmacy-items";
 import { PharmacyPharmacists } from "./screens/pharmacy-pharmacists";
 import { PharmacyReorder } from "./screens/pharmacy-reorder";
 import { PharmacyH1Register } from "./screens/pharmacy-h1-register";
+import { PharmacyLeakage } from "./screens/pharmacy-leakage";
 import { RadiologyReception } from "./screens/radiology-reception";
 import { RadiologyWorklist } from "./screens/radiology-worklist";
 import { RadiologyStudy } from "./screens/radiology-study";
@@ -173,6 +174,8 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   { to: "/billing/dues", label: "nav.billingDues", permission: "billing.invoice.read", group: "billing" },
   { to: "/billing/session", label: "nav.billingSession", permission: "billing.session.own", group: "billing" },
   { to: "/billing/office", label: "nav.billingOffice", permission: "billing.reports.read", group: "billing" },
+  // PHARMACY P12 — the leakage triangle, beside the back office that reviews it.
+  { to: "/pharmacy/leakage", label: "nav.pharmacyLeakage", permission: "billing.reports.read", group: "billing" },
   { to: "/ops/mode", label: "nav.opsMode", permission: "ops.mode.set", group: "admin" },
   { to: "/ops/downtime-kit", label: "nav.opsDowntimeKit", permission: "ops.downtime.generate", group: "admin" },
   { to: "/admin/users", label: "nav.adminUsers", permission: "auth.users.manage", group: "admin" },
@@ -861,6 +864,13 @@ const materialsCountsRoute = createRoute({
   component: MaterialsCounts,
 });
 
+/** PHARMACY P12 — the leakage triangle. Path matches `pharmacyManifest.menu`. */
+const pharmacyLeakageRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/leakage",
+  component: PharmacyLeakage,
+});
+
 /** PHARMACY P9 — the Schedule H1 register. Path matches `pharmacyManifest.menu`. */
 const pharmacyH1RegisterRoute = createRoute({
   getParentRoute: () => authedRoute,
@@ -1208,7 +1218,7 @@ export const router = createRouter({
       pcpndtFormFRoute, radiationSafetyRoute,
       // PLAN 16c T5 — 45 -> 47, the pharmacy: the dispense counter and the sale-items admin. TWO routes
       // and two NAV links. `caddyfile-parity.test.ts` pins the count and joins this task's Files list.
-      pharmacyCounterRoute, pharmacyItemsRoute, pharmacyPharmacistsRoute, pharmacyReorderRoute, pharmacyH1RegisterRoute, materialsCountsRoute,
+      pharmacyCounterRoute, pharmacyItemsRoute, pharmacyPharmacistsRoute, pharmacyReorderRoute, pharmacyH1RegisterRoute, materialsCountsRoute, pharmacyLeakageRoute,
       // PHASE 11i T9 — 50 -> 53, and every one of the three is a REDIRECT with no screen. They exist
       // because the catch-up deploy deletes three paths production has been serving since
       // 2 September and the desk PCs have them bookmarked. Removed in the release after the

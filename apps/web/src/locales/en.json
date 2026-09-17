@@ -68,7 +68,8 @@
     "opdScribe": "Door scribe",
     "slipCapture": "Slip desk",
     "pharmacyH1": "H1 register",
-    "materialsCounts": "Stock counts"
+    "materialsCounts": "Stock counts",
+    "pharmacyLeakage": "Pharmacy leakage"
   },
   "palette": {
     "title": "Search",
@@ -4237,5 +4238,33 @@
     "cancelReason": "Why cancel",
     "cancel": "Cancel count",
     "cancelled": "Count cancelled."
+  },
+  "pharmacyLeakage": {
+    "title": "Pharmacy leakage",
+    "intro": "For one day at the OPD counter's store: every dispensed line whose stock and bill do not agree (a refund with nothing returned is the usual cause), stock consumed at the counter with no dispense behind it, and what the blind counts found. Open a dispense number at the counter to see who and why.",
+    "day": "Day",
+    "dispensed": "Dispensed: {{lines}} lines, {{units}} units",
+    "summary": "Unbilled {{units}} units ({{value}}) · consumed outside a dispense {{other}} units · counted {{count}} units ({{countValue}})",
+    "mismatches": "Stock out, not paid for",
+    "noMismatch": "Every dispensed line's stock and bill agree.",
+    "dispense": "Dispense",
+    "item": "Item",
+    "batch": "Batch",
+    "issued": "Issued",
+    "returned": "Returned",
+    "billed": "Billed",
+    "credited": "Credited",
+    "unbilled": "Unbilled",
+    "value": "Value",
+    "other": "Consumed outside a dispense",
+    "noOther": "Nothing left the shelf except through dispenses.",
+    "ref": "Reference",
+    "by": "Posted by",
+    "units": "Units",
+    "when": "When",
+    "counted": "Blind counts",
+    "noCount": "No count was taken this day.",
+    "variance": "Variance",
+    "count": "Count"
   }
 }
