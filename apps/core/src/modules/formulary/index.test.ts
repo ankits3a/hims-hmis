@@ -69,6 +69,7 @@ const SURFACE = [
   "formularyManifest",
   "getStagingRow",
   "isEquivalentMedicine",
+  "listDrugDiseaseFor", // P24 — the rules that reach these moieties and these diagnosis codes
   "listInteractionsAmong",
   "medicineExists",
   "medicineIdsByBrandNames",

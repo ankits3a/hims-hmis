@@ -7,9 +7,13 @@ import { withTx } from "../../kernel/db/client";
 import { opdDepartments, opdEncounters, opdPrescriptions, opdVitals } from "../../kernel/db/schema";
 import { getPatientSummaries, listAllergies } from "../patients";
 import {
-  listInteractionsAmong, normalizeDrugName, resolveDrugTexts, resolveMedicines, unreviewedSaltIds,
+  listDrugDiseaseFor, listInteractionsAmong, normalizeDrugName, resolveDrugTexts, resolveMedicines,
+  unreviewedSaltIds,
 } from "../formulary";
-import { checkDuplicateClass, checkDuplicateSalt, checkInteractions, matchAllergiesSaltAware } from "./rx-checks";
+import {
+  checkDrugDisease, checkDuplicateClass, checkDuplicateSalt, checkInteractions, matchAllergiesSaltAware,
+} from "./rx-checks";
+import { listCodedDiagnoses } from "./diagnosis-history";
 import { loadOpdConfig } from "./config";
 import { requireTreatingDoctor } from "./consultation";
 import { hasPermission } from "../../kernel/auth/permissions";
@@ -25,7 +29,7 @@ import { ageYearsAt } from "./time";
 import type { Letterhead } from "./config";
 import type { PrescriptionRow, VitalsRow } from "./encounters";
 import type { RxLine } from "./fhir";
-import type { DuplicateHit, InteractionHit, PriorRx, RxCheckLine } from "./rx-checks";
+import type { DrugDiseaseHit, DuplicateHit, InteractionHit, PriorRx, RxCheckLine } from "./rx-checks";
 import type { ResolvedDrug } from "../formulary";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
@@ -83,11 +87,22 @@ export type RxOverride = {
   saltPair?: [string, string];
   /** The repeated moiety this reason is about. */
   moiety?: string;
+  /**
+   * P24 — the diagnosis rule this reason is about. `moiety` says which drug; this says which
+   * ruling, because `N18` and `N18.4` are two different decisions about one disease and a reason
+   * typed for one is not a reason for the other.
+   */
+  icd10Prefix?: string;
 };
 
 /** Same pair, whichever order either side names it in. */
 function samePair(a: readonly [string, string], b: readonly [string, string]): boolean {
   return (a[0] === b[0] && a[1] === b[1]) || (a[0] === b[1] && a[1] === b[0]);
+}
+
+function drugDiseaseCovered(hit: DrugDiseaseHit, overrides: RxOverride[]): boolean {
+  return overrides.some((o) => o.lineIndex === hit.lineIndex
+    && o.moiety === hit.moiety && o.icd10Prefix === hit.icd10Prefix);
 }
 
 function interactionCovered(hit: InteractionHit, overrides: RxOverride[]): boolean {
@@ -114,6 +129,8 @@ export type RxCheckOutcome = {
   allergyMatches: AllergyMatch[];
   interactions: InteractionHit[];
   duplicates: DuplicateHit[];
+  /** P24 — what the patient's own coded diagnosis forbids. Severe gates; moderate is a notice. */
+  drugDisease: DrugDiseaseHit[];
   /**
    * PLAN 16a T6 — which lines the formulary could not resolve, decided by the SERVER.
    *
@@ -271,6 +288,17 @@ export async function runRxChecks(
     ...priors.flatMap((p) => p.lines.flatMap((l) => l.resolution?.salts.map((s) => s.saltId) ?? [])),
   ];
   const pairs = await listInteractionsAmong(db, saltIds);
+  /**
+   * P24 — the fourth axis. Only THIS prescription's moieties are asked about, not the priors':
+   * the doctor can act on the line they are writing, and an alert about a drug issued last month
+   * is a different screen (a review card), not a thing to raise while somebody is prescribing.
+   */
+  const diagnoses = await listCodedDiagnoses(db, patientId);
+  const drugDiseaseRules = await listDrugDiseaseFor(
+    db,
+    checkLines.flatMap((l) => l.resolution?.salts.map((s) => s.saltId) ?? []),
+    diagnoses.map((d) => d.code),
+  );
   const unreviewed = await unreviewedSaltIds(
     db, checkLines.flatMap((l) => l.resolution?.salts.map((s) => s.saltId) ?? []),
   );
@@ -280,6 +308,7 @@ export async function runRxChecks(
     interactions: checkInteractions(checkLines, priors, pairs, now),
     // P23 — class duplicates are always soft, so they reach the notices and gate nothing.
     duplicates: [...checkDuplicateSalt(checkLines, priors, now), ...checkDuplicateClass(checkLines, priors, now)],
+    drugDisease: checkDrugDisease(checkLines, diagnoses, drugDiseaseRules, now),
     /**
      * A resolution with NO moieties is not a checked line — it is a line about which nothing can be
      * said, and reporting it as covered is how the coverage figure and the safety path came to
@@ -303,6 +332,13 @@ export type RxPrecheckResult = {
   allergyMatches: AllergyMatch[];
   interactions: InteractionHit[];
   duplicates: DuplicateHit[];
+  /**
+   * P24 — kept as its OWN list and deliberately NOT folded into `notices`. `RxNotice` is a union
+   * the browser discriminates with `"severity" in hit` (`apps/web/src/lib/opd-api.ts`), and a
+   * drug-disease hit carries a severity too: adding it to that union would make every one of them
+   * render as an interaction. Severe ones gate; moderate ones the screen shows beside the notices.
+   */
+  drugDisease: DrugDiseaseHit[];
   notices: RxNotice[];
   /** Lines the formulary does not know — the coverage-gated hint's input (T6, DD5). */
   unresolvedLineIndexes: number[];
@@ -328,6 +364,7 @@ export async function precheckPrescription(
   return {
     allergyMatches: checks.allergyMatches,
     interactions: checks.interactions,
+    drugDisease: checks.drugDisease,
     duplicates: checks.duplicates,
     unresolvedLineIndexes: checks.unresolvedLineIndexes,
     unreviewedLineIndexes: checks.unreviewedLineIndexes,
@@ -344,6 +381,7 @@ export type IssuePrescriptionInput = {
   /** DD3 — the same grammar as `overrides`, one array per hard-warning kind. */
   interactionOverrides?: RxOverride[];
   duplicateOverrides?: RxOverride[];
+  drugDiseaseOverrides?: RxOverride[];
 };
 export type IssuedPrescription = {
   prescriptionId: string; version: number; qrPayload: string; allergyOverrideCount: number;
@@ -466,11 +504,31 @@ export async function issuePrescription(
     );
   }
 
+  /**
+   * P24 — the fourth hard warning, in the same grammar. Only a SEVERE drug-disease hit gates, and
+   * `checkDrugDisease` has already downgraded anything resting on a diagnosis over a year old, so
+   * a stale code can raise a notice here but can never refuse a prescription.
+   */
+  const severeDrugDisease = checks.drugDisease.filter((h) => h.severity === "severe");
+  const drugDiseaseOverrides = input.drugDiseaseOverrides ?? [];
+  const uncoveredDrugDisease = severeDrugDisease.filter((h) => !drugDiseaseCovered(h, drugDiseaseOverrides));
+  if (uncoveredDrugDisease.length > 0) {
+    throw new OpdError(
+      "drug_disease_conflict",
+      `${uncoveredDrugDisease.length} line(s) are contraindicated by a diagnosis this patient carries`,
+      { hits: severeDrugDisease },
+    );
+  }
+
   const matchedInteractionOverrides = interactionOverrides.filter((o) => severeHits.some((h) => interactionCovered(h, [o])));
   const matchedDuplicateOverrides = duplicateOverrides.filter((o) => hardDuplicates.some((h) => duplicateCovered(h, [o])));
+  const matchedDrugDiseaseOverrides = drugDiseaseOverrides.filter((o) => severeDrugDisease.some((h) => drugDiseaseCovered(h, [o])));
 
-  // ONE reason gate for all three kinds, reusing the shipped constant and the shipped code (DD3).
-  for (const override of [...matchedOverrides, ...matchedInteractionOverrides, ...matchedDuplicateOverrides]) {
+  // ONE reason gate for all FOUR kinds, reusing the shipped constant and the shipped code (DD3).
+  for (const override of [
+    ...matchedOverrides, ...matchedInteractionOverrides, ...matchedDuplicateOverrides,
+    ...matchedDrugDiseaseOverrides,
+  ]) {
     if (override.reason.trim().length < MIN_OVERRIDE_REASON) {
       throw new OpdError("override_reason_required", "an override records WHY (the S10 safety-alert KPI)");
     }
@@ -508,6 +566,7 @@ export async function issuePrescription(
       // record, not a transient. It used to be validated, counted, and dropped.
       interactionOverrides: matchedInteractionOverrides,
       duplicateOverrides: matchedDuplicateOverrides,
+      drugDiseaseOverrides: matchedDrugDiseaseOverrides,
       status: "active", issuedBy: actor.id, transcribedBy, issuedAt: now,
     });
     await appendEvent(tx, prescriptionIssued.make({

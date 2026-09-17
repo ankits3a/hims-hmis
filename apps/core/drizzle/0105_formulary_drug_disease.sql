@@ -20,6 +20,7 @@ CREATE TABLE "formulary_drug_disease" (
 	CONSTRAINT "formulary_drug_disease_route_scope_ck" CHECK ("formulary_drug_disease"."route_scope" is null or "formulary_drug_disease"."route_scope" = 'systemic_only')
 );
 --> statement-breakpoint
+ALTER TABLE "opd_prescriptions" ADD COLUMN "drug_disease_overrides" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint
 ALTER TABLE "formulary_drug_disease" ADD CONSTRAINT "formulary_drug_disease_salt_id_formulary_salts_id_fk" FOREIGN KEY ("salt_id") REFERENCES "public"."formulary_salts"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "formulary_drug_disease_ux" ON "formulary_drug_disease" USING btree ("salt_id","icd10_prefix");--> statement-breakpoint
 CREATE INDEX "formulary_drug_disease_prefix_idx" ON "formulary_drug_disease" USING btree ("icd10_prefix");

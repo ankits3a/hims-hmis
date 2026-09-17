@@ -185,6 +185,16 @@ The mapping is written in the book module beside the rule, as a declared synonym
 not silently normalised: a future release that adds `dicyclomine` as its own row must not change
 what this book means.
 
+**D7 — the check asks about the line being written, not about what the patient already takes.**
+The interaction check reads prior prescriptions; this one does not. A doctor who has just coded
+`N18.4` and whose patient is already on metformin from last month is looking at a real hazard — but
+they cannot act on it from the prescribing gate, because that drug is not on the prescription in
+front of them. An alert nobody can act on is the kind that gets dismissed.
+
+So the sweep of a patient's CURRENT drugs against a newly coded diagnosis is a named deferral: it
+is a review card on the consult screen ("this new diagnosis conflicts with 2 of their current
+medicines"), with its own place and its own moment, and it is not built here.
+
 ## Tasks
 
 - **T1 — the book.** `modules/formulary/drug-disease-adoption.ts`: the owner's rules as a typed

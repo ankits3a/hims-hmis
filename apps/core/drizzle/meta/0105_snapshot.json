@@ -1,5 +1,5 @@
 {
-  "id": "74f53f7f-7786-4346-bd51-2a1062c581fb",
+  "id": "62773185-2e39-4750-9b16-0dcceedec40a",
   "prevId": "78d84afe-8b0e-45a2-adc7-b54d76a73bfd",
   "version": "7",
   "dialect": "postgresql",
@@ -6147,6 +6147,13 @@
         },
         "duplicate_overrides": {
           "name": "duplicate_overrides",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "drug_disease_overrides": {
+          "name": "drug_disease_overrides",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true,
