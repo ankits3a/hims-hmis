@@ -72,6 +72,9 @@ describe("the Schedule H1 register (pharmacy P9)", () => {
       restricted: false,
       prescriberName: expect.any(String),
       prescriberRegNo: expect.anything(),
+      // P19 — a counter row: the prescriber practises here, so no address is copied.
+      prescriberAddress: null,
+      source: "counter",
       drugName: "Azee 500 500 mg tablet",
       batchNo: "AZ-1",
       qtyBase: 3,

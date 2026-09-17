@@ -237,9 +237,9 @@ A blank slab still bills as exempt.
 >   - a batch with under 30 days to expiry, or recalled. Quarantine that one instead.
 >   - more than was dispensed, net of earlier returns.
 
-## 4. What refuses, and why — all 54 codes
+## 4. What refuses, and why — all 64 codes
 
-`errors.ts` declares 54, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
+`errors.ts` declares 64, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
 table falls behind it. The table used to name 13, and the drill above provokes several of the
 missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/en.json` under
 `pharmacyErrors.*`; that file and `errors.ts` are pinned against each other in BOTH directions by
@@ -278,6 +278,12 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `invalid_day` · `invalid_range` | the counter's day (P7) or the H1 register's period (P9) is not a real date, runs backwards, or covers more than 31 days | choose the date or the month again |
 | `scan_unknown` · `scan_wrong_item` · `scan_batch_unknown` · `scan_batch_mismatch` | a pack scanned at the pick (P13): a code no item carries, another medicine's pack, a batch the counter does not hold, or a printed expiry that disagrees with the books | register the barcode at `/materials/items`, or pick without scanning; put the wrong pack back; check the GRN |
 | `invoice_not_settled` | the money moved BACK after billing — a reversed allocation or a credit note | send the patient to the billing desk; the drug does not leave unpaid |
+| `retail_licence_missing` · `retail_licence_lapsed` · `invalid_retail_licence` | the walk-in counter (P19) has no Form 20/21 licence recorded, or none covering today; or the licence form was incomplete or its dates run backwards | §9 — the pharmacist in charge records the (renewed) licence |
+| `retail_store_missing` | `seed-pharmacy` did not create `PHARM-RETAIL` | §1.2 |
+| `prescription_required` · `invalid_prescription` | a walk-in Schedule H/H1 line with no outside prescription captured; or the prescriber's name, registration number or address is blank, or the date is after today | §9 — capture the prescription, or remove the line |
+| `registration_not_permitted` · `duplicate_suspected` | registering a walk-in customer without `patients.register`; or someone already registered closely matches | find the customer by mobile or UHID; pick the match, or confirm they are someone new |
+| `unknown_retail_sale` | the walk-in sale id does not resolve | re-open it from the day's list |
+| `document_store_unavailable` | the prescription photo could not be written: the document store (`DOCUMENT_STORE_PATH`) is not writable. Nothing was sold | IT: in production the image owns `/var/lib/hmis/documents` and the `hmis_prod_documents` volume is mounted there; check the mount (the API logs a `DOCUMENT_STORE_PATH is not writable` warning at boot), then sell again |
 
 **Six refusals the counter surfaces that are NOT pharmacy's**, and staff will meet them:
 `version_not_active` (§1.7) · `no_open_session` (§1.8) · `billing_not_configured` ·
@@ -345,7 +351,9 @@ No migration is reversed and no table is dropped.
 1. Remove `PharmacyModule` from `apps/core/src/app.module.ts` and `pharmacyManifest` from
    `kernel/modules/manifests.ts`, then deploy. Every `/pharmacy/*` route 404s and the nav links go
    with them.
-2. **Do NOT drop `pharmacy_reg_h1`.** It is the Schedule H1 register — a statutory record under the
+2. **Do NOT drop `pharmacy_reg_h1`, `pharmacy_retail_sales`, `pharmacy_retail_sale_lines` or
+   `pharmacy_retail_licences`.** The walk-in tables are sale records and the H1 register now holds
+   walk-in rows too. **Do NOT drop `pharmacy_reg_h1`.** It is the Schedule H1 register — a statutory record under the
    Drugs and Cosmetics Rules that a Drugs Inspector may ask for years later. The same holds for
    `pharmacy_dispenses`, `pharmacy_dispense_lines` and every `stock_ledger` row the counter wrote:
    they are the medical and financial record of medicine that reached a patient.
@@ -357,8 +365,8 @@ No migration is reversed and no table is dropped.
 
 IPD indents and ward stock; NDPS and Schedule X custody; returns of cold-chain, frozen and
 narcotic items (sealed ambient packs come back since P6, §3.11; a billed dispense never collected is
-cancelled with a refund since P5, §3.10); cold chain; antimicrobial stewardship; the doctor ping on a held line; walk-in
-retail and outside prescriptions; repeat dispensing; home delivery; a Replenishment agent
+cancelled with a refund since P5, §3.10); cold chain; antimicrobial stewardship; the doctor ping on a held line; returns and refunds of a
+walk-in sale (walk-in retail itself is §9, since P19); repeat dispensing; home delivery; a Replenishment agent
 that ORDERS (P4 and P8 give the reorder list, a read that proposes and moves nothing); realtime on
 the counter (it polls every 10 s).
 
@@ -390,3 +398,41 @@ counter before it sells, and expired stock still on the shelf. But three expiry 
 excludes already-expired batches from every pick (§3.5), `sweepExpiredPharmacyPicks` cancels
 abandoned PICK RESERVATIONS after 30 minutes, and hand over refuses a batch that expired after it was
 picked (§3.10). Do not read this line as "16c does nothing about expiry".
+
+## 9. The walk-in retail counter (P19)
+
+Doc 16 §3.1b and register row R-174. A walk-in sale is not a dispense: it has no visit and no doctor
+in this hospital, so it places no order. It uses the same stock ledger, price rule, GST slab, billing,
+register of pharmacists and H1 register as the counter. Phase doc
+`docs/superpowers/plans/2026-09-17-phase-pharmacy-p19-retail-sales.md`.
+
+| step | who | where | done when |
+|---|---|---|---|
+| 9.1 | `seed-pharmacy.js` (every deploy) creates the `PHARM-RETAIL` store, kept by `pharmacy` and `pharmacy_assistant` | deploy | census row **`pharmacy_retail_store_present`** green |
+| 9.2 | **Record the retail licence**: the Form 20 and Form 21 numbers, valid from and to, and the pharmacist in charge named on it. A renewal is a new entry | **`pharmacy_incharge`**, the MS or the owner | `/pharmacy/retail-licence` | census row **`pharmacy_retail_licence`** green; the counter's banner goes away |
+| 9.3 | Stock the shelf: post the goods receipt into `PHARM-RETAIL` as §2 step 5c does for `PHARM-OPD`. There is no transfer screen yet; a transfer from the main store goes through `POST /materials/transfers`. The OPD counter's shelf is never sold from | **`storekeeper`** | `/materials/grn` | the walk-in screen shows "N available" |
+| 9.4 | Sell | **`pharmacy`** | `/pharmacy/retail` | a paid bill, printed from the sale |
+
+**Until 9.2 is done every walk-in sale refuses** (`retail_licence_missing`), and the day after the
+licence ends it refuses again (`retail_licence_lapsed`). Selling to the public without a Form 20/21
+licence is an offence under the Drugs and Cosmetics Act 1940 §18(c). The OPD counter is unaffected.
+
+**At the counter:**
+- **Every bill names a registered person.** Find the customer by mobile or UHID, or register them
+  there (name, sex, age, mobile). A close match is shown and never attached automatically: pick it,
+  or confirm the customer is someone new. There is no anonymous sale, because the cash limit is
+  counted per person per day.
+- **Unscheduled and OTC medicines** sell without a prescription.
+- **Schedule H and H1** sell only on a prescription the customer brings. Type the prescriber's name,
+  registration number and address and the prescription's date, and photograph it; the photo is filed
+  on the customer's record. Only a pharmacist with a current council registration completes such a
+  sale. Stamp the paper prescription as dispensed. Every H1 line is written to the H1 register with
+  the outside prescriber's name and address.
+- **Schedule X** is not sold here.
+- **A customer recorded allergic** to a line, or a severe interaction with their current medicines,
+  refuses the sale: refer them to their prescriber. There is no override at this counter.
+- Each line takes one batch, earliest in-date first. A quantity the first batch cannot cover is
+  refused with what it holds: sell less, or add a second line.
+
+**Not yet at the walk-in counter:** returns and refunds of a walk-in sale (take them at the billing
+desk for now), and the leakage report, which reads `PHARM-OPD` only.

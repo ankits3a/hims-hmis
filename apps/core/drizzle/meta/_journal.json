@@ -715,6 +715,13 @@
       "when": 1789628327640,
       "tag": "0101_materials_stock_adjustments",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1789629653248,
+      "tag": "0102_pharmacy_retail_sales",
+      "breakpoints": true
     }
   ]
 }

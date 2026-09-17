@@ -14,7 +14,8 @@ import {
   LAB_DEF_KEYS, RELEASE_UNPAID_APPROVAL_TYPE, analytesFor, listOrderables, rangesFor,
 } from "../src/modules/lab";
 import {
-  OPD_PHARMACY_STORE_CODE, PHARMACIST_ROLE, PHARMACY_DEF_KEYS, currentRegistration, gstSlabPlan, listSaleItems, renewalDaysLeft,
+  OPD_PHARMACY_STORE_CODE, PHARMACIST_ROLE, PHARMACY_DEF_KEYS, RETAIL_PHARMACY_STORE_CODE, currentRegistration, gstSlabPlan,
+  listSaleItems, renewalDaysLeft, retailLicenceState,
 } from "../src/modules/pharmacy";
 import {
   DAYCARE_CASE_DEF_KEY, DEFINITION_PUBLISH_APPROVAL_TYPE, DEPOSIT_EXCEPTION_APPROVAL_TYPE,
@@ -457,6 +458,11 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       fix: "§1.2: done by seed:pharmacy on every deploy — without it every claim refuses store_missing",
     },
     {
+      gate: "G2", code: "pharmacy_retail_store_present",
+      check: async (db) => (await findStoreByCode(db, RETAIL_PHARMACY_STORE_CODE)) !== undefined,
+      fix: "§9: done by seed:pharmacy on every deploy — without it the walk-in counter refuses retail_store_missing",
+    },
+    {
       gate: "G2", code: "pharmacy_definition_active",
       check: async (db) => {
         for (const key of PHARMACY_DEF_KEYS) {
@@ -527,6 +533,16 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
         return plan.length > 0 && plan.every((p) => p.current !== null && !p.categoryStale);
       },
       fix: "§2.2: set each drug's GST slab — `set-drug-gst-slabs --as <pharmacist> --apply` fills blanks from the notification (5%; nil for the 36 listed drugs) and brings sale categories to their slab; /pharmacy/items shows the same list",
+    },
+    {
+      gate: "G3", code: "pharmacy_retail_licence",
+      /**
+       * PHARMACY P19 — RED until a Form 20/21 retail licence covering today is recorded for
+       * `PHARM-RETAIL`, and again from the day after it ends. Until then every walk-in sale refuses
+       * (`retail_licence_missing` / `retail_licence_lapsed`); the OPD counter is unaffected.
+       */
+      check: async (db) => (await retailLicenceState(db, new Date())).state === "current",
+      fix: "§9: the pharmacist in charge (or the owner, or the MS) records the retail store's Form 20 and Form 21 licence at /pharmacy/retail-licence — walk-in sales stay shut until it is recorded and current",
     },
     {
       gate: "G4", code: "pharmacist_council_number",

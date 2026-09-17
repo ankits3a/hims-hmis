@@ -92,6 +92,24 @@ export const PHARMACY_ERROR_CODES = [
   "scan_wrong_item",
   "scan_batch_unknown",
   "scan_batch_mismatch",
+  // ── P19: walk-in retail sales ──
+  /** No Form 20/21 licence is recorded for the retail store (Drugs and Cosmetics Act §18(c)). */
+  "retail_licence_missing",
+  /** The recorded licence does not cover today. */
+  "retail_licence_lapsed",
+  "invalid_retail_licence",
+  "retail_store_missing",
+  /** A Schedule H or H1 line with no outside prescription captured (r.65(9)). */
+  "prescription_required",
+  "invalid_prescription",
+  "registration_not_permitted",
+  "duplicate_suspected",
+  "unknown_retail_sale",
+  /**
+   * The prescription photo could not be written (the kernel document store is not writable). The
+   * sale is refused whole: a Schedule H sale without its prescription on file is not a sale.
+   */
+  "document_store_unavailable",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -162,6 +180,16 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   scan_wrong_item: 409,
   scan_batch_unknown: 409,
   scan_batch_mismatch: 409,
+  retail_licence_missing: 409,
+  retail_licence_lapsed: 409,
+  invalid_retail_licence: 400,
+  retail_store_missing: 409,
+  prescription_required: 409,
+  invalid_prescription: 400,
+  registration_not_permitted: 403,
+  duplicate_suspected: 409,
+  unknown_retail_sale: 404,
+  document_store_unavailable: 503,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {

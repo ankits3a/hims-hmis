@@ -108,9 +108,31 @@ export const dispenseLineReturned = defineEvent("dispense.line_returned", MODULE
   creditNoteId: id, refundApprovalId: id,
 }));
 
+/**
+ * P19 — a walk-in sale: stock consumed, invoice issued and paid, H1 rows written, in one act. The
+ * customer was registered by the sale when `registeredHere`.
+ */
+export const retailSold = defineEvent("retail.sold", MODULE, z.object({
+  saleId: id, patientId: id, invoiceId: id, storeResourceId: id, licenceId: id,
+  registeredHere: z.boolean(), scheduled: z.boolean(), h1RegisterRows: z.number().int().nonnegative(),
+  lines: z.array(z.object({
+    lineIdx: z.number().int().nonnegative(), medicineId: id, itemId: id, batchId: id,
+    qtyBase: z.number().int().positive(), scheduleFlag: z.string().nullable(), ledgerEntryId: id, fefoOverride: z.boolean(),
+  })).min(1),
+  netPaise: z.number().int().nonnegative(),
+  pharmacistRegNo: z.string().min(1).nullable(),
+}));
+
+/** P19 — a Form 20/21 retail licence was recorded for a store. */
+export const retailLicenceRecorded = defineEvent("retail.licence_recorded", MODULE, z.object({
+  licenceId: id, storeResourceId: id, form20No: z.string().min(1), form21No: z.string().min(1),
+  validFrom: z.string().min(1), validTo: z.string().min(1),
+}));
+
 /** The catalog, in source order (`LAB_EVENTS`' discipline). A later task that adds a `defineEvent` above adds it here. */
 export const PHARMACY_EVENTS = [
   dispenseQueued, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded,
   dispensePicked, dispenseBilled, dispenseHandedOver, dispenseCancelled,
   pharmacistRegistered, pharmacistRegistrationEnded, dispenseLineReturned,
+  retailSold, retailLicenceRecorded,
 ] as const;

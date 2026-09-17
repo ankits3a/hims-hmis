@@ -38,6 +38,10 @@ export type H1RegisterRow = {
   restricted: boolean;
   prescriberName: string;
   prescriberRegNo: string | null;
+  /** P19 — a walk-in's outside prescriber; null on a counter row (the prescriber practises here). */
+  prescriberAddress: string | null;
+  /** P19 — `counter` (an OPD prescription) or `walk_in` (a retail sale on an outside prescription). */
+  source: "counter" | "walk_in";
   drugName: string;
   batchNo: string;
   qtyBase: number;
@@ -88,6 +92,8 @@ export async function h1Register(db: Db, actor: Actor, period: { from: string; t
       restricted: withheld,
       prescriberName: r.prescriberName,
       prescriberRegNo: r.prescriberRegNo,
+      prescriberAddress: r.prescriberAddress,
+      source: r.retailLineId === null ? "counter" : "walk_in",
       drugName: r.drugName,
       batchNo: r.batchNo,
       qtyBase: r.qtyBase,

@@ -31,6 +31,9 @@ export const pharmacyManifest: ModuleManifest = {
     { label: "H1 register", path: "/pharmacy/registers/h1", permission: "pharmacy.register.read" },
     /** P12 — the leakage triangle: the billing supervisor's and the owner's read, not the counter's. */
     { label: "Pharmacy leakage", path: "/pharmacy/leakage", permission: "billing.reports.read" },
+    /** P19 — the walk-in retail counter, and its Form 20/21 licence. */
+    { label: "Walk-in sales", path: "/pharmacy/retail", permission: "pharmacy.retail.sell" },
+    { label: "Retail licence", path: "/pharmacy/retail-licence", permission: "pharmacy.retail.manage" },
   ],
   permissions: [
     /** Claim a queued Rx at the counter, which places the `medication` order; verify, pick, bill. */
@@ -55,6 +58,13 @@ export const pharmacyManifest: ModuleManifest = {
      * is handed. The pharmacist in charge, the medical superintendent and the owner.
      */
     "pharmacy.register.read_sealed",
+    /**
+     * P19 — sell to a walk-in customer at `PHARM-RETAIL`: register them, take the money, hand the
+     * medicine over. A Schedule H/H1 line also needs `pharmacy.dispense.scheduled`.
+     */
+    "pharmacy.retail.sell",
+    /** P19 — record the retail store's Form 20/21 licence. The owner, the MS and the pharmacist in charge. */
+    "pharmacy.retail.manage",
   ],
   /** T3 — D10: the Rx is at the counter before the patient is. Handler, worker install and census landed in the same commit. */
   subscriptions: [{ event: "prescription.issued", consumer: PHARMACY_RX_ISSUED_CONSUMER }],

@@ -72,7 +72,7 @@ export function PharmacyH1Register(): React.ReactElement {
                       {r.restricted && <span className="ml-1 text-amber-800">({t("pharmacyH1.sealed")})</span>}
                       {r.patientAddress !== null && <span className="block text-muted-foreground">{r.patientAddress}</span>}
                     </td>
-                    <td className="border px-2 py-1">{r.prescriberName}{r.prescriberRegNo !== null ? `, ${r.prescriberRegNo}` : ""}</td>
+                    <td className="border px-2 py-1">{r.prescriberName}{r.prescriberRegNo !== null ? `, ${r.prescriberRegNo}` : ""}{r.prescriberAddress != null ? `, ${r.prescriberAddress}` : ""}</td>
                     <td className="border px-2 py-1">{r.drugName}</td>
                     <td className="border px-2 py-1">{r.batchNo}</td>
                     <td className="border px-2 py-1">{r.qtyBase} {r.unit}</td>
