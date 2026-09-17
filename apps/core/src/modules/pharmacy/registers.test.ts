@@ -97,7 +97,14 @@ describe("the Schedule H1 register (pharmacy P9)", () => {
     const [logged] = await accessRows();
     expect(logged?.sealed).toBe(true);
 
-    // The inspector's unredacted copy is a named grant.
+    // The inspector's unredacted copy is a named grant: the register's own (P17)…
+    await db.insert(rolePermissions).values({ roleKey: "pharmacy", permission: "pharmacy.register.read_sealed" });
+    const [viaRegister] = (await h1Register(db, fx.pharmacist.actor, { from: "2026-08-01", to: "2026-08-31" })).rows;
+    expect(viaRegister).toMatchObject({ patientName: person!.name, patientAddress: "12 MG Road, Pune", restricted: false });
+    const sealedReads = (await accessRows()).filter((r) => r.sealed);
+    expect(sealedReads).toHaveLength(2);
+    // …or the hospital-wide one.
+    await db.delete(rolePermissions).where(eq(rolePermissions.permission, "pharmacy.register.read_sealed"));
     await db.insert(rolePermissions).values({ roleKey: "pharmacy", permission: "patients.confidential.read" });
     const [cleared] = (await h1Register(db, fx.pharmacist.actor, { from: "2026-08-01", to: "2026-08-31" })).rows;
     expect(cleared).toMatchObject({ patientName: person!.name, patientAddress: "12 MG Road, Pune", restricted: false });

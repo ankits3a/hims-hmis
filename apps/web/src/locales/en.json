@@ -4205,7 +4205,7 @@
     "qty": "Quantity",
     "pharmacist": "Pharmacist (reg. no.)",
     "sealed": "sealed record",
-    "sealedNote": "A sealed patient's name and address are withheld from this login. An inspector's unredacted copy needs the patients.confidential.read grant."
+    "sealedNote": "A sealed patient's name and address are withheld from this login. The unredacted copy for an inspector is printed by the pharmacist in charge, the medical superintendent or the owner."
   },
   "pharmacyBill": {
     "title": "Batch details",

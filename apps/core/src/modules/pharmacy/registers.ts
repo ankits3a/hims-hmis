@@ -22,9 +22,10 @@ import type { Db } from "../../kernel/db/client";
  *     a time, and a bounded read cannot become an export of three years.
  *   - **Oldest first**, in the order the entries were written (`seq`), as a paper register reads.
  *   - **A sealed patient stays sealed.** The row stores the name as it stood at hand-over, but a
- *     reader without `patients.confidential.read` sees the alias and no address, and the row says it
- *     is `restricted`: the `aerb.dose_register` rule. Printing an inspector's unredacted copy is
- *     then a named grant, not a side effect of reading the register.
+ *     reader without `pharmacy.register.read_sealed` (P17) or `patients.confidential.read` sees the
+ *     alias and no address, and the row says it is `restricted`: the `aerb.dose_register` rule.
+ *     Printing an inspector's unredacted copy is a named grant: the pharmacist in charge, the
+ *     medical superintendent and the owner (P17), and every such read is logged as sealed.
  *   - **Every patient shown is one `phi_access_log` row** (surface `pharmacy.h1_register`, sealed
  *     where the patient is), filed under the surviving id if the patient was merged.
  */
@@ -71,7 +72,9 @@ export async function h1Register(db: Db, actor: Actor, period: { from: string; t
   const people = ids.length === 0 ? [] : await db.select({ id: patients.id, name: patients.name, alias: patients.alias, isConfidential: patients.isConfidential })
     .from(patients).where(inArray(patients.id, ids));
   const person = new Map(people.map((p) => [p.id, p] as const));
-  const canSeeConfidential = await hasPermission(db, actor.id, "patients.confidential.read", "hospital");
+  // P17 — the statutory copy: the register's own sealed-read grant, or the hospital-wide one.
+  const canSeeConfidential = await hasPermission(db, actor.id, "pharmacy.register.read_sealed", "hospital")
+    || await hasPermission(db, actor.id, "patients.confidential.read", "hospital");
 
   const out = rows.map((r): H1RegisterRow => {
     const p = person.get(r.patientId);

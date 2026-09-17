@@ -91,3 +91,27 @@ That is a statutory gap at go-live, not a 16d feature, and it is small.
 - A CSV or PDF export. The printed sheet is what an inspector takes.
 - A Schedule X register (16d, with its custody).
 - The drug licence number as configuration. It needs the owner's licence details.
+
+## 5. ADDENDUM — P17 (2026-09-17): who prints the unredacted copy
+
+The owner: *"Admin can do it for sure, managerial position staff can do it for sure … follow top
+hospitals in India."*
+
+**DECIDED.**
+- In an Indian hospital pharmacy, the pharmacist in charge named on the drug licence maintains the
+  statutory registers and produces them to the drug inspector. The administrative head (the
+  medical superintendent) and the licensee (the owner) answer for them too.
+- A new, narrow permission, `pharmacy.register.read_sealed`, prints a sealed patient's real name
+  and address on the H1 register only. It goes to:
+  - a new role, `pharmacy_incharge`, held **with** `pharmacy` by the one pharmacist in charge;
+  - `medical_superintendent`;
+  - `owner`.
+  The latter two also gain `pharmacy.register.read`.
+- The hospital-wide `patients.confidential.read` still works and is still held by nobody. A
+  register grant should not unseal the whole record.
+- `admin` keeps only `auth.*` (seed:admin's design). The owner's `admin` login gets the copy by also
+  holding `owner`, assigned at `/admin/users`.
+- **Proof.** `registers.test.ts` covers a reader cleared by the register grant (real name and
+  address, logged sealed) and, separately, by the hospital-wide one. seed-roles pins: 39 roles,
+  declared 171, held 157, model pairs 345, the pharmacy table's third column, and
+  `H1_SEALED_PAIRS` with its README sentence quoted.

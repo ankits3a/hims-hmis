@@ -366,11 +366,18 @@ the counter (it polls every 10 s).
 
 **The H1 register has a reader since P9.** `/pharmacy/registers/h1` shows a month of it, in the
 order the entries were written, and prints it with the rule, the period, a line for the drug licence
-number and the pharmacist's signature. It needs `pharmacy.register.read` (the `pharmacy` role).
-Every patient it shows is logged as a PHI access. **A sealed patient's name and address are
-withheld** unless the reader also holds `patients.confidential.read`, which no role holds. Handing
-an inspector an unredacted copy is therefore the owner's grant to the pharmacist in charge, made
-deliberately. Until then, the sealed rows print as the alias, marked "sealed record".
+number and the pharmacist's signature. It needs `pharmacy.register.read` (the `pharmacy` role, the
+pharmacist in charge, the medical superintendent and the owner). Every patient it shows is logged as
+a PHI access.
+
+**Who prints the unredacted copy (P17).** A sealed patient's name and address print only for
+holders of `pharmacy.register.read_sealed`:
+- the pharmacist in charge (role `pharmacy_incharge`, held with `pharmacy`), who is named on the
+  drug licence and produces the register to the inspector;
+- the medical superintendent;
+- the owner.
+Every sealed row they read is logged as a sealed access. Other pharmacists see the alias, marked
+"sealed record". To let the `admin` login print it, give `admin` the `owner` role at `/admin/users`.
 
 **The patient's copy of the bill is printed at the counter since P10.** A billed or handed-over
 dispense shows **Print bill**. It opens billing's own printed invoice (letterhead, lines, tax heads,
