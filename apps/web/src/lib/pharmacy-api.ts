@@ -187,6 +187,18 @@ export async function endPharmacistRegistration(registrationId: string, reason: 
   await api("POST", `/pharmacy/pharmacists/registrations/${registrationId}/end`, { reason });
 }
 
+// ── P16 — GST slabs against the notification ──
+export type WireGstPlanRow = {
+  itemId: string; code: string; name: string; current: number | null; suggested: number | null; basis: string | null;
+  verdict: "set" | "differs" | "ok" | "unknown"; categoryStale: boolean;
+};
+export async function fetchGstPlan(): Promise<WireGstPlanRow[]> {
+  return (await api<{ items: WireGstPlanRow[] }>("GET", "/pharmacy/sale-items/gst-plan")).items;
+}
+export async function applyGstPlan(overwrite: boolean): Promise<{ slabsSet: number; categoriesSynced: number }> {
+  return api("POST", "/pharmacy/sale-items/gst-plan/apply", { overwrite });
+}
+
 // ── P4 — the reorder list ──
 export type WireReorderLine = {
   itemId: string; code: string; name: string; baseUom: string;

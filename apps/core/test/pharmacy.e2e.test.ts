@@ -59,6 +59,12 @@ describe("the OPD dispense counter over HTTP (16c T5)", () => {
     // P13 — the scan check is the picker's, and a missing code is refused before anything is read.
     await as(fx.clerk.token)(request(server()).get("/pharmacy/dispenses/nope/lines/0/scan?code=8901234567897")).expect(403);
     await as(fx.aide.token)(request(server()).get("/pharmacy/dispenses/nope/lines/0/scan")).expect(400);
+    // P16 — the GST plan is the sale-item manager's, and applying it answers with what it did.
+    await as(fx.aide.token)(request(server()).get("/pharmacy/sale-items/gst-plan")).expect(403);
+    const gst = await as(fx.pharmacist.token)(request(server()).get("/pharmacy/sale-items/gst-plan")).expect(200);
+    expect((gst.body as { items: { code: string }[] }).items.map((i) => i.code)).toEqual(["AZEE500", "CALP500", "CROC500"]);
+    const appliedGst = await as(fx.pharmacist.token)(request(server()).post("/pharmacy/sale-items/gst-plan/apply").send({})).expect(201);
+    expect(appliedGst.body).toEqual({ slabsSet: 0, categoriesSynced: 0 });
     // P12 — the leakage triangle is the billing supervisor's read, not the counter's.
     await as(fx.pharmacist.token)(request(server()).get("/pharmacy/leakage?day=2026-08-17")).expect(403);
     // P9 — the H1 register: the pharmacist's read, never the aide's; a period that is not dates is refused.

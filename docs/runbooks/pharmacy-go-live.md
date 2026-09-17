@@ -132,18 +132,25 @@ The previous version of this table was headed "(chief pharmacist)". **Three of i
 > chose and multiply it back before you accept it: ₹7.08 × 12 = ₹84.96, ₹7.09 × 12 = ₹85.08. Neither
 > is ₹85, and which one the hospital sells at is a decision, not a rounding.
 
-**2.2 THE GST SLAB IS SET BY NO SCREEN, AND A NULL SLAB IS SILENTLY EXEMPT.** `/materials/items`
-collects neither `gst_rate_bps` nor HSN — 207 lines, zero occurrences of either. `createItem` writes
-`gstRateBps: null`, and `gstCategoryFor`'s `?? 0` maps null to the `pharmacy_exempt` category. The
-only writer is `PATCH /materials/items/:id`. Read back what you actually have:
+**2.2 THE GST SLAB (P16).** Since 22 September 2025, medicines (HSN 3003/3004) are **5%**, and the 36
+drugs listed in Notification 9/2025-Central Tax (Rate), Lists 3 and 4, are **nil**. A combination is
+nil only if every ingredient is on the list. Supplements sold as wellness products (HSN 2106) are
+18% and are classified in the item master, not by this rule.
 
-```sql
-select code, gst_rate_bps from items where class = 'drug' order by code;
+`/pharmacy/items` shows every drug item against that rule. It lists slabs that are blank, slabs
+that differ, and sale items still billing at the rate they had when they were registered. **Apply**
+fills the blanks and brings the sale items back to their slab; ticking the box also replaces the
+slabs that differ. The same from a shell, dry run first:
+
+```bash
+node dist/scripts/set-drug-gst-slabs.js --as <a pharmacist login>            # prints the plan
+node dist/scripts/set-drug-gst-slabs.js --as <a pharmacist login> --apply    # writes it
 ```
 
-**Set each drug's slab from the CA's list** (§1.9 is resolved). The bill carves the GST out of the MRP,
-so a real slab never raises the price. **A null slab is still silently exempt**, so a taxable drug
-left null bills the right amount and reports no output tax: read the column back after you set it.
+Census row **`pharmacy_gst_slab_set`** is red until every active drug item has a slab and every
+sale item follows it. The bill carves the GST out of the MRP, so a slab never changes what the
+patient pays; it changes what the invoice reports as tax. **Show the CA the list before go-live.**
+A blank slab still bills as exempt.
 
 > **"N available" is not a raw stock count.** It is what the pick will actually honour: recalled
 > batches and batches whose printed expiry has PASSED are excluded, and reserved and frozen

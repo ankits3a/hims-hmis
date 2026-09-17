@@ -14,7 +14,7 @@ import {
   LAB_DEF_KEYS, RELEASE_UNPAID_APPROVAL_TYPE, analytesFor, listOrderables, rangesFor,
 } from "../src/modules/lab";
 import {
-  OPD_PHARMACY_STORE_CODE, PHARMACIST_ROLE, PHARMACY_DEF_KEYS, currentRegistration, listSaleItems, renewalDaysLeft,
+  OPD_PHARMACY_STORE_CODE, PHARMACIST_ROLE, PHARMACY_DEF_KEYS, currentRegistration, gstSlabPlan, listSaleItems, renewalDaysLeft,
 } from "../src/modules/pharmacy";
 import {
   DAYCARE_CASE_DEF_KEY, DEFINITION_PUBLISH_APPROVAL_TYPE, DEPOSIT_EXCEPTION_APPROVAL_TYPE,
@@ -513,6 +513,20 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
         return false;
       },
       fix: "§2.5: GRN stock into PHARM-OPD with batch, expiry and the printed MRP per pack",
+    },
+    {
+      gate: "G3", code: "pharmacy_gst_slab_set",
+      /**
+       * PHARMACY P16 — RED until every active drug item has a GST slab and every sale item's tariff
+       * category matches it. A blank slab bills as exempt and reports no output tax; a stale
+       * category bills at the rate the item had when it was registered for sale. Red on an empty
+       * item master too (red until an act).
+       */
+      check: async (db) => {
+        const plan = await gstSlabPlan(db);
+        return plan.length > 0 && plan.every((p) => p.current !== null && !p.categoryStale);
+      },
+      fix: "§2.2: set each drug's GST slab — `set-drug-gst-slabs --as <pharmacist> --apply` fills blanks from the notification (5%; nil for the 36 listed drugs) and brings sale categories to their slab; /pharmacy/items shows the same list",
     },
     {
       gate: "G4", code: "pharmacist_council_number",

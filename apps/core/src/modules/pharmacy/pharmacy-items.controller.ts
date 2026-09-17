@@ -5,6 +5,8 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { idSchema, parsed, toHttp } from "./pharmacy-http";
 import { listSaleItems, registerSaleItem, saleItemCandidates, setSaleItemActive } from "./sale-items";
+import { applyGstSlabPlan, gstSlabPlan } from "./gst-slab";
+import type { GstSlabPlanRow } from "./gst-slab";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { SaleItemView } from "./sale-items";
@@ -24,6 +26,29 @@ export class PharmacyItemsController {
   @Get()
   async list(@Query("search") search?: string): Promise<{ items: SaleItemView[] }> {
     return { items: await listSaleItems(this.db, { ...(search === undefined ? {} : { search }) }) };
+  }
+
+  /** P16 — every drug item's slab against the notification, and whether its sale category follows it. */
+  @RequirePermission("pharmacy.sale_items.manage", "hospital")
+  @Get("gst-plan")
+  async gstPlan(): Promise<{ items: GstSlabPlanRow[] }> {
+    try {
+      return { items: await gstSlabPlan(this.db) };
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** P16 — apply the plan: blanks filled, stale categories synced, and differing slabs replaced only when asked. */
+  @RequirePermission("pharmacy.sale_items.manage", "hospital")
+  @Post("gst-plan/apply")
+  async applyGstPlan(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ slabsSet: number; categoriesSynced: number }> {
+    const b = parsed(z.object({ overwrite: z.boolean().optional() }), body ?? {});
+    try {
+      return await applyGstSlabPlan(this.db, actor, await gstSlabPlan(this.db), { overwrite: b.overwrite === true });
+    } catch (e) {
+      return toHttp(e);
+    }
   }
 
   @RequirePermission("pharmacy.sale_items.manage", "hospital")

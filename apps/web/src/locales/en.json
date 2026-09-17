@@ -3317,7 +3317,22 @@
     "registeredAs": "{{code}} registered as {{service}}",
     "nil": "nil",
     "noneRegistered": "No sale items yet.",
-    "noCandidates": "Every active drug is registered."
+    "noCandidates": "Every active drug is registered.",
+    "gstTitle": "GST slabs",
+    "gstIntro": "Checked against the GST Council's rates from 22 September 2025: medicines are 5%, and the 36 drugs listed in Notification 9/2025-CT(Rate) are nil. Blank slabs bill as exempt, and a sale item registered before its slab was corrected still bills at the old rate until it is brought back. Show this list to the CA.",
+    "gstAllOk": "All {{n}} drug items have a slab that matches, and every sale item follows it.",
+    "item": "Item",
+    "gstNow": "Now",
+    "gstSuggested": "Should be",
+    "gstVerdict": "What to do",
+    "gst_set": "Blank — will be set",
+    "gst_differs": "Differs — replaced only if ticked",
+    "gst_unknown": "No medicine linked — set by hand",
+    "gst_ok": "Matches",
+    "gstStale": "sale item still bills at its old rate",
+    "gstOverwrite": "Also replace slabs that differ from the notification",
+    "gstApply": "Apply",
+    "gstApplied": "Slabs set: {{slabs}}. Sale items brought to their slab: {{categories}}."
   },
   "pharmacyPharmacists": {
     "title": "Pharmacists",
