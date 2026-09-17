@@ -111,6 +111,37 @@ export async function searchMedicines(db: Db, query: string, limit = 10): Promis
   }
   const like = `%${anchor}%`;
   const starts = `${anchor}%`;
+  /*
+    ═══ A WHOLE WORD BEATS AN ACCIDENT OF SPELLING ═══
+
+    `ors` returned `Orsodic-SP` (diclofenac), `Orsofin-Plus` and `Orsimox CV` — brands that merely
+    CONTAIN those three letters — while the actual oral rehydration salts sat below the fold.
+    Measured, the cause was not the match but the RANKING: `Ors (glucose and potassium chloride
+    and sodium chloride and sodium citrate)` starts with `ors` exactly as `Orsodic-SP` does, so the
+    prefix test tied, and `salt_rank` then decided it — paracetamol's 4,866 products against the
+    ORS salts' 126. The right drug lost to a bigger molecule's market share.
+
+    So a match on a whole WORD outranks a match inside one, and it is placed above `salt_rank`
+    because that is the tie it exists to break. `\m` and `\M` are Postgres's word boundaries.
+
+    ═══ AND IT IS GATED, BECAUSE THE FIRST DRAFT OF IT BROKE `amox` ═══
+
+    Placed unconditionally above `salt_rank`, this term put **Amoxapine** (an antidepressant, 14
+    products) above **Amoxicillin** (3,830) for `amox` — because `Amox 50` carries the query as a
+    WORD while `Amoxil` only starts with it. That is precisely the defect the ranking comment above
+    was written to prevent, and the suite caught it.
+
+    The two cases differ in one measurable way. `amox` is the beginning of a MOLECULE's name, so a
+    doctor typing it means the molecule and market share is the right tie-break. `ors` is the
+    beginning of no molecule in this formulary, so it can only be a product's name, and the word
+    match is all there is to go on.
+
+    So the term applies only when NO moiety name starts with the query. One boolean, computed once
+    in the query itself.
+
+    This is also why no abbreviation entry is needed for `ors`: the brand is in the release.
+  */
+  const word = `\\m${anchor.replace(/[.^$|()[\]{}*+?\\-]/g, "\\$&")}\\M`;
   /** Every remaining token must appear in the name, the strength or the form. */
   const restFilter = rest.length === 0
     ? sql`true`
@@ -156,7 +187,12 @@ export async function searchMedicines(db: Db, query: string, limit = 10): Promis
     of several thousand, which was the other half of the 575 ms.
   */
   const res = await db.execute(sql`
-    with hits as (
+    with intent as (
+      select exists (
+        select 1 from formulary_salts s where s.active and lower(s.name) like ${starts}
+      ) as molecule
+    ),
+    hits as (
       select m.id, m.brand_name, m.form, m.strength_label, m.code, m.route_class, m.salt_rank
         from formulary_medicines m
        where m.active
@@ -174,7 +210,9 @@ export async function searchMedicines(db: Db, query: string, limit = 10): Promis
     ),
     ranked as (
       select * from hits h where ${restFilter}
-       order by (lower(brand_name) like ${starts}) desc,
+       order by (case when (select molecule from intent) then false
+                       else lower(brand_name) ~ ${word} end) desc,
+                (lower(brand_name) like ${starts}) desc,
                 salt_rank desc,
                 (code is not null) desc,
                 similarity(lower(brand_name), ${q}) desc,
@@ -193,7 +231,9 @@ export async function searchMedicines(db: Db, query: string, limit = 10): Promis
            not exists (select 1 from formulary_medicine_salts l join formulary_salts s on s.id = l.salt_id
                         where l.medicine_id = r.id and not ${isReviewedComponent(sql`s`)}) as reviewed
       from ranked r
-     order by (lower(r.brand_name) like ${starts}) desc,
+     order by (case when (select molecule from intent) then false
+                     else lower(r.brand_name) ~ ${word} end) desc,
+              (lower(r.brand_name) like ${starts}) desc,
               r.salt_rank desc,
               (r.code is not null) desc,
               length(r.brand_name) asc

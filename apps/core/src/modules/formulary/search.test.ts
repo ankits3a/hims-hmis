@@ -47,6 +47,7 @@ describe("searchMedicines — the typeahead over the imported catalogue", () => 
       { id: "S2", name: "Clavulanic acid", productCount: 900, ...AUDIT },
       { id: "S3", name: "Amoxapine", productCount: 14, ...AUDIT },
       { id: "S4", name: "Paracetamol", productCount: 4866, ...AUDIT },
+      { id: "S5", name: "Sodium chloride", productCount: 126, ...AUDIT },
     ]);
     await db.insert(formularyMedicines).values([
       { id: "M1", brandName: "Amoxil 500", nameNormalized: normalizeDrugName("Amoxil 500"), form: "Capsule", routeClass: "systemic", saltRank: 3830, ...AUDIT },
@@ -66,6 +67,11 @@ describe("searchMedicines — the typeahead over the imported catalogue", () => 
       { id: "M7", brandName: "Paracetamol 650 mg oral tablet", nameNormalized: normalizeDrugName("Paracetamol 650 mg oral tablet"), form: "Tablet", strengthLabel: "650 mg", code: "D0231", routeClass: "systemic", saltRank: 4866, ...AUDIT },
       // Its ONLY `5` is in the catalogue code. `par 5` must not reach it — see S8.
       { id: "M8", brandName: "Paracetamol 100 mg oral tablet", nameNormalized: normalizeDrugName("Paracetamol 100 mg oral tablet"), form: "Tablet", strengthLabel: "100 mg", code: "D9225", routeClass: "systemic", saltRank: 4866, ...AUDIT },
+      // S10's pair, shaped exactly as the real catalogue holds them: the ORS brand is a WORD and
+      // carries a small molecule's product count; the impostor merely begins with those letters and
+      // rides paracetamol's 4,866.
+      { id: "M9", brandName: "Ors (glucose and potassium chloride and sodium chloride)", nameNormalized: normalizeDrugName("Ors (glucose and potassium chloride and sodium chloride)"), form: "Sachet", strengthLabel: "13.5 g", code: "D5230", routeClass: "systemic", saltRank: 126, ...AUDIT },
+      { id: "M10", brandName: "Orsodic-SP (diclofenac and paracetamol)", nameNormalized: normalizeDrugName("Orsodic-SP (diclofenac and paracetamol)"), form: "Tablet", strengthLabel: "50 mg", routeClass: "systemic", saltRank: 4866, ...AUDIT },
     ]);
     await db.insert(formularyMedicineSalts).values([
       { medicineId: "M1", saltId: "S1", strength: "500 mg", source: "curated" },
@@ -76,6 +82,8 @@ describe("searchMedicines — the typeahead over the imported catalogue", () => 
       { medicineId: "M6", saltId: "S4", strength: "500 mg", source: "curated" },
       { medicineId: "M7", saltId: "S4", strength: "650 mg", source: "curated" },
       { medicineId: "M8", saltId: "S4", strength: "100 mg", source: "curated" },
+      { medicineId: "M9", saltId: "S5", strength: "13.5 g", source: "curated" },
+      { medicineId: "M10", saltId: "S4", strength: "50 mg", source: "curated" },
     ]);
   }
 
@@ -145,13 +153,27 @@ describe("searchMedicines — the typeahead over the imported catalogue", () => 
     await seed();
     const hits = await searchMedicines(db, "par 5");
     expect(hits.map((h) => h.id)).not.toContain("M8");
-    expect(hits.map((h) => h.id).sort()).toEqual(["M6", "M7"]); // 500 mg and 650 mg
+    // The 500 and the 650 are both reached; M10 joins them legitimately, carrying paracetamol at
+    // 50 mg — this assertion is about the row that must NOT be here, not about an exact set.
+    expect(hits.map((h) => h.id)).toEqual(expect.arrayContaining(["M6", "M7"]));
   });
 
   it("S9: a code is still searchable when the doctor types the whole of it", async () => {
     await seed();
     const hits = await searchMedicines(db, "D0230");
     expect(hits.map((h) => h.id)).toEqual(["M6"]);
+  });
+
+  /**
+   * `ors` used to return `Orsodic-SP` (diclofenac) and friends while the actual rehydration salts
+   * sat below the fold. The cause was the RANKING, not the match: both start with those letters, so
+   * the prefix test tied and `salt_rank` decided it — paracetamol's market share against ORS's.
+   */
+  it("S10: a whole word beats an accident of spelling — `ors` is the rehydration salts", async () => {
+    await seed();
+    const hits = await searchMedicines(db, "ors");
+    expect(hits[0]!.id).toBe("M9");
+    expect(hits.map((h) => h.id)).toContain("M10"); // the impostor is still reachable, just lower
   });
 
   it("S4: an inactive medicine is never offered", async () => {
