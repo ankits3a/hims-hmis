@@ -73,6 +73,13 @@ export const formularySalts = pgTable(
     name: text("name").notNull(),
     aliases: jsonb("aliases").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     drugClass: text("drug_class"),
+    /**
+     * FORMULARY P22 — the allergy classes this moiety belongs to (`formulary/allergy-classes.ts` names
+     * the vocabulary). A list, because a class is about cross-reactivity, not therapy: cefalexin is a
+     * cephalosporin and sits in the penicillin allergy class for its shared side chain. The prescribing
+     * check reads it beside `drugClass`.
+     */
+    allergyClasses: jsonb("allergy_classes").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     atcCode: text("atc_code"),
     /** The bundle's `substance_sctid` — see `formulary_medicines.source_ref`. */
     sourceRef: text("source_ref"),

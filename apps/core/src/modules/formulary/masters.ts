@@ -4,6 +4,7 @@ import { appendEvent } from "../../kernel/events/append";
 import {
   formularyInteractions, formularyMedicineSalts, formularyMedicines, formularySalts,
 } from "../../kernel/db/schema";
+import { requireAllergyClasses } from "./allergy-vocabulary";
 import { FormularyError } from "./errors";
 import { normalizeDrugName } from "./resolve";
 import {
@@ -95,10 +96,12 @@ export async function updateSalt(
   tx: Tx,
   actor: Actor,
   saltId: string,
-  patch: { name?: string; aliases?: string[]; drugClass?: string | null; atcCode?: string | null; active?: boolean },
+  patch: { name?: string; aliases?: string[]; drugClass?: string | null; atcCode?: string | null; active?: boolean; allergyClasses?: string[] },
 ): Promise<void> {
   const existing = await tx.select().from(formularySalts).where(eq(formularySalts.id, saltId));
   if (existing[0] === undefined) throw new FormularyError("unknown_salt", `moiety ${saltId} not found`);
+  // P22 — only a class the prescribing check knows, so a typo cannot record a class nothing reads.
+  if (patch.allergyClasses !== undefined) patch = { ...patch, allergyClasses: requireAllergyClasses(patch.allergyClasses) };
   const changed = Object.keys(patch).filter((k) => patch[k as keyof typeof patch] !== undefined);
   if (changed.length === 0) return;
   try {

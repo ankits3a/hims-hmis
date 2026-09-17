@@ -67,6 +67,12 @@ export type { AdoptionItem, AdoptionReport } from "./adoption";
 /** P21 — interaction pairs adopted from a reference under a named resolution. */
 export { adoptInteractions } from "./interaction-adoption";
 export type { InteractionAdoptionReport, InteractionRule } from "./interaction-adoption";
+/**
+ * P22 — allergy classes: the vocabulary the prescribing check reads (pure), and the memberships
+ * adopted from the clinical master under a named resolution.
+ */
+export { ALLERGY_CLASSES, adoptAllergyClasses, allergyClassKeys } from "./allergy-classes";
+export type { AllergyClassAdoptionReport, AllergyClassEntry, AllergyClassKey } from "./allergy-classes";
 export type {
   AttestTarget, MappingDecision, ProjectionResult, ProposalBasis, ProposalInput, ProposalWriteResult,
   WorklistItem, WorklistProposal, WorklistStatus,
