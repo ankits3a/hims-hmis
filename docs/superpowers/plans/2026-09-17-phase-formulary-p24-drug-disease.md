@@ -59,14 +59,57 @@ line is a colleague. Same book, opposite behaviour at the counter. That is the c
   the DPIA. This phase is the deterministic book only.
 - No DDInter row reaches a clinician (owner's ruling, 2026-09-17 afternoon).
 
+## What production looks like today, measured 2026-09-17
+
+    icd10_codes                97,296        opd_encounter_diagnoses rows            1
+    of those, coded                 1        rows in the book's twelve categories     0
+
+The catalogue is fully loaded. **One diagnosis has ever been recorded in production.** No doctor is
+doing consults in HMIS yet — the 24 OPD doctors were provisioned this morning.
+
+Two consequences, both of which shape this phase rather than stopping it:
+
+1. **There is no calibration data, and there will be none until doctors arrive.** The share of
+   diagnoses that carry a code rather than free text is unmeasurable at n=1. So the design cannot
+   be tuned against observed behaviour, and must be conservative by construction — which is
+   precisely why D1's two splits matter. A false-alert rate that would have been caught in a week
+   of real use has to be reasoned out instead.
+2. **The rails must exist before the first patient, not after.** A safety check built after doctors
+   have learned to prescribe without one is a check they experience as an obstacle. Built before,
+   it is simply how the screen works. This is the right time to build it, and the last cheap one.
+
+The corollary for the wider project: four safety axes are being built for a consult screen nobody
+has used yet. Whatever gets doctors actually consulting in HMIS is worth more than a fifth axis,
+and that judgement belongs to the owner.
+
 ## Rulings — DECIDED under CLAUDE.md ("pick the standard Indian-corporate-hospital answer")
 
-**D1 — the category is the key, and it is derived, never stored twice.**
-Diagnoses are recorded as full dotted codes (`J45.909`). The book is keyed on the 3-character
-category (`J45`). The check derives the category with `left(icd10_code, 3)`; the book column is
-`icd10_category char(3)` with a CHECK that it is three characters, uppercase. No foreign key to
-`icd10_codes` — the same law the diagnosis column already follows: a foreign standard's coverage
-must never become a clinical constraint.
+**D1 — the key is a code PREFIX, three characters by default and longer where three cannot see the
+thing that matters.**
+Diagnoses are recorded as full dotted codes (`J45.909`); the book is keyed on a prefix and matched
+with `icd10_code like prefix || '%'`. The column is `icd10_prefix text` with a CHECK that it is
+uppercase, 3 to 7 characters, and starts with a letter. No foreign key to `icd10_codes` — the same
+law the diagnosis column already follows: a foreign standard's coverage must never become a
+clinical constraint.
+
+The owner's book keys every rule at three characters. **Measured against the real catalogue, two of
+its twelve categories are too coarse and would fire on patients who are in no danger:**
+
+- **`H40` glaucoma.** Anticholinergics threaten the *angle-closure* eye: `H40.03` anatomical narrow
+  angle, `H40.06` primary angle closure, `H40.2x` primary angle-closure glaucoma (47 codes). They
+  are not contraindicated in **open-angle** glaucoma — `H40.1x`, **112 codes**, and much the
+  commoner disease. Keyed at `H40`, the rule cries wolf on the majority of glaucoma patients. The
+  rule is split to the angle-closure prefixes.
+- **`N18` chronic kidney disease.** Metformin is first-line and appropriate at `N18.1` and `N18.2`
+  (stages 1 and 2). The lactic-acidosis hazard is stage 4 and beyond — `N18.4`, `N18.5`, `N18.6` —
+  with care at `N18.32` (stage 3b). Keyed at `N18`, the rule would refuse metformin to a stage-1
+  patient for whom it is the correct drug. Gate at stage 4+; `N18.3x` is a notice that asks for the
+  eGFR; stages 1 and 2 raise nothing.
+
+This is the difference between a co-pilot and an alarm nobody reads. A false alert costs more than
+a missing one, because it teaches the doctor to clear the dialog without reading it — and then the
+true alert is cleared the same way. Both splits are recorded as departures in the book, with the
+owner's original three-character key beside them.
 
 **D2 — which diagnoses count, and what each one may do.**
 There is no problem list in this system: `opd_encounter_diagnoses` has no `patient_id`, no status,
@@ -186,5 +229,8 @@ Shipped as two PRs: T1–T5 (the axis), T6–T7 (the switch).
 1. `/opt/hmis-context/icd10-contraindications-2026-09-17/` — the Drive `exports/` files, above all
    `hmis_icd10_drug_contraindications.json`. Until it lands the book is transcribed from the
    owner's message of 2026-09-17 and must be diffed against the JSON before the PR is marked ready.
-2. The production runbook is missing the ICD-10 catalogue import (see the handoff amendment). No
-   coded diagnoses in production means this whole axis is green in test and inert on the floor.
+2. ~~The production runbook is missing the ICD-10 catalogue import.~~ **Measured and closed,
+   2026-09-17:** `select count(*) from icd10_codes` on production returns **97,296**. The runbook
+   omits the step, but the catalogue was loaded when the CDS work went live, so nothing is owed.
+   The reasoning was right and the conclusion was wrong: a step absent from a runbook is evidence
+   about the RUNBOOK, not about the database. The database was never asked until it was.
