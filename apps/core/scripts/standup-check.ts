@@ -170,6 +170,19 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       fix: "run: pnpm --filter @hmis/core seed:tariff",
     },
     {
+      gate: "G3", code: "supplier_gstin_on_invoice",
+      /**
+       * 2026-09-17 — RED until the letterhead carries the registered person's legal name and a valid
+       * GSTIN. A tax invoice without them does not meet CGST Rules r.46(a), and the pharmacy bills
+       * GST on every strip it sells. The owner gave both; the act is one command.
+       */
+      check: async (db) => {
+        const { letterhead } = await loadOpdConfig(db);
+        return letterhead.gstin !== undefined && letterhead.legalName !== undefined;
+      },
+      fix: 'put the trust\'s legal name and GSTIN on the letterhead: node dist/scripts/set-establishment-gst.js --gstin <GSTIN> --legal-name "<legal name>" --as <an opd_admin login> (dry run, then --apply)',
+    },
+    {
       gate: "G2", code: "patient_merge_registered",
       // §2b row 4 — duplicates minted during the paper-parallel pilot. Unregistered from Plan 05
       // until 2026-08-26, and every merge request threw `unknown_type` the whole time.

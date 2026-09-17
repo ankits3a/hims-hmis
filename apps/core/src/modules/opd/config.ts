@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { opdConfig } from "../../kernel/db/schema";
 import { OpdError } from "./errors";
+import { isValidGstin } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -85,7 +86,18 @@ export const dangerRangesSchema = z
 export type DangerRangesConfig = z.infer<typeof dangerRangesSchema>;
 export type BandConfig = z.infer<typeof bandSchema>;
 
-export const letterheadSchema = z.object({ name: z.string().min(1), addressLines: z.array(z.string()) });
+/**
+ * The ONE hospital letterhead. `legalName` and `gstin` are the registered person behind it: a tax
+ * invoice names the supplier's legal name and GSTIN (CGST Rules r.46(a)). The owner gave them on
+ * 2026-09-17 — the hospital is run by a trust. Both are optional so that a letterhead written
+ * before them still loads; a GSTIN that is present must be a valid one.
+ */
+export const letterheadSchema = z.object({
+  name: z.string().min(1),
+  addressLines: z.array(z.string()),
+  legalName: z.string().trim().min(1).max(200).optional(),
+  gstin: z.string().refine(isValidGstin, { message: "not a valid GSTIN (15 characters, upper case, check character)" }).optional(),
+});
 export type Letterhead = z.infer<typeof letterheadSchema>;
 
 /**

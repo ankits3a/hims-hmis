@@ -1051,7 +1051,15 @@
       "netPayable": "Net payable",
       "settlement": "Settlement",
       "duesStamp": "DUE {{amount}}",
-      "print": "Print invoice"
+      "print": "Print invoice",
+      "taxInvoice": "Tax Invoice",
+      "billOfSupply": "Bill of Supply",
+      "invoiceCumBill": "Invoice-cum-Bill of Supply",
+      "unitOf": "A unit of {{legalName}}",
+      "gstin": "GSTIN",
+      "state": "State: {{name}} ({{code}})",
+      "buyer": "Buyer: {{name}}",
+      "signatory": "For {{legalName}} — Authorised signatory"
     },
     "settlement": {
       "unpaid": "Unpaid",

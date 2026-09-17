@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpException, Inject, Param, Post, Put, Query, Headers } from "@nestjs/common";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
+import { gstinState } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
@@ -484,6 +485,7 @@ type RefundVoucherListRow = Omit<RefundVoucherRow, "payeeIdRef">;
 type InvoiceDetail = { invoice: InvoiceRow; lines: InvoiceLineRow[]; settlement: Settlement };
 type InvoicePrint = {
   letterhead: OpdConfig["letterhead"];
+  supplierState: { code: string; name: string } | null;
   invoice: InvoiceRow;
   lines: InvoiceLineRow[];
   patient: PatientSummary | null;
@@ -630,6 +632,8 @@ export class BillingController {
       const qrBody = `bil1.invoice.${id}`;
       return {
         letterhead: opd.letterhead,
+        // r.46: the supplier's state, read off its GSTIN (the letterhead only stores a valid one).
+        supplierState: opd.letterhead.gstin === undefined ? null : gstinState(opd.letterhead.gstin),
         invoice: found.invoice,
         lines: found.lines,
         patient: patient ?? null,

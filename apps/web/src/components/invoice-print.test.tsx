@@ -54,6 +54,38 @@ describe("InvoicePrint", () => {
     vi.unstubAllGlobals();
   });
 
+  it("names the document by its lines, and the supplier by its legal name, GSTIN and state once the letterhead carries them (r.46)", () => {
+    const { unmount } = renderWithProviders(<InvoicePrint data={DATA} />);
+    // Every line taxable, and no GSTIN on the letterhead yet: a tax invoice, and no GSTIN line.
+    expect(screen.getByTestId("invoice-title")).toHaveTextContent("Tax Invoice");
+    expect(screen.queryByTestId("invoice-supplier-gstin")).toBeNull();
+    expect(screen.queryByTestId("invoice-legal-name")).toBeNull();
+    expect(screen.queryByTestId("invoice-buyer-gstin")).toBeNull();
+    expect(screen.getByTestId("invoice-signatory")).toHaveTextContent("For CRK MEDICAL COLLEGE & HOSPITAL — Authorised signatory");
+    unmount();
+
+    const trust: WireInvoicePrint = {
+      ...DATA,
+      letterhead: { ...DATA.letterhead, legalName: "LEELAWATI DEVI EDUCATIONAL TRUST", gstin: "10AAATL6484H1ZP" },
+      supplierState: { code: "10", name: "Bihar" },
+      invoice: { ...INVOICE, buyerGstin: "10AABCT1234M1Z5", buyerLegalName: "Bihar Cement Ltd" },
+    };
+    const second = renderWithProviders(<InvoicePrint data={trust} />);
+    expect(screen.getByTestId("invoice-legal-name")).toHaveTextContent("A unit of LEELAWATI DEVI EDUCATIONAL TRUST");
+    expect(screen.getByTestId("invoice-supplier-gstin")).toHaveTextContent("GSTIN: 10AAATL6484H1ZP · State: Bihar (10)");
+    expect(screen.getByTestId("invoice-buyer-gstin")).toHaveTextContent("Buyer: Bihar Cement Ltd · GSTIN: 10AABCT1234M1Z5");
+    expect(screen.getByTestId("invoice-signatory")).toHaveTextContent("For LEELAWATI DEVI EDUCATIONAL TRUST — Authorised signatory");
+    second.unmount();
+
+    // A consultation alone is exempt: a bill of supply (r.49). A mix is an invoice-cum-bill of supply (r.46A).
+    const exempt = LINES.map((l) => ({ ...l, exempt: true, rateBps: 0, cgstPaise: 0, sgstPaise: 0 }));
+    const third = renderWithProviders(<InvoicePrint data={{ ...DATA, lines: exempt }} />);
+    expect(screen.getByTestId("invoice-title")).toHaveTextContent("Bill of Supply");
+    third.unmount();
+    renderWithProviders(<InvoicePrint data={{ ...DATA, lines: [exempt[0]!, LINES[1]!] }} />);
+    expect(screen.getByTestId("invoice-title")).toHaveTextContent("Invoice-cum-Bill of Supply");
+  });
+
   it("renders the letterhead, the alias-safe patient, the STORED lines and heads, the totals with the rounding line, the settlement and the signed QR", () => {
     const { container, unmount } = renderWithProviders(<InvoicePrint data={DATA} />);
 

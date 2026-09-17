@@ -1051,7 +1051,15 @@
       "netPayable": "शुद्ध देय",
       "settlement": "निपटान",
       "duesStamp": "बकाया {{amount}}",
-      "print": "बिल प्रिंट करें"
+      "print": "बिल प्रिंट करें",
+      "taxInvoice": "कर बीजक (Tax Invoice)",
+      "billOfSupply": "आपूर्ति बिल (Bill of Supply)",
+      "invoiceCumBill": "बीजक-सह-आपूर्ति बिल",
+      "unitOf": "{{legalName}} की एक इकाई",
+      "gstin": "GSTIN",
+      "state": "राज्य: {{name}} ({{code}})",
+      "buyer": "क्रेता: {{name}}",
+      "signatory": "{{legalName}} के लिए — अधिकृत हस्ताक्षरकर्ता"
     },
     "settlement": {
       "unpaid": "अभुगतान",
