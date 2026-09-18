@@ -77,6 +77,7 @@ import type { Db, Tx } from "../src/kernel/db/client";
  * approval needs a real `owner` role-holder. Both are commissioning gaps in other modules; putting
  * a private copy of either in here would be inventing a production path in a demo script. Run the
  * runbook's §3 drill by hand against this shelf, and see `docs/runbooks/pharmacy-go-live.md` §1.7.
+ * On a DEV database the day is `scripts/dev-pharmacy-standup.ts` (phase PD, PD-0).
  */
 
 /** The demo book. Eight medicines an Indian OPD dispenses, and every one earns its place. */
