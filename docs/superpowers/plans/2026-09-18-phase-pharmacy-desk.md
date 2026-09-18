@@ -140,13 +140,14 @@ Numbered because each one owes a test. **F** = must fail first against the code 
 
 ### The ticket
 - **E1** Two pharmacists claim one ticket. Exclusive already; the loser must see WHO, not a 409. **F**
-- **E1b** FOUND BY THE PD-3 BROWSER WALK, past every green suite: the claim is exclusive and
-  NOTHING AFTER IT IS. `verify`, `pick`, `bill` and `handover` check the status and never the
-  claimer, so a second pharmacist who opens somebody else's ticket by its URL can finish it — and
-  the H1 register records them. The desk now names the holder and offers nothing to press (PD-3),
-  but the server is the guard. **DECIDED, owed by PD-4 (which builds the controls that press):**
-  only the holder works a claimed ticket; the pharmacist in charge may RELEASE a claim with a
-  reason, which is also E6's missing exit. **F**
+- **E1b** ~~Nothing after the claim checks the claimer.~~ **MEASURED, NOT A DEFECT (PD-4).** The
+  PD-3 walk showed Vikas's ticket rendered as Anita's, and a holder-only guard on verify / decline /
+  pick looked like its server half. It is not: `t4.test.ts` pins the ASSISTANT model — an aide
+  claims and picks, a registered pharmacist performs the check the Act reserves, and the H1 register
+  names the one who checked — and the guard turned that suite, the P2 registration suite and the
+  HTTP e2e red. Two people on one claimed ticket is the design. The defect was the SCREEN, fixed in
+  PD-3 (the desk names the holder and offers nothing to press). E6's exit exists already and is
+  pinned in `holder.test.ts`: cancel with a reason, and the slip scans back into the line.
 - **E2** The doctor reissues while you hold v1. A *queued* v1 is cancelled by `enqueueDispense`; a
   *claimed* v1 survives and dies at verify with `prescription_superseded` — the worst possible
   timing, after the strips are pulled. The screen must learn of v2 when it lands and offer a

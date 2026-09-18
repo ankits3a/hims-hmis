@@ -5,7 +5,7 @@ import { opdPrescriptions, pharmacyDispenseLines, pharmacyDispenses, users } fro
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { withTx } from "../../kernel/db/client";
 import { medicinesByIds, unreviewedSaltIds } from "../formulary";
-import { availableQty, itemsByIds, itemUomRows } from "../materials";
+import { availableQty, itemsByIds, itemUomRows, sellableBatchesByItem } from "../materials";
 import { getPatient, getPatientSummaries, listAllergies } from "../patients";
 import { dispenseQueued } from "./events";
 import { PharmacyError } from "./errors";
@@ -183,7 +183,15 @@ export type DispenseLineView = {
    * formulary's one predicate (`unreviewedSaltIds`), so it clears the moment the substance is decided.
    */
   partlyChecked: boolean;
+  /**
+   * PD-4 / PD-D3 / E8 — the batches the pick would draw from, earliest expiry first, while the line
+   * is still OPEN. The right column of the desk shows the batch the pharmacist will give and warns
+   * at the TICK — where another batch can still be chosen — when it dies inside the course, rather
+   * than at the hand-over, where it is a refund. `availableQty`'s predicate, one definition.
+   */
+  batches: { batchId: string; batchNo: string; expiryDate: string | null; available: number }[];
 };
+
 
 export type DispenseView = {
   id: string;
@@ -277,6 +285,10 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
   const itemIds = [...new Set(lines.map((l) => l.itemId).filter((x): x is string => x !== null))];
   const items = itemIds.length === 0 ? new Map() : await itemsByIds(db, itemIds);
   const allergies = await listAllergies(db, d.patientId);
+  const openItems = lines.filter((l) => l.status === "open" && l.itemId !== null).map((l) => l.itemId as string);
+  const batchesByItem = d.storeResourceId === null || openItems.length === 0
+    ? new Map<string, DispenseLineView["batches"]>()
+    : await sellableBatchesByItem(db, d.storeResourceId, openItems, now);
   const views: DispenseLineView[] = [];
   for (const l of lines) {
     const om = l.orderedMedicineId === null ? undefined : medicines.get(l.orderedMedicineId);
@@ -312,6 +324,7 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
       orderItemId: l.orderItemId, invoiceLineId: l.invoiceLineId, unitPaise: l.unitPaise, priceWinner: l.priceWinner,
       fefoOverride: l.fefoOverride, pickNote: l.pickNote,
       partlyChecked: (dm ?? om)?.salts.some((s) => unreviewed.has(s.saltId)) ?? false,
+      batches: l.status === "open" && l.itemId !== null ? (batchesByItem.get(l.itemId) ?? []) : [],
     });
   }
   return {
