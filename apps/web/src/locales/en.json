@@ -4543,5 +4543,20 @@
     "s_in_transit": "In transit",
     "s_received": "Received",
     "s_discrepancy": "Short"
+  },
+  "opdTriage": {
+    "redFlag": {
+      "chestPain": "Chest pain — this may be a cardiac emergency.",
+      "breathless": "Breathlessness — this may be an emergency.",
+      "unconscious": "Unconscious or unresponsive — this is an emergency.",
+      "bleeding": "Heavy bleeding — this is an emergency.",
+      "convulsion": "Fits or convulsions — this is an emergency.",
+      "poisoning": "Possible poisoning or overdose — this is an emergency.",
+      "trauma": "Serious injury — this is an emergency.",
+      "stroke": "Possible stroke — this is an emergency.",
+      "babyBlue": "A baby who is blue or not feeding — this is an emergency.",
+      "pregnancyBleeding": "Bleeding in pregnancy — this is an emergency.",
+      "action": "Do not book an appointment. Take the patient to the emergency room now and tell the duty doctor."
+    }
   }
 }

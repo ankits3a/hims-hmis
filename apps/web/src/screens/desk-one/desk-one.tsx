@@ -15,7 +15,7 @@ import type { TenderMode } from "../../lib/billing-api";
 import { fetchRecognition } from "../../lib/membership-api";
 import { fetchDesk } from "../../lib/desk-api";
 import {
-  billOf, deptQueues, firstFreeDoctor, inHall, invoiceLinesOf, istClock, istDateLabel,
+  ageYearsOf, billOf, deptQueues, firstFreeDoctor, inHall, invoiceLinesOf, istClock, istDateLabel,
   laneOf, flowOf, LANE_TEXT, logged, rs, SEAT_LABEL, SEAT_ROUTE, SEATS, shortestLine, shouldJoinNow,
   seatHasStage, stageForSeat, waitMinutes,
 } from "./model";
@@ -566,6 +566,13 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
    * it, because advice whose origin is hidden gets trusted too much.
    */
   const triageSeq = useRef(0);
+  /*
+    The found patient, mirrored so `runTriage` can read the age WITHOUT taking `s.person` as a
+    dependency — that callback is rebuilt on every keystroke otherwise, and its debounce timer with
+    it. The same ref-mirror `admin-users.tsx:230` uses, for the same reason.
+  */
+  const personRef = useRef(s.person);
+  personRef.current = s.person;
   /**
    * ═══════════════════════════════════════════════════════════════════════════════════════════════
    * FD-11 — THE DEBOUNCE, AND WITHOUT IT THE MODEL WAS EFFECTIVELY NEVER CONSULTED
@@ -595,14 +602,14 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
     it covers a different race — two calls that were both sent, because a request already in flight
     when the next pause arrives can still answer after the newer one.
   */
-  const sendTriage = useCallback((text: string, seq: number) => {
-    void triage(text).then(
+  const sendTriage = useCallback((text: string, seq: number, ageYears: number | null) => {
+    void triage(text, ageYears).then(
       (r) => {
         if (seq !== triageSeq.current) return; // a later keystroke already asked
         setS((prev) => ({
           ...prev,
           triageBusy: false,
-          triage: { departmentIds: r.suggestions.map((x) => x.departmentId), source: r.source },
+          triage: { departmentIds: r.suggestions.map((x) => x.departmentId), source: r.source, redFlag: r.redFlag ?? null },
         }));
       },
       () => {
@@ -622,7 +629,14 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
       return;
     }
     patch({ triageBusy: true });
-    triageTimer.current = setTimeout(() => { sendTriage(text, seq); }, TRIAGE_DEBOUNCE_MS);
+    /*
+      THE AGE GOES WITH THE COMPLAINT. `red-flags.ts` gates chest pain on it, and the desk has it
+      already — `s.person.dob` is the record the clerk just found. Read at SEND rather than captured
+      when the timer was set, so a clerk who finds the patient mid-typing still gets the right rule.
+    */
+    triageTimer.current = setTimeout(() => {
+      sendTriage(text, seq, ageYearsOf(personRef.current?.dob ?? null));
+    }, TRIAGE_DEBOUNCE_MS);
   }, [patch, sendTriage]);
 
 

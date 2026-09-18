@@ -82,7 +82,7 @@ it("FD-11: typing a whole complaint spends ONE model call, not one per keystroke
   await waitFor(() => expect(screen.getByRole("button", { name: /this is them/i })).toBeInTheDocument());
   await user.click(screen.getByRole("button", { name: /this is them/i }));
 
-  const complaint = await screen.findByPlaceholderText(/seene mein dard/);
+  const complaint = await screen.findByTestId("complaint");
   expect(calls).toBe(0);
 
   // 27 characters, typed without a pause between them, exactly as a clerk types.

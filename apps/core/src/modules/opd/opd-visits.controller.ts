@@ -47,7 +47,22 @@ const slotsQuery = z.object({ doctorId: z.string().min(1), date: z.string().max(
  * FD-7 T2 — both ids are REQUIRED. A continuity read without a department would be "list the places
  * this patient has been", which is the diagnosis-shaped read this route exists not to be.
  */
-const triageBody = z.object({ text: z.string().min(1).max(400) });
+const triageBody = z.object({
+  text: z.string().min(1).max(400),
+  /**
+   * ═══ THE AGE, AND EXACTLY WHAT IT IS ALLOWED TO DO ═══
+   *
+   * `red-flags.ts` gates ONE rule on age — chest pain below 12 is not treated as cardiac — and this
+   * is how the desk supplies it. The screen already knows: it renders the age on the row it found.
+   *
+   * IT CAN ONLY EVER NARROW THAT ONE RULE, and absence fails SAFE (an unknown age flags). That
+   * bound is what makes a client-supplied value acceptable here: triage runs on every keystroke, so
+   * reading the DOB from the database per call would be a query per character, and the worst a
+   * wrong value can do is suppress the chest-pain flag for a patient it claims is a small child.
+   * Every other red flag is age-independent and unreachable from this field.
+   */
+  ageYears: z.number().int().min(0).max(130).optional(),
+});
 
 const continuityQuery = z.object({
   patientId: z.string().min(1),
@@ -265,6 +280,9 @@ export class OpdVisitsController {
       b.text,
       departments.map((d) => ({ id: d.id, name: d.name })),
       this.config.triage,
+      undefined,
+      undefined,
+      { ageYears: b.ageYears ?? null },
     );
   }
 

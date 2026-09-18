@@ -184,7 +184,7 @@ async function holdPatient(): Promise<void> {
   await user.type(screen.getByPlaceholderText("mobile · name · UHID"), "Ramesh");
   await waitFor(() => expect(screen.getByRole("button", { name: /this is them/i })).toBeInTheDocument());
   await user.click(screen.getByRole("button", { name: /this is them/i }));
-  await waitFor(() => expect(screen.getByPlaceholderText(/seene mein dard/)).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByTestId("complaint")).toBeInTheDocument());
 }
 
 afterEach(() => { setToken(null); });

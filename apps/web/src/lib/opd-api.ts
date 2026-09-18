@@ -575,10 +575,16 @@ export function getContinuity(
  * trusted too much.
  */
 export type WireTriageSuggestion = { departmentId: string; reason: string };
-export type WireTriage = { suggestions: WireTriageSuggestion[]; source: "model" | "keywords" };
+/** Set when the desk must NOT book: an emergency, refusing rather than ranking. See `red-flags.ts`. */
+export type WireRedFlag = { reasonKey: string; matched: string };
+export type WireTriage = {
+  suggestions: WireTriageSuggestion[];
+  source: "model" | "keywords";
+  redFlag?: WireRedFlag;
+};
 
-export function triage(text: string): Promise<WireTriage> {
-  return api("POST", "/opd/triage", { text });
+export function triage(text: string, ageYears: number | null = null): Promise<WireTriage> {
+  return api("POST", "/opd/triage", ageYears === null ? { text } : { text, ageYears });
 }
 
 /** The future lane. `date` is an IST calendar date; the server refuses a slot it has already passed. */
