@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Unit II beds</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600;700&display=swap">
+<style>
+body{margin:0;font-family:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;background:#f4f7f4;color:#132420;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer}
+a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
+</style>
+</helmet>
+<div style="width: 390px; height: 1300px; box-sizing: border-box; display: flex; flex-direction: column; background: #f4f7f4; color: #132420; font-size: 14px; line-height: 20px;">
+
+<div style="flex-grow: 1; overflow: auto; padding: 18px 16px 16px; display: flex; flex-direction: column; gap: 12px;">
+
+<div style="display: flex; align-items: baseline; justify-content: space-between;">
+<h1 style="margin: 0; font-size: 20px; line-height: 26px; font-weight: 600;">Unit II · 19 beds</h1>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #5c6f66;">Fri 08:18</div>
+</div>
+<div style="font-size: 12.5px; color: #5c6f66;">Marks show what changed since <span style="color: #132420; font-weight: 500;">your</span> handover at 20:40, not since midnight.</div>
+
+<div style="display: flex; gap: 8px;">
+<sc-for list="{{ sorts }}" as="s" hint-placeholder-count="2">
+<button onClick="{{ s.pick }}" style="height: 44px; padding: 0 14px; border-radius: 6px; font-size: 13px; font-weight: 600; {{ s.style }}">{{ s.label }}</button>
+</sc-for>
+</div>
+
+<div style="display: flex; flex-direction: column; background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px;">
+<sc-for list="{{ beds }}" as="b" hint-placeholder-count="11">
+<a href="Round.dc.html" style="display: flex; align-items: center; gap: 10px; min-height: 60px; padding: 8px 12px; border-bottom: 1px solid #ecf1ed; color: #132420;">
+<span style="width: 4px; align-self: stretch; border-radius: 2px; {{ b.bar }}"></span>
+<span style="width: 46px; flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600;">{{ b.bed }}</span>
+<span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px;">
+<span style="font-size: 13.5px; font-weight: 600;">{{ b.name }} <span style="font-weight: 400; color: #5c6f66;">· {{ b.age }}</span></span>
+<span style="font-size: 12px; color: #5c6f66;">{{ b.dx }}</span>
+<span style="font-size: 12px; font-weight: 500; {{ b.markStyle }}">{{ b.mark }}</span>
+</span>
+<span style="flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: .08em; color: #5c6f66;">{{ b.tag }}</span>
+</a>
+</sc-for>
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 12px; font-size: 12.5px; color: #5c6f66;">
+<span>8 more beds · nothing changed</span>
+<button style="height: 44px; padding: 0 12px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; color: #132420; font-size: 13px; font-weight: 600;">Show all 19</button>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 12px; background: #ffffff; border: 1px dashed #b9c9bf; border-radius: 8px;">
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: .14em; color: #5c6f66;">NOT IN YOUR WARD</div>
+<div style="font-size: 13px;"><span style="font-family: 'IBM Plex Mono', monospace; font-weight: 600;">S-112</span> · Kamla Prasad · 66 F · Unit II patient lodged in Surgery ward</div>
+<div style="font-size: 13px;"><span style="font-family: 'IBM Plex Mono', monospace; font-weight: 600;">O-117</span> · Referral from Orthopaedics · not yet accepted</div>
+</div>
+
+<a href="Round.dc.html" style="display: flex; align-items: center; justify-content: center; height: 50px; border-radius: 6px; background: #0e6b4e; color: #f2faf6; font-size: 15px; font-weight: 600;">Start round at G-201</a>
+<div style="font-size: 12px; color: #5c6f66; text-align: center;">Round notes save on the phone first. Ward wifi can drop; nothing you write is lost.</div>
+
+</div>
+
+<nav style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: #ffffff; border-top: 1px solid #dfe7e1;">
+<a href="Main.dc.html" style="display: flex; align-items: center; justify-content: center; height: 52px; font-size: 13px; font-weight: 500; color: #5c6f66; border-top: 2px solid transparent;">Now</a>
+<a href="Beds.dc.html" style="display: flex; align-items: center; justify-content: center; height: 52px; font-size: 13px; font-weight: 700; color: #0e6b4e; border-top: 2px solid #0e6b4e;">Beds</a>
+<a href="OpdDesk.dc.html" style="display: flex; align-items: center; justify-content: center; height: 52px; font-size: 13px; font-weight: 500; color: #5c6f66; border-top: 2px solid transparent;">OPD</a>
+<a href="UnitBoard.dc.html" style="display: flex; align-items: center; justify-content: center; height: 52px; font-size: 13px; font-weight: 500; color: #5c6f66; border-top: 2px solid transparent;">Unit</a>
+</nav>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1300}}'>
+class Component extends DCLogic {
+  state = { sort: 'bed' };
+  renderVals() {
+    const s = this.state || {};
+    const sort = s.sort || 'bed';
+    const red = 'background:#b23a30;', amber = 'background:#dd8f1c;', green = 'background:#0e6b4e;', none = 'background:#ecf1ed;';
+    const mRed = 'color:#b23a30;', mAmber = 'color:#8a5a0b;', mGreen = 'color:#0e6b4e;', mDim = 'color:#5c6f66;';
+    const rows = [
+      { n: 1, w: 9, bed: 'G-201', name: 'Hari Om Tiwari', age: '70 M', dx: 'COPD exacerbation · day 6', mark: 'No change', markStyle: mDim, bar: none, tag: '' },
+      { n: 2, w: 4, bed: 'G-204', name: 'Sunita Yadav', age: '38 F', dx: 'Dengue · day 3', mark: 'Platelets 68k → 42k', markStyle: mAmber, bar: amber, tag: '' },
+      { n: 3, w: 2, bed: 'G-208', name: 'Sita Devi', age: '52 F', dx: 'Pneumonia · day 3', mark: 'NEWS2 5 → 7 · fever 102.2', markStyle: mAmber, bar: amber, tag: '' },
+      { n: 4, w: 1, bed: 'G-214', name: 'Ramesh Kumar', age: '64 M', dx: 'Sepsis · day 4', mark: 'K 6.4 critical · BP 92/58', markStyle: mRed, bar: red, tag: '' },
+      { n: 5, w: 5, bed: 'G-219', name: 'Mohan Singh', age: '58 M', dx: 'CKD stage 4', mark: 'CT report unread', markStyle: mAmber, bar: amber, tag: '' },
+      { n: 6, w: 7, bed: 'G-225', name: 'Anita Kumari', age: '47 F', dx: 'Cellulitis · day 5', mark: 'Could go home · summary written', markStyle: mGreen, bar: green, tag: '' },
+      { n: 7, w: 10, bed: 'G-229', name: 'Abdul Rahim', age: '55 M', dx: 'Stroke · day 9 · physiotherapy', mark: 'No change', markStyle: mDim, bar: none, tag: '' },
+      { n: 8, w: 8, bed: 'G-231', name: 'Geeta Rani', age: '60 F', dx: 'T2DM, uncontrolled · day 4', mark: 'Sugars in range 24 h', markStyle: mGreen, bar: green, tag: '' },
+      { n: 9, w: 3, bed: 'G-238', name: 'Vikram Joshi', age: '61 M', dx: 'Acute pancreatitis · day 1', mark: 'New 02:15 · no senior has seen him', markStyle: mAmber, bar: amber, tag: 'NEW' },
+      { n: 10, w: 6, bed: 'G-241', name: 'Imran Ansari', age: '45 M', dx: 'DKA · day 2', mark: 'PMJAY query due 14:00', markStyle: mAmber, bar: amber, tag: 'PMJAY' },
+      { n: 11, w: 11, bed: 'G-244', name: 'Rekha Kumari', age: '24 F', dx: 'OP poisoning · day 2', mark: 'New 23:50 · police intimation sent', markStyle: mDim, bar: none, tag: 'MLC' },
+    ];
+    const beds = rows.slice().sort((a, b) => (sort === 'bed' ? a.n - b.n : a.w - b.w));
+    const on = 'background:#132420;color:#f2faf6;border:1px solid #132420;';
+    const off = 'background:#ffffff;color:#132420;border:1px solid #dfe7e1;';
+    const sorts = [
+      { label: 'Bed order — the walk', style: sort === 'bed' ? on : off, pick: () => this.setState({ sort: 'bed' }) },
+      { label: 'Sickest first', style: sort === 'sick' ? on : off, pick: () => this.setState({ sort: 'sick' }) },
+    ];
+    return { beds, sorts };
+  }
+}
+</script>
+</body>
+</html>

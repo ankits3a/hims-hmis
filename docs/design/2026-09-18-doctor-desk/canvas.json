@@ -1,0 +1,124 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "Beds.dc.html": {
+      "h": 1300,
+      "is_interactive": true,
+      "title": "2 · Beds, in the order she walks",
+      "w": 390,
+      "x": 470,
+      "y": 0
+    },
+    "Main.dc.html": {
+      "h": 1780,
+      "is_interactive": true,
+      "title": "1 · SR's phone, 08:18 — Waiting on you",
+      "w": 390,
+      "x": 0,
+      "y": 0
+    },
+    "OpdDesk.dc.html": {
+      "h": 940,
+      "is_interactive": true,
+      "title": "6 · Monday, OPD-3 — the line is the screen",
+      "w": 1440,
+      "x": 0,
+      "y": 4100
+    },
+    "Professor.dc.html": {
+      "h": 1480,
+      "is_interactive": true,
+      "title": "4 · Unit Head's phone — glance, sign, nudge",
+      "w": 390,
+      "x": 0,
+      "y": 2200
+    },
+    "Round.dc.html": {
+      "h": 1300,
+      "is_interactive": true,
+      "title": "3 · Round, one bed",
+      "w": 390,
+      "x": 940,
+      "y": 0
+    },
+    "Tower.dc.html": {
+      "h": 1360,
+      "is_interactive": true,
+      "title": "0 · FIRST SCREEN — Doctor Desk dashboard (menu · main · day, team, agents)",
+      "w": 1440,
+      "x": -20,
+      "y": -2040
+    },
+    "UnitBoard.dc.html": {
+      "h": 1160,
+      "is_interactive": true,
+      "title": "5 · Unit board + the report nobody typed",
+      "w": 1440,
+      "x": 470,
+      "y": 2200
+    },
+    "AiBriefs.dc.html": {
+      "x": 1500,
+      "y": -2040,
+      "w": 1440,
+      "h": 1000,
+      "title": "0b · AI Briefs, full page — where the login brief goes after an hour",
+      "is_interactive": true
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-09-18T14:45:38Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "t0": {
+      "kind": "title1",
+      "maxW": 2960,
+      "text": "After login · the dashboard",
+      "w": 240,
+      "x": -20,
+      "y": -2270
+    },
+    "t1": {
+      "kind": "title1",
+      "maxW": 1330,
+      "text": "The round · Senior Resident's phone",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "t2": {
+      "kind": "title1",
+      "maxW": 1910,
+      "text": "The unit head · glance, countersign, push",
+      "w": 240,
+      "x": 0,
+      "y": 1900
+    },
+    "t3": {
+      "kind": "title1",
+      "maxW": 1440,
+      "text": "OPD day · the desktop",
+      "w": 240,
+      "x": 0,
+      "y": 3800
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Beds.dc.html",
+    "Round.dc.html",
+    "Professor.dc.html",
+    "UnitBoard.dc.html",
+    "OpdDesk.dc.html",
+    "Tower.dc.html",
+    "AiBriefs.dc.html"
+  ],
+  "pages": [],
+  "title": "Doctor Desk — Unit II"
+}
