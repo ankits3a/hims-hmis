@@ -3107,6 +3107,104 @@ describe("OpdConsult — the drug typeahead", () => {
     expect(combo).toHaveTextContent("Tablet");
   });
 
+  /**
+   * ═══ P26 — THE SIG DRAWER, AND THE PATH IT MUST NOT CLOSE ═══
+   *
+   * The pills are an ACCELERATOR over the line's own fields, never a gate. So these assert both
+   * halves: that a tap writes the field, AND that a doctor who ignores the drawer entirely can
+   * still type anything — `1-0-0 for 4 days` is the phase doc's own example. This lane has a scar
+   * where every test drove a field through its accelerator and the typed path broke unnoticed.
+   */
+  async function pickDrug(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(screen.getByLabelText("Drug"), "par");
+    await user.click(await screen.findByTestId("rx-drug-0-hit-m-pcm1g"));
+  }
+
+  it("P26a: picking a drug opens the drawer, and each pill writes the line's own field", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+
+    const drawer = await screen.findByTestId("sig-0-drawer");
+    expect(within(drawer).getByText("Paracetamol 1 g oral tablet")).toBeInTheDocument();
+
+    await user.click(within(drawer).getByTestId("sig-0-freq-BD"));
+    await user.click(within(drawer).getByTestId("sig-0-timing-afterFood"));
+    await user.click(within(drawer).getByTestId("sig-0-days-5"));
+
+    // Not the drawer's own state — the LINE's fields, which is all the prescription ever reads.
+    expect(screen.getByLabelText("Frequency")).toHaveValue("BD");
+    expect(screen.getByLabelText("Instructions")).toHaveValue("After food");
+    expect(screen.getByLabelText("Days")).toHaveValue(5);
+  });
+
+  /**
+   * A BROWSER WALK FOUND THIS AND THE SHIPPED TEST COULD NOT.
+   *
+   * D3 asserts the list is closed immediately after a pick, and it is. But the pick writes the
+   * drug's name into the field, which re-runs the search, and 180 ms later the answers arrive and
+   * reopen the list — over the sig drawer, swallowing the taps meant for its pills. jsdom never
+   * got that far; Chromium at 1280 px did. So this one WAITS.
+   */
+  it("P26e: the list does not reopen on top of the drawer after a pick", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+    await screen.findByTestId("sig-0-drawer");
+
+    // past the 180 ms debounce and the answer that follows it
+    await new Promise((r) => setTimeout(r, 450));
+
+    expect(screen.queryByTestId("rx-drug-0-hits")).toBeNull();
+  });
+
+  it("P26b: a second tap on a chosen pill clears it, so a wrong tap costs one tap", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+    const drawer = await screen.findByTestId("sig-0-drawer");
+
+    await user.click(within(drawer).getByTestId("sig-0-days-7"));
+    expect(screen.getByLabelText("Days")).toHaveValue(7);
+    await user.click(within(drawer).getByTestId("sig-0-days-7"));
+    expect(screen.getByLabelText("Days")).toHaveValue(null);
+  });
+
+  it("P26c: the drawer closes, and the doctor types what the pills do not offer", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+
+    const drawer = await screen.findByTestId("sig-0-drawer");
+    await user.click(within(drawer).getByTestId("sig-0-close"));
+    expect(screen.queryByTestId("sig-0-drawer")).toBeNull();
+
+    // THE MANUAL PATH — the phase doc's own example, typed, with no pill involved.
+    await user.type(screen.getByLabelText("Days"), "4");
+    await user.type(screen.getByLabelText("Instructions"), "alternate days, with milk");
+    expect(screen.getByLabelText("Days")).toHaveValue(4);
+    expect(screen.getByLabelText("Instructions")).toHaveValue("alternate days, with milk");
+  });
+
+  it("P26d: what the pills wrote is what the prescription POSTs", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+    const drawer = await screen.findByTestId("sig-0-drawer");
+    await user.click(within(drawer).getByTestId("sig-0-freq-TDS"));
+    await user.click(within(drawer).getByTestId("sig-0-days-3"));
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions").length).toBeGreaterThan(0); });
+    const body = bodiesOf("POST", "/api/opd/visits/enc-1/prescriptions")[0] as {
+      lines: { frequency: string; durationDays: number | null; medicineId: string | null }[];
+    };
+    expect(body.lines[0]).toMatchObject({ frequency: "TDS", durationDays: 3, medicineId: "m-pcm1g" });
+  });
+
   it("D3: tapping a row fills the name AND the id — which is what makes the line checkable", async () => {
     mockRoutes(drugRoutes());
     const user = userEvent.setup();
