@@ -311,6 +311,32 @@ export function OpdConsult(): React.ReactElement {
    * way to tell which line they wrote to.
    */
   const [sigLine, setSigLine] = useState<number | null>(null);
+  /**
+   * ═══ WHICH PRODUCT A PICKED LINE ACTUALLY HOLDS (P27) ═══
+   *
+   * The line stores `medicineId` and the drug's NAME, and shows only the name — so two lines
+   * reading "Paracetamol" could be the 500 and the 650 and the screen would not say which. The
+   * owner's reference UI prints the shorthand under the name for exactly this reason:
+   * `[500 mg | Tablet | D0230]`.
+   *
+   * Kept beside the form rather than in it, because it is DISPLAY and nothing reads it back: the
+   * prescription posts `medicineId`, and the server resolves the product from that. Keyed on the
+   * field array's own row id, not the index, so removing a line does not slide one row's shorthand
+   * onto another.
+   *
+   * Its lifetime is deliberately the same as `medicineId`'s: set on a pick, dropped the moment the
+   * text is typed over, and gone when the panel resets — a reopened draft carries neither
+   * (`medicineId: null` on that path), so neither is shown, which is the honest state.
+   *
+   * THE `resetPanel` CLEAR IS HOUSEKEEPING, AND NO TEST GUARDS IT — said here rather than implied
+   * by a green suite. An assertion was written for it and then removed for being unfailable: the
+   * panel UNMOUNTS on completion, so the shorthand is absent afterwards whether or not the state
+   * was cleared. It cannot leak onto the next patient either, because `useFieldArray` mints new row
+   * ids on reset and a stale entry keyed by an old one can never be read. The clear stops the map
+   * growing across a session; it is not load-bearing, and claiming a test for it would be worse
+   * than having none.
+   */
+  const [shorthand, setShorthand] = useState<Record<string, { strength: string | null; form: string; code: string | null }>>({});
   const [notices, setNotices] = useState<WireRxNotice[]>([]);
   const [noticesDismissed, setNoticesDismissed] = useState(false);
   /** P24 — soft drug-disease hits, shown beside the notices; the severe ones go to the dialog. */
@@ -703,6 +729,7 @@ export function OpdConsult(): React.ReactElement {
     setInteractionReasons([]);
     setDuplicateReasons([]);
     setSigLine(null);
+    setShorthand({});
     setNotices([]);
     setNoticesDismissed(false);
     setDiseaseNotices([]);
@@ -2550,11 +2577,18 @@ export function OpdConsult(): React.ReactElement {
                                 rxForm.setValue(`lines.${i}.drug`, text, { shouldDirty: true });
                                 if (rxForm.getValues(`lines.${i}.medicineId`) !== null) {
                                   rxForm.setValue(`lines.${i}.medicineId`, null);
+                                  /* The id and the shorthand go together: what is shown must not
+                                     outlive the pick it describes. */
+                                  setShorthand((m) => {
+                                    const { [f.id]: dropped, ...rest } = m;
+                                    return dropped === undefined ? m : rest;
+                                  });
                                 }
                               }}
                               onPick={(hit) => {
                                 rxForm.setValue(`lines.${i}.drug`, hit.name, { shouldDirty: true });
                                 rxForm.setValue(`lines.${i}.medicineId`, hit.id);
+                                setShorthand((m) => ({ ...m, [f.id]: { strength: hit.strength, form: hit.form, code: hit.code } }));
                                 setSigLine(i);
                               }}
                             />
@@ -2563,6 +2597,19 @@ export function OpdConsult(): React.ReactElement {
                               enough. Below the threshold it would fire on almost every line and
                               become wallpaper, which is worse than silence.
                             */}
+                            {shorthand[f.id] !== undefined && (
+                              <span
+                                data-testid={`rx-shorthand-${String(i)}`}
+                                className="mo"
+                                style={{ fontSize: 10.5, color: "var(--faint)" }}
+                              >
+                                {`[${[
+                                  shorthand[f.id]?.strength ?? null,
+                                  shorthand[f.id]?.form ?? null,
+                                  shorthand[f.id]?.code ?? null,
+                                ].filter((x) => x !== null && x !== "").join(" | ")}]`}
+                              </span>
+                            )}
                             {noticeEnabled && unresolvedLines.includes(i) && (
                               <p data-testid={`rx-uncovered-${String(i)}`} style={{ margin: 0, fontSize: 11, color: "var(--gold)" }}>
                                 {t("opdConsult.notInFormulary")}

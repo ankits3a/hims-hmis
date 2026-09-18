@@ -3160,6 +3160,48 @@ describe("OpdConsult — the drug typeahead", () => {
     expect(screen.queryByTestId("rx-drug-0-hits")).toBeNull();
   });
 
+  /**
+   * ═══ P27 — WHICH PARACETAMOL ═══
+   *
+   * The line shows a NAME. Two lines reading "Paracetamol" could be the 500 and the 650 and the
+   * screen would not say which, so the shorthand goes under the name the way the owner's reference
+   * UI prints it. It lives exactly as long as `medicineId` does.
+   */
+  it("P27a: a picked line shows the product's strength, form and code", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+
+    expect(await screen.findByTestId("rx-shorthand-0")).toHaveTextContent("[1 g | Oral tablet | D10146]");
+  });
+
+  it("P27b: typing over the name drops the shorthand with the id it described", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+    await screen.findByTestId("rx-shorthand-0");
+
+    await user.type(screen.getByLabelText("Drug"), "x");
+
+    // What is shown must not outlive the pick it describes.
+    expect(screen.queryByTestId("rx-shorthand-0")).toBeNull();
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions").length).toBeGreaterThan(0); });
+    const body = bodiesOf("POST", "/api/opd/visits/enc-1/prescriptions")[0] as { lines: { medicineId: string | null }[] };
+    expect(body.lines[0]!.medicineId).toBeNull();
+  });
+
+  it("P27c: a hand-typed line shows no shorthand, which is how a doctor tells the two apart", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(screen.getByLabelText("Drug"), "Syp Ambroxol");
+
+    expect(screen.queryByTestId("rx-shorthand-0")).toBeNull();
+  });
+
   it("P26b: a second tap on a chosen pill clears it, so a wrong tap costs one tap", async () => {
     mockRoutes(drugRoutes());
     const user = userEvent.setup();
