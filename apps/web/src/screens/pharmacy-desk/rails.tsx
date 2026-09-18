@@ -167,7 +167,6 @@ export function QueueRail({
                 <span style={{ display: "flex", gap: 5, marginTop: 5, flexWrap: "wrap" }}>
                   {m.hold.kind === "theirs" ? <span className="pill">{t("pharmacyDesk.heldBy", { name: m.hold.name })}</span> : null}
                   {m.hold.kind === "mine" ? <span className="pill on">{t("pharmacyDesk.yours")}</span> : null}
-                  {row.scheduled ? <span className="pill rd">{t("pharmacyDesk.scheduled")}</span> : null}
                   {row.patient.restricted ? <span className="pill gd">{t("pharmacyDesk.sealedRecord")}</span> : null}
                   {row.transcribedBy !== null && row.transcribedBy !== undefined && row.slipConfirmedBy === null
                     ? <span className="pill gd">{t("pharmacyDesk.slipToConfirm")}</span> : null}

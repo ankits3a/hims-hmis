@@ -6,7 +6,8 @@ import { useAuth } from "../../lib/auth";
 import { newIdempotencyKey } from "../../lib/api";
 import { usePaletteOptional } from "../../components/command-palette";
 import {
-  claimDispense, fetchCounterSummary, fetchDispense, fetchQueue, findAtCounter, pharmacyErrorCode, pharmacyErrorText,
+  claimDispense, declineLine, fetchCounterSummary, fetchDispense, fetchQueue, findAtCounter, pharmacyErrorCode, pharmacyErrorText,
+  pickDispense, verifyDispense,
 } from "../../lib/pharmacy-api";
 import { istClock, istDateLabel } from "../desk-one/model";
 import { holdOf } from "./model";
@@ -14,7 +15,8 @@ import { say, useDeskLog } from "./log";
 import { Dossier, QueueOverlay, QueueRail } from "./rails";
 import { TicketPanel } from "./ticket";
 import type { DeskLog } from "./log";
-import type { WireFindResult, WirePatientSummary } from "../../lib/pharmacy-api";
+import type { CollectResult } from "./lines";
+import type { PickLine, VerifyLine, WireDispense, WireFindResult, WirePatientSummary } from "../../lib/pharmacy-api";
 import "../../styles/paper-pine.css";
 import "../desk-one/desk-one.css";
 
@@ -66,6 +68,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
   const [overlay, setOverlay] = useState<"queue" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const log = useDeskLog();
   const [clock, setClock] = useState(() => istClock());
   const [now, setNow] = useState(() => new Date());
@@ -150,11 +153,64 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     if (claimed || await take(dispenseId, "token", who)) hold(dispenseId);
   }, [hold, take]);
 
+  const settle = useCallback((d: WireDispense): void => {
+    qc.setQueryData(["pharmacy", "dispense", d.id], d);
+    void qc.invalidateQueries({ queryKey: ["pharmacy", "queue"] });
+    void qc.invalidateQueries({ queryKey: ["pharmacy", "summary"] });
+  }, [qc]);
+
+  /**
+   * PD-4 — the last settle: verify (skipped when a previous attempt got that far) and then pick. A
+   * refusal that names a line is handed back ON that line; the ticket is re-read either way, because
+   * a verify that succeeded before a pick that failed has changed the ticket (it now has a number).
+   */
+  const collect = useCallback(async (verify: VerifyLine[] | null, pick: PickLine[]): Promise<CollectResult> => {
+    if (inHandId === null) return { ok: false, lineErrors: {}, message: null };
+    setBusy(true);
+    try {
+      if (verify !== null) {
+        const v = await verifyDispense(inHandId, verify, newIdempotencyKey());
+        settle(v);
+        say(t("pharmacyDesk.log.verified", { no: v.dispenseNo ?? "" }));
+      }
+      const p = await pickDispense(inHandId, pick, newIdempotencyKey());
+      settle(p);
+      say(t("pharmacyDesk.log.collected", { count: p.lines.filter((l) => l.pickedBatch != null).length }));
+      return { ok: true };
+    } catch (e) {
+      await qc.invalidateQueries({ queryKey: ["pharmacy", "dispense", inHandId] });
+      const text = pharmacyErrorText(e, t);
+      say(text, "err");
+      return { ok: false, lineErrors: lineErrorsOf(e, text), message: text };
+    } finally {
+      setBusy(false);
+    }
+  }, [inHandId, qc, settle, t]);
+
+  const decline = useCallback(async (lineIdx: number, reason: string): Promise<boolean> => {
+    if (inHandId === null) return false;
+    setError(null);
+    try {
+      const d = await declineLine(inHandId, lineIdx, reason);
+      settle(d);
+      say(t("pharmacyDesk.log.declined", { line: lineIdx + 1, reason }), "warn");
+      return true;
+    } catch (e) {
+      const text = pharmacyErrorText(e, t);
+      setError(text);
+      say(text, "err");
+      return false;
+    }
+  }, [inHandId, settle, t]);
+
   /* PD-D6 — the keys this desk draws, and no others. */
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === "Escape") {
         if (overlay !== null) { setOverlay(null); return; }
+        /* Esc in a field lets go of the field; a second Esc clears the desk. A half-ticked ticket is
+           one keystroke from being thrown away otherwise. */
+        if (typingIn(e.target)) { (e.target as HTMLElement).blur(); return; }
         if (inHandId !== null || candidates !== null) clearDesk();
         return;
       }
@@ -212,6 +268,9 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
               candidates={candidates}
               error={error}
               note={note}
+              busy={busy}
+              onCollect={collect}
+              onDecline={decline}
               onFind={(q) => void find(q)}
               onTake={(id, who) => void takeHere(id, who, false)}
               onClear={clearDesk}
@@ -237,6 +296,20 @@ function heldBy(e: unknown): string | null {
   const body = (e as { body?: { detail?: { status?: unknown; claimedByName?: unknown } } }).body;
   const name = body?.detail?.claimedByName;
   return body?.detail?.status === "claimed" && typeof name === "string" ? name : null;
+}
+
+/**
+ * The refusals that name a line — `detail.lineIdx` (short stock, a quantity, a scan, a batch) or the
+ * allergy/interaction `hits` — as sentences on those lines. Anything else is the ticket's.
+ */
+function lineErrorsOf(e: unknown, text: string): Record<number, string> {
+  const detail = (e as { body?: { detail?: { lineIdx?: unknown; hits?: unknown } } }).body?.detail;
+  const out: Record<number, string> = {};
+  if (typeof detail?.lineIdx === "number") out[detail.lineIdx] = text;
+  if (Array.isArray(detail?.hits)) {
+    for (const h of detail.hits as { lineIdx?: unknown }[]) if (typeof h.lineIdx === "number") out[h.lineIdx] = text;
+  }
+  return out;
 }
 
 /** PD-1 / E3 — a sealed record this reader may not open is refused as that, not as "not found". */

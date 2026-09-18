@@ -72,7 +72,12 @@ export type WireDispenseLine = {
   fefoOverride: boolean; pickNote: string | null;
   /** Pharmacy P3: a component of this line's medicine is not yet reviewed. Absent from an older server. */
   partlyChecked?: boolean;
+  /** PD-4 — the sellable batches an OPEN line's pick would draw from, earliest expiry first. Absent from an older server. */
+  batches?: WireBatch[];
+  /** PD-4 — once picked, the batch it was given from. Absent from an older server. */
+  pickedBatch?: { batchNo: string; expiryDate: string | null } | null;
 };
+export type WireBatch = { batchId: string; batchNo: string; expiryDate: string | null; available: number };
 export type WirePatientSummary = { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean };
 export type WireDispense = {
   id: string; status: string; dispenseNo: string | null; orderId: string | null; prescriptionId: string; prescriptionVersion: number;

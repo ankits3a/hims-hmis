@@ -8,7 +8,8 @@ import { prescriptionIssued } from "../opd";
 import { claimDispense, findAtCounter } from "./claim";
 import { handlePrescriptionIssued } from "./consumers";
 import { getDispense } from "./queue";
-import { cancelDispense } from "./verify";
+import { pickDispense } from "./pick";
+import { cancelDispense, verifyDispense } from "./verify";
 import type { PharmacyFixture } from "../../../test/helpers/pharmacy";
 import type { Db } from "../../kernel/db/client";
 
@@ -57,9 +58,16 @@ describe("an open line's batches, and the exit from an abandoned claim (PD-4)", 
     const { id } = await claimedBy(fx.pharmacist.actor);
 
     const view = await getDispense(db, fx.pharmacist.actor, id, MON2);
+    expect(view.lines[0]!.pickedBatch).toBeNull();
     expect(view.lines[0]!.batches).toEqual([
       { batchId: expect.any(String) as unknown, batchNo: "CR-SOON", expiryDate: "2026-08-29", available: 20 },
       { batchId: expect.any(String) as unknown, batchNo: "CR-LATE", expiryDate: "2028-01-31", available: 200 },
     ]);
+
+    /* and once picked, the line names the batch it was GIVEN from — the right column of the desk */
+    await verifyDispense(db, fx.pharmacist.actor, fx.decls, id, { lines: [{ lineIdx: 0, qtyBase: 6 }] }, MON2);
+    const picked = await pickDispense(db, fx.pharmacist.actor, fx.decls, id, {}, MON2);
+    expect({ batches: picked.lines[0]!.batches, pickedBatch: picked.lines[0]!.pickedBatch })
+      .toEqual({ batches: [], pickedBatch: { batchNo: "CR-SOON", expiryDate: "2026-08-29" } });
   });
 });

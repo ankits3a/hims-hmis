@@ -5,7 +5,7 @@ import { opdPrescriptions, pharmacyDispenseLines, pharmacyDispenses, users } fro
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { withTx } from "../../kernel/db/client";
 import { medicinesByIds, unreviewedSaltIds } from "../formulary";
-import { availableQty, itemsByIds, itemUomRows, sellableBatchesByItem } from "../materials";
+import { availableQty, getBatch, itemsByIds, itemUomRows, sellableBatchesByItem } from "../materials";
 import { getPatient, getPatientSummaries, listAllergies } from "../patients";
 import { dispenseQueued } from "./events";
 import { PharmacyError } from "./errors";
@@ -190,6 +190,8 @@ export type DispenseLineView = {
    * than at the hand-over, where it is a refund. `availableQty`'s predicate, one definition.
    */
   batches: { batchId: string; batchNo: string; expiryDate: string | null; available: number }[];
+  /** PD-4 — once picked, the batch the line was GIVEN from, which the desk prints beside it. */
+  pickedBatch: { batchNo: string; expiryDate: string | null } | null;
 };
 
 
@@ -294,6 +296,7 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
     const om = l.orderedMedicineId === null ? undefined : medicines.get(l.orderedMedicineId);
     const dm = l.dispensedMedicineId === null ? undefined : medicines.get(l.dispensedMedicineId);
     const item = l.itemId === null ? undefined : items.get(l.itemId);
+    const picked = l.batchId === null ? undefined : await getBatch(db, l.batchId);
     let uoms: UomRow[] = [];
     let saleable = false;
     let available: number | null = null;
@@ -324,7 +327,8 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
       orderItemId: l.orderItemId, invoiceLineId: l.invoiceLineId, unitPaise: l.unitPaise, priceWinner: l.priceWinner,
       fefoOverride: l.fefoOverride, pickNote: l.pickNote,
       partlyChecked: (dm ?? om)?.salts.some((s) => unreviewed.has(s.saltId)) ?? false,
-      batches: l.status === "open" && l.itemId !== null ? (batchesByItem.get(l.itemId) ?? []) : [],
+      batches: l.status === "open" && l.itemId !== null && l.batchId === null ? (batchesByItem.get(l.itemId) ?? []) : [],
+      pickedBatch: picked === undefined ? null : { batchNo: picked.batchNo, expiryDate: picked.expiryDate },
     });
   }
   return {

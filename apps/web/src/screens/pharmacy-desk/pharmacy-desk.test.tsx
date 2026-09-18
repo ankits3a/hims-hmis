@@ -170,9 +170,8 @@ describe("PharmacyDesk (PD-3)", () => {
     expect(screen.getByTestId("desk-allergies")).toHaveTextContent("allergy · Amoxicillin");
     expect(screen.getByTestId("desk-flow")).toHaveTextContent("collect from the shelf");
     const mox = screen.getByTestId("desk-line-0");
-    expect(mox).toHaveTextContent("1 cap · 1-0-1 · × 5d");
-    expect(mox).toHaveTextContent("200 on the shelf");
-    expect(screen.getByTestId("desk-line-1")).toHaveTextContent("the catalogue could not place this line");
+    expect(mox).toHaveTextContent("1-0-1 × 5d");
+    expect(screen.getByTestId("desk-line-1")).toHaveTextContent(/the catalogue could not place this line/i);
     expect(screen.getByTestId("desk-settled")).toHaveTextContent("0 of 2 settled");
   });
 
