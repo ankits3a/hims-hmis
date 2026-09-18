@@ -79,15 +79,21 @@ export type WireDispense = {
   encounterId: string; storeResourceId: string | null; scheduled: boolean; invoiceId: string | null; identityConfirmedVia: string | null;
   claimedAt: string | null; verifiedAt: string | null; pickedAt: string | null; billedAt: string | null; handedOverAt: string | null;
   cancelReason: string | null; patient: WirePatientSummary; allergies: { substance: string; severity: string | null }[]; lines: WireDispenseLine[];
+  /** PD-1 — who holds it. Absent from an older server. */
+  claimedBy?: string | null; claimedByName?: string | null;
 };
 export type WireQueueRow = {
   dispenseId: string; status: string; dispenseNo: string | null; scheduled: boolean; lineCount: number;
   createdAt: string; claimedAt: string | null; patient: WirePatientSummary;
+  /** FD-31 — who typed a paper slip, and whether a pharmacist has cross-confirmed it. */
+  transcribedBy?: string | null; slipConfirmedBy?: string | null;
+  /** PD-1 — who holds a claimed ticket. Absent from an older server. */
+  claimedBy?: string | null; claimedByName?: string | null;
 };
 export type WireFindResult =
   | { kind: "dispense"; door: string; dispense: WireDispense }
   | { kind: "patients"; door: "uhid"; patients: WirePatientSummary[] }
-  | { kind: "none"; door: string; reason: "not_found" | "qr_invalid" | "no_prescription_today" };
+  | { kind: "none"; door: string; reason: "not_found" | "qr_invalid" | "no_prescription_today" | "restricted" };
 export type WireAlternative = { medicineId: string; brandName: string; strengthLabel: string | null; form: string; itemId: string; itemCode: string; available: number };
 
 export async function fetchQueue(): Promise<WireQueueRow[]> {

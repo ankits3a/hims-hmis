@@ -1,13 +1,13 @@
 import { and, desc, eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { MON2, issueRx, line, seedPharmacyBase } from "../../../test/helpers/pharmacy";
-import { mkPatient } from "../../../test/helpers/opd";
+import { mkPatient, testCfg } from "../../../test/helpers/opd";
 import { withTx } from "../../kernel/db/client";
 import { events } from "../../kernel/db/schema";
 import { prescriptionIssued } from "../opd";
-import { claimDispense } from "./claim";
+import { claimDispense, findAtCounter } from "./claim";
 import { handlePrescriptionIssued } from "./consumers";
-import { listQueue } from "./queue";
+import { getDispense, listQueue } from "./queue";
 import type { PharmacyFixture } from "../../../test/helpers/pharmacy";
 import type { Db } from "../../kernel/db/client";
 
@@ -52,6 +52,13 @@ describe("the counter's queue — who holds a ticket, and who is on it (PD-1)", 
     expect(held).toMatchObject({ status: "claimed", claimedBy: fx.pharmacist.id, claimedByName: "ph.mehta" });
   });
 
+  it("E1 — a claimed ticket opened by another pharmacist names its holder on the ticket itself", async () => {
+    const id = await queued("Crocin 500", fx.med.crocin);
+    expect(await getDispense(db, fx.incharge.actor, id, MON2)).toMatchObject({ claimedBy: null, claimedByName: null });
+    await claimDispense(db, fx.pharmacist.actor, { dispenseId: id, door: "token" }, MON2);
+    expect(await getDispense(db, fx.incharge.actor, id, MON2)).toMatchObject({ claimedBy: fx.pharmacist.id, claimedByName: "ph.mehta" });
+  });
+
   it("E1 — the pharmacist who loses the claim is told WHO won it, not only that they lost", async () => {
     await queued("Crocin 500", fx.med.crocin);
     const [row] = await listQueue(db, fx.incharge.actor, { serviceDate: TODAY });
@@ -78,6 +85,17 @@ describe("the counter's queue — who holds a ticket, and who is on it (PD-1)", 
     expect(rows.find((r) => r.patient.id === sealed.id)?.patient).toEqual({
       id: sealed.id, uhid: sealed.uhid, name: null, alias: "Patient R-17", restricted: true,
     });
+  });
+
+  it("E3b — a sealed patient's SIGNED slip scanned by a pharmacist who may not open it says RESTRICTED, not 'not found'", async () => {
+    /* The slip is a signed capability and the patient is standing at the window holding it:
+       `verifyPrescriptionQr` has just proved the prescription exists, so a null from the reader's
+       own `getPrescription` has one meaning. `getDispense`'s "unknown" for an invisible patient is
+       a different, deliberate rule (an id is not a capability) and is untouched. */
+    const sealed = await mkPatient(db, fx.clerk.actor, { name: "Real Name", phone: "9876500002", isConfidential: true, alias: "Patient R-18" });
+    const { issued } = await issueRx(db, fx, [line({ drug: "Calpol 500", medicineId: fx.med.calpol })], { patientId: sealed.id });
+    expect(await findAtCounter(db, testCfg, fx.pharmacist.actor, issued.qrPayload, MON2))
+      .toEqual({ kind: "none", door: "rx_qr", reason: "restricted" });
   });
 
   it("E3, THE REAL DEFECT — a sealed ticket this pharmacist may not open is refused as RESTRICTED, never as 'not found'", async () => {

@@ -25,7 +25,7 @@ export type CounterDoor = "rx_qr" | "patient_qr" | "token" | "uhid";
 export type FindResult =
   | { kind: "dispense"; door: CounterDoor; dispense: DispenseView }
   | { kind: "patients"; door: "uhid"; patients: { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean }[] }
-  | { kind: "none"; door: CounterDoor; reason: "not_found" | "qr_invalid" | "no_prescription_today" };
+  | { kind: "none"; door: CounterDoor; reason: "not_found" | "qr_invalid" | "no_prescription_today" | "restricted" };
 
 /**
  * PLAN 16c D4 — ONE FIELD, THREE DOORS (17c D4's shape). What the pharmacist types or scans decides
@@ -47,7 +47,12 @@ export async function findAtCounter(db: Db, cfg: AppConfig, actor: Actor, q: str
     const v = await verifyPrescriptionQr(db, cfg, actor, text);
     if (!v.ok) return { kind: "none", door: "rx_qr", reason: "qr_invalid" };
     const rx = await getPrescription(db, actor, v.prescription.id);
-    if (rx === null) return { kind: "none", door: "rx_qr", reason: "not_found" };
+    /*
+      PD-3 / E3b — the signature has just proved this prescription exists, so a null from the
+      reader's own read has one meaning: a sealed patient this pharmacist may not open. The patient
+      is at the window holding the slip; "not found" would send them away with a real prescription.
+    */
+    if (rx === null) return { kind: "none", door: "rx_qr", reason: "restricted" };
     return { kind: "dispense", door: "rx_qr", dispense: await ensureQueued(db, actor, rx, now) };
   }
 

@@ -49,7 +49,13 @@ Indian-corporate-hospital answer, taken and marked.
   worse than none (`desk-one.tsx:1111-1123`).
 - **PD-D7. Route `/pharmacy/desk` and `/pharmacy/desk/:dispenseNo`.** The owner's queue popup opens
   a ticket in a NEW TAB, which requires the ticket to be addressable. `/pharmacy/counter` stays
-  until the desk replaces it, then redirects.
+  until the desk replaces it, then redirects. **DECIDED (PD-3): the path carries the DISPENSE ID,
+  not the number** — a waiting ticket has no number until verify (PD-D8), and an address that
+  exists only after the second step cannot be the address of the first.
+- **PD-D23. A click on the line claims through the `token` door.** The claim event pins
+  `door ∈ {rx_qr, patient_qr, token, uhid}`, and widening an event contract to record "clicked a
+  row" buys analytics nobody has asked for. The queue IS today's line of visits, which is what the
+  token door means. DECIDED (PD-3).
 
 ### The ticket
 
@@ -134,6 +140,13 @@ Numbered because each one owes a test. **F** = must fail first against the code 
 
 ### The ticket
 - **E1** Two pharmacists claim one ticket. Exclusive already; the loser must see WHO, not a 409. **F**
+- **E1b** FOUND BY THE PD-3 BROWSER WALK, past every green suite: the claim is exclusive and
+  NOTHING AFTER IT IS. `verify`, `pick`, `bill` and `handover` check the status and never the
+  claimer, so a second pharmacist who opens somebody else's ticket by its URL can finish it — and
+  the H1 register records them. The desk now names the holder and offers nothing to press (PD-3),
+  but the server is the guard. **DECIDED, owed by PD-4 (which builds the controls that press):**
+  only the holder works a claimed ticket; the pharmacist in charge may RELEASE a claim with a
+  reason, which is also E6's missing exit. **F**
 - **E2** The doctor reissues while you hold v1. A *queued* v1 is cancelled by `enqueueDispense`; a
   *claimed* v1 survives and dies at verify with `prescription_superseded` — the worst possible
   timing, after the strips are pulled. The screen must learn of v2 when it lands and offer a
@@ -145,6 +158,10 @@ Numbered because each one owes a test. **F** = must fail first against the code 
   `reason: "not_found"` for a validly SIGNED QR whose patient is sealed to this reader
   (`claim.ts`, `rx === null` after `verifyPrescriptionQr` succeeded). Needs a new `reason` the screen
   renders, i.e. a locale string — **owed by PD-3**, which touches the locales and router anyway. **F**
+  **DONE in PD-3:** the QR door answers `reason: "restricted"` and the desk says whose clearance the
+  ticket needs. `getDispense`'s `unknown_dispense` for an invisible patient is NOT the same defect
+  and is left alone on purpose: it is the house rule that an id is not a capability (the 07a read
+  gate), where a signed slip in the patient's hand is proof the prescription exists.
 - **E4** One encounter carries v1-claimed and v2-queued at once — two rows, one patient. They must
   read as the same person, not a duplicate.
 - **E5** A prescription with no dispensable line (all Schedule X, or all free-text non-drugs) →

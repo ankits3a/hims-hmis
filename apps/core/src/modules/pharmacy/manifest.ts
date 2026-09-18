@@ -25,6 +25,8 @@ export const pharmacyManifest: ModuleManifest = {
   title: "Pharmacy",
   menu: [
     { label: "Dispense counter", path: "/pharmacy/counter", permission: "pharmacy.dispense.read" },
+    /** PHASE PD — the pharmacy desk, beside the counter until it replaces it (PD-D7). */
+    { label: "Pharmacy desk", path: "/pharmacy/desk", permission: "pharmacy.dispense.read" },
     { label: "Sale items", path: "/pharmacy/items", permission: "pharmacy.sale_items.manage" },
     { label: "Pharmacists", path: "/pharmacy/pharmacists", permission: "pharmacy.pharmacists.manage" },
     { label: "Reorder list", path: "/pharmacy/reorder", permission: "pharmacy.dispense.read" },

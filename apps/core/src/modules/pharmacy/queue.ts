@@ -203,6 +203,9 @@ export type DispenseView = {
   billedAt: Date | null;
   handedOverAt: Date | null;
   cancelReason: string | null;
+  /** PD-1 — who holds it, so a pharmacist who opens somebody else's ticket is told whose it is. */
+  claimedBy: string | null;
+  claimedByName: string | null;
   patient: { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean };
   allergies: { substance: string; severity: string | null }[];
   lines: DispenseLineView[];
@@ -316,6 +319,8 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
     prescriptionVersion: d.prescriptionVersion, encounterId: d.encounterId, storeResourceId: d.storeResourceId,
     scheduled: d.scheduled, invoiceId: d.invoiceId, identityConfirmedVia: d.identityConfirmedVia,
     claimedAt: d.claimedAt, verifiedAt: d.verifiedAt, pickedAt: d.pickedAt, billedAt: d.billedAt, handedOverAt: d.handedOverAt,
+    claimedBy: d.claimedBy,
+    claimedByName: d.claimedBy === null ? null : ((await userNames(db, [d.claimedBy])).get(d.claimedBy) ?? null),
     cancelReason: d.cancelReason,
     patient: { id: summary.id, uhid: summary.uhid, name: summary.name, alias: summary.alias, restricted: summary.restricted },
     allergies: allergies.map((a) => ({ substance: a.substance, severity: (a as { severity?: string | null }).severity ?? null })),
