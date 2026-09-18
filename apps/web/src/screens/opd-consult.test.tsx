@@ -3052,6 +3052,8 @@ describe("OpdConsult — the drug typeahead", () => {
     items: [
       { id: "m-pcm500", name: "Paracetamol 500 mg oral capsule", form: "Oral capsule", strength: "500 mg", code: "D7611", routeClass: "systemic", salts: ["Paracetamol"], prefix: true },
       { id: "m-pcm1g", name: "Paracetamol 1 g oral tablet", form: "Oral tablet", strength: "1 g", code: "D10146", routeClass: "systemic", salts: ["Paracetamol"], prefix: true },
+      // The case the second line EXISTS for: a brand whose name hides what is in it.
+      { id: "m-aug", name: "Augmentin 625", form: "Tablet", strength: "625 mg", code: "D1680", routeClass: "systemic", salts: ["Amoxicillin", "Clavulanic acid"], prefix: false },
     ],
   };
   function drugRoutes(over: Record<string, Handler> = {}): Record<string, Handler> {
@@ -3077,7 +3079,16 @@ describe("OpdConsult — the drug typeahead", () => {
     expect(callsTo("GET", "/api/formulary/medicines/search").at(-1)!.url).toContain("q=par");
   });
 
-  it("D2: the row shows the moiety, strength and the hospital's own code — not just a name", async () => {
+  /**
+   * D2 — WHAT THE ROW SAYS BEYOND THE NAME, AND NOTHING IT HAS ALREADY SAID.
+   *
+   * This asserted `Paracetamol · 500 mg · D7611` beside `Paracetamol 500 mg oral capsule`, and the
+   * owner named that on 2026-09-17: "remove the duplicacy in sentence while autosuggesting". The
+   * PROPERTY it was written for is unchanged — the row still tells a doctor more than the name, and
+   * the hospital's own code is still there, which is the part no name carries. What it no longer
+   * does is repeat the molecule, the strength and the form back at a doctor already reading them.
+   */
+  it("D2: the row adds the code a name cannot carry, and repeats nothing the name already says", async () => {
     mockRoutes(drugRoutes());
     const user = userEvent.setup();
     await openPanel(user);
@@ -3086,8 +3097,154 @@ describe("OpdConsult — the drug typeahead", () => {
 
     const row = await screen.findByTestId("rx-drug-0-hit-m-pcm500");
     expect(row).toHaveTextContent("Paracetamol 500 mg oral capsule");
-    expect(row).toHaveTextContent("Paracetamol · 500 mg · D7611");
-    expect(row).toHaveTextContent("Oral capsule");
+    expect(row).toHaveTextContent("D7611"); // still more than a name
+    expect(row.textContent).not.toMatch(/Paracetamol\s*·/); // and not the molecule twice
+    expect(row.textContent).not.toMatch(/500 mg\s*·/);
+
+    // The combination is the case the second line exists for, and it keeps everything.
+    const combo = await screen.findByTestId("rx-drug-0-hit-m-aug");
+    expect(combo).toHaveTextContent("Amoxicillin + Clavulanic acid · 625 mg · D1680");
+    expect(combo).toHaveTextContent("Tablet");
+  });
+
+  /**
+   * ═══ P26 — THE SIG DRAWER, AND THE PATH IT MUST NOT CLOSE ═══
+   *
+   * The pills are an ACCELERATOR over the line's own fields, never a gate. So these assert both
+   * halves: that a tap writes the field, AND that a doctor who ignores the drawer entirely can
+   * still type anything — `1-0-0 for 4 days` is the phase doc's own example. This lane has a scar
+   * where every test drove a field through its accelerator and the typed path broke unnoticed.
+   */
+  async function pickDrug(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(screen.getByLabelText("Drug"), "par");
+    await user.click(await screen.findByTestId("rx-drug-0-hit-m-pcm1g"));
+  }
+
+  it("P26a: picking a drug opens the drawer, and each pill writes the line's own field", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+
+    const drawer = await screen.findByTestId("sig-0-drawer");
+    expect(within(drawer).getByText("Paracetamol 1 g oral tablet")).toBeInTheDocument();
+
+    await user.click(within(drawer).getByTestId("sig-0-freq-BD"));
+    await user.click(within(drawer).getByTestId("sig-0-timing-afterFood"));
+    await user.click(within(drawer).getByTestId("sig-0-days-5"));
+
+    // Not the drawer's own state — the LINE's fields, which is all the prescription ever reads.
+    expect(screen.getByLabelText("Frequency")).toHaveValue("BD");
+    expect(screen.getByLabelText("Instructions")).toHaveValue("After food");
+    expect(screen.getByLabelText("Days")).toHaveValue(5);
+  });
+
+  /**
+   * A BROWSER WALK FOUND THIS AND THE SHIPPED TEST COULD NOT.
+   *
+   * D3 asserts the list is closed immediately after a pick, and it is. But the pick writes the
+   * drug's name into the field, which re-runs the search, and 180 ms later the answers arrive and
+   * reopen the list — over the sig drawer, swallowing the taps meant for its pills. jsdom never
+   * got that far; Chromium at 1280 px did. So this one WAITS.
+   */
+  it("P26e: the list does not reopen on top of the drawer after a pick", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+    await screen.findByTestId("sig-0-drawer");
+
+    // past the 180 ms debounce and the answer that follows it
+    await new Promise((r) => setTimeout(r, 450));
+
+    expect(screen.queryByTestId("rx-drug-0-hits")).toBeNull();
+  });
+
+  /**
+   * ═══ P27 — WHICH PARACETAMOL ═══
+   *
+   * The line shows a NAME. Two lines reading "Paracetamol" could be the 500 and the 650 and the
+   * screen would not say which, so the shorthand goes under the name the way the owner's reference
+   * UI prints it. It lives exactly as long as `medicineId` does.
+   */
+  it("P27a: a picked line shows the product's strength, form and code", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+
+    expect(await screen.findByTestId("rx-shorthand-0")).toHaveTextContent("[1 g | Oral tablet | D10146]");
+  });
+
+  it("P27b: typing over the name drops the shorthand with the id it described", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+    await screen.findByTestId("rx-shorthand-0");
+
+    await user.type(screen.getByLabelText("Drug"), "x");
+
+    // What is shown must not outlive the pick it describes.
+    expect(screen.queryByTestId("rx-shorthand-0")).toBeNull();
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions").length).toBeGreaterThan(0); });
+    const body = bodiesOf("POST", "/api/opd/visits/enc-1/prescriptions")[0] as { lines: { medicineId: string | null }[] };
+    expect(body.lines[0]!.medicineId).toBeNull();
+  });
+
+  it("P27c: a hand-typed line shows no shorthand, which is how a doctor tells the two apart", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(screen.getByLabelText("Drug"), "Syp Ambroxol");
+
+    expect(screen.queryByTestId("rx-shorthand-0")).toBeNull();
+  });
+
+  it("P26b: a second tap on a chosen pill clears it, so a wrong tap costs one tap", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+    const drawer = await screen.findByTestId("sig-0-drawer");
+
+    await user.click(within(drawer).getByTestId("sig-0-days-7"));
+    expect(screen.getByLabelText("Days")).toHaveValue(7);
+    await user.click(within(drawer).getByTestId("sig-0-days-7"));
+    expect(screen.getByLabelText("Days")).toHaveValue(null);
+  });
+
+  it("P26c: the drawer closes, and the doctor types what the pills do not offer", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+
+    const drawer = await screen.findByTestId("sig-0-drawer");
+    await user.click(within(drawer).getByTestId("sig-0-close"));
+    expect(screen.queryByTestId("sig-0-drawer")).toBeNull();
+
+    // THE MANUAL PATH — the phase doc's own example, typed, with no pill involved.
+    await user.type(screen.getByLabelText("Days"), "4");
+    await user.type(screen.getByLabelText("Instructions"), "alternate days, with milk");
+    expect(screen.getByLabelText("Days")).toHaveValue(4);
+    expect(screen.getByLabelText("Instructions")).toHaveValue("alternate days, with milk");
+  });
+
+  it("P26d: what the pills wrote is what the prescription POSTs", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+    const drawer = await screen.findByTestId("sig-0-drawer");
+    await user.click(within(drawer).getByTestId("sig-0-freq-TDS"));
+    await user.click(within(drawer).getByTestId("sig-0-days-3"));
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions").length).toBeGreaterThan(0); });
+    const body = bodiesOf("POST", "/api/opd/visits/enc-1/prescriptions")[0] as {
+      lines: { frequency: string; durationDays: number | null; medicineId: string | null }[];
+    };
+    expect(body.lines[0]).toMatchObject({ frequency: "TDS", durationDays: 3, medicineId: "m-pcm1g" });
   });
 
   it("D3: tapping a row fills the name AND the id — which is what makes the line checkable", async () => {

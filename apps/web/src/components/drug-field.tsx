@@ -43,6 +43,42 @@ import type { WireMedicineHit } from "../lib/formulary-api";
  * anything, and picking a row simply fills the name AND the id — which is what turns a line into
  * one the interaction and duplicate checks can reason about.
  */
+/**
+ * ═══ A SUGGESTION SAYS EACH THING ONCE ═══
+ *
+ * The row used to read, for one real catalogue entry:
+ *
+ *     Paracetamol 500 mg oral tablet
+ *     Paracetamol · 500 mg · D0230                          [Tablet]
+ *
+ * — the molecule, the strength and the form all repeated from the title the doctor is already
+ * reading. The owner's note of 2026-09-17 names it: remove the duplicacy while autosuggesting.
+ *
+ * The second line exists to say what the NAME does not. So a moiety already in the name is
+ * dropped, a strength already in the name is dropped, and the form pill is dropped when the name
+ * says the form — leaving the code, which is never in the name, and the moieties of a combination
+ * whose brand name hides them, which is the case the line was written for:
+ *
+ *     Augmentin 625                                         [Tablet]
+ *     Amoxicillin + Clavulanic acid · 625 mg · D1680
+ *
+ * Compared with the punctuation and spacing squashed out, because "500mg" in a name and "500 mg"
+ * in a column are the same fact written two ways, and only one of them should reach the doctor.
+ */
+const squash = (text: string): string => text.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+export function saysAlready(name: string, part: string | null): boolean {
+  if (part === null || part === "") return false;
+  const needle = squash(part);
+  return needle !== "" && squash(name).includes(needle);
+}
+
+export function detailOf(h: { name: string; salts: string[]; strength: string | null; code: string | null }): string {
+  const moieties = h.salts.filter((salt) => !saysAlready(h.name, salt)).join(" + ");
+  const strength = saysAlready(h.name, h.strength) ? null : h.strength;
+  return [moieties || null, strength, h.code].filter((x) => x !== null && x !== "").join(" · ");
+}
+
 export function DrugField({
   value, onPick, onText, placeholder, inputId,
 }: {
@@ -59,11 +95,23 @@ export function DrugField({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const asked = useRef("");
+  /**
+   * THE NAME THAT WAS JUST PICKED, so the list does not reopen on top of the doctor.
+   *
+   * A pick writes `hit.name` into the field, which changes `value`, which re-runs the search below
+   * — and 180 ms later the answers arrive and reopen the list the pick had just closed. In jsdom
+   * the assertion runs before that timer, so the shipped test saw a closed list and passed; a
+   * browser walk at 1280 px saw the list hanging over the sig drawer, swallowing the taps meant
+   * for it. Editing the name clears this, and the field behaves as it always did.
+   */
+  const picked = useRef<string | null>(null);
   const box = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const q = value.trim();
     asked.current = q;
+    if (picked.current === q) { setHits([]); setBusy(false); return; }
+    picked.current = null;
     if (q.length < 3) { setHits([]); setBusy(false); return; }
     let live = true;
     setBusy(true);
@@ -109,6 +157,15 @@ export function DrugField({
           data-testid={`${inputId}-hits`}
           style={{
             position: "absolute", zIndex: 20, top: 37, left: 0, right: 0, margin: 0, padding: 0,
+            /*
+              A FLOOR, BECAUSE THE COLUMN IS NOT THE LIST'S BUSINESS. Pinned left-to-right, this
+              list inherits the width of the Drug column — about 170 px at phone width, where a
+              browser walk showed "Amoxicillin + Clavulanic acid · 625 mg · D1680" wrapping onto
+              FOUR lines and the third suggestion cut off below the fold. The input may be narrow;
+              what it is offering must still be readable. Capped at 88vw so it cannot leave the
+              screen it just grew past.
+            */
+            minWidth: "min(300px, 88vw)",
             listStyle: "none", background: "var(--card)", border: "1px solid var(--line)",
             borderRadius: 7, boxShadow: "0 6px 18px rgba(19,36,32,.10)", maxHeight: 292, overflowY: "auto",
           }}
@@ -117,7 +174,7 @@ export function DrugField({
             <li key={h.id}>
               <button
                 type="button" data-testid={`${inputId}-hit-${h.id}`}
-                onClick={() => { onPick(h); setOpen(false); }}
+                onClick={() => { picked.current = h.name; onPick(h); setOpen(false); }}
                 style={{
                   display: "flex", width: "100%", gap: 10, alignItems: "baseline", padding: "7px 10px",
                   border: 0, borderTop: "1px solid var(--line2)", background: "none", cursor: "pointer",
@@ -132,7 +189,7 @@ export function DrugField({
                       : h.name}
                   </span>
                   <span className="mo" style={{ fontSize: 10.5, color: "var(--faint)" }}>
-                    {[h.salts.join(" + ") || null, h.strength, h.code].filter((x) => x !== null && x !== "").join(" · ")}
+                    {detailOf(h)}
                   </span>
                   {/* `=== false`, not `!`: an absent field is an older server saying nothing, not a warning. */}
                   {h.reviewed === false && (
@@ -145,7 +202,10 @@ export function DrugField({
                     </span>
                   )}
                 </span>
-                <span className="pill" style={{ flexShrink: 0 }}>{h.form}</span>
+                {/* The pill is dropped when the NAME already says the form — see `detailOf`. */}
+                {!saysAlready(h.name, h.form) && (
+                  <span className="pill" style={{ flexShrink: 0 }}>{h.form}</span>
+                )}
               </button>
             </li>
           ))}

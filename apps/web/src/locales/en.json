@@ -860,7 +860,7 @@
       "who": "Typed at the door from the paper slip. It is not a prescription until you issue it.",
       "refusedHint": "load it into the editor below to resolve this and issue."
     },
-    "drugPlaceholder": "type 3 letters — e.g. par, amox, clav",
+    "drugPlaceholder": "name, strength or code — e.g. par, para 500, amox clav, D0230",
     "complaintPlaceholder": "type a symptom, press Enter to add it",
     "complaintHint": "Enter adds exactly what you typed · → completes the suggestion · × removes a tag",
     "addAllergy": "+ Add allergy",
@@ -4235,6 +4235,20 @@
   "drugField": {
     "unreviewed": "not yet reviewed by pharmacy",
     "unreviewedTitle": "A component of this product has not been reviewed by pharmacy, so an allergy class or an interaction on that component cannot be checked."
+  },
+  "sigDrawer": {
+    "close": "Done",
+    "frequency": "How often",
+    "timing": "With food",
+    "duration": "For how long",
+    "days": "{{n}} days",
+    "hint": "Shortcuts into the fields above — type there for anything else.",
+    "timingOption": {
+      "afterFood": "After food",
+      "beforeFood": "Before food",
+      "withFood": "With food",
+      "emptyStomach": "Empty stomach"
+    }
   },
   "pharmacyH1": {
     "title": "Schedule H1 register",
