@@ -339,13 +339,16 @@ async function topUpShelf(db: Db, now: Date, report: PharmacyDayReport): Promise
 }
 
 /** A doctor who can prescribe: an existing profile (General Medicine first), or one made for a `doctor` holder. */
-async function prescriber(db: Db): Promise<{ doctorId: string; departmentId: string; actor: Actor }> {
+async function prescriber(db: Db, log: string[]): Promise<{ doctorId: string; departmentId: string; actor: Actor }> {
   const rows = await db.select({ doctorId: opdDoctors.id, userId: opdDoctors.userId, departmentId: opdDoctors.departmentId, dept: opdDepartments.code })
     .from(opdDoctors).innerJoin(opdDepartments, eq(opdDepartments.id, opdDoctors.departmentId))
     .innerJoin(roleAssignments, and(eq(roleAssignments.userId, opdDoctors.userId), eq(roleAssignments.roleKey, "doctor")))
     .where(and(eq(opdDoctors.active, true), eq(opdDepartments.active, true)));
   const found = rows.find((r) => r.dept === "MED") ?? rows[0];
-  if (found !== undefined) return { doctorId: found.doctorId, departmentId: found.departmentId, actor: { type: "user", id: found.userId } };
+  if (found !== undefined) {
+    log.push(`doctor of record: an existing ${found.dept} profile`);
+    return { doctorId: found.doctorId, departmentId: found.departmentId, actor: { type: "user", id: found.userId } };
+  }
 
   const [med] = await db.select().from(opdDepartments).where(eq(opdDepartments.code, "MED"));
   if (med === undefined) throw new Error("dev-pharmacy-standup: no MED department — run seed:opd first");
@@ -355,6 +358,7 @@ async function prescriber(db: Db): Promise<{ doctorId: string; departmentId: str
   const { doctorId } = await withTx(db, (tx) => createDoctor(tx, admin, {
     username: holder.username, displayName: `Dr ${holder.username}`, departmentId: med.id, specialty: "General Medicine",
   }));
+  log.push(`doctor of record: MED profile CREATED for ${holder.username} (opd_admin, createDoctor)`);
   return { doctorId, departmentId: med.id, actor: { type: "user", id: holder.id } };
 }
 
@@ -376,7 +380,7 @@ export async function standUpPharmacyDay(db: Db, cfg: AppConfig, now: Date = new
   const itemByMedicine = new Map(drugItems.filter((i) => i.formularyMedicineId !== null).map((i) => [i.formularyMedicineId as string, i]));
 
   const frontDesk = await holderOf(db, "front_office");
-  const doctor = await prescriber(db);
+  const doctor = await prescriber(db, report.ceremonies);
   const pharmacists = await holdersOf(db, "pharmacy");
   const second = pharmacists[1];
   if (second === undefined) {

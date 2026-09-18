@@ -65,6 +65,7 @@ describe("dev-pharmacy-standup — the demo QUEUE (PD-0)", () => {
     expect(report.registeredPharmacists).toEqual(["ph.mehta"]);
     expect(report.ceremonies).toEqual([
       "opd_visit: already active", "tariff: a version is already active, left alone",
+      "doctor of record: an existing MED profile",
     ]);
   });
 
