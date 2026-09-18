@@ -92,9 +92,9 @@ describe("dev-pharmacy-standup — the demo QUEUE (PD-0)", () => {
     // E17 — Schedule X refuses the whole claim, not the line.
     await expect(claimDispense(db, fx.incharge.actor, { dispenseId: ticket(report, "Schedule X — refused at the claim").dispenseId!, door: "token" }, at))
       .rejects.toMatchObject({ code: "schedule_x_not_dispensed_here" });
-    // E1 today — a second pharmacist is refused, and learns nothing of who holds it (PD-1's job).
+    // E1 — a second pharmacist is refused, and told who holds it (PD-1).
     await expect(claimDispense(db, fx.incharge.actor, { dispenseId: ticket(report, "claimed by a second pharmacist").dispenseId!, door: "token" }, at))
-      .rejects.toMatchObject({ code: "dispense_not_in_state" });
+      .rejects.toMatchObject({ code: "dispense_not_in_state", detail: { claimedByName: "ph.mehta" } });
     // The allergy recorded after the issue is met at verify, on the dispensed medicine.
     const allergic = ticket(report, "allergy collision").dispenseId!;
     await claimDispense(db, fx.pharmacist.actor, { dispenseId: allergic, door: "token" }, at);
@@ -109,6 +109,8 @@ describe("dev-pharmacy-standup — the demo QUEUE (PD-0)", () => {
     expect(again.tickets.map((t) => t.made)).toEqual(TICKETS.map(() => false));
     expect(again.queueRows).toBe(10);
     expect(again.tickets.map((t) => t.dispenseId)).toEqual(first.tickets.map((t) => t.dispenseId));
+    /* and a re-run still says who holds the claimed one — read off the queue row, not remembered */
+    expect(again.tickets.map((t) => t.claimedBy)).toEqual(first.tickets.map((t) => t.claimedBy));
     const phones = TICKETS.map((t) => t.person.phone);
     const people = await db.select({ phone: patients.phone }).from(patients);
     expect(people.filter((p) => phones.includes(p.phone ?? "")).length).toBe(10);

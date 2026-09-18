@@ -64,9 +64,16 @@ Indian-corporate-hospital answer, taken and marked.
   `dispense_not_in_state`, `claim.ts:182`) but `QueueRow` carries no `claimedBy`, so a second
   pharmacist learns only by being refused. Add `claimedBy` + `claimedByName`; the row dims and says
   "Vikas has this". The row is NOT hidden — the owner wants it visible and marked.
-- **PD-D10. The queue says when it is incomplete.** `listQueue` silently drops patients the actor
-  may not see (`getPatientSummaries`). A count that quietly excludes rows is a lie at a counter.
-  The reader returns `hiddenCount` and the rail prints "2 not shown — restricted".
+- **PD-D10. ~~The queue says when it is incomplete.~~ MEASURED FALSE 2026-09-19 — and the real
+  defect was the refusal, not the list.** `listQueue` does NOT drop a sealed patient:
+  `getPatientSummaries` returns them RESTRICTED (alias, no name) and the row is listed. The FK on
+  `pharmacy_dispenses.patient_id` means a summary can be missing only for a merge chain it cannot
+  follow, so `hiddenCount` would be a field that is always zero — withdrawn. What IS wrong: the
+  pharmacist who may not read sealed records sees the ticket and CLAIMING it answered
+  `unknown_prescription` — *"prescription … not found"* — about a prescription that exists.
+  **DECIDED (PD-1):** the claim refuses `permission_denied` with `detail.reason: "patient_restricted"`
+  and names who can take it; the grant is not widened. The desk dims a `patient.restricted` row
+  before the click (PD-3).
 
 ### The clinical gates
 
@@ -131,8 +138,13 @@ Numbered because each one owes a test. **F** = must fail first against the code 
   *claimed* v1 survives and dies at verify with `prescription_superseded` — the worst possible
   timing, after the strips are pulled. The screen must learn of v2 when it lands and offer a
   one-tap switch. **F**
-- **E3** A sealed or alias patient's ticket is absent from this pharmacist's queue entirely. The
-  count must not silently understate the line (PD-D10). **F**
+- **E3** ~~A sealed or alias patient's ticket is absent from this pharmacist's queue entirely.~~
+  **Measured false:** it is listed under the alias. The defect was the claim's "not found" for a
+  real prescription (PD-D10 as amended). Pinned both ways in `queue.test.ts`. **F** (the refusal)
+- **E3b** The same false sentence at the SCAN: `findAtCounter`'s `rx_qr` door answers
+  `reason: "not_found"` for a validly SIGNED QR whose patient is sealed to this reader
+  (`claim.ts`, `rx === null` after `verifyPrescriptionQr` succeeded). Needs a new `reason` the screen
+  renders, i.e. a locale string — **owed by PD-3**, which touches the locales and router anyway. **F**
 - **E4** One encounter carries v1-claimed and v2-queued at once — two rows, one patient. They must
   read as the same person, not a duplicate.
 - **E5** A prescription with no dispensable line (all Schedule X, or all free-text non-drugs) →
@@ -205,7 +217,7 @@ Numbered because each one owes a test. **F** = must fail first against the code 
 | Task | What | New server work |
 |---|---|---|
 | **PD-0** | **The demo QUEUE.** Synthetic patients, seen encounters, prescriptions, tickets — behind the existing production door. | seed only |
-| **PD-1** | `claimedBy` + `hiddenCount` on the queue row (PD-D9, PD-D10; E1, E3) | reader |
+| **PD-1** | `claimedBy` + `claimedByName` on the queue row and on the lost claim's 409; a sealed ticket refused as restricted, not "not found" (PD-D9, PD-D10 as amended; E1, E3) | reader |
 | **PD-2** | The ticket number at open (PD-D8) — gated on the owner | series |
 | **PD-3** | The desk shell: routes, three columns, stages, left dossier | web |
 | **PD-4** | The line list: two columns, tick-is-pick, sig shorthand, scan (E7–E13) | web |

@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
-import { opdPrescriptions, pharmacyDispenseLines, pharmacyDispenses } from "../../kernel/db/schema";
+import { opdPrescriptions, pharmacyDispenseLines, pharmacyDispenses, users } from "../../kernel/db/schema";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { withTx } from "../../kernel/db/client";
 import { medicinesByIds, unreviewedSaltIds } from "../formulary";
@@ -94,7 +94,24 @@ export type QueueRow = {
   transcribedBy: string | null;
   /** Set once a pharmacist has cross-confirmed the slip. `billDispense` refuses while it is null. */
   slipConfirmedBy: string | null;
+  /**
+   * ═══ PD-1 / PD-D9 — A CLAIMED TICKET NAMES ITS HOLDER ═══
+   *
+   * The claim is exclusive and always was; what was missing is that every OTHER pharmacist learnt
+   * so only by being refused. The row stays on their list — the owner wants it seen and marked, not
+   * hidden — and says whose it is, so "Vikas has this" is read off the list rather than off a 409.
+   */
+  claimedBy: string | null;
+  claimedByName: string | null;
 };
+
+/** Full names for a set of user ids — the `leakage.ts` read, one query for a page. */
+export async function userNames(db: Db | Tx, ids: readonly (string | null)[]): Promise<Map<string, string>> {
+  const wanted = [...new Set(ids.filter((id): id is string => id !== null))];
+  if (wanted.length === 0) return new Map();
+  const rows = await db.select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, wanted));
+  return new Map(rows.map((u) => [u.id, u.fullName]));
+}
 
 /** The counter's portal list: today's dispenses that are not finished, oldest first. Names are alias-safe. */
 export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: string }): Promise<QueueRow[]> {
@@ -118,6 +135,7 @@ export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: str
   const transcribedByRx = new Map(rxRows.map((r) => [r.id, r.transcribedBy]));
   const summaries = await getPatientSummaries(db, actor, rows.map((r) => r.patientId));
   const byRequested = new Map(summaries.map((s) => [s.requestedId, s]));
+  const holders = await userNames(db, rows.map((r) => r.claimedBy));
   const out: QueueRow[] = [];
   for (const r of rows) {
     const s = byRequested.get(r.patientId);
@@ -128,6 +146,8 @@ export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: str
       patient: { id: s.id, uhid: s.uhid, name: s.name, alias: s.alias, restricted: s.restricted },
       transcribedBy: transcribedByRx.get(r.prescriptionId) ?? null,
       slipConfirmedBy: r.slipConfirmedBy,
+      claimedBy: r.claimedBy,
+      claimedByName: r.claimedBy === null ? null : (holders.get(r.claimedBy) ?? null),
     });
   }
   return out;

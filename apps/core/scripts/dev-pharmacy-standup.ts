@@ -191,7 +191,9 @@ const ADULT_VITALS = { heightCm: 165, weightKg: 62, sbp: 124, dbp: 80, pulse: 76
 
 export type TicketReport = {
   teaches: string; name: string; uhid: string; made: boolean;
-  dispenseId: string | null; status: string | null; claimedBy: string | null;
+  dispenseId: string | null; status: string | null;
+  /** The holder's full name, as the queue row names it (PD-1). */
+  claimedBy: string | null;
   /** What makes this ticket teach what it says, read from the shelf the counter reads. */
   shelf: ShelfFact[];
 };
@@ -439,7 +441,6 @@ export async function standUpPharmacyDay(db: Db, cfg: AppConfig, now: Date = new
 
     if (ticket.claimedByAnother === true && second !== undefined) {
       await claimDispense(db, { type: "user", id: second.id }, { dispenseId, door: "token" }, step(5));
-      row.claimedBy = second.username;
     }
   }
 
@@ -455,6 +456,7 @@ export async function standUpPharmacyDay(db: Db, cfg: AppConfig, now: Date = new
     const q = statusByPatient.get(row.uhid);
     row.status = q?.status ?? null;
     row.dispenseId ??= q?.dispenseId ?? null;
+    row.claimedBy = q?.claimedByName ?? null;
     for (const l of ticket.lines) {
       const want = prefillQtyBase({ dose: l.dose, frequency: l.frequency, durationDays: l.durationDays });
       const medicineId = l.brand === null ? undefined : medicineIds.get(l.brand.toLowerCase());
