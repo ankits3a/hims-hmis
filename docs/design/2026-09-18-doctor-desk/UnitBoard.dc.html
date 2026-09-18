@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Unit board — desktop</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600;700&display=swap">
+<style>
+body{margin:0;font-family:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;background:#f4f7f4;color:#132420;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer}
+input{font:inherit}
+a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1160px; box-sizing: border-box; display: flex; flex-direction: column; background: #f4f7f4; color: #132420; font-size: 13.5px; line-height: 19px;">
+
+<header style="display: flex; align-items: center; gap: 16px; height: 52px; padding: 0 24px; background: #ffffff; border-bottom: 1px solid #dfe7e1;">
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 700; letter-spacing: .16em;">DOCTOR DESK</div>
+<div style="font-size: 13px; color: #5c6f66;">General Medicine · Unit II · Unit board</div>
+<span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 4px; background: #0e6b4e; color: #f2faf6; font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: .1em;">ON TAKE TILL SAT 08:00</span>
+<div style="flex-grow: 1;"></div>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #5c6f66;">Fri 18 Sep 2026 · 09:04</div>
+<button style="height: 32px; padding: 0 10px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; color: #132420; font-size: 12.5px;">command <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #5c6f66;">F8</span></button>
+<button style="height: 32px; padding: 0 10px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; color: #132420; font-size: 12.5px; font-weight: 600;">Dr. Anil Sharma</button>
+</header>
+
+<div style="flex-grow: 1; display: grid; grid-template-columns: 760px minmax(0, 1fr); gap: 20px; padding: 20px 24px; min-height: 0;">
+
+<section style="display: flex; flex-direction: column; gap: 12px; min-height: 0;">
+<div style="display: flex; align-items: baseline; justify-content: space-between;">
+<h1 style="margin: 0; font-size: 20px; font-weight: 600;">What Unit II owes, and who owes it</h1>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #5c6f66;">8 open · oldest first</div>
+</div>
+<div style="display: flex; flex-direction: column; background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px;">
+<div style="display: grid; grid-template-columns: 58px 1fr 120px 86px 170px; gap: 12px; padding: 9px 14px; border-bottom: 1px solid #dfe7e1; font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: .12em; color: #5c6f66;">
+<span>BED</span><span>WHAT IS OWED</span><span>WITH</span><span>AGE</span><span></span>
+</div>
+<sc-for list="{{ owed }}" as="o" hint-placeholder-count="8">
+<div style="display: grid; grid-template-columns: 58px 1fr 120px 86px 170px; gap: 12px; align-items: center; padding: 10px 14px; border-bottom: 1px solid #ecf1ed;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600;">{{ o.bed }}</span>
+<span style="display: flex; flex-direction: column; gap: 1px; min-width: 0;">
+<span style="font-weight: 600;">{{ o.what }}</span>
+<span style="font-size: 12px; color: #5c6f66;">{{ o.line }}</span>
+</span>
+<span style="font-weight: 500;">{{ o.who }}</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; {{ o.ageStyle }}">{{ o.age }}</span>
+<span style="display: flex; gap: 6px; justify-content: flex-end;">
+<button onClick="{{ o.nudge }}" style="height: 34px; padding: 0 12px; border-radius: 6px; font-size: 12.5px; font-weight: 600; {{ o.btnStyle }}">{{ o.btn }}</button>
+<button style="height: 34px; padding: 0 12px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; color: #132420; font-size: 12.5px;">Move</button>
+</span>
+</div>
+</sc-for>
+<div style="padding: 10px 14px; font-size: 12px; color: #5c6f66;">A nudge is a message from you, not from the machine. It lands at the top of that doctor's phone with your name on it, once.</div>
+</div>
+
+<div style="display: flex; flex-direction: column; background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px;">
+<div style="display: flex; align-items: baseline; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid #dfe7e1;">
+<h2 style="margin: 0; font-size: 15px; font-weight: 600;">Your people · this week</h2>
+<span style="font-size: 12px; color: #5c6f66;">Counts of acts, never of screens. Each doctor sees their own row. SRs see their JRs. You see the unit.</span>
+</div>
+<div style="display: grid; grid-template-columns: 170px 110px 70px 110px 120px 1fr; gap: 12px; padding: 8px 14px; border-bottom: 1px solid #ecf1ed; font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: .1em; color: #5c6f66;">
+<span>DOCTOR</span><span>NOW</span><span>OPEN</span><span>CRITICAL → ACT</span><span>SUMMARIES ≤24 H</span><span>YOUR LAST WORD</span>
+</div>
+<sc-for list="{{ people }}" as="p" hint-placeholder-count="6">
+<div style="display: grid; grid-template-columns: 170px 110px 70px 110px 120px 1fr; gap: 12px; align-items: center; padding: 9px 14px; border-bottom: 1px solid #ecf1ed;">
+<span style="display: flex; flex-direction: column;"><span style="font-weight: 600;">{{ p.name }}</span><span style="font-size: 11.5px; color: #5c6f66;">{{ p.role }}</span></span>
+<span style="font-size: 12.5px;">{{ p.now }}</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; font-weight: 600;">{{ p.open }}</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; {{ p.ackStyle }}">{{ p.ack }}</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; {{ p.sumStyle }}">{{ p.sum }}</span>
+<span style="font-size: 12.5px; color: #5c6f66;">{{ p.word }}</span>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 12px; min-height: 0;">
+<div style="display: flex; align-items: baseline; justify-content: space-between;">
+<h2 style="margin: 0; font-size: 20px; font-weight: 600;">Unit report · Thursday 17 Sep</h2>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #5c6f66;">sent 08:00 · nobody typed it</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 14px; padding: 18px; background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px;">
+<div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px;">
+<sc-for list="{{ census }}" as="c" hint-placeholder-count="5">
+<div style="display: flex; flex-direction: column; gap: 1px;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 700;">{{ c.v }}</span>
+<span style="font-size: 12px; color: #5c6f66;">{{ c.k }}</span>
+</div>
+</sc-for>
+</div>
+<div style="display: flex; flex-direction: column; border-top: 1px solid #ecf1ed;">
+<sc-for list="{{ lines }}" as="l" hint-placeholder-count="7">
+<div style="display: grid; grid-template-columns: 1fr 120px 150px; gap: 12px; align-items: baseline; padding: 9px 0; border-bottom: 1px solid #ecf1ed;">
+<span>{{ l.k }}</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 700; {{ l.style }}">{{ l.v }}</span>
+<span style="font-size: 12px; color: #5c6f66;">{{ l.note }}</span>
+</div>
+</sc-for>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 12px; background: #f4f7f4; border-radius: 6px;">
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: .14em; color: #5c6f66;">THE ONE THAT WENT LATE</div>
+<div style="font-size: 13px;">Troponin on G-233, critical at 03:12. JR Saurabh was clerking an admission in casualty; it climbed to SR Karan at 03:22, who acted at 03:31. <span style="font-weight: 600;">19 minutes.</span> The ladder worked. The question is one JR alone on a take night.</div>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; color: #5c6f66;">
+<span>Daily to you and the HOD · weekly to the Medical Superintendent · counts only, no patient name leaves the app</span>
+<button style="flex-shrink: 0; height: 34px; padding: 0 12px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; color: #132420; font-size: 12.5px; font-weight: 600;">Print</button>
+</div>
+</div>
+</section>
+
+</div>
+
+<div style="display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 24px; background: #132420;">
+<span style="width: 7px; height: 7px; border-radius: 4px; background: #35c48f;"></span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #9fc0b1;">ask —</span>
+<label for="ask-unit" style="position: absolute; width: 1px; height: 1px; overflow: hidden;">Ask the copilot</label>
+<input id="ask-unit" type="text" placeholder="&quot;is mahine kitne summary 24 ghante ke baad gaye, aur kiske?&quot;" style="flex-grow: 1; height: 34px; box-sizing: border-box; border: none; background: transparent; color: #d9efe4; font-family: 'IBM Plex Mono', monospace; font-size: 13px;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; color: #9fc0b1; border: 1px solid #2c443a; border-radius: 3px; padding: 1px 5px;">F2</span>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1160}}'>
+class Component extends DCLogic {
+  state = { nudged: {} };
+  renderVals() {
+    const nudged = (this.state && this.state.nudged) || {};
+    const late = 'color:#b23a30;font-weight:700;', calm = 'color:#5c6f66;', ink = 'color:#132420;', amber = 'color:#8a5a0b;font-weight:700;', good = 'color:#0e6b4e;font-weight:700;';
+    const off = 'background:#ffffff;color:#132420;border:1px solid #dfe7e1;';
+    const done = 'border:1px solid rgba(14,107,78,.35);background:rgba(14,107,78,.08);color:#0e6b4e;';
+    const owed = [
+      { id: 1, bed: 'G-207', what: 'Discharge summary', line: 'Patient left Thursday 11:40 · MRD is waiting for the file', who: 'JR Saurabh', age: '26 h', ageStyle: late },
+      { id: 2, bed: 'G-212', what: 'Discharge summary', line: 'Patient left Thursday 16:05', who: 'JR Saurabh', age: '17 h', ageStyle: calm },
+      { id: 3, bed: 'G-219', what: 'CT report unread', line: 'Reported 07:40 by Dr. S. Iyer', who: 'SR Neha', age: '1 h 24', ageStyle: calm },
+      { id: 4, bed: 'G-238', what: 'Senior review of new admission', line: 'Admitted 02:15 · 6-hour rule passed at 08:15', who: 'SR Neha', age: '49 m over', ageStyle: late },
+      { id: 5, bed: 'O-117', what: 'Referral from Orthopaedics', line: 'Pre-op fitness · theatre Saturday', who: 'unassigned', age: '1 h 09', ageStyle: calm },
+      { id: 6, bed: 'G-241', what: 'PMJAY query', line: 'Insurer wants the admission note · claim lapses at 14:00', who: 'SR Karan', age: 'due 14:00', ageStyle: amber },
+      { id: 7, bed: 'G-244', what: 'MLC register entry to countersign', line: 'OP poisoning · police intimation sent 00:10', who: 'Dr. Amit Kumar', age: '8 h', ageStyle: calm },
+      { id: 8, bed: 'G-204', what: 'Repeat platelet count', line: 'Ordered on round · sample not yet collected', who: 'JR Kriti', age: '35 m', ageStyle: calm },
+    ].map((o) => ({ ...o, btn: nudged[o.id] ? 'Nudged 09:04' : 'Nudge', btnStyle: nudged[o.id] ? done : off, nudge: () => this.setState({ nudged: { ...nudged, [o.id]: true } }) }));
+    const people = [
+      { name: 'Dr. Priya Verma', role: 'Associate Professor', now: 'Teaching · LT-2', open: '0', ack: '—', ackStyle: calm, sum: '—', sumStyle: calm, word: '' },
+      { name: 'Dr. Amit Kumar', role: 'Assistant Professor', now: 'Ward G-2', open: '1', ack: '—', ackStyle: calm, sum: '—', sumStyle: calm, word: '' },
+      { name: 'Dr. Neha Jha', role: 'Senior Resident', now: 'Ward round', open: '2', ack: '7 min', ackStyle: good, sum: '—', sumStyle: calm, word: 'Tue · case presentation · good' },
+      { name: 'Dr. Karan Mehta', role: 'Senior Resident', now: 'Casualty', open: '1', ack: '9 min', ackStyle: good, sum: '—', sumStyle: calm, word: '' },
+      { name: 'Dr. Pooja Mishra', role: 'Junior Resident · PG2', now: 'Ward G-2', open: '3', ack: '11 min', ackStyle: ink, sum: '9 of 9', sumStyle: good, word: 'Today · summary · good, teach from it' },
+      { name: 'Dr. Saurabh Choudhary', role: 'Junior Resident · PG1', now: 'Off · post-take', open: '2', ack: '14 min', ackStyle: ink, sum: '5 of 8', sumStyle: amber, word: 'On take 3 nights of the last 7' },
+    ];
+    const census = [
+      { v: '19', k: 'beds at midnight' }, { v: '6', k: 'admitted' }, { v: '3', k: 'went home' }, { v: '1', k: 'left against advice' }, { v: '0', k: 'deaths' },
+    ];
+    const lines = [
+      { k: 'Critical values, time from lab to a doctor acting', v: '8 min median', note: '5 values · 1 over 15 min', style: ink },
+      { k: 'New admissions seen by a senior within 6 hours', v: '5 of 6', note: 'G-238 still waiting', style: amber },
+      { k: 'Reports read within 4 hours of publishing', v: '11 of 12', note: '', style: ink },
+      { k: 'Discharge summaries signed within 24 hours', v: '1 of 3', note: 'both late ones: one JR', style: late },
+      { k: 'PMJAY queries answered in time', v: '2 of 2', note: '1 open today', style: ink },
+      { k: 'Unit II OPD, Thursday', v: '142 seen', note: '31 new · median wait 38 min', style: ink },
+      { k: 'Average stay of those who went home', v: '5.3 days', note: 'unit average 6.1', style: ink },
+    ];
+    return { owed, people, census, lines };
+  }
+}
+</script>
+</body>
+</html>
