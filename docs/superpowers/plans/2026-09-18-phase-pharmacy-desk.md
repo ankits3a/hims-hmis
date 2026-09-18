@@ -216,3 +216,71 @@ Numbered because each one owes a test. **F** = must fail first against the code 
 | **PD-9** | Authorisation for a blocked substitution (PD-D12; E14) | approvals |
 
 PD-0 first: nothing below it can be seen, demonstrated or browser-walked without a queue.
+
+## 7. PICKED FROM THE MARKET REFERENCE
+
+The owner supplied 17 screenshots of **Healthray** (`pharmacy.healthray.com`), a shipping Indian
+pharmacy product, on 2026-09-19 — archived at
+`/opt/hmis-context/reference/2026-09-19-healthray-pharmacy/` with an index. It is a retail-shaped
+product with a hospital bolted on; its counter is a spreadsheet, not a prescription. So its LAYOUT
+is not the model. Six things in it are, and each one is a gap in ours.
+
+### Taken into this phase
+
+- **PD-D18. A line says WHERE THE DRUG IS.** Their sale grid and item master both carry a `Loc.`
+  column — `rack 3`, `R-12`, `P1`. The pharmacist's slowest act is walking to the shelf, and nothing
+  in our system tells them where to walk: `items` has no bin. Add a store-scoped rack location and
+  print it on the line, beside the batch. This is the highest-value pick and it is small.
+- **PD-D19. Say when this batch's MRP is not last batch's.** Their entry row carries `OLD MRP` and
+  `MRP DIFF`. We compute `price_winner` across batch MRP, DPCO ceiling and tariff, which answers
+  "what may we charge" and not "why is this more than last month" — which is the question actually
+  asked at the window, by the patient, out loud.
+- **PD-D20. A draft you cannot find again is not saved.** Their toolbar has `Drafts` beside
+  `Save Draft`. PD-6 gains the list.
+- **PD-D21. Cost and margin are a PERMISSION, not a column.** Their Sale module gates seventeen acts
+  separately, `View Profit` among them (also `Edit GST`, `Edit Discount`, `Bill Lock`,
+  `Change Bill Date`). A counter pharmacist has no business seeing landed cost by default. Ours
+  currently has no margin surface at all — this decides it before one appears by accident.
+- **PD-D22. The patient's GSTIN belongs on the bill.** Their patient panel carries `GST No.`; a
+  patient buying on a company's account needs it for input credit, and it is a field, not a feature.
+
+### Taken, but not here
+
+- **The short book.** Their stock alert has two sources: `Stock Alert` (below minimum) and
+  **`Short Book`** — what somebody asked for and we did not have. Our declines record the refusal
+  against a prescription; a short book records unmet DEMAND, which is what procurement needs and
+  what a decline cannot be read as. → the reorder/procurement phase.
+- **Expiry grouped by SUPPLIER, with a "credit note created" flag.** Theirs has an `Item Wise` and a
+  `Supplier Wise` tab, because expired stock goes back to whoever sold it. Ours sorts by date, which
+  answers "what dies first" and not "who takes it back". → the shelf phase, and it needs the
+  purchase-return document materials has deferred.
+- **An amendment shown as the DOCUMENT, before and after.** Their activity log's `Changes` opens
+  `Old Receipt | New Receipt` side by side — whole bills, not a field diff. We hold an append-only
+  event ledger and can render exactly this, and it is a far better answer than a JSON changelog to
+  "what did this person change". → the reports phase.
+- **Min/Max per item,** beside our computed cover. A pharmacist's floor is a human override of an
+  average, and the two are complementary rather than rival.
+
+### Deliberately NOT taken
+
+- **Their entry model at THIS counter.** Type item → batch → qty → Enter, with the committed line
+  dropping below, is genuinely fast — and it is right for a counter where nobody knows what is
+  coming. At a prescription counter the lines are already known, so a checklist beats an entry grid.
+  It IS the right model for `/pharmacy/retail`, which exists; recorded there, not here.
+- **Negative stock.** Their stock alert shows `-498`, `-16`, `-1`. `stock_balances` has a
+  non-negative CHECK and keeps it: a shelf that can go negative is a shelf nobody can count.
+- **Margin on the line by default** — see PD-D21.
+- **Merge Items.** Tempting against a 103,383-row catalogue, and merging rows that carry stock,
+  ledger history and dispense records is a data migration, not a button.
+
+### Their back office, as a checklist for the second URL
+
+Their `Initialization` menu is the most complete list of what a pharmacy back office contains that
+we have seen: Stores · Users · Privileges · Stocks · Purchase Order · Stock Order · Transfer Stock ·
+Receive Stock · Department Stock Transfer · Label Print · Print Setting · Patient Deposit ·
+Purchase Credit Note · Other Voucher · Online Sales Order · Order Processing · Additional Bulk
+Discount · Payer Company Master · Department Master · Profiler · Pharmacy Expense · Settings ·
+Message Configuration · Option Tags · Add Initial Data. Their `Reports` menu is 28 items, of which
+**Tally export, operator-wise collection, non-moving, top-selling, loss booking and the GST
+register** are the ones we have no answer to. Both are input to the back-office phase, not to this
+one.
