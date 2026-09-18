@@ -134,6 +134,39 @@ const configSchema = z.object({
    * for the bad network day, not for the good one.
    */
   TRIAGE_TIMEOUT_MS: z.coerce.number().int().positive().default(6000),
+  /**
+   * ═══ FD-COPILOT — THE DESK COPILOT'S INTENT ROUTER ═══
+   *
+   * Its own keys rather than a reuse of `TRIAGE_*`, because the two are different jobs that happen
+   * to speak the same protocol: triage suggests a department to a clerk who can overrule it, and
+   * this decides which TOOL runs against a patient's record. A hospital may reasonably want one on
+   * and the other off, or the same model at two different budgets, and one shared key would make
+   * that a code change.
+   *
+   * ALL FOUR DEFAULTED OR OPTIONAL — the B1 scar the blocks above and below carry: no `.env` entry
+   * is required anywhere, on the server or in CI, and with `COPILOT_BASE_URL`/`COPILOT_API_KEY`
+   * unset the copilot answers from its phrasebook alone and the desk never learns the difference
+   * except in the long tail of phrasings.
+   *
+   * Measured on this box, 2026-09-17, on the real routing prompt over eight counter questions in
+   * English, Hinglish and Devanagari, including the owner's own two:
+   *
+   *     groq  openai/gpt-oss-120b   8/8 correct   356-571 ms   ← default
+   *
+   * Cheaper than triage per call: the prompt is a menu of five tool names and one masked sentence,
+   * and the reply is a dozen tokens. Only a question the phrasebook misses is ever sent, so spend
+   * is proportional to novelty rather than to traffic.
+   */
+  COPILOT_BASE_URL: z.string().url().optional(),
+  COPILOT_API_KEY: z.string().min(1).optional(),
+  COPILOT_MODEL: z.string().min(1).default("openai/gpt-oss-120b"),
+  /*
+   * SHORTER THAN TRIAGE'S SIX SECONDS, and deliberately. Triage runs while a clerk is still typing
+   * a complaint and has something else to look at; this runs after they have pressed Enter and are
+   * watching an empty answer box. 3 s is ~5x the worst call observed above, and a miss is an
+   * ordinary outcome — the desk says it did not understand, which is true and instant.
+   */
+  COPILOT_TIMEOUT_MS: z.coerce.number().int().positive().default(3000),
   NOTIFY_STUCK_AFTER_MS: z.coerce.number().int().positive().default(300000),
   // Plan 11a D6/D7 (retention). All three defaulted, same B1 scar as the block above: no .env
   // entry is required anywhere, on the server or in CI.
@@ -275,6 +308,8 @@ export type AppConfig = {
   environmentLabel: string | null;
   /** FD-8 — the triage advisor. `baseUrl`/`apiKey` null ⇒ the desk uses its own keyword table only. */
   triage: { baseUrl: string | null; apiKey: string | null; model: string; timeoutMs: number };
+  /** FD-COPILOT — the desk copilot's intent router. Null ⇒ phrasebook only, which is a supported way to run. */
+  copilot: { baseUrl: string | null; apiKey: string | null; model: string; timeoutMs: number };
   notifyStuckAfterMs: number;
   // Plan 11a D6/D7. `retentionEnabled` is FALSE unless an operator says otherwise, in as many
   // letters; `worker/jobs.ts` threads all three into `retentionSweep` through the registration,
@@ -336,6 +371,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       apiKey: parsed.TRIAGE_API_KEY ?? null,
       model: parsed.TRIAGE_MODEL,
       timeoutMs: parsed.TRIAGE_TIMEOUT_MS,
+    },
+    copilot: {
+      baseUrl: parsed.COPILOT_BASE_URL ?? null,
+      apiKey: parsed.COPILOT_API_KEY ?? null,
+      model: parsed.COPILOT_MODEL,
+      timeoutMs: parsed.COPILOT_TIMEOUT_MS,
     },
     notifyStuckAfterMs: parsed.NOTIFY_STUCK_AFTER_MS,
     retentionEnabled: parsed.RETENTION_ENABLED,

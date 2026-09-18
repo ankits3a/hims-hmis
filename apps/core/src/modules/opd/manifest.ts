@@ -1,6 +1,7 @@
 import { opdAppointmentsDeskProvider, opdDeskProvider } from "./desk-provider";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 import { opdSearchProviders } from "./search-providers";
+import { opdCopilotTools } from "./copilot-tools";
 
 /**
  * The OPD module's declared surface (spec §4): the fourteen `opd.*` permissions every route in the three
@@ -100,5 +101,11 @@ export const opdManifest: ModuleManifest = {
   // PLAN 11h T3 — doctors and departments on `opd.masters.read`, appointments on
   // `opd.appointments.read`. Patient confidentiality is NOT re-implemented here (DD1/DD3).
   search: opdSearchProviders,
+  /**
+   * FD-COPILOT — what the desk copilot may ask the OPD. Built in `./copilot-tools`, following the
+   * same style as `search` and `desk`: the arrays live in sibling files so this manifest stays a
+   * declaration rather than an implementation.
+   */
+  copilotTools: opdCopilotTools,
   subscriptions: [], // no dispatcher consumers in this plan; realtime rides the gateway's tail
 };

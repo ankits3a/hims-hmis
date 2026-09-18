@@ -4558,5 +4558,37 @@
       "pregnancyBleeding": "Bleeding in pregnancy — this is an emergency.",
       "action": "Do not book an appointment. Take the patient to the emergency room now and tell the duty doctor."
     }
+  },
+  "copilot": {
+    "answer": {
+      "notPermitted": "You do not have access to that. Ask whoever manages roles if you need it.",
+      "needSubject": "Which patient? Give me a UHID or the visit number from their slip.",
+      "failed": "I could not get an answer just now. Try the screen for this.",
+      "notUnderstood": "I did not understand that. I can tell you whether a patient has been seen, how the queues look, what a patient owes, and I can pull your day report.",
+      "noTool": "I understood the question, but nothing here answers it yet.",
+      "dayReport": "Your day report for {{date}} — {{sections}} sections, ready below.",
+      "dayReportProvisional": "Your day so far on {{date}} — {{sections}} sections, ready below. The day has not closed, so these figures can still change.",
+      "dayReportEmpty": "Nothing recorded under your name on {{date}} yet.",
+      "visitSeen": "Yes — seen by the doctor, and the visit is closed. Token {{token}}.",
+      "visitInConsult": "With the doctor right now. Token {{token}}.",
+      "visitAwaitingResults": "Seen by the doctor, now waiting on test results before the visit closes. Token {{token}}.",
+      "visitWaiting": "Not yet — waiting in the queue on token {{token}}.",
+      "visitRegistered": "Not yet — registered, but not in a queue yet.",
+      "visitAbandoned": "That visit was abandoned. Token {{token}}.",
+      "visitUnknownPatient": "I could not find that patient.",
+      "visitNoneToday": "That patient has no visit on {{date}}.",
+      "visitUnknown": "I could not find that visit.",
+      "queueShortest": "Shortest open line is {{doctor}} — {{waiting}} waiting, about {{minutes}} minutes.",
+      "queueNoneOpen": "No doctor is holding a clinic today.",
+      "uhidCheckFailed": "That UHID does not look right — check the digits. ({{uhid}})"
+    },
+    "report": {
+      "title": "Your day — {{date}}",
+      "provisional": "provisional",
+      "download": "Download CSV",
+      "downloadFailed": "The download did not start. Try again, or use My Day.",
+      "dismiss": "Close",
+      "emptySection": "Nothing in this section."
+    }
   }
 }

@@ -980,7 +980,15 @@ export async function counterState(db: Db, encounterId: string): Promise<Counter
 
 export async function listVisits(
   db: Db,
-  filter: { status?: OpdVisitState; departmentId?: string; doctorId?: string; serviceDate?: string },
+  /**
+   * `patientId` added by FD-COPILOT. The desk copilot answers "has this patient been seen today?" —
+   * one patient, one day — and without this filter the only way to ask was to fetch the whole day
+   * and filter in memory, against a default cap of 200 rows. On a quiet morning that is merely
+   * wasteful; on a busy one it silently TRUNCATES, and the copilot would answer "no visit today"
+   * about somebody sitting in the waiting room. A filter the database can apply is the difference
+   * between a right answer and a plausible one.
+   */
+  filter: { status?: OpdVisitState; departmentId?: string; doctorId?: string; serviceDate?: string; patientId?: string },
   limit = 200,
 ): Promise<EncounterRow[]> {
   const clauses = [
@@ -988,6 +996,7 @@ export async function listVisits(
     filter.departmentId === undefined ? undefined : eq(opdEncounters.departmentId, filter.departmentId),
     filter.doctorId === undefined ? undefined : eq(opdEncounters.doctorId, filter.doctorId),
     filter.serviceDate === undefined ? undefined : eq(opdEncounters.serviceDate, filter.serviceDate),
+    filter.patientId === undefined ? undefined : eq(opdEncounters.patientId, filter.patientId),
   ].filter((c) => c !== undefined);
   return db.select().from(opdEncounters).where(clauses.length === 0 ? undefined : and(...clauses)).orderBy(asc(opdEncounters.openedAt)).limit(limit);
 }
