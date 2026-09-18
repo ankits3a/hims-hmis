@@ -1,22 +1,24 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../lib/auth";
-import { newIdempotencyKey } from "../../lib/api";
+import { ApiError, newIdempotencyKey } from "../../lib/api";
+import { fetchCurrentSession } from "../../lib/billing-api";
 import { usePaletteOptional } from "../../components/command-palette";
 import {
-  claimDispense, declineLine, fetchCounterSummary, fetchDispense, fetchQueue, findAtCounter, pharmacyErrorCode, pharmacyErrorText,
-  pickDispense, verifyDispense,
+  billDispense, claimDispense, declineLine, fetchCounterSummary, fetchDispense, fetchQueue, findAtCounter, handOverDispense,
+  pharmacyErrorCode, pharmacyErrorText, pickDispense, previewBill, verifyDispense,
 } from "../../lib/pharmacy-api";
 import { istClock, istDateLabel } from "../desk-one/model";
-import { holdOf } from "./model";
+import { heldByAnother, holdOf, stageOf } from "./model";
+import { BillRail, heldUntil, rupees } from "./bill";
 import { say, useDeskLog } from "./log";
 import { Dossier, QueueOverlay, QueueRail } from "./rails";
 import { TicketPanel } from "./ticket";
 import type { DeskLog } from "./log";
 import type { CollectResult } from "./lines";
-import type { PickLine, VerifyLine, WireDispense, WireFindResult, WirePatientSummary } from "../../lib/pharmacy-api";
+import type { PickLine, Tender, VerifyLine, WireDispense, WireFindResult, WirePatientSummary } from "../../lib/pharmacy-api";
 import "../../styles/paper-pine.css";
 import "../desk-one/desk-one.css";
 
@@ -69,6 +71,23 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [billError, setBillError] = useState<string | null>(null);
+  const [handOverError, setHandOverError] = useState<string | null>(null);
+  /*
+    E26 — ONE idempotency key per money act per ticket, kept across a NETWORK failure (no answer:
+    the charge may or may not have landed, and the retry must be the same request) and dropped when
+    the server ANSWERED (a refusal is final for that body; a corrected tender is a new request).
+  */
+  const moneyKeys = useRef(new Map<string, string>());
+  const keyFor = (act: string, id: string): string => {
+    const k = `${act}:${id}`;
+    const existing = moneyKeys.current.get(k);
+    if (existing !== undefined) return existing;
+    const fresh = newIdempotencyKey();
+    moneyKeys.current.set(k, fresh);
+    return fresh;
+  };
+  const answered = (act: string, id: string, e: unknown): void => { if (e instanceof ApiError) moneyKeys.current.delete(`${act}:${id}`); };
   const log = useDeskLog();
   const [clock, setClock] = useState(() => istClock());
   const [now, setNow] = useState(() => new Date());
@@ -89,6 +108,16 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     queryFn: () => fetchDispense(inHandId ?? ""),
     enabled: inHandId !== null,
     refetchInterval: 15_000,
+  });
+  const status = ticket.data?.status ?? null;
+  /* The pharmacist's OWN drawer — every receipt needs it, not only cash (E21, measured). A 403 reads as closed. */
+  const drawer = useQuery({ queryKey: ["billing", "session", "current"], queryFn: fetchCurrentSession, refetchInterval: 60_000, retry: false });
+  /* Priced at batch grain, so only once collected; the last answer stays in the cache after hand-over. */
+  const preview = useQuery({
+    queryKey: ["pharmacy", "bill", inHandId],
+    queryFn: () => previewBill(inHandId ?? ""),
+    enabled: inHandId !== null && (status === "picked" || status === "billed"),
+    retry: false,
   });
 
   const hold = useCallback((id: string): void => {
@@ -187,6 +216,51 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     }
   }, [inHandId, qc, settle, t]);
 
+  const takeMoney = useCallback(async (tenders: Tender[], changePaise: number): Promise<void> => {
+    if (inHandId === null) return;
+    setBusy(true); setBillError(null);
+    try {
+      const d = await billDispense(inHandId, { tenders, ...(changePaise > 0 ? { changeGivenPaise: changePaise } : {}) }, keyFor("bill", inHandId));
+      moneyKeys.current.delete(`bill:${inHandId}`);
+      settle(d);
+      const total = tenders.reduce((n, x) => n + x.amountPaise, 0);
+      say(t("pharmacyDesk.log.billed", { amount: rupees(total), modes: tenders.map((x) => x.mode).join(" + ") }));
+    } catch (e) {
+      answered("bill", inHandId, e);
+      const text = e instanceof ApiError ? pharmacyErrorText(e, t) : t("pharmacyDesk.bill.networkRetry");
+      setBillError(text);
+      say(text, "err");
+      await qc.invalidateQueries({ queryKey: ["pharmacy", "dispense", inHandId] });
+    } finally {
+      setBusy(false);
+    }
+  }, [inHandId, qc, settle, t]);
+
+  const handOver = useCallback(async (identity: { via: "token" | "phone_last4"; value: string } | null): Promise<void> => {
+    if (inHandId === null) return;
+    setBusy(true); setHandOverError(null);
+    try {
+      const d = await handOverDispense(inHandId, identity, keyFor("handover", inHandId));
+      moneyKeys.current.delete(`handover:${inHandId}`);
+      settle(d);
+      say(t("pharmacyDesk.log.handedOver", { who: d.patient.alias ?? d.patient.name ?? d.patient.uhid }));
+    } catch (e) {
+      answered("handover", inHandId, e);
+      const text = pharmacyErrorText(e, t);
+      setHandOverError(text);
+      say(text, "err");
+    } finally {
+      setBusy(false);
+    }
+  }, [inHandId, settle, t]);
+
+  /* E27 — a draft keeps the claim and whatever is held; the sentence names the deadline. */
+  const draft = useCallback((): void => {
+    const until = heldUntil(ticket.data?.pickedAt ?? null);
+    say(until === null ? t("pharmacyDesk.log.draftClaimOnly") : t("pharmacyDesk.log.draftHeld", { time: until }), "warn");
+    clearDesk();
+  }, [clearDesk, t, ticket.data?.pickedAt]);
+
   const decline = useCallback(async (lineIdx: number, reason: string): Promise<boolean> => {
     if (inHandId === null) return false;
     setError(null);
@@ -271,13 +345,31 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
               busy={busy}
               onCollect={collect}
               onDecline={decline}
+              handOverError={handOverError}
+              takenLabel={preview.data === undefined ? null : rupees(preview.data.totals.netPayablePaise)}
+              onHandOver={(identity) => void handOver(identity)}
               onFind={(q) => void find(q)}
               onTake={(id, who) => void takeHere(id, who, false)}
               onClear={clearDesk}
             />
           </main>
 
-          <QueueRail rows={rows} me={me} now={now} inHandId={inHandId} onTake={(id, who, mine) => void takeHere(id, who, mine)} />
+          {/* PD-D5 — the bill takes the line's place once a ticket of MINE is past "found". */}
+          {inHand !== null && !heldByAnother(inHand, me) && stageOf(inHand, me) !== "found" ? (
+            <BillRail
+              dispense={inHand}
+              preview={preview.data ?? null}
+              previewError={preview.error === null ? null : pharmacyErrorText(preview.error, t)}
+              drawerOpen={drawer.isPending ? null : drawer.data?.session?.status === "open"}
+              busy={busy}
+              error={billError}
+              onTake={(tenders, change) => void takeMoney(tenders, change)}
+              onDraft={draft}
+              onOpenDrawer={() => void navigate({ to: "/billing/session" })}
+            />
+          ) : (
+            <QueueRail rows={rows} me={me} now={now} inHandId={inHandId} onTake={(id, who, mine) => void takeHere(id, who, mine)} />
+          )}
         </div>
 
         <DeskDock log={log} />

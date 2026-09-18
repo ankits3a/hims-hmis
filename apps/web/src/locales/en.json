@@ -3701,7 +3701,11 @@
       "verified": "checked the prescription — ticket {{no}}",
       "collected_one": "holding one line for 30 minutes",
       "collected_other": "holding {{count}} lines for 30 minutes",
-      "declined": "declined line {{line}}: {{reason}}"
+      "declined": "declined line {{line}}: {{reason}}",
+      "billed": "took {{amount}} by {{modes}}",
+      "handedOver": "handed over to {{who}}",
+      "draftClaimOnly": "saved as a draft — your claim stays",
+      "draftHeld": "saved as a draft — the strips are held until {{time}}"
     },
     "status": {
       "claimed": "claimed",
@@ -3738,7 +3742,56 @@
     "declineIt": "Decline",
     "qtyLabel": "Quantity for {{line}}",
     "ofPrescribed": "of {{of}}",
-    "lineMenu": "What else for {{line}}"
+    "lineMenu": "What else for {{line}}",
+    "bill": {
+      "title": "the bill · live",
+      "paid": "PAID",
+      "unpaid": "UNPAID",
+      "declined": "declined",
+      "notYet": "Priced when the strips are collected — a medicine is priced by the batch it comes from, so there is no honest amount before that.",
+      "discount": "discount",
+      "cgst": "CGST (inside the MRP)",
+      "sgst": "SGST (inside the MRP)",
+      "rounding": "rounding",
+      "took": "taken",
+      "toCollect": "to collect",
+      "inside": "CGST and SGST are inside the printed MRP, never added to it. The pricing engine decided every line; this desk does no arithmetic.",
+      "noDrawer": "Your cash drawer is not open, and no money can be taken without it — UPI and card included.",
+      "openDrawer": "open a drawer (leaves the desk)",
+      "takeMoney": "take the money",
+      "tender": "how they are paying",
+      "mode": {
+        "cash": "Cash",
+        "upi": "UPI",
+        "card": "Card",
+        "split": "Split"
+      },
+      "tendered": "tendered",
+      "cashPart": "cash part",
+      "upiPart": "UPI part",
+      "change": "change due",
+      "received": "Received",
+      "receivedAmount": "Received {{amount}}",
+      "draft": "Save draft",
+      "heldUntil": "A draft keeps your claim and the strips you have pulled. They stay held until {{time}}, then go back on the shelf on their own.",
+      "stillOpen": "A line is still open. Tick it or decline it — then it is priced and the money can be taken.",
+      "draftNothingHeld": "A draft keeps your claim. Nothing is held on the shelf until the lines are collected.",
+      "networkRetry": "The connection dropped before the answer came back. Press again — it is the same payment, and it cannot be charged twice.",
+      "upiRef": "UPI reference (UTR)",
+      "upiRefHint": "12 digits on their phone's receipt",
+      "cardRef": "card approval code",
+      "cardRefHint": "on the terminal's slip"
+    },
+    "handover": {
+      "title": "hand it over",
+      "via": "who is collecting",
+      "token": "token number",
+      "phone": "last 4 of phone",
+      "value": "what they say",
+      "placeholder": "ask — do not read it to them",
+      "noId": "No scheduled drug on this ticket; no identity check at the window.",
+      "button": "Handed over"
+    }
   },
   "appointmentSeat": {
     "title": "Appointment",

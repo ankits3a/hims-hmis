@@ -196,7 +196,12 @@ Numbered because each one owes a test. **F** = must fail first against the code 
 
 ### Money
 - **E20** Short tender → `invoice_not_settled`, refused by billing, not by this screen.
-- **E21** No cash drawer open → cash is not a tender. Desk One already draws this.
+- **E21** ~~No cash drawer open → cash is not a tender.~~ **Measured (PD-6): no drawer → NO tender.**
+  `receipts.ts` and `invoices.ts` call `requireOpenSession` for every receipt, UPI and card included,
+  so the rail says so before a key is pressed and offers the way to open one.
+- **E21b** FOUND BY THE PD-6 WALK: billing refuses every non-cash tender without a settlement
+  reference (`tender_ref_required`) and the canvas drew no field for it — the first UPI payment on
+  the dev day was refused. The rail asks for the UTR / the card approval code. DONE (PD-6).
 - **E22** `price_unknown` — the stock is fine and the line cannot be billed. Two different problems
   that look identical to a pharmacist unless the sentence separates them.
 - **E23** Batch MRP above the DPCO ceiling → the ceiling wins and the screen says which of the three

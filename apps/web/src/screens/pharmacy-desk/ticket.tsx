@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { heldByAnother, stageOf, ticketLabel, whoLabel } from "./model";
 import { LineList } from "./lines";
@@ -14,7 +14,7 @@ import type { PickLine, VerifyLine, WireDispense, WirePatientSummary } from "../
  * Substituting is PD-5.
  */
 export function TicketPanel({
-  inHand, loading, loadError, me, candidates, error, note, busy, onFind, onTake, onClear, onCollect, onDecline,
+  inHand, loading, loadError, me, candidates, error, note, busy, handOverError, takenLabel, onFind, onTake, onClear, onCollect, onDecline, onHandOver,
 }: {
   inHand: WireDispense | null;
   loading: boolean;
@@ -29,6 +29,10 @@ export function TicketPanel({
   busy: boolean;
   onCollect: (verify: VerifyLine[] | null, pick: PickLine[]) => Promise<CollectResult>;
   onDecline: (lineIdx: number, reason: string) => Promise<boolean>;
+  handOverError: string | null;
+  /** What was taken, as the bill rail printed it — the done line repeats the server's figure, never a sum of its own. */
+  takenLabel: string | null;
+  onHandOver: (identity: { via: "token" | "phone_last4"; value: string } | null) => void;
 }): React.ReactElement {
   const { t } = useTranslation();
   const alerts = (
@@ -97,9 +101,9 @@ export function TicketPanel({
   if (stage === "done") {
     return (
       <div style={{ maxWidth: 720 }}>
-        <h1 style={{ margin: 0, fontSize: 19, fontWeight: 700 }}>{t("pharmacyDesk.doneTitle", { who })}</h1>
+        <h1 style={{ margin: 0, fontSize: 19, fontWeight: 700 }} data-testid="desk-done">{t("pharmacyDesk.doneTitle", { who })}</h1>
         <p className="mo" style={{ margin: "3px 0 0 0", fontSize: 12, color: "var(--dim)" }}>
-          {label ?? ""}{label === null ? "" : " · "}{t("pharmacyDesk.lines", { count: inHand.lines.length })}
+          {[label, takenLabel, t("pharmacyDesk.lines", { count: inHand.lines.length })].filter((x) => x !== null).join(" · ")}
         </p>
         <button className="pri" style={{ marginTop: 16 }} onClick={onClear}>
           {t("pharmacyDesk.nextTicket")} <span className="kb" style={{ borderColor: "rgba(255,255,255,.35)", background: "rgba(255,255,255,.12)", color: "#d6ece1" }}>Esc</span>
@@ -128,6 +132,7 @@ export function TicketPanel({
         onCollect={onCollect}
         onDecline={onDecline}
       />
+      {inHand.status === "billed" ? <HandOver dispense={inHand} busy={busy} error={handOverError} onHandOver={onHandOver} /> : null}
       {error !== null || note !== null ? alerts : null}
     </div>
   );
@@ -157,5 +162,62 @@ function FindField({ onFind }: { onFind: (q: string) => void }): React.ReactElem
         </button>
       </div>
     </form>
+  );
+}
+
+/**
+ * PD-6 — THE HAND-OVER, after the money. A paid ticket can stand uncollected (E25), so handing it
+ * over is its own act. For a scheduled drug the pharmacist confirms who is collecting, and the box
+ * STARTS EMPTY for every ticket (E18): a box already holding the last patient's token is the second
+ * confirmation answered before anyone looked up — the C3 finding of the 16c close review.
+ */
+export function HandOver({
+  dispense, busy, error, onHandOver,
+}: {
+  dispense: WireDispense;
+  busy: boolean;
+  error: string | null;
+  onHandOver: (identity: { via: "token" | "phone_last4"; value: string } | null) => void;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const [via, setVia] = useState<"token" | "phone_last4">("token");
+  const [value, setValue] = useState("");
+  useEffect(() => { setVia("token"); setValue(""); }, [dispense.id]);
+  const needsId = dispense.scheduled;
+  const ready = !busy && (!needsId || value.trim() !== "");
+  const go = (): void => { if (ready) onHandOver(needsId ? { via, value: value.trim() } : null); };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); go(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+  return (
+    <div className="box" data-testid="desk-handover" style={{ marginTop: 16, padding: "14px 16px" }}>
+      <div className="tag">{t("pharmacyDesk.handover.title")}</div>
+      {needsId ? (
+        <div style={{ display: "flex", gap: 8, marginTop: 9, alignItems: "flex-end" }}>
+          <label>
+            <span className="tag" style={{ display: "block" }}>{t("pharmacyDesk.handover.via")}</span>
+            <select className="in" value={via} onChange={(e) => setVia(e.target.value as "token" | "phone_last4")} style={{ height: 38, marginTop: 4, width: 170 }}>
+              <option value="token">{t("pharmacyDesk.handover.token")}</option>
+              <option value="phone_last4">{t("pharmacyDesk.handover.phone")}</option>
+            </select>
+          </label>
+          <label style={{ flexGrow: 1 }}>
+            <span className="tag" style={{ display: "block" }}>{t("pharmacyDesk.handover.value")}</span>
+            <input className="in mo" value={value} onChange={(e) => setValue(e.target.value)} placeholder={t("pharmacyDesk.handover.placeholder")} style={{ height: 38, marginTop: 4 }} />
+          </label>
+        </div>
+      ) : (
+        <p style={{ margin: "7px 0 0 0", fontSize: 12, color: "var(--dim)" }}>{t("pharmacyDesk.handover.noId")}</p>
+      )}
+      <button className="pri" style={{ marginTop: 12 }} disabled={!ready} onClick={go}>
+        {t("pharmacyDesk.handover.button")}{" "}
+        <span className="kb" style={{ borderColor: "rgba(255,255,255,.35)", background: "rgba(255,255,255,.12)", color: "#d6ece1" }}>Ctrl ⏎</span>
+      </button>
+      {error !== null ? <p role="alert" style={{ margin: "10px 0 0 0", fontSize: 12, color: "var(--red)" }}>{error}</p> : null}
+    </div>
   );
 }
