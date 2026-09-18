@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { adviceFor, allSettled, blockedOf, canTick, freshTick, isPartial, isSettled, istToday, pickBody, qtyOf, sigOf, verifyBody } from "./work";
+import { SubstituteSheet } from "./substitute";
+import { adviceFor, allSettled, blockedFor, canTick, freshTick, isPartial, isSettled, istToday, pickBody, qtyOf, sigOf, substitutable, verifyBody } from "./work";
 import type { Tick } from "./work";
 import type { PickLine, VerifyLine, WireDispense, WireDispenseLine } from "../../lib/pharmacy-api";
 
@@ -30,6 +31,7 @@ export function LineList({
   const [errors, setErrors] = useState<Record<number, string>>({});
   const [ticketError, setTicketError] = useState<string | null>(null);
   const [declining, setDeclining] = useState<number | null>(null);
+  const [subbing, setSubbing] = useState<number | null>(null);
   const settleAfterDecline = useRef(false);
   const today = istToday();
 
@@ -119,10 +121,24 @@ export function LineList({
             declining={declining === l.lineIdx}
             onEdit={(patch, settle) => edit(l.lineIdx, patch, settle)}
             onToggleDecline={() => setDeclining((d) => (d === l.lineIdx ? null : l.lineIdx))}
+            onSubstitute={() => setSubbing(l.lineIdx)}
             onDecline={(reason) => void decline(l.lineIdx, reason)}
           />
         ))}
       </div>
+      {subbing === null ? null : (
+        <SubstituteSheet
+          dispenseId={dispense.id}
+          line={dispense.lines.find((l) => l.lineIdx === subbing)!}
+          onClose={() => setSubbing(null)}
+          onChoose={(sub) => {
+            /* A different medicine is a different shelf: the batch, the scan and the tick all restart. */
+            edit(subbing, { sub, batchId: null, scan: "", ticked: false }, false);
+            setSubbing(null);
+            setDeclining(null);
+          }}
+        />
+      )}
       {busy ? <p role="status" style={{ margin: "12px 0 0 0", fontSize: 12.5, color: "var(--dim)" }}>{t("pharmacyDesk.collecting")}</p> : null}
       {/* A refusal that landed on its lines is said there, once — not again under the list. */}
       {ticketError !== null && Object.keys(errors).length === 0
@@ -132,7 +148,7 @@ export function LineList({
 }
 
 function LineRow({
-  line, tick, editable, busy, today, error, declining, onEdit, onToggleDecline, onDecline,
+  line, tick, editable, busy, today, error, declining, onEdit, onToggleDecline, onDecline, onSubstitute,
 }: {
   line: WireDispenseLine;
   tick: Tick | undefined;
@@ -144,15 +160,25 @@ function LineRow({
   onEdit: (patch: Partial<Tick>, settle: boolean) => void;
   onToggleDecline: () => void;
   onDecline: (reason: string) => void;
+  onSubstitute: () => void;
 }): React.ReactElement {
   const { t } = useTranslation();
   const [why, setWhy] = useState("");
   const rx = line.rxLine;
   const given = line.dispensedMedicine;
-  const blocked = blockedOf(line);
+  const blocked = blockedFor(line, tick);
+  /*
+    Once the check has recorded the substitution the SERVER'S line says it (`substitutionType:
+    "generic"`, the substitute as `dispensedMedicine`, the original as `orderedMedicine`); the local
+    choice is only drawn while it is still a choice. Found by the walk: drawing the local one after
+    verify read "Calpol 500 instead of Calpol 500".
+  */
+  const recorded = line.substitutionType === "generic";
+  const sub = recorded ? null : (tick?.sub ?? null);
   const settled = tick !== undefined && isSettled(line, tick);
   const qty = tick === undefined ? null : qtyOf(tick);
-  const advice = editable && qty !== null && blocked === null ? adviceFor(line, qty, today, tick?.batchId ?? null) : null;
+  /* The batches on the view are the ORIGINAL item's; a substitute is picked from its own shelf by FEFO. */
+  const advice = editable && qty !== null && blocked === null && sub === null ? adviceFor(line, qty, today, tick?.batchId ?? null) : null;
   const partial = tick !== undefined && isPartial(line, tick);
   const declined = line.status === "declined";
   const bar = error !== null ? "var(--red)" : declined || blocked !== null ? "var(--gold)" : settled || line.pickedBatch != null ? "var(--green)" : "transparent";
@@ -190,10 +216,18 @@ function LineRow({
           {given === null ? (
             /* Worked, the amber note below says it and says what to do; one sentence, not two. */
             editable ? null : <span className="pill gd">{t("pharmacyDesk.unresolved")}</span>
+          ) : sub !== null ? (
+            <span style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }} data-testid={`desk-line-${String(line.lineIdx)}-sub`}>
+              <span style={{ fontSize: 13.5, fontWeight: 600 }}>{sub.brandName}</span>
+              <span className="pill on">{t("pharmacyDesk.generic")}</span>
+              <span style={{ fontSize: 11, color: "var(--dim)" }}>{t("pharmacyDesk.sub.insteadOf", { brand: given.brandName })}</span>
+              {editable ? <button className="sec" style={{ height: 24 }} onClick={() => onEdit({ sub: null, ticked: false }, false)}>{t("pharmacyDesk.sub.undo")}</button> : null}
+            </span>
           ) : (
-            <span style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }} data-testid={recorded ? `desk-line-${String(line.lineIdx)}-sub` : undefined}>
               <span style={{ fontSize: 13.5, fontWeight: 600 }}>{given.brandName}</span>
-              {line.substitutionType === "generic" ? <span className="pill on">{t("pharmacyDesk.generic")}</span> : null}
+              {recorded ? <span className="pill on">{t("pharmacyDesk.generic")}</span> : null}
+              {recorded ? <span style={{ fontSize: 11, color: "var(--dim)" }}>{t("pharmacyDesk.sub.insteadOf", { brand: line.orderedMedicine?.brandName ?? rx.drug })}</span> : null}
               {line.scheduleFlag === "H1" ? <span className="pill rd">H1</span> : null}
               {line.scheduleFlag === "X" ? <span className="pill rd">{t("pharmacyDesk.scheduleX")}</span> : null}
               {line.partlyChecked === true ? <span className="pill gd">{t("pharmacyDesk.notChecked")}</span> : null}
@@ -215,7 +249,19 @@ function LineRow({
           {line.pickedBatch != null && line.pickNote !== null ? (
             <span style={{ ...soft, background: "var(--gold-soft)" }}>{t("pharmacyDesk.givenShort", { reason: line.pickNote })}</span>
           ) : null}
-          {editable && blocked !== null ? <span style={{ ...soft, background: "var(--gold-soft)" }}>{t(`pharmacyDesk.blocked.${blocked}`)}</span> : null}
+          {editable && blocked !== null ? (
+            <span style={{ ...soft, background: "var(--gold-soft)" }}>
+              {t(`pharmacyDesk.blocked.${blocked}`)}{" "}
+              {blocked === "empty" || blocked === "not_stocked" || blocked === "not_saleable" ? (
+                <button className="sec grn" style={{ height: 24, marginTop: 5 }} disabled={!substitutable(line)} onClick={onSubstitute}>
+                  {t("pharmacyDesk.sub.open")}
+                </button>
+              ) : null}
+            </span>
+          ) : null}
+          {editable && sub !== null ? (
+            <span className="mo" style={{ display: "block", fontSize: 11.5, color: "var(--dim)", marginTop: 3 }}>{t("pharmacyDesk.sub.onShelf", { n: sub.available })}</span>
+          ) : null}
 
           {advice?.kind === "first_short" ? (
             <span style={{ ...soft, background: "var(--gold-soft)" }} data-testid={`desk-line-${String(line.lineIdx)}-advice`}>
@@ -269,8 +315,12 @@ function LineRow({
 
           {error !== null ? <span role="alert" style={{ ...soft, background: "var(--red-soft)", color: "var(--red)" }}>{error}</span> : null}
 
-          {declining ? (
-            <span style={{ display: "flex", gap: 7, marginTop: 8 }}>
+          {editable && declining && substitutable(line) === false && line.rxLine.noSubstitution ? (
+            <span style={{ ...soft, background: "var(--wash)" }}>{t("pharmacyDesk.sub.noSubstitution")}</span>
+          ) : null}
+          {editable && declining ? (
+            <span style={{ display: "flex", gap: 7, marginTop: 8, flexWrap: "wrap" }}>
+              <button className="sec grn" style={{ height: 32 }} disabled={busy || !substitutable(line)} onClick={onSubstitute}>{t("pharmacyDesk.sub.open")}</button>
               <input
                 aria-label={t("pharmacyDesk.declineWhy", { line: label })}
                 className="in"

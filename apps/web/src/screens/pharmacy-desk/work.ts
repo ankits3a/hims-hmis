@@ -16,10 +16,30 @@ import type { PickLine, VerifyLine, WireBatch, WireDispenseLine, WireRxLine } fr
  *   · a line the shelf cannot serve (nothing placed, nothing stocked, nothing sellable) cannot be
  *     ticked at all; it is declined, or substituted (PD-5).
  */
-export type Tick = { ticked: boolean; qty: string; reason: string; batchId: string | null; scan: string };
+/**
+ * `sub` is PD-5's generic equivalent, chosen on the sheet with the patient's consent. It is sent to
+ * `verify` as `dispensedMedicineId` + `patientConsent`, and while it stands the line is served from
+ * the SUBSTITUTE'S stock — the original's empty shelf no longer blocks the tick.
+ */
+export type Tick = {
+  ticked: boolean; qty: string; reason: string; batchId: string | null; scan: string;
+  sub: { medicineId: string; brandName: string; available: number } | null;
+};
 
 export function freshTick(line: WireDispenseLine): Tick {
-  return { ticked: false, qty: line.qtyBase === null ? "" : String(line.qtyBase), reason: "", batchId: null, scan: "" };
+  return { ticked: false, qty: line.qtyBase === null ? "" : String(line.qtyBase), reason: "", batchId: null, scan: "", sub: null };
+}
+
+/** The block that applies to THIS tick: a chosen substitute lifts the shelf's, never the law's or the catalogue's. */
+export function blockedFor(line: WireDispenseLine, tick: Tick | undefined): Blocked | null {
+  const b = blockedOf(line);
+  if (tick?.sub == null || b === "unresolved" || b === "schedule_x") return b;
+  return null;
+}
+
+/** A line the sheet may offer an equivalent for: resolved, not marked no-substitution, not yet checked. */
+export function substitutable(line: WireDispenseLine): boolean {
+  return line.dispensedMedicine !== null && !line.rxLine.noSubstitution && line.scheduleFlag !== "X";
 }
 
 /** Why a line cannot be ticked, or null when it can. */
@@ -55,7 +75,7 @@ export function isPartial(line: WireDispenseLine, tick: Tick): boolean {
 export function canTick(line: WireDispenseLine, tick: Tick): boolean {
   const q = qtyOf(tick);
   const p = prescribedOf(line, tick);
-  if (blockedOf(line) !== null || q === null || p === null || q > p) return false;
+  if (blockedFor(line, tick) !== null || q === null || p === null || q > p) return false;
   return !isPartial(line, tick) || tick.reason.trim() !== "";
 }
 
@@ -71,7 +91,13 @@ export function allSettled(lines: readonly WireDispenseLine[], ticks: Readonly<R
 
 /** What `verify` is told: every open line at its PRESCRIBED quantity — the short is the pick's, with its reason. */
 export function verifyBody(lines: readonly WireDispenseLine[], ticks: Readonly<Record<number, Tick>>): VerifyLine[] {
-  return lines.filter((l) => l.status === "open").map((l) => ({ lineIdx: l.lineIdx, qtyBase: prescribedOf(l, ticks[l.lineIdx]!)! }));
+  return lines.filter((l) => l.status === "open").map((l) => {
+    const t = ticks[l.lineIdx]!;
+    return {
+      lineIdx: l.lineIdx, qtyBase: prescribedOf(l, t)!,
+      ...(t.sub === null ? {} : { dispensedMedicineId: t.sub.medicineId, patientConsent: true }),
+    };
+  });
 }
 
 /** What `pick` is told: the quantity given when short (with why), the batch when not FEFO's, and the scan. */

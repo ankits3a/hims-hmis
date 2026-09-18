@@ -3791,6 +3791,24 @@
       "placeholder": "ask — do not read it to them",
       "noId": "No scheduled drug on this ticket; no identity check at the window.",
       "button": "Handed over"
+    },
+    "sub": {
+      "title": "Give something else for {{drug}}",
+      "rule": "Only the same salt, strength, form and route can stand in — the server refuses anything else, so this list is the whole choice.",
+      "noSubstitution": "The doctor wrote no substitution on this line — only the medicine named can be given.",
+      "loading": "Reading the shelf…",
+      "none": "Nothing on this shelf is a generic equivalent of {{drug}}. Decline the line, with what the patient will be told.",
+      "same": "same salt, strength, form and route",
+      "onShelf": "{{n}} on the shelf",
+      "consent": "I told the patient it is a different brand of the same medicine, and they agreed.",
+      "consentWhy": "The server will not record a generic substitution without this — it is the patient's consent, not a formality.",
+      "checkedAtVerify": "Allergies and interactions are checked again on the substitute when the prescription is checked; a clash stops it there.",
+      "put": "Put it on the ticket",
+      "putNamed": "Put {{brand}} on the ticket",
+      "cancel": "Cancel",
+      "insteadOf": "instead of {{brand}}",
+      "undo": "undo",
+      "open": "give an equivalent"
     }
   },
   "appointmentSeat": {
