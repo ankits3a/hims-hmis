@@ -4237,12 +4237,14 @@
     "unreviewedTitle": "A component of this product has not been reviewed by pharmacy, so an allergy class or an interaction on that component cannot be checked."
   },
   "sigDrawer": {
-    "close": "Done",
     "frequency": "How often",
     "timing": "With food",
     "duration": "For how long",
     "days": "{{n}} days",
-    "hint": "Shortcuts into the fields above — type there for anything else.",
+    "other": "Other",
+    "frequencyPlaceholder": "e.g. 1-0-0, every 6 hours, once a week",
+    "daysUnit": "days",
+    "notePlaceholder": "Anything else — e.g. with milk",
     "timingOption": {
       "afterFood": "After food",
       "beforeFood": "Before food",

@@ -1325,9 +1325,9 @@ describe("OpdConsult", () => {
     await user.click(screen.getByRole("tab", { name: "Prescription" }));
     await user.type(await screen.findByLabelText("Drug"), "Tab Penicillin V");
     await user.type(screen.getByLabelText("Dose"), "1 tab");
-    await user.selectOptions(screen.getByLabelText("Frequency"), "TDS");
+    await user.click(screen.getByTestId("sig-0-freq-TDS"));
     await user.selectOptions(screen.getByLabelText("Route"), "oral");
-    await user.type(screen.getByLabelText("Days"), "5");
+    await user.click(screen.getByTestId("sig-0-days-5"));
     await user.type(screen.getByLabelText("Instructions"), "after food");
     await user.click(screen.getByRole("button", { name: "Issue & print" }));
 
@@ -2134,8 +2134,8 @@ describe("OpdConsult", () => {
     await user.type(await screen.findByLabelText("Drug"), "Tab Paracetamol");
     await user.type(screen.getByLabelText("Dose"), "500 mg");
     await user.selectOptions(screen.getByLabelText("Route"), "oral");
-    await user.selectOptions(screen.getByLabelText("Frequency"), "TDS");
-    await user.type(screen.getByLabelText("Days"), "3");
+    await user.click(screen.getByTestId("sig-0-freq-TDS"));
+    await user.click(screen.getByTestId("sig-0-days-3"));
     await user.keyboard("{Alt>}s{/Alt}");
 
     await waitFor(() => expect(document.querySelectorAll(".print-doc")).toHaveLength(1));
@@ -3108,12 +3108,14 @@ describe("OpdConsult — the drug typeahead", () => {
   });
 
   /**
-   * ═══ P26 — THE SIG DRAWER, AND THE PATH IT MUST NOT CLOSE ═══
+   * ═══ P26 → 2026-09-18 — THE SIG PANEL, AND THE PATH IT MUST NOT CLOSE ═══
    *
-   * The pills are an ACCELERATOR over the line's own fields, never a gate. So these assert both
-   * halves: that a tap writes the field, AND that a doctor who ignores the drawer entirely can
-   * still type anything — `1-0-0 for 4 days` is the phase doc's own example. This lane has a scar
-   * where every test drove a field through its accelerator and the typed path broke unnoticed.
+   * P26 put the taps IN FRONT OF the line's own Frequency, Days and Instructions boxes, and the
+   * owner read the deployed screen as saying each of those twice. The boxes went; the panel is now
+   * the only control. So these assert both halves: that each fact is on screen once, AND that a
+   * doctor can still write anything the taps do not offer — `1-0-0 for 4 days` is the phase doc's
+   * own example. This lane has a scar where every test drove a field through its accelerator and
+   * the typed path broke unnoticed; here the typed path goes through `Other`, and is tested.
    */
   async function pickDrug(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await openPanel(user);
@@ -3122,22 +3124,36 @@ describe("OpdConsult — the drug typeahead", () => {
     await user.click(await screen.findByTestId("rx-drug-0-hit-m-pcm1g"));
   }
 
-  it("P26a: picking a drug opens the drawer, and each pill writes the line's own field", async () => {
+  it("P26a: each fact is on screen once — the taps, and no Frequency, Days or repeated timing box", async () => {
     mockRoutes(drugRoutes());
     const user = userEvent.setup();
     await pickDrug(user);
 
-    const drawer = await screen.findByTestId("sig-0-drawer");
-    expect(within(drawer).getByText("Paracetamol 1 g oral tablet")).toBeInTheDocument();
+    const panel = await screen.findByTestId("sig-0-panel");
+    await user.click(within(panel).getByTestId("sig-0-freq-BD"));
+    await user.click(within(panel).getByTestId("sig-0-timing-afterFood"));
+    await user.click(within(panel).getByTestId("sig-0-days-5"));
 
-    await user.click(within(drawer).getByTestId("sig-0-freq-BD"));
-    await user.click(within(drawer).getByTestId("sig-0-timing-afterFood"));
-    await user.click(within(drawer).getByTestId("sig-0-days-5"));
+    expect(within(panel).getByTestId("sig-0-freq-BD")).toHaveAttribute("aria-checked", "true");
+    expect(within(panel).getByTestId("sig-0-days-5")).toHaveAttribute("aria-checked", "true");
+    // THE OWNER'S REPORT, as an assertion: no second control for how often or how long…
+    expect(screen.queryByLabelText("Frequency")).toBeNull();
+    expect(screen.queryByLabelText("Days")).toBeNull();
+    expect(screen.queryAllByRole("combobox").map((c) => c.getAttribute("id"))).not.toContain("f-lines.0.frequency");
+    // …and the note box does not repeat the timing the tap already shows.
+    expect(screen.getByLabelText("Instructions")).toHaveValue("");
+  });
 
-    // Not the drawer's own state — the LINE's fields, which is all the prescription ever reads.
-    expect(screen.getByLabelText("Frequency")).toHaveValue("BD");
-    expect(screen.getByLabelText("Instructions")).toHaveValue("After food");
-    expect(screen.getByLabelText("Days")).toHaveValue(5);
+  it("P26f: a hand-typed line gets the panel too — it is the only way to say how often", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(screen.getByLabelText("Drug"), "Syp Ambroxol");
+
+    expect(screen.getByTestId("sig-0-panel")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add line" }));
+    expect(screen.getByTestId("sig-1-panel")).toBeInTheDocument();
   });
 
   /**
@@ -3152,7 +3168,7 @@ describe("OpdConsult — the drug typeahead", () => {
     mockRoutes(drugRoutes());
     const user = userEvent.setup();
     await pickDrug(user);
-    await screen.findByTestId("sig-0-drawer");
+    await screen.findByTestId("sig-0-panel");
 
     // past the 180 ms debounce and the answer that follows it
     await new Promise((r) => setTimeout(r, 450));
@@ -3206,45 +3222,73 @@ describe("OpdConsult — the drug typeahead", () => {
     mockRoutes(drugRoutes());
     const user = userEvent.setup();
     await pickDrug(user);
-    const drawer = await screen.findByTestId("sig-0-drawer");
+    const panel = await screen.findByTestId("sig-0-panel");
 
-    await user.click(within(drawer).getByTestId("sig-0-days-7"));
-    expect(screen.getByLabelText("Days")).toHaveValue(7);
-    await user.click(within(drawer).getByTestId("sig-0-days-7"));
-    expect(screen.getByLabelText("Days")).toHaveValue(null);
+    await user.click(within(panel).getByTestId("sig-0-days-7"));
+    expect(within(panel).getByTestId("sig-0-days-7")).toHaveAttribute("aria-checked", "true");
+    await user.click(within(panel).getByTestId("sig-0-days-7"));
+    expect(within(panel).getByTestId("sig-0-days-7")).toHaveAttribute("aria-checked", "false");
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions").length).toBeGreaterThan(0); });
+    const body = bodiesOf("POST", "/api/opd/visits/enc-1/prescriptions")[0] as { lines: { durationDays: number | null }[] };
+    expect(body.lines[0]!.durationDays).toBeNull();
   });
 
-  it("P26c: the drawer closes, and the doctor types what the pills do not offer", async () => {
+  it("P26c: the doctor writes what the taps do not offer, through Other, and that is what posts", async () => {
     mockRoutes(drugRoutes());
     const user = userEvent.setup();
     await pickDrug(user);
+    const panel = await screen.findByTestId("sig-0-panel");
 
-    const drawer = await screen.findByTestId("sig-0-drawer");
-    await user.click(within(drawer).getByTestId("sig-0-close"));
-    expect(screen.queryByTestId("sig-0-drawer")).toBeNull();
-
-    // THE MANUAL PATH — the phase doc's own example, typed, with no pill involved.
-    await user.type(screen.getByLabelText("Days"), "4");
+    // THE MANUAL PATH — the phase doc's own example, `1-0-0 for 4 days`, with no preset involved.
+    await user.click(within(panel).getByTestId("sig-0-freq-other"));
+    await user.keyboard("1-0-0");
+    await user.click(within(panel).getByTestId("sig-0-days-other"));
+    await user.keyboard("4");
     await user.type(screen.getByLabelText("Instructions"), "alternate days, with milk");
-    expect(screen.getByLabelText("Days")).toHaveValue(4);
-    expect(screen.getByLabelText("Instructions")).toHaveValue("alternate days, with milk");
-  });
-
-  it("P26d: what the pills wrote is what the prescription POSTs", async () => {
-    mockRoutes(drugRoutes());
-    const user = userEvent.setup();
-    await pickDrug(user);
-    const drawer = await screen.findByTestId("sig-0-drawer");
-    await user.click(within(drawer).getByTestId("sig-0-freq-TDS"));
-    await user.click(within(drawer).getByTestId("sig-0-days-3"));
     await user.type(screen.getByLabelText("Dose"), "1 tab");
     await user.click(screen.getByRole("button", { name: "Issue & print" }));
 
     await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions").length).toBeGreaterThan(0); });
     const body = bodiesOf("POST", "/api/opd/visits/enc-1/prescriptions")[0] as {
-      lines: { frequency: string; durationDays: number | null; medicineId: string | null }[];
+      lines: { frequency: string; durationDays: number | null; instructions: string | null }[];
     };
-    expect(body.lines[0]).toMatchObject({ frequency: "TDS", durationDays: 3, medicineId: "m-pcm1g" });
+    expect(body.lines[0]).toMatchObject({ frequency: "1-0-0", durationDays: 4, instructions: "alternate days, with milk" });
+  });
+
+  it("P26d: what the taps wrote is what the prescription POSTs — the timing and the note as one column", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+    const panel = await screen.findByTestId("sig-0-panel");
+    await user.click(within(panel).getByTestId("sig-0-freq-TDS"));
+    await user.click(within(panel).getByTestId("sig-0-days-3"));
+    await user.click(within(panel).getByTestId("sig-0-timing-afterFood"));
+    await user.type(screen.getByLabelText("Instructions"), "with milk");
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions").length).toBeGreaterThan(0); });
+    const body = bodiesOf("POST", "/api/opd/visits/enc-1/prescriptions")[0] as {
+      lines: { frequency: string; durationDays: number | null; instructions: string | null; medicineId: string | null }[];
+    };
+    expect(body.lines[0]).toMatchObject({ frequency: "TDS", durationDays: 3, instructions: "After food, with milk", medicineId: "m-pcm1g" });
+  });
+
+  it("P26g: Other left empty refuses to issue, and says so under the row", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+    await user.click(within(await screen.findByTestId("sig-0-panel")).getByTestId("sig-0-freq-other"));
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+
+    expect(await within(screen.getByTestId("sig-0-panel")).findByRole("alert")).toBeInTheDocument();
+    expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions")).toHaveLength(0);
+    await user.type(screen.getByLabelText("Frequency"), "weekly");
+    await waitFor(() => { expect(within(screen.getByTestId("sig-0-panel")).queryByRole("alert")).toBeNull(); });
   });
 
   it("D3: tapping a row fills the name AND the id — which is what makes the line checkable", async () => {
