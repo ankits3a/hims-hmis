@@ -4556,7 +4556,12 @@
       "stroke": "Possible stroke — this is an emergency.",
       "babyBlue": "A baby who is blue or not feeding — this is an emergency.",
       "pregnancyBleeding": "Bleeding in pregnancy — this is an emergency.",
-      "action": "Do not book an appointment. Take the patient to the emergency room now and tell the duty doctor."
+      "action": "Do not book an appointment. Take the patient to Casualty now and tell the duty doctor.",
+      "bleedingInternal": "Bleeding from inside — vomiting or coughing blood, or black stools.",
+      "burns": "A burn — this needs to be seen now.",
+      "envenomation": "A bite or sting — this needs treatment now, not an appointment.",
+      "torsion": "Sudden severe pain in the testicle — this is time-critical.",
+      "neonatalJaundice": "A newborn turning yellow — this is an emergency."
     }
   },
   "copilot": {

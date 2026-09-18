@@ -21,17 +21,80 @@ Two failure directions, and they are not symmetric:
 So none of these has been merged into the brake. `red-flags.ts` still carries only the ten rules
 written against the owner's own brief, and its test caps the list deliberately.
 
-## What a reviewing doctor is being asked
+## WHAT WAS DECIDED, 2026-09-18 — and what a doctor is now being asked
 
-For each row: is this an emergency that should **stop an OPD booking** at a front desk in *this*
-hospital? Tick one box. Nothing here is merged until a row is ticked and initialled.
+The owner delegated this ("go ahead with what seems most logical"), so the rows below were
+**judged rather than left blank**, and five were merged into the brake. This sheet is now a review
+of *those decisions* rather than of 26 unsorted rows — which is a smaller and much more answerable
+question.
 
-Please also name **where these patients go** — the system currently says "the emergency room"
-because it has not been told the name of the place.
+### The test that was applied
+
+Not *"is this serious?"* — all 26 are. The question was:
+
+> **Should a non-clinical clerk stop, refuse to book, and walk this patient to Casualty?**
+
+Most of the 26 reduce, in the words a patient actually uses at a counter, to `"bp high hai"`,
+`"pet dard"`, `"pair me sujan"` or `"bachche ko bukhar"` — the commonest sentences in an Indian OPD.
+A brake that fires on those is one nobody obeys by Friday, and then it is not there on the day it
+matters.
+
+### PROMOTED — five, now live in `red-flags.ts`
+
+| # | row | why it passed |
+|---|---|---|
+| 5, 7 | Haemoptysis / haematemesis / melena | `khoon ki ulti`, `kala pakhana` — unmistakable words, high mortality, and the patient is often walking and talking so nothing else stops them |
+| 13 | Burns / scalds | `jal gaya` says one thing only |
+| 16 | Snakebite / scorpion / animal bite | the row this region needed most; anti-venom and rabies prophylaxis both have a clock on them |
+| 24 | Testicular torsion | a six-hour window, and missing it costs the testicle |
+| 19 | Neonatal jaundice | **age-gated to under 1.** A yellow newborn risks kernicterus; a yellow adult has hepatitis and belongs in a Medicine clinic this week |
+
+Row 17 (poisoning) was already in the brake and was **extended** with `celphos`, `sulphas` and
+`keetnashak` — what rural poisoning in UP and Bihar actually is.
+
+### HELD BACK — twenty-one, with the reason
+
+Rows 1, 4, 9, 10, 11, 12 are **already covered** by the existing rules (chest pain, breathlessness,
+head injury, stroke, seizures, trauma).
+
+The rest were held back because the front-desk phrasing is indistinguishable from an ordinary day:
+
+| row | reduces at the counter to | |
+|---|---|---|
+| 2 hypertensive urgency | `bp high hai` | the single commonest walk-in there is |
+| 3 CHF / pedal edema | `pair me sujan` | routine; the breathlessness IS flagged |
+| 6 gastroenteritis | `loose motion` | bread and butter |
+| 8 acute abdomen | `pet dard` | severity is the signal and clerks cannot type it |
+| 15 DVT | `pair me sujan` | indistinguishable from the routine case |
+| 18 paediatric fever | `bachche ko bukhar` | the commonest paediatric visit of all |
+| 20 CKD / puffiness | `muh par sujan` | chronic |
+| 21 purpura | `neel pad gaye` | not an emergency at a desk |
+| 22 septic shock | — | a clerk never types "sepsis"; the patient is unconscious or breathless, both flagged |
+| 23 corneal injury | `aankh me kuch` | same-day Eye OPD, not Casualty |
+| 14 PAD / gangrene, 25 mucormycosis, 26 imperforate anus | — | chronic, rare, or presents in hospital rather than at a registration counter |
+
+**`red-flags.test.ts` asserts that these do NOT fire.** Promoting one later is a deliberate act
+with a test to change, not an edit nobody notices.
+
+### The destination — DECIDED
+
+The message now names **Casualty**, which is what an Indian hospital calls it and what its staff
+will recognise. Change the `opdTriage.redFlag.action` string in `en.json` and `hi.json` if this
+hospital sends them somewhere else.
+
+### What is being asked of a doctor
+
+Three questions, not 26:
+
+1. Are the **five promoted** right to stop a booking?
+2. Are any of the **twenty-one held back** ones you would want stopped anyway — knowing the cost is
+   that the brake fires on ordinary complaints?
+3. Is **Casualty** the right destination, and is it staffed when the OPD is open?
 
 **Reviewed by:** ______________________  **Reg. no:** ______________  **Date:** ____________
 
 ---
+
 
 ### 1. Acute Chest Pain / Angina / Acute Coronary Syndrome (ACS)
 
