@@ -42,6 +42,80 @@ describe("redFlagFor — the emergencies a non-medico clerk must not book", () =
     expect(redFlagFor(complaint, null)).not.toBeNull();
   });
 
+  /**
+   * ═══ THE FIVE PROMOTED FROM THE OWNER'S BUNDLE, 2026-09-18 ═══
+   *
+   * The bundle marked 26 syndromes EMERGENCY (RED). Promoting all 26 would have been the easy
+   * reading of "go ahead" and the wrong one: every entry here SUPPRESSES AN APPOINTMENT, and a
+   * brake that fires on "bukhar", "pet dard" and "pair me sujan" — which several of the 26 reduce
+   * to at a front desk — is a brake nobody obeys by Friday.
+   *
+   * The test applied to each row was not "is this serious?" but "**should a non-clinical clerk stop
+   * and walk this patient to Casualty instead of booking an OPD slot?**". Five passed it. Each is
+   * rare at a registration counter, unmistakable in the words a patient actually uses, and costly
+   * to miss within hours.
+   */
+  it.each([
+    // Hemoptysis / haematemesis / melena — bundle rows 5 and 7. Distinct from visible bleeding.
+    ["khoon ki ulti"], ["khansi me khoon aa raha hai"], ["kala pakhana"], ["vomiting blood"],
+    // Burns — bundle row 13. "jal gaya" is unmistakable and nothing else says it.
+    ["garam pani se jal gaya"], ["bijli se jal gaya"], ["burn injury"],
+    // Snakebite / scorpion — bundle row 16. The one the owner's own region needed most.
+    ["saap kaat liya hai"], ["bichhu ne kaat liya"], ["snake bite"],
+    // Testicular torsion — bundle row 24. A six-hour window; missing it costs the testicle.
+    ["ande me tez dard"], ["testicular pain sudden"],
+  ])("flags %s", (complaint: string) => {
+    expect(redFlagFor(complaint, 30)).not.toBeNull();
+  });
+
+  /**
+   * Neonatal jaundice — bundle row 19 — and the ONLY promotion that is age-gated, because the same
+   * words mean different things. A yellow newborn risks kernicterus and permanent brain damage
+   * within days; a yellow adult has hepatitis and belongs in a Medicine clinic this week.
+   */
+  it("flags a yellow NEWBORN", () => {
+    expect(redFlagFor("naya bachcha peela pad gaya", 0)).not.toBeNull();
+  });
+
+  it("does not flag jaundice in an adult", () => {
+    expect(redFlagFor("peeliya ho gaya", 40)).toBeNull();
+    expect(redFlagFor("aankh peeli hai", 35)).toBeNull();
+  });
+
+  /** Aluminium phosphide and organophosphate — what rural poisoning in UP and Bihar actually is. */
+  it.each([["celphos kha liya"], ["sulphas kha liya"], ["keetnashak pi liya"]])(
+    "flags %s as poisoning", (complaint: string) => {
+      expect(redFlagFor(complaint, 25)).not.toBeNull();
+    },
+  );
+
+  /**
+   * ═══ THE TWENTY-ONE THAT WERE NOT PROMOTED, ASSERTED SO NOBODY QUIETLY PROMOTES THEM ═══
+   *
+   * Each of these is a real condition the bundle called an emergency, and each reduces at a
+   * registration counter to a phrase that is among the commonest in an Indian OPD. Flagging them
+   * would stop dozens of correct bookings a day and spend the red badge until it meant nothing.
+   *
+   *   high/low BP (row 2)        "bp high hai"       — the single commonest walk-in there is
+   *   pedal edema / CHF (3)      "pair me sujan"     — routine; the breathlessness IS flagged
+   *   gastroenteritis (6)        "loose motion"      — bread and butter
+   *   acute abdomen (8)          "pet dard"          — severity is the signal and clerks cannot type it
+   *   DVT (15)                   "pair me sujan"     — indistinguishable from the routine case
+   *   paediatric fever (18)      "bachche ko bukhar" — the commonest paediatric visit of all
+   *   CKD / puffiness (20)       "muh par sujan"     — chronic
+   *   corneal injury (23)        "aankh me kuch"     — same-day Eye OPD, not Casualty
+   *
+   * Where a genuine emergency hides behind one of these, it reaches the brake by its OWN words:
+   * a septic patient is unconscious or breathless, both flagged.
+   */
+  it.each([
+    ["bp high hai"], ["pair me sujan"], ["loose motion ho raha hai"], ["pet dard"],
+    ["bachche ko bukhar"], ["muh par sujan"], ["aankh me kuch chala gaya"],
+    ["neel pad gaye hain"], ["kamzori lagti hai"],
+  ])("does NOT flag %s — it would spend the red badge on an ordinary day", (complaint: string) => {
+    expect(redFlagFor(complaint, 35)).toBeNull();
+  });
+
   it("names WHY, because a clerk has to say something to the patient", () => {
     const flag = redFlagFor("seene mein dard", 55);
     expect(flag?.reasonKey).toMatch(/^opdTriage\.redFlag\./);

@@ -58,6 +58,29 @@ type Rule = {
    * and under-triage costs something that cannot be undone.
    */
   minAge?: number;
+  /**
+   * Upper bound, and exactly one rule uses it: neonatal jaundice. A yellow newborn is an emergency
+   * and a yellow adult is a Medicine appointment, and the words a family uses are the same.
+   *
+   * Unlike `minAge`, an UNKNOWN age does NOT satisfy this. `minAge` fails safe by flagging, because
+   * over-triaging an adult chest pain costs a walk down the corridor; `maxAge` failing "safe" would
+   * mean flagging every jaundiced adult in the district, which is how the brake dies. Where the two
+   * directions disagree, each takes the one that protects the BRAKE as well as the patient.
+   */
+  maxAge?: number;
+  /**
+   * ═══ PHRASES THAT SUPPRESS THIS RULE, AND THE CROSS-CHECK THAT FOUND THE NEED ═══
+   *
+   * A cross-check ran the brake over the routing evaluation's ordinary-OPD set and caught
+   * **"stroke ke baad rehab"** — a patient arriving for post-stroke PHYSIOTHERAPY — being refused a
+   * booking and sent to Casualty. The stroke rule was right about the word and wrong about the
+   * tense.
+   *
+   * That is the exact shape that destroys a brake: not a wild false positive somebody notices, but
+   * a plausible one that fires on a real patient every week until the staff learn to click past it.
+   * So a rule may name the contexts in which its own word means a HISTORY rather than an event.
+   */
+  unless?: string[];
 };
 
 /**
@@ -112,17 +135,28 @@ const RULES: Rule[] = [
   },
   {
     key: "poisoning",
-    phrases: ["zeher", "zahar", "ज़हर", "जहर", "poison", "overdose", "kuch kha liya", "nigal liya"],
+    phrases: [
+      "zeher", "zahar", "ज़हर", "जहर", "poison", "overdose", "kuch kha liya", "nigal liya",
+      /* Aluminium phosphide and organophosphate — what rural poisoning here actually is. */
+      "celphos", "sulphas", "keetnashak", "pesticide", "insecticide", "davai pi li", "phenyl pi",
+    ],
   },
   {
     key: "trauma",
     phrases: ["accident", "दुर्घटना", "major trauma", "road accident", "gir gaya sar", "head injury", "sar me chot"],
+    /* Same tense problem: an old accident's physiotherapy or plaster review is an OPD visit. */
+    unless: ["ke baad", "ke bad", "rehab", "physio", "purana", "puraana", "plaster", "follow up", "mahine se", "saal se"],
   },
   {
     key: "stroke",
     phrases: [
       "muh tedha", "मुँह टेढ़ा", "stroke", "weakness on one side", "ek taraf kamzori",
       "bol nahi pa raha", "lakwa maar", "paralysis sudden",
+    ],
+    /* A stroke someone is recovering FROM is a physiotherapy appointment, not a Casualty run. */
+    unless: [
+      "ke baad", "ke bad", "rehab", "physio", "exercise", "purana", "puraana", "old stroke",
+      "recovery", "follow up", "followup", "mahine se", "saal se", "history of",
     ],
   },
   {
@@ -140,6 +174,78 @@ const RULES: Rule[] = [
   {
     key: "pregnancyBleeding",
     phrases: ["pregnancy me khoon", "garbh me khoon", "bleeding in pregnancy", "pet me tez dard pregnancy"],
+  },
+
+  /*
+    ═══════════════════════════════════════════════════════════════════════════════════════════════
+    THE FIVE PROMOTED FROM THE OWNER'S TRIAGE BUNDLE, 2026-09-18
+    ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+    The bundle marked 26 syndromes EMERGENCY (RED). Five are here. The other twenty-one are listed
+    in the sign-off document with the reason each was held back, and `red-flags.test.ts` asserts
+    that they do NOT fire — so promoting one later is a deliberate act with a test to change.
+
+    The question asked of every row was not "is this serious?" — all 26 are — but **"should a
+    non-clinical clerk stop and walk this patient to Casualty instead of booking an OPD slot?"**
+    Most of the 26 reduce, in the words a patient actually uses at a counter, to "bp high hai",
+    "pet dard", "pair me sujan" or "bachche ko bukhar": the commonest sentences in an Indian OPD.
+    A brake that fires on those is a brake nobody obeys by Friday, and then it is not there on the
+    day it matters. Each of these five is rare at a registration desk, unmistakable in plain words,
+    and costly to miss within hours.
+  */
+  {
+    /*
+      Bundle rows 5 and 7 — haemoptysis, haematemesis, melena. Its own rule rather than an
+      extension of `bleeding`, which is about blood somebody can SEE running: these are internal,
+      the patient is often walking and talking, and the words are completely different.
+    */
+    key: "bleedingInternal",
+    phrases: [
+      "khoon ki ulti", "khoon ki ultee", "ulti me khoon", "vomiting blood", "blood in vomit",
+      "khansi me khoon", "khaansi me khoon", "thook me khoon", "coughing blood", "khoon thook",
+      "kala pakhana", "kala paikhana", "black stool", "black tarry", "tatti me khoon",
+    ],
+  },
+  {
+    /* Bundle row 13. "jal gaya" is unmistakable and nothing else in this vocabulary says it. */
+    key: "burns",
+    phrases: [
+      "jal gaya", "jal gayi", "jal gail", "jhulas", "burn injury", "burnt", "scald",
+      "garam pani se jal", "tejaab", "acid pad gaya", "बदन जल",
+    ],
+  },
+  {
+    /*
+      Bundle row 16, and the one the owner's own region needed most: in Bihar and eastern UP a
+      snakebite walking into an OPD queue is a real event with a clock on it.
+    */
+    key: "envenomation",
+    phrases: [
+      "saap kaat", "saanp kaat", "saap ne kaat", "snake bite", "snakebite", "सांप",
+      "bichhu", "bichchu", "scorpion", "kutta kaat", "dog bite", "kutte ne kaat",
+    ],
+  },
+  {
+    /*
+      Bundle row 24. A six-hour window before the testicle is lost, and nothing about the phrase
+      collides with anything else in this book.
+    */
+    key: "torsion",
+    phrases: ["ande me tez dard", "ande me dard", "testicular pain", "testis pain", "ball me dard"],
+  },
+  {
+    /*
+      Bundle row 19, and the ONLY age-gated promotion, because the same words mean different things
+      at different ages. A yellow NEWBORN risks kernicterus and permanent brain damage within days;
+      a yellow adult has hepatitis and belongs in a Medicine clinic this week. `maxAge` exists for
+      this one rule — see the type.
+    */
+    key: "neonatalJaundice",
+    maxAge: 1,
+    phrases: [
+      "peela pad", "peeli pad", "bachcha peela", "newborn jaundice", "neonatal jaundice",
+      "पीला पड़", "naya bachcha peela",
+    ],
   },
 ];
 
@@ -168,8 +274,13 @@ export function redFlagFor(complaint: string, ageYears: number | null): RedFlag 
       the opposite.
     */
     if (rule.minAge !== undefined && ageYears !== null && ageYears < rule.minAge) continue;
+    /* `maxAge` needs a KNOWN age — see the field. An unknown age does not satisfy it. */
+    if (rule.maxAge !== undefined && (ageYears === null || ageYears > rule.maxAge)) continue;
     const matched = rule.phrases.find((p) => q.includes(normalise(p)));
-    if (matched !== undefined) return { reasonKey: `opdTriage.redFlag.${rule.key}`, matched };
+    if (matched === undefined) continue;
+    /* The word is present but the tense is wrong — see `unless`. */
+    if (rule.unless?.some((u) => q.includes(normalise(u))) === true) continue;
+    return { reasonKey: `opdTriage.redFlag.${rule.key}`, matched };
   }
   return null;
 }

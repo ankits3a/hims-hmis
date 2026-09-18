@@ -218,4 +218,38 @@ describe("triage evaluation — edges", () => {
   ])("flags %s as an emergency however well the router could route it", (q: string) => {
     expect(redFlagFor(q, 45)).not.toBeNull();
   });
+
+  /**
+   * ═══ THE CROSS-CHECK — THE BRAKE MUST NOT SWALLOW AN ORDINARY DAY ═══
+   *
+   * The two halves are tested apart: the router routes, the brake stops. Nothing asserted that the
+   * SETS ARE DISJOINT — and when five rules were promoted from the owner's bundle, running this
+   * caught **"stroke ke baad rehab"** being refused a booking and marched to Casualty. A patient
+   * arriving for post-stroke physiotherapy.
+   *
+   * That is the shape that kills a brake: not an absurd false positive somebody reports, but a
+   * plausible one that fires on a real patient every week until staff learn to click past it. This
+   * runs the whole routable set through the brake on every build.
+   */
+  it("flags none of the complaints the router is supposed to route", () => {
+    /*
+      ONE DELIBERATE EXCEPTION, named rather than filtered silently. "bachcha dudh nahi pi raha" is
+      in the routing set because a clerk types it, and the RIGHT answer is the brake, not
+      Paediatrics — an infant who has stopped feeding does not get an appointment. A test above
+      asserts that directly. Every other row must reach the router untouched.
+    */
+    const BELONGS_TO_THE_BRAKE = new Set(["bachcha dudh nahi pi raha"]);
+    const flagged = CASES
+      .map(([q]) => q)
+      .filter((q) => !BELONGS_TO_THE_BRAKE.has(q))
+      .filter((q) => redFlagFor(q, 35) !== null)
+      .map((q) => `${q} -> ${redFlagFor(q, 35)?.reasonKey ?? ""}`);
+    expect(flagged).toEqual([]);
+  });
+
+  it("still flags a stroke that is happening NOW", () => {
+    // The tense guard must not have disarmed the rule it protects.
+    expect(redFlagFor("muh tedha ho gaya", 60)).not.toBeNull();
+    expect(redFlagFor("achanak ek taraf kamzori", 60)).not.toBeNull();
+  });
 });
