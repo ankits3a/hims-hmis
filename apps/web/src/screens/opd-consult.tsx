@@ -28,8 +28,8 @@ import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
 import { DeskModal } from "../components/desk-modal";
 import { DrugField } from "../components/drug-field";
-import { SigDrawer } from "../components/sig-drawer";
-import type { SigPatch } from "../components/sig-drawer";
+import { SigPanel } from "../components/sig-panel";
+import type { SigPatch } from "../components/sig-panel";
 import { TagField, splitTags } from "../components/tag-field";
 import { useSnippets } from "../lib/use-snippets";
 import { PLACEHOLDER_FORMS, PLACEHOLDERS, expandSnippet, keywordProblem, unknownTokensIn } from "../lib/snippets";
@@ -66,7 +66,6 @@ import { TabStrip } from "../components/desk-fields";
 const POLL_MS = 15_000;
 
 const ROUTE_OPTIONS = ["oral", "iv", "im", "sc", "topical", "inhaled", "other"] as const;
-const FREQUENCY_OPTIONS = ["OD", "BD", "TDS", "QID", "HS", "SOS", "STAT", "other"] as const;
 
 type VisitDetail = {
   encounter: WireEncounter;
@@ -305,12 +304,6 @@ export function OpdConsult(): React.ReactElement {
   const [interactionReasons, setInteractionReasons] = useState<string[]>([]);
   const [duplicateReasons, setDuplicateReasons] = useState<string[]>([]);
   /** Soft hits. They never gate anything and the panel is dismissible. */
-  /**
-   * P26 — the line whose sig drawer is open. A pick opens it; `Done`, a second pick elsewhere, or
-   * a new patient closes it. One at a time: two open drawers would be two sets of pills with no
-   * way to tell which line they wrote to.
-   */
-  const [sigLine, setSigLine] = useState<number | null>(null);
   /**
    * ═══ WHICH PRODUCT A PICKED LINE ACTUALLY HOLDS (P27) ═══
    *
@@ -728,7 +721,6 @@ export function OpdConsult(): React.ReactElement {
     setDuplicateHits([]);
     setInteractionReasons([]);
     setDuplicateReasons([]);
-    setSigLine(null);
     setShorthand({});
     setNotices([]);
     setNoticesDismissed(false);
@@ -2538,8 +2530,13 @@ export function OpdConsult(): React.ReactElement {
                     <FormKit onSubmit={submitRx}>
                       {lines.fields.map((f, i) => (
                         <Fragment key={f.id}>
-                        <div data-testid={`rx-row-${String(i)}`} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 9, padding: "11px 0", borderTop: i === 0 ? "none" : "1px solid var(--line)" }}>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                        {/*
+                          A LINE IS Drug · Dose · Route, then the sig panel — the ONLY control for
+                          how often, food timing, days and the note (see components/sig-panel.tsx
+                          for why the Frequency select and the Days and Instructions boxes went).
+                        */}
+                        <div data-testid={`rx-row-${String(i)}`} style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 9, padding: "11px 0 9px", borderTop: i === 0 ? "none" : "1px solid var(--line)" }}>
+                          <div style={{ flex: "2 1 240px", minWidth: 0, display: "flex", flexDirection: "column", gap: 5 }}>
                             {/*
                               THE DRUG FIELD IS NOW A COMBOBOX over the CLINICAL DRUG tier —
                               molecule and strength, no brand. It replaces a plain TextField plus a
@@ -2589,7 +2586,6 @@ export function OpdConsult(): React.ReactElement {
                                 rxForm.setValue(`lines.${i}.drug`, hit.name, { shouldDirty: true });
                                 rxForm.setValue(`lines.${i}.medicineId`, hit.id);
                                 setShorthand((m) => ({ ...m, [f.id]: { strength: hit.strength, form: hit.form, code: hit.code } }));
-                                setSigLine(i);
                               }}
                             />
                             {/*
@@ -2616,42 +2612,42 @@ export function OpdConsult(): React.ReactElement {
                               </p>
                             )}
                           </div>
-                          <TextField name={`lines.${String(i)}.dose`} label={t("opdConsult.dose")} />
-                          <SelectField
-                            name={`lines.${String(i)}.route`}
-                            label={t("opdConsult.route")}
-                            options={ROUTE_OPTIONS.map((r) => ({ value: r, label: t(`opdConsult.routeOption.${r}`) }))}
-                          />
-                          <SelectField
-                            name={`lines.${String(i)}.frequency`}
-                            label={t("opdConsult.frequency")}
-                            options={FREQUENCY_OPTIONS.map((r) => ({ value: r, label: t(`opdConsult.frequencyOption.${r}`) }))}
-                          />
-                          <TextField name={`lines.${String(i)}.durationDays`} label={t("opdConsult.durationDays")} type="number" />
-                          <TextField name={`lines.${String(i)}.instructions`} label={t("opdConsult.instructions")} />
-                          <CheckboxField name={`lines.${String(i)}.noSubstitution`} label={t("opdConsult.noSubstitution")} />
-                          {lines.fields.length > 1 && (
-                            <button type="button" className="sec" style={{ padding: "3px 11px", fontSize: 12, alignSelf: "end" }} onClick={() => lines.remove(i)}>
-                              {t("opdConsult.removeLine")}
-                            </button>
-                          )}
+                          <div style={{ flex: "1 1 130px", minWidth: 0 }}>
+                            <TextField name={`lines.${String(i)}.dose`} label={t("opdConsult.dose")} />
+                          </div>
+                          <div style={{ flex: "1 1 130px", minWidth: 0 }}>
+                            <SelectField
+                              name={`lines.${String(i)}.route`}
+                              label={t("opdConsult.route")}
+                              options={ROUTE_OPTIONS.map((r) => ({ value: r, label: t(`opdConsult.routeOption.${r}`) }))}
+                            />
+                          </div>
+                          <div style={{ flex: "0 1 auto", display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start", paddingTop: 22 }}>
+                            <CheckboxField name={`lines.${String(i)}.noSubstitution`} label={t("opdConsult.noSubstitution")} />
+                            {lines.fields.length > 1 && (
+                              <button type="button" className="sec" style={{ padding: "3px 11px", fontSize: 12 }} onClick={() => lines.remove(i)}>
+                                {t("opdConsult.removeLine")}
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        {sigLine === i && (
-                          <SigDrawer
-                            lineIndex={i}
-                            drugName={rxForm.watch(`lines.${i}.drug`)}
-                            frequency={rxForm.watch(`lines.${i}.frequency`)}
-                            instructions={rxForm.watch(`lines.${i}.instructions`)}
-                            durationDays={String(rxForm.watch(`lines.${i}.durationDays`) ?? "")}
-                            onClose={() => { setSigLine(null); }}
-                            onPatch={(patch: SigPatch) => {
-                              /* Straight into the line's own fields — the drawer stores nothing. */
-                              if (patch.frequency !== undefined) rxForm.setValue(`lines.${i}.frequency`, patch.frequency, { shouldDirty: true });
-                              if (patch.instructions !== undefined) rxForm.setValue(`lines.${i}.instructions`, patch.instructions, { shouldDirty: true });
-                              if (patch.durationDays !== undefined) rxForm.setValue(`lines.${i}.durationDays`, patch.durationDays, { shouldDirty: true });
-                            }}
-                          />
-                        )}
+                        <SigPanel
+                          lineIndex={i}
+                          frequency={rxForm.watch(`lines.${i}.frequency`)}
+                          instructions={rxForm.watch(`lines.${i}.instructions`)}
+                          durationDays={String(rxForm.watch(`lines.${i}.durationDays`) ?? "")}
+                          frequencyError={rxForm.formState.errors.lines?.[i]?.frequency?.message}
+                          daysError={rxForm.formState.errors.lines?.[i]?.durationDays?.message}
+                          onPatch={(patch: SigPatch) => {
+                            /* Straight into the line's own fields — the panel stores nothing. */
+                            /* Re-checked only once the doctor has tried to issue: an error must clear
+                               as they fix it, but must not appear under a box they have just opened. */
+                            const opts = { shouldDirty: true, shouldValidate: rxForm.formState.isSubmitted };
+                            if (patch.frequency !== undefined) rxForm.setValue(`lines.${i}.frequency`, patch.frequency, opts);
+                            if (patch.instructions !== undefined) rxForm.setValue(`lines.${i}.instructions`, patch.instructions, opts);
+                            if (patch.durationDays !== undefined) rxForm.setValue(`lines.${i}.durationDays`, patch.durationDays, opts);
+                          }}
+                        />
                         </Fragment>
                       ))}
                       <div style={{ display: "flex", gap: 8, marginTop: 11 }}>
