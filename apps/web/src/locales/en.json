@@ -3705,7 +3705,8 @@
       "billed": "took {{amount}} by {{modes}}",
       "handedOver": "handed over to {{who}}",
       "draftClaimOnly": "saved as a draft — your claim stays",
-      "draftHeld": "saved as a draft — the strips are held until {{time}}"
+      "draftHeld": "saved as a draft — the strips are held until {{time}}",
+      "slipConfirmed": "confirmed the slip against the paper"
     },
     "status": {
       "claimed": "claimed",
@@ -3809,6 +3810,18 @@
       "insteadOf": "instead of {{brand}}",
       "undo": "undo",
       "open": "give an equivalent"
+    },
+    "slip": {
+      "title": "What the scribe photographed",
+      "see": "See the slip",
+      "typedBy": "typed from paper by {{name}}",
+      "owed": "Typed from the doctor's paper by {{name}}. Check every line against the slip before you collect — the bill will not issue until you confirm it.",
+      "confirm": "Confirmed against the slip",
+      "loading": "Opening the photograph…",
+      "none": "No photograph of this visit's slip was filed. Confirm against the paper in the patient's hand.",
+      "unreadable": "The photograph cannot be shown on this deployment — the document store is not set up. Confirm against the paper in the patient's hand.",
+      "alt": "The doctor's handwritten prescription, as photographed at the desk",
+      "rule": "Opening this writes a PHI-access row against your name. The photograph is what the doctor signed; the typed lines are what the hospital acts on. Where they disagree, the doctor settles it — not this counter."
     }
   },
   "appointmentSeat": {

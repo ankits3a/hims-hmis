@@ -64,6 +64,9 @@ import type { RxLine } from "../src/modules/opd/prescriptions";
  *
  * Nine from the handoff and a tenth it named as a trap: Schedule X refuses the whole CLAIM
  * (`claim.ts`), so that ticket is deliberately unworkable and the refusal is the demonstration.
+ * An eleventh (PD-8) is TYPED FROM THE DOCTOR'S PAPER by an `opd_scribe` through the real
+ * `paper_slip` authority (FD-31), so the desk's cross-check against the slip (E28) can be walked;
+ * with no scribe on the roster it is reported absent rather than faked.
  * The allergy ticket's allergy is recorded AFTER the prescription — `issuePrescription` runs the
  * same checks and would refuse it at issue, so a pre-existing allergy never reaches the counter.
  *
@@ -158,10 +161,12 @@ type Ticket = {
   allergyAfterIssue?: string;
   /** Claimed by a pharmacist who is not the first `pharmacy` holder, so the desk can say who has it. */
   claimedByAnother?: true;
+  /** Typed from the doctor's paper by an `opd_scribe` (FD-31) — the prescriber is still the encounter's doctor. */
+  typedFromPaper?: true;
 };
 
 /**
- * Phones `9000000101`–`106` are `seed:lab-demo`'s; this file owns `9000000201`–`210`. Idempotent by
+ * Phones `9000000101`–`106` are `seed:lab-demo`'s; this file owns `9000000201`–`211`. Idempotent by
  * phone, and by "already seen today" per ticket — so tomorrow the same ten people are a fresh day.
  */
 export const TICKETS: readonly Ticket[] = [
@@ -185,6 +190,8 @@ export const TICKETS: readonly Ticket[] = [
     lines: [med("Cetzine 10", "1 tab", "0-0-1", 7), med("Crocin 500", "1 tab", "1-0-1", 3)], claimedByAnother: true },
   { teaches: "Schedule X — refused at the claim", person: { name: "Dinesh Ram", sex: "male", ageYears: 41, phone: "9000000210" },
     lines: [med("Alprax 0.5", "1 tab", "0-0-1", 7), med("Calpol 500", "1 tab", "1-0-1", 3)] },
+  { teaches: "typed from the doctor's paper — confirm the slip first", person: { name: "Sushila Devi", sex: "female", ageYears: 60, phone: "9000000211" },
+    lines: [med("Cetzine 10", "1 tab", "0-0-1", 5), med("Calpol 500", "1 tab", "1-0-1", 3)], typedFromPaper: true },
 ];
 
 const ADULT_VITALS = { heightCm: 165, weightKg: 62, sbp: 124, dbp: 80, pulse: 76, spo2: 98, tempC: 36.9 };
@@ -384,6 +391,7 @@ export async function standUpPharmacyDay(db: Db, cfg: AppConfig, now: Date = new
   const frontDesk = await holderOf(db, "front_office");
   const doctor = await prescriber(db, report.ceremonies);
   const pharmacists = await holdersOf(db, "pharmacy");
+  const scribe = (await holdersOf(db, "opd_scribe"))[0];
   const second = pharmacists[1];
   if (second === undefined) {
     report.absent.push("a SECOND `pharmacy` holder — the claimed-by-another ticket is left queued, and nobody \"has\" it");
@@ -409,6 +417,10 @@ export async function standUpPharmacyDay(db: Db, cfg: AppConfig, now: Date = new
     const seenToday = await db.select({ id: opdEncounters.id }).from(opdEncounters)
       .where(and(eq(opdEncounters.patientId, patient.id), eq(opdEncounters.serviceDate, today)));
     if (seenToday.length > 0) continue;
+    if (ticket.typedFromPaper === true && scribe === undefined) {
+      report.absent.push("an `opd_scribe` holder — the ticket typed from the doctor's paper (PD-8, E28) was not made");
+      continue;
+    }
 
     const lines: RxLine[] = ticket.lines.map((l) => ({
       drug: l.drug, medicineId: l.brand === null ? null : (medicineIds.get(l.brand.toLowerCase()) ?? null),
@@ -419,7 +431,10 @@ export async function standUpPharmacyDay(db: Db, cfg: AppConfig, now: Date = new
     const encounterId = opened.encounter.id;
     await recordVitals(db, doctor.actor, encounterId, ADULT_VITALS, step(1));
     await startConsultation(db, doctor.actor, encounterId, step(2));
-    const issued = await issuePrescription(db, doctor.actor, cfg, encounterId, { lines }, step(3));
+    /* FD-31: the scribe types, the ENCOUNTER'S doctor stays the prescriber — `issuePrescription` resolves it. */
+    const issued = ticket.typedFromPaper === true
+      ? await issuePrescription(db, { type: "user", id: scribe!.id }, cfg, encounterId, { lines }, step(3), "paper_slip")
+      : await issuePrescription(db, doctor.actor, cfg, encounterId, { lines }, step(3));
     await completeConsultation(db, doctor.actor, encounterId, { testsOrderedReturnToday: false }, step(4));
     if (ticket.allergyAfterIssue !== undefined) {
       await withTx(db, (tx: Tx) => addAllergy(tx, doctor.actor, patient.id, {

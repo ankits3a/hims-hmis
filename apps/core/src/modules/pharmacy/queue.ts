@@ -216,6 +216,14 @@ export type DispenseView = {
   /** PD-1 — who holds it, so a pharmacist who opens somebody else's ticket is told whose it is. */
   claimedBy: string | null;
   claimedByName: string | null;
+  /**
+   * PD-8 / E28 — typed from the doctor's paper (FD-31), by whom, and whether a pharmacist has
+   * cross-confirmed the slip. The queue row carried these; the ticket did not, so the desk could
+   * only learn the slip was owed from `billDispense`'s refusal — at the till, the worst moment.
+   */
+  transcribedBy: string | null;
+  transcribedByName: string | null;
+  slipConfirmedBy: string | null;
   patient: { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean };
   allergies: { substance: string; severity: string | null }[];
   lines: DispenseLineView[];
@@ -287,6 +295,9 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
   const itemIds = [...new Set(lines.map((l) => l.itemId).filter((x): x is string => x !== null))];
   const items = itemIds.length === 0 ? new Map() : await itemsByIds(db, itemIds);
   const allergies = await listAllergies(db, d.patientId);
+  const [rxRow] = await db.select({ transcribedBy: opdPrescriptions.transcribedBy }).from(opdPrescriptions).where(eq(opdPrescriptions.id, d.prescriptionId));
+  const transcribedBy = rxRow?.transcribedBy ?? null;
+  const names = await userNames(db, [d.claimedBy, transcribedBy]);
   const openItems = lines.filter((l) => l.status === "open" && l.itemId !== null).map((l) => l.itemId as string);
   const batchesByItem = d.storeResourceId === null || openItems.length === 0
     ? new Map<string, DispenseLineView["batches"]>()
@@ -337,7 +348,10 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
     scheduled: d.scheduled, invoiceId: d.invoiceId, identityConfirmedVia: d.identityConfirmedVia,
     claimedAt: d.claimedAt, verifiedAt: d.verifiedAt, pickedAt: d.pickedAt, billedAt: d.billedAt, handedOverAt: d.handedOverAt,
     claimedBy: d.claimedBy,
-    claimedByName: d.claimedBy === null ? null : ((await userNames(db, [d.claimedBy])).get(d.claimedBy) ?? null),
+    claimedByName: names.get(d.claimedBy ?? "") ?? null,
+    transcribedBy,
+    transcribedByName: names.get(transcribedBy ?? "") ?? null,
+    slipConfirmedBy: d.slipConfirmedBy,
     cancelReason: d.cancelReason,
     patient: { id: summary.id, uhid: summary.uhid, name: summary.name, alias: summary.alias, restricted: summary.restricted },
     allergies: allergies.map((a) => ({ substance: a.substance, severity: (a as { severity?: string | null }).severity ?? null })),

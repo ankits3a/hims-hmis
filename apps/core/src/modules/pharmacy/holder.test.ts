@@ -3,11 +3,11 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { MON2, issueRx, line, seedPharmacyBase, stockIn } from "../../../test/helpers/pharmacy";
 import { testCfg } from "../../../test/helpers/opd";
 import { withTx } from "../../kernel/db/client";
-import { events } from "../../kernel/db/schema";
+import { events, opdPrescriptions } from "../../kernel/db/schema";
 import { prescriptionIssued } from "../opd";
 import { claimDispense, findAtCounter } from "./claim";
 import { handlePrescriptionIssued } from "./consumers";
-import { getDispense } from "./queue";
+import { confirmSlip, getDispense } from "./queue";
 import { pickDispense } from "./pick";
 import { cancelDispense, verifyDispense } from "./verify";
 import type { PharmacyFixture } from "../../../test/helpers/pharmacy";
@@ -49,6 +49,16 @@ describe("an open line's batches, and the exit from an abandoned claim (PD-4)", 
     expect(cancelled.status).toBe("cancelled");
     const again = await findAtCounter(db, testCfg, fx.incharge.actor, qr, MON2);
     expect(again.kind === "dispense" && again.dispense.status === "queued" && again.dispense.id !== id).toBe(true);
+  });
+
+  it("E28 — a ticket typed from the doctor's paper says so, and by whom, from the moment it is opened", async () => {
+    const { id } = await claimedBy(fx.pharmacist.actor);
+    const d = await getDispense(db, fx.pharmacist.actor, id, MON2);
+    expect(d).toMatchObject({ transcribedBy: null, transcribedByName: null, slipConfirmedBy: null });
+    await db.update(opdPrescriptions).set({ transcribedBy: fx.clerk.id }).where(eq(opdPrescriptions.id, d.prescriptionId));
+    expect(await getDispense(db, fx.pharmacist.actor, id, MON2)).toMatchObject({ transcribedBy: fx.clerk.id, transcribedByName: "clerk", slipConfirmedBy: null });
+    await confirmSlip(db, fx.pharmacist.actor, id, MON2);
+    expect(await getDispense(db, fx.pharmacist.actor, id, MON2)).toMatchObject({ slipConfirmedBy: fx.pharmacist.id });
   });
 
   it("PD-D3 / E8 — each open line carries the batches the pick would draw from, earliest expiry first", async () => {

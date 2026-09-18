@@ -86,7 +86,13 @@ export type WireDispense = {
   cancelReason: string | null; patient: WirePatientSummary; allergies: { substance: string; severity: string | null }[]; lines: WireDispenseLine[];
   /** PD-1 — who holds it. Absent from an older server. */
   claimedBy?: string | null; claimedByName?: string | null;
+  /** PD-8 / E28 — typed from the doctor's paper, by whom, and whether the slip is confirmed. Absent from an older server. */
+  transcribedBy?: string | null; transcribedByName?: string | null; slipConfirmedBy?: string | null;
 };
+/** FD-31 — the pharmacist's cross-confirmation of a transcribed prescription against the paper. */
+export async function confirmDispenseSlip(id: string): Promise<{ slipConfirmedBy: string | null; slipConfirmedAt: string | null }> {
+  return api("POST", `/pharmacy/dispenses/${id}/confirm-slip`, {});
+}
 export type WireQueueRow = {
   dispenseId: string; status: string; dispenseNo: string | null; scheduled: boolean; lineCount: number;
   createdAt: string; claimedAt: string | null; patient: WirePatientSummary;

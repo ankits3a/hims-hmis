@@ -7,7 +7,7 @@ import { ApiError, newIdempotencyKey } from "../../lib/api";
 import { fetchCurrentSession } from "../../lib/billing-api";
 import { usePaletteOptional } from "../../components/command-palette";
 import {
-  billDispense, claimDispense, declineLine, fetchCounterSummary, fetchDispense, fetchQueue, findAtCounter, handOverDispense,
+  billDispense, claimDispense, confirmDispenseSlip, declineLine, fetchCounterSummary, fetchDispense, fetchQueue, findAtCounter, handOverDispense,
   pharmacyErrorCode, pharmacyErrorText, pickDispense, previewBill, verifyDispense,
 } from "../../lib/pharmacy-api";
 import { istClock, istDateLabel } from "../desk-one/model";
@@ -15,6 +15,7 @@ import { heldByAnother, holdOf, stageOf } from "./model";
 import { BillRail, heldUntil, rupees } from "./bill";
 import { say, useDeskLog } from "./log";
 import { Dossier, QueueOverlay, QueueRail } from "./rails";
+import { SlipSheet } from "./slip";
 import { TicketPanel } from "./ticket";
 import type { DeskLog } from "./log";
 import type { CollectResult } from "./lines";
@@ -67,7 +68,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
   const [inHandId, setInHandId] = useState<string | null>(ticketId);
   useEffect(() => { setInHandId(ticketId); }, [ticketId]);
   const [candidates, setCandidates] = useState<WirePatientSummary[] | null>(null);
-  const [overlay, setOverlay] = useState<"queue" | null>(null);
+  const [overlay, setOverlay] = useState<"queue" | "slip" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -261,6 +262,21 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     clearDesk();
   }, [clearDesk, t, ticket.data?.pickedAt]);
 
+  /* FD-31 / E28 — the cross-confirmation, asked for when the ticket is opened rather than at the till. */
+  const confirmSlip = useCallback(async (): Promise<void> => {
+    if (inHandId === null) return;
+    setError(null);
+    try {
+      await confirmDispenseSlip(inHandId);
+      await qc.invalidateQueries({ queryKey: ["pharmacy", "dispense", inHandId] });
+      say(t("pharmacyDesk.log.slipConfirmed"));
+    } catch (e) {
+      const text = pharmacyErrorText(e, t);
+      setError(text);
+      say(text, "err");
+    }
+  }, [inHandId, qc, t]);
+
   const decline = useCallback(async (lineIdx: number, reason: string): Promise<boolean> => {
     if (inHandId === null) return false;
     setError(null);
@@ -290,11 +306,13 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
       }
       if (e.key === "F8") { e.preventDefault(); palette?.open(); return; }
       if (typingIn(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.key === "q" || e.key === "Q") { e.preventDefault(); setOverlay((o) => (o === "queue" ? null : "queue")); }
+      if (e.key === "q" || e.key === "Q") { e.preventDefault(); setOverlay((o) => (o === "queue" ? null : "queue")); return; }
+      /* `S` exists only where there is paper to see: a ticket typed from the doctor's slip. */
+      if ((e.key === "s" || e.key === "S") && ticket.data?.transcribedBy != null) { e.preventDefault(); setOverlay("slip"); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [candidates, clearDesk, inHandId, overlay, palette]);
+  }, [candidates, clearDesk, inHandId, overlay, palette, ticket.data?.transcribedBy]);
 
   const rows = queue.data ?? [];
   const waiting = rows.filter((r) => r.status === "queued" && holdOf(r, me).kind === "free").length;
@@ -348,6 +366,8 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
               handOverError={handOverError}
               takenLabel={preview.data === undefined ? null : rupees(preview.data.totals.netPayablePaise)}
               onHandOver={(identity) => void handOver(identity)}
+              onOpenSlip={() => setOverlay("slip")}
+              onConfirmSlip={() => void confirmSlip()}
               onFind={(q) => void find(q)}
               onTake={(id, who) => void takeHere(id, who, false)}
               onClear={clearDesk}
@@ -375,6 +395,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
         <DeskDock log={log} />
       </div>
 
+      {overlay === "slip" && inHand !== null ? <SlipSheet dispense={inHand} onClose={() => setOverlay(null)} /> : null}
       {overlay === "queue" ? (
         <QueueOverlay rows={rows} me={me} now={now} onOpen={(id, who, mine) => void openInTab(id, who, mine)} onClose={() => setOverlay(null)} />
       ) : null}

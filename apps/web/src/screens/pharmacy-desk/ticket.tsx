@@ -15,6 +15,7 @@ import type { PickLine, VerifyLine, WireDispense, WirePatientSummary } from "../
  */
 export function TicketPanel({
   inHand, loading, loadError, me, candidates, error, note, busy, handOverError, takenLabel, onFind, onTake, onClear, onCollect, onDecline, onHandOver,
+  onOpenSlip, onConfirmSlip,
 }: {
   inHand: WireDispense | null;
   loading: boolean;
@@ -33,6 +34,8 @@ export function TicketPanel({
   /** What was taken, as the bill rail printed it — the done line repeats the server's figure, never a sum of its own. */
   takenLabel: string | null;
   onHandOver: (identity: { via: "token" | "phone_last4"; value: string } | null) => void;
+  onOpenSlip: () => void;
+  onConfirmSlip: () => void;
 }): React.ReactElement {
   const { t } = useTranslation();
   const alerts = (
@@ -113,6 +116,9 @@ export function TicketPanel({
   }
 
   const h1Lines = inHand.lines.filter((l) => l.scheduleFlag === "H1").map((l) => l.lineIdx + 1);
+  /* E28 — typed from paper and not yet confirmed: the attestation is asked for FIRST, not at the till. */
+  const typed = inHand.transcribedBy != null;
+  const slipOwed = typed && inHand.slipConfirmedBy == null;
   return (
     <div data-testid="desk-ticket">
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
@@ -121,13 +127,26 @@ export function TicketPanel({
         </h1>
         <span className="pill on">{inHand.status === "claimed" ? t("pharmacyDesk.claimedByYou") : t(`pharmacyDesk.status.${inHand.status}`)}</span>
         {h1Lines.length > 0 ? <span className="pill rd">{t("pharmacyDesk.h1On", { lines: h1Lines.join(", ") })}</span> : null}
+        <span style={{ flexGrow: 1 }} />
+        {/* While the cross-check is owed the banner carries this control; one control, not two. */}
+        {typed && !slipOwed ? <button className="sec" onClick={onOpenSlip}>{t("pharmacyDesk.slip.see")} <span className="kb">S</span></button> : null}
       </div>
       <p style={{ margin: "5px 0 0 0", fontSize: 12.5, color: "var(--dim)" }}>
         {t("pharmacyDesk.rxVersion", { version: inHand.prescriptionVersion })}
+        {typed ? ` · ${t("pharmacyDesk.slip.typedBy", { name: inHand.transcribedByName ?? "—" })}` : ""}
       </p>
+      {slipOwed ? (
+        <div role="status" data-testid="desk-slip-owed" style={{ marginTop: 13, padding: "11px 14px", borderRadius: 7, background: "var(--gold-soft)", border: "1px solid var(--gold-line)" }}>
+          <span style={{ fontSize: 12.5, lineHeight: "18px" }}>{t("pharmacyDesk.slip.owed", { name: inHand.transcribedByName ?? "—" })}</span>
+          <span style={{ display: "flex", gap: 8, marginTop: 9 }}>
+            <button className="sec" onClick={onOpenSlip}>{t("pharmacyDesk.slip.see")} <span className="kb">S</span></button>
+            <button className="sec grn" disabled={busy} onClick={onConfirmSlip}>{t("pharmacyDesk.slip.confirm")}</button>
+          </span>
+        </div>
+      ) : null}
       <LineList
         dispense={inHand}
-        editable={inHand.status === "claimed" || inHand.status === "verified"}
+        editable={(inHand.status === "claimed" || inHand.status === "verified") && !slipOwed}
         busy={busy}
         onCollect={onCollect}
         onDecline={onDecline}
