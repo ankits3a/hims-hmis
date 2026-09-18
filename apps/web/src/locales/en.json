@@ -4236,6 +4236,20 @@
     "unreviewed": "not yet reviewed by pharmacy",
     "unreviewedTitle": "A component of this product has not been reviewed by pharmacy, so an allergy class or an interaction on that component cannot be checked."
   },
+  "sigDrawer": {
+    "close": "Done",
+    "frequency": "How often",
+    "timing": "With food",
+    "duration": "For how long",
+    "days": "{{n}} days",
+    "hint": "Shortcuts into the fields above — type there for anything else.",
+    "timingOption": {
+      "afterFood": "After food",
+      "beforeFood": "Before food",
+      "withFood": "With food",
+      "emptyStomach": "Empty stomach"
+    }
+  },
   "pharmacyH1": {
     "title": "Schedule H1 register",
     "rule": "Drugs and Cosmetics Rules, 1945, rule 65(3A)",

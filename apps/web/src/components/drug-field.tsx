@@ -95,11 +95,23 @@ export function DrugField({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const asked = useRef("");
+  /**
+   * THE NAME THAT WAS JUST PICKED, so the list does not reopen on top of the doctor.
+   *
+   * A pick writes `hit.name` into the field, which changes `value`, which re-runs the search below
+   * — and 180 ms later the answers arrive and reopen the list the pick had just closed. In jsdom
+   * the assertion runs before that timer, so the shipped test saw a closed list and passed; a
+   * browser walk at 1280 px saw the list hanging over the sig drawer, swallowing the taps meant
+   * for it. Editing the name clears this, and the field behaves as it always did.
+   */
+  const picked = useRef<string | null>(null);
   const box = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const q = value.trim();
     asked.current = q;
+    if (picked.current === q) { setHits([]); setBusy(false); return; }
+    picked.current = null;
     if (q.length < 3) { setHits([]); setBusy(false); return; }
     let live = true;
     setBusy(true);
@@ -162,7 +174,7 @@ export function DrugField({
             <li key={h.id}>
               <button
                 type="button" data-testid={`${inputId}-hit-${h.id}`}
-                onClick={() => { onPick(h); setOpen(false); }}
+                onClick={() => { picked.current = h.name; onPick(h); setOpen(false); }}
                 style={{
                   display: "flex", width: "100%", gap: 10, alignItems: "baseline", padding: "7px 10px",
                   border: 0, borderTop: "1px solid var(--line2)", background: "none", cursor: "pointer",
