@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { setToken } from "../../lib/api";
 import { renderWithProviders } from "../../test-utils";
 import { PharmacyDesk } from "./pharmacy-desk";
-import { holdOf, stageOf, ticketLabel, waitLabel, waitTone } from "./model";
+import { holdOf, lineVerdict, shelfFlag, stageOf, ticketLabel, waitLabel, waitTone } from "./model";
 import { resetDeskLog } from "./log";
 import type { WireDispense, WireQueueRow } from "../../lib/pharmacy-api";
 
@@ -235,5 +235,42 @@ describe("PharmacyDesk (PD-3)", () => {
     const drawn = new Set([...document.querySelectorAll(".kb")].map((k) => k.textContent));
     // No palette provider in the harness, so F8 is not drawn; with one, F8 is drawn and bound.
     expect([...drawn].sort()).toEqual(["Esc", "Q", "⏎"].sort());
+  });
+});
+
+describe("C1 — the line, checked against the shelf before anybody claims it (PD-7)", () => {
+  beforeEach(() => { setToken("t"); navigate.mockReset(); resetDeskLog(); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+  const check = (over: Partial<NonNullable<WireQueueRow["shelf"]>> = {}): NonNullable<WireQueueRow["shelf"]> =>
+    ({ lines: 2, onShelf: 2, short: [], notStocked: [], unplaceable: 0, scheduleX: false, ...over });
+
+  it("one flag per ticket: the law first, then what is missing BY NAME, then what cannot be placed", () => {
+    expect(shelfFlag(check({ scheduleX: true, short: ["Azee 500"] }))).toMatchObject({ tone: "rd", key: "scheduleX" });
+    expect(shelfFlag(check({ onShelf: 1, short: ["Azee 500"] }))).toMatchObject({ tone: "gd", key: "short", names: "Azee 500" });
+    expect(shelfFlag(check({ onShelf: 1, notStocked: ["Brufen 400"] }))).toMatchObject({ tone: "gd", key: "notStocked", names: "Brufen 400" });
+    expect(shelfFlag(check({ onShelf: 1, unplaceable: 1 }))).toMatchObject({ tone: "gd", key: "unplaceable", n: 1 });
+    expect(shelfFlag(check())).toMatchObject({ tone: "on", key: "allOn" });
+    expect(shelfFlag(null)).toBeNull(); // claimed: its own lines are the truth
+  });
+
+  it("the rail says it per row, and the agent says it over the whole line — on pine", async () => {
+    const rows = [
+      row("d1", "Ramesh Paswan", { shelf: check() }),
+      row("d2", "Geeta Devi", { shelf: check({ lines: 1, onShelf: 0, short: ["Glycomet 500"] }) }),
+      row("d3", "Dinesh Ram", { shelf: check({ onShelf: 1, scheduleX: true }) }),
+      row("d4", "Neha Prasad", { status: "claimed", claimedBy: "u-vikas", claimedByName: "Vikas Ranjan", shelf: null }),
+    ];
+    expect(lineVerdict(rows)).toEqual({ waiting: 3, complete: 1, incomplete: 1, refused: 1 });
+    mockRoutes({ ...base(), "GET /api/pharmacy/queue": { status: 200, body: { items: rows } } });
+    renderWithProviders(<PharmacyDesk ticketId={null} />);
+    expect(await screen.findByTestId("shelf-d1")).toHaveTextContent("all on shelf");
+    expect(screen.getByTestId("shelf-d2")).toHaveTextContent("Glycomet 500 short");
+    expect(screen.getByTestId("shelf-d3")).toHaveTextContent("Schedule X — not at this counter");
+    expect(screen.queryByTestId("shelf-d4")).toBeNull();
+    const said = screen.getByTestId("desk-line-verdict");
+    expect(said).toHaveClass("agchip");
+    expect(said).toHaveTextContent("3 tickets waiting. I have checked every line against this shelf — one is complete, one is missing something, one cannot be dispensed here.");
+    await userEvent.click(within(said).getByRole("button", { name: "Show the line" }));
+    expect(await screen.findByRole("dialog", { name: "Every ticket at this counter" })).toBeInTheDocument();
   });
 });

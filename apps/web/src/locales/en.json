@@ -3822,6 +3822,25 @@
       "unreadable": "The photograph cannot be shown on this deployment — the document store is not set up. Confirm against the paper in the patient's hand.",
       "alt": "The doctor's handwritten prescription, as photographed at the desk",
       "rule": "Opening this writes a PHI-access row against your name. The photograph is what the doctor signed; the typed lines are what the hospital acts on. Where they disagree, the doctor settles it — not this counter."
+    },
+    "shelf": {
+      "allOn": "all on shelf",
+      "short": "{{names}} short",
+      "notStocked": "not stocked: {{names}}",
+      "unplaceable_one": "a line to place",
+      "unplaceable_other": "{{count}} lines to place",
+      "scheduleX": "Schedule X — not at this counter"
+    },
+    "agent": {
+      "checked_one": "One ticket waiting. I have checked its lines against this shelf —",
+      "checked_other": "{{count}} tickets waiting. I have checked every line against this shelf —",
+      "complete_one": "one is complete",
+      "complete_other": "{{count}} are complete",
+      "incomplete_one": "one is missing something",
+      "incomplete_other": "{{count}} are missing something",
+      "refused_one": "one cannot be dispensed here",
+      "refused_other": "{{count}} cannot be dispensed here",
+      "show": "Show the line"
     }
   },
   "appointmentSeat": {

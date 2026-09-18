@@ -367,6 +367,8 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
               takenLabel={preview.data === undefined ? null : rupees(preview.data.totals.netPayablePaise)}
               onHandOver={(identity) => void handOver(identity)}
               onOpenSlip={() => setOverlay("slip")}
+              queue={rows}
+              onShowLine={() => setOverlay("queue")}
               onConfirmSlip={() => void confirmSlip()}
               onFind={(q) => void find(q)}
               onTake={(id, who) => void takeHere(id, who, false)}

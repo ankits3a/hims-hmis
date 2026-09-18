@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { FLOW_STEPS, flowIndex, holdOf, initialsOf, stageOf, ticketLabel, waitLabel, waitTone, whoLabel } from "./model";
+import { FLOW_STEPS, flowIndex, holdOf, initialsOf, shelfFlag, stageOf, ticketLabel, waitLabel, waitTone, whoLabel } from "./model";
 import type { WaitTone } from "./model";
 import type { WireCounterSummary, WireDispense, WireQueueRow } from "../../lib/pharmacy-api";
 
@@ -168,6 +168,7 @@ export function QueueRail({
                   {m.hold.kind === "theirs" ? <span className="pill">{t("pharmacyDesk.heldBy", { name: m.hold.name })}</span> : null}
                   {m.hold.kind === "mine" ? <span className="pill on">{t("pharmacyDesk.yours")}</span> : null}
                   {row.patient.restricted ? <span className="pill gd">{t("pharmacyDesk.sealedRecord")}</span> : null}
+                  <ShelfPill row={row} />
                   {row.transcribedBy !== null && row.transcribedBy !== undefined && row.slipConfirmedBy === null
                     ? <span className="pill gd">{t("pharmacyDesk.slipToConfirm")}</span> : null}
                 </span>
@@ -215,6 +216,7 @@ export function QueueOverlay({
                 <span style={{ flexGrow: 1, minWidth: 0 }}>
                   <span style={{ display: "block", fontSize: 13, fontWeight: 500 }}>{m.who}</span>
                   <span className="mo" style={{ display: "block", fontSize: 11, color: "var(--dim)" }}>{row.patient.uhid}</span>
+                  <span style={{ display: "flex", marginTop: 4 }}><ShelfPill row={row} /></span>
                 </span>
                 <span className="mo" style={{ fontSize: 11.5, color: m.tone, width: 52, textAlign: "right", paddingTop: 3 }}>{m.wait}</span>
                 {m.hold.kind === "theirs" ? (
@@ -233,5 +235,17 @@ export function QueueOverlay({
         </div>
       </div>
     </div>
+  );
+}
+
+/** PD-7 / C1 — the shelf's verdict on a WAITING ticket, before it is claimed. */
+function ShelfPill({ row }: { row: WireQueueRow }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const flag = shelfFlag(row.shelf);
+  if (flag === null) return null;
+  return (
+    <span className={`pill ${flag.tone}`} data-testid={`shelf-${row.dispenseId}`}>
+      {t(`pharmacyDesk.shelf.${flag.key}`, { names: flag.names, count: flag.n })}
+    </span>
   );
 }

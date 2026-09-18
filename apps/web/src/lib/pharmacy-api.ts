@@ -100,7 +100,10 @@ export type WireQueueRow = {
   transcribedBy?: string | null; slipConfirmedBy?: string | null;
   /** PD-1 — who holds a claimed ticket. Absent from an older server. */
   claimedBy?: string | null; claimedByName?: string | null;
+  /** PD-7 / C1 — a waiting ticket checked against the shelf; null once claimed. Absent from an older server. */
+  shelf?: WireShelfCheck | null;
 };
+export type WireShelfCheck = { lines: number; onShelf: number; short: string[]; notStocked: string[]; unplaceable: number; scheduleX: boolean };
 export type WireFindResult =
   | { kind: "dispense"; door: string; dispense: WireDispense }
   | { kind: "patients"; door: "uhid"; patients: WirePatientSummary[] }

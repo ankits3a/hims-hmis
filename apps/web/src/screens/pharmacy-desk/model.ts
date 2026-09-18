@@ -1,4 +1,4 @@
-import type { WireDispense, WirePatientSummary, WireQueueRow } from "../../lib/pharmacy-api";
+import type { WireDispense, WirePatientSummary, WireQueueRow, WireShelfCheck } from "../../lib/pharmacy-api";
 
 /**
  * ═══ PHASE PD — THE PHARMACY DESK'S PURE HALF ═══
@@ -97,4 +97,34 @@ export function holdOf(row: Pick<WireQueueRow, "status" | "claimedBy" | "claimed
 /** `restricted` patients cannot be claimed by a reader without the grant (PD-1, E3); the row says so first. */
 export function sealedFor(row: Pick<WireQueueRow, "patient">): boolean {
   return row.patient.restricted;
+}
+
+/**
+ * PD-7 / C1 — what the shelf pre-check says about a waiting ticket, as one flag: the law first
+ * (Schedule X — the claim will refuse it), then what is missing by NAME, then what cannot be placed,
+ * else "all on shelf". A flag names the drug because "1 short" sends the pharmacist to find out
+ * which; "Azee 500 short" is already the answer.
+ */
+export type ShelfFlag = { tone: "on" | "gd" | "rd"; key: "scheduleX" | "short" | "notStocked" | "unplaceable" | "allOn"; names: string; n: number };
+export function shelfFlag(check: WireShelfCheck | null | undefined): ShelfFlag | null {
+  if (check == null || check.lines === 0) return null;
+  if (check.scheduleX) return { tone: "rd", key: "scheduleX", names: "", n: 0 };
+  const missing = [...check.short, ...check.notStocked];
+  if (check.short.length > 0) return { tone: "gd", key: "short", names: missing.join(", "), n: missing.length };
+  if (check.notStocked.length > 0) return { tone: "gd", key: "notStocked", names: missing.join(", "), n: missing.length };
+  if (check.unplaceable > 0) return { tone: "gd", key: "unplaceable", names: "", n: check.unplaceable };
+  return { tone: "on", key: "allOn", names: "", n: 0 };
+}
+
+/** The agent's sentence over the whole line (C1): how many waiting tickets the shelf can fill whole. */
+export function lineVerdict(rows: readonly Pick<WireQueueRow, "status" | "shelf">[]): { waiting: number; complete: number; incomplete: number; refused: number } | null {
+  const checked = rows.filter((r) => r.status === "queued" && r.shelf != null);
+  if (checked.length === 0) return null;
+  const flags = checked.map((r) => shelfFlag(r.shelf));
+  return {
+    waiting: checked.length,
+    complete: flags.filter((f) => f?.key === "allOn").length,
+    refused: flags.filter((f) => f?.key === "scheduleX").length,
+    incomplete: flags.filter((f) => f !== null && f.key !== "allOn" && f.key !== "scheduleX").length,
+  };
 }

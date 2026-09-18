@@ -9,7 +9,9 @@ import { availableQty, getBatch, itemsByIds, itemUomRows, sellableBatchesByItem 
 import { getPatient, getPatientSummaries, listAllergies } from "../patients";
 import { dispenseQueued } from "./events";
 import { PharmacyError } from "./errors";
+import { shelfChecks } from "./precheck";
 import { getSaleItem } from "./sale-items";
+import type { ShelfCheck } from "./precheck";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { RxLine } from "../opd";
@@ -103,6 +105,11 @@ export type QueueRow = {
    */
   claimedBy: string | null;
   claimedByName: string | null;
+  /**
+   * PD-7 / C1 — for a WAITING ticket, what the shelf can do with it before anybody claims it
+   * (`precheck.ts`). Null once claimed: the ticket's own lines are the truth from then on.
+   */
+  shelf: ShelfCheck | null;
 };
 
 /** Full names for a set of user ids — the `leakage.ts` read, one query for a page. */
@@ -114,7 +121,7 @@ export async function userNames(db: Db | Tx, ids: readonly (string | null)[]): P
 }
 
 /** The counter's portal list: today's dispenses that are not finished, oldest first. Names are alias-safe. */
-export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: string }): Promise<QueueRow[]> {
+export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: string }, now: Date = new Date()): Promise<QueueRow[]> {
   const rows = await db.select().from(pharmacyDispenses)
     .where(and(
       sql`(${pharmacyDispenses.createdAt} at time zone 'Asia/Kolkata')::date = ${filter.serviceDate}::date`,
@@ -136,6 +143,7 @@ export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: str
   const summaries = await getPatientSummaries(db, actor, rows.map((r) => r.patientId));
   const byRequested = new Map(summaries.map((s) => [s.requestedId, s]));
   const holders = await userNames(db, rows.map((r) => r.claimedBy));
+  const checks = await shelfChecks(db, rows.filter((r) => r.status === "queued").map((r) => ({ dispenseId: r.id, prescriptionId: r.prescriptionId })), now);
   const out: QueueRow[] = [];
   for (const r of rows) {
     const s = byRequested.get(r.patientId);
@@ -148,6 +156,7 @@ export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: str
       slipConfirmedBy: r.slipConfirmedBy,
       claimedBy: r.claimedBy,
       claimedByName: r.claimedBy === null ? null : (holders.get(r.claimedBy) ?? null),
+      shelf: checks.get(r.id) ?? null,
     });
   }
   return out;

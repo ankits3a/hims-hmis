@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { heldByAnother, stageOf, ticketLabel, whoLabel } from "./model";
+import { heldByAnother, lineVerdict, stageOf, ticketLabel, whoLabel } from "./model";
 import { LineList } from "./lines";
 import type { CollectResult } from "./lines";
-import type { PickLine, VerifyLine, WireDispense, WirePatientSummary } from "../../lib/pharmacy-api";
+import type { PickLine, VerifyLine, WireDispense, WirePatientSummary, WireQueueRow } from "../../lib/pharmacy-api";
 
 /**
  * THE MIDDLE COLUMN — the only one that changes with the stage (PD-D1). Idle: whose prescription is
@@ -15,7 +15,7 @@ import type { PickLine, VerifyLine, WireDispense, WirePatientSummary } from "../
  */
 export function TicketPanel({
   inHand, loading, loadError, me, candidates, error, note, busy, handOverError, takenLabel, onFind, onTake, onClear, onCollect, onDecline, onHandOver,
-  onOpenSlip, onConfirmSlip,
+  onOpenSlip, onConfirmSlip, queue, onShowLine,
 }: {
   inHand: WireDispense | null;
   loading: boolean;
@@ -36,6 +36,9 @@ export function TicketPanel({
   onHandOver: (identity: { via: "token" | "phone_last4"; value: string } | null) => void;
   onOpenSlip: () => void;
   onConfirmSlip: () => void;
+  /** The line as the rail reads it — the agent's C1 sentence is said over it while nobody is in hand. */
+  queue: readonly WireQueueRow[];
+  onShowLine: () => void;
 }): React.ReactElement {
   const { t } = useTranslation();
   const alerts = (
@@ -60,6 +63,7 @@ export function TicketPanel({
       <div style={{ maxWidth: 660 }}>
         <FindField onFind={onFind} />
         {alerts}
+        <LineVerdict queue={queue} onShowLine={onShowLine} />
         {candidates !== null ? (
           <div className="box" style={{ marginTop: 18 }} data-testid="desk-candidates">
             <div style={{ padding: "12px 14px" }} className="tag">{t("pharmacyDesk.whichPatient")}</div>
@@ -237,6 +241,28 @@ export function HandOver({
         <span className="kb" style={{ borderColor: "rgba(255,255,255,.35)", background: "rgba(255,255,255,.12)", color: "#d6ece1" }}>Ctrl ⏎</span>
       </button>
       {error !== null ? <p role="alert" style={{ margin: "10px 0 0 0", fontSize: 12, color: "var(--red)" }}>{error}</p> : null}
+    </div>
+  );
+}
+
+/**
+ * PD-7 / C1, SAID BY THE AGENT — ON PINE, because it is the agent's (PD-D16): what it DID (checked
+ * every waiting ticket against this shelf) and what it found. It changes nothing and asks nothing.
+ */
+function LineVerdict({ queue, onShowLine }: { queue: readonly WireQueueRow[]; onShowLine: () => void }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const v = lineVerdict(queue);
+  if (v === null) return null;
+  return (
+    <div className="agchip" data-testid="desk-line-verdict" style={{ marginTop: 20, display: "flex" }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--mint)", flexShrink: 0 }} />
+      <span style={{ flexGrow: 1 }}>
+        {t("pharmacyDesk.agent.checked", { count: v.waiting })}{" "}
+        <b>{t("pharmacyDesk.agent.complete", { count: v.complete })}</b>
+        {v.incomplete > 0 ? `, ${t("pharmacyDesk.agent.incomplete", { count: v.incomplete })}` : ""}
+        {v.refused > 0 ? `, ${t("pharmacyDesk.agent.refused", { count: v.refused })}` : ""}.
+      </span>
+      <button className="agdo" onClick={onShowLine}>{t("pharmacyDesk.agent.show")}</button>
     </div>
   );
 }

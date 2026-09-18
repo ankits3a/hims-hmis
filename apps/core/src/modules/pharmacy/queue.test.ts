@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
-import { MON2, issueRx, line, seedPharmacyBase } from "../../../test/helpers/pharmacy";
+import { MON2, issueRx, line, seedPharmacyBase, stockIn } from "../../../test/helpers/pharmacy";
 import { mkPatient, testCfg } from "../../../test/helpers/opd";
 import { withTx } from "../../kernel/db/client";
 import { events } from "../../kernel/db/schema";
@@ -33,8 +33,8 @@ describe("the counter's queue — who holds a ticket, and who is on it (PD-1)", 
    * sealed patient's to one who may not read it (measured here, E3), so it would build a different
    * queue from the one the worker builds.
    */
-  async function queued(drug: string, medicineId: string, opts: { patientId?: string; at?: Date } = {}): Promise<string> {
-    const { encounter } = await issueRx(db, fx, [line({ drug, medicineId })], opts);
+  async function queued(drug: string, medicineId: string | null, opts: { patientId?: string; at?: Date; frequency?: string; durationDays?: number } = {}): Promise<string> {
+    const { encounter } = await issueRx(db, fx, [line({ drug, medicineId, frequency: opts.frequency ?? "1-0-1", durationDays: opts.durationDays ?? 3 })], opts);
     const [e] = await db.select({ eventId: events.eventId, payload: events.payload }).from(events)
       .where(and(eq(events.name, prescriptionIssued.name), eq(events.encounterId, encounter.id))).orderBy(desc(events.seq)).limit(1);
     const { dispenseId } = await withTx(db, (tx) => handlePrescriptionIssued(tx, e!.eventId, e!.payload, MON2));
@@ -69,6 +69,34 @@ describe("the counter's queue — who holds a ticket, and who is on it (PD-1)", 
         code: "dispense_not_in_state",
         detail: { status: "claimed", claimedBy: fx.pharmacist.id, claimedByName: "ph.mehta" },
       });
+  });
+
+  it("C1 — a waiting ticket says whether the shelf can fill it, BEFORE anybody claims it", async () => {
+    await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "CR-1", qtyBase: 100 });
+    await stockIn(db, fx, { itemId: fx.item.azithro, batchNo: "AZ-1", qtyBase: 2 });
+    const people = await Promise.all(["9876500011", "9876500012", "9876500013", "9876500014", "9876500015"]
+      .map((phone, i) => mkPatient(db, fx.clerk.actor, { name: `Patient ${String(i)}`, phone })));
+    const onShelf = await queued("Crocin 500", fx.med.crocin, { patientId: people[0]!.id });
+    const short = await queued("Azee 500", fx.med.azithro, { patientId: people[1]!.id, frequency: "1-0-0", durationDays: 3 });
+    const unplaceable = await queued("Ascoril LS syrup", null, { patientId: people[2]!.id });
+    const refused = await queued("Alprax 0.5", fx.med.alprax, { patientId: people[3]!.id });
+    const notStocked = await queued("Brufen 400", fx.med.ibuprofen, { patientId: people[4]!.id });
+
+    const rows = new Map((await listQueue(db, fx.pharmacist.actor, { serviceDate: TODAY })).map((r) => [r.dispenseId, r.shelf]));
+    const none = { lines: 1, onShelf: 0, short: [], notStocked: [], unplaceable: 0, scheduleX: false };
+    expect(rows.get(onShelf)).toEqual({ ...none, onShelf: 1 });
+    expect(rows.get(short)).toEqual({ ...none, short: ["Azee 500"] });
+    expect(rows.get(unplaceable)).toEqual({ ...none, unplaceable: 1 });
+    expect(rows.get(refused)).toEqual({ ...none, scheduleX: true });
+    expect(rows.get(notStocked)).toEqual({ ...none, notStocked: ["Brufen 400"] });
+  });
+
+  it("C1 — a claimed ticket carries no pre-check: its own lines are the truth now", async () => {
+    await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "CR-1", qtyBase: 100 });
+    const id = await queued("Crocin 500", fx.med.crocin);
+    await claimDispense(db, fx.pharmacist.actor, { dispenseId: id, door: "token" }, MON2);
+    const [row] = await listQueue(db, fx.pharmacist.actor, { serviceDate: TODAY });
+    expect(row!.shelf).toBeNull();
   });
 
   it("E3, MEASURED — a sealed patient's ticket is ON the list, under the alias; nobody is dropped", async () => {
