@@ -1,6 +1,7 @@
 import { IdentifierLeak } from "./mask";
+import { intentNames } from "./phrasebook";
 import { routeQuestion } from "./router";
-import type { CompleteInput, InferenceClient } from "../inference/types";
+import type { ChoiceAnswer, ChoiceClient, ChooseInput, CompleteInput, InferenceClient } from "../inference/types";
 
 /**
  * FD-COPILOT T3 — THE ROUTER, AND THE FOUR WAYS A MODEL CAN BE WRONG.
@@ -169,4 +170,167 @@ describe("routeQuestion — an unmasked question never reaches the provider", ()
     // Nothing identifier-shaped is in the prompt this module writes, either.
     expect(sent?.system).not.toMatch(/\d{5,}/);
   });
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * 2026-09-19 — TYPESAFE FIRST, THE CHAT MODEL BEHIND IT
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner: *"keep typesafe as priority and the groq as fallback"*. TypeSafe answers a CLOSED choice —
+ * the menu is the API's own answer space, not a regex over prose — and says how sure it is. So the
+ * order after the floor is: a confident choice routes; a confident "none" is a miss; anything else
+ * (unsure, unreachable, malformed) is handed to the chat model exactly as before.
+ *
+ * Measured on this box over 64 counter questions (English, Hinglish, Devanagari, 15 out-of-scope):
+ * TypeSafe 63/64 with ZERO wrong at confidence >= 0.6; the one miss scored 0.43, below the line, so
+ * it falls through — and the chat model answered it.
+ */
+type Chooser = { client: ChoiceClient; calls: ChooseInput[] };
+
+const picks = (answers: Record<string, ChoiceAnswer>): Chooser => {
+  const calls: ChooseInput[] = [];
+  return {
+    calls,
+    client: {
+      choose: (input: ChooseInput) => {
+        calls.push(input);
+        return Promise.resolve({ answers, model: "jev-1.13.0" });
+      },
+    },
+  };
+};
+
+const unreachable = (): Chooser => {
+  const calls: ChooseInput[] = [];
+  return {
+    calls,
+    client: {
+      choose: (input: ChooseInput) => {
+        calls.push(input);
+        return Promise.reject(new Error("timeout"));
+      },
+    },
+  };
+};
+
+/** A tail phrasing the phrasebook does not score — so every test below reaches the models. */
+const TAIL = "<<P1>> abhi tak andar gaye ya nahi";
+
+describe("routeQuestion — TypeSafe first", () => {
+  it("routes on a confident choice, and the chat model is never asked", async () => {
+    const chooser = picks({ tool: { choice: "visit_status", confidence: 0.99 } });
+    const model = say('{"tool":"queue_depth","slot":""}');
+    const out = await routeQuestion(TAIL, ISSUED, model.client, chooser.client);
+    expect(out).toEqual({ intent: "visit_status", slot: "<<P1>>", source: "model", cues: [] });
+    expect(model.calls).toHaveLength(0);
+  });
+
+  it("a confident 'none' is a miss — the chat model is not asked to overrule it", async () => {
+    const chooser = picks({ tool: { choice: "none", confidence: 0.97 } });
+    const model = say('{"tool":"visit_status","slot":"<<P1>>"}');
+    expect(await routeQuestion("canteen kab khulega", {}, model.client, chooser.client)).toBeNull();
+    expect(model.calls).toHaveLength(0);
+  });
+
+  it("below the confidence line the chat model is asked, and its answer is used", async () => {
+    const chooser = picks({ tool: { choice: "none", confidence: 0.43 } });
+    const model = say('{"tool":"patient_dues","slot":"<<P1>>"}');
+    const out = await routeQuestion("kitna lena hai <<P1>> se", ISSUED, model.client, chooser.client);
+    expect(out?.intent).toBe("patient_dues");
+    expect(model.calls).toHaveLength(1);
+  });
+
+  it("the line is the caller's: the same answer routes at 0.5 and falls through at 0.9", async () => {
+    const at = (line: number) => routeQuestion(TAIL, ISSUED, null, picks({ tool: { choice: "visit_status", confidence: 0.7 } }).client, line);
+    expect((await at(0.5))?.intent).toBe("visit_status");
+    expect(await at(0.9)).toBeNull();
+  });
+
+  it("an unreachable TypeSafe costs nothing but the fallback", async () => {
+    const chooser = unreachable();
+    const model = say('{"tool":"visit_status","slot":"<<P1>>"}');
+    const out = await routeQuestion(TAIL, ISSUED, model.client, chooser.client);
+    expect(out?.intent).toBe("visit_status");
+    expect(chooser.calls).toHaveLength(1);
+    expect(model.calls).toHaveLength(1);
+  });
+
+  it("a choice that is not on the menu is treated as unsure, never trusted", async () => {
+    const chooser = picks({ tool: { choice: "delete_patient", confidence: 1 } });
+    const model = say('{"tool":"none","slot":""}');
+    expect(await routeQuestion(TAIL, ISSUED, model.client, chooser.client)).toBeNull();
+    expect(model.calls).toHaveLength(1);
+  });
+
+  it("with TypeSafe alone, an unsure answer is an honest miss", async () => {
+    const chooser = picks({ tool: { choice: "visit_status", confidence: 0.3 } });
+    expect(await routeQuestion(TAIL, ISSUED, null, chooser.client)).toBeNull();
+  });
+
+  it("the scrubber runs before TypeSafe too — an unmasked question never reaches it", async () => {
+    const chooser = picks({ tool: { choice: "visit_status", confidence: 1 } });
+    await expect(routeQuestion("U00110012 abhi tak andar gaye ya nahi", {}, null, chooser.client)).rejects.toBeInstanceOf(IdentifierLeak);
+    expect(chooser.calls).toHaveLength(0);
+  });
+
+  it("sends the masked question and every tool on the menu plus 'none' — and nothing else", async () => {
+    const chooser = picks({ tool: { choice: "none", confidence: 1 } });
+    await routeQuestion(TAIL, ISSUED, null, chooser.client);
+    const sent = chooser.calls[0];
+    expect(sent?.state).toEqual({ question: TAIL });
+    expect(Object.keys(sent?.questions ?? {})).toEqual(["tool"]);
+    expect(Object.keys(sent?.questions.tool?.options ?? {}).sort()).toEqual([...intentNames(), "none"].sort());
+    expect(JSON.stringify(sent)).not.toContain("U00110012");
+  });
+});
+
+describe("routeQuestion — which patient, when TypeSafe routes", () => {
+  it("one placeholder in the question IS the subject; nobody is asked", async () => {
+    const chooser = picks({ tool: { choice: "visit_status", confidence: 0.99 } });
+    const out = await routeQuestion(TAIL, ISSUED, null, chooser.client);
+    expect(out?.slot).toBe("<<P1>>");
+    expect(Object.keys(chooser.calls[0]?.questions ?? {})).toEqual(["tool"]);
+  });
+
+  it("no placeholder, no subject", async () => {
+    const chooser = picks({ tool: { choice: "queue_depth", confidence: 0.99 } });
+    expect((await routeQuestion("naye patient ko kitna rukna padega", {}, null, chooser.client))?.slot).toBeNull();
+  });
+
+  /*
+    TWO PATIENTS IN ONE QUESTION. Asked in the SAME request (TypeSafe evaluates every question
+    against one state in parallel), over the placeholders this question minted and "none" — so a
+    subject can only ever be somebody the clerk typed. Unsure means no subject, and the tool then
+    says "which patient?" rather than guessing one.
+  */
+  it("two placeholders: the subject is a second choice over exactly those two", async () => {
+    const two = { "<<P1>>": "U00110012", "<<P2>>": "U00110020" };
+    const q = "<<P1>> ya <<P2>>, kaun andar gaya";
+    const chooser = picks({ tool: { choice: "visit_status", confidence: 0.95 }, subject: { choice: "<<P2>>", confidence: 0.9 } });
+    const out = await routeQuestion(q, two, null, chooser.client);
+    expect(Object.keys(chooser.calls[0]?.questions.subject?.options ?? {}).sort()).toEqual(["<<P1>>", "<<P2>>", "none"]);
+    expect(out?.slot).toBe("<<P2>>");
+  });
+
+  it("an unsure subject is no subject", async () => {
+    const two = { "<<P1>>": "U00110012", "<<P2>>": "U00110020" };
+    const chooser = picks({ tool: { choice: "visit_status", confidence: 0.95 }, subject: { choice: "<<P1>>", confidence: 0.5 } });
+    expect((await routeQuestion("<<P1>> ya <<P2>>, kaun andar gaya", two, null, chooser.client))?.slot).toBeNull();
+  });
+});
+
+/*
+  ═══ THE FALLBACK HAD NEVER HAD ROOM TO ANSWER ═══
+
+  Measured 2026-09-19 against the live gateway: `openai/gpt-oss-120b` is a REASONING model and spends
+  62-74 tokens thinking before it writes the JSON. At `max_tokens: 64` the reply came back
+  `finish_reason: "length"` with EMPTY content on the owner's own sentence ("kya <<P1>> ko doctor ne
+  dekh liya?") — and an empty reply is a miss, so the desk said "I did not understand" and nothing
+  anywhere said why. 8 of 64 counter questions got through; at 512, 59 did.
+*/
+it("the chat model is given room to think before it answers", async () => {
+  const model = say('{"tool":"visit_status","slot":"<<P1>>"}');
+  await routeQuestion(TAIL, ISSUED, model.client);
+  expect(model.calls[0]?.maxTokens).toBeGreaterThanOrEqual(256);
 });

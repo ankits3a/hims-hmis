@@ -1,7 +1,8 @@
+import { chooseRoute } from "./choice-route";
 import { assertNoIdentifiers } from "./mask";
 import { intentNames, matchIntent } from "./phrasebook";
 import type { CopilotIntent } from "./phrasebook";
-import type { InferenceClient } from "../inference/types";
+import type { ChoiceClient, InferenceClient } from "../inference/types";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -20,7 +21,31 @@ import type { InferenceClient } from "../inference/types";
  * something. The answer is composed by deterministic code from a real read, in the operator's own
  * language, and permission is the server's guard doing what it does for every other request. A
  * model that vanished mid-shift would cost the desk the long tail of phrasings and nothing else.
+ *
+ * ═══ TWO MODELS, IN ORDER (owner, 2026-09-19: "typesafe as priority and the groq as fallback") ═══
+ *
+ * After the floor, `choice-route.ts` asks a CLASSIFIER — handed the menu itself, it can only return
+ * a member of it, with a confidence. Sure of a tool: routed. Sure of "none": a miss. Unsure,
+ * unreachable or malformed: the chat model below is asked exactly as it always was. Either model
+ * may be absent; both absent is the phrasebook alone, which is how this ran before either existed.
  */
+
+/**
+ * ROOM FOR A REASONING MODEL TO THINK BEFORE IT ANSWERS.
+ *
+ * This was 64, sized for "a dozen tokens" of JSON. `gpt-oss-120b` spends 62-74 tokens REASONING
+ * first (measured against the live gateway, 2026-09-19), so at 64 the reply came back
+ * `finish_reason: "length"` with EMPTY content on the owner's own sentence — a miss, reported to the
+ * clerk as "I did not understand", with nothing anywhere saying why. 8 of 64 counter questions got
+ * through at 64; 59 at 512. Still a runaway guard: a well-behaved answer is ~100 tokens.
+ */
+const ROUTE_MAX_TOKENS = 512;
+
+/**
+ * The classifier's line, when the caller names none: 0.6, measured — every one of 61 answers at or
+ * above it was right on the 64-question set, and the three below it included the only wrong one.
+ */
+const DEFAULT_MIN_CONFIDENCE = 0.6;
 
 export type RouteResult = {
   intent: CopilotIntent;
@@ -76,6 +101,8 @@ export async function routeQuestion(
   masked: string,
   slots: Record<string, string>,
   model: InferenceClient | null,
+  chooser: ChoiceClient | null = null,
+  minConfidence: number = DEFAULT_MIN_CONFIDENCE,
 ): Promise<RouteResult | null> {
   /*
     THE FLOOR RUNS FIRST, AND THAT ORDERING IS THE COST MODEL.
@@ -88,17 +115,25 @@ export async function routeQuestion(
     return { intent: floor.intent, slot: floor.slot, source: "phrasebook", cues: floor.cues };
   }
 
-  if (model === null) return null;
+  if (model === null && chooser === null) return null;
 
   /*
-    THE LAST GATE BEFORE THE WIRE. `mask.ts` explains why this is a separate function from the
-    masker rather than part of it: a masker cannot be its own witness.
+    THE LAST GATE BEFORE THE WIRE — either wire. `mask.ts` explains why this is a separate function
+    from the masker rather than part of it: a masker cannot be its own witness.
   */
   assertNoIdentifiers(masked);
 
+  if (chooser !== null) {
+    const picked = await chooseRoute(masked, slots, chooser, minConfidence);
+    if (picked === "none") return null;
+    if (picked !== "unsure") return picked;
+  }
+
+  if (model === null) return null;
+
   let reply: string;
   try {
-    const out = await model.complete({ system: buildSystemPrompt(), user: masked, maxTokens: 64 });
+    const out = await model.complete({ system: buildSystemPrompt(), user: masked, maxTokens: ROUTE_MAX_TOKENS });
     reply = out.text;
   } catch {
     /*

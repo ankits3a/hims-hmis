@@ -9,7 +9,9 @@ import { openVisit } from "../../../modules/opd/encounters";
 import { issuePrescription } from "../../../modules/opd/prescriptions";
 import { callNext } from "../../../modules/opd/queue";
 import { recordVitals } from "../../../modules/opd/vitals";
-import { pharmacyDispenseLines, pharmacyDispenses, pharmacyRegH1 } from "./index";
+import { pharmacyDispenseLines, pharmacyDispenses, pharmacyRegH1, pharmacyShelfLocations } from "./index";
+import { seedPharmacyBase } from "../../../../test/helpers/pharmacy";
+import type { PharmacyFixture } from "../../../../test/helpers/pharmacy";
 import type { Db } from "../client";
 
 const MON = new Date("2026-08-17T04:00:00.000Z");
@@ -96,5 +98,35 @@ describe("the pharmacy schema (16c T1, migration 0056)", () => {
     const rows = await db.select().from(pharmacyRegH1);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.qtyBase).toBe(3);
+  });
+});
+
+/**
+ * PD-D18 — `pharmacy_shelf_locations`, migration 0106: one label per (counter's store, item), and the
+ * label is a real, trimmed, short word — "unknown" is the ABSENCE of a row, never an empty label.
+ */
+describe("pharmacy_shelf_locations (PD-D18, migration 0106)", () => {
+  let db: Db;
+  let teardown: () => Promise<void>;
+  let fx: PharmacyFixture;
+
+  beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
+  afterAll(async () => teardown());
+  beforeEach(async () => { await truncateAll(db); fx = await seedPharmacyBase(db); });
+  afterEach(() => { fx.unregister(); });
+
+  const row = (over: Partial<typeof pharmacyShelfLocations.$inferInsert> = {}): typeof pharmacyShelfLocations.$inferInsert =>
+    ({ id: newId(), storeResourceId: fx.storeId, itemId: fx.item.crocin, location: "R-12", setBy: "u", ...over });
+
+  it("holds one label per store and item", async () => {
+    await db.insert(pharmacyShelfLocations).values(row());
+    await expect(db.insert(pharmacyShelfLocations).values(row({ location: "R-13" }))).rejects.toThrow(/pharmacy_shelf_locations_store_item_ux/);
+    await db.insert(pharmacyShelfLocations).values(row({ itemId: fx.item.calpol, location: "rack 3 · shelf 2" }));
+    expect((await db.select().from(pharmacyShelfLocations).where(eq(pharmacyShelfLocations.storeResourceId, fx.storeId))).map((r) => r.location).sort())
+      .toEqual(["R-12", "rack 3 · shelf 2"]);
+  });
+
+  it.each([[""], ["   "], [" R-12"], ["R-12 "], ["X".repeat(25)]])("refuses the label %j", async (location: string) => {
+    await expect(db.insert(pharmacyShelfLocations).values(row({ location }))).rejects.toThrow(/pharmacy_shelf_locations_label_ck/);
   });
 });

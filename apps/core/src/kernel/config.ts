@@ -167,6 +167,31 @@ const configSchema = z.object({
    * ordinary outcome — the desk says it did not understand, which is true and instant.
    */
   COPILOT_TIMEOUT_MS: z.coerce.number().int().positive().default(3000),
+  /*
+   * ═══ THE COPILOT'S FIRST MODEL: TYPESAFE (owner, 2026-09-19 — "priority", the chat model above
+   * is its fallback) ═══
+   *
+   * A classifier handed the tool menu itself: it returns one of the tools, or "none", and how sure
+   * it is. `kernel/copilot/choice-route.ts` carries the measurement. Same B1 scar as every block
+   * here: no key is required anywhere, and with COPILOT_TYPESAFE_API_KEY unset the router runs
+   * exactly as it did before this block existed.
+   *
+   * THE MODEL IS A VERSION, NEVER AN ALIAS. `jev-latest` moves when the vendor ships, and the
+   * confidence line below was measured against 1.13.0 — moving is a config change made on purpose,
+   * after re-measuring.
+   *
+   * TIMEOUT 1 s: p90 was 350 ms on a warm connection and ~680 ms cold. It is shorter than the chat
+   * model's 3 s because the chat model is still behind it — a slow classifier must leave the clerk
+   * time for the fallback, not spend it.
+   *
+   * MIN CONFIDENCE 0.6: at or above it, 61 of 64 counter questions were answered and none wrong;
+   * below it, the question goes to the chat model.
+   */
+  COPILOT_TYPESAFE_API_KEY: z.string().min(1).optional(),
+  COPILOT_TYPESAFE_BASE_URL: z.string().url().default("https://api.typesafe.ai/v1"),
+  COPILOT_TYPESAFE_MODEL: z.string().min(1).default("jev-1.13.0"),
+  COPILOT_TYPESAFE_TIMEOUT_MS: z.coerce.number().int().positive().default(1000),
+  COPILOT_TYPESAFE_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.6),
   NOTIFY_STUCK_AFTER_MS: z.coerce.number().int().positive().default(300000),
   // Plan 11a D6/D7 (retention). All three defaulted, same B1 scar as the block above: no .env
   // entry is required anywhere, on the server or in CI.
@@ -310,6 +335,8 @@ export type AppConfig = {
   triage: { baseUrl: string | null; apiKey: string | null; model: string; timeoutMs: number };
   /** FD-COPILOT — the desk copilot's intent router. Null ⇒ phrasebook only, which is a supported way to run. */
   copilot: { baseUrl: string | null; apiKey: string | null; model: string; timeoutMs: number };
+  /** 2026-09-19 — the router's FIRST model, a classifier (TypeSafe). Null key ⇒ skipped, `copilot` above answers. */
+  copilotChoice: { baseUrl: string; apiKey: string | null; model: string; timeoutMs: number; minConfidence: number };
   notifyStuckAfterMs: number;
   // Plan 11a D6/D7. `retentionEnabled` is FALSE unless an operator says otherwise, in as many
   // letters; `worker/jobs.ts` threads all three into `retentionSweep` through the registration,
@@ -377,6 +404,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       apiKey: parsed.COPILOT_API_KEY ?? null,
       model: parsed.COPILOT_MODEL,
       timeoutMs: parsed.COPILOT_TIMEOUT_MS,
+    },
+    copilotChoice: {
+      baseUrl: parsed.COPILOT_TYPESAFE_BASE_URL,
+      apiKey: parsed.COPILOT_TYPESAFE_API_KEY ?? null,
+      model: parsed.COPILOT_TYPESAFE_MODEL,
+      timeoutMs: parsed.COPILOT_TYPESAFE_TIMEOUT_MS,
+      minConfidence: parsed.COPILOT_TYPESAFE_MIN_CONFIDENCE,
     },
     notifyStuckAfterMs: parsed.NOTIFY_STUCK_AFTER_MS,
     retentionEnabled: parsed.RETENTION_ENABLED,
