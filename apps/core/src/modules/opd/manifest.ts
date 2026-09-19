@@ -97,6 +97,13 @@ export const opdManifest: ModuleManifest = {
      * clinician; it did not disappear.
      */
     "opd.prescription.transcribe",
+    /**
+     * THE OPD DAY REPORT — owner request 2026-09-19. The hospital's day, department by department,
+     * and each department's patient list, as a screen, a spreadsheet and a printable letterhead.
+     * Held by the front-office supervisor, the medical superintendent and the owner. It carries
+     * patient names, so every department read is logged (`day_report.patients_listed`).
+     */
+    "opd.reports.read",
   ],
   // PLAN 11h T3 — doctors and departments on `opd.masters.read`, appointments on
   // `opd.appointments.read`. Patient confidentiality is NOT re-implemented here (DD1/DD3).

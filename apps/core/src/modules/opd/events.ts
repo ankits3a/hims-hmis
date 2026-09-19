@@ -434,3 +434,18 @@ export const rxQrSignatureFailed = defineEvent("qr.signature_failed", MODULE, z.
   payloadPrefix: z.string(),
   patientId: z.string().optional(), // only when the signature verified
 }));
+
+/**
+ * THE OPD DAY REPORT — A DEPARTMENT'S PATIENT LIST LEFT THE SYSTEM (owner request 2026-09-19).
+ *
+ * The hospital summary is integers and is not logged. The department list is names, ages and
+ * addresses, so every pull writes this row BEFORE the rows are returned — `kernel/search/audit.ts`'s
+ * reasoning: a log of the exports that finished cannot answer for the ones that did not. `format`
+ * says whether it went to a screen, a spreadsheet or a printable sheet; `rows` says how much.
+ */
+export const dayReportPatientsListed = defineEvent("day_report.patients_listed", MODULE, z.object({
+  date: isoDate,
+  departmentId: id,
+  format: z.enum(["screen", "csv", "document"]),
+  rows: z.number().int().nonnegative(),
+}));

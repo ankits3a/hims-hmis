@@ -166,6 +166,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * months of history cannot be asked.
        */
       "staff.reports.history.year",
+      /**
+       * THE OPD DAY REPORT — owner request and ruling 2026-09-19: the person who runs the counter
+       * closes the day with it. Every department read is logged (`day_report.patients_listed`).
+       */
+      "opd.reports.read",
     ],
   },
   {
@@ -739,6 +744,12 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        */
       "staff.reports.read",
       "staff.reports.history.full",
+      /**
+       * THE OPD DAY REPORT — owner request and ruling 2026-09-19: the day by department, and each
+       * department's patient list, on the letterhead and as a spreadsheet. Every department read is
+       * logged (`day_report.patients_listed`).
+       */
+      "opd.reports.read",
       // PHARMACY P17 — the Schedule H1 register, and its unredacted copy for an inspector: the
       // licensee answers for the register.
       "pharmacy.register.read",
@@ -781,6 +792,12 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "staff.reports.read",
       /** OWNER RULING 2026-09-14 — hospital-level governance is not a one-year question. */
       "staff.reports.history.full",
+      /**
+       * THE OPD DAY REPORT — owner request and ruling 2026-09-19: the day by department, and each
+       * department's patient list, on the letterhead and as a spreadsheet. Every department read is
+       * logged (`day_report.patients_listed`).
+       */
+      "opd.reports.read",
       "auth.elevation.review",
       // ─── The merge approver's kit, owner ruling 2026-08-26 ───
       //
