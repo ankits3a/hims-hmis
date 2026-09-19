@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { nextEpisodeNo } from "../../kernel/episodes/series";
@@ -96,6 +97,8 @@ export type QueueRow = {
   scheduled: boolean;
   lineCount: number;
   createdAt: Date;
+  /** The IST day the ticket was queued — an earlier day's ticket carried over says so (`listQueue`). */
+  queuedOn: string;
   claimedAt: Date | null;
   patient: { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean };
   /**
@@ -133,13 +136,42 @@ export async function userNames(db: Db | Tx, ids: readonly (string | null)[]): P
   return new Map(rows.map((u) => [u.id, u.fullName]));
 }
 
-/** The counter's portal list: today's dispenses that are not finished, oldest first. Names are alias-safe. */
+/**
+ * How many IST days an UNTOUCHED ticket stays on the live queue, the asked-for day included. DECIDED
+ * 2026-09-20 under the owner's standing rule: an OPD prescription nobody has collected in three days
+ * has almost always been filled elsewhere. It is still found by scanning the prescription or by the
+ * UHID; it only stops crowding the list.
+ */
+export const QUEUED_CARRY_DAYS = 3;
+
+/** Every state a ticket can be open in. Started or PAID tickets stay listed until they close, whatever their day. */
+const OPEN_STATES = ["queued", "claimed", "verified", "picked", "billed"] as const;
+
+/**
+ * THE one definition of "on the counter's line on `serviceDate`": open, queued on or before the day,
+ * and — if nobody has touched it — queued within `QUEUED_CARRY_DAYS`. The line and the day summary's
+ * open counts both read it, so the header never counts a ticket the line does not show.
+ */
+export function openOnDay(serviceDate: string): SQL {
+  const queuedOn = sql`(${pharmacyDispenses.createdAt} at time zone 'Asia/Kolkata')::date`;
+  return and(
+    inArray(pharmacyDispenses.status, [...OPEN_STATES]),
+    sql`${queuedOn} <= ${serviceDate}::date`,
+    sql`(${pharmacyDispenses.status} <> 'queued' or ${queuedOn} > ${serviceDate}::date - ${QUEUED_CARRY_DAYS}::int)`,
+  )!;
+}
+
+/**
+ * The counter's portal list, oldest first. Names are alias-safe.
+ *
+ * It was "the tickets CREATED on the day", so at midnight IST a ticket in a pharmacist's hands — and
+ * one the patient had PAID for and not collected — fell off the desk with its stock still reserved and
+ * its money still taken (measured on production, 2026-09-20). Now: every open ticket queued on or
+ * before the day, except that an untouched one leaves after `QUEUED_CARRY_DAYS`.
+ */
 export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: string }, now: Date = new Date()): Promise<QueueRow[]> {
   const rows = await db.select().from(pharmacyDispenses)
-    .where(and(
-      sql`(${pharmacyDispenses.createdAt} at time zone 'Asia/Kolkata')::date = ${filter.serviceDate}::date`,
-      sql`${pharmacyDispenses.status} not in ('handed_over', 'cancelled')`,
-    ))
+    .where(openOnDay(filter.serviceDate))
     .orderBy(asc(pharmacyDispenses.createdAt));
   if (rows.length === 0) return [];
   const counts = await db.select({ dispenseId: pharmacyDispenseLines.dispenseId, n: sql<number>`count(*)::int` })
@@ -163,7 +195,7 @@ export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: str
     if (s === undefined) continue; // not visible to this actor — not on their list
     out.push({
       dispenseId: r.id, status: r.status, dispenseNo: r.dispenseNo, scheduled: r.scheduled,
-      lineCount: countById.get(r.id) ?? 0, createdAt: r.createdAt, claimedAt: r.claimedAt,
+      lineCount: countById.get(r.id) ?? 0, createdAt: r.createdAt, queuedOn: istDateOf(r.createdAt), claimedAt: r.claimedAt,
       patient: { id: s.id, uhid: s.uhid, name: s.name, alias: s.alias, restricted: s.restricted },
       transcribedBy: transcribedByRx.get(r.prescriptionId) ?? null,
       slipConfirmedBy: r.slipConfirmedBy,

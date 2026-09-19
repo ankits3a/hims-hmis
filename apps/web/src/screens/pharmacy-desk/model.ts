@@ -65,6 +65,20 @@ export function waitLabel(fromIso: string, now: Date): string {
   return `${String(Math.floor(minutes / 60))}h ${String(minutes % 60).padStart(2, "0")}m`;
 }
 
+/**
+ * The IST day an EARLIER day's ticket was queued, or null for today's. The queue keeps open work across
+ * midnight (the server's `listQueue`), and "26h 10m" read as a wait states a wrong fact: the ticket is
+ * yesterday's, and the pharmacist should know that before anything else about it.
+ */
+export function queuedDay(queuedOn: string | undefined, now: Date): { kind: "yesterday" } | { kind: "date"; label: string } | null {
+  if (queuedOn === undefined) return null;
+  const ist = (d: Date): string => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+  if (queuedOn >= ist(now)) return null;
+  if (queuedOn === ist(new Date(now.getTime() - 24 * 60 * 60_000))) return { kind: "yesterday" };
+  const [y, m, d] = queuedOn.split("-").map(Number);
+  return { kind: "date", label: new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(Date.UTC(y!, m! - 1, d!))) };
+}
+
 /** Calm under six minutes, warm to a quarter hour, late after — the board's three colours. */
 export type WaitTone = "calm" | "warm" | "late";
 export function waitTone(fromIso: string, now: Date): WaitTone {

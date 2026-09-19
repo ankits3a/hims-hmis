@@ -3656,6 +3656,7 @@
     "line_one": "the line · one ticket",
     "line_other": "the line · {{count}} tickets",
     "lineEmpty": "Nobody is waiting.",
+    "queuedYesterday": "yesterday",
     "lineFoot": "A ticket you take is marked claimed for everyone, with your name on it. Nobody else spends a minute on it.",
     "heldBy": "{{name}} has this",
     "yours": "yours",

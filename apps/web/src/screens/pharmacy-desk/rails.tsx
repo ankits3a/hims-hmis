@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { FLOW_STEPS, flowIndex, holdOf, initialsOf, shelfFlag, stageOf, ticketLabel, waitLabel, waitTone, whoLabel } from "./model";
+import { FLOW_STEPS, flowIndex, holdOf, initialsOf, queuedDay, shelfFlag, stageOf, ticketLabel, waitLabel, waitTone, whoLabel } from "./model";
 import type { WaitTone } from "./model";
 import type { WireCounterSummary, WireDispense, WireQueueRow } from "../../lib/pharmacy-api";
 
@@ -104,15 +104,17 @@ export function Dossier({
   );
 }
 
-type RowProps = { row: WireQueueRow; me: string | null; now: Date };
+type RowProps = { row: WireQueueRow; me: string | null; now: Date; yesterday: string };
 
-function rowMeta({ row, me, now }: RowProps): { who: string; label: string | null; hold: ReturnType<typeof holdOf>; wait: string; tone: string } {
+function rowMeta({ row, me, now, yesterday }: RowProps): { who: string; label: string | null; hold: ReturnType<typeof holdOf>; wait: string; tone: string } {
+  const day = queuedDay(row.queuedOn, now);
   return {
     who: whoLabel(row.patient),
     label: ticketLabel(row.dispenseNo),
     hold: holdOf(row, me),
-    wait: waitLabel(row.createdAt, now),
-    tone: TONE[waitTone(row.createdAt, now)],
+    /* An earlier day's ticket says its DAY: a count of hours past midnight reads as a wait it is not. */
+    wait: day === null ? waitLabel(row.createdAt, now) : day.kind === "yesterday" ? yesterday : day.label,
+    tone: TONE[day === null ? waitTone(row.createdAt, now) : "late"],
   };
 }
 
@@ -144,7 +146,7 @@ export function QueueRail({
           <p style={{ margin: 0, padding: "9px 15px", fontSize: 12, color: "var(--dim)" }}>{t("pharmacyDesk.lineEmpty")}</p>
         ) : null}
         {rows.map((row) => {
-          const m = rowMeta({ row, me, now });
+          const m = rowMeta({ row, me, now, yesterday: t("pharmacyDesk.queuedYesterday") });
           const theirs = m.hold.kind === "theirs";
           const here = row.dispenseId === inHandId;
           return (
@@ -212,7 +214,7 @@ export function QueueOverlay({
         </div>
         <div style={{ overflowY: "auto" }}>
           {rows.map((row) => {
-            const m = rowMeta({ row, me, now });
+            const m = rowMeta({ row, me, now, yesterday: t("pharmacyDesk.queuedYesterday") });
             return (
               <div key={row.dispenseId} className="drow" style={{ alignItems: "flex-start" }} data-testid={`overlay-row-${row.dispenseId}`}>
                 {numbered ? <span className="mo" style={{ width: 58, flexShrink: 0, fontSize: 12, fontWeight: 600, paddingTop: 2 }}>{m.label ?? ""}</span> : null}
