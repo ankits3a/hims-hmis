@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { heldByAnother, lineVerdict, stageOf, ticketLabel, whoLabel } from "./model";
 import { LineList } from "./lines";
 import { hindiRefusal, hindiSig } from "./phrasebook";
-import { sigOf } from "./work";
+import { istToday, sigOf } from "./work";
 import type { CollectResult } from "./lines";
 import type { PickLine, VerifyLine, WireDispense, WirePatientSummary, WireQueueRow } from "../../lib/pharmacy-api";
 
@@ -83,7 +83,7 @@ export function TicketPanel({
 
   const stage = stageOf(inHand, me);
   const who = whoLabel(inHand.patient);
-  const label = ticketLabel(inHand.dispenseNo);
+  const label = ticketLabel(inHand.dispenseNo, istToday());
 
   if (stage === "found") {
     const cancelled = inHand.status === "cancelled";
