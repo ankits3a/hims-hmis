@@ -89,8 +89,19 @@ function escapeLiteral(s: string): string {
  * the one surface that does know supplies them by value. Callers that display nothing pass none,
  * and then the guarantee covers identifier shapes only — which is the honest scope, and why the
  * web client is expected to pass them.
+ *
+ * `wholeWords` is for a caller that supplies name PARTS — "Ram" out of "Ram Prasad" — because a clerk
+ * says the given name, not the registered one. A part matched as a substring would eat the words
+ * around it: "aaram" (rest) holds "Ram", "khali" (empty) holds "Ali", "आराम" holds "राम". So a term
+ * only matches where no letter touches it, except the honorific "ji" or "जी" written onto the
+ * name ("Rameshji"), which is still the name. Off by default: the copilot passes whole displayed
+ * names, and its behaviour is left exactly as it was.
  */
-export function maskQuestion(question: string, terms: readonly string[] = []): MaskedQuestion {
+export function maskQuestion(
+  question: string,
+  terms: readonly string[] = [],
+  opts: { wholeWords?: boolean } = {},
+): MaskedQuestion {
   const slots: Record<string, string> = {};
   const issued = new Map<string, string>();
   let next = 1;
@@ -114,7 +125,10 @@ export function maskQuestion(question: string, terms: readonly string[] = []): M
     before the given name can match inside it.
   */
   for (const term of [...terms].filter((t) => t.trim() !== "").sort((a, b) => b.length - a.length)) {
-    const re = new RegExp(escapeLiteral(term.trim()), "gi");
+    const literal = escapeLiteral(term.trim());
+    const re = opts.wholeWords === true
+      ? new RegExp(`(?<![\\p{L}\\p{M}\\p{N}])${literal}(?=(?:ji|जी)?(?![\\p{L}\\p{M}\\p{N}]))`, "giu")
+      : new RegExp(literal, "gi");
     masked = masked.replace(re, (found) => placeholderFor(found));
   }
 

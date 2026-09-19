@@ -293,3 +293,98 @@ describe("triage — the complaint, in the patient's own words", () => {
     expect(JSON.parse(sent).stream).toBe(false);
   });
 });
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * NO IDENTIFIER REACHES THE MODEL — the plan series' law, asserted on triage's own wire
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * *"identified PHI never enters an inference request — any stage, any locus, ever."* The copilot
+ * router has kept that since it was written; triage predates it and interpolated the complaint
+ * verbatim, so a clerk who typed "Ramesh ji ko 3 din se bukhar, 98765 43210" sent a name and a
+ * mobile number to the provider. These pin the exact string that goes on the wire, because that
+ * string is the only place the law can be checked.
+ */
+describe("triage — nothing that names the patient reaches the model", () => {
+  /** Records every body sent, so a test can read exactly what left and count how often. */
+  function recorder(content = '{"suggestions":[{"index":0,"reason":"fever"}]}'): { fetchImpl: typeof fetch; bodies: string[] } {
+    const bodies: string[] = [];
+    const fetchImpl = (async (_u: string, init: { body: string }) => {
+      bodies.push(init.body);
+      return { ok: true, json: async () => ({ choices: [{ message: { content } }] }) };
+    }) as unknown as typeof fetch;
+    return { fetchImpl, bodies };
+  }
+
+  /** The complaint line exactly as the model read it. */
+  function complaintSent(body: string): string {
+    const text = (JSON.parse(body) as { messages: { content: string }[] }).messages.map((m) => m.content).join("\n");
+    return text.split("\n").find((line) => line.startsWith("Complaint: ")) ?? "";
+  }
+
+  it("a mobile number, a UHID and a visit number are masked by shape, with no help from the screen", async () => {
+    const { fetchImpl, bodies } = recorder();
+    await suggestDepartments("bukhar hai, mobile 98765 43210, UHID U00110012, parchi V2609150001", DEPTS, CONFIG, fetchImpl, createTriageCache());
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).not.toMatch(/98765|43210|U00110012|V2609150001/);
+    expect(complaintSent(bodies[0] ?? "")).toBe("Complaint: bukhar hai, mobile <<P3>>, UHID <<P2>>, parchi <<P1>>");
+  });
+
+  it("a name the desk supplies is masked whole or by its parts, in either script, with or without 'ji'", async () => {
+    const latin = recorder();
+    await suggestDepartments("Ramesh ji ko 3 din se bukhar", DEPTS, CONFIG, latin.fetchImpl, createTriageCache(), { ageYears: 40, names: ["Ramesh Kumar"] });
+    expect(complaintSent(latin.bodies[0] ?? "")).toBe("Complaint: <<P1>> ji ko 3 din se bukhar");
+
+    const joined = recorder();
+    await suggestDepartments("Rameshji ko bukhar", DEPTS, CONFIG, joined.fetchImpl, createTriageCache(), { ageYears: 40, names: ["Ramesh Kumar"] });
+    expect(complaintSent(joined.bodies[0] ?? "")).toBe("Complaint: <<P1>>ji ko bukhar");
+
+    const devanagari = recorder();
+    await suggestDepartments("सुनीता जी को खांसी है", DEPTS, CONFIG, devanagari.fetchImpl, createTriageCache(), { ageYears: 40, names: ["सुनीता देवी"] });
+    expect(complaintSent(devanagari.bodies[0] ?? "")).toBe("Complaint: <<P1>> जी को खांसी है");
+  });
+
+  /*
+    THE OTHER HALF, and the reason names are matched as whole words. A substring match would turn
+    "aaram nahi" (no rest) into "aa<<P1>> nahi" for a patient called Ram, and "khali pet" (empty
+    stomach) into "kh<<P2>> pet" for one called Ali — a masker that deletes the complaint to protect
+    the name has protected nothing the model needed.
+  */
+  it("a word that merely CONTAINS a name is left alone: aaram is not Ram, khali is not Ali", async () => {
+    const latin = recorder();
+    await suggestDepartments("Ram ko khansi, khali pet dawai, aaram nahi", DEPTS, CONFIG, latin.fetchImpl, createTriageCache(), { ageYears: 40, names: ["Ram Prasad", "Ali"] });
+    expect(complaintSent(latin.bodies[0] ?? "")).toBe("Complaint: <<P1>> ko khansi, khali pet dawai, aaram nahi");
+
+    const devanagari = recorder();
+    await suggestDepartments("राम को खांसी, आराम नहीं", DEPTS, CONFIG, devanagari.fetchImpl, createTriageCache(), { ageYears: 40, names: ["राम"] });
+    expect(complaintSent(devanagari.bodies[0] ?? "")).toBe("Complaint: <<P1>> को खांसी, आराम नहीं");
+  });
+
+  /*
+    THE LAST GATE RUNS ON THE WHOLE PROMPT, not on the complaint alone — `mask.ts`'s rule: the
+    enforcement checks "the exact string that is about to go on the wire". A department list is
+    configuration rather than operator text, so it is the one part the masker never sees; a gate
+    that only re-checked the masker's own output would be the masker witnessing itself.
+  */
+  it("an identifier-shaped prompt is refused, costing the model call and never the desk", async () => {
+    const { fetchImpl, bodies } = recorder();
+    const depts = [...DEPTS, { id: "d-x", name: "Clinic 40012" }];
+    const out = await suggestDepartments("bukhar", depts, CONFIG, fetchImpl, createTriageCache());
+    expect(bodies).toHaveLength(0);
+    expect(out.source).toBe("keywords");
+    expect(out.suggestions.map((s) => s.departmentId)).toEqual(["d-gm", "d-paed"]);
+  });
+
+  /*
+    The cache is keyed on what the MODEL saw, so it never holds a name, and two patients with the
+    same complaint are — correctly — the same question.
+  */
+  it("two patients with the same complaint are one model call, because the cache never sees who", async () => {
+    const cache = createTriageCache();
+    const { fetchImpl, bodies } = recorder();
+    const first = await suggestDepartments("Ramesh ko bukhar", DEPTS, CONFIG, fetchImpl, cache, { ageYears: 40, names: ["Ramesh"] });
+    const second = await suggestDepartments("Suresh ko bukhar", DEPTS, CONFIG, fetchImpl, cache, { ageYears: 40, names: ["Suresh"] });
+    expect(bodies).toHaveLength(1);
+    expect(second).toEqual(first);
+  });
+});

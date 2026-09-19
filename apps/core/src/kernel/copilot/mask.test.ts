@@ -133,3 +133,38 @@ describe("assertNoIdentifiers", () => {
     expect(() => { assertNoIdentifiers("4 baje wala slot"); }).not.toThrow();
   });
 });
+
+/**
+ * `wholeWords` — for callers that pass name PARTS ("Ram" out of "Ram Prasad"), which triage does
+ * because a clerk types the name the patient is called at the counter. A part matched as a
+ * substring eats the complaint around it; these are the words it would have eaten.
+ */
+describe("maskQuestion — wholeWords", () => {
+  const whole = (q: string, terms: string[]): string => maskQuestion(q, terms, { wholeWords: true }).masked;
+
+  it("masks the name where it stands alone", () => {
+    expect(whole("Ram ko bukhar", ["Ram"])).toBe("<<P1>> ko bukhar");
+  });
+
+  it("does not mask a word that merely contains the name, in either script", () => {
+    expect(whole("aaram nahi mila", ["Ram"])).toBe("aaram nahi mila");
+    expect(whole("khali pet dawai", ["Ali"])).toBe("khali pet dawai");
+    expect(whole("Faridabad se aaye hain", ["Farida"])).toBe("Faridabad se aaye hain");
+    expect(whole("आराम नहीं मिला", ["राम"])).toBe("आराम नहीं मिला");
+    // A Devanagari vowel sign is part of the word: "रामू" is not "राम".
+    expect(whole("रामू को बुखार", ["राम"])).toBe("रामू को बुखार");
+  });
+
+  it("still masks the name with 'ji' written onto it, and keeps the ji", () => {
+    expect(whole("Rameshji ko bukhar", ["Ramesh"])).toBe("<<P1>>ji ko bukhar");
+    expect(whole("सुनीताजी को खांसी", ["सुनीता"])).toBe("<<P1>>जी को खांसी");
+  });
+
+  it("is case-blind and punctuation-bounded, like the default", () => {
+    expect(whole("RAMESH's son, ramesh.", ["Ramesh"])).toBe("<<P1>>'s son, <<P1>>.");
+  });
+
+  it("leaves the default exactly as it was: a substring match", () => {
+    expect(maskQuestion("aaram nahi mila", ["Ram"]).masked).toBe("aa<<P1>> nahi mila");
+  });
+});
