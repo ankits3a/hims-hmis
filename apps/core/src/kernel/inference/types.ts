@@ -60,7 +60,11 @@ export type CompleteInput = {
   system: string;
   /** The operator's own words, already de-identified by the caller. */
   user: string;
-  /** A hard ceiling on the reply. Routing answers are a dozen tokens; this is a runaway guard. */
+  /**
+   * A hard ceiling on the reply — a runaway guard, and it must leave room to THINK. A routing answer
+   * is a dozen tokens, but a reasoning model (`gpt-oss-120b`) spends 62-74 before writing them, and
+   * a ceiling below that returns `finish_reason: "length"` with empty content: measured 2026-09-19.
+   */
   maxTokens?: number;
 };
 
@@ -78,4 +82,50 @@ export class InferenceUnavailable extends Error {
 
 export type InferenceClient = {
   complete(input: CompleteInput): Promise<CompleteResult>;
+};
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * `choose()` — NARROWER STILL: THE MODEL RETURNS A MEMBER OF OUR SET, AND NOTHING ELSE
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner, 2026-09-19: *"keep typesafe as priority and the groq as fallback"*. `complete()` asks a
+ * chat model for text and then parses a member of a closed menu OUT of it; `choose()` hands a
+ * classifier the menu itself, and the only thing that can come back is one of its keys and how sure
+ * the model is. There is no text in the result at all — the narrowness `complete()`'s header argues
+ * for, taken to its end.
+ *
+ * Same law as everything else in this directory: `state` is de-identified by the caller and has
+ * been through `assertNoIdentifiers` before it arrives. Several questions may share one `state`
+ * because the provider evaluates them together in one request — asking "which tool" and "which
+ * patient" costs one round trip, not two.
+ */
+export type ChoiceQuestion = {
+  /** What is being chosen. Written by the caller, never by the operator. */
+  instructions: string;
+  /** Option key → what it means (a sentence, or an object such as `{ what, not_for, examples }`). */
+  options: Record<string, unknown>;
+};
+
+export type ChooseInput = {
+  /** The de-identified text the questions are about, by name — `{ question: "<<P1>> ka bill…" }`. */
+  state: Record<string, string>;
+  questions: Record<string, ChoiceQuestion>;
+};
+
+export type ChoiceAnswer = {
+  /** Always one of the keys the question offered — the client refuses anything else. */
+  choice: string;
+  /** 0..1, the provider's own summary of how peaked its distribution was. */
+  confidence: number;
+};
+
+export type ChooseResult = {
+  answers: Record<string, ChoiceAnswer>;
+  /** The VERSIONED model that answered, so a log can say which one a threshold was tuned against. */
+  model: string;
+};
+
+export type ChoiceClient = {
+  choose(input: ChooseInput): Promise<ChooseResult>;
 };

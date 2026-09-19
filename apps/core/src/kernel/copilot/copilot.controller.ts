@@ -5,6 +5,7 @@ import { CurrentActor } from "../auth/decorators";
 import { istDayString as istDay } from "../approvals/cumulative";
 import { collectDeskProviders } from "../desk/registry";
 import { openAiCompatibleClient } from "../inference/openai-compatible";
+import { typesafeClient } from "../inference/typesafe";
 import { collectCopilotTools, permissionCheckFor, runTool } from "./catalog";
 import { kernelCopilotTools } from "./kernel-tools";
 import { IdentifierLeak, maskQuestion, rehydrate } from "./mask";
@@ -105,7 +106,7 @@ export class CopilotController {
 
     let routed;
     try {
-      routed = await routeQuestion(masked, slots, this.model());
+      routed = await routeQuestion(masked, slots, this.model(), this.chooser(), this.cfg.copilotChoice.minConfidence);
     } catch (e) {
       /*
         THE SCRUBBER FIRED. Something identifier-shaped survived masking, and the request was
@@ -156,5 +157,13 @@ export class CopilotController {
    */
   private model() {
     return openAiCompatibleClient(this.cfg.copilot);
+  }
+
+  /**
+   * The router's FIRST model (owner, 2026-09-19: TypeSafe as priority, the chat model its fallback),
+   * or null when no key is configured — and then `model()` answers alone, exactly as before.
+   */
+  private chooser() {
+    return typesafeClient(this.cfg.copilotChoice);
   }
 }
