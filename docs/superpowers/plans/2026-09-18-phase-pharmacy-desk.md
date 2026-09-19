@@ -146,6 +146,24 @@ arithmetic; an out-of-stock original — the usual reason to substitute — has 
 the tick fires verify. `refusalsOf` can pre-check the ticket's own lines at the claim the same way —
 the line would say "the check will stop this" before anyone walks to the shelf. Not built here.
 
+**C4, C6, C10, C11 DONE (PD-7), web only:**
+- **C10** — at the hand-over the agent says each given line's sig in Devanagari, on pine, from a
+  PHRASEBOOK (`phrasebook.ts`): triplet slots, OD/BD/TDS/QID/HS/SOS, counted tablets and capsules or
+  one measured volume, and a closed list of instructions. A sig it cannot say EXACTLY gets no
+  sentence — never part of one — and the line is handed back "in the doctor's words" (E19).
+- **C4** — the same chip says what is NOT being given, and why: a decline reason the book knows
+  whole is said in Hindi; any other reason is the pharmacist's to say ("tell them why, in your
+  words"). Free text is never half-translated.
+- **C6** — the dock says the hold by its END ("holding 2 lines until 14:22"), not its length. The
+  batch half of C6 (expiring before collection) is already E8's "dies within the course" advice at
+  the tick; only a line with no duration escapes it. **Walk observation, not fixed (E13):** with no
+  worker sweeping, a draft read "they stay held until 13:43" at 13:51 — the screen does not yet learn
+  that a hold it announced has ended.
+- **C11** — the ticket header counts the open lines the books could read only in part (PD-D13).
+- **Walk finding, fixed:** a PAID ticket's rail read "take the money"; one stage holds money owed and
+  money taken, so a billed ticket now reads "hand it over".
+- **C8 (F2 ask) is UNBLOCKED:** `lane/copilot` merged as #239 (`5957ef3f`). Not built here.
+
 ## 4. EDGE CASES
 
 Numbered because each one owes a test. **F** = must fail first against the code it guards.

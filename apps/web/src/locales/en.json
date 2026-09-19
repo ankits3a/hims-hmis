@@ -3642,7 +3642,8 @@
       "check": "check the prescription",
       "collect": "collect from the shelf",
       "money": "take the money",
-      "done": "done"
+      "done": "done",
+      "handOver": "hand it over"
     },
     "clear": "clear desk",
     "line_one": "the line · one ticket",
@@ -3694,6 +3695,8 @@
     "generic": "generic · consent taken",
     "scheduleX": "Schedule X — not at this counter",
     "notChecked": "the books could not read this line",
+    "notCheckedCount_one": "One line the books could read only in part — no warning there is not a clean result",
+    "notCheckedCount_other": "{{count}} lines the books could read only in part — no warning there is not a clean result",
     "declined": "declined — {{reason}}",
     "sealedRefused": "A sealed record — a pharmacist cleared to read sealed records, or break-glass, must take this ticket.",
     "dock": "counter agent",
@@ -3703,6 +3706,8 @@
       "verified": "checked the prescription — ticket {{no}}",
       "collected_one": "holding one line for 30 minutes",
       "collected_other": "holding {{count}} lines for 30 minutes",
+      "collectedUntil_one": "holding one line until {{time}}",
+      "collectedUntil_other": "holding {{count}} lines until {{time}}",
       "declined": "declined line {{line}}: {{reason}}",
       "billed": "took {{amount}} by {{modes}}",
       "handedOver": "handed over to {{who}}",
@@ -3840,6 +3845,12 @@
       "cancel": "Cancel",
       "chosen": "you chose it",
       "undo": "undo"
+    },
+    "say": {
+      "title": "Say to the patient",
+      "own": "say it in the doctor's words — {{words}}",
+      "notGiven": "And what you are not giving",
+      "why": "tell them why, in your words — {{reason}}"
     },
     "slip": {
       "title": "What the scribe photographed",

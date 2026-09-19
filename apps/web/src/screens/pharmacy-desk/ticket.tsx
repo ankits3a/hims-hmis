@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { heldByAnother, lineVerdict, stageOf, ticketLabel, whoLabel } from "./model";
 import { LineList } from "./lines";
+import { hindiRefusal, hindiSig } from "./phrasebook";
+import { sigOf } from "./work";
 import type { CollectResult } from "./lines";
 import type { PickLine, VerifyLine, WireDispense, WirePatientSummary, WireQueueRow } from "../../lib/pharmacy-api";
 
@@ -120,6 +122,8 @@ export function TicketPanel({
   }
 
   const h1Lines = inHand.lines.filter((l) => l.scheduleFlag === "H1").map((l) => l.lineIdx + 1);
+  /* PD-7 C11 / PD-D13 — a line the books could read only in part raised no warning, and silence there is not a result. */
+  const partlyRead = inHand.lines.filter((l) => l.status === "open" && l.partlyChecked === true).length;
   /* E28 — typed from paper and not yet confirmed: the attestation is asked for FIRST, not at the till. */
   const typed = inHand.transcribedBy != null;
   const slipOwed = typed && inHand.slipConfirmedBy == null;
@@ -139,6 +143,9 @@ export function TicketPanel({
         {t("pharmacyDesk.rxVersion", { version: inHand.prescriptionVersion })}
         {typed ? ` · ${t("pharmacyDesk.slip.typedBy", { name: inHand.transcribedByName ?? "—" })}` : ""}
       </p>
+      {partlyRead > 0 ? (
+        <p data-testid="desk-not-checked" style={{ margin: "5px 0 0 0", fontSize: 12.5, color: "var(--gold)" }}>{t("pharmacyDesk.notCheckedCount", { count: partlyRead })}</p>
+      ) : null}
       {slipOwed ? (
         <div role="status" data-testid="desk-slip-owed" style={{ marginTop: 13, padding: "11px 14px", borderRadius: 7, background: "var(--gold-soft)", border: "1px solid var(--gold-line)" }}>
           <span style={{ fontSize: 12.5, lineHeight: "18px" }}>{t("pharmacyDesk.slip.owed", { name: inHand.transcribedByName ?? "—" })}</span>
@@ -216,9 +223,41 @@ export function HandOver({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
+  /* PD-7 C10 — what to say, line by line, for what is actually being handed over. */
+  const given = dispense.lines.filter((l) => l.status === "open" && l.pickedBatch != null);
+  const refused = dispense.lines.filter((l) => l.status === "declined");
   return (
     <div className="box" data-testid="desk-handover" style={{ marginTop: 16, padding: "14px 16px" }}>
       <div className="tag">{t("pharmacyDesk.handover.title")}</div>
+      {given.length === 0 ? null : (
+        <div className="agchip" data-testid="desk-say" style={{ display: "block", marginTop: 9 }}>
+          <span style={{ display: "block", fontSize: 11, opacity: 0.8 }}>{t("pharmacyDesk.say.title")}</span>
+          <ul style={{ margin: "5px 0 0 0", paddingLeft: 17 }}>
+            {given.map((l) => {
+              const brand = l.dispensedMedicine?.brandName ?? l.rxLine.drug;
+              const said = hindiSig(l.rxLine);
+              const words = `${sigOf(l.rxLine)}${l.rxLine.instructions === null || l.rxLine.instructions.trim() === "" ? "" : ` · ${l.rxLine.instructions.trim()}`}`;
+              return (
+                <li key={l.lineIdx} style={{ fontSize: 13, lineHeight: "20px" }}>
+                  <b>{brand}</b>: {said ?? t("pharmacyDesk.say.own", { words })}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+      {refused.length === 0 ? null : (
+        <div className="agchip" data-testid="desk-say-not-given" style={{ display: "block", marginTop: 7 }}>
+          <span style={{ display: "block", fontSize: 11, opacity: 0.8 }}>{t("pharmacyDesk.say.notGiven")}</span>
+          <ul style={{ margin: "5px 0 0 0", paddingLeft: 17 }}>
+            {refused.map((l) => (
+              <li key={l.lineIdx} style={{ fontSize: 13, lineHeight: "20px" }}>
+                <b>{l.rxLine.drug}</b>: {hindiRefusal(l.declinedReason ?? "") ?? t("pharmacyDesk.say.why", { reason: l.declinedReason ?? "" })}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {needsId ? (
         <div style={{ display: "flex", gap: 8, marginTop: 9, alignItems: "flex-end" }}>
           <label>

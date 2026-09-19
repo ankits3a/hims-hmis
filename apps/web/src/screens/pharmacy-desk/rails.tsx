@@ -92,7 +92,10 @@ export function Dossier({
           }} />
         ))}
       </div>
-      <div className="tag" style={{ marginTop: 7 }} data-testid="desk-flow">{t(`pharmacyDesk.flow.${FLOW_STEPS[step]!}`)}</div>
+      {/* One stage holds both "money owed" and "money taken"; a paid ticket's next act is the hand-over (walk finding). */}
+      <div className="tag" style={{ marginTop: 7 }} data-testid="desk-flow">
+        {t(`pharmacyDesk.flow.${inHand.status === "billed" && FLOW_STEPS[step] === "money" ? "handOver" : FLOW_STEPS[step]!}`)}
+      </div>
 
       <button className="sec" style={{ width: "100%", marginTop: 22 }} onClick={onClear}>
         {t("pharmacyDesk.clear")} <span className="kb">Esc</span>

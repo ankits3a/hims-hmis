@@ -205,7 +205,10 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
       }
       const p = await pickDispense(inHandId, pick, newIdempotencyKey());
       settle(p);
-      say(t("pharmacyDesk.log.collected", { count: p.lines.filter((l) => l.pickedBatch != null).length }));
+      /* PD-7 C6 — the hold is said by its END, the time the strips go back on the shelf by themselves. */
+      const held = p.lines.filter((l) => l.pickedBatch != null).length;
+      const until = heldUntil(p.pickedAt);
+      say(until === null ? t("pharmacyDesk.log.collected", { count: held }) : t("pharmacyDesk.log.collectedUntil", { count: held, time: until }));
       return { ok: true };
     } catch (e) {
       await qc.invalidateQueries({ queryKey: ["pharmacy", "dispense", inHandId] });
