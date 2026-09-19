@@ -44,8 +44,9 @@ import type { TriageDepartment, TriageResult } from "./triage";
  * paragraph said the prompt carried no name while nothing made that so — a clerk's "Ramesh ji ko
  * bukhar" went into the key and to the provider verbatim. What is left is a symptom phrase and a
  * department list, linked to nobody, and it is kept IN MEMORY only: it dies with the process, is
- * never written to disk or to the database, and is never logged. A persisted version would be a different decision about
- * storing health text and is not one to take incidentally for a performance win.
+ * never written to disk or to the database, and is never logged. A persisted version would be a
+ * different decision about storing health text and is not one to take incidentally for a
+ * performance win.
  */
 export interface TriageCache {
   get(key: string): TriageResult | undefined;
