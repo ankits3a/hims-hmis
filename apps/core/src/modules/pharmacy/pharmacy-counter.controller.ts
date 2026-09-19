@@ -15,6 +15,9 @@ import { pickDispense } from "./pick";
 import { checkPickScan } from "./scan";
 import { cancelDispense, checkedAlternativesFor, declineLine, placementsFor, precheckTicket, verifyDispense } from "./verify";
 import { cancelBilledDispense } from "./refund";
+import { authorisationDetail, decideAuthorisation, requestAuthorisation } from "./authorisations";
+import type { AuthorisationDetail } from "./authorisations";
+import type { AuthorisationRow } from "./authorisation-reads";
 import { reorderAdvice } from "./replenishment";
 import { acceptReturn } from "./returns";
 import { h1Register } from "./registers";
@@ -134,6 +137,48 @@ export class PharmacyCounterController {
   async alternatives(@CurrentActor() actor: Actor, @Param("id") id: string, @Param("idx") idx: string): Promise<{ items: CheckedAlternative[] }> {
     try {
       return { items: await checkedAlternativesFor(this.db, actor, id, Number(idx), new Date()) };
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * PD-9 (owner ruling 2026-09-19) — ask THE PRESCRIBER to authorise one refusal on one line. The
+   * counter's permission to ask; the Act's registration inside (`requestAuthorisation`).
+   */
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Post("dispenses/:id/lines/:idx/authorisations")
+  async askPrescriber(@CurrentActor() actor: Actor, @Param("id") id: string, @Param("idx") idx: string, @Body() body: unknown): Promise<AuthorisationRow> {
+    const lineIdx = parsed(z.object({ idx: z.coerce.number().int().nonnegative() }), { idx }).idx;
+    const input = parsed(z.object({
+      book: z.enum(["allergy", "interaction", "duplicate", "drug_disease"]), about: z.string().min(1).max(200),
+      note: z.string().max(500).optional(), medicineId: idSchema.optional(),
+    }), body);
+    try {
+      return await requestAuthorisation(this.db, actor, { dispenseId: id, lineIdx, ...input }, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** PD-9 — the request as the prescriber reads it. The doctor's permission; the prescriber alone inside. */
+  @RequirePermission("opd.consult", "hospital")
+  @Get("authorisations/:id")
+  async authorisation(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<AuthorisationDetail> {
+    try {
+      return await authorisationDetail(this.db, actor, id);
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** PD-9 — the prescriber authorises or declines, with a reason. */
+  @RequirePermission("opd.consult", "hospital")
+  @Post("authorisations/:id/decision")
+  async decide(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<AuthorisationRow> {
+    const input = parsed(z.object({ authorise: z.boolean(), reason: z.string().max(500) }), body);
+    try {
+      return await decideAuthorisation(this.db, actor, id, input, new Date());
     } catch (e) {
       return toHttp(e);
     }

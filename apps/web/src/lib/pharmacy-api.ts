@@ -70,6 +70,8 @@ export type WireDispenseLine = {
   saleable: boolean; available: number | null; batchId: string | null; reservationId: string | null; ledgerEntryId: string | null;
   /** PD-D18 — where the item sits in the counter's store ("R-12"). Absent from an older server. */
   location?: string | null;
+  /** PD-9 — requests to the prescriber about this line. Absent from an older server. */
+  authorisations?: WireLineAuthorisation[];
   orderItemId: string | null; invoiceLineId: string | null; unitPaise: number | null; priceWinner: string | null;
   fefoOverride: boolean; pickNote: string | null;
   /** Pharmacy P3: a component of this line's medicine is not yet reviewed. Absent from an older server. */
@@ -90,6 +92,8 @@ export type WireDispense = {
   claimedBy?: string | null; claimedByName?: string | null;
   /** PD-8 / E28 — typed from the doctor's paper, by whom, and whether the slip is confirmed. Absent from an older server. */
   transcribedBy?: string | null; transcribedByName?: string | null; slipConfirmedBy?: string | null;
+  /** PD-9 — the doctor who wrote this prescription, whom the counter asks. Absent from an older server. */
+  prescriberName?: string | null;
 };
 /** FD-31 — the pharmacist's cross-confirmation of a transcribed prescription against the paper. */
 export async function confirmDispenseSlip(id: string): Promise<{ slipConfirmedBy: string | null; slipConfirmedAt: string | null }> {
@@ -110,7 +114,13 @@ export type WireFindResult =
   | { kind: "dispense"; door: string; dispense: WireDispense }
   | { kind: "patients"; door: "uhid"; patients: WirePatientSummary[] }
   | { kind: "none"; door: string; reason: "not_found" | "qr_invalid" | "no_prescription_today" | "restricted" };
-export type WireAlternativeBlock = { book: "allergy" | "interaction" | "duplicate" | "drug_disease"; about: string };
+/** `about` is what the line says; `key` is the hit's identity, which a PD-9 authorisation names. */
+export type WireAlternativeBlock = { book: "allergy" | "interaction" | "duplicate" | "drug_disease"; about: string; key: string };
+/** PD-9 — one request to the prescriber about one refusal on one line. */
+export type WireLineAuthorisation = {
+  id: string; book: string; about: string; status: "pending" | "authorised" | "declined"; requestNote: string | null;
+  decisionReason: string | null; requestedAt: string; decidedAt: string | null;
+};
 /** PD-7 C3 — each equivalent comes back already put to this patient's check, judged as verify judges. */
 export type WireAlternative = {
   medicineId: string; brandName: string; strengthLabel: string | null; form: string; itemId: string; itemCode: string; available: number;
@@ -141,6 +151,24 @@ export async function fetchPrecheck(id: string): Promise<WireLinePrecheck[]> {
 export async function fetchPlacements(id: string, lineIdx: number, q: string): Promise<WireRetailShelfEntry[]> {
   const { items } = await api<{ items: WireRetailShelfEntry[] }>("GET", `/pharmacy/dispenses/${id}/lines/${String(lineIdx)}/shelf${qs({ q })}`);
   return items;
+}
+/** PD-9 — ask the prescriber to authorise one refusal on one line. */
+export async function askPrescriber(dispenseId: string, lineIdx: number, input: { book: string; about: string; note?: string }): Promise<WireLineAuthorisation> {
+  return api<WireLineAuthorisation>("POST", `/pharmacy/dispenses/${dispenseId}/lines/${String(lineIdx)}/authorisations`, input);
+}
+/** PD-9 — the request as the prescriber reads it. */
+export type WireAuthorisationDetail = {
+  authorisation: WireLineAuthorisation & { dispenseId: string; lineIdx: number; requestedBy: string };
+  requestedByName: string | null;
+  dispenseNo: string | null;
+  patient: { name: string | null; alias: string | null; uhid: string; restricted: boolean } | null;
+  line: { drug: string; dose: string; frequency: string; durationDays: number | null; instructions: string | null } | null;
+};
+export async function fetchAuthorisation(id: string): Promise<WireAuthorisationDetail> {
+  return api<WireAuthorisationDetail>("GET", `/pharmacy/authorisations/${id}`);
+}
+export async function decideAuthorisation(id: string, authorise: boolean, reason: string): Promise<WireLineAuthorisation> {
+  return api<WireLineAuthorisation>("POST", `/pharmacy/authorisations/${id}/decision`, { authorise, reason });
 }
 /** PD-D18 — say where an item sits in a counter's store; an empty label clears it. */
 export async function setShelfLocation(itemId: string, storeResourceId: string, location: string): Promise<{ location: string | null }> {

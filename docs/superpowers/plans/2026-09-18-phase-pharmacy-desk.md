@@ -99,6 +99,21 @@ Indian-corporate-hospital answer, taken and marked.
   (`lab/results.ts:430-470`) and PCPNDT's countersignature (`pcpndt/form-f.ts:464-483`) as the
   models. The ticket parks as `waiting_authorisation` and returns to the line; the next patient is
   not held up. **This is the largest new build in the phase.**
+  **OWNER RULING 2026-09-19: "the doctor must authorise dispensing against a recorded allergy" — DONE
+  (PD-9), migration 0107.** Built as a PERSON-addressed request, not on the role-based approvals
+  engine: that engine lets any holder of the approver role decide, and the ruling is THE doctor. The
+  pharmacist (registered — it is the Act's act) asks the PRESCRIBER about one refusal on one line
+  (`pharmacy_authorisations`: book + the hit's `refusalKey`, e.g. the allergy's substance); the request
+  appears on that doctor's own desk (`pharmacy.authorisations` card, `opd.consult`) and links to
+  `/pharmacy/authorisations/:id`, where only the prescriber may read and decide, always with a reason
+  (≥ 3 characters). An authorisation clears exactly that refusal on that line in `refusalsOf` — so
+  verify, the C3b pre-check and the C3 sheet all honour it — and a decline keeps it. The same path
+  serves all four books (allergy, severe interaction, a reading's duplicate, a severe contraindication):
+  DECIDED by the owner's "top hospital standard" rule — every hard clinical stop at the window is the
+  prescriber's to lift. The database holds the lab's `same_actor` rule (decider ≠ requester), a real
+  reason, and one open request per hit. The ticket stays claimed while the doctor decides; the
+  pharmacist serves the next patient. If the prescriber is unavailable, the path is unchanged from
+  before: the patient goes back to a doctor for a new prescription.
 - **PD-D13. "Not checked" is never drawn as "clean".** A line whose salt has no attested moiety was
   read by none of the four books. It wears an amber "the books could not read this line", and the
   ticket header counts them. In production today that is most lines.
@@ -338,7 +353,7 @@ Numbered because each one owes a test. **F** = must fail first against the code 
 | **PD-6** | The bill rail, tender, save draft (E20–E27) | web |
 | **PD-7** | The copilot: the queue pre-check reader and the dock (C1, C2, C8) | reader |
 | **PD-8** | The slip overlay (E30) | web |
-| **PD-9** | Authorisation for a blocked substitution (PD-D12; E14) | approvals |
+| **PD-9** | The prescriber authorises a refusal (PD-D12; E14) — **owner ruling 2026-09-19, DONE**, migration 0107 | pharmacy |
 
 PD-0 first: nothing below it can be seen, demonstrated or browser-walked without a queue.
 

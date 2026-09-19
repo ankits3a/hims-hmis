@@ -2005,6 +2005,9 @@
     "nextStep": "Please go to the vitals desk next."
   },
   "desk": {
+    "pharmacy": {
+      "authorise": "The pharmacy is waiting on you"
+    },
     "title": "My desk",
     "live": "Live",
     "offline": "Not live — figures may be stale",
@@ -3466,6 +3469,9 @@
     "duplicate_block": "The medicine you chose repeats one already on this prescription, and the doctor never ruled on that — choose another, or decline the line",
     "drug_disease_block": "A diagnosis this patient carries rules this medicine out, and no prescriber has ruled on it — back to the doctor, or decline the line",
     "invalid_shelf_location": "A shelf label is at most 24 characters — “R-12”, “rack 3 · shelf 2”",
+    "authorisation_not_needed": "The check raises no such refusal on that line — there is nothing for the doctor to authorise",
+    "authorisation_not_pending": "This request was already decided",
+    "unknown_authorisation": "No such request",
     "qty_required": "Every line needs a quantity, and a reason is required",
     "store_missing": "The OPD pharmacy store is not set up",
     "not_found": "Not found",
@@ -3865,6 +3871,16 @@
       "onTicket": "On this ticket: {{items}}.",
       "batchItem": "{{name}} — batch {{batch}}, expires {{expiry}}"
     },
+    "auth": {
+      "theDoctor": "the prescribing doctor",
+      "ask": "Ask {{doctor}} to authorise",
+      "noteLabel": "What {{doctor}} should know",
+      "notePlaceholder": "e.g. tolerated it last year, rash only",
+      "send": "Send to {{doctor}}",
+      "waiting": "Waiting for {{doctor}} to authorise — keep serving the line; the ticket stays yours.",
+      "authorised": "{{doctor}} authorised it: {{reason}}",
+      "declined": "{{doctor}} declined: {{reason}} — decline the line, or ask the doctor to change the prescription."
+    },
     "say": {
       "title": "Say to the patient",
       "own": "say it in the doctor's words — {{words}}",
@@ -3902,6 +3918,24 @@
       "refused_other": "{{count}} cannot be dispensed here",
       "show": "Show the line"
     }
+  },
+  "pharmacyAuthorise": {
+    "title": "The pharmacy asks you to authorise",
+    "lead": "You wrote this prescription. The check at the pharmacy stops this line, and only you can authorise dispensing it — or decline.",
+    "loading": "Reading the request…",
+    "book": {
+      "allergy": "recorded allergy",
+      "interaction": "severe interaction",
+      "duplicate": "already prescribed",
+      "drug_disease": "ruled out by a diagnosis"
+    },
+    "thePharmacist": "The pharmacist",
+    "reason": "Your reason",
+    "reasonPlaceholder": "Why it is safe to give — or why it is not",
+    "authorise": "Authorise dispensing",
+    "decline": "Decline",
+    "authorised": "You authorised it: {{reason}}",
+    "declined": "You declined: {{reason}}"
   },
   "appointmentSeat": {
     "title": "Appointment",

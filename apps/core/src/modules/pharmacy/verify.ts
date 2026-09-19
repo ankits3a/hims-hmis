@@ -12,7 +12,8 @@ import { PHARMACY_SUBSTITUTION_ENABLED, REFUSED_FLAGS, SCHEDULED_FLAGS, istDateO
 import { dispenseCancelled, dispenseLineDeclined, dispenseVerified, lineResolved, substitutionRecorded } from "./events";
 import { PharmacyError } from "./errors";
 import { requireRegisteredPharmacist } from "./pharmacists";
-import { refusalsOf, refusalsOn } from "./refusals";
+import { authorisedKeysFor } from "./authorisation-reads";
+import { refusalKey, refusalsOf, refusalsOn } from "./refusals";
 import type { Refusals } from "./refusals";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
 import { searchShelfAt } from "./retail";
@@ -22,7 +23,8 @@ import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
 import type { RxLine } from "../opd";
-import type { DispenseView } from "./queue";
+import type { DispenseRow, DispenseView } from "./queue";
+import type { RxCheckOutcome } from "../opd";
 import type { RetailShelfEntry } from "./retail";
 
 export type Alternative = { medicineId: string; brandName: string; strengthLabel: string | null; form: string; itemId: string; itemCode: string; available: number };
@@ -81,15 +83,16 @@ export async function alternativesFor(db: Db, dispenseId: string, lineIdx: numbe
  * `min(batch MRP, ceiling, contract)`, decided at the bill, and this desk does no price arithmetic
  * (DEFERRED to C7, which can ask billing's preview).
  */
-export type AlternativeBlock = { book: "allergy" | "interaction" | "duplicate" | "drug_disease"; about: string };
+/** `about` is what the line says; `key` is the hit's identity, which a PD-9 authorisation names. */
+export type AlternativeBlock = { book: "allergy" | "interaction" | "duplicate" | "drug_disease"; about: string; key: string };
 
 /** A line's refusals as the sheet and the line say them: which book, about what. */
 function blocksOf(r: Refusals): AlternativeBlock[] {
   return [
-    ...r.allergy.map((x) => ({ book: "allergy" as const, about: x.substance })),
-    ...r.interaction.map((x) => ({ book: "interaction" as const, about: x.note })),
-    ...r.duplicate.map((x) => ({ book: "duplicate" as const, about: x.moiety })),
-    ...r.drugDisease.map((x) => ({ book: "drug_disease" as const, about: x.icd10Title })),
+    ...r.allergy.map((x) => ({ book: "allergy" as const, about: x.substance, key: refusalKey("allergy", x) })),
+    ...r.interaction.map((x) => ({ book: "interaction" as const, about: x.note, key: refusalKey("interaction", x) })),
+    ...r.duplicate.map((x) => ({ book: "duplicate" as const, about: x.moiety, key: refusalKey("duplicate", x) })),
+    ...r.drugDisease.map((x) => ({ book: "drug_disease" as const, about: x.icd10Title, key: refusalKey("drug_disease", x) })),
   ];
 }
 export type CheckedAlternative = Alternative & { check: { verdict: "clear" | "not_checked" | "blocked"; blocks: AlternativeBlock[] } };
@@ -107,6 +110,7 @@ export async function checkedAlternativesFor(db: Db, actor: Actor, dispenseId: s
   const medicines = await medicinesByIds(db, [
     ...open.map((l) => l.dispensedMedicineId), ...alternatives.map((a) => a.medicineId),
   ].filter((x): x is string => x !== null));
+  const authorised = await authorisedKeysFor(db, dispenseId);
   const out: CheckedAlternative[] = [];
   for (const alt of alternatives) {
     const checkLines: RxLine[] = open.map((l) => {
@@ -115,7 +119,7 @@ export async function checkedAlternativesFor(db: Db, actor: Actor, dispenseId: s
       return id === null ? rxLine : { ...rxLine, medicineId: id, drug: medicines.get(id)?.brandName ?? rxLine.drug };
     });
     const outcome = await runRxChecks(db, d.patientId, checkLines, now, { excludeEncounterId: d.encounterId });
-    const blocks = blocksOf(refusalsOn(refusalsOf(outcome, (i) => open[i]!.lineIdx, rx, new Set()), lineIdx));
+    const blocks = blocksOf(refusalsOn(refusalsOf(outcome, (i) => open[i]!.lineIdx, rx, new Set(), authorised), lineIdx));
     const partly = outcome.unreviewedLineIndexes.includes(target) || outcome.unresolvedLineIndexes.includes(target);
     out.push({ ...alt, check: { verdict: blocks.length > 0 ? "blocked" : partly ? "not_checked" : "clear", blocks } });
   }
@@ -133,22 +137,39 @@ export async function checkedAlternativesFor(db: Db, actor: Actor, dispenseId: s
  */
 export type LinePrecheck = { lineIdx: number; verdict: "clear" | "not_checked" | "blocked" | "unplaced"; blocks: AlternativeBlock[] };
 
-export async function precheckTicket(db: Db, actor: Actor, dispenseId: string, now: Date): Promise<{ lines: LinePrecheck[] }> {
+type DispenseLineRow = Awaited<ReturnType<typeof linesOf>>[number];
+
+/**
+ * The ticket's open lines as they stand — or with ONE line given a different medicine (the one the
+ * pharmacist is about to hand over: a substitute, a reading) — put to `refusalsOf`, authorisations
+ * included. The pre-check reads it; PD-9's request reads it to confirm the refusal it names is real.
+ */
+export async function ticketRefusals(
+  db: Db, actor: Actor, dispenseId: string, now: Date, instead: { lineIdx: number; medicineId: string } | null = null,
+): Promise<{ d: DispenseRow; doctorId: string; open: DispenseLineRow[]; outcome: RxCheckOutcome; refused: Refusals }> {
   const d = await getDispenseRow(db, dispenseId);
-  if (d.status !== "claimed") return { lines: [] };
   const rx = await getPrescription(db, actor, d.prescriptionId);
   if (rx === null) {
     throw new PharmacyError("permission_denied", "this ticket is a sealed record — its checks are read by a pharmacist who may read it", { reason: "patient_restricted" });
   }
   const open = (await linesOf(db, dispenseId)).filter((l) => l.status === "open");
-  if (open.length === 0) return { lines: [] };
-  const medicines = await medicinesByIds(db, open.map((l) => l.dispensedMedicineId).filter((x): x is string => x !== null));
+  const medicineOf = (l: DispenseLineRow): string | null => (instead !== null && l.lineIdx === instead.lineIdx ? instead.medicineId : l.dispensedMedicineId);
+  const medicines = await medicinesByIds(db, open.map(medicineOf).filter((x): x is string => x !== null));
   const checkLines: RxLine[] = open.map((l) => {
     const rxLine = l.rxLine as RxLine;
-    return l.dispensedMedicineId === null ? rxLine : { ...rxLine, medicineId: l.dispensedMedicineId, drug: medicines.get(l.dispensedMedicineId)?.brandName ?? rxLine.drug };
+    const id = medicineOf(l);
+    return id === null ? rxLine : { ...rxLine, medicineId: id, drug: medicines.get(id)?.brandName ?? rxLine.drug };
   });
   const outcome = await runRxChecks(db, d.patientId, checkLines, now, { excludeEncounterId: d.encounterId });
-  const refused = refusalsOf(outcome, (i) => open[i]!.lineIdx, rx, new Set());
+  const refused = refusalsOf(outcome, (i) => open[i]!.lineIdx, rx, new Set(), await authorisedKeysFor(db, dispenseId));
+  return { d, doctorId: rx.doctorId, open, outcome, refused };
+}
+
+export async function precheckTicket(db: Db, actor: Actor, dispenseId: string, now: Date): Promise<{ lines: LinePrecheck[] }> {
+  const row = await getDispenseRow(db, dispenseId);
+  if (row.status !== "claimed") return { lines: [] };
+  const { open, outcome, refused } = await ticketRefusals(db, actor, dispenseId, now);
+  if (open.length === 0) return { lines: [] };
   return {
     lines: open.map((l, i): LinePrecheck => {
       if (l.dispensedMedicineId === null) return { lineIdx: l.lineIdx, verdict: "unplaced", blocks: [] };
@@ -334,7 +355,8 @@ export async function verifyDispense(
    * severe drug×disease hit can arrive unruled-on — see `refusals.ts` (E35–E37).
    */
   const readHere = new Set(settled.filter((s) => s.resolvedHere).map((s) => s.line.lineIdx));
-  const refused = refusalsOf(outcome, origIdx, rx, readHere);
+  /* PD-9 — a refusal the prescriber has authorised from the counter is not a refusal. */
+  const refused = refusalsOf(outcome, origIdx, rx, readHere, await authorisedKeysFor(db, d.id));
   if (refused.allergy.length > 0) {
     throw new PharmacyError(
       "allergy_block",

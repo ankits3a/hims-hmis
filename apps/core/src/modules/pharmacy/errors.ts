@@ -131,6 +131,12 @@ export const PHARMACY_ERROR_CODES = [
   // ── PD-D18: where the drug is ──
   /** A shelf label longer than the line can print (24 characters). */
   "invalid_shelf_location",
+  // ── PD-9: the prescriber authorises what the check would refuse ──
+  /** The check raises no such refusal on that line — there is nothing for the doctor to authorise. */
+  "authorisation_not_needed",
+  /** The request was already authorised or declined. */
+  "authorisation_not_pending",
+  "unknown_authorisation",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -221,6 +227,9 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   duplicate_block: 409,
   drug_disease_block: 409,
   invalid_shelf_location: 400,
+  authorisation_not_needed: 409,
+  authorisation_not_pending: 409,
+  unknown_authorisation: 404,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {

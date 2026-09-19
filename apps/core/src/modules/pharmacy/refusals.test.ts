@@ -1,4 +1,4 @@
-import { refusalsOf, refusalsOn } from "./refusals";
+import { authorisationKey, refusalKey, refusalsOf, refusalsOn } from "./refusals";
 import type { RxCheckOutcome } from "../opd";
 
 /**
@@ -56,5 +56,20 @@ describe("refusalsOf — the four books, as the check acts on them", () => {
   it("maps the check's indexes back to the prescription's (declined lines are not in the check)", () => {
     const r = refusalsOf({ ...none, allergyMatches: [{ lineIndex: 0, substance: "X" }] }, (i) => [2, 5][i]!, {}, new Set());
     expect(r.allergy).toEqual([{ lineIdx: 2, substance: "X" }]);
+  });
+
+  it("PD-9 — a prescriber's authorisation clears exactly its key on its line; a pair from either of its lines", () => {
+    const outcome: RxCheckOutcome = {
+      ...none,
+      allergyMatches: [{ lineIndex: 0, substance: "Paracetamol" }, { lineIndex: 1, substance: "Paracetamol" }],
+      interactions: [{ severity: "severe", lineIndex: 1, saltPair: ["b", "a"], note: "QT", against: { scope: "in_rx", lineIndex: 0 } }],
+    };
+    const ok = (...keys: string[]) => refusalsOf(outcome, ident, {}, new Set(), new Set(keys));
+    expect(ok(authorisationKey(0, "allergy", "Paracetamol")).allergy).toEqual([{ lineIdx: 1, substance: "Paracetamol" }]);
+    expect(ok(authorisationKey(0, "allergy", "Ibuprofen")).allergy).toHaveLength(2);
+    expect(refusalKey("interaction", { saltPair: ["b", "a"] })).toBe("a|b");
+    expect(ok(authorisationKey(0, "interaction", "a|b")).interaction).toEqual([]);
+    expect(ok(authorisationKey(1, "interaction", "a|b")).interaction).toEqual([]);
+    expect(ok(authorisationKey(2, "interaction", "a|b")).interaction).toHaveLength(1);
   });
 });

@@ -59,6 +59,7 @@ import { OtCockpit } from "./screens/ot-cockpit";
 import { OtRecovery } from "./screens/ot-recovery";
 import { LabDesk } from "./screens/lab-desk";
 import { PharmacyCounter } from "./screens/pharmacy-counter";
+import { PharmacyAuthorise } from "./screens/pharmacy-authorise";
 import { PharmacyDesk } from "./screens/pharmacy-desk/pharmacy-desk";
 import { PharmacyItems } from "./screens/pharmacy-items";
 import { PharmacyPharmacists } from "./screens/pharmacy-pharmacists";
@@ -874,6 +875,19 @@ const pharmacyDeskTicketRoute = createRoute({
   },
 });
 
+/**
+ * PD-9 (owner ruling 2026-09-19) — where the PRESCRIBER reads the pharmacy's request and decides it.
+ * Reached from the request on the doctor's own desk; the server lets nobody else read or decide it.
+ */
+const pharmacyAuthoriseRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/authorisations/$authorisationId",
+  component: function PharmacyAuthoriseRoute() {
+    const { authorisationId } = pharmacyAuthoriseRoute.useParams();
+    return <PharmacyAuthorise authorisationId={authorisationId} />;
+  },
+});
+
 const pharmacyItemsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/pharmacy/items",
@@ -1282,7 +1296,7 @@ export const router = createRouter({
       pcpndtFormFRoute, radiationSafetyRoute,
       // PLAN 16c T5 — 45 -> 47, the pharmacy: the dispense counter and the sale-items admin. TWO routes
       // and two NAV links. `caddyfile-parity.test.ts` pins the count and joins this task's Files list.
-      pharmacyCounterRoute, pharmacyDeskRoute, pharmacyDeskTicketRoute, pharmacyItemsRoute, pharmacyPharmacistsRoute, pharmacyReorderRoute, pharmacyH1RegisterRoute, materialsCountsRoute, materialsTransfersRoute, pharmacyLeakageRoute,
+      pharmacyCounterRoute, pharmacyDeskRoute, pharmacyDeskTicketRoute, pharmacyAuthoriseRoute, pharmacyItemsRoute, pharmacyPharmacistsRoute, pharmacyReorderRoute, pharmacyH1RegisterRoute, materialsCountsRoute, materialsTransfersRoute, pharmacyLeakageRoute,
       pharmacyRetailRoute, pharmacyRetailLicenceRoute, pharmacyDowntimeRoute,
       // PHASE 11i T9 — 50 -> 53, and every one of the three is a REDIRECT with no screen. They exist
       // because the catch-up deploy deletes three paths production has been serving since

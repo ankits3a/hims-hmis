@@ -40,7 +40,7 @@ describe("the substitute sheet's alternatives, pre-checked for this patient (PD-
 
     await addAllergy(db, fx.patient.id, "Paracetamol");
     expect((await checkedAlternativesFor(db, fx.pharmacist.actor, id, 0, MON2)).map((a) => a.check)).toEqual([
-      { verdict: "blocked", blocks: [{ book: "allergy", about: "Paracetamol" }] },
+      { verdict: "blocked", blocks: [{ book: "allergy", about: "Paracetamol", key: "Paracetamol" }] },
     ]);
     await expect(verifyDispense(db, fx.pharmacist.actor, fx.decls, id, { lines: [{ lineIdx: 0, qtyBase: 10, dispensedMedicineId: fx.med.calpol, patientConsent: true }] }, MON2))
       .rejects.toThrow(expect.objectContaining({ code: "allergy_block" }));
@@ -53,7 +53,7 @@ describe("the substitute sheet's alternatives, pre-checked for this patient (PD-
     const id = await claimed([line({ drug: "Crocin 500", medicineId: fx.med.crocin })]);
     await issueRx(db, fx, [line({ drug: "ORS sachet" })], { at: MON2, diagnoses: [{ text: "Hepatic failure", icd10Code: "K72.90" }] });
     expect((await checkedAlternativesFor(db, fx.pharmacist.actor, id, 0, MON2)).map((a) => a.check)).toEqual([
-      { verdict: "blocked", blocks: [{ book: "drug_disease", about: "Hepatic failure" }] },
+      { verdict: "blocked", blocks: [{ book: "drug_disease", about: "Hepatic failure", key: "K72:Paracetamol" }] },
     ]);
   });
 
@@ -76,7 +76,7 @@ describe("the substitute sheet's alternatives, pre-checked for this patient (PD-
     ]);
     await addAllergy(db, fx.patient.id, "Paracetamol");
     expect(await precheckTicket(db, fx.pharmacist.actor, id, MON2)).toEqual({ lines: [
-      { lineIdx: 0, verdict: "blocked", blocks: [{ book: "allergy", about: "Paracetamol" }] },
+      { lineIdx: 0, verdict: "blocked", blocks: [{ book: "allergy", about: "Paracetamol", key: "Paracetamol" }] },
       { lineIdx: 1, verdict: "clear", blocks: [] },
       { lineIdx: 2, verdict: "unplaced", blocks: [] },
     ] });

@@ -750,6 +750,13 @@
       "when": 1789817242893,
       "tag": "0106_pharmacy_shelf_locations",
       "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1789826618273,
+      "tag": "0107_pharmacy_authorisations",
+      "breakpoints": true
     }
   ]
 }
