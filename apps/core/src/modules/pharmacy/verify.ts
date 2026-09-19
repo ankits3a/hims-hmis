@@ -101,7 +101,9 @@ export type VerifyInput = { lines: VerifyLineInput[] };
  * `runRxChecks` takes `RxLine[]` and resolves id-first, so the lines it sees here carry the
  * DISPENSED medicine id. An allergy or a severe interaction that the prescriber did not override
  * at issue time blocks the verify by code; one the prescriber did override is shown and passes —
- * the counter re-runs the doctor's decision, it does not re-make it.
+ * the counter re-runs the doctor's decision, it does not re-make it. PD-5b added the other two
+ * books issue gates — a hard duplicate and a severe drug×disease hit — for the cases where the
+ * decision could not have been made at issue (see the block below the interaction refusal).
  *
  * ═══ D6 — GENERIC SUBSTITUTION IS A SET EQUALITY, NOT A JUDGEMENT ═══
  *
@@ -248,6 +250,46 @@ export async function verifyDispense(
       "interaction_block",
       `a severe interaction the prescriber did not override: ${interactionBlocks.map((h) => h.note).join("; ")} — back to the doctor`,
       { hits: interactionBlocks.map((h) => ({ lineIdx: origIdx(h.lineIndex), saltPair: h.saltPair, note: h.note })) },
+    );
+  }
+  /**
+   * PD-5b — THE TWO BOOKS ISSUE GATED AND THIS CHECK DID NOT. Issue refuses a hard duplicate and a
+   * severe drug×disease hit unless the prescriber overrides it; verify re-ran both books and acted on
+   * neither. That was sound only while nothing could change between issue and here, and two things can:
+   *   · a line RESOLVED here carries moieties the prescriber never saw — a duplicate or a
+   *     contraindication on it is a decision nobody made (E35, E36);
+   *   · a diagnosis coded AFTER the issue meets a line the doctor did name — the drug×disease twin
+   *     of the allergy recorded after issue, which D9 already stops here (E37, DECIDED).
+   * Both are refused in issue's own grammar, and the prescriber's override on the line still
+   * counts: a doctor who ruled on that moiety and that diagnosis has decided. A hard duplicate is
+   * same-prescription only, so a doctor-named pair was already met at issue; only a reading can make
+   * a new one, and its refusal lands on the line the pharmacist chose — the one they can change.
+   */
+  const readHere = new Set(settled.filter((s) => s.resolvedHere).map((s) => s.line.lineIdx));
+  const duplicateOverrides = (rx.duplicateOverrides ?? []) as RxOverride[];
+  const duplicateBlocks = new Map<string, { lineIdx: number; moiety: string }>();
+  for (const h of outcome.duplicates) {
+    if (!h.hard || duplicateOverrides.some((o) => o.lineIndex === origIdx(h.lineIndex) && o.moiety === h.moiety)) continue;
+    const sides = [origIdx(h.lineIndex), ...(h.against.scope === "in_rx" ? [origIdx(h.against.lineIndex)] : [])];
+    const chosen = sides.find((i) => readHere.has(i));
+    if (chosen !== undefined) duplicateBlocks.set(`${String(chosen)}|${h.moiety}`, { lineIdx: chosen, moiety: h.moiety });
+  }
+  if (duplicateBlocks.size > 0) {
+    const hits = [...duplicateBlocks.values()];
+    throw new PharmacyError(
+      "duplicate_block",
+      `${[...new Set(hits.map((h) => h.moiety))].join(", ")} is already on this prescription — the doctor's words cannot be read as a second one; choose another or decline the line`,
+      { hits },
+    );
+  }
+  const drugDiseaseOverrides = (rx.drugDiseaseOverrides ?? []) as RxOverride[];
+  const diseaseBlocks = outcome.drugDisease.filter((h) => h.severity === "severe"
+    && !drugDiseaseOverrides.some((o) => o.lineIndex === origIdx(h.lineIndex) && o.moiety === h.moiety && o.icd10Prefix === h.icd10Prefix));
+  if (diseaseBlocks.length > 0) {
+    throw new PharmacyError(
+      "drug_disease_block",
+      `${diseaseBlocks.map((h) => `${h.moiety} with ${h.icd10Title}`).join("; ")}: contraindicated by a diagnosis this patient carries, and no prescriber has ruled on it — back to the doctor, or decline the line`,
+      { hits: diseaseBlocks.map((h) => ({ lineIdx: origIdx(h.lineIndex), moiety: h.moiety, icd10Prefix: h.icd10Prefix, icd10Title: h.icd10Title })) },
     );
   }
   const scheduled = settled.some((s) => s.scheduleFlag !== null && (SCHEDULED_FLAGS as readonly string[]).includes(s.scheduleFlag));

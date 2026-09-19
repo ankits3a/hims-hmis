@@ -207,6 +207,16 @@ Numbered because each one owes a test. **F** = must fail first against the code 
   search is `GET /pharmacy/dispenses/:id/lines/:idx/shelf` under `pharmacy.dispense.place`, at the
   ticket's own store, and answers only for an unplaced line; `/pharmacy/downtime/shelf` stays the
   downtime clerk's and was not widened. **F**
+- **E35** A reading that repeats a moiety already on the prescription (Crocin named, the unplaced
+  line read as Calpol) → `duplicate_block` on the line the pharmacist chose. **MEASURED (PD-5b):**
+  `verify` re-ran all four books and GATED only allergy and severe interaction; for a substitute
+  (same salts) the other two were met at issue, for a reading they were met by nobody. **F**
+- **E36** A reading a coded diagnosis contraindicates (severe) → `drug_disease_block`; a prescriber's
+  override on that line and that ruling still counts (the doctor wrote the moiety and ruled). **F**
+- **E37** **DECIDED (PD-5b):** a diagnosis coded AFTER the issue stops a doctor-named line too — the
+  drug×disease twin of D9's allergy-recorded-after-issue, and the same answer: a severe
+  contraindication nobody ruled on is not handed over. Hard duplicates need no such rule: they are
+  same-prescription only, so a doctor-named pair was already met at issue. **F**
   **Known limit, not fixed here:** the one shelf search (`searchShelfAt`, shared with retail and
   downtime) matches brand, item code and item name — not the salt. "paracetamol" finds Calpol only if
   an item's name says so. The sheet seeds the search from the doctor's words minus the dosage form

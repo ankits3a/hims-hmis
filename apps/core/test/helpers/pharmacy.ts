@@ -8,7 +8,7 @@ import { collectOrderKinds } from "../../src/kernel/orders/kinds";
 import { ORDERS_PLACE } from "../../src/kernel/orders/place";
 import { addMedicine, addSalt } from "../../src/modules/formulary";
 import { createStore, postMovement, registerItem } from "../../src/modules/materials";
-import { startConsultation } from "../../src/modules/opd/consultation";
+import { saveConsultNote, startConsultation } from "../../src/modules/opd/consultation";
 import { openVisit } from "../../src/modules/opd/encounters";
 import { registerOpdEncounterResolver } from "../../src/modules/opd/opd.module";
 import { issuePrescription } from "../../src/modules/opd/prescriptions";
@@ -142,7 +142,11 @@ export async function issueRx(
   db: Db,
   fx: PharmacyFixture,
   lines: RxLine[],
-  opts: { patientId?: string; at?: Date; overrides?: Omit<Parameters<typeof issuePrescription>[4], "lines">; payFee?: boolean } = {},
+  opts: {
+    patientId?: string; at?: Date; overrides?: Omit<Parameters<typeof issuePrescription>[4], "lines">; payFee?: boolean;
+    /** Coded in the consult BEFORE the prescription is issued, as a doctor codes one (P24's fourth book reads them). */
+    diagnoses?: { text: string; icd10Code: string }[];
+  } = {},
 ): Promise<{ encounter: EncounterRow; tokenNo: number | null; issued: IssuedPrescription }> {
   const at = opts.at ?? MON;
   const opened = await openVisit(db, fx.clerk.actor, { patientId: opts.patientId ?? fx.patient.id, departmentId: fx.deptId, doctorId: fx.doctor.doctorId }, at);
@@ -154,6 +158,7 @@ export async function issueRx(
   await recordVitals(db, fx.vd.actor, opened.encounter.id, ADULT_OK, at);
   await callNext(db, fx.doctor.actor, opened.sessionId, at);
   const started = await startConsultation(db, fx.doctor.actor, opened.encounter.id, at);
+  if (opts.diagnoses !== undefined) await saveConsultNote(db, fx.doctor.actor, started.encounter.id, { diagnoses: opts.diagnoses });
   const issued = await issuePrescription(db, fx.doctor.actor, testCfg, started.encounter.id, { lines, ...(opts.overrides ?? {}) }, new Date(at.getTime() + 60_000));
   return { encounter: started.encounter, tokenNo: opened.tokenNo, issued };
 }
