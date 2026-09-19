@@ -8,6 +8,7 @@ import { ModuleRegistry } from "../modules/loader";
 import { events, orderItems, orders, patients, registrationConfig, services } from "../db/schema";
 import { withTx } from "../db/client";
 import { registerEncounterResolver, registeredEncounterPrefixes } from "../episodes/encounter-resolvers";
+import { nextEpisodeNo } from "../episodes/series";
 import { OrderError } from "./errors";
 import { ORDERS_PLACE, placeOrder } from "./place";
 import type { PlaceOrderInput } from "./place";
@@ -134,6 +135,26 @@ describe("placeOrder (Plan 17 phase 0 T3)", () => {
     expect(itemIds).toHaveLength(1);
     const [item] = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
     expect([item!.status, item!.origin, item!.restricted]).toEqual(["placed", "direct", false]);
+  });
+
+  /**
+   * PD-2 (owner ruling 2026-09-19) — the pharmacy mints a ticket's P-number when the ticket is
+   * QUEUED, and the medication order placed at the check must carry THAT number, not mint a second
+   * one: two numbers for one dispense is two things a patient could be called by.
+   */
+  it("PD-2 — takes a number already minted from the kind's OWN series, and mints none of its own", async () => {
+    const minted = await withTx(db, (tx) => nextEpisodeNo(tx, "lab_order", DAY));
+    expect(minted).toBe("L2608290001");
+    const { orderNo } = await place(doctor, { preallocatedOrderNo: minted });
+    expect(orderNo).toBe(minted);
+    // the counter moved once — for the ticket — and the next placement takes the next number
+    expect((await place(doctor)).orderNo).toBe("L2608290002");
+  });
+
+  it("PD-2 — refuses a number from another series, or one that is not a series number at all", async () => {
+    expect(await codeOf(place(doctor, { preallocatedOrderNo: "R2608290001" }))).toBe("invalid_order_no");
+    expect(await codeOf(place(doctor, { preallocatedOrderNo: "L-1" }))).toBe("invalid_order_no");
+    expect(await db.select().from(orders)).toHaveLength(0);
   });
 
   it("appends order.placed inside the same transaction, carrying the item ids", async () => {

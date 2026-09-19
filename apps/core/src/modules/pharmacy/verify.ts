@@ -370,6 +370,8 @@ export async function verifyDispense(
     const placed = await placeOrder(tx, actor, decls, {
       kind: "medication", patientId: d.patientId, encounterNo: encounter.visitNo, serviceDate: istDateOf(now),
       orderingClinicianId: rx.doctorId, priority: "routine", placedAt: now,
+      /* PD-2 — the number the ticket was queued with; a ticket queued before PD-2 has none and is numbered here. */
+      ...(d.dispenseNo === null ? {} : { preallocatedOrderNo: d.dispenseNo }),
       items: settled.map((s) => ({ serviceId: s.serviceId })),
     });
     /*

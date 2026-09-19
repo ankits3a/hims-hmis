@@ -47,9 +47,9 @@ export function flowIndex(stage: DeskStage): number {
 
 /**
  * PD-D8 — `P2609180048` renders as `P-48`: the series letter and the day's serial, the way the
- * front desk renders a token (`MED-4`). NULL before verify, which is when the server mints the
- * number today; the queue then names the ticket by its patient. Moving allocation earlier is an
- * owner ruling (PD-2) and this function does not pretend it has been made.
+ * front desk renders a token (`MED-4`). PD-2 (owner ruling 2026-09-19): the server mints the number
+ * when the ticket is QUEUED, so every ticket carries one; NULL now means a ticket queued before that
+ * change, which is numbered at the check and named by its patient until then.
  */
 export function ticketLabel(dispenseNo: string | null): string | null {
   if (dispenseNo === null) return null;
