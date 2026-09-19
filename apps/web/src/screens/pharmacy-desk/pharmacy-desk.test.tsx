@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { setToken } from "../../lib/api";
 import { renderWithProviders } from "../../test-utils";
 import { PharmacyDesk } from "./pharmacy-desk";
-import { holdOf, lineVerdict, shelfFlag, stageOf, ticketLabel, waitLabel, waitTone } from "./model";
+import { holdOf, lineVerdict, queuedDay, shelfFlag, stageOf, ticketLabel, waitLabel, waitTone } from "./model";
 import { resetDeskLog } from "./log";
 import type { WireDispense, WireQueueRow } from "../../lib/pharmacy-api";
 
@@ -77,11 +77,22 @@ describe("the desk's rules, pure (PD-3)", () => {
   it("names a ticket by series and day serial, and a waiting one by nothing it does not have", () => {
     expect(ticketLabel("P2609190048")).toBe("P-48");
     expect(ticketLabel(null)).toBeNull();
+    // the serial restarts every day, and the queue now carries yesterday's open tickets: yesterday's
+    // P-4 and today's P-4 can stand on one line, so a number from another day says its day
+    expect(ticketLabel("P2609190004", "2026-09-20")).toBe("P-4 · 19 Sept");
+    expect(ticketLabel("P2609200004", "2026-09-20")).toBe("P-4");
   });
   it("reads a wait as the rail prints it, and colours it by how long", () => {
     const now = new Date(NOW);
     expect([waitLabel(ago(0), now), waitLabel(ago(7), now), waitLabel(ago(65), now)]).toEqual(["now", "7m", "1h 05m"]);
     expect([waitTone(ago(3), now), waitTone(ago(9), now), waitTone(ago(18), now)]).toEqual(["calm", "warm", "late"]);
+  });
+  it("says the DAY an earlier ticket was queued — the queue now carries open work across midnight", () => {
+    const now = new Date("2026-09-20T00:10:00+05:30");
+    expect(queuedDay(undefined, now)).toBeNull();
+    expect(queuedDay("2026-09-20", now)).toBeNull();
+    expect(queuedDay("2026-09-19", now)).toEqual({ kind: "yesterday" });
+    expect(queuedDay("2026-09-17", now)).toEqual({ kind: "date", label: "17 Sept" });
   });
   it("derives five stages from six states — and a ticket not yet yours is FOUND, not worked", () => {
     expect([null, "queued", "claimed", "verified", "picked", "billed", "handed_over", "cancelled"]
@@ -162,6 +173,17 @@ describe("PharmacyDesk (PD-3)", () => {
     expect(screen.queryByText("Nobody found for that.")).toBeNull();
   });
 
+  it("a ticket carried over from yesterday is called by its number AND its day", async () => {
+    const istOf = (ms: number): string => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms));
+    const y = istOf(NOW - 24 * 60 * 60_000);
+    const no = `P${y.slice(2).replace(/-/g, "")}0004`;
+    const day = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${y}T00:00:00Z`));
+    mockRoutes(base({ "GET /api/pharmacy/dispenses/d1": { status: 200, body: ticket("claimed", { dispenseNo: no }) } }));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const ticketView = await screen.findByTestId("desk-ticket");
+    expect(within(ticketView).getByRole("heading")).toHaveTextContent(`Ticket P-4 · ${day}`);
+  });
+
   it("a ticket in hand: the patient and allergy on the left, and each line as WRITTEN → GIVEN, the unplaceable one amber in place", async () => {
     mockRoutes(base({ "GET /api/pharmacy/dispenses/d1": { status: 200, body: ticket("claimed") } }));
     renderWithProviders(<PharmacyDesk ticketId="d1" />);
@@ -226,6 +248,16 @@ describe("PharmacyDesk (PD-3)", () => {
     await waitFor(() => expect(open).toHaveBeenCalledWith("/pharmacy/desk/d1", "_blank", "noopener"));
     expect(posted("/pharmacy/dispenses")).toEqual([{ dispenseId: "d1", door: "token" }]);
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("a ticket carried over from an earlier day says its day on the line, not a count of hours", async () => {
+    const istDay = (ms: number): string => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms));
+    const paid = row("d9", "Sunita Devi", { status: "billed", createdAt: ago(26 * 60), queuedOn: istDay(NOW - 24 * 60 * 60_000) });
+    mockRoutes(base({ "GET /api/pharmacy/queue": { status: 200, body: { items: [paid, ...QUEUE] } } }));
+    renderWithProviders(<PharmacyDesk ticketId={null} />);
+    expect(await screen.findByTestId("queue-row-d9")).toHaveTextContent("yesterday");
+    expect(screen.getByTestId("queue-row-d9")).not.toHaveTextContent(/\d+h \d+m/);
+    expect(screen.getByTestId("queue-row-d1")).toHaveTextContent("18m");
   });
 
   it("PD-D6 — every keycap drawn is one this desk binds", async () => {

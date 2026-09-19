@@ -262,7 +262,8 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
       const d = await billDispense(inHandId, { tenders, ...(changePaise > 0 ? { changeGivenPaise: changePaise } : {}) }, keyFor("bill", inHandId));
       moneyKeys.current.delete(`bill:${inHandId}`);
       settle(d);
-      const total = tenders.reduce((n, x) => n + x.amountPaise, 0);
+      /* what was BILLED: a cash tender is the note handed over, so the change comes off it */
+      const total = tenders.reduce((n, x) => n + x.amountPaise, 0) - changePaise;
       say(t("pharmacyDesk.log.billed", { amount: rupees(total), modes: tenders.map((x) => x.mode).join(" + ") }));
     } catch (e) {
       answered("bill", inHandId, e);

@@ -102,6 +102,8 @@ export async function confirmDispenseSlip(id: string): Promise<{ slipConfirmedBy
 export type WireQueueRow = {
   dispenseId: string; status: string; dispenseNo: string | null; scheduled: boolean; lineCount: number;
   createdAt: string; claimedAt: string | null; patient: WirePatientSummary;
+  /** The IST day it was queued — an earlier day's open ticket stays on the line. Absent from an older server. */
+  queuedOn?: string;
   /** FD-31 — who typed a paper slip, and whether a pharmacist has cross-confirmed it. */
   transcribedBy?: string | null; slipConfirmedBy?: string | null;
   /** PD-1 — who holds a claimed ticket. Absent from an older server. */

@@ -51,10 +51,16 @@ export function flowIndex(stage: DeskStage): number {
  * when the ticket is QUEUED, so every ticket carries one; NULL now means a ticket queued before that
  * change, which is numbered at the check and named by its patient until then.
  */
-export function ticketLabel(dispenseNo: string | null): string | null {
+export function ticketLabel(dispenseNo: string | null, today?: string): string | null {
   if (dispenseNo === null) return null;
-  const m = /^([A-Z]+)\d{6}(\d+)$/.exec(dispenseNo);
-  return m === null ? dispenseNo : `${m[1]!}-${String(Number(m[2]!))}`;
+  const m = /^([A-Z]+)(\d{2})(\d{2})(\d{2})(\d+)$/.exec(dispenseNo);
+  if (m === null) return dispenseNo;
+  const label = `${m[1]!}-${String(Number(m[5]!))}`;
+  /* The serial restarts each day and the queue carries an earlier day's open ticket, so yesterday's P-4
+     and today's P-4 can stand on one line: given today's IST date, a number from another day says its day. */
+  const day = `20${m[2]!}-${m[3]!}-${m[4]!}`;
+  if (today === undefined || day === today) return label;
+  return `${label} · ${new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${day}T00:00:00Z`))}`;
 }
 
 /** Minutes a ticket has waited, as the rail prints it: `now`, `7m`, `1h 05m`. */
@@ -63,6 +69,20 @@ export function waitLabel(fromIso: string, now: Date): string {
   if (minutes < 1) return "now";
   if (minutes < 60) return `${String(minutes)}m`;
   return `${String(Math.floor(minutes / 60))}h ${String(minutes % 60).padStart(2, "0")}m`;
+}
+
+/**
+ * The IST day an EARLIER day's ticket was queued, or null for today's. The queue keeps open work across
+ * midnight (the server's `listQueue`), and "26h 10m" read as a wait states a wrong fact: the ticket is
+ * yesterday's, and the pharmacist should know that before anything else about it.
+ */
+export function queuedDay(queuedOn: string | undefined, now: Date): { kind: "yesterday" } | { kind: "date"; label: string } | null {
+  if (queuedOn === undefined) return null;
+  const ist = (d: Date): string => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+  if (queuedOn >= ist(now)) return null;
+  if (queuedOn === ist(new Date(now.getTime() - 24 * 60 * 60_000))) return { kind: "yesterday" };
+  const [y, m, d] = queuedOn.split("-").map(Number);
+  return { kind: "date", label: new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(Date.UTC(y!, m! - 1, d!))) };
 }
 
 /** Calm under six minutes, warm to a quarter hour, late after — the board's three colours. */

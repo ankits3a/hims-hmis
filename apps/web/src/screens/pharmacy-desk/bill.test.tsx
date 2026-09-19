@@ -65,7 +65,10 @@ const base = (current: () => WireDispense, drawer: "open" | null, extra: Record<
 describe("the money, pure (PD-6)", () => {
   it("E20 — a cash tender short of the bill is no tender at all; over it, the difference is the change", () => {
     expect(tendersFor("cash", 4500, "40", "")).toBeNull();
-    expect(tendersFor("cash", 4500, "50", "")).toEqual({ tenders: [{ mode: "cash", amountPaise: 4500 }], changePaise: 500 });
+    // the tender is the NOTE handed over — billing gives change only out of the surplus above the bill
+    // (core `cash-change.test.ts`); the bill as the tender plus change on top was refused on the preview
+    expect(tendersFor("cash", 4500, "50", "")).toEqual({ tenders: [{ mode: "cash", amountPaise: 5000 }], changePaise: 500 });
+    expect(tendersFor("cash", 4500, "45", "")).toEqual({ tenders: [{ mode: "cash", amountPaise: 4500 }], changePaise: 0 });
     expect(tendersFor("split", 4500, "20", "25", "UTR 4411")).toEqual({ tenders: [{ mode: "cash", amountPaise: 2000 }, { mode: "upi", amountPaise: 2500, refText: "UTR 4411" }], changePaise: 0 });
     expect(tendersFor("split", 4500, "20", "20", "UTR 4411")).toBeNull();
   });
@@ -90,6 +93,24 @@ describe("the money, pure (PD-6)", () => {
 describe("the bill rail and the hand-over (PD-6)", () => {
   beforeEach(() => { setToken("t"); navigate.mockReset(); resetDeskLog(); });
   afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("WALK FINDING — cash with change posts the note handed over and the change, the pair billing accepts", async () => {
+    let current = dispense("d1", "picked");
+    mockRoutes(base(() => current, "open", {
+      "POST /api/pharmacy/dispenses/d1/bill": () => { current = dispense("d1", "billed"); return { status: 201, body: current }; },
+    }));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const rail = await screen.findByTestId("desk-bill");
+    expect(await within(rail).findByTestId("desk-payable")).toHaveTextContent("₹45.00");
+    await userEvent.click(within(rail).getByRole("radio", { name: /Cash/ }));
+    await userEvent.type(within(rail).getByRole("textbox", { name: /tendered/ }), "50");
+    expect(within(rail).getByTestId("desk-change")).toHaveTextContent("₹5.00");
+    await userEvent.click(within(rail).getByRole("button", { name: /Received ₹45.00/ }));
+    await waitFor(() => expect(calls("POST", "/d1/bill").map((c) => c.body)).toEqual([{ tenders: [{ mode: "cash", amountPaise: 5000 }], changeGivenPaise: 500 }]));
+    // the dock says what was BILLED, not the note: ₹45, with the ₹5 handed back
+    expect(await screen.findByTestId("desk-ticker")).toHaveTextContent("₹45.00");
+    expect(screen.getByTestId("desk-ticker")).not.toHaveTextContent("₹50.00");
+  });
 
   it("collected → priced → taken by UPI → handed over against an EMPTY identity box → done", async () => {
     let current = dispense("d1", "picked");

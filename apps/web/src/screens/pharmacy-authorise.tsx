@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { decideAuthorisation, fetchAuthorisation, pharmacyErrorText } from "../lib/pharmacy-api";
-import { sigOf } from "./pharmacy-desk/work";
+import { istToday, sigOf } from "./pharmacy-desk/work";
 import { ticketLabel } from "./pharmacy-desk/model";
 
 /**
@@ -49,7 +49,7 @@ export function PharmacyAuthorise({ authorisationId }: { authorisationId: string
       <div style={{ marginTop: 18, padding: "14px 16px", border: "1px solid var(--line, #d8e0dc)", borderRadius: 8 }}>
         <div style={{ fontSize: 15, fontWeight: 600 }}>{who}</div>
         <div style={{ fontSize: 12, color: "var(--dim, #5b6b66)", marginTop: 2 }}>
-          {[patient?.uhid ?? null, ticketLabel(dispenseNo)].filter((x) => x !== null).join(" · ")}
+          {[patient?.uhid ?? null, ticketLabel(dispenseNo, istToday())].filter((x) => x !== null).join(" · ")}
         </div>
         {line === null ? null : (
           <div style={{ marginTop: 12 }}>

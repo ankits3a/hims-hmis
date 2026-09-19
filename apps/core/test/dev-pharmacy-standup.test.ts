@@ -118,6 +118,16 @@ describe("dev-pharmacy-standup — the demo QUEUE (PD-0)", () => {
       .rejects.toMatchObject({ code: "allergy_block" });
   });
 
+  it("the NEXT day is a fresh day — and the allergy collision, staged once per patient, is not staged again", async () => {
+    const first = await standUpPharmacyDay(db, testCfg, DAY);
+    // measured 2026-09-20: the second day's run died at issue — the allergy recorded the day before refused it
+    const next = await standUpPharmacyDay(db, testCfg, new Date(DAY.getTime() + 24 * 60 * 60_000));
+    const allergy = TICKETS.findIndex((t) => t.allergyAfterIssue !== undefined);
+    expect(next.tickets.map((t, i) => [t.teaches, t.made]))
+      .toEqual(first.tickets.map((t, i) => [t.teaches, i === allergy ? false : t.made]));
+    expect(next.absent).toEqual(expect.arrayContaining([expect.stringContaining(`already carries ${TICKETS[allergy]!.allergyAfterIssue!}`)]));
+  });
+
   it("runs twice without doubling — and the worker it stands in for finds every event already handled", async () => {
     const first = await standUpPharmacyDay(db, testCfg, DAY);
     const again = await standUpPharmacyDay(db, testCfg, new Date(DAY.getTime() + 5 * 60_000));

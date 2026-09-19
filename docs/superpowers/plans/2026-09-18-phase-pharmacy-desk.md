@@ -238,6 +238,16 @@ Numbered because each one owes a test. **F** = must fail first against the code 
   `nothing_to_dispense`, and the ticket must not sit in the queue looking workable.
 - **E6** A ticket for a patient who never comes. Nothing sweeps a claimed-but-unbilled ticket except
   the 30-minute pick reservation; a claim with no pick holds nothing and can sit all day.
+- **E6b — MIDNIGHT. DECIDED + BUILT 2026-09-20** (owner's standing rule: "follow what is logical, fall back
+  to top hospital standards"). Measured on production at 00:10 IST: the desk was empty although a ticket
+  was open, because `listQueue` listed only tickets CREATED on the day — so a ticket in a pharmacist's
+  hands, or one PAID and not collected, left the screen at 00:00 with its stock reserved and its money
+  taken. Now `openOnDay` (queue.ts) is the one rule the line and the summary's open counts share: a
+  started or paid ticket stays until handed over or cancelled, whatever its day; an untouched one stays
+  `QUEUED_CARRY_DAYS` = 3 IST days (an OPD prescription not collected in three days has almost always
+  been filled elsewhere, and scan/UHID still find it). An earlier day's row says its DAY ("yesterday",
+  "17 Sept") where today's says its wait. `carry-over.test.ts`; mutants (old same-day read, no carry
+  limit, no upper bound, UTC day, summary on its own rule) each killed.
 
 ### Stock
 - **E7** Stock goes between the copilot's pre-check and the tick — another window took the last

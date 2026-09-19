@@ -47,7 +47,10 @@ export function tendersFor(mode: TenderMode, payable: number, cashText: string, 
   if (mode === "cash") {
     const given = toPaise(cashText);
     if (given === null || given < payable) return null;
-    return { tenders: [{ mode: "cash", amountPaise: payable }], changePaise: given - payable };
+    /* The tender is the NOTE handed over, and the change comes out of it: billing reads a cash tender as
+       the money received and caps change at the surplus above the bill. Sending the bill as the tender
+       with change on top was refused on the preview (2026-09-20, core `cash-change.test.ts`). */
+    return { tenders: [{ mode: "cash", amountPaise: given }], changePaise: given - payable };
   }
   const cash = toPaise(cashText);
   const upi = toPaise(upiText);
