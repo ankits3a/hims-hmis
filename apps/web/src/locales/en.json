@@ -257,15 +257,170 @@
   },
   "inbox": {
     "title": "Approvals",
-    "empty": "Nothing pending for your roles",
-    "approve": "Approve",
-    "reject": "Reject",
-    "note": "Decision note (mandatory)",
-    "requested": "requested",
+    "lead": "Requests from your staff that need your yes or no.",
+    "tabs": {
+      "waiting": "Waiting for you",
+      "decided": "Decided recently"
+    },
+    "loading": "Loading…",
+    "loadFailed": "Could not load the approvals. Check the connection and try again.",
+    "retry": "Try again",
+    "empty": {
+      "title": "Nothing waiting for you",
+      "body": "When someone asks for a discount, a refund or any other approval, it will appear here."
+    },
+    "emptyDecided": "Nothing has been decided yet.",
     "urgency": {
-      "routine": "Routine",
       "urgent": "Urgent",
       "emergency": "Emergency"
+    },
+    "askedBy": "Asked by {{name}}",
+    "someone": "a staff member",
+    "age": {
+      "justNow": "just now",
+      "minutes": "{{count}} min ago",
+      "hours": "{{count}} h ago",
+      "yesterday": "yesterday",
+      "days_one": "{{count}} day ago",
+      "days_other": "{{count}} days ago"
+    },
+    "uhid": "UHID {{uhid}}",
+    "openPatient": "Open patient record",
+    "sameDay": {
+      "patient": "Also asked for this patient the same day: {{other}} more (approved or still waiting) — {{total}} in all with this one.",
+      "payee": "Also asked for this payee the same day: {{other}} more (approved or still waiting) — {{total}} in all with this one."
+    },
+    "approve": "Approve",
+    "reject": "Reject",
+    "ownRequest": "You asked for this one, so someone else has to approve it.",
+    "cannotDecide": "You can see these requests, but your login cannot approve or reject them.",
+    "confirm": {
+      "approveTitle": "Approve this request?",
+      "rejectTitle": "Reject this request?",
+      "noteLabel": "Note — saved with your decision",
+      "reasonLabel": "Why are you rejecting it?",
+      "reasonPlaceholder": "Pick a reason above, or type your own",
+      "reasonHint": "The person who asked will see this reason.",
+      "cancel": "Cancel",
+      "close": "Close",
+      "saving": "Saving…",
+      "approvePresets": {
+        "asRequested": "Approved as requested",
+        "oneTime": "Approved — one time only",
+        "checked": "Approved — I have checked the papers"
+      },
+      "rejectPresets": {
+        "tooHigh": "Amount is too high",
+        "unclear": "Reason is not clear — please explain",
+        "talkFirst": "Talk to me first",
+        "policy": "Not as per hospital policy",
+        "duplicate": "Duplicate request"
+      }
+    },
+    "done": {
+      "approved": "Approved — {{what}}",
+      "rejected": "Rejected — {{what}}"
+    },
+    "decided": {
+      "approvedBy": "Approved by {{name}}",
+      "rejectedBy": "Rejected by {{name}}",
+      "approved": "Approved",
+      "rejected": "Rejected"
+    },
+    "errors": {
+      "ownRequest": "You asked for this one, so someone else has to approve it.",
+      "notAllowed": "Your login is not allowed to decide approvals. Ask the administrator for access.",
+      "alreadyDecided": "Someone has already decided this one. The list has been refreshed.",
+      "wrongRole": "This request is waiting for a different role, so your login cannot decide it.",
+      "noteRequired": "Please write a short reason.",
+      "gone": "This request no longer exists. The list has been refreshed.",
+      "network": "Could not save your decision. Check the connection and try again."
+    },
+    "unknownKind": {
+      "label": "Approval request",
+      "explain": "This kind of request has no description on this screen yet."
+    },
+    "kinds": {
+      "billing_discount": {
+        "label": "Discount",
+        "ask": "Discount of {{amount}} on {{patient}}'s bill",
+        "explain": "More than the counter may give without your approval."
+      },
+      "billing_clearance_discount": {
+        "label": "Discount to settle dues",
+        "ask": "Discount of {{amount}} to settle {{patient}}'s unpaid dues",
+        "explain": "Part of an unpaid bill is written off so the patient can clear the rest."
+      },
+      "billing_credit_extension": {
+        "label": "Pay later (credit)",
+        "ask": "Let {{patient}} pay the rest of the bill later",
+        "explain": "The bill is issued now and the balance is collected later — more credit than the counter may give."
+      },
+      "billing_refund": {
+        "label": "Refund",
+        "ask": "Refund {{amount}} to {{patient}}",
+        "explain": "Money goes back to the patient."
+      },
+      "billing_variance": {
+        "label": "Cash count mismatch",
+        "ask": "Accept a cashier's closing cash count that does not match",
+        "explain": "At closing, the cash in a drawer did not match what the system expected. Approving accepts the count."
+      },
+      "lab_release_unpaid": {
+        "label": "Unpaid lab report",
+        "ask": "Give {{patient}}'s lab report with {{amount}} still unpaid",
+        "explain": "The report is held until the bill is paid. Approving lets the lab hand it over now."
+      },
+      "patient_merge": {
+        "label": "Merge duplicate records",
+        "ask": "Join {{patient}}'s two records into one",
+        "explain": "The same person was registered twice. Approving merges the two records."
+      },
+      "patient_unmerge": {
+        "label": "Undo a merge",
+        "ask": "Separate {{patient}}'s merged records again",
+        "explain": "Two records were joined by mistake. Approving splits them back apart."
+      },
+      "materials_stock_adjustment": {
+        "label": "Stock correction",
+        "ask": "Correct the store's stock after a physical count",
+        "explain": "The count found more or less stock than the system shows. Approving corrects the stock."
+      },
+      "materials_near_expiry_acceptance": {
+        "label": "Stock that expires soon",
+        "ask": "Accept a delivery of items that expire soon",
+        "explain": "The supplier sent items with a short shelf life. Approving lets the store accept them."
+      },
+      "materials_vendor_bank_change": {
+        "label": "Supplier bank change",
+        "ask": "Change the bank account a supplier is paid into",
+        "explain": "Future payments go to the new account. Confirm it with the supplier by phone before approving."
+      },
+      "imaging_definition_publish": {
+        "label": "Radiology settings",
+        "ask": "Put new radiology settings into use",
+        "explain": "Scan types, safety checks or critical-result rules change for everyone once approved."
+      },
+      "ot_definition_publish": {
+        "label": "OT settings",
+        "ask": "Put new operation theatre settings into use",
+        "explain": "OT criteria, surgeon privileges, deposit rules or recovery limits change once approved."
+      },
+      "ot_deposit_exception": {
+        "label": "Short deposit",
+        "ask": "Go ahead with {{patient}}'s day-care surgery with the deposit {{amount}} short",
+        "explain": "The patient has paid less than the deposit required before surgery."
+      },
+      "tariff_revision": {
+        "label": "Price list change",
+        "ask": "Put a new price list (tariff) into use",
+        "explain": "New prices for hospital services take effect once approved."
+      },
+      "membership_grace_honor": {
+        "label": "Membership card",
+        "ask": "Give {{patient}} member benefits on a card missing from the member list",
+        "explain": "The card is not in the member list. Approving gives the benefit this time."
+      }
     }
   },
   "opd": {
