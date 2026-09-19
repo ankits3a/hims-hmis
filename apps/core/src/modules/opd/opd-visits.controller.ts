@@ -19,6 +19,8 @@ import type { AppConfig } from "../../kernel/config";
 import { walkIn } from "./walk-in";
 import { continuityDoctorFor } from "./continuity";
 import { suggestDepartments } from "./triage";
+import type { TriageChoice } from "./triage";
+import { typesafeClient } from "../../kernel/inference/typesafe";
 import type { TriageResult } from "./triage";
 import type { ContinuityAnchor } from "./continuity";
 import type { WalkInDeferredResult, WalkInInput, WalkInResult } from "./walk-in";
@@ -292,7 +294,17 @@ export class OpdVisitsController {
       undefined,
       undefined,
       { ageYears: b.ageYears ?? null, names: b.names ?? [] },
+      this.triageChoice(),
     );
+  }
+
+  /**
+   * Triage's FIRST model (owner, 2026-09-19: TypeSafe as priority, the chat model its fallback), or
+   * null with no key configured — and then `config.triage` answers alone, exactly as before.
+   */
+  private triageChoice(): TriageChoice | null {
+    const client = typesafeClient(this.config.triageChoice);
+    return client === null ? null : { client, minConfidence: this.config.triageChoice.minConfidence };
   }
 
   @RequirePermission("opd.visits.open", "hospital")

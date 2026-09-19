@@ -188,8 +188,12 @@ describe("routeQuestion — an unmasked question never reaches the provider", ()
  */
 type Chooser = { client: ChoiceClient; calls: ChooseInput[] };
 
-const picks = (answers: Record<string, ChoiceAnswer>): Chooser => {
+/** The router reads only the choice and its confidence; the distribution is filled in to match. */
+const picks = (given: Record<string, Omit<ChoiceAnswer, "probabilities">>): Chooser => {
   const calls: ChooseInput[] = [];
+  const answers: Record<string, ChoiceAnswer> = Object.fromEntries(
+    Object.entries(given).map(([id, a]) => [id, { ...a, probabilities: { [a.choice]: a.confidence } }]),
+  );
   return {
     calls,
     client: {

@@ -134,6 +134,18 @@ const configSchema = z.object({
    * for the bad network day, not for the good one.
    */
   TRIAGE_TIMEOUT_MS: z.coerce.number().int().positive().default(6000),
+  /*
+   * TRIAGE'S FIRST MODEL: TYPESAFE (owner, 2026-09-19 — "priority", the chat model above its
+   * fallback). Its own keys rather than the copilot's, for the reason the COPILOT_* block gives: two
+   * jobs that happen to share a provider, which a hospital may want on and off separately. All
+   * optional; unset, triage runs exactly as before. `modules/opd/triage-choice.ts` carries the
+   * measurement behind the model version and the 0.6 line.
+   */
+  TRIAGE_TYPESAFE_API_KEY: z.string().min(1).optional(),
+  TRIAGE_TYPESAFE_BASE_URL: z.string().url().default("https://api.typesafe.ai/v1"),
+  TRIAGE_TYPESAFE_MODEL: z.string().min(1).default("jev-1.13.0"),
+  TRIAGE_TYPESAFE_TIMEOUT_MS: z.coerce.number().int().positive().default(1000),
+  TRIAGE_TYPESAFE_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.6),
   /**
    * ═══ FD-COPILOT — THE DESK COPILOT'S INTENT ROUTER ═══
    *
@@ -333,6 +345,8 @@ export type AppConfig = {
   environmentLabel: string | null;
   /** FD-8 — the triage advisor. `baseUrl`/`apiKey` null ⇒ the desk uses its own keyword table only. */
   triage: { baseUrl: string | null; apiKey: string | null; model: string; timeoutMs: number };
+  /** 2026-09-19 — triage's FIRST model, a classifier (TypeSafe). Null key ⇒ skipped, `triage` above answers. */
+  triageChoice: { baseUrl: string; apiKey: string | null; model: string; timeoutMs: number; minConfidence: number };
   /** FD-COPILOT — the desk copilot's intent router. Null ⇒ phrasebook only, which is a supported way to run. */
   copilot: { baseUrl: string | null; apiKey: string | null; model: string; timeoutMs: number };
   /** 2026-09-19 — the router's FIRST model, a classifier (TypeSafe). Null key ⇒ skipped, `copilot` above answers. */
@@ -398,6 +412,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       apiKey: parsed.TRIAGE_API_KEY ?? null,
       model: parsed.TRIAGE_MODEL,
       timeoutMs: parsed.TRIAGE_TIMEOUT_MS,
+    },
+    triageChoice: {
+      baseUrl: parsed.TRIAGE_TYPESAFE_BASE_URL,
+      apiKey: parsed.TRIAGE_TYPESAFE_API_KEY ?? null,
+      model: parsed.TRIAGE_TYPESAFE_MODEL,
+      timeoutMs: parsed.TRIAGE_TYPESAFE_TIMEOUT_MS,
+      minConfidence: parsed.TRIAGE_TYPESAFE_MIN_CONFIDENCE,
     },
     copilot: {
       baseUrl: parsed.COPILOT_BASE_URL ?? null,
