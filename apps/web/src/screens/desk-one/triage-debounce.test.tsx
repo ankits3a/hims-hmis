@@ -35,7 +35,7 @@ const PATIENT = {
   district: "Kanpur Nagar", registeredOn: "2020-12-01T00:00:00.000Z", matchedOn: ["name"],
 };
 
-function mountDesk(onTriage: () => void): void {
+function mountDesk(onTriage: (init?: RequestInit) => void): void {
   stubFetch({
     "GET /api/auth/me": {
       actor: { type: "user", id: "u1" },
@@ -52,7 +52,7 @@ function mountDesk(onTriage: () => void): void {
     "GET /api/me/desk": { stats: [] },
     "GET /api/membership/recognition": { card: null, coupons: [] },
     // THE COUNTER: every call the desk makes to the advisor, however it was triggered.
-    "POST /api/opd/triage": () => { onTriage(); return { suggestions: [], source: "model" }; },
+    "POST /api/opd/triage": (init?: RequestInit) => { onTriage(init); return { suggestions: [], source: "model" }; },
   });
   setToken("t-1");
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -92,4 +92,29 @@ it("FD-11: typing a whole complaint spends ONE model call, not one per keystroke
   // And it stays one: nothing fires a trailing call after the answer lands.
   await new Promise((r) => setTimeout(r, 600));
   expect(calls).toBe(1);
+});
+
+/*
+  ═══ THE NAME TRAVELS WITH THE COMPLAINT, SO THE SERVER CAN TAKE IT OUT ═══
+
+  The server masks identifier SHAPES on its own; a name has no shape, so the desk supplies the one it
+  is holding and `triage.ts` masks it out of the complaint before the model is asked. A clerk types
+  "Ramesh ko bukhar" — the patient they just found — and without this the name went to the provider.
+*/
+it("the found patient's name is sent with the complaint, so the server can mask it", async () => {
+  const bodies: string[] = [];
+  mountDesk((init) => { bodies.push(String(init?.body ?? "")); });
+  await act(async () => { await router.navigate({ to: "/counter" }); });
+  await waitFor(() => expect(screen.getByTestId("desk-one")).toBeInTheDocument());
+
+  const user = userEvent.setup({ delay: null });
+  await user.type(screen.getByPlaceholderText("mobile · name · UHID"), "Ramesh");
+  await waitFor(() => expect(screen.getByRole("button", { name: /this is them/i })).toBeInTheDocument());
+  await user.click(screen.getByRole("button", { name: /this is them/i }));
+
+  await user.type(await screen.findByTestId("complaint"), "Ramesh ko bukhar");
+  await waitFor(() => expect(bodies).toHaveLength(1), { timeout: 2000 });
+  const sent = JSON.parse(bodies[0] ?? "{}") as { text?: string; names?: string[] };
+  expect(sent.text).toBe("Ramesh ko bukhar");
+  expect(sent.names).toContain("Ramesh Kumar");
 });

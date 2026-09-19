@@ -583,8 +583,17 @@ export type WireTriage = {
   redFlag?: WireRedFlag;
 };
 
-export function triage(text: string, ageYears: number | null = null): Promise<WireTriage> {
-  return api("POST", "/opd/triage", ageYears === null ? { text } : { text, ageYears });
+/**
+ * `names` are the patient names the desk is holding, sent so the server can MASK them out of the
+ * complaint before a model is asked (`modules/opd/triage.ts`) — a name has no shape the server could
+ * find on its own. They are used for nothing else.
+ */
+export function triage(text: string, ageYears: number | null = null, names: string[] = []): Promise<WireTriage> {
+  return api("POST", "/opd/triage", {
+    text,
+    ...(ageYears === null ? {} : { ageYears }),
+    ...(names.length === 0 ? {} : { names }),
+  });
 }
 
 /** The future lane. `date` is an IST calendar date; the server refuses a slot it has already passed. */

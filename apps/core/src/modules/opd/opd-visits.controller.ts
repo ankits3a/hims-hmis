@@ -62,6 +62,15 @@ const triageBody = z.object({
    * Every other red flag is age-independent and unreachable from this field.
    */
   ageYears: z.number().int().min(0).max(130).optional(),
+  /**
+   * ═══ THE NAMES, AND THE ONE THING THEY ARE FOR ═══
+   *
+   * Masked out of the complaint before the model is asked — `triage.ts` — and used for nothing else:
+   * never matched, stored or echoed. Client-supplied is safe for the same reason the age is: the
+   * worst a wrong value can do is mask one word too many, or leave shapes-only masking in place,
+   * which is exactly what a desk that sends none gets. Capped because each becomes a pattern.
+   */
+  names: z.array(z.string().min(1).max(120)).max(4).optional(),
 });
 
 const continuityQuery = z.object({
@@ -282,7 +291,7 @@ export class OpdVisitsController {
       this.config.triage,
       undefined,
       undefined,
-      { ageYears: b.ageYears ?? null },
+      { ageYears: b.ageYears ?? null, names: b.names ?? [] },
     );
   }
 
