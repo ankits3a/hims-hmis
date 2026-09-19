@@ -46,12 +46,13 @@ function weekday(date: string): string {
   return WEEKDAYS[new Date(`${date}T00:00:00Z`).getUTCDay()] ?? "";
 }
 
-const IST_STAMP = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
-});
+const IST_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" });
+const IST_TIME = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 
-function generatedLabel(iso: string): string {
-  return `${IST_STAMP.format(new Date(iso)).replace(",", "")} IST`;
+/** `19-Sep-2026 08:35 IST` — the instant the sheet was made, in the same form as its date. */
+export function generatedLabel(iso: string): string {
+  const at = new Date(iso);
+  return `${dayLabel(IST_DAY.format(at))} ${IST_TIME.format(at)} IST`;
 }
 
 const CSS = `
@@ -59,6 +60,7 @@ const CSS = `
     @bottom-left { content: "Computer-generated report"; font: 9px Arial, sans-serif; color: #777; }
     @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 9px Arial, sans-serif; color: #777; } }
   * { box-sizing: border-box; }
+  @media screen { body { max-width: 820px; margin: 28px auto; padding: 0 20px; } }
   html, body { margin: 0; padding: 0; background: #fff; }
   body { font-family: "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif; color: #1c1c1c; font-size: 11.5px;
     -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -152,7 +154,7 @@ export function renderDayReport(r: OpdDayReport): RenderedReport {
   const body = letterhead(r.hospital)
     + title("OPD Day Report", "Department-wise appointments and consultations", r.date, r.generatedAt)
     + provisionalNote(r.provisional, r.totals.stillOpen)
-    + `<div class="tiles">${tile(r.totals.consulted, "Consultations", true)}${tile(r.newPatients, "New patients")}`
+    + `<div class="tiles">${tile(r.totals.consulted, "Consulted", true)}${tile(r.totals.new, "New")}`
     + `${tile(r.totals.revisit, "Revisit")}${tile(r.totals.renewal, "Renewal")}${tile(r.totals.booked, "Appointments booked")}</div>`
     + (r.departments.length === 0
       ? `<div class="empty">No OPD department is set up.</div>`

@@ -185,6 +185,7 @@ describe("OPD day report", () => {
     expect(doc.html).toContain("data:image/png;base64,");
     expect(doc.html).toContain("18-Sep-2026");
     expect(doc.html).toContain("1 patient is still being seen");
+    expect(doc.html).toContain("Generated 19-Sep-2026 11:30 IST");
 
     const dept = (await loadOpdDepartmentDayReport(db, clerk.actor, DAY, deptId, NOW))!;
     const rows = departmentDayReportCsvRows(dept);
