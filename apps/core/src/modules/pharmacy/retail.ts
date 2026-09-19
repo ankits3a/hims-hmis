@@ -220,13 +220,13 @@ function refused(flag: string | null): boolean {
  */
 export async function searchRetailShelf(db: Db, actor: Actor, q: string, now: Date): Promise<RetailShelfEntry[]> {
   await requirePermission(db, actor, SELL, "searching the retail shelf");
-  return searchShelfAt(db, await retailStore(db), q, now);
+  return searchShelfAt(db, (await retailStore(db)).id, q, now);
 }
 
 /** P20 — the same search at either counter's store, for a paper dispense. */
 export async function searchCounterShelf(db: Db, actor: Actor, storeCode: string, q: string, now: Date): Promise<RetailShelfEntry[]> {
   await requirePermission(db, actor, DOWNTIME_ENTER, "searching a counter's shelf");
-  return searchShelfAt(db, await counterStore(db, storeCode), q, now);
+  return searchShelfAt(db, (await counterStore(db, storeCode)).id, q, now);
 }
 
 async function counterStore(db: Db, storeCode: string): Promise<StoreRow> {
@@ -259,7 +259,11 @@ export async function counterBatches(db: Db, actor: Actor, storeCode: string, it
   return out.sort((a, b) => (a.expiryDate ?? "9999").localeCompare(b.expiryDate ?? "9999") || a.batchNo.localeCompare(b.batchNo));
 }
 
-async function searchShelfAt(db: Db, store: StoreRow, q: string, now: Date): Promise<RetailShelfEntry[]> {
+/**
+ * The one shelf search, at a store named by id — the retail counter's, a paper dispense's, or (PD-5b)
+ * the store a claimed ticket is served from. Each caller asks its own permission; this asks none.
+ */
+export async function searchShelfAt(db: Db, storeId: string, q: string, now: Date): Promise<RetailShelfEntry[]> {
   const text = q.trim();
   if (text === "") return [];
   const shelf = await shelfByMedicine(db);
@@ -280,10 +284,10 @@ async function searchShelfAt(db: Db, store: StoreRow, q: string, now: Date): Pro
     .filter((x) => scanned !== null || x.m.brandName.toLowerCase().includes(needle) || x.e.item.code.toLowerCase().includes(needle) || x.e.item.name.toLowerCase().includes(needle))
     .slice(0, SHELF_LIMIT);
   if (scanned !== null && gs1 !== null && gs1.batch !== null && offered.length > 0) {
-    const scan = await resolveScan(db, store.id, 0, scanned.itemId, text);
+    const scan = await resolveScan(db, storeId, 0, scanned.itemId, text);
     scanned.batchId = scan.batchId;
   }
-  const available = await availableQtyByItem(db, store.id, offered.map((x) => x.e.item.id), now);
+  const available = await availableQtyByItem(db, storeId, offered.map((x) => x.e.item.id), now);
   return offered.map(({ e, m }) => ({
     medicineId: m.id, brandName: m.brandName, strengthLabel: m.strengthLabel, form: m.form, scheduleFlag: m.scheduleFlag,
     itemId: e.item.id, itemCode: e.item.code, itemName: e.item.name, baseUom: e.item.baseUom,

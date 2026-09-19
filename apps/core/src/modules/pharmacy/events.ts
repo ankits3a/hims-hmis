@@ -51,6 +51,16 @@ export const substitutionRecorded = defineEvent("substitution.recorded", MODULE,
   orderedMedicineId: id, dispensedMedicineId: id, consentBy: id,
 }));
 
+/**
+ * PD-5b — a line the catalogue could not place, read as a medicine by the pharmacist at the check.
+ * Not a substitution: nothing the doctor named was replaced, so there is no consent to name. The
+ * resolver is named because a person, not the catalogue, decided what the doctor's words meant.
+ */
+export const lineResolved = defineEvent("dispense.line_resolved", MODULE, z.object({
+  dispenseId: id, lineIdx: z.number().int().nonnegative(), patientId: id, doctorId: id,
+  dispensedMedicineId: id, resolvedBy: id,
+}));
+
 /** D2 — every line holds a reservation on the ledger; a FEFO override is named, never silent. */
 export const dispensePicked = defineEvent("dispense.picked", MODULE, z.object({
   dispenseId: id, patientId: id,
@@ -154,7 +164,7 @@ export const retailLicenceRecorded = defineEvent("retail.licence_recorded", MODU
 
 /** The catalog, in source order (`LAB_EVENTS`' discipline). A later task that adds a `defineEvent` above adds it here. */
 export const PHARMACY_EVENTS = [
-  dispenseQueued, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded,
+  dispenseQueued, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved,
   dispensePicked, dispenseBilled, dispenseHandedOver, dispenseCancelled,
   pharmacistRegistered, pharmacistRegistrationEnded, dispenseLineReturned,
   retailSold, retailLicenceRecorded, retailLineReturned,

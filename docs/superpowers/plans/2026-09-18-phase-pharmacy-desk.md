@@ -39,7 +39,7 @@ Indian-corporate-hospital answer, taken and marked.
 - **PD-D4. An unresolved line stays in place.** A prescription line the catalogue could not match
   renders as an amber row with `choose ▾` inline — not a separate "add" control at the bottom. This
   is the owner's "a medicine in the prescription but not on screen". Adding a drug the prescription
-  does NOT carry is a different act and is out of scope (§5).
+  does NOT carry is a different act and is out of scope (§5). **DONE (PD-5b), E31–E34.**
 - **PD-D5. The bill is the right rail and builds live.** It replaces the queue on claim. This is a
   DEPARTURE from Desk One's "pricing is not a stage, it is a column" (`dossier.tsx:21-27`), on the
   owner's instruction; the pharmacy's left rail is the patient's history instead.
@@ -49,7 +49,13 @@ Indian-corporate-hospital answer, taken and marked.
   worse than none (`desk-one.tsx:1111-1123`).
 - **PD-D7. Route `/pharmacy/desk` and `/pharmacy/desk/:dispenseNo`.** The owner's queue popup opens
   a ticket in a NEW TAB, which requires the ticket to be addressable. `/pharmacy/counter` stays
-  until the desk replaces it, then redirects.
+  until the desk replaces it, then redirects. **DECIDED (PD-3): the path carries the DISPENSE ID,
+  not the number** — a waiting ticket has no number until verify (PD-D8), and an address that
+  exists only after the second step cannot be the address of the first.
+- **PD-D23. A click on the line claims through the `token` door.** The claim event pins
+  `door ∈ {rx_qr, patient_qr, token, uhid}`, and widening an event contract to record "clicked a
+  row" buys analytics nobody has asked for. The queue IS today's line of visits, which is what the
+  token door means. DECIDED (PD-3).
 
 ### The ticket
 
@@ -64,9 +70,16 @@ Indian-corporate-hospital answer, taken and marked.
   `dispense_not_in_state`, `claim.ts:182`) but `QueueRow` carries no `claimedBy`, so a second
   pharmacist learns only by being refused. Add `claimedBy` + `claimedByName`; the row dims and says
   "Vikas has this". The row is NOT hidden — the owner wants it visible and marked.
-- **PD-D10. The queue says when it is incomplete.** `listQueue` silently drops patients the actor
-  may not see (`getPatientSummaries`). A count that quietly excludes rows is a lie at a counter.
-  The reader returns `hiddenCount` and the rail prints "2 not shown — restricted".
+- **PD-D10. ~~The queue says when it is incomplete.~~ MEASURED FALSE 2026-09-19 — and the real
+  defect was the refusal, not the list.** `listQueue` does NOT drop a sealed patient:
+  `getPatientSummaries` returns them RESTRICTED (alias, no name) and the row is listed. The FK on
+  `pharmacy_dispenses.patient_id` means a summary can be missing only for a merge chain it cannot
+  follow, so `hiddenCount` would be a field that is always zero — withdrawn. What IS wrong: the
+  pharmacist who may not read sealed records sees the ticket and CLAIMING it answered
+  `unknown_prescription` — *"prescription … not found"* — about a prescription that exists.
+  **DECIDED (PD-1):** the claim refuses `permission_denied` with `detail.reason: "patient_restricted"`
+  and names who can take it; the grant is not widened. The desk dims a `patient.restricted` row
+  before the click (PD-3).
 
 ### The clinical gates
 
@@ -121,18 +134,77 @@ Each names the reader it needs. Nine of the eleven need no new server work.
 | C10 | **Composes the hand-over sentence** in Devanagari from the sig lines, for the pharmacist to say aloud. | SUGGESTS | `RxLine` + phrasebook |
 | C11 | **Names what was not checked.** Counts the lines whose salts have no attested moiety and says so on the ticket, because silence there reads as a clean result. | DID (states) | `isReviewedComponent` |
 
+**C3 DONE (PD-7), measured and cut:** every equivalent comes back put to THIS patient's four books
+with the line swapped to it, judged by `refusalsOf` — the one function `verify` now refuses with — so
+a blocked row names its book and cannot be chosen, and a partly-read one is never drawn clear.
+*Measured:* an equivalent has the same salt set by construction, so its verdict is almost always the
+original line's; the run stays per alternative because the allergy book also matches brand names.
+*DEFERRED to C7:* the price difference per strip. The bill's price is billing's
+`min(batch MRP, ceiling, contract)` decided at the bill; the rail already says the desk does no price
+arithmetic; an out-of-stock original — the usual reason to substitute — has no batch to compare.
+*Walked, and built next as C3b:* Vijay's Mox line (allergy recorded after issue) showed nothing ON
+THE LINE until the tick fired verify. `precheckTicket` (`GET /pharmacy/dispenses/:id/precheck`) asks
+`refusalsOf` about a CLAIMED ticket's own lines as they stand; the line says "the check will stop this
+line: allergy Amoxicillin" before anyone walks to the shelf, and falls silent once the check's own
+refusal is on it (said once, not twice). The tick stays live: the server is the authority, and a
+refused verify moves no stock.
+
+**C4, C6, C10, C11 DONE (PD-7), web only:**
+- **C10** — at the hand-over the agent says each given line's sig in Devanagari, on pine, from a
+  PHRASEBOOK (`phrasebook.ts`): triplet slots, OD/BD/TDS/QID/HS/SOS, counted tablets and capsules or
+  one measured volume, and a closed list of instructions. A sig it cannot say EXACTLY gets no
+  sentence — never part of one — and the line is handed back "in the doctor's words" (E19).
+- **C4** — the same chip says what is NOT being given, and why: a decline reason the book knows
+  whole is said in Hindi; any other reason is the pharmacist's to say ("tell them why, in your
+  words"). Free text is never half-translated.
+- **C6** — the dock says the hold by its END ("holding 2 lines until 14:22"), not its length. The
+  batch half of C6 (expiring before collection) is already E8's "dies within the course" advice at
+  the tick; only a line with no duration escapes it. **Walk observation (E13), measured:** the desk
+  polls the ticket in hand every 15 s and draws a cancelled one as cancelled with its reason, so once
+  the worker's 60 s sweep cancels an expired pick the screen learns within ~75 s. The dev walk ran no
+  worker, so a draft read "they stay held until 13:43" at 13:51; in production the only gap is that
+  window, where the sentence names a time already past. Not fixed.
+- **C11** — the ticket header counts the open lines the books could read only in part (PD-D13).
+- **Walk finding, fixed:** a PAID ticket's rail read "take the money"; one stage holds money owed and
+  money taken, so a billed ticket now reads "hand it over".
+- **C8 (F2 ask) — MEASURED: needs shared kernel files, so COORDINATION, not code, is next.** The copilot
+  merged (#239, `5957ef3f`) and a module may contribute TOOLS through its manifest (`copilotTools`),
+  but the INTENTS and their Hinglish cues are one closed table in `kernel/copilot/phrasebook.ts`, the
+  model's menu descriptions are hard-coded in `kernel/copilot/router.ts`, and answer keys are a closed
+  list in `packages/contracts/src/copilot.ts`. "kitni amoxicillin bachi hai" (stock by name), "kiska
+  paisa pending hai" (billed, not collected) and "ye batch kab expire hoga" need three new intents
+  there. Today's intents answer none of a pharmacist's questions, so an F2 box on the desk now would be
+  a box that does nothing — not drawn.
+
 ## 4. EDGE CASES
 
 Numbered because each one owes a test. **F** = must fail first against the code it guards.
 
 ### The ticket
 - **E1** Two pharmacists claim one ticket. Exclusive already; the loser must see WHO, not a 409. **F**
+- **E1b** ~~Nothing after the claim checks the claimer.~~ **MEASURED, NOT A DEFECT (PD-4).** The
+  PD-3 walk showed Vikas's ticket rendered as Anita's, and a holder-only guard on verify / decline /
+  pick looked like its server half. It is not: `t4.test.ts` pins the ASSISTANT model — an aide
+  claims and picks, a registered pharmacist performs the check the Act reserves, and the H1 register
+  names the one who checked — and the guard turned that suite, the P2 registration suite and the
+  HTTP e2e red. Two people on one claimed ticket is the design. The defect was the SCREEN, fixed in
+  PD-3 (the desk names the holder and offers nothing to press). E6's exit exists already and is
+  pinned in `holder.test.ts`: cancel with a reason, and the slip scans back into the line.
 - **E2** The doctor reissues while you hold v1. A *queued* v1 is cancelled by `enqueueDispense`; a
   *claimed* v1 survives and dies at verify with `prescription_superseded` — the worst possible
   timing, after the strips are pulled. The screen must learn of v2 when it lands and offer a
   one-tap switch. **F**
-- **E3** A sealed or alias patient's ticket is absent from this pharmacist's queue entirely. The
-  count must not silently understate the line (PD-D10). **F**
+- **E3** ~~A sealed or alias patient's ticket is absent from this pharmacist's queue entirely.~~
+  **Measured false:** it is listed under the alias. The defect was the claim's "not found" for a
+  real prescription (PD-D10 as amended). Pinned both ways in `queue.test.ts`. **F** (the refusal)
+- **E3b** The same false sentence at the SCAN: `findAtCounter`'s `rx_qr` door answers
+  `reason: "not_found"` for a validly SIGNED QR whose patient is sealed to this reader
+  (`claim.ts`, `rx === null` after `verifyPrescriptionQr` succeeded). Needs a new `reason` the screen
+  renders, i.e. a locale string — **owed by PD-3**, which touches the locales and router anyway. **F**
+  **DONE in PD-3:** the QR door answers `reason: "restricted"` and the desk says whose clearance the
+  ticket needs. `getDispense`'s `unknown_dispense` for an invisible patient is NOT the same defect
+  and is left alone on purpose: it is the house rule that an id is not a capability (the 07a read
+  gate), where a signed slip in the patient's hand is proof the prescription exists.
 - **E4** One encounter carries v1-claimed and v2-queued at once — two rows, one patient. They must
   read as the same person, not a duplicate.
 - **E5** A prescription with no dispensable line (all Schedule X, or all free-text non-drugs) →
@@ -155,6 +227,7 @@ Numbered because each one owes a test. **F** = must fail first against the code 
 
 ### Clinical
 - **E14** A substitute trips allergy or a severe interaction → PD-D12's authorisation, not a wall.
+  (C3: the sheet now says so BEFORE the choice — the row is blocked and names the book.)
 - **E15** A salt with no attested moiety → "not checked", never a green tick (PD-D13). **F**
 - **E16** `rxLine.noSubstitution` → the substitute control is disabled AND says why.
 - **E17** Schedule X → refused at claim, at verify and at hand-over, and never offered as an
@@ -163,10 +236,49 @@ Numbered because each one owes a test. **F** = must fail first against the code 
   confirmation already answered — the C3 finding from the same review. **F**
 - **E19** The patient is a child / the dose is weight-based — the sig shorthand has no strength per
   kg. Show the doctor's text verbatim rather than a shorthand that drops it.
+- **E31** A line the claim could not place is RESOLVED, not substituted. **MEASURED (PD-5b):** `verify`
+  refused any medicine on such a line ("a substitute needs a resolved original"), so the amber row's
+  own sentence — *decline it, or choose what it is* — offered an act that did not exist. DONE: the
+  pharmacist's reading goes to `verify` as `dispensedMedicineId` with NO consent (nothing the doctor
+  named is replaced), the line records `resolved`, and `dispense.line_resolved` names the resolver.
+  `noSubstitution` does not forbid it — the sheet says "choose exactly the medicine written". **F**
+- **E32** The books re-run on the reading: an allergy the prescriber never saw stops it at the check,
+  on the line, exactly as for a prescribed medicine. **F**
+- **E33** Schedule X is neither offered by the shelf search nor accepted at the check. **F**
+- **E34** "Unplaced" is decided by the CLAIM's own resolution, never by the shape of the body: a
+  medicine the doctor named, or the catalogue placed from the words, keeps the consent rule. The
+  search is `GET /pharmacy/dispenses/:id/lines/:idx/shelf` under `pharmacy.dispense.place`, at the
+  ticket's own store, and answers only for an unplaced line; `/pharmacy/downtime/shelf` stays the
+  downtime clerk's and was not widened. **F**
+- **E35** A reading that repeats a moiety already on the prescription (Crocin named, the unplaced
+  line read as Calpol) → `duplicate_block` on the line the pharmacist chose. **MEASURED (PD-5b):**
+  `verify` re-ran all four books and GATED only allergy and severe interaction; for a substitute
+  (same salts) the other two were met at issue, for a reading they were met by nobody. **F**
+- **E36** A reading a coded diagnosis contraindicates (severe) → `drug_disease_block`; a prescriber's
+  override on that line and that ruling still counts (the doctor wrote the moiety and ruled). **F**
+- **E37** **DECIDED (PD-5b):** a diagnosis coded AFTER the issue stops a doctor-named line too — the
+  drug×disease twin of D9's allergy-recorded-after-issue, and the same answer: a severe
+  contraindication nobody ruled on is not handed over. Hard duplicates need no such rule: they are
+  same-prescription only, so a doctor-named pair was already met at issue. **F**
+  **Known limit, not fixed here:** the one shelf search (`searchShelfAt`, shared with retail and
+  downtime) matches brand, item code and item name — not the salt. "paracetamol" finds Calpol only if
+  an item's name says so. The sheet seeds the search from the doctor's words minus the dosage form
+  (`Tab. Zincovit` → `Zincovit`); a salt match belongs to the search, for all three counters at once.
+  **Walked (PD-5b), two defects past green suites:** (1) the seeded `PCM` search answered *"nothing
+  matches — decline the line"* while Calpol stood on the shelf; the sentence now says the search reads
+  brand names and codes, not salts, and to try the brand. (2) The open line menu drew the amber note's
+  control a second time; the menu now offers the other act only when the note does not (which also
+  removed PD-5's doubled "give an equivalent" on an empty line). Demo ticket twelve (`Tab PCM 500`,
+  Kamla Devi) is the placeable one; Rekha Singh's `Ascoril LS syrup` is the one to decline.
 
 ### Money
 - **E20** Short tender → `invoice_not_settled`, refused by billing, not by this screen.
-- **E21** No cash drawer open → cash is not a tender. Desk One already draws this.
+- **E21** ~~No cash drawer open → cash is not a tender.~~ **Measured (PD-6): no drawer → NO tender.**
+  `receipts.ts` and `invoices.ts` call `requireOpenSession` for every receipt, UPI and card included,
+  so the rail says so before a key is pressed and offers the way to open one.
+- **E21b** FOUND BY THE PD-6 WALK: billing refuses every non-cash tender without a settlement
+  reference (`tender_ref_required`) and the canvas drew no field for it — the first UPI payment on
+  the dev day was refused. The rail asks for the UTR / the card approval code. DONE (PD-6).
 - **E22** `price_unknown` — the stock is fine and the line cannot be billed. Two different problems
   that look identical to a pharmacist unless the sentence separates them.
 - **E23** Batch MRP above the DPCO ceiling → the ceiling wins and the screen says which of the three
@@ -205,11 +317,12 @@ Numbered because each one owes a test. **F** = must fail first against the code 
 | Task | What | New server work |
 |---|---|---|
 | **PD-0** | **The demo QUEUE.** Synthetic patients, seen encounters, prescriptions, tickets — behind the existing production door. | seed only |
-| **PD-1** | `claimedBy` + `hiddenCount` on the queue row (PD-D9, PD-D10; E1, E3) | reader |
+| **PD-1** | `claimedBy` + `claimedByName` on the queue row and on the lost claim's 409; a sealed ticket refused as restricted, not "not found" (PD-D9, PD-D10 as amended; E1, E3) | reader |
 | **PD-2** | The ticket number at open (PD-D8) — gated on the owner | series |
 | **PD-3** | The desk shell: routes, three columns, stages, left dossier | web |
 | **PD-4** | The line list: two columns, tick-is-pick, sig shorthand, scan (E7–E13) | web |
 | **PD-5** | Substitute with consent and pre-checked alternatives (C3; E14, E16) | web |
+| **PD-5b** | Resolve an unplaceable line: the ticket's shelf search and `verify`'s resolution (PD-D4; E31–E34) | verify + reader |
 | **PD-6** | The bill rail, tender, save draft (E20–E27) | web |
 | **PD-7** | The copilot: the queue pre-check reader and the dock (C1, C2, C8) | reader |
 | **PD-8** | The slip overlay (E30) | web |

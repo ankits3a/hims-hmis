@@ -1,13 +1,13 @@
 import { and, eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "./helpers/db";
 import { MON, seedPharmacyBase } from "./helpers/pharmacy";
-import { ensureRole, testCfg } from "./helpers/opd";
+import { ensureRole, mkUser, testCfg } from "./helpers/opd";
 import { ensurePharmacyCounter } from "../scripts/seed-pharmacy";
 import { seedPharmacyDemo } from "../scripts/seed-pharmacy-demo";
 import { TICKETS, standUpPharmacyDay } from "../scripts/dev-pharmacy-standup";
 import { assignRole, grantPermissionToRole } from "../src/kernel/auth/permissions";
 import { withTx } from "../src/kernel/db/client";
-import { events, opdEncounters, patients } from "../src/kernel/db/schema";
+import { events, opdEncounters, opdPrescriptions, patients } from "../src/kernel/db/schema";
 import { prescriptionIssued } from "../src/modules/opd/events";
 import { claimDispense, handlePrescriptionIssued, verifyDispense } from "../src/modules/pharmacy";
 import type { PharmacyDayReport, TicketReport } from "../scripts/dev-pharmacy-standup";
@@ -40,6 +40,10 @@ describe("dev-pharmacy-standup — the demo QUEUE (PD-0)", () => {
     await grantPermissionToRole(db, fx.registry, "materials_head", "materials.items.manage");
     await assignRole(db, { userId: fx.pharmacist.id, roleKey: "materials_head", scopeType: "hospital" });
     await ensurePharmacyCounter(db, fx.pharmacist.actor);
+    /* PD-8's eleventh ticket is typed from paper by an `opd_scribe`, as FD-31 ships it. */
+    await ensureRole(db, "opd_scribe");
+    await grantPermissionToRole(db, fx.registry, "opd_scribe", "opd.prescription.transcribe");
+    await mkUser(db, "scribe.kale", ["opd_scribe"]);
     await seedPharmacyDemo(db, DAY);
   });
   afterEach(() => { fx.unregister(); });
@@ -50,12 +54,12 @@ describe("dev-pharmacy-standup — the demo QUEUE (PD-0)", () => {
     return t;
   };
 
-  it("queues ten tickets, one of them already held by the SECOND pharmacist", async () => {
+  it("queues every ticket, one of them already held by the SECOND pharmacist", async () => {
     const report = await standUpPharmacyDay(db, testCfg, DAY);
 
     expect(report.tickets.map((t) => t.made)).toEqual(TICKETS.map(() => true));
     /* Read through `listQueue`, as the counter reads it — not a row count of pharmacy_dispenses. */
-    expect({ reader: report.queueReader, rows: report.queueRows }).toEqual({ reader: "ph.incharge", rows: 10 });
+    expect({ reader: report.queueReader, rows: report.queueRows }).toEqual({ reader: "ph.incharge", rows: TICKETS.length });
     expect(report.tickets.map((t) => [t.teaches, t.status, t.claimedBy])).toEqual(TICKETS.map((t) => [
       t.teaches,
       t.claimedByAnother === true ? "claimed" : "queued",
@@ -69,6 +73,16 @@ describe("dev-pharmacy-standup — the demo QUEUE (PD-0)", () => {
     ]);
   });
 
+  it("PD-8 — the eleventh ticket is TYPED FROM PAPER through the real authority: the doctor still prescribes, the scribe is named", async () => {
+    const report = await standUpPharmacyDay(db, testCfg, DAY);
+    const typed = ticket(report, "typed from the doctor's paper — confirm the slip first");
+    const [row] = await db.select({ transcribedBy: opdPrescriptions.transcribedBy, doctorId: opdPrescriptions.doctorId })
+      .from(opdPrescriptions).where(eq(opdPrescriptions.patientId, (await db.select({ id: patients.id }).from(patients).where(eq(patients.uhid, typed.uhid)))[0]!.id));
+    expect(row!.transcribedBy).not.toBeNull();
+    expect(row!.doctorId).toBe(fx.doctor.doctorId);
+    expect(report.absent.filter((a) => a.includes("opd_scribe"))).toEqual([]);
+  });
+
   it("each shelf ticket's fact is the one its name claims", async () => {
     const report = await standUpPharmacyDay(db, testCfg, DAY);
 
@@ -76,6 +90,8 @@ describe("dev-pharmacy-standup — the demo QUEUE (PD-0)", () => {
     expect(ticket(report, "partial stock").shelf[0]).toMatchObject({ drug: "Glycomet 500", wanted: 270, sellable: 200 });
     /* PD-D4's amber row: typed text the catalogue cannot place on any item. */
     expect(ticket(report, "unresolved free-text line").shelf[0]).toEqual({ drug: "Ascoril LS syrup", wanted: 150, sellable: null, fefo: null });
+    /* PD-5b — the doctor's shorthand no brand is called: unplaced at the claim, placeable at the desk. */
+    expect(ticket(report, "a line the catalogue could not place, and the pharmacist can").shelf[0]).toEqual({ drug: "Tab PCM 500", wanted: 6, sellable: null, fefo: null });
     /* FEFO offers the batch that dies twelve days in — inside a thirty-day course (E8). */
     const pan = ticket(report, "near-expiry batch").shelf[0]!;
     expect(pan).toMatchObject({ drug: "Pan 40", wanted: 30, sellable: 220 });
@@ -92,9 +108,9 @@ describe("dev-pharmacy-standup — the demo QUEUE (PD-0)", () => {
     // E17 — Schedule X refuses the whole claim, not the line.
     await expect(claimDispense(db, fx.incharge.actor, { dispenseId: ticket(report, "Schedule X — refused at the claim").dispenseId!, door: "token" }, at))
       .rejects.toMatchObject({ code: "schedule_x_not_dispensed_here" });
-    // E1 today — a second pharmacist is refused, and learns nothing of who holds it (PD-1's job).
+    // E1 — a second pharmacist is refused, and told who holds it (PD-1).
     await expect(claimDispense(db, fx.incharge.actor, { dispenseId: ticket(report, "claimed by a second pharmacist").dispenseId!, door: "token" }, at))
-      .rejects.toMatchObject({ code: "dispense_not_in_state" });
+      .rejects.toMatchObject({ code: "dispense_not_in_state", detail: { claimedByName: "ph.mehta" } });
     // The allergy recorded after the issue is met at verify, on the dispensed medicine.
     const allergic = ticket(report, "allergy collision").dispenseId!;
     await claimDispense(db, fx.pharmacist.actor, { dispenseId: allergic, door: "token" }, at);
@@ -107,19 +123,21 @@ describe("dev-pharmacy-standup — the demo QUEUE (PD-0)", () => {
     const again = await standUpPharmacyDay(db, testCfg, new Date(DAY.getTime() + 5 * 60_000));
 
     expect(again.tickets.map((t) => t.made)).toEqual(TICKETS.map(() => false));
-    expect(again.queueRows).toBe(10);
+    expect(again.queueRows).toBe(TICKETS.length);
     expect(again.tickets.map((t) => t.dispenseId)).toEqual(first.tickets.map((t) => t.dispenseId));
+    /* and a re-run still says who holds the claimed one — read off the queue row, not remembered */
+    expect(again.tickets.map((t) => t.claimedBy)).toEqual(first.tickets.map((t) => t.claimedBy));
     const phones = TICKETS.map((t) => t.person.phone);
     const people = await db.select({ phone: patients.phone }).from(patients);
-    expect(people.filter((p) => phones.includes(p.phone ?? "")).length).toBe(10);
+    expect(people.filter((p) => phones.includes(p.phone ?? "")).length).toBe(TICKETS.length);
     const visits = await db.select({ id: opdEncounters.id }).from(opdEncounters).where(eq(opdEncounters.serviceDate, "2026-08-17"));
-    expect(visits.length).toBe(10);
+    expect(visits.length).toBe(TICKETS.length);
     /* The near-expiry batch is posted once per day, not once per run. */
     expect(ticket(again, "near-expiry batch").shelf[0]!.sellable).toBe(ticket(first, "near-expiry batch").shelf[0]!.sellable);
 
     const issued = await db.select({ eventId: events.eventId, payload: events.payload }).from(events)
       .where(and(eq(events.name, prescriptionIssued.name)));
-    expect(issued.length).toBe(10);
+    expect(issued.length).toBe(TICKETS.length);
     for (const e of issued) {
       const res = await withTx(db, (tx) => handlePrescriptionIssued(tx, e.eventId, e.payload, DAY));
       expect(res).toEqual({ handled: false, dispenseId: null });

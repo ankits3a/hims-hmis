@@ -72,23 +72,48 @@ export type WireDispenseLine = {
   fefoOverride: boolean; pickNote: string | null;
   /** Pharmacy P3: a component of this line's medicine is not yet reviewed. Absent from an older server. */
   partlyChecked?: boolean;
+  /** PD-4 — the sellable batches an OPEN line's pick would draw from, earliest expiry first. Absent from an older server. */
+  batches?: WireBatch[];
+  /** PD-4 — once picked, the batch it was given from. Absent from an older server. */
+  pickedBatch?: { batchNo: string; expiryDate: string | null } | null;
 };
+export type WireBatch = { batchId: string; batchNo: string; expiryDate: string | null; available: number };
 export type WirePatientSummary = { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean };
 export type WireDispense = {
   id: string; status: string; dispenseNo: string | null; orderId: string | null; prescriptionId: string; prescriptionVersion: number;
   encounterId: string; storeResourceId: string | null; scheduled: boolean; invoiceId: string | null; identityConfirmedVia: string | null;
   claimedAt: string | null; verifiedAt: string | null; pickedAt: string | null; billedAt: string | null; handedOverAt: string | null;
   cancelReason: string | null; patient: WirePatientSummary; allergies: { substance: string; severity: string | null }[]; lines: WireDispenseLine[];
+  /** PD-1 — who holds it. Absent from an older server. */
+  claimedBy?: string | null; claimedByName?: string | null;
+  /** PD-8 / E28 — typed from the doctor's paper, by whom, and whether the slip is confirmed. Absent from an older server. */
+  transcribedBy?: string | null; transcribedByName?: string | null; slipConfirmedBy?: string | null;
 };
+/** FD-31 — the pharmacist's cross-confirmation of a transcribed prescription against the paper. */
+export async function confirmDispenseSlip(id: string): Promise<{ slipConfirmedBy: string | null; slipConfirmedAt: string | null }> {
+  return api("POST", `/pharmacy/dispenses/${id}/confirm-slip`, {});
+}
 export type WireQueueRow = {
   dispenseId: string; status: string; dispenseNo: string | null; scheduled: boolean; lineCount: number;
   createdAt: string; claimedAt: string | null; patient: WirePatientSummary;
+  /** FD-31 — who typed a paper slip, and whether a pharmacist has cross-confirmed it. */
+  transcribedBy?: string | null; slipConfirmedBy?: string | null;
+  /** PD-1 — who holds a claimed ticket. Absent from an older server. */
+  claimedBy?: string | null; claimedByName?: string | null;
+  /** PD-7 / C1 — a waiting ticket checked against the shelf; null once claimed. Absent from an older server. */
+  shelf?: WireShelfCheck | null;
 };
+export type WireShelfCheck = { lines: number; onShelf: number; short: string[]; notStocked: string[]; unplaceable: number; scheduleX: boolean };
 export type WireFindResult =
   | { kind: "dispense"; door: string; dispense: WireDispense }
   | { kind: "patients"; door: "uhid"; patients: WirePatientSummary[] }
-  | { kind: "none"; door: string; reason: "not_found" | "qr_invalid" | "no_prescription_today" };
-export type WireAlternative = { medicineId: string; brandName: string; strengthLabel: string | null; form: string; itemId: string; itemCode: string; available: number };
+  | { kind: "none"; door: string; reason: "not_found" | "qr_invalid" | "no_prescription_today" | "restricted" };
+export type WireAlternativeBlock = { book: "allergy" | "interaction" | "duplicate" | "drug_disease"; about: string };
+/** PD-7 C3 — each equivalent comes back already put to this patient's check, judged as verify judges. */
+export type WireAlternative = {
+  medicineId: string; brandName: string; strengthLabel: string | null; form: string; itemId: string; itemCode: string; available: number;
+  check: { verdict: "clear" | "not_checked" | "blocked"; blocks: WireAlternativeBlock[] };
+};
 
 export async function fetchQueue(): Promise<WireQueueRow[]> {
   const { items } = await api<{ items: WireQueueRow[] }>("GET", "/pharmacy/queue");
@@ -102,6 +127,17 @@ export async function fetchDispense(id: string): Promise<WireDispense> {
 }
 export async function fetchAlternatives(id: string, lineIdx: number): Promise<WireAlternative[]> {
   const { items } = await api<{ items: WireAlternative[] }>("GET", `/pharmacy/dispenses/${id}/lines/${String(lineIdx)}/alternatives`);
+  return items;
+}
+/** C3b — the ticket's own lines, put to the check at the claim: what it would refuse, before the tick. */
+export type WireLinePrecheck = { lineIdx: number; verdict: "clear" | "not_checked" | "blocked" | "unplaced"; blocks: WireAlternativeBlock[] };
+export async function fetchPrecheck(id: string): Promise<WireLinePrecheck[]> {
+  const { lines } = await api<{ lines: WireLinePrecheck[] }>("GET", `/pharmacy/dispenses/${id}/precheck`);
+  return lines;
+}
+/** PD-5b — what a line the catalogue could not place may be read as: this ticket's shelf, never Schedule X. */
+export async function fetchPlacements(id: string, lineIdx: number, q: string): Promise<WireRetailShelfEntry[]> {
+  const { items } = await api<{ items: WireRetailShelfEntry[] }>("GET", `/pharmacy/dispenses/${id}/lines/${String(lineIdx)}/shelf${qs({ q })}`);
   return items;
 }
 export async function claimDispense(dispenseId: string, door: string, idempotencyKey: string): Promise<WireDispense> {
