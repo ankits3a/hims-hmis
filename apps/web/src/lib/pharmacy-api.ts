@@ -124,9 +124,16 @@ export type WireLineAuthorisation = {
   decisionReason: string | null; requestedAt: string; decidedAt: string | null;
 };
 /** PD-7 C3 — each equivalent comes back already put to this patient's check, judged as verify judges. */
+/** What the bill will ask for a medicine, from the batch the pick would take (`quote.ts`). `lastKnown`: the shelf is empty and this is the last printed MRP. */
+export type WireQuote = {
+  batchId: string; batchNo: string; expiryDate: string | null; unitPaise: number;
+  pack: { uom: string; multiplier: number; paise: number } | null; lastKnown: boolean;
+};
 export type WireAlternative = {
   medicineId: string; brandName: string; strengthLabel: string | null; form: string; itemId: string; itemCode: string; available: number;
   check: { verdict: "clear" | "not_checked" | "blocked"; blocks: WireAlternativeBlock[] };
+  /** Absent from an older server. */
+  quote?: WireQuote | null;
 };
 
 export async function fetchQueue(): Promise<WireQueueRow[]> {
@@ -139,9 +146,9 @@ export async function findAtCounter(q: string): Promise<WireFindResult> {
 export async function fetchDispense(id: string): Promise<WireDispense> {
   return api<WireDispense>("GET", `/pharmacy/dispenses/${id}`);
 }
-export async function fetchAlternatives(id: string, lineIdx: number): Promise<WireAlternative[]> {
-  const { items } = await api<{ items: WireAlternative[] }>("GET", `/pharmacy/dispenses/${id}/lines/${String(lineIdx)}/alternatives`);
-  return items;
+export async function fetchAlternatives(id: string, lineIdx: number): Promise<{ items: WireAlternative[]; written: WireQuote | null }> {
+  const r = await api<{ items: WireAlternative[]; written?: WireQuote | null }>("GET", `/pharmacy/dispenses/${id}/lines/${String(lineIdx)}/alternatives`);
+  return { items: r.items, written: r.written ?? null };
 }
 /** C3b — the ticket's own lines, put to the check at the claim: what it would refuse, before the tick. */
 export type WireLinePrecheck = { lineIdx: number; verdict: "clear" | "not_checked" | "blocked" | "unplaced"; blocks: WireAlternativeBlock[] };

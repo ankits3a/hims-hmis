@@ -8,6 +8,8 @@ import { claimDispense, findAtCounter } from "./claim";
 import { OPD_PHARMACY_STORE_CODE, istDateOf } from "./config";
 import { PHARMACY_IDEMPOTENT_ROUTES, idSchema, parsed, toHttp } from "./pharmacy-http";
 import { confirmSlip, getDispense, listQueue } from "./queue";
+import { writtenQuoteFor } from "./quote";
+import type { Quote } from "./quote";
 import { billDispense, previewDispenseBill } from "./bill";
 import { handOverDispense } from "./handover";
 import { labelFor } from "./label";
@@ -134,9 +136,12 @@ export class PharmacyCounterController {
   /** PD-7 C3 — each equivalent comes back already put to this patient's check (`checkedAlternativesFor`). */
   @RequirePermission("pharmacy.dispense.read", "hospital")
   @Get("dispenses/:id/lines/:idx/alternatives")
-  async alternatives(@CurrentActor() actor: Actor, @Param("id") id: string, @Param("idx") idx: string): Promise<{ items: CheckedAlternative[] }> {
+  async alternatives(@CurrentActor() actor: Actor, @Param("id") id: string, @Param("idx") idx: string): Promise<{ items: CheckedAlternative[]; written: Quote | null }> {
     try {
-      return { items: await checkedAlternativesFor(this.db, actor, id, Number(idx), new Date()) };
+      const now = new Date();
+      /* `written` — the line as the doctor wrote it, quoted — is what the co-pilot's "saves ₹x a strip" is measured against. */
+      const items = await checkedAlternativesFor(this.db, actor, id, Number(idx), now);
+      return { items, written: items.length === 0 ? null : await writtenQuoteFor(this.db, id, Number(idx), now) };
     } catch (e) {
       return toHttp(e);
     }

@@ -2,7 +2,22 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { fetchAlternatives, pharmacyErrorText } from "../../lib/pharmacy-api";
-import type { WireAlternative, WireDispenseLine } from "../../lib/pharmacy-api";
+import { bestOffer } from "./model";
+import type { TFunction } from "i18next";
+import type { WireAlternative, WireDispenseLine, WireQuote } from "../../lib/pharmacy-api";
+
+const rupees = (paise: number): string => `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/** The price the bill will ask: per pack where the item has one, always per unit beside it. */
+export function priceLabel(q: WireQuote, t: TFunction): string {
+  const per = t("pharmacyDesk.sub.each", { amount: rupees(q.unitPaise) });
+  return q.pack === null ? per : `${rupees(q.pack.paise)} / ${q.pack.uom} · ${per}`;
+}
+
+/** What this one saves against the line as written, over its own pack — the co-pilot's rule, reused per row. */
+function savingOf(a: WireAlternative, written: WireQuote | null): number | null {
+  return bestOffer([a], 1, written)?.savingPerPackPaise ?? null;
+}
 
 function choosable(a: WireAlternative): boolean {
   return a.available > 0 && a.check.verdict !== "blocked";
@@ -29,12 +44,14 @@ function choosable(a: WireAlternative): boolean {
 export type Substitute = { medicineId: string; brandName: string; available: number };
 
 export function SubstituteSheet({
-  dispenseId, line, onChoose, onClose,
+  dispenseId, line, onChoose, onClose, preselect = null,
 }: {
   dispenseId: string;
   line: WireDispenseLine;
   onChoose: (sub: Substitute) => void;
   onClose: () => void;
+  /** The medicine the co-pilot named on the line: ticked on opening, so its offer is one tap and a consent. */
+  preselect?: string | null;
 }): React.ReactElement {
   const { t } = useTranslation();
   const [chosen, setChosen] = useState<WireAlternative | null>(null);
@@ -57,6 +74,14 @@ export function SubstituteSheet({
     return () => window.removeEventListener("keydown", onKey, true);
   }, [onClose]);
 
+  const items = alts.data?.items ?? [];
+  const written = alts.data?.written ?? null;
+  /* The co-pilot's offer arrives ticked — the pharmacist still says the sentence and ticks consent. */
+  useEffect(() => {
+    if (preselect === null || chosen !== null) return;
+    const hit = items.find((a) => a.medicineId === preselect);
+    if (hit !== undefined && choosable(hit)) setChosen(hit);
+  }, [preselect, items, chosen]);
   const given = line.dispensedMedicine;
   return (
     <div className="ovl" role="dialog" aria-modal="true" aria-label={t("pharmacyDesk.sub.title", { drug: line.rxLine.drug })} onClick={onClose}>
@@ -73,10 +98,10 @@ export function SubstituteSheet({
             <p style={{ margin: 0, padding: "14px 18px", fontSize: 12.5, color: "var(--dim)" }}>{t("pharmacyDesk.sub.loading")}</p>
           ) : alts.error !== null ? (
             <p role="alert" style={{ margin: 0, padding: "14px 18px", fontSize: 12.5, color: "var(--red)" }}>{pharmacyErrorText(alts.error, t)}</p>
-          ) : alts.data.length === 0 ? (
+          ) : items.length === 0 ? (
             <p role="status" style={{ margin: 0, padding: "14px 18px", fontSize: 12.5, color: "var(--dim)" }}>{t("pharmacyDesk.sub.none", { drug: given?.brandName ?? line.rxLine.drug })}</p>
           ) : (
-            alts.data.map((a) => (
+            items.map((a) => (
               <label key={a.medicineId} className="drow" style={{ padding: "11px 18px", cursor: choosable(a) ? "pointer" : "not-allowed", opacity: choosable(a) ? 1 : 0.55 }}>
                 <input
                   type="radio"
@@ -95,7 +120,17 @@ export function SubstituteSheet({
                       : t(`pharmacyDesk.sub.check.${a.check.verdict}`)}
                   </span>
                 </span>
-                <span className="mo" style={{ fontSize: 12, color: a.available > 0 ? "var(--dim)" : "var(--red)" }}>{t("pharmacyDesk.sub.onShelf", { n: a.available })}</span>
+                <span style={{ textAlign: "right" }}>
+                  <span className="mo" style={{ display: "block", fontSize: 12, color: a.available > 0 ? "var(--dim)" : "var(--red)" }}>{t("pharmacyDesk.sub.onShelf", { n: a.available })}</span>
+                  {a.quote == null ? null : (
+                    <span className="mo" style={{ display: "block", fontSize: 12, marginTop: 2 }}>{priceLabel(a.quote, t)}</span>
+                  )}
+                  {savingOf(a, written) === null ? null : (
+                    <span className="mo" style={{ display: "block", fontSize: 11.5, marginTop: 2, color: "var(--green)" }}>
+                      {t("pharmacyDesk.sub.saves", { amount: rupees(savingOf(a, written)!), pack: a.quote!.pack!.uom })}
+                    </span>
+                  )}
+                </span>
               </label>
             ))
           )}

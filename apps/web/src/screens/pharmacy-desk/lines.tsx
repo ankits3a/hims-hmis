@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../../lib/auth";
 import { askPrescriber, fetchPrecheck, pharmacyErrorText, setShelfLocation } from "../../lib/pharmacy-api";
 import { ResolveSheet } from "./resolve";
+import { CopilotOffer, firstLineNeedingHelp } from "./copilot";
 import { SubstituteSheet } from "./substitute";
 import { adviceFor, allSettled, blockedFor, canTick, freshTick, isPartial, isSettled, istToday, pickBody, placeable, qtyOf, sigOf, substitutable, verifyBody } from "./work";
 import type { Tick } from "./work";
@@ -36,6 +37,8 @@ export function LineList({
   const [ticketError, setTicketError] = useState<string | null>(null);
   const [declining, setDeclining] = useState<number | null>(null);
   const [subbing, setSubbing] = useState<number | null>(null);
+  /** The medicine the co-pilot named, carried into the sheet so its offer is one tap and a consent. */
+  const [offered, setOffered] = useState<string | null>(null);
   const [resolving, setResolving] = useState<number | null>(null);
   const settleAfterDecline = useRef(false);
   const today = istToday();
@@ -126,6 +129,9 @@ export function LineList({
   };
 
   const settledCount = dispense.lines.filter((l) => isSettled(l, ticks[l.lineIdx])).length;
+  /* The co-pilot speaks about the first line the shelf cannot fill as written (the board's `agchip`). */
+  const helpLine = firstLineNeedingHelp(dispense.lines);
+
   return (
     <div data-testid="desk-lines">
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 15 }}>
@@ -170,15 +176,25 @@ export function LineList({
           />
         ))}
       </div>
+      {editable && helpLine !== null ? (
+        <CopilotOffer
+          dispenseId={dispense.id}
+          line={helpLine}
+          tick={ticks[helpLine.lineIdx]}
+          onSubstitute={(medicineId) => { setOffered(medicineId); setSubbing(helpLine.lineIdx); }}
+        />
+      ) : null}
       {subbing === null ? null : (
         <SubstituteSheet
           dispenseId={dispense.id}
           line={dispense.lines.find((l) => l.lineIdx === subbing)!}
-          onClose={() => setSubbing(null)}
+          preselect={offered}
+          onClose={() => { setSubbing(null); setOffered(null); }}
           onChoose={(sub) => {
             /* A different medicine is a different shelf: the batch, the scan and the tick all restart. */
             edit(subbing, { sub, batchId: null, scan: "", ticked: false }, false);
             setSubbing(null);
+            setOffered(null);
             setDeclining(null);
           }}
         />

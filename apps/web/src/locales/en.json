@@ -3866,6 +3866,15 @@
     "line_other": "the line · {{count}} tickets",
     "lineEmpty": "Nobody is waiting.",
     "queuedYesterday": "yesterday",
+    "copilot": {
+      "offer": "{{written}} is not on this shelf. {{offer}} is the same salt, strength, form and route — {{n}} here, {{price}}. I have put it to this patient's allergies, interactions, duplicates and diagnoses: clear.",
+      "saving": "It saves {{amount}} a {{pack}}.",
+      "short": "Only {{n}} here, short of the {{want}} written.",
+      "blockedOnly": "{{written}} is not on this shelf, and every equivalent here is stopped by the check. This one goes back to the doctor.",
+      "none": "{{written}} is not on this shelf and nothing here is the same medicine. Decline the line, or place it by hand.",
+      "dock": "{{written}} is out — {{offer}} is the same medicine, {{n}} on the shelf",
+      "act": "Give {{offer}}"
+    },
     "lineFoot": "A ticket you take is marked claimed for everyone, with your name on it. Nobody else spends a minute on it.",
     "heldBy": "{{name}} has this",
     "yours": "yours",
@@ -4019,6 +4028,8 @@
       "button": "Handed over"
     },
     "sub": {
+      "saves": "saves {{amount}} a {{pack}}",
+      "each": "{{amount}} each",
       "title": "Give something else for {{drug}}",
       "rule": "Only the same salt, strength, form and route can stand in — the server refuses anything else, so this list is the whole choice.",
       "noSubstitution": "The doctor wrote no substitution on this line — only the medicine named can be given.",

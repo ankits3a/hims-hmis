@@ -119,7 +119,7 @@ export function PharmacyCounter(): React.ReactElement {
       const out: Record<number, WireAlternative[]> = {};
       for (const l of inHand.lines) {
         if (l.status !== "open" || l.dispensedMedicine === null || l.rxLine.noSubstitution) continue;
-        try { out[l.lineIdx] = await fetchAlternatives(inHand.id, l.lineIdx); } catch { out[l.lineIdx] = []; }
+        try { out[l.lineIdx] = (await fetchAlternatives(inHand.id, l.lineIdx)).items; } catch { out[l.lineIdx] = []; }
       }
       if (live) setAlts(out);
     })();

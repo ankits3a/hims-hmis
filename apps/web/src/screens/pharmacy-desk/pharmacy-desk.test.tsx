@@ -3,9 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { setToken } from "../../lib/api";
 import { renderWithProviders } from "../../test-utils";
 import { PharmacyDesk } from "./pharmacy-desk";
-import { holdOf, lineVerdict, queuedDay, shelfFlag, stageOf, ticketLabel, waitLabel, waitTone } from "./model";
+import { bestOffer, holdOf, lineVerdict, queuedDay, shelfFlag, stageOf, ticketLabel, waitLabel, waitTone } from "./model";
 import { resetDeskLog } from "./log";
-import type { WireDispense, WireQueueRow } from "../../lib/pharmacy-api";
+import type { WireAlternative, WireDispense, WireQueueRow } from "../../lib/pharmacy-api";
 
 const navigate = vi.fn();
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => navigate }));
@@ -93,6 +93,31 @@ describe("the desk's rules, pure (PD-3)", () => {
     expect(queuedDay("2026-09-20", now)).toBeNull();
     expect(queuedDay("2026-09-19", now)).toEqual({ kind: "yesterday" });
     expect(queuedDay("2026-09-17", now)).toEqual({ kind: "date", label: "17 Sept" });
+  });
+  it("the co-pilot names ONE offer: checked clear, enough on the shelf, cheapest — and says the saving", () => {
+    const alt = (over: Partial<WireAlternative>): WireAlternative => ({
+      medicineId: "m", brandName: "B", strengthLabel: "500 mg", form: "tablet", itemId: "i", itemCode: "C", available: 100,
+      check: { verdict: "clear", blocks: [] },
+      quote: { batchId: "b", batchNo: "B-1", expiryDate: "2027-06-30", unitPaise: 900, pack: { uom: "strip", multiplier: 10, paise: 9000 }, lastKnown: false },
+      ...over,
+    });
+    const written = { batchId: "w", batchNo: "W-1", expiryDate: null, unitPaise: 1200, pack: { uom: "strip", multiplier: 10, paise: 12000 }, lastKnown: true };
+    const cheap = alt({ medicineId: "cheap", brandName: "Cheap", quote: { ...alt({}).quote!, unitPaise: 800, pack: { uom: "strip", multiplier: 10, paise: 8000 } } });
+    const blocked = alt({ medicineId: "blocked", check: { verdict: "blocked", blocks: [{ book: "allergy", about: "X", key: "X" }] }, quote: { ...alt({}).quote!, unitPaise: 100 } });
+    const unchecked = alt({ medicineId: "unchecked", check: { verdict: "not_checked", blocks: [] } });
+    const short = alt({ medicineId: "short", available: 4, quote: { ...alt({}).quote!, unitPaise: 500 } });
+    // blocked and not-checked are never offered; the short one loses to one that covers the quantity
+    expect(bestOffer([blocked, unchecked, short, alt({}), cheap], 10, written)?.alt.medicineId).toBe("cheap");
+    // the saving is per the OFFER's own pack, from the two server prices: (12.00 − 8.00) × 10
+    expect(bestOffer([cheap], 10, written)?.savingPerPackPaise).toBe(4000);
+    // dearer than the line as written: no saving is claimed
+    expect(bestOffer([alt({ quote: { ...alt({}).quote!, unitPaise: 1500, pack: { uom: "strip", multiplier: 10, paise: 15000 } } })], 10, written)?.savingPerPackPaise).toBeNull();
+    // nothing quoted, nothing clear, or nothing at all: no offer
+    expect(bestOffer([alt({ quote: null })], 10, written)).toBeNull();
+    expect(bestOffer([blocked], 10, written)).toBeNull();
+    expect(bestOffer([], 10, written)).toBeNull();
+    // only a short one on the shelf is still the offer — it is what the pharmacist can give
+    expect(bestOffer([short], 10, written)?.alt.medicineId).toBe("short");
   });
   it("derives five stages from six states — and a ticket not yet yours is FOUND, not worked", () => {
     expect([null, "queued", "claimed", "verified", "picked", "billed", "handed_over", "cancelled"]

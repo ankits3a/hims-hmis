@@ -1,0 +1,99 @@
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { setToken } from "../../lib/api";
+import { renderWithProviders } from "../../test-utils";
+import { PharmacyDesk } from "./pharmacy-desk";
+import { resetDeskLog } from "./log";
+import type { WireAlternative, WireDispense, WireDispenseLine, WireQuote } from "../../lib/pharmacy-api";
+
+const navigate = vi.fn();
+vi.mock("@tanstack/react-router", () => ({ useNavigate: () => navigate, Link: ({ children }: { children: React.ReactNode }) => <a>{children}</a> }));
+
+type Reply = { status: number; body: unknown };
+function mockRoutes(handlers: Record<string, Reply | (() => Reply)>): void {
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const h = handlers[`${init?.method ?? "GET"} ${raw.split("?")[0]!}`];
+    if (h === undefined) return new Response("{}", { status: 404 });
+    const r = typeof h === "function" ? h() : h;
+    return new Response(JSON.stringify(r.body), { status: r.status, headers: { "Content-Type": "application/json" } });
+  }));
+}
+
+const ME = "u-anita";
+const PAN = { id: "m-pan", brandName: "Pan 40", strengthLabel: "40 mg", form: "tablet", scheduleFlag: "H" };
+const quote = (unitPaise: number, over: Partial<WireQuote> = {}): WireQuote => ({
+  batchId: "b", batchNo: "PTP-5510", expiryDate: "2027-06-30", unitPaise,
+  pack: { uom: "strip", multiplier: 10, paise: unitPaise * 10 }, lastKnown: false, ...over,
+});
+/** Pan 40 is written, the shelf is empty of it: `blockedOf` = "empty". */
+const line: WireDispenseLine = {
+  lineIdx: 0, rxLine: { drug: "Pan 40", medicineId: "m-pan", dose: "1 tab", route: "oral", frequency: "1-0-0", durationDays: 5, instructions: null, noSubstitution: false },
+  status: "open", declinedReason: null, substitutionType: "none", qtyBase: 5, scheduleFlag: "H", orderedMedicine: PAN, dispensedMedicine: PAN,
+  item: { id: "it-pan", code: "PAN040", name: "Pan 40 tablet", baseUom: "tablet", uoms: [] }, saleable: true, available: 0, location: null,
+  batchId: null, reservationId: null, ledgerEntryId: null, orderItemId: null, invoiceLineId: null, unitPaise: null, priceWinner: null,
+  fefoOverride: false, pickNote: null, partlyChecked: false, authorisations: [], batches: [], pickedBatch: null,
+};
+const ticket: WireDispense = {
+  id: "d1", status: "claimed", dispenseNo: "P2609200004", orderId: null, prescriptionId: "rx", prescriptionVersion: 1, encounterId: "e", storeResourceId: "s",
+  scheduled: false, invoiceId: null, identityConfirmedVia: null, claimedAt: null, verifiedAt: null, pickedAt: null, billedAt: null,
+  handedOverAt: null, cancelReason: null, claimedBy: ME, claimedByName: "Anita Verma", prescriberName: "Dr Anand Sinha",
+  patient: { id: "p", uhid: "U00110065", name: "Imran Sheikh", alias: null, restricted: false }, allergies: [], lines: [line],
+};
+const alt = (over: Partial<WireAlternative> = {}): WireAlternative => ({
+  medicineId: "m-pantop", brandName: "Pantop 40", strengthLabel: "40 mg", form: "tablet", itemId: "it-pantop", itemCode: "PTP040",
+  available: 240, check: { verdict: "clear", blocks: [] }, quote: quote(320), ...over,
+});
+const base = (alts: WireAlternative[], written: WireQuote | null = quote(970, { batchNo: "PAN-OLD", lastKnown: true })): Record<string, Reply | (() => Reply)> => ({
+  "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: ME }, permissions: { hospital: ["pharmacy.dispense.place"], scoped: { department: {}, floor: {} } } } },
+  "GET /api/pharmacy/queue": { status: 200, body: { items: [] } },
+  "GET /api/pharmacy/summary": { status: 404, body: {} },
+  "GET /api/billing/sessions/current": { status: 200, body: { session: null } },
+  "GET /api/pharmacy/dispenses/d1": { status: 200, body: ticket },
+  "GET /api/pharmacy/dispenses/d1/precheck": { status: 200, body: { lines: [{ lineIdx: 0, verdict: "clear", blocks: [] }] } },
+  "GET /api/pharmacy/dispenses/d1/lines/0/alternatives": { status: 200, body: { items: alts, written } },
+});
+
+/**
+ * THE CO-PILOT ACTS (owner, 2026-09-20). The approved board's agent names one medicine, prices it,
+ * says what it saves and that the checks passed, and gives one tap to give it.
+ */
+describe("the counter agent on a ticket", () => {
+  beforeEach(() => { setToken("t"); navigate.mockReset(); resetDeskLog(); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("names ONE offer with the shelf, the price and the saving, and its tap opens the sheet on that medicine", async () => {
+    mockRoutes(base([alt({ medicineId: "m-dear", brandName: "Pantocid 40", quote: quote(410) }), alt()]));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const chip = await screen.findByTestId("desk-copilot");
+    expect(chip).toHaveTextContent("Pan 40 is not on this shelf");
+    expect(chip).toHaveTextContent("Pantop 40 is the same salt, strength, form and route — 240 here, ₹32.00 / strip · ₹3.20 each");
+    expect(chip).toHaveTextContent("allergies, interactions, duplicates and diagnoses: clear");
+    expect(chip).toHaveTextContent("It saves ₹65.00 a strip"); // (₹9.70 − ₹3.20) × 10, both prices the server's
+    expect(chip).not.toHaveTextContent("Pantocid"); // one offer, not a list
+    // the dock speaks with the same voice — "watching the line" under a chip that is speaking reads as two agents
+    expect(await screen.findByTestId("desk-ticker")).toHaveTextContent("Pan 40 is out — Pantop 40 is the same medicine, 240 on the shelf");
+
+    await userEvent.click(within(chip).getByRole("button", { name: "Give Pantop 40" }));
+    const sheet = await screen.findByRole("dialog");
+    expect(within(sheet).getByRole("radio", { name: /Pantop 40/ })).toBeChecked();
+    // consent is still the patient's: the sheet will not put it on the ticket until it is ticked
+    expect(within(sheet).getByRole("button", { name: "Put Pantop 40 on the ticket" })).toBeDisabled();
+  });
+
+  it("says so plainly when every equivalent is stopped by the check, and offers nothing", async () => {
+    mockRoutes(base([alt({ check: { verdict: "blocked", blocks: [{ book: "allergy", about: "Pantoprazole", key: "Pantoprazole" }] } })]));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const chip = await screen.findByTestId("desk-copilot");
+    expect(chip).toHaveTextContent("every equivalent here is stopped by the check");
+    expect(within(chip).queryByRole("button")).toBeNull();
+  });
+
+  it("does not speak about a line the shelf can fill", async () => {
+    const stocked = { ...ticket, lines: [{ ...line, available: 200, batches: [{ batchId: "b1", batchNo: "PAN-1", expiryDate: "2028-01-31", available: 200 }] }] };
+    mockRoutes({ ...base([alt()]), "GET /api/pharmacy/dispenses/d1": { status: 200, body: stocked } });
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    await screen.findByTestId("desk-line-0");
+    await waitFor(() => expect(screen.queryByTestId("desk-copilot")).toBeNull());
+  });
+});
