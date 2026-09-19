@@ -363,6 +363,20 @@ is not the model. Six things in it are, and each one is a gap in ours.
 - **PD-D22. The patient's GSTIN belongs on the bill.** Their patient panel carries `GST No.`; a
   patient buying on a company's account needs it for input credit, and it is a field, not a feature.
 
+**Status of PD-D18–D22, measured 2026-09-19 (they were decided here but never cut into §6's tasks):**
+- **PD-D18 (rack location) — NOT BUILT, next.** Nothing in `materials` records where an item sits (no
+  bin, rack or location column). It needs a store-scoped table — a MIGRATION — a setter for the store
+  head, and the line's display. Deliberately NOT stacked on #245/#246/#247: a migration carried through
+  a stack of squash-merges collides on drizzle's journal and serial numbers. First PR off main after
+  the stack merges.
+- **PD-D19 (old MRP vs new) and PD-D22 (patient GSTIN on the bill) — money and tax surfaces,** the
+  owner's to rule (and PD-D22 touches `billing`/`patients`, which every lane imports).
+- **PD-D20 (a draft you can find again) — MET for the day, measured:** `listQueue` lists every live
+  ticket of the day, claimed and picked included, and the rail marks yours "yours" / "Open (yours)". A
+  draft from an EARLIER day drops off the line (the queue is the day's) — E6's territory.
+- **PD-D21 (cost and margin are a permission) — a decision with nothing to build:** no margin surface
+  exists; the rule binds the first one that appears.
+
 ### Taken, but not here
 
 - **The short book.** Their stock alert has two sources: `Stock Alert` (below minimum) and
