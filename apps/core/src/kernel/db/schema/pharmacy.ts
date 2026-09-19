@@ -398,3 +398,31 @@ export const pharmacyRetailSaleLines = pgTable(
     check("pharmacy_retail_sale_lines_schedule_ck", sql`${t.scheduleFlag} is null or ${t.scheduleFlag} in ('H', 'H1', 'OTC')`),
   ],
 );
+
+/**
+ * ═══ PD-D18 — WHERE THE DRUG IS, PER COUNTER'S STORE ═══
+ *
+ * The pharmacist's slowest act is the walk to the shelf, and nothing recorded where to walk: `items`
+ * has no bin, and a bin is not an item's fact anyway — the same strip sits on rack 3 at the OPD
+ * counter and in a drawer at the retail one. So it is keyed by (store, item), set by whoever manages
+ * the counter's items (`pharmacy.sale_items.manage`), and printed on the line beside the batch.
+ *
+ * A LABEL, not a structure: "R-12", "rack 3 · shelf 2", "fridge". A counter that later wants aisles
+ * and bays can parse its own labels; a schema that guessed the hierarchy would be wrong for most.
+ * Clearing a location deletes the row — "unknown" is the absence of a row, never an empty string.
+ */
+export const pharmacyShelfLocations = pgTable(
+  "pharmacy_shelf_locations",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    storeResourceId: text("store_resource_id").notNull().references(() => resources.id),
+    itemId: text("item_id").notNull().references(() => items.id),
+    location: text("location").notNull(),
+    setBy: text("set_by").notNull(),
+    setAt: timestamp("set_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("pharmacy_shelf_locations_store_item_ux").on(t.storeResourceId, t.itemId),
+    check("pharmacy_shelf_locations_label_ck", sql`length(btrim(${t.location})) between 1 and 24 and ${t.location} = btrim(${t.location})`),
+  ],
+);

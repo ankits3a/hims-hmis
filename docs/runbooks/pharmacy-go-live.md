@@ -237,9 +237,9 @@ A blank slab still bills as exempt.
 >   - a batch with under 30 days to expiry, or recalled. Quarantine that one instead.
 >   - more than was dispensed, net of earlier returns.
 
-## 4. What refuses, and why — all 73 codes
+## 4. What refuses, and why — all 74 codes
 
-`errors.ts` declares 73, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
+`errors.ts` declares 74, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
 table falls behind it. The table used to name 13, and the drill above provokes several of the
 missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/en.json` under
 `pharmacyErrors.*`; that file and `errors.ts` are pinned against each other in BOTH directions by
@@ -260,6 +260,7 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `substitution_not_allowed` | the prescriber marked `noSubstitution` | dispense as written, or call the doctor |
 | `consent_required` | a generic substitution without the patient's consent ticked | ask, then tick |
 | `allergy_block` · `interaction_block` | the re-check hit something the prescriber did not override | back to the doctor |
+| `invalid_shelf_location` | a rack label longer than 24 characters — the line cannot print it | shorten it ("R-12", "rack 3 · shelf 2") |
 | `duplicate_block` · `drug_disease_block` | the medicine chosen for a line nobody could place repeats a moiety already prescribed; or a coded diagnosis forbids a line and no prescriber ruled on it (a reading, or a diagnosis coded after issue) | choose another, decline the line, or back to the doctor |
 | `qty_required` | a line's quantity is blank — SOS/PRN and unknown frequencies do not prefill | type the quantity (§3.3) |
 | `store_missing` | `seed-pharmacy` did not run | §1.2 |

@@ -3465,6 +3465,7 @@
     "interaction_block": "A severe interaction that no prescriber has overridden — do not hand it over; back to the doctor",
     "duplicate_block": "The medicine you chose repeats one already on this prescription, and the doctor never ruled on that — choose another, or decline the line",
     "drug_disease_block": "A diagnosis this patient carries rules this medicine out, and no prescriber has ruled on it — back to the doctor, or decline the line",
+    "invalid_shelf_location": "A shelf label is at most 24 characters — “R-12”, “rack 3 · shelf 2”",
     "qty_required": "Every line needs a quantity, and a reason is required",
     "store_missing": "The OPD pharmacy store is not set up",
     "not_found": "Not found",
@@ -3829,6 +3830,13 @@
         "drug_disease": "ruled out by"
       },
       "open": "give an equivalent"
+    },
+    "rack": {
+      "ask": "where is it?",
+      "input": "Where {{drug}} sits",
+      "placeholder": "R-12 · rack 3 · fridge",
+      "cancel": "cancel",
+      "change": "change where it sits"
     },
     "res": {
       "open": "choose what it is",

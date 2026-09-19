@@ -68,6 +68,8 @@ export type WireDispenseLine = {
   orderedMedicine: WireMedicine | null; dispensedMedicine: WireMedicine | null;
   item: { id: string; code: string; name: string; baseUom: string; uoms: { uom: string; toBaseMultiplier: number }[] } | null;
   saleable: boolean; available: number | null; batchId: string | null; reservationId: string | null; ledgerEntryId: string | null;
+  /** PD-D18 — where the item sits in the counter's store ("R-12"). Absent from an older server. */
+  location?: string | null;
   orderItemId: string | null; invoiceLineId: string | null; unitPaise: number | null; priceWinner: string | null;
   fefoOverride: boolean; pickNote: string | null;
   /** Pharmacy P3: a component of this line's medicine is not yet reviewed. Absent from an older server. */
@@ -139,6 +141,10 @@ export async function fetchPrecheck(id: string): Promise<WireLinePrecheck[]> {
 export async function fetchPlacements(id: string, lineIdx: number, q: string): Promise<WireRetailShelfEntry[]> {
   const { items } = await api<{ items: WireRetailShelfEntry[] }>("GET", `/pharmacy/dispenses/${id}/lines/${String(lineIdx)}/shelf${qs({ q })}`);
   return items;
+}
+/** PD-D18 — say where an item sits in a counter's store; an empty label clears it. */
+export async function setShelfLocation(itemId: string, storeResourceId: string, location: string): Promise<{ location: string | null }> {
+  return api<{ location: string | null }>("PUT", `/pharmacy/sale-items/${itemId}/location`, { storeResourceId, location });
 }
 export async function claimDispense(dispenseId: string, door: string, idempotencyKey: string): Promise<WireDispense> {
   return api<WireDispense>("POST", "/pharmacy/dispenses", { dispenseId, door }, idempotencyKey);

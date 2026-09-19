@@ -350,6 +350,13 @@ is not the model. Six things in it are, and each one is a gap in ours.
   column — `rack 3`, `R-12`, `P1`. The pharmacist's slowest act is walking to the shelf, and nothing
   in our system tells them where to walk: `items` has no bin. Add a store-scoped rack location and
   print it on the line, beside the batch. This is the highest-value pick and it is small.
+  **DONE (PD-D18), migration 0106:** `pharmacy_shelf_locations` — one trimmed label (1–24 chars) per
+  (counter's store, item), because a bin is the store's fact and not the item's (the OPD rack is not
+  the retail drawer). Set, replaced or cleared (empty label = no row) by `pharmacy.sale_items.manage`
+  via `PUT /pharmacy/sale-items/:itemId/location`, each change evented (`shelf.location_set`, with who).
+  The line shows it beside the batch; the pharmacist in charge can set it in place, the aide reads it.
+  The demo shelf seeds eight labels (H1 and X in their own cabinets) and never overwrites one changed
+  at the desk.
 - **PD-D19. Say when this batch's MRP is not last batch's.** Their entry row carries `OLD MRP` and
   `MRP DIFF`. We compute `price_winner` across batch MRP, DPCO ceiling and tariff, which answers
   "what may we charge" and not "why is this more than last month" — which is the question actually
