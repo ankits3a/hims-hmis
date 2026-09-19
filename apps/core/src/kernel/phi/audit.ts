@@ -213,7 +213,17 @@ export type PhiSurface =
    * a list of patients and what was given to them. It is its own name because a pharmacist opening
    * one dispense and an inspector's copy of a month are different disclosures.
    */
-  | "pharmacy.h1_register";
+  | "pharmacy.h1_register"
+  /**
+   * APPROVALS-UX — **THE APPROVER'S INBOX, and it is an APPEND to a union and nothing else.**
+   *
+   * `GET /approvals` now names the patient each request is about (display name under the reader's
+   * clearance, and the UHID), because a refund or a discount cannot be decided on an id. That makes
+   * it a list-of-patients read of the `billing.collection_worklist` shape, logged one row per
+   * distinct patient for the same reason. Its own name: an approver reading their queue is a
+   * different disclosure from opening a record, and an enquiry must be able to tell them apart.
+   */
+  | "approvals.worklist";
 
 /** How the reader was connected to this patient's care AT THE MOMENT OF THE READ. */
 export type CareContext = "treating" | "serving" | "none";

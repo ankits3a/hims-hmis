@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, lte, sql } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import { approvals, roleAssignments, tempRoleGrants } from "../db/schema";
 import { withTx } from "../db/client";
@@ -41,6 +41,12 @@ export type ApprovalRow = typeof approvals.$inferSelect;
  * The approver worklist (owner decision Q5): auto-scoped to the caller's held roles —
  * a filter can narrow within that set, never widen past it. emergency → urgent → routine,
  * then oldest first (E-15 ordering).
+ *
+ * APPROVALS-UX — a DECIDED list (status granted/rejected) is newest decision first instead. The
+ * E-15 order answers "what should I act on next", which is a question only a pending list asks;
+ * read against decided rows it returns the oldest decisions first and the page limit drops the
+ * recent ones — the opposite of the "decided recently" view the inbox shows. id breaks ties so a
+ * page boundary is stable.
  */
 export async function listApprovals(
   db: Db,
@@ -69,11 +75,14 @@ export async function listApprovals(
     const limit = Math.min(filters.limit ?? 50, 200);
     const offset = filters.offset ?? 0;
     const urgencyRank = sql<number>`case ${approvals.urgencyClass} when 'emergency' then 0 when 'urgent' then 1 else 2 end`;
+    const order = (filters.status ?? "pending") === "pending"
+      ? [urgencyRank, asc(approvals.requestedAt)]
+      : [desc(approvals.decidedAt), desc(approvals.id)];
     const items = await tx
       .select()
       .from(approvals)
       .where(where)
-      .orderBy(urgencyRank, asc(approvals.requestedAt))
+      .orderBy(...order)
       .limit(limit)
       .offset(offset);
     const counted = await tx.select({ n: sql<string>`count(*)` }).from(approvals).where(where);

@@ -1,6 +1,7 @@
 import { Test } from "@nestjs/testing";
 import { INestApplication } from "@nestjs/common";
 import request from "supertest";
+import { eq } from "drizzle-orm";
 import { AppModule } from "../src/app.module";
 import { setupTestDb, truncateAll } from "./helpers/db";
 import { createUser } from "../src/kernel/auth/identity";
@@ -13,6 +14,7 @@ import { approvalsManifest } from "../src/kernel/approvals/manifest";
 import { approvalFlowDefinition } from "../src/kernel/approvals/flow";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { loadConfig, requireEnv } from "../src/kernel/config";
+import { patients, phiAccessLog, registrationConfig } from "../src/kernel/db/schema";
 import type { Db } from "../src/kernel/db/client";
 
 const DISCOUNT_DEF = approvalFlowDefinition({
@@ -151,6 +153,55 @@ describe("approvals e2e", () => {
       .post(`/approvals/${approvalId}/reject`).set("Authorization", `Bearer ${approverToken}`)
       .send({ note: "changed my mind" })
       .expect(409);
+  });
+
+  /*
+    APPROVALS-UX — the inbox names people. Before this, every row carried `requesterId` and
+    `patientId` as bare ids and the screen printed a ULID where the patient should be. The approver
+    here holds NO `patients.confidential.read`, so the sealed patient must arrive by alias with no
+    legal name, and every patient named must leave a `phi_access_log` row.
+  */
+  it("the worklist names the requester, the decider and the patient — a sealed one by alias — and logs the read", async () => {
+    const PLAIN = "01HPATPLAIN00000000000000A";
+    const SEALED = "01HPATSEALED0000000000000A";
+    await db.insert(registrationConfig).values({ id: "main", uhidPrefix: "HMS", updatedBy: "t" }).onConflictDoNothing();
+    await db.insert(patients).values([
+      { id: PLAIN, uhid: "HMS-00000001-5", name: "Asha Devi", sex: "female", administrativeGender: "female", createdBy: "t", updatedBy: "t" },
+      { id: SEALED, uhid: "HMS-00000002-3", name: "Meera Raghavan", alias: "Patient S-14", isConfidential: true,
+        sex: "female", administrativeGender: "female", createdBy: "t", updatedBy: "t" },
+    ]);
+    const file = async (patientId: string, subjectId: string): Promise<string> => {
+      const res = await request(app.getHttpServer())
+        .post("/approvals").set("Authorization", `Bearer ${requesterToken}`)
+        .send({ typeKey: "discount_override", subject: { type: "invoice", id: subjectId }, patientId, amountPaise: 50_000 })
+        .expect(201);
+      return (res.body as { approvalId: string }).approvalId;
+    };
+    const plainId = await file(PLAIN, "inv1");
+    const sealedId = await file(SEALED, "inv2");
+
+    const list = await request(app.getHttpServer())
+      .get("/approvals").set("Authorization", `Bearer ${approverToken}`).expect(200);
+    const byId = new Map((list.body.items as { id: string }[]).map((i) => [i.id, i] as const));
+    expect(byId.get(plainId)).toMatchObject({
+      requesterName: "requester", decidedByName: null,
+      patient: { id: PLAIN, uhid: "HMS-00000001-5", name: "Asha Devi", alias: null, restricted: false },
+    });
+    expect(byId.get(sealedId)).toMatchObject({
+      patient: { id: SEALED, uhid: "HMS-00000002-3", name: null, alias: "Patient S-14", restricted: true },
+    });
+    expect(JSON.stringify(list.body)).not.toContain("Meera Raghavan");
+
+    const logged = await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "approvals.worklist"));
+    expect(logged.map((r) => [r.patientId, r.sealed]).sort()).toEqual([[PLAIN, false], [SEALED, true]].sort());
+
+    await request(app.getHttpServer())
+      .post(`/approvals/${plainId}/approve`).set("Authorization", `Bearer ${approverToken}`)
+      .send({ note: "Approved as requested" }).expect(201);
+    const decided = await request(app.getHttpServer())
+      .get("/approvals").query({ status: "granted" }).set("Authorization", `Bearer ${approverToken}`).expect(200);
+    expect(decided.body.items).toHaveLength(1);
+    expect(decided.body.items[0]).toMatchObject({ id: plainId, requesterName: "requester", decidedByName: "approver" });
   });
 
   it("blocks requester=approver over HTTP with 403 (SoD), leaving the request pending", async () => {

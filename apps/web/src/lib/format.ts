@@ -48,6 +48,17 @@ export function fmtPaise(paise: number): string {
 }
 
 /**
+ * APPROVALS-UX — the same rupees for READING rather than for a bill: a whole-rupee amount drops its
+ * `.00` (`₹1,25,000`, not `₹1,25,000.00`), anything with paise keeps them (`₹1,250.50`). An owner
+ * deciding a discount reads the size of the number; the two trailing zeros are noise on that
+ * question and precision on a receipt, which is why `fmtPaise` keeps them and this does not.
+ */
+export function fmtRupees(paise: number): string {
+  const full = fmtPaise(paise);
+  return full.endsWith(".00") ? full.slice(0, -3) : full;
+}
+
+/**
  * UTC instant → IST 'HH:MM'. Arithmetic, no Intl — IST is a fixed +05:30 with no DST, so this
  * never depends on the desk machine's timezone (which is routinely wrong on hospital hardware).
  * Transcribed from `opd-desk.tsx`'s private copy, character for character.
