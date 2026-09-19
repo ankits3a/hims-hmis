@@ -62,6 +62,13 @@ const CUES: Record<CopilotIntent, Cue[]> = {
   visit_status: [
     S("been seen"), S("seen by"), S("dekh"), S("देख"), S("mil gaya"), S("mila"),
     S("still waiting"), S("consult"), S("doctor ne"), S("डॉक्टर"),
+    /*
+      2026-09-19 — "मरीज <<P1>> अभी भी इंतज़ार में है क्या" answered the QUEUE: `इंतज़ार` is the
+      queue's strong cue and this intent had no Hindi "STILL waiting" to set against it. The phrase
+      outweighs the word inside it, as `still waiting` already does in English; a bare "kitna
+      intezaar hai", with no "still", stays the queue's.
+    */
+    S("अभी भी इंतज़ार"), S("abhi bhi intezaar"), S("abhi bhi intezar"), S("ab bhi intezaar"),
     S("number aaya"), S("number aa gaya"),
     W("doctor"), W("status"), W("andar"), W("bulaya"),
   ],
@@ -104,6 +111,15 @@ const CUES: Record<CopilotIntent, Cue[]> = {
   paid_not_collected: [
     S("not collected"), S("uncollected"), S("collect nahi"), S("nahi le gaye"), S("le nahi gaye"),
     S("nahi liya"), S("liya nahi"), S("paid but"), S("pickup"), S("kiska paisa pending"), S("waiting to collect"),
+    /*
+      2026-09-19 — "kaun paisa dekar dawai lene nahi aaya" answered DUES: `paisa` scored 3 and
+      nothing here matched, because the counter says the patient did not COME to take it as often
+      as that they did not take it. "Paid, then" is its own phrase; with a named patient it ties
+      `paisa` + the placeholder, and the tie goes to the model rather than to either guess.
+    */
+    S("lene nahi aaya"), S("lene nahi aaye"), S("lene nahi aayi"), S("nahi aaya lene"),
+    S("paisa dekar"), S("paise dekar"), S("pay karke"),
+    S("दवा नहीं ली"), S("लेने नहीं आया"), S("पैसे दे दिए"),
     W("pending"), W("collect"), W("le gaye"),
   ],
 };
@@ -122,9 +138,16 @@ const MIN_MARGIN = 2;
  * normalised to `ड क टर`, and every Devanagari cue in the table below silently matched nothing.
  * The Hindi tests failed and the romanised ones passed, which is exactly the shape of bug that
  * ships when a feature is only ever typed in by its author.
+ *
+ * ═══ AND NFC, FOR THE SAME REASON ONE LEVEL DOWN (2026-09-19) ═══
+ *
+ * `ज़` is one code point on some keyboards (U+095B) and two on others (ज + nukta); so are `ड़`, `फ़`
+ * and the rest. The table's `इंतज़ार` is the two-point form, and a question typed with the one-point
+ * form matched nothing. NFC maps both spellings to one sequence, on both sides of the comparison.
  */
 function normalise(question: string): string {
   return question
+    .normalize("NFC")
     .toLowerCase()
     /*
       Punctuation to spaces rather than removed: "dekh-liya" and "dekh liya" must normalise the
