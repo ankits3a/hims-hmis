@@ -102,6 +102,20 @@ describe("the OPD dispense counter over HTTP (16c T5)", () => {
       .send({ reason: "expired before collection", reasonClass: "genuine" })).expect(403);
   });
 
+  it("PD-7 C8 — the desk's F2 asks the shared copilot, and the pharmacy's tool answers by lookup, within the asker's grants", async () => {
+    await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "CR-1", expiryDate: "2027-03-31", qtyBase: 50 });
+    const asked = await as(fx.aide.token)(request(server()).post("/copilot/ask").send({ question: "kitni crocin bachi hai", terms: [] })).expect(200);
+    expect(asked.body).toEqual({
+      answer: { key: "copilot.answer.stockOnShelf", params: { name: "Crocin 500", qty: 50, uom: "tablet", batch: "CR-1", expiry: "2027-03-31" } },
+      source: "phrasebook", intent: "stock_on_shelf",
+    });
+    const pending = await as(fx.pharmacist.token)(request(server()).post("/copilot/ask").send({ question: "kiska paisa pending hai", terms: [] })).expect(200);
+    expect(pending.body).toMatchObject({ answer: { key: "copilot.answer.uncollectedNone" }, intent: "paid_not_collected" });
+    // the front office may ask the copilot, and the pharmacy's shelf is not theirs to read
+    const clerk = await as(fx.clerk.token)(request(server()).post("/copilot/ask").send({ question: "kitni crocin bachi hai", terms: [] })).expect(200);
+    expect(clerk.body).toMatchObject({ answer: { key: "copilot.answer.notPermitted" }, intent: "stock_on_shelf" });
+  });
+
   it("e-Rx → scan → claim → decline the unstocked line → verify (P number) → pick → bill → hand over → label; every row read back", async () => {
     const pharmacist = as(fx.pharmacist.token);
     const aide = as(fx.aide.token);

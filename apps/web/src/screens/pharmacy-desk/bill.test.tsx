@@ -4,7 +4,7 @@ import { setToken } from "../../lib/api";
 import { renderWithProviders } from "../../test-utils";
 import { PharmacyDesk } from "./pharmacy-desk";
 import { resetDeskLog } from "./log";
-import { heldUntil, tendersFor } from "./bill";
+import { heldUntil, holdEnded, tendersFor } from "./bill";
 import type { WireDispense, WireDispenseLine, WirePricedDraft } from "../../lib/pharmacy-api";
 
 const navigate = vi.fn();
@@ -78,6 +78,12 @@ describe("the money, pure (PD-6)", () => {
   it("E27 — the draft names the reservation's deadline, thirty minutes after the pick, in IST", () => {
     expect(heldUntil("2026-09-19T06:14:00.000Z")).toBe("12:14");
     expect(heldUntil(null)).toBeNull();
+  });
+
+  it("E13 — a hold is over the moment its thirty minutes are, by the desk's own clock", () => {
+    expect(holdEnded("2026-09-19T06:14:00.000Z", new Date("2026-09-19T06:43:59.000Z"))).toBe(false);
+    expect(holdEnded("2026-09-19T06:14:00.000Z", new Date("2026-09-19T06:44:00.000Z"))).toBe(true);
+    expect(holdEnded(null, new Date("2026-09-19T06:44:00.000Z"))).toBe(false);
   });
 });
 
@@ -167,12 +173,27 @@ describe("the bill rail and the hand-over (PD-6)", () => {
   });
 
   it("E27 — Save draft clears the desk and says until when the strips are held", async () => {
-    mockRoutes(base(() => dispense("d1", "picked"), "open"));
+    /* Relative to the clock: whether a hold still runs is now a question the screen asks of it (E13). */
+    const pickedAt = new Date(Date.now() - 5 * 60_000).toISOString();
+    const until = heldUntil(pickedAt)!;
+    mockRoutes(base(() => dispense("d1", "picked", { pickedAt }), "open"));
     renderWithProviders(<PharmacyDesk ticketId="d1" />);
     const rail = await screen.findByTestId("desk-bill");
-    expect(within(rail).getByText(/held until 12:14/)).toBeInTheDocument();
+    expect(within(rail).getByText(new RegExp(`held until ${until}`))).toBeInTheDocument();
     await userEvent.click(within(rail).getByRole("button", { name: "Save draft" }));
     expect(navigate).toHaveBeenCalledWith({ to: "/pharmacy/desk" });
-    expect(screen.getByTestId("desk-ticker")).toHaveTextContent("the strips are held until 12:14");
+    expect(screen.getByTestId("desk-ticker")).toHaveTextContent(`the strips are held until ${until}`);
+  });
+
+  it("E13 — a hold that has run out is said to have ENDED, not still to run; the draft keeps only the claim", async () => {
+    const pickedAt = new Date(Date.now() - 45 * 60_000).toISOString();
+    const until = heldUntil(pickedAt)!;
+    mockRoutes(base(() => dispense("d1", "picked", { pickedAt }), "open"));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const rail = await screen.findByTestId("desk-bill");
+    expect(within(rail).getByText(`The hold ended at ${until}. The counter puts the strips back and cancels this ticket within a minute — collect again if the patient is still here.`)).toBeInTheDocument();
+    expect(within(rail).queryByText(/held until/)).toBeNull();
+    await userEvent.click(within(rail).getByRole("button", { name: "Save draft" }));
+    expect(screen.getByTestId("desk-ticker")).toHaveTextContent("saved as a draft — your claim stays");
   });
 });

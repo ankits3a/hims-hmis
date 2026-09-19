@@ -166,4 +166,22 @@ describe("resolve a line the catalogue could not place (PD-5b)", () => {
     await expect(verifyDispense(db, fx.pharmacist.actor, fx.decls, id, { lines: [{ lineIdx: 0, qtyBase: 10 }] }, MON2))
       .rejects.toThrow(expect.objectContaining({ code: "drug_disease_block", detail: { hits: [expect.objectContaining({ lineIdx: 0, icd10Prefix: "K72" })] } }));
   });
+
+  /**
+   * THE KNOWN LIMIT, CLOSED: the one shelf search (retail, downtime, the desk's resolve sheet and
+   * the copilot's stock question) matched brand, code and item name only, so "paracetamol" found
+   * nothing on a shelf holding two paracetamol brands. A search that names a SALT — by its name or a
+   * recorded alias — and matches no product by name now answers with the products carrying it.
+   */
+  it("a salt's name, or its alias, finds the products carrying it; a name match still wins, and X is still never offered", async () => {
+    await stockedScheduleX(); // Calmol 500 — paracetamol, Schedule X
+    const id = await claimed([line({ drug: "Tab Mystery 10mg" })]);
+    const codes = async (q: string): Promise<string[]> => (await placementsFor(db, id, 0, q, MON2)).map((e) => e.itemCode).sort();
+    expect(await codes("paracetamol")).toEqual(["CALP500", "CROC500"]);
+    expect(await codes("Acetaminophen")).toEqual(["CALP500", "CROC500"]);
+    // a product's own name is not widened to its salt — even the exact brand, which the formulary resolves to one
+    expect(await codes("crocin")).toEqual(["CROC500"]);
+    expect(await codes("Crocin 500")).toEqual(["CROC500"]);
+    expect(await codes("ibuprofen")).toEqual([]); // the salt exists; nothing on this shelf carries it
+  });
 });

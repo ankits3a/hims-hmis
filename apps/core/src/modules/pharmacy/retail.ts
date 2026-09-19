@@ -11,7 +11,7 @@ import {
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { getInvoice, issueInvoice, previewInvoice, withIdempotency } from "../billing";
-import { medicinesByIds } from "../formulary";
+import { medicinesByIds, resolveDrugTexts } from "../formulary";
 import {
   MaterialsError, availableQty, availableQtyByItem, balances, fefoPick, findStoreByCode, getBatch, itemsByIds, postMovements,
   requireStore, resolveBarcode, returnedQtyByRef,
@@ -278,11 +278,30 @@ export async function searchShelfAt(db: Db, storeId: string, q: string, now: Dat
     ? e.item.code.toLowerCase().includes(needle) || e.item.name.toLowerCase().includes(needle)
     : e.item.id === scanned.itemId);
   const medicines = await medicinesByIds(db, entries.slice(0, 200).map((e) => e.medicineId));
-  const offered = entries
+  let offered = entries
     .map((e) => ({ e, m: medicines.get(e.medicineId) }))
     .filter((x): x is { e: typeof x.e; m: MedicineWithSalts } => x.m !== undefined && !refused(x.m.scheduleFlag))
     .filter((x) => scanned !== null || x.m.brandName.toLowerCase().includes(needle) || x.e.item.code.toLowerCase().includes(needle) || x.e.item.name.toLowerCase().includes(needle))
     .slice(0, SHELF_LIMIT);
+  /*
+    NO PRODUCT IS CALLED THAT — IS IT A SALT? A pharmacist types "paracetamol" and the shelf holds
+    Calpol and Crocin; a name-only search answered nothing, and the desk's resolve sheet told them to
+    decline a medicine that was on the shelf (PD-5b's walk). Only when no product matches by name, so
+    a brand the person typed is never widened to everything sharing its salt. The formulary's own
+    exact resolver decides what counts as a salt (its name or a recorded alias) — no second matcher.
+  */
+  if (offered.length === 0 && scanned === null) {
+    const salts = (await resolveDrugTexts(db, [text])).get(text)?.salts ?? [];
+    if (salts.length > 0) {
+      const wanted = new Set(salts.map((x) => x.saltId));
+      const onShelf = await medicinesByIds(db, [...shelf.keys()]);
+      offered = [...shelf.values()]
+        .map((e) => ({ e, m: onShelf.get(e.medicineId) }))
+        .filter((x): x is { e: typeof x.e; m: MedicineWithSalts } => x.m !== undefined && !refused(x.m.scheduleFlag))
+        .filter((x) => x.m.salts.some((ms) => wanted.has(ms.saltId)))
+        .slice(0, SHELF_LIMIT);
+    }
+  }
   if (scanned !== null && gs1 !== null && gs1.batch !== null && offered.length > 0) {
     const scan = await resolveScan(db, storeId, 0, scanned.itemId, text);
     scanned.batchId = scan.batchId;

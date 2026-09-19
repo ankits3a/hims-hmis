@@ -1,4 +1,5 @@
 import { PHARMACY_RX_ISSUED_CONSUMER } from "./consumers";
+import { pharmacyCopilotTools } from "./copilot-tools";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
 /**
@@ -84,4 +85,6 @@ export const pharmacyManifest: ModuleManifest = {
       selfOrderable: false,
     },
   ],
+  /** PD-7 C8 — the desk's F2: stock by name, and paid-not-collected (`copilot-tools.ts`). */
+  copilotTools: pharmacyCopilotTools,
 };

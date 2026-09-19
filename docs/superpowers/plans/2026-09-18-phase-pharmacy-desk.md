@@ -162,19 +162,25 @@ refused verify moves no stock.
   the tick; only a line with no duration escapes it. **Walk observation (E13), measured:** the desk
   polls the ticket in hand every 15 s and draws a cancelled one as cancelled with its reason, so once
   the worker's 60 s sweep cancels an expired pick the screen learns within ~75 s. The dev walk ran no
-  worker, so a draft read "they stay held until 13:43" at 13:51; in production the only gap is that
-  window, where the sentence names a time already past. Not fixed.
+  worker, so a draft read "they stay held until 13:43" at 13:51; in production the only gap was that
+  window, where the sentence named a time already past. **CLOSED:** `holdEnded` asks the desk's own
+  clock; an ended hold reads "The hold ended at 13:43 … cancels this ticket within a minute", and a
+  draft saved after it says only that the claim stays.
 - **C11** — the ticket header counts the open lines the books could read only in part (PD-D13).
 - **Walk finding, fixed:** a PAID ticket's rail read "take the money"; one stage holds money owed and
   money taken, so a billed ticket now reads "hand it over".
-- **C8 (F2 ask) — MEASURED: needs shared kernel files, so COORDINATION, not code, is next.** The copilot
-  merged (#239, `5957ef3f`) and a module may contribute TOOLS through its manifest (`copilotTools`),
-  but the INTENTS and their Hinglish cues are one closed table in `kernel/copilot/phrasebook.ts`, the
-  model's menu descriptions are hard-coded in `kernel/copilot/router.ts`, and answer keys are a closed
-  list in `packages/contracts/src/copilot.ts`. "kitni amoxicillin bachi hai" (stock by name), "kiska
-  paisa pending hai" (billed, not collected) and "ye batch kab expire hoga" need three new intents
-  there. Today's intents answer none of a pharmacist's questions, so an F2 box on the desk now would be
-  a box that does nothing — not drawn.
+- **C8 (F2 ask) — DONE, on the shared copilot (owner go-ahead 2026-09-19 for the kernel files).** Two
+  intents in `kernel/copilot/phrasebook.ts` + the model's menu (`router.ts`): `stock_on_shelf` ("kitni
+  amoxicillin bachi hai", "Pan 40 kab expire hoga") and `paid_not_collected` ("kiska paisa pending
+  hai"). Cues left out on purpose, each for the question it would steal: `bache` (children, patients),
+  `available` ("is the doctor available"), `how many`/`how much`, bare `left`. `CopilotToolCtx` gained
+  `question` (the MASKED question) because a medicine by name is no placeholder. The tools are the
+  pharmacy's (`copilot-tools.ts`, via the manifest's `copilotTools`), gated on `pharmacy.dispense.read`:
+  stock answers from `searchShelfAt` — the counters' own search, which now also finds a SALT by name or
+  alias when no product matches by name (closing PD-5b's known limit for retail, downtime and the desk)
+  — with the FEFO batch and its expiry; paid-not-collected lists every `billed` ticket by desk label
+  and the name the desk would show. The dock's ask box (`F2`) says an answer IN FULL above the bar; "ye
+  batch kab expire hoga" is answered from the ticket in hand and nothing is sent. Walked on the real API.
 
 ## 4. EDGE CASES
 
@@ -260,9 +266,9 @@ Numbered because each one owes a test. **F** = must fail first against the code 
   drug×disease twin of D9's allergy-recorded-after-issue, and the same answer: a severe
   contraindication nobody ruled on is not handed over. Hard duplicates need no such rule: they are
   same-prescription only, so a doctor-named pair was already met at issue. **F**
-  **Known limit, not fixed here:** the one shelf search (`searchShelfAt`, shared with retail and
-  downtime) matches brand, item code and item name — not the salt. "paracetamol" finds Calpol only if
-  an item's name says so. The sheet seeds the search from the doctor's words minus the dosage form
+  **Known limit — CLOSED by C8:** the one shelf search (`searchShelfAt`, shared with retail and
+  downtime) matched brand, item code and item name only; it now falls back to a salt by name or alias
+  when no product matches by name. "PCM" is still found only if the formulary records it as an alias. The sheet seeds the search from the doctor's words minus the dosage form
   (`Tab. Zincovit` → `Zincovit`); a salt match belongs to the search, for all three counters at once.
   **Walked (PD-5b), two defects past green suites:** (1) the seeded `PCM` search answered *"nothing
   matches — decline the line"* while Calpol stood on the shelf; the sentence now says the search reads
@@ -356,6 +362,20 @@ is not the model. Six things in it are, and each one is a gap in ours.
   currently has no margin surface at all — this decides it before one appears by accident.
 - **PD-D22. The patient's GSTIN belongs on the bill.** Their patient panel carries `GST No.`; a
   patient buying on a company's account needs it for input credit, and it is a field, not a feature.
+
+**Status of PD-D18–D22, measured 2026-09-19 (they were decided here but never cut into §6's tasks):**
+- **PD-D18 (rack location) — NOT BUILT, next.** Nothing in `materials` records where an item sits (no
+  bin, rack or location column). It needs a store-scoped table — a MIGRATION — a setter for the store
+  head, and the line's display. Deliberately NOT stacked on #245/#246/#247: a migration carried through
+  a stack of squash-merges collides on drizzle's journal and serial numbers. First PR off main after
+  the stack merges.
+- **PD-D19 (old MRP vs new) and PD-D22 (patient GSTIN on the bill) — money and tax surfaces,** the
+  owner's to rule (and PD-D22 touches `billing`/`patients`, which every lane imports).
+- **PD-D20 (a draft you can find again) — MET for the day, measured:** `listQueue` lists every live
+  ticket of the day, claimed and picked included, and the rail marks yours "yours" / "Open (yours)". A
+  draft from an EARLIER day drops off the line (the queue is the day's) — E6's territory.
+- **PD-D21 (cost and margin are a permission) — a decision with nothing to build:** no margin surface
+  exists; the rule binds the first one that appears.
 
 ### Taken, but not here
 
