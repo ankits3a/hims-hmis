@@ -84,6 +84,22 @@ export const COPILOT_ANSWER_KEYS = [
   "copilot.answer.queueShortest",
   /** Nobody is holding a clinic today — a closed OPD, a Sunday, or every doctor on leave. */
   "copilot.answer.queueNoneOpen",
+
+  /* ═══ stock_on_shelf (pharmacy, PD-7 C8) — "kitni amoxicillin bachi hai" ═══ */
+  /** One medicine: how many can be sold, and the batch the next sale takes (FEFO) with its expiry. */
+  "copilot.answer.stockOnShelf",
+  /** On the shelf list, and nothing sellable — out, expired, recalled or all reserved. */
+  "copilot.answer.stockEmpty",
+  /** Several match; each with its count and next expiry, display-ready. */
+  "copilot.answer.stockSeveral",
+  /** Nothing on this shelf by that name, nor carrying a salt of that name. */
+  "copilot.answer.stockNotFound",
+  /** The question named no medicine ("ye batch…" with nothing on the screen to point at). */
+  "copilot.answer.stockNeedName",
+
+  /* ═══ paid_not_collected (pharmacy, PD-7 C8) — "kiska paisa pending hai" ═══ */
+  "copilot.answer.uncollected",
+  "copilot.answer.uncollectedNone",
 ] as const;
 
 export type CopilotAnswerKey = (typeof COPILOT_ANSWER_KEYS)[number];

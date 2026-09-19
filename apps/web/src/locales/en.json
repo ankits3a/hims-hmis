@@ -3849,6 +3849,13 @@
     "precheck": {
       "blocked": "The check will stop this line: {{why}}. Decline it, or back to the doctor — before anyone walks to the shelf."
     },
+    "ask": {
+      "label": "Ask the counter agent",
+      "placeholder": "ask — kitni Mox 500 bachi hai",
+      "dismiss": "Dismiss the answer",
+      "onTicket": "On this ticket: {{items}}.",
+      "batchItem": "{{name}} — batch {{batch}}, expires {{expiry}}"
+    },
     "say": {
       "title": "Say to the patient",
       "own": "say it in the doctor's words — {{words}}",
@@ -4878,6 +4885,13 @@
       "visitUnknown": "I could not find that visit.",
       "queueShortest": "Shortest open line is {{doctor}} — {{waiting}} waiting, about {{minutes}} minutes.",
       "queueNoneOpen": "No doctor is holding a clinic today.",
+      "stockOnShelf": "{{name}}: {{qty}} {{uom}} on the shelf. The next sale takes batch {{batch}}, expiring {{expiry}}.",
+      "stockEmpty": "{{name}} is on the shelf list, but none can be sold now — out, expired, recalled or held for tickets.",
+      "stockSeveral": "{{n}} on this shelf match: {{items}}.",
+      "stockNotFound": "Nothing on this shelf is called “{{term}}”, and no salt by that name is on it.",
+      "stockNeedName": "Which medicine? Ask with its name — “kitni Mox 500 bachi hai”.",
+      "uncollected": "Paid and not yet collected ({{n}}): {{items}}.",
+      "uncollectedNone": "Nothing is paid and waiting to be collected.",
       "uhidCheckFailed": "That UHID does not look right — check the digits. ({{uhid}})"
     },
     "report": {

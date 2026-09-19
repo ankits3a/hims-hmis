@@ -42,7 +42,7 @@ const PLACEHOLDER_RE = /^<<P\d+>>$/;
 function buildSystemPrompt(): string {
   const menu = intentNames().join(" | ");
   return [
-    "You route ONE question from a hospital front-desk clerk to ONE tool.",
+    "You route ONE question from hospital counter staff (front desk, billing or pharmacy) to ONE tool.",
     `Reply with ONLY this JSON and nothing else: {"tool":"<${menu} | none>","slot":"<placeholder or empty>"}`,
     "",
     "Tools:",
@@ -50,6 +50,8 @@ function buildSystemPrompt(): string {
     "queue_depth    — how long is the wait, which line is shortest, how busy is it",
     "patient_dues   — what money does this patient still owe",
     "my_day_report  — the clerk's OWN figures for the day: what they registered, booked, collected",
+    "stock_on_shelf — how much of a NAMED medicine is on the pharmacy shelf, or when its batch expires",
+    "paid_not_collected — which pharmacy bills are paid but the medicines not yet collected",
     "none           — anything else at all, including anything you are unsure about",
     "",
     "The question may be English, Hindi, or romanised Hinglish.",

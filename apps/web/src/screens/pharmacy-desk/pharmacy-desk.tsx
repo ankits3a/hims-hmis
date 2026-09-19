@@ -6,6 +6,7 @@ import { useAuth } from "../../lib/auth";
 import { ApiError, newIdempotencyKey } from "../../lib/api";
 import { fetchCurrentSession } from "../../lib/billing-api";
 import { usePaletteOptional } from "../../components/command-palette";
+import { useCopilot } from "../../lib/use-copilot";
 import {
   billDispense, claimDispense, confirmDispenseSlip, declineLine, fetchCounterSummary, fetchDispense, fetchQueue, findAtCounter, handOverDispense,
   pharmacyErrorCode, pharmacyErrorText, pickDispense, previewBill, verifyDispense,
@@ -50,7 +51,8 @@ import "../desk-one/desk-one.css";
  *
  * `Q` the whole line · `F8` the hospital's command palette · `Esc` close, then clear the desk.
  * `S`, `1-4`, `Ctrl+⏎` and `F2` belong to the tasks that build what they press, and are not drawn
- * until then — a keycap that lies is worse than none (`desk-one.tsx`).
+ * until then — a keycap that lies is worse than none (`desk-one.tsx`). `F2` is PD-7 C8's: it asks
+ * the counter agent, in the dock.
  */
 function typingIn(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
@@ -90,6 +92,14 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
   };
   const answered = (act: string, id: string, e: unknown): void => { if (e instanceof ApiError) moneyKeys.current.delete(`${act}:${id}`); };
   const log = useDeskLog();
+  /*
+    ═══ PD-7 C8 — THE ASK BOX, ON THE SHARED COPILOT ═══
+    The hospital's questions ("kitni amoxicillin bachi hai", "kiska paisa pending hai") go to the one
+    copilot every seat shares, and are answered by the pharmacy's tools by lookup. A question about
+    THIS screen ("ye batch kab expire hoga") is answered from the ticket in hand and nothing is sent.
+    Names on the screen are handed over to be masked by value — a name has no shape a pattern finds.
+  */
+  const [said, setSaid] = useState<string | null>(null);
   const [clock, setClock] = useState(() => istClock());
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -110,6 +120,31 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     enabled: inHandId !== null,
     refetchInterval: 15_000,
   });
+  const namesOnScreen = useCallback((): string[] => {
+    const people = [ticket.data?.patient, ...(queue.data ?? []).map((r) => r.patient)];
+    return [...new Set(people.flatMap((p) => (p === undefined || p.name === null ? [] : [p.name])))];
+  }, [ticket.data?.patient, queue.data]);
+  const screenAnswer = useCallback((q: string): string | null => {
+    const d = ticket.data;
+    if (d === undefined || !/\b(ye|yeh|is|this|iska|iski)\b/i.test(q) || !/(batch|expir|एक्सपायर)/i.test(q)) return null;
+    const items = d.lines.filter((l) => l.status === "open").flatMap((l) => {
+      const b = l.pickedBatch ?? l.batches?.[0];
+      return b == null ? [] : [t("pharmacyDesk.ask.batchItem", { name: l.dispensedMedicine?.brandName ?? l.rxLine.drug, batch: b.batchNo, expiry: b.expiryDate ?? "—" })];
+    });
+    return items.length === 0 ? null : t("pharmacyDesk.ask.onTicket", { items: items.join("; ") });
+  }, [ticket.data, t]);
+  const copilot = useCopilot({ terms: namesOnScreen, fallback: screenAnswer });
+  /* An answer is shown when the server's reply lands — keyed on the round trip, so the same answer twice still shows. */
+  const asking = useRef(false);
+  useEffect(() => {
+    if (asking.current && !copilot.busy) setSaid(copilot.answer);
+    asking.current = copilot.busy;
+  }, [copilot.busy, copilot.answer]);
+  const ask = (q: string): void => {
+    const local = screenAnswer(q);
+    if (local !== null) setSaid(local);
+    else copilot.ask(q);
+  };
   const status = ticket.data?.status ?? null;
   /* The pharmacist's OWN drawer — every receipt needs it, not only cash (E21, measured). A 403 reads as closed. */
   const drawer = useQuery({ queryKey: ["billing", "session", "current"], queryFn: fetchCurrentSession, refetchInterval: 60_000, retry: false });
@@ -397,7 +432,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
           )}
         </div>
 
-        <DeskDock log={log} />
+        <DeskDock log={log} said={said} busy={copilot.busy} onAsk={ask} onDismiss={() => setSaid(null)} />
       </div>
 
       {overlay === "slip" && inHand !== null ? <SlipSheet dispense={inHand} onClose={() => setOverlay(null)} /> : null}
@@ -438,15 +473,38 @@ function sealedRefusal(e: unknown): boolean {
 }
 
 /**
- * The dock, on pine (PD-D16). In PD-3 it carries what HAPPENED at this desk — every server answer
- * with the time it landed. The ask box is PD-7's, with the agent that answers it; drawing it now
- * would be a field that does nothing, which is the keycap that lies in another form.
+ * The dock, on pine (PD-D16). It carries what HAPPENED at this desk — every server answer with the
+ * time it landed — and, since PD-7 C8, the ask box: `F2` focuses it (bound here, locally, as the
+ * shared `AgentDock` binds it), and an answer is said IN FULL above the bar, never cut to a ticker.
  */
-function DeskDock({ log }: { log: readonly DeskLog[] }): React.ReactElement {
+function DeskDock({ log, said, busy, onAsk, onDismiss }: {
+  log: readonly DeskLog[];
+  said: string | null;
+  busy: boolean;
+  onAsk: (question: string) => void;
+  onDismiss: () => void;
+}): React.ReactElement {
   const { t } = useTranslation();
   const latest = log[0];
+  const [draft, setDraft] = useState("");
+  const askRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "F2") return;
+      e.preventDefault();
+      askRef.current?.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   return (
     <div style={{ flexShrink: 0, background: "var(--agent)", color: "var(--agent-fg)" }}>
+      {said === null ? null : (
+        <div data-testid="desk-answer" style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "11px 18px", borderBottom: "1px solid #24413631" }}>
+          <span style={{ flexGrow: 1, fontSize: 12.5, lineHeight: "18px" }}>{said}</span>
+          <button onClick={onDismiss} aria-label={t("pharmacyDesk.ask.dismiss")} style={{ color: "var(--agent-dim)", fontSize: 15, lineHeight: "15px" }}>×</button>
+        </div>
+      )}
       <div style={{ display: "flex", alignItems: "center", gap: 13, height: 54, padding: "0 18px" }}>
         <span style={{ width: 8, height: 8, borderRadius: 99, background: "var(--mint)", flexShrink: 0 }} />
         <span className="tag" style={{ color: "var(--agent-dim)", flexShrink: 0 }}>{t("pharmacyDesk.dock")}</span>
@@ -457,6 +515,21 @@ function DeskDock({ log }: { log: readonly DeskLog[] }): React.ReactElement {
         >
           {latest === undefined ? t("pharmacyDesk.dockQuiet") : `${latest.at}  ${latest.text}`}
         </span>
+        <form
+          style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}
+          onSubmit={(e) => { e.preventDefault(); const q = draft.trim(); if (q !== "") { onAsk(q); setDraft(""); } }}
+        >
+          <input
+            ref={askRef}
+            aria-label={t("pharmacyDesk.ask.label")}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder={busy ? "…" : t("pharmacyDesk.ask.placeholder")}
+            autoComplete="off"
+            style={{ width: 290, height: 32, padding: "0 10px", borderRadius: 6, border: "1px solid #3a5a4e", background: "#0f2a22", color: "var(--agent-fg)", fontSize: 12.5 }}
+          />
+          <span className="kb" style={{ borderColor: "#3a5a4e", background: "transparent", color: "var(--agent-dim)" }}>F2</span>
+        </form>
       </div>
     </div>
   );

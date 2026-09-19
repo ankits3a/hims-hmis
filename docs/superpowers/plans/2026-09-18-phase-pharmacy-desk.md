@@ -167,14 +167,18 @@ refused verify moves no stock.
 - **C11** — the ticket header counts the open lines the books could read only in part (PD-D13).
 - **Walk finding, fixed:** a PAID ticket's rail read "take the money"; one stage holds money owed and
   money taken, so a billed ticket now reads "hand it over".
-- **C8 (F2 ask) — MEASURED: needs shared kernel files, so COORDINATION, not code, is next.** The copilot
-  merged (#239, `5957ef3f`) and a module may contribute TOOLS through its manifest (`copilotTools`),
-  but the INTENTS and their Hinglish cues are one closed table in `kernel/copilot/phrasebook.ts`, the
-  model's menu descriptions are hard-coded in `kernel/copilot/router.ts`, and answer keys are a closed
-  list in `packages/contracts/src/copilot.ts`. "kitni amoxicillin bachi hai" (stock by name), "kiska
-  paisa pending hai" (billed, not collected) and "ye batch kab expire hoga" need three new intents
-  there. Today's intents answer none of a pharmacist's questions, so an F2 box on the desk now would be
-  a box that does nothing — not drawn.
+- **C8 (F2 ask) — DONE, on the shared copilot (owner go-ahead 2026-09-19 for the kernel files).** Two
+  intents in `kernel/copilot/phrasebook.ts` + the model's menu (`router.ts`): `stock_on_shelf` ("kitni
+  amoxicillin bachi hai", "Pan 40 kab expire hoga") and `paid_not_collected` ("kiska paisa pending
+  hai"). Cues left out on purpose, each for the question it would steal: `bache` (children, patients),
+  `available` ("is the doctor available"), `how many`/`how much`, bare `left`. `CopilotToolCtx` gained
+  `question` (the MASKED question) because a medicine by name is no placeholder. The tools are the
+  pharmacy's (`copilot-tools.ts`, via the manifest's `copilotTools`), gated on `pharmacy.dispense.read`:
+  stock answers from `searchShelfAt` — the counters' own search, which now also finds a SALT by name or
+  alias when no product matches by name (closing PD-5b's known limit for retail, downtime and the desk)
+  — with the FEFO batch and its expiry; paid-not-collected lists every `billed` ticket by desk label
+  and the name the desk would show. The dock's ask box (`F2`) says an answer IN FULL above the bar; "ye
+  batch kab expire hoga" is answered from the ticket in hand and nothing is sent. Walked on the real API.
 
 ## 4. EDGE CASES
 
@@ -260,9 +264,9 @@ Numbered because each one owes a test. **F** = must fail first against the code 
   drug×disease twin of D9's allergy-recorded-after-issue, and the same answer: a severe
   contraindication nobody ruled on is not handed over. Hard duplicates need no such rule: they are
   same-prescription only, so a doctor-named pair was already met at issue. **F**
-  **Known limit, not fixed here:** the one shelf search (`searchShelfAt`, shared with retail and
-  downtime) matches brand, item code and item name — not the salt. "paracetamol" finds Calpol only if
-  an item's name says so. The sheet seeds the search from the doctor's words minus the dosage form
+  **Known limit — CLOSED by C8:** the one shelf search (`searchShelfAt`, shared with retail and
+  downtime) matched brand, item code and item name only; it now falls back to a salt by name or alias
+  when no product matches by name. "PCM" is still found only if the formulary records it as an alias. The sheet seeds the search from the doctor's words minus the dosage form
   (`Tab. Zincovit` → `Zincovit`); a salt match belongs to the search, for all three counters at once.
   **Walked (PD-5b), two defects past green suites:** (1) the seeded `PCM` search answered *"nothing
   matches — decline the line"* while Calpol stood on the shelf; the sentence now says the search reads

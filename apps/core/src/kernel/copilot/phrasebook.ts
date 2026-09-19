@@ -23,7 +23,7 @@
  */
 
 /** The tools a question can be routed to. `none` is the model's way of saying it recognised nothing. */
-export type CopilotIntent = "visit_status" | "queue_depth" | "patient_dues" | "my_day_report";
+export type CopilotIntent = "visit_status" | "queue_depth" | "patient_dues" | "my_day_report" | "stock_on_shelf" | "paid_not_collected";
 
 export type IntentMatch = {
   intent: CopilotIntent;
@@ -83,6 +83,28 @@ const CUES: Record<CopilotIntent, Cue[]> = {
     S("today's figures"), S("aaj ki report"), S("aaj ka hisaab"), S("दिन की रिपोर्ट"),
     S("kitne register"), S("day's figures"), S("end of day"),
     W("report"), W("aaj"), W("today"), W("figures"), W("summary"),
+  ],
+  /**
+   * PD-7 C8 — "kitni amoxicillin bachi hai", "Pan 40 kab expire hoga": a medicine BY NAME on the
+   * pharmacy shelf. The name itself is not a cue (it is the tool's subject, read from the question).
+   * Left out on purpose, each for a question it would have stolen: `bache` (also children, and
+   * patients still waiting), `available` ("is the doctor available"), `how many` / `how much`
+   * ("how many are waiting", "how much does he owe"), bare `left` ("patients left to see").
+   */
+  stock_on_shelf: [
+    S("stock"), S("in stock"), S("bachi"), S("bacha"), S("on the shelf"), S("shelf"), S("is left"), S("are left"),
+    S("expire"), S("expiry"), S("kab expire"), S("स्टॉक"), S("बची"), S("बचा"), S("एक्सपायर"),
+    W("kitni"), W("dawai"), W("medicine"), W("strip"), W("goli"), W("दवा"),
+  ],
+  /**
+   * PD-7 C8 — "kiska paisa pending hai" at the pharmacy: paid, and the medicines not yet collected
+   * (E25 — a paid ticket can stand uncollected). `pending` alone is weak on purpose: "<<P1>> ka
+   * paisa pending hai" is a question about ONE patient's dues and must stay `patient_dues`.
+   */
+  paid_not_collected: [
+    S("not collected"), S("uncollected"), S("collect nahi"), S("nahi le gaye"), S("le nahi gaye"),
+    S("nahi liya"), S("liya nahi"), S("paid but"), S("pickup"), S("kiska paisa pending"), S("waiting to collect"),
+    W("pending"), W("collect"), W("le gaye"),
   ],
 };
 
