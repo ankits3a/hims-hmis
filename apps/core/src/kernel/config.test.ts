@@ -179,3 +179,19 @@ describe("loadConfig — copilotChoice", () => {
     expect(() => loadConfig({ ...base, COPILOT_TYPESAFE_MIN_CONFIDENCE: "1.5" })).toThrow();
   });
 });
+
+/** 2026-09-19 — triage's first model (TypeSafe), the same B1 rule: nothing required, off without a key. */
+describe("loadConfig — triageChoice", () => {
+  it("resolves from an environment that names none of its keys, with the classifier switched off", () => {
+    expect(Object.keys(base).some((k) => k.startsWith("TRIAGE_TYPESAFE_"))).toBe(false);
+    expect(loadConfig(base).triageChoice).toEqual({
+      baseUrl: "https://api.typesafe.ai/v1", apiKey: null, model: "jev-1.13.0", timeoutMs: 1000, minConfidence: 0.6,
+    });
+  });
+
+  it("honours an override, and refuses a confidence that is not a probability", () => {
+    const cfg = loadConfig({ ...base, TRIAGE_TYPESAFE_API_KEY: "k", TRIAGE_TYPESAFE_MIN_CONFIDENCE: "0.7" });
+    expect(cfg.triageChoice).toMatchObject({ apiKey: "k", minConfidence: 0.7 });
+    expect(() => loadConfig({ ...base, TRIAGE_TYPESAFE_MIN_CONFIDENCE: "-1" })).toThrow();
+  });
+});

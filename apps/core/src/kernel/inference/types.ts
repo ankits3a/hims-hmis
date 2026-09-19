@@ -118,6 +118,11 @@ export type ChoiceAnswer = {
   choice: string;
   /** 0..1, the provider's own summary of how peaked its distribution was. */
   confidence: number;
+  /**
+   * The whole distribution, option key → 0..1, so a caller can RANK rather than only take the top
+   * (triage offers up to three departments). Every key is one the question offered.
+   */
+  probabilities: Record<string, number>;
 };
 
 export type ChooseResult = {

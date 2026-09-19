@@ -33,7 +33,9 @@ export type ChoiceConfig = {
   timeoutMs: number;
 };
 
-type WireAnswer = { choice?: unknown; confidence?: unknown };
+type WireAnswer = { choice?: unknown; confidence?: unknown; probabilities?: unknown };
+
+const isProbability = (x: unknown): x is number => typeof x === "number" && x >= 0 && x <= 1;
 type WireBody = { model?: unknown; answers?: Record<string, WireAnswer | undefined> };
 
 /** Build a client, or `null` when no key is configured — see `openAiCompatibleClient` for why null. */
@@ -75,10 +77,16 @@ export function typesafeClient(config: ChoiceConfig, fetchImpl: typeof fetch = f
           if (a === undefined || typeof a.choice !== "string" || !Object.hasOwn(q.options, a.choice)) {
             throw new InferenceUnavailable("provider_failed");
           }
-          if (typeof a.confidence !== "number" || !(a.confidence >= 0 && a.confidence <= 1)) {
-            throw new InferenceUnavailable("provider_failed");
+          if (!isProbability(a.confidence)) throw new InferenceUnavailable("provider_failed");
+          // The distribution is held to the same menu: no key we did not offer, no value that is not a probability.
+          const p = a.probabilities;
+          if (typeof p !== "object" || p === null) throw new InferenceUnavailable("provider_failed");
+          const probabilities: Record<string, number> = {};
+          for (const [key, value] of Object.entries(p)) {
+            if (!Object.hasOwn(q.options, key) || !isProbability(value)) throw new InferenceUnavailable("provider_failed");
+            probabilities[key] = value;
           }
-          answers[id] = { choice: a.choice, confidence: a.confidence };
+          answers[id] = { choice: a.choice, confidence: a.confidence, probabilities };
         }
         return { answers, model: typeof body.model === "string" ? body.model : config.model };
       } catch (e) {

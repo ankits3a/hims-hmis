@@ -1,6 +1,7 @@
 import { keywordRank, parseSuggestions, suggestDepartments } from "./triage";
 import { createTriageCache } from "./triage-cache";
 import type { TriageConfig, TriageDepartment } from "./triage";
+import type { ChoiceAnswer, ChoiceClient, ChooseInput } from "../../kernel/inference/types";
 
 /**
  * ═══ FD-8 — THE TRIAGE ADVISOR ═══
@@ -386,5 +387,141 @@ describe("triage — nothing that names the patient reaches the model", () => {
     const second = await suggestDepartments("Suresh ko bukhar", DEPTS, CONFIG, fetchImpl, cache, { ageYears: 40, names: ["Suresh"] });
     expect(bodies).toHaveLength(1);
     expect(second).toEqual(first);
+  });
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * 2026-09-19 — TYPESAFE FIRST, THE CHAT MODEL ITS FALLBACK
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner: *"keep typesafe as priority and the groq as fallback"*. Measured on `triage-eval.test.ts`'s
+ * own 46 complaints (author-labelled): TypeSafe alone 40/46 top-1, the chat model alone 44/46 — it
+ * knows "naak band" is ENT and TypeSafe does not. But TypeSafe KNOWS when it does not know: at
+ * confidence >= 0.6 it answered 38 and all 38 were right, and every one of its misses scored below
+ * the line. So it answers what it is sure of in ~280 ms, and hands the rest to the chat model.
+ */
+describe("suggestDepartments — TypeSafe first", () => {
+  type Chooser = { client: ChoiceClient; calls: ChooseInput[] };
+  const choosing = (answer: ChoiceAnswer | Error): Chooser => {
+    const calls: ChooseInput[] = [];
+    return {
+      calls,
+      client: {
+        choose: (input: ChooseInput) => {
+          calls.push(input);
+          return answer instanceof Error ? Promise.reject(answer) : Promise.resolve({ answers: { department: answer }, model: "jev-1.13.0" });
+        },
+      },
+    };
+  };
+  const sure = (choice: string, probabilities: Record<string, number>, confidence = 0.9): ChoiceAnswer => ({ choice, confidence, probabilities });
+
+  /** A chat model that records whether it was asked, and answers Cardiology if it is. */
+  function chat(): { fetchImpl: typeof fetch; asked: () => number } {
+    let n = 0;
+    const fetchImpl = (async () => {
+      n += 1;
+      return { ok: true, json: async () => ({ choices: [{ message: { content: '{"suggestions":[{"index":1,"reason":"heart"}]}' } }] }) };
+    }) as unknown as typeof fetch;
+    return { fetchImpl, asked: () => n };
+  }
+  const LINE = 0.6;
+
+  it("a confident choice ranks departments by probability, and the chat model is never asked", async () => {
+    const ts = choosing(sure("Orthopaedics", { Orthopaedics: 0.8, "General Medicine": 0.15, Cardiology: 0.03, Paediatrics: 0.02, "none of these": 0 }));
+    const groq = chat();
+    const out = await suggestDepartments("ghutne mein dard", DEPTS, CONFIG, groq.fetchImpl, createTriageCache(), { ageYears: 40 }, { client: ts.client, minConfidence: LINE });
+    expect(out.source).toBe("model");
+    expect(out.suggestions.map((s) => s.departmentId)).toEqual(["d-ortho", "d-gm"]);
+    expect(groq.asked()).toBe(0);
+  });
+
+  it("offers at most three, each at least a 10% chance, and never 'none of these'", async () => {
+    const ts = choosing(sure("General Medicine", { "General Medicine": 0.4, Paediatrics: 0.25, Cardiology: 0.12, Orthopaedics: 0.11, "none of these": 0.12 }, 0.7));
+    const out = await suggestDepartments("bukhar aur khansi", DEPTS, CONFIG, chat().fetchImpl, createTriageCache(), { ageYears: 40 }, { client: ts.client, minConfidence: LINE });
+    expect(out.suggestions.map((s) => s.departmentId)).toEqual(["d-gm", "d-paed", "d-card"]);
+  });
+
+  it("the reason a clerk could read is ours — a fixed description, never the model's words", async () => {
+    const ts = choosing(sure("Orthopaedics", { Orthopaedics: 0.95, "none of these": 0.05 }));
+    const out = await suggestDepartments("ghutne mein dard", DEPTS, CONFIG, chat().fetchImpl, createTriageCache(), { ageYears: 40 }, { client: ts.client, minConfidence: LINE });
+    expect(out.suggestions[0]?.reason).toBe("bones, joints, back, fractures, sprains");
+  });
+
+  it("below the line the chat model answers, exactly as it did before", async () => {
+    const ts = choosing(sure("General Medicine", { "General Medicine": 0.4, Cardiology: 0.35, "none of these": 0.25 }, 0.3));
+    const groq = chat();
+    const out = await suggestDepartments("dhadkan tez", DEPTS, CONFIG, groq.fetchImpl, createTriageCache(), { ageYears: 40 }, { client: ts.client, minConfidence: LINE });
+    expect(out.suggestions.map((s) => s.departmentId)).toEqual(["d-card"]);
+    expect(groq.asked()).toBe(1);
+  });
+
+  it("an unreachable TypeSafe costs nothing but the fallback", async () => {
+    const groq = chat();
+    const out = await suggestDepartments("dhadkan tez", DEPTS, CONFIG, groq.fetchImpl, createTriageCache(), { ageYears: 40 }, { client: choosing(new Error("timeout")).client, minConfidence: LINE });
+    expect(out.suggestions.map((s) => s.departmentId)).toEqual(["d-card"]);
+    expect(groq.asked()).toBe(1);
+  });
+
+  it("a confident 'none of these' is the keyword table's answer — the chat model is not asked to overrule it", async () => {
+    const ts = choosing(sure("none of these", { "none of these": 0.95, "General Medicine": 0.05 }));
+    const groq = chat();
+    const out = await suggestDepartments("bukhar", DEPTS, CONFIG, groq.fetchImpl, createTriageCache(), { ageYears: 40 }, { client: ts.client, minConfidence: LINE });
+    expect(out.source).toBe("keywords");
+    expect(out.suggestions.map((s) => s.departmentId)).toEqual(["d-gm", "d-paed"]);
+    expect(groq.asked()).toBe(0);
+  });
+
+  it("with TypeSafe alone, an unsure answer is the keyword table's", async () => {
+    const ts = choosing(sure("Cardiology", { Cardiology: 0.5, "General Medicine": 0.5 }, 0.2));
+    const out = await suggestDepartments("bukhar", DEPTS, { ...CONFIG, baseUrl: null, apiKey: null }, chat().fetchImpl, createTriageCache(), { ageYears: 40 }, { client: ts.client, minConfidence: LINE });
+    expect(out.source).toBe("keywords");
+    expect(out.suggestions.map((s) => s.departmentId)).toEqual(["d-gm", "d-paed"]);
+  });
+
+  it("sends the MASKED complaint, and every department plus 'none of these' as the options", async () => {
+    const depts = [...DEPTS, { id: "d-sleep", name: "Sleep Clinic" }];
+    const ts = choosing(sure("none of these", { "none of these": 1 }));
+    await suggestDepartments("Ramesh ko bukhar, 98765 43210", depts, CONFIG, chat().fetchImpl, createTriageCache(), { ageYears: 40, names: ["Ramesh Kumar"] }, { client: ts.client, minConfidence: LINE });
+    const sent = ts.calls[0];
+    expect(sent?.state).toEqual({ complaint: "<<P1>> ko bukhar, <<P2>>" });
+    expect(Object.keys(sent?.questions.department?.options ?? {})).toEqual([...depts.map((d) => d.name), "none of these"]);
+    // A department this hospital seeds carries a fixed description; one it invented carries none.
+    expect(sent?.questions.department?.options.Cardiology).toEqual(expect.any(String));
+    expect(sent?.questions.department?.options["Sleep Clinic"]).toBeNull();
+    expect(JSON.stringify(sent)).not.toMatch(/Ramesh|98765|43210/);
+  });
+
+  it("two departments with one name are still two options, each mapped back to its own id", async () => {
+    const depts = [{ id: "d-ent-a", name: "ENT" }, { id: "d-ent-b", name: "ENT" }, { id: "d-gm", name: "General Medicine" }];
+    const ts = choosing(sure("ENT #2", { "ENT #2": 0.9, ENT: 0.1 }));
+    const out = await suggestDepartments("kaan me dard", depts, CONFIG, chat().fetchImpl, createTriageCache(), { ageYears: 40 }, { client: ts.client, minConfidence: LINE });
+    expect(Object.keys(ts.calls[0]?.questions.department?.options ?? {})).toEqual(["ENT", "ENT #2", "General Medicine", "none of these"]);
+    expect(out.suggestions.map((s) => s.departmentId)).toEqual(["d-ent-b", "d-ent-a"]);
+  });
+
+  it("a red flag stops TypeSafe too — the brake runs before every model", async () => {
+    const ts = choosing(sure("Cardiology", { Cardiology: 1 }));
+    const out = await suggestDepartments("seene mein dard", ALL_DEPTS, CONFIG, chat().fetchImpl, createTriageCache(), { ageYears: 55 }, { client: ts.client, minConfidence: LINE });
+    expect(out.redFlag).toBeDefined();
+    expect(ts.calls).toHaveLength(0);
+  });
+
+  it("a TypeSafe answer is cached like any model answer", async () => {
+    const cache = createTriageCache();
+    const ts = choosing(sure("Orthopaedics", { Orthopaedics: 0.9, "none of these": 0.1 }));
+    await suggestDepartments("ghutne mein dard", DEPTS, CONFIG, chat().fetchImpl, cache, { ageYears: 40 }, { client: ts.client, minConfidence: LINE });
+    await suggestDepartments("ghutne mein dard", DEPTS, CONFIG, chat().fetchImpl, cache, { ageYears: 40 }, { client: ts.client, minConfidence: LINE });
+    expect(ts.calls).toHaveLength(1);
+  });
+
+  it("an identifier-shaped department list reaches neither model", async () => {
+    const ts = choosing(sure("General Medicine", { "General Medicine": 1 }));
+    const groq = chat();
+    const out = await suggestDepartments("bukhar", [...DEPTS, { id: "d-x", name: "Clinic 40012" }], CONFIG, groq.fetchImpl, createTriageCache(), { ageYears: 40 }, { client: ts.client, minConfidence: LINE });
+    expect(ts.calls).toHaveLength(0);
+    expect(groq.asked()).toBe(0);
+    expect(out.source).toBe("keywords");
   });
 });
