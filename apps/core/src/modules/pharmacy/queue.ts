@@ -11,6 +11,7 @@ import { dispenseQueued } from "./events";
 import { PharmacyError } from "./errors";
 import { shelfChecks } from "./precheck";
 import { getSaleItem } from "./sale-items";
+import { shelfLocationsFor } from "./shelf-locations";
 import type { ShelfCheck } from "./precheck";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -174,6 +175,8 @@ export type DispenseLineView = {
   dispensedMedicine: { id: string; brandName: string; strengthLabel: string | null; form: string; scheduleFlag: string | null } | null;
   item: { id: string; code: string; name: string; baseUom: string; uoms: UomRow[] } | null;
   saleable: boolean;
+  /** PD-D18 — where this item sits in the counter's store ("R-12"), or null when nobody has said. */
+  location: string | null;
   /** At the counter's store: on hand minus reserved minus frozen, in base units. `null` before the claim names a store. */
   available: number | null;
   batchId: string | null;
@@ -308,6 +311,8 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
   const transcribedBy = rxRow?.transcribedBy ?? null;
   const names = await userNames(db, [d.claimedBy, transcribedBy]);
   const openItems = lines.filter((l) => l.status === "open" && l.itemId !== null).map((l) => l.itemId as string);
+  /* PD-D18 — the shelf label for each item, in THIS dispense's store. */
+  const locations = d.storeResourceId === null || itemIds.length === 0 ? new Map<string, string>() : await shelfLocationsFor(db, d.storeResourceId, itemIds);
   const batchesByItem = d.storeResourceId === null || openItems.length === 0
     ? new Map<string, DispenseLineView["batches"]>()
     : await sellableBatchesByItem(db, d.storeResourceId, openItems, now);
@@ -343,7 +348,7 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
       orderedMedicine: om === undefined ? null : { id: om.id, brandName: om.brandName, strengthLabel: om.strengthLabel, form: om.form },
       dispensedMedicine: dm === undefined ? null : { id: dm.id, brandName: dm.brandName, strengthLabel: dm.strengthLabel, form: dm.form, scheduleFlag: dm.scheduleFlag },
       item: item === undefined ? null : { id: item.id, code: item.code, name: item.name, baseUom: item.baseUom, uoms },
-      saleable, available, batchId: l.batchId, reservationId: l.reservationId, ledgerEntryId: l.ledgerEntryId,
+      saleable, location: l.itemId === null ? null : (locations.get(l.itemId) ?? null), available, batchId: l.batchId, reservationId: l.reservationId, ledgerEntryId: l.ledgerEntryId,
       orderItemId: l.orderItemId, invoiceLineId: l.invoiceLineId, unitPaise: l.unitPaise, priceWinner: l.priceWinner,
       fefoOverride: l.fefoOverride, pickNote: l.pickNote,
       partlyChecked: (dm ?? om)?.salts.some((s) => unreviewed.has(s.saltId)) ?? false,

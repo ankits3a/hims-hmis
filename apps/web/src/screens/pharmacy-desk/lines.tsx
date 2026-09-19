@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { fetchPrecheck } from "../../lib/pharmacy-api";
+import { useAuth } from "../../lib/auth";
+import { fetchPrecheck, pharmacyErrorText, setShelfLocation } from "../../lib/pharmacy-api";
 import { ResolveSheet } from "./resolve";
 import { SubstituteSheet } from "./substitute";
 import { adviceFor, allSettled, blockedFor, canTick, freshTick, isPartial, isSettled, istToday, pickBody, placeable, qtyOf, sigOf, substitutable, verifyBody } from "./work";
@@ -38,6 +39,19 @@ export function LineList({
   const [resolving, setResolving] = useState<number | null>(null);
   const settleAfterDecline = useRef(false);
   const today = istToday();
+  /* PD-D18 — whoever manages what the counter sells says where it sits; the aide who picks reads it. */
+  const { can } = useAuth();
+  const canPlace = can("pharmacy.sale_items.manage") && dispense.storeResourceId !== null;
+  const qc = useQueryClient();
+  const place = async (itemId: string, location: string): Promise<string | null> => {
+    try {
+      await setShelfLocation(itemId, dispense.storeResourceId ?? "", location);
+      await qc.invalidateQueries({ queryKey: ["pharmacy", "dispense", dispense.id] });
+      return null;
+    } catch (e) {
+      return pharmacyErrorText(e, t);
+    }
+  };
   /* C3b — asked once per claimed ticket: what the check would refuse, said on the line before the tick. */
   const precheck = useQuery({
     queryKey: ["pharmacy", "precheck", dispense.id],
@@ -131,6 +145,7 @@ export function LineList({
             today={today}
             error={errors[l.lineIdx] ?? null}
             precheck={dispense.status === "claimed" ? precheck.data?.find((p) => p.lineIdx === l.lineIdx) : undefined}
+            onPlace={canPlace && l.item !== null ? (location) => place(l.item!.id, location) : null}
             declining={declining === l.lineIdx}
             onEdit={(patch, settle) => edit(l.lineIdx, patch, settle)}
             onToggleDecline={() => setDeclining((d) => (d === l.lineIdx ? null : l.lineIdx))}
@@ -175,7 +190,7 @@ export function LineList({
 }
 
 function LineRow({
-  line, tick, editable, busy, today, error, precheck, declining, onEdit, onToggleDecline, onDecline, onSubstitute, onResolve,
+  line, tick, editable, busy, today, error, precheck, onPlace, declining, onEdit, onToggleDecline, onDecline, onSubstitute, onResolve,
 }: {
   line: WireDispenseLine;
   tick: Tick | undefined;
@@ -184,6 +199,8 @@ function LineRow({
   today: string;
   error: string | null;
   precheck: WireLinePrecheck | undefined;
+  /** PD-D18 — set where this item sits; null for a reader who may not (answers an error sentence, or null). */
+  onPlace: ((location: string) => Promise<string | null>) | null;
   declining: boolean;
   onEdit: (patch: Partial<Tick>, settle: boolean) => void;
   onToggleDecline: () => void;
@@ -193,6 +210,14 @@ function LineRow({
 }): React.ReactElement {
   const { t } = useTranslation();
   const [why, setWhy] = useState("");
+  const [placing, setPlacing] = useState<string | null>(null);
+  const [placeError, setPlaceError] = useState<string | null>(null);
+  const savePlace = async (): Promise<void> => {
+    if (onPlace === null || placing === null) return;
+    const err = await onPlace(placing);
+    setPlaceError(err);
+    if (err === null) setPlacing(null);
+  };
   const rx = line.rxLine;
   const given = line.dispensedMedicine;
   const blocked = blockedFor(line, tick);
@@ -272,6 +297,33 @@ function LineRow({
               {line.partlyChecked === true ? <span className="pill gd">{t("pharmacyDesk.notChecked")}</span> : null}
             </span>
           )}
+
+          {/* PD-D18 — where to walk, beside the batch; the manager of the counter's items can say it in place. */}
+          {placing !== null ? (
+            <span style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 5 }}>
+              <input
+                className="in mo"
+                autoFocus
+                aria-label={t("pharmacyDesk.rack.input", { drug: given?.brandName ?? rx.drug })}
+                placeholder={t("pharmacyDesk.rack.placeholder")}
+                value={placing}
+                maxLength={24}
+                onChange={(e) => setPlacing(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void savePlace(); } }}
+                style={{ height: 28, width: 180, fontSize: 11.5 }}
+              />
+              <button className="sec" style={{ height: 26 }} onClick={() => { setPlacing(null); setPlaceError(null); }}>{t("pharmacyDesk.rack.cancel")}</button>
+            </span>
+          ) : line.location != null ? (
+            onPlace !== null && editable ? (
+              <button className="pill" data-testid={`desk-line-${String(line.lineIdx)}-where`} title={t("pharmacyDesk.rack.change")} onClick={() => setPlacing(line.location ?? "")} style={{ marginTop: 5 }}>
+                {line.location}
+              </button>
+            ) : <span className="pill" data-testid={`desk-line-${String(line.lineIdx)}-where`} style={{ marginTop: 5 }}>{line.location}</span>
+          ) : onPlace !== null && editable ? (
+            <button className="sec" style={{ height: 22, marginTop: 5, fontSize: 11 }} onClick={() => setPlacing("")}>{t("pharmacyDesk.rack.ask")}</button>
+          ) : null}
+          {placeError !== null ? <span role="alert" style={{ ...soft, background: "var(--red-soft)", color: "var(--red)" }}>{placeError}</span> : null}
 
           {line.pickedBatch != null ? (
             <span className="mo" style={{ display: "block", fontSize: 11.5, color: "var(--dim)", marginTop: 3 }} data-testid={`desk-line-${String(line.lineIdx)}-batch`}>

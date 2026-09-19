@@ -72,6 +72,11 @@ describe("the OPD dispense counter over HTTP (16c T5)", () => {
     // P13 — the scan check is the picker's, and a missing code is refused before anything is read.
     await as(fx.clerk.token)(request(server()).get("/pharmacy/dispenses/nope/lines/0/scan?code=8901234567897")).expect(403);
     await as(fx.aide.token)(request(server()).get("/pharmacy/dispenses/nope/lines/0/scan")).expect(400);
+    // PD-D18 — where an item sits is set by whoever manages what the counter sells; the aide reads it.
+    await as(fx.aide.token)(request(server()).put(`/pharmacy/sale-items/${fx.item.crocin}/location`).send({ storeResourceId: fx.storeId, location: "R-12" })).expect(403);
+    await as(fx.pharmacist.token)(request(server()).put(`/pharmacy/sale-items/${fx.item.crocin}/location`).send({ storeResourceId: fx.storeId, location: "R".repeat(25) })).expect(400);
+    const placed = await as(fx.pharmacist.token)(request(server()).put(`/pharmacy/sale-items/${fx.item.crocin}/location`).send({ storeResourceId: fx.storeId, location: " R-12 " })).expect(200);
+    expect(placed.body).toEqual({ location: "R-12" });
     // PD-5b — the shelf a line nobody placed may be read as: the counter's search, not the downtime clerk's.
     await as(fx.clerk.token)(request(server()).get("/pharmacy/dispenses/nope/lines/0/shelf?q=cal")).expect(403);
     await as(fx.aide.token)(request(server()).get("/pharmacy/dispenses/nope/lines/x/shelf?q=cal")).expect(400);

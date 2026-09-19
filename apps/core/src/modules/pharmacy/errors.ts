@@ -128,6 +128,9 @@ export const PHARMACY_ERROR_CODES = [
   "duplicate_block",
   /** A diagnosis the patient carries rules the medicine out and no prescriber ruled on it (a reading, or a code added after issue). */
   "drug_disease_block",
+  // ── PD-D18: where the drug is ──
+  /** A shelf label longer than the line can print (24 characters). */
+  "invalid_shelf_location",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -217,6 +220,7 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   unknown_pharmacist: 409,
   duplicate_block: 409,
   drug_disease_block: 409,
+  invalid_shelf_location: 400,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {
