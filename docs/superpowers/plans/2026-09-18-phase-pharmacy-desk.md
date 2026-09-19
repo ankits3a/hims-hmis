@@ -162,8 +162,10 @@ refused verify moves no stock.
   the tick; only a line with no duration escapes it. **Walk observation (E13), measured:** the desk
   polls the ticket in hand every 15 s and draws a cancelled one as cancelled with its reason, so once
   the worker's 60 s sweep cancels an expired pick the screen learns within ~75 s. The dev walk ran no
-  worker, so a draft read "they stay held until 13:43" at 13:51; in production the only gap is that
-  window, where the sentence names a time already past. Not fixed.
+  worker, so a draft read "they stay held until 13:43" at 13:51; in production the only gap was that
+  window, where the sentence named a time already past. **CLOSED:** `holdEnded` asks the desk's own
+  clock; an ended hold reads "The hold ended at 13:43 … cancels this ticket within a minute", and a
+  draft saved after it says only that the claim stays.
 - **C11** — the ticket header counts the open lines the books could read only in part (PD-D13).
 - **Walk finding, fixed:** a PAID ticket's rail read "take the money"; one stage holds money owed and
   money taken, so a billed ticket now reads "hand it over".

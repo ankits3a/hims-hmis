@@ -13,7 +13,7 @@ import {
 } from "../../lib/pharmacy-api";
 import { istClock, istDateLabel } from "../desk-one/model";
 import { heldByAnother, holdOf, stageOf } from "./model";
-import { BillRail, heldUntil, rupees } from "./bill";
+import { BillRail, heldUntil, holdEnded, rupees } from "./bill";
 import { say, useDeskLog } from "./log";
 import { Dossier, QueueOverlay, QueueRail } from "./rails";
 import { SlipSheet } from "./slip";
@@ -296,7 +296,8 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
   /* E27 — a draft keeps the claim and whatever is held; the sentence names the deadline. */
   const draft = useCallback((): void => {
     const until = heldUntil(ticket.data?.pickedAt ?? null);
-    say(until === null ? t("pharmacyDesk.log.draftClaimOnly") : t("pharmacyDesk.log.draftHeld", { time: until }), "warn");
+    /* E13 — a hold already over keeps nothing but the claim, and the log says only that. */
+    say(until === null || holdEnded(ticket.data?.pickedAt ?? null, new Date()) ? t("pharmacyDesk.log.draftClaimOnly") : t("pharmacyDesk.log.draftHeld", { time: until }), "warn");
     clearDesk();
   }, [clearDesk, t, ticket.data?.pickedAt]);
 
@@ -423,6 +424,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
               drawerOpen={drawer.isPending ? null : drawer.data?.session?.status === "open"}
               busy={busy}
               error={billError}
+              now={now}
               onTake={(tenders, change) => void takeMoney(tenders, change)}
               onDraft={draft}
               onOpenDrawer={() => void navigate({ to: "/billing/session" })}

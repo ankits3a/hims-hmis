@@ -3782,6 +3782,7 @@
       "receivedAmount": "Received {{amount}}",
       "draft": "Save draft",
       "heldUntil": "A draft keeps your claim and the strips you have pulled. They stay held until {{time}}, then go back on the shelf on their own.",
+      "holdEnded": "The hold ended at {{time}}. The counter puts the strips back and cancels this ticket within a minute — collect again if the patient is still here.",
       "stillOpen": "A line is still open. Tick it or decline it — then it is priced and the money can be taken.",
       "draftNothingHeld": "A draft keeps your claim. Nothing is held on the shelf until the lines are collected.",
       "networkRetry": "The connection dropped before the answer came back. Press again — it is the same payment, and it cannot be charged twice.",

@@ -62,13 +62,22 @@ export function heldUntil(pickedAt: string | null, minutes = 30): string | null 
     .format(new Date(Date.parse(pickedAt) + minutes * 60_000));
 }
 
+/**
+ * E13 — whether the hold `heldUntil` names has already run out, by the desk's own clock. The sweep
+ * that cancels the ticket runs every minute and the desk reads the ticket every fifteen seconds, so
+ * for up to ~75 s the screen would otherwise name a deadline already past as one still to come.
+ */
+export function holdEnded(pickedAt: string | null, now: Date, minutes = 30): boolean {
+  return pickedAt !== null && Date.parse(pickedAt) + minutes * 60_000 <= now.getTime();
+}
+
 function typingIn(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   return el !== null && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT");
 }
 
 export function BillRail({
-  dispense, preview, previewError, drawerOpen, busy, error, onTake, onDraft, onOpenDrawer,
+  dispense, preview, previewError, drawerOpen, busy, error, now, onTake, onDraft, onOpenDrawer,
 }: {
   dispense: WireDispense;
   preview: WirePricedDraft | null;
@@ -77,6 +86,8 @@ export function BillRail({
   drawerOpen: boolean | null;
   busy: boolean;
   error: string | null;
+  /** The desk's clock (it ticks every 15 s) — E13 asks it whether the hold has ended. */
+  now: Date;
   onTake: (tenders: Tender[], changePaise: number) => void;
   onDraft: () => void;
   onOpenDrawer: () => void;
@@ -114,6 +125,7 @@ export function BillRail({
   }, [canTake, collected, drawerOpen, onTake, plan]);
 
   const until = heldUntil(dispense.pickedAt);
+  const ended = dispense.status === "picked" && holdEnded(dispense.pickedAt, now);
 
   return (
     <aside
@@ -230,7 +242,8 @@ export function BillRail({
           )}
           {error !== null ? <p role="alert" style={{ margin: "8px 0 0 0", fontSize: 11.5, color: "var(--red)", lineHeight: "16px" }}>{error}</p> : null}
           <button className="sec" style={{ width: "100%", marginTop: 8 }} onClick={onDraft}>{t("pharmacyDesk.bill.draft")}</button>
-          {until !== null ? <p style={{ margin: "7px 0 0 0", fontSize: 10.5, color: "var(--dim)", lineHeight: "15px" }}>{t("pharmacyDesk.bill.heldUntil", { time: until })}</p> : null}
+          {until !== null && ended ? <p role="status" style={{ margin: "7px 0 0 0", fontSize: 10.5, color: "var(--gold)", lineHeight: "15px" }}>{t("pharmacyDesk.bill.holdEnded", { time: until })}</p> : null}
+          {until !== null && !ended ? <p style={{ margin: "7px 0 0 0", fontSize: 10.5, color: "var(--dim)", lineHeight: "15px" }}>{t("pharmacyDesk.bill.heldUntil", { time: until })}</p> : null}
         </div>
       ) : status === "claimed" || status === "verified" ? (
         <div style={{ padding: "12px 15px", borderTop: "1px solid var(--line)" }}>
