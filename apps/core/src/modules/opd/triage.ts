@@ -24,6 +24,8 @@
  */
 
 import { assertNoIdentifiers, maskQuestion } from "../../kernel/copilot/mask";
+import { chooseDepartments, departmentOptions } from "./triage-choice";
+import type { ChoiceClient } from "../../kernel/inference/types";
 import { defaultTriageCache, triageCacheKey } from "./triage-cache";
 import type { TriageCache } from "./triage-cache";
 
@@ -286,8 +288,14 @@ export function parseSuggestions(raw: string, departments: TriageDepartment[]): 
   return out;
 }
 
+/** TypeSafe, when configured, and the confidence it must reach before its answer is used. */
+export type TriageChoice = { client: ChoiceClient; minConfidence: number };
+
 /**
- * Ask the model, and fall back to the table on ANY failure.
+ * Ask the models, and fall back to the table on ANY failure.
+ *
+ * Two models in order (owner, 2026-09-19: "typesafe as priority and the groq as fallback") —
+ * `triage-choice.ts` carries the measurement. Either may be absent; both absent is the table alone.
  *
  * `fetchImpl` is injected so the tests drive every branch — success, timeout, refusal, garbage —
  * without a network. The real caller passes nothing.
@@ -299,6 +307,7 @@ export async function suggestDepartments(
   fetchImpl: typeof fetch = fetch,
   cache: TriageCache = defaultTriageCache,
   patient: TriagePatient = { ageYears: null },
+  choice: TriageChoice | null = null,
 ): Promise<TriageResult> {
   /*
     ═══ THE BRAKE RUNS FIRST, AND IT RETURNS BEFORE ANYTHING ELSE CAN ═══
@@ -323,7 +332,8 @@ export async function suggestDepartments(
   }
 
   const keywords = keywordRank(text, departments);
-  if (config.baseUrl === null || config.apiKey === null || text.trim() === "" || departments.length === 0) {
+  const chat = config.baseUrl !== null && config.apiKey !== null ? { ...config, baseUrl: config.baseUrl, apiKey: config.apiKey } : null;
+  if ((chat === null && choice === null) || text.trim() === "" || departments.length === 0) {
     return { suggestions: keywords, source: "keywords" };
   }
 
@@ -365,7 +375,7 @@ export async function suggestDepartments(
     return already;
   }
 
-  const pending = askModel(masked, departments, { ...config, baseUrl: config.baseUrl, apiKey: config.apiKey }, fetchImpl, keywords);
+  const pending = askModels(masked, departments, chat, choice, fetchImpl, keywords);
   cache.inflight.set(key, pending);
   try {
     const result = await pending;
@@ -394,7 +404,42 @@ function nameTerms(names: readonly string[]): string[] {
   return [...terms];
 }
 
-/** The call itself. Split out so `suggestDepartments` reads as the caching policy it now is. */
+/**
+ * TypeSafe first; the chat model when TypeSafe is unsure, unreachable or absent; the table when
+ * neither answers. Split out so `suggestDepartments` reads as the caching policy it is.
+ */
+async function askModels(
+  /** Already masked by the caller. */
+  masked: string,
+  departments: TriageDepartment[],
+  chat: (TriageConfig & { baseUrl: string; apiKey: string }) | null,
+  choice: TriageChoice | null,
+  fetchImpl: typeof fetch,
+  keywords: TriageSuggestion[],
+): Promise<TriageResult> {
+  const table: TriageResult = { suggestions: keywords, source: "keywords" };
+
+  if (choice !== null) {
+    /*
+      THE LAST GATE, on everything TypeSafe would be sent: the masked complaint and the options it
+      is offered. The same content would go to the chat model, so a refusal here refuses both.
+    */
+    try {
+      assertNoIdentifiers(JSON.stringify([masked, departmentOptions(departments).options]));
+    } catch {
+      return table;
+    }
+    const picked = await chooseDepartments(masked, departments, choice.client, choice.minConfidence);
+    // Sure it is none of our departments: the table's answer stands, and the chat model is not asked to overrule it.
+    if (picked === "none") return table;
+    if (picked !== "unsure") return { suggestions: picked, source: "model" };
+  }
+
+  if (chat === null) return table;
+  return askModel(masked, departments, chat, fetchImpl, keywords);
+}
+
+/** The chat model's call — TypeSafe's fallback since 2026-09-19, and triage's only model before it. */
 async function askModel(
   /** Already masked by the caller. The gate below checks rather than trusts that. */
   text: string,

@@ -50,7 +50,10 @@ describe("typesafeClient", () => {
   it("sends the pinned model, the state and each question as a choice over the offered options", async () => {
     const { fetchImpl, sent } = answering(200, GOOD);
     const out = await typesafeClient(CONFIG, fetchImpl)?.choose(INPUT);
-    expect(out).toEqual({ answers: { tool: { choice: "visit_status", confidence: 0.99 } }, model: "jev-1.13.0" });
+    expect(out).toEqual({
+      answers: { tool: { choice: "visit_status", confidence: 0.99, probabilities: { visit_status: 0.99, none: 0.01 } } },
+      model: "jev-1.13.0",
+    });
 
     expect(sent[0]?.url).toBe("https://api.typesafe.example/v1/systemone");
     expect((sent[0]?.init.headers as Record<string, string>).Authorization).toBe("Bearer k-test");
@@ -69,6 +72,17 @@ describe("typesafeClient", () => {
   it("refuses a confidence that is not a number between 0 and 1", async () => {
     for (const confidence of [1.5, -0.1, "high", null]) {
       const bad = { ...GOOD, answers: { tool: { ...GOOD.answers.tool, confidence } } };
+      expect(await reason(typesafeClient(CONFIG, answering(200, bad).fetchImpl)!.choose(INPUT))).toBe("provider_failed");
+    }
+  });
+
+  /*
+    Triage ranks up to three departments, so the whole distribution comes back — and it is held to
+    the same closed menu as the choice: a probability for an option we never offered is refused.
+  */
+  it("refuses probabilities that name an option it did not offer, or are not probabilities", async () => {
+    for (const probabilities of [{ visit_status: 0.9, delete_patient: 0.1 }, { visit_status: 1.2, none: 0 }, null]) {
+      const bad = { ...GOOD, answers: { tool: { ...GOOD.answers.tool, probabilities } } };
       expect(await reason(typesafeClient(CONFIG, answering(200, bad).fetchImpl)!.choose(INPUT))).toBe("provider_failed");
     }
   });
