@@ -108,3 +108,36 @@ describe("matchIntent — what it reports about itself", () => {
     expect(matchIntent("HAS <<P1>> BEEN SEEN BY DOCTOR???")?.intent).toBe("visit_status");
   });
 });
+
+/**
+ * PD-7 C8 — THE PHARMACY'S QUESTIONS. Each phrasing below is one a pharmacist says at the counter;
+ * the second block is the set of questions the new cues must NOT steal from the intents that had
+ * them first — which is how each ambiguous word was kept out of the table.
+ */
+describe("matchIntent — the pharmacy counter", () => {
+  it.each([
+    ["kitni amoxicillin bachi hai", "stock_on_shelf"],
+    ["Mox 500 ka stock kitna hai", "stock_on_shelf"],
+    ["how much crocin is left", "stock_on_shelf"],
+    ["is pan 40 in stock", "stock_on_shelf"],
+    ["pan 40 kab expire hoga", "stock_on_shelf"],
+    ["कितनी पैरासिटामोल बची है", "stock_on_shelf"],
+    ["kiska paisa pending hai", "paid_not_collected"],
+    ["who has paid but not collected", "paid_not_collected"],
+    ["kaun dawai le nahi gaye", "paid_not_collected"],
+  ])("routes %s", (question: string, intent: string) => {
+    expect(matchIntent(question)?.intent).toBe(intent);
+  });
+
+  it.each([
+    ["<<P1>> ka paisa pending hai", "patient_dues"],
+    ["how many are waiting", "queue_depth"],
+    ["how much does <<P1>> owe", "patient_dues"],
+  ])("leaves %s where it was", (question: string, intent: string) => {
+    expect(matchIntent(question)?.intent).toBe(intent);
+  });
+
+  it("does not answer 'is the doctor available' with a shelf", () => {
+    expect(matchIntent("is the doctor available")?.intent).not.toBe("stock_on_shelf");
+  });
+});

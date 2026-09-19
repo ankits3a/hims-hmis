@@ -59,6 +59,7 @@ import { OtCockpit } from "./screens/ot-cockpit";
 import { OtRecovery } from "./screens/ot-recovery";
 import { LabDesk } from "./screens/lab-desk";
 import { PharmacyCounter } from "./screens/pharmacy-counter";
+import { PharmacyDesk } from "./screens/pharmacy-desk/pharmacy-desk";
 import { PharmacyItems } from "./screens/pharmacy-items";
 import { PharmacyPharmacists } from "./screens/pharmacy-pharmacists";
 import { PharmacyReorder } from "./screens/pharmacy-reorder";
@@ -274,6 +275,8 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   { to: "/lab/reports", label: "nav.labReports", permission: "lab.reports.print", group: "opd" },
   // PLAN 16c T5 — the dispense counter beside the OPD stations it serves; sale items with the stores.
   { to: "/pharmacy/counter", label: "nav.pharmacyCounter", permission: "pharmacy.dispense.read", group: "opd" },
+  // PHASE PD — the pharmacy desk: one ticket in hand, one screen. Beside the counter until it replaces it (PD-D7).
+  { to: "/pharmacy/desk", label: "nav.pharmacyDesk", permission: "pharmacy.dispense.read", group: "opd" },
   { to: "/pharmacy/items", label: "nav.pharmacyItems", permission: "pharmacy.sale_items.manage", group: "stores" },
   // PHARMACY P2 — the register of pharmacists, beside the pharmacy's other master data.
   { to: "/pharmacy/pharmacists", label: "nav.pharmacyPharmacists", permission: "pharmacy.pharmacists.manage", group: "stores" },
@@ -848,6 +851,29 @@ const pharmacyCounterRoute = createRoute({
   component: PharmacyCounter,
 });
 
+/**
+ * PHASE PD — THE PHARMACY DESK (PD-3). Two paths, one screen: `/pharmacy/desk` with nobody in hand,
+ * and `/pharmacy/desk/<dispense id>` with a ticket in hand, so the owner's queue can open a ticket in
+ * a new tab and a reload keeps the patient at the window (PD-D7). Full viewport, as `/counter` is:
+ * `.d1` owns the screen. `/pharmacy/counter` stays until the desk replaces it, then redirects.
+ */
+const pharmacyDeskRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/desk",
+  staticData: { fullViewport: true },
+  component: function PharmacyDeskIdle() { return <PharmacyDesk ticketId={null} />; },
+});
+
+const pharmacyDeskTicketRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/desk/$ticketId",
+  staticData: { fullViewport: true },
+  component: function PharmacyDeskTicket() {
+    const { ticketId } = pharmacyDeskTicketRoute.useParams();
+    return <PharmacyDesk ticketId={ticketId} />;
+  },
+});
+
 const pharmacyItemsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/pharmacy/items",
@@ -1256,7 +1282,7 @@ export const router = createRouter({
       pcpndtFormFRoute, radiationSafetyRoute,
       // PLAN 16c T5 — 45 -> 47, the pharmacy: the dispense counter and the sale-items admin. TWO routes
       // and two NAV links. `caddyfile-parity.test.ts` pins the count and joins this task's Files list.
-      pharmacyCounterRoute, pharmacyItemsRoute, pharmacyPharmacistsRoute, pharmacyReorderRoute, pharmacyH1RegisterRoute, materialsCountsRoute, materialsTransfersRoute, pharmacyLeakageRoute,
+      pharmacyCounterRoute, pharmacyDeskRoute, pharmacyDeskTicketRoute, pharmacyItemsRoute, pharmacyPharmacistsRoute, pharmacyReorderRoute, pharmacyH1RegisterRoute, materialsCountsRoute, materialsTransfersRoute, pharmacyLeakageRoute,
       pharmacyRetailRoute, pharmacyRetailLicenceRoute, pharmacyDowntimeRoute,
       // PHASE 11i T9 — 50 -> 53, and every one of the three is a REDIRECT with no screen. They exist
       // because the catch-up deploy deletes three paths production has been serving since

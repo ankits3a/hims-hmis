@@ -282,6 +282,19 @@ export function putPatientPhoto(patientId: string, imageBase64: string): Promise
   return api("PUT", `/patients/${encodeURIComponent(patientId)}/photo`, { imageBase64 });
 }
 
+/** A slip or report photographed against a patient (FD, `/opd/slips`). `kind` is the server's vocabulary. */
+export type WirePatientDocument = {
+  id: string; encounterId: string | null; kind: string; mimeType: string; byteSize: number; note: string | null; capturedBy: string; capturedAt: string;
+};
+export async function listPatientDocuments(patientId: string): Promise<WirePatientDocument[]> {
+  const { items } = await api<{ items: WirePatientDocument[] }>("GET", `/patients/${patientId}/documents`);
+  return items;
+}
+/** The bytes. Opening one writes a PHI-access row against the reader, on the server. */
+export function getPatientDocument(documentId: string): Promise<{ mimeType: string; imageBase64: string }> {
+  return api("GET", `/patients/documents/${documentId}`);
+}
+
 export function getPatientPhoto(patientId: string): Promise<{ mimeType: string; imageBase64: string }> {
   return api("GET", `/patients/${encodeURIComponent(patientId)}/photo`);
 }

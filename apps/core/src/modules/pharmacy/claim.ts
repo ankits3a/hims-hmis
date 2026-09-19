@@ -11,21 +11,21 @@ import { getPatientSummaries, searchPatients, verifyQrScan } from "../patients";
 import { OPD_PHARMACY_STORE_CODE, REFUSED_FLAGS, SCHEDULED_FLAGS, istDateOf } from "./config";
 import { dispenseClaimed } from "./events";
 import { PharmacyError } from "./errors";
-import { enqueueDispense, getDispense, getDispenseRow, liveDispenseFor } from "./queue";
+import { enqueueDispense, getDispense, getDispenseRow, liveDispenseFor, userNames } from "./queue";
 import { prefillQtyBase } from "./qty";
 import { PHARMACY_DISPENSE_DEF_KEY } from "./workflow-def";
 import type { Actor } from "@hmis/contracts";
 import type { AppConfig } from "../../kernel/config";
-import type { Db } from "../../kernel/db/client";
+import type { Db, Tx } from "../../kernel/db/client";
 import type { PrescriptionRow, RxLine } from "../opd";
-import type { DispenseView } from "./queue";
+import type { DispenseRow, DispenseView } from "./queue";
 
 export type CounterDoor = "rx_qr" | "patient_qr" | "token" | "uhid";
 
 export type FindResult =
   | { kind: "dispense"; door: CounterDoor; dispense: DispenseView }
   | { kind: "patients"; door: "uhid"; patients: { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean }[] }
-  | { kind: "none"; door: CounterDoor; reason: "not_found" | "qr_invalid" | "no_prescription_today" };
+  | { kind: "none"; door: CounterDoor; reason: "not_found" | "qr_invalid" | "no_prescription_today" | "restricted" };
 
 /**
  * PLAN 16c D4 — ONE FIELD, THREE DOORS (17c D4's shape). What the pharmacist types or scans decides
@@ -47,7 +47,12 @@ export async function findAtCounter(db: Db, cfg: AppConfig, actor: Actor, q: str
     const v = await verifyPrescriptionQr(db, cfg, actor, text);
     if (!v.ok) return { kind: "none", door: "rx_qr", reason: "qr_invalid" };
     const rx = await getPrescription(db, actor, v.prescription.id);
-    if (rx === null) return { kind: "none", door: "rx_qr", reason: "not_found" };
+    /*
+      PD-3 / E3b — the signature has just proved this prescription exists, so a null from the
+      reader's own read has one meaning: a sealed patient this pharmacist may not open. The patient
+      is at the window holding the slip; "not found" would send them away with a real prescription.
+    */
+    if (rx === null) return { kind: "none", door: "rx_qr", reason: "restricted" };
     return { kind: "dispense", door: "rx_qr", dispense: await ensureQueued(db, actor, rx, now) };
   }
 
@@ -115,6 +120,18 @@ async function ensureQueued(db: Db, actor: Actor, rx: PrescriptionRow, now: Date
  * Before any line is written: a prescription carrying an X line cannot be dispensed at this counter
  * at all in 16c, and the pharmacist is told which line and why rather than finding out at hand-over.
  */
+/**
+ * PD-1 / E1 — the refusal a second pharmacist meets, and it says WHO. Read at the moment of refusal:
+ * the loser of a race learns the winner, which the list they clicked from could not yet show.
+ */
+async function notQueued(db: Db | Tx, d: DispenseRow): Promise<PharmacyError> {
+  const claimedByName = d.claimedBy === null ? null : ((await userNames(db, [d.claimedBy])).get(d.claimedBy) ?? null);
+  const who = d.status === "claimed" && claimedByName !== null ? ` by ${claimedByName}` : "";
+  return new PharmacyError("dispense_not_in_state", `dispense ${d.id} is ${d.status}${who}, not queued`, {
+    status: d.status, claimedBy: d.claimedBy, claimedByName,
+  });
+}
+
 export async function claimDispense(
   db: Db,
   actor: Actor,
@@ -122,9 +139,22 @@ export async function claimDispense(
   now: Date,
 ): Promise<DispenseView> {
   const d = await getDispenseRow(db, input.dispenseId);
-  if (d.status !== "queued") throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} is ${d.status}, not queued`, { status: d.status });
+  if (d.status !== "queued") throw await notQueued(db, d);
   const rx = await getPrescription(db, actor, d.prescriptionId);
-  if (rx === null) throw new PharmacyError("unknown_prescription", `prescription ${d.prescriptionId} not found`);
+  /*
+    PD-1 — NOT "not found". `pharmacy_dispenses.prescription_id` is a foreign key, so the row EXISTS;
+    `getPrescription` answers null only because this reader may not see the patient — a sealed record
+    and neither `patients.confidential.read` nor break-glass. The ticket is on this pharmacist's own
+    list under the alias, so "no such prescription" was a false sentence about a real one. The grant
+    is not widened here; the refusal says who can take it.
+  */
+  if (rx === null) {
+    throw new PharmacyError(
+      "permission_denied",
+      "this ticket is a sealed record — a pharmacist who may read sealed records, or break-glass, must take it",
+      { reason: "patient_restricted" },
+    );
+  }
   if (rx.status !== "active") {
     await withTx(db, (tx) => tx.update(pharmacyDispenses)
       .set({ status: "cancelled", cancelledBy: actor.id, cancelledAt: now, cancelReason: "prescription superseded" })
@@ -179,7 +209,7 @@ export async function claimDispense(
       .set({ status: "claimed", claimedBy: actor.id, claimedAt: now, storeResourceId: store.id, scheduled })
       .where(and(eq(pharmacyDispenses.id, d.id), eq(pharmacyDispenses.status, "queued")))
       .returning({ id: pharmacyDispenses.id });
-    if (won.length === 0) throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} was claimed by another counter`, { status: "claimed" });
+    if (won.length === 0) throw await notQueued(tx, await getDispenseRow(tx, d.id));
     await tx.insert(pharmacyDispenseLines).values(laid);
     const { instanceId } = await startInstance(tx, PHARMACY_DISPENSE_DEF_KEY, { type: "pharmacy_dispense", id: d.id, patientId: d.patientId, encounterId: d.encounterId });
     await transition(tx, instanceId, "claimed", actor);

@@ -143,6 +143,7 @@ export class CopilotController {
       */
       subject: routed.slot === null ? null : rehydrate(routed.slot, slots),
       serviceDate,
+      question: masked,
     };
 
     const answer = await runTool(tool, ctx, permissionCheckFor(ctx));

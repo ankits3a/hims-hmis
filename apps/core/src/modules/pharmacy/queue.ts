@@ -1,15 +1,17 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
-import { opdPrescriptions, pharmacyDispenseLines, pharmacyDispenses } from "../../kernel/db/schema";
+import { opdPrescriptions, pharmacyDispenseLines, pharmacyDispenses, users } from "../../kernel/db/schema";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { withTx } from "../../kernel/db/client";
 import { medicinesByIds, unreviewedSaltIds } from "../formulary";
-import { availableQty, itemsByIds, itemUomRows } from "../materials";
+import { availableQty, getBatch, itemsByIds, itemUomRows, sellableBatchesByItem } from "../materials";
 import { getPatient, getPatientSummaries, listAllergies } from "../patients";
 import { dispenseQueued } from "./events";
 import { PharmacyError } from "./errors";
+import { shelfChecks } from "./precheck";
 import { getSaleItem } from "./sale-items";
+import type { ShelfCheck } from "./precheck";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { RxLine } from "../opd";
@@ -94,10 +96,32 @@ export type QueueRow = {
   transcribedBy: string | null;
   /** Set once a pharmacist has cross-confirmed the slip. `billDispense` refuses while it is null. */
   slipConfirmedBy: string | null;
+  /**
+   * ═══ PD-1 / PD-D9 — A CLAIMED TICKET NAMES ITS HOLDER ═══
+   *
+   * The claim is exclusive and always was; what was missing is that every OTHER pharmacist learnt
+   * so only by being refused. The row stays on their list — the owner wants it seen and marked, not
+   * hidden — and says whose it is, so "Vikas has this" is read off the list rather than off a 409.
+   */
+  claimedBy: string | null;
+  claimedByName: string | null;
+  /**
+   * PD-7 / C1 — for a WAITING ticket, what the shelf can do with it before anybody claims it
+   * (`precheck.ts`). Null once claimed: the ticket's own lines are the truth from then on.
+   */
+  shelf: ShelfCheck | null;
 };
 
+/** Full names for a set of user ids — the `leakage.ts` read, one query for a page. */
+export async function userNames(db: Db | Tx, ids: readonly (string | null)[]): Promise<Map<string, string>> {
+  const wanted = [...new Set(ids.filter((id): id is string => id !== null))];
+  if (wanted.length === 0) return new Map();
+  const rows = await db.select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, wanted));
+  return new Map(rows.map((u) => [u.id, u.fullName]));
+}
+
 /** The counter's portal list: today's dispenses that are not finished, oldest first. Names are alias-safe. */
-export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: string }): Promise<QueueRow[]> {
+export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: string }, now: Date = new Date()): Promise<QueueRow[]> {
   const rows = await db.select().from(pharmacyDispenses)
     .where(and(
       sql`(${pharmacyDispenses.createdAt} at time zone 'Asia/Kolkata')::date = ${filter.serviceDate}::date`,
@@ -118,6 +142,8 @@ export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: str
   const transcribedByRx = new Map(rxRows.map((r) => [r.id, r.transcribedBy]));
   const summaries = await getPatientSummaries(db, actor, rows.map((r) => r.patientId));
   const byRequested = new Map(summaries.map((s) => [s.requestedId, s]));
+  const holders = await userNames(db, rows.map((r) => r.claimedBy));
+  const checks = await shelfChecks(db, rows.filter((r) => r.status === "queued").map((r) => ({ dispenseId: r.id, prescriptionId: r.prescriptionId })), now);
   const out: QueueRow[] = [];
   for (const r of rows) {
     const s = byRequested.get(r.patientId);
@@ -128,6 +154,9 @@ export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: str
       patient: { id: s.id, uhid: s.uhid, name: s.name, alias: s.alias, restricted: s.restricted },
       transcribedBy: transcribedByRx.get(r.prescriptionId) ?? null,
       slipConfirmedBy: r.slipConfirmedBy,
+      claimedBy: r.claimedBy,
+      claimedByName: r.claimedBy === null ? null : (holders.get(r.claimedBy) ?? null),
+      shelf: checks.get(r.id) ?? null,
     });
   }
   return out;
@@ -163,7 +192,17 @@ export type DispenseLineView = {
    * formulary's one predicate (`unreviewedSaltIds`), so it clears the moment the substance is decided.
    */
   partlyChecked: boolean;
+  /**
+   * PD-4 / PD-D3 / E8 — the batches the pick would draw from, earliest expiry first, while the line
+   * is still OPEN. The right column of the desk shows the batch the pharmacist will give and warns
+   * at the TICK — where another batch can still be chosen — when it dies inside the course, rather
+   * than at the hand-over, where it is a refund. `availableQty`'s predicate, one definition.
+   */
+  batches: { batchId: string; batchNo: string; expiryDate: string | null; available: number }[];
+  /** PD-4 — once picked, the batch the line was GIVEN from, which the desk prints beside it. */
+  pickedBatch: { batchNo: string; expiryDate: string | null } | null;
 };
+
 
 export type DispenseView = {
   id: string;
@@ -183,6 +222,17 @@ export type DispenseView = {
   billedAt: Date | null;
   handedOverAt: Date | null;
   cancelReason: string | null;
+  /** PD-1 — who holds it, so a pharmacist who opens somebody else's ticket is told whose it is. */
+  claimedBy: string | null;
+  claimedByName: string | null;
+  /**
+   * PD-8 / E28 — typed from the doctor's paper (FD-31), by whom, and whether a pharmacist has
+   * cross-confirmed the slip. The queue row carried these; the ticket did not, so the desk could
+   * only learn the slip was owed from `billDispense`'s refusal — at the till, the worst moment.
+   */
+  transcribedBy: string | null;
+  transcribedByName: string | null;
+  slipConfirmedBy: string | null;
   patient: { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean };
   allergies: { substance: string; severity: string | null }[];
   lines: DispenseLineView[];
@@ -254,11 +304,19 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
   const itemIds = [...new Set(lines.map((l) => l.itemId).filter((x): x is string => x !== null))];
   const items = itemIds.length === 0 ? new Map() : await itemsByIds(db, itemIds);
   const allergies = await listAllergies(db, d.patientId);
+  const [rxRow] = await db.select({ transcribedBy: opdPrescriptions.transcribedBy }).from(opdPrescriptions).where(eq(opdPrescriptions.id, d.prescriptionId));
+  const transcribedBy = rxRow?.transcribedBy ?? null;
+  const names = await userNames(db, [d.claimedBy, transcribedBy]);
+  const openItems = lines.filter((l) => l.status === "open" && l.itemId !== null).map((l) => l.itemId as string);
+  const batchesByItem = d.storeResourceId === null || openItems.length === 0
+    ? new Map<string, DispenseLineView["batches"]>()
+    : await sellableBatchesByItem(db, d.storeResourceId, openItems, now);
   const views: DispenseLineView[] = [];
   for (const l of lines) {
     const om = l.orderedMedicineId === null ? undefined : medicines.get(l.orderedMedicineId);
     const dm = l.dispensedMedicineId === null ? undefined : medicines.get(l.dispensedMedicineId);
     const item = l.itemId === null ? undefined : items.get(l.itemId);
+    const picked = l.batchId === null ? undefined : await getBatch(db, l.batchId);
     let uoms: UomRow[] = [];
     let saleable = false;
     let available: number | null = null;
@@ -289,6 +347,8 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
       orderItemId: l.orderItemId, invoiceLineId: l.invoiceLineId, unitPaise: l.unitPaise, priceWinner: l.priceWinner,
       fefoOverride: l.fefoOverride, pickNote: l.pickNote,
       partlyChecked: (dm ?? om)?.salts.some((s) => unreviewed.has(s.saltId)) ?? false,
+      batches: l.status === "open" && l.itemId !== null && l.batchId === null ? (batchesByItem.get(l.itemId) ?? []) : [],
+      pickedBatch: picked === undefined ? null : { batchNo: picked.batchNo, expiryDate: picked.expiryDate },
     });
   }
   return {
@@ -296,6 +356,11 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
     prescriptionVersion: d.prescriptionVersion, encounterId: d.encounterId, storeResourceId: d.storeResourceId,
     scheduled: d.scheduled, invoiceId: d.invoiceId, identityConfirmedVia: d.identityConfirmedVia,
     claimedAt: d.claimedAt, verifiedAt: d.verifiedAt, pickedAt: d.pickedAt, billedAt: d.billedAt, handedOverAt: d.handedOverAt,
+    claimedBy: d.claimedBy,
+    claimedByName: names.get(d.claimedBy ?? "") ?? null,
+    transcribedBy,
+    transcribedByName: names.get(transcribedBy ?? "") ?? null,
+    slipConfirmedBy: d.slipConfirmedBy,
     cancelReason: d.cancelReason,
     patient: { id: summary.id, uhid: summary.uhid, name: summary.name, alias: summary.alias, restricted: summary.restricted },
     allergies: allergies.map((a) => ({ substance: a.substance, severity: (a as { severity?: string | null }).severity ?? null })),

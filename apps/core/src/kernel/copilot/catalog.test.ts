@@ -86,6 +86,7 @@ const ctx = (over: Partial<CopilotToolCtx> = {}): CopilotToolCtx => ({
   actor: { type: "user", id: "u1" } as CopilotToolCtx["actor"],
   subject: null,
   serviceDate: "2026-09-17",
+  question: "",
   ...over,
 });
 

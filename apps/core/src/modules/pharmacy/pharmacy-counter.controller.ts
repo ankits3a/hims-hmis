@@ -13,7 +13,7 @@ import { handOverDispense } from "./handover";
 import { labelFor } from "./label";
 import { pickDispense } from "./pick";
 import { checkPickScan } from "./scan";
-import { alternativesFor, cancelDispense, declineLine, verifyDispense } from "./verify";
+import { cancelDispense, checkedAlternativesFor, declineLine, placementsFor, precheckTicket, verifyDispense } from "./verify";
 import { cancelBilledDispense } from "./refund";
 import { reorderAdvice } from "./replenishment";
 import { acceptReturn } from "./returns";
@@ -32,7 +32,8 @@ import type { Db } from "../../kernel/db/client";
 import type { ModuleRegistry } from "../../kernel/modules/loader";
 import type { FindResult } from "./claim";
 import type { DispenseView, QueueRow } from "./queue";
-import type { Alternative } from "./verify";
+import type { CheckedAlternative, LinePrecheck } from "./verify";
+import type { RetailShelfEntry } from "./retail";
 import type { PricedDraft } from "../billing";
 import type { LabelData } from "./label";
 
@@ -127,11 +128,39 @@ export class PharmacyCounterController {
     }
   }
 
+  /** PD-7 C3 — each equivalent comes back already put to this patient's check (`checkedAlternativesFor`). */
   @RequirePermission("pharmacy.dispense.read", "hospital")
   @Get("dispenses/:id/lines/:idx/alternatives")
-  async alternatives(@Param("id") id: string, @Param("idx") idx: string): Promise<{ items: Alternative[] }> {
+  async alternatives(@CurrentActor() actor: Actor, @Param("id") id: string, @Param("idx") idx: string): Promise<{ items: CheckedAlternative[] }> {
     try {
-      return { items: await alternativesFor(this.db, id, Number(idx)) };
+      return { items: await checkedAlternativesFor(this.db, actor, id, Number(idx), new Date()) };
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** C3b — the ticket's own lines, put to the check before anyone walks to the shelf (`precheckTicket`). */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("dispenses/:id/precheck")
+  async precheck(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ lines: LinePrecheck[] }> {
+    try {
+      return await precheckTicket(this.db, actor, id, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * PD-5b — what a line the catalogue could not place may be read as. The counter's own permission,
+   * not the downtime clerk's (`/pharmacy/downtime/shelf`): the search is part of working a ticket,
+   * and the act that places the line is still verify's, by a registered pharmacist.
+   */
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Get("dispenses/:id/lines/:idx/shelf")
+  async shelf(@Param("id") id: string, @Param("idx") idx: string, @Query("q") q?: string): Promise<{ items: RetailShelfEntry[] }> {
+    const input = parsed(z.object({ idx: z.coerce.number().int().nonnegative(), q: z.string().max(200).default("") }), { idx, q });
+    try {
+      return { items: await placementsFor(this.db, id, input.idx, input.q, new Date()) };
     } catch (e) {
       return toHttp(e);
     }

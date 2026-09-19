@@ -72,6 +72,13 @@ export type CopilotToolCtx = {
   subject: string | null;
   /** IST service date the question is about. Today unless the operator said otherwise. */
   serviceDate: string;
+  /**
+   * PD-7 C8 — the question AS MASKED: every identifier already a placeholder. For a tool whose
+   * subject is a THING rather than a person — a medicine by name — which no placeholder carries.
+   * A tool reads words from it and never tries to reverse a placeholder; the model never sees it
+   * from here (the model's copy went out, and came back as a tool name, before any tool ran).
+   */
+  question: string;
 };
 
 /**

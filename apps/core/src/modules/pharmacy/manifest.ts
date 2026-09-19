@@ -1,4 +1,5 @@
 import { PHARMACY_RX_ISSUED_CONSUMER } from "./consumers";
+import { pharmacyCopilotTools } from "./copilot-tools";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
 /**
@@ -25,6 +26,8 @@ export const pharmacyManifest: ModuleManifest = {
   title: "Pharmacy",
   menu: [
     { label: "Dispense counter", path: "/pharmacy/counter", permission: "pharmacy.dispense.read" },
+    /** PHASE PD — the pharmacy desk, beside the counter until it replaces it (PD-D7). */
+    { label: "Pharmacy desk", path: "/pharmacy/desk", permission: "pharmacy.dispense.read" },
     { label: "Sale items", path: "/pharmacy/items", permission: "pharmacy.sale_items.manage" },
     { label: "Pharmacists", path: "/pharmacy/pharmacists", permission: "pharmacy.pharmacists.manage" },
     { label: "Reorder list", path: "/pharmacy/reorder", permission: "pharmacy.dispense.read" },
@@ -82,4 +85,6 @@ export const pharmacyManifest: ModuleManifest = {
       selfOrderable: false,
     },
   ],
+  /** PD-7 C8 — the desk's F2: stock by name, and paid-not-collected (`copilot-tools.ts`). */
+  copilotTools: pharmacyCopilotTools,
 };
