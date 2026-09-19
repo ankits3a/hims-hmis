@@ -3805,12 +3805,23 @@
       "onShelf": "{{n}} on the shelf",
       "consent": "I told the patient it is a different brand of the same medicine, and they agreed.",
       "consentWhy": "The server will not record a generic substitution without this — it is the patient's consent, not a formality.",
-      "checkedAtVerify": "Allergies and interactions are checked again on the substitute when the prescription is checked; a clash stops it there.",
+      "checkedAtVerify": "Each one was just checked against this patient's allergies, interactions and diagnoses. The check runs again when the prescription is checked, and a clash stops it there.",
       "put": "Put it on the ticket",
       "putNamed": "Put {{brand}} on the ticket",
       "cancel": "Cancel",
       "insteadOf": "instead of {{brand}}",
       "undo": "undo",
+      "check": {
+        "clear": "clear for this patient",
+        "not_checked": "the books could not read all of it — not a clear result",
+        "blocked": "stopped by the check: {{why}}"
+      },
+      "book": {
+        "allergy": "allergy",
+        "interaction": "severe interaction",
+        "duplicate": "already prescribed",
+        "drug_disease": "ruled out by"
+      },
       "open": "give an equivalent"
     },
     "res": {

@@ -134,6 +134,18 @@ Each names the reader it needs. Nine of the eleven need no new server work.
 | C10 | **Composes the hand-over sentence** in Devanagari from the sig lines, for the pharmacist to say aloud. | SUGGESTS | `RxLine` + phrasebook |
 | C11 | **Names what was not checked.** Counts the lines whose salts have no attested moiety and says so on the ticket, because silence there reads as a clean result. | DID (states) | `isReviewedComponent` |
 
+**C3 DONE (PD-7), measured and cut:** every equivalent comes back put to THIS patient's four books
+with the line swapped to it, judged by `refusalsOf` — the one function `verify` now refuses with — so
+a blocked row names its book and cannot be chosen, and a partly-read one is never drawn clear.
+*Measured:* an equivalent has the same salt set by construction, so its verdict is almost always the
+original line's; the run stays per alternative because the allergy book also matches brand names.
+*DEFERRED to C7:* the price difference per strip. The bill's price is billing's
+`min(batch MRP, ceiling, contract)` decided at the bill; the rail already says the desk does no price
+arithmetic; an out-of-stock original — the usual reason to substitute — has no batch to compare.
+*Walked, and next:* Vijay's Mox line (allergy recorded after issue) shows nothing ON THE LINE until
+the tick fires verify. `refusalsOf` can pre-check the ticket's own lines at the claim the same way —
+the line would say "the check will stop this" before anyone walks to the shelf. Not built here.
+
 ## 4. EDGE CASES
 
 Numbered because each one owes a test. **F** = must fail first against the code it guards.
@@ -185,6 +197,7 @@ Numbered because each one owes a test. **F** = must fail first against the code 
 
 ### Clinical
 - **E14** A substitute trips allergy or a severe interaction → PD-D12's authorisation, not a wall.
+  (C3: the sheet now says so BEFORE the choice — the row is blocked and names the book.)
 - **E15** A salt with no attested moiety → "not checked", never a green tick (PD-D13). **F**
 - **E16** `rxLine.noSubstitution` → the substitute control is disabled AND says why.
 - **E17** Schedule X → refused at claim, at verify and at hand-over, and never offered as an

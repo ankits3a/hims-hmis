@@ -45,9 +45,10 @@ function dispense(status: string, lines: WireDispenseLine[]): WireDispense {
     patient: { id: "p", uhid: "U003", name: "Shanti Devi", alias: null, restricted: false }, allergies: [], lines,
   };
 }
+const CLEAR = { verdict: "clear", blocks: [] };
 const ALTS = [
-  { medicineId: "m-amlodac", brandName: "Amlodac 5", strengthLabel: "5 mg", form: "tablet", itemId: "it-ad", itemCode: "AMLD005", available: 120 },
-  { medicineId: "m-amlopres", brandName: "Amlopres 5", strengthLabel: "5 mg", form: "tablet", itemId: "it-ap", itemCode: "AMLP005", available: 0 },
+  { medicineId: "m-amlodac", brandName: "Amlodac 5", strengthLabel: "5 mg", form: "tablet", itemId: "it-ad", itemCode: "AMLD005", available: 120, check: CLEAR },
+  { medicineId: "m-amlopres", brandName: "Amlopres 5", strengthLabel: "5 mg", form: "tablet", itemId: "it-ap", itemCode: "AMLP005", available: 0, check: CLEAR },
 ];
 const base = (current: () => WireDispense, extra: Record<string, Handler> = {}): Record<string, Handler> => ({
   "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: ME } } },
@@ -122,6 +123,26 @@ describe("give something else for this line (PD-5)", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(navigate).not.toHaveBeenCalled();
     expect(screen.getByTestId("desk-ticket")).toBeInTheDocument();
+  });
+
+  it("C3 — each equivalent says what this patient's check makes of it; a blocked one cannot be put on the ticket", async () => {
+    mockRoutes(base(() => dispense("claimed", [amlongLine()]), {
+      "GET /api/pharmacy/dispenses/d1/lines/0/alternatives": { status: 200, body: { items: [
+        { ...ALTS[0], check: { verdict: "blocked", blocks: [{ book: "allergy", about: "Amlodipine" }, { book: "drug_disease", about: "Hepatic failure" }] } },
+        { ...ALTS[1], available: 40, medicineId: "m-amlopres", check: { verdict: "not_checked", blocks: [] } },
+        { medicineId: "m-stamlo", brandName: "Stamlo 5", strengthLabel: "5 mg", form: "tablet", itemId: "it-st", itemCode: "STAM005", available: 60, check: CLEAR },
+      ] } },
+    }));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const row = await screen.findByTestId("desk-line-0");
+    await userEvent.click(within(row).getByRole("button", { name: "give an equivalent" }));
+    const sheet = await screen.findByRole("dialog");
+    const blocked = await within(sheet).findByRole("radio", { name: /Amlodac 5/ });
+    expect(blocked).toBeDisabled();
+    expect(blocked.closest("label")).toHaveTextContent("stopped by the check: allergy Amlodipine; ruled out by Hepatic failure");
+    expect(within(sheet).getByRole("radio", { name: /Amlopres 5/ }).closest("label")).toHaveTextContent("the books could not read all of it");
+    expect(within(sheet).getByRole("radio", { name: /Stamlo 5/ }).closest("label")).toHaveTextContent("clear for this patient");
+    expect(within(sheet).getByRole("radio", { name: /Stamlo 5/ })).toBeEnabled();
   });
 
   it("E14 — a substitute that trips the patient's allergy is stopped at the check, on its line", async () => {

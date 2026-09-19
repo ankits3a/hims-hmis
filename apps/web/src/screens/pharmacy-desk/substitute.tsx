@@ -4,6 +4,10 @@ import { useTranslation } from "react-i18next";
 import { fetchAlternatives, pharmacyErrorText } from "../../lib/pharmacy-api";
 import type { WireAlternative, WireDispenseLine } from "../../lib/pharmacy-api";
 
+function choosable(a: WireAlternative): boolean {
+  return a.available > 0 && a.check.verdict !== "blocked";
+}
+
 /**
  * ═══ PD-5 — GIVE SOMETHING ELSE FOR THIS LINE (PD-D11, E14, E16) ═══
  *
@@ -16,10 +20,11 @@ import type { WireAlternative, WireDispenseLine } from "../../lib/pharmacy-api";
  * sheet carries a real tick beside the sentence the pharmacist must actually say, and the choice
  * cannot be put on the ticket without it.
  *
- * WHAT IT DOES NOT CLAIM. The allergy and interaction books re-run on the substitute at the check
- * (verify, `D9`) and refuse a clash there, on the line (E14). Pre-checking each alternative against
- * this patient before it is offered is the counter agent's (C3, PD-7); until then the sheet does not
- * draw a "clean" it has not been told.
+ * PD-7 C3 — EACH ONE ALREADY PUT TO THIS PATIENT'S CHECK. The server runs the four books on every
+ * equivalent with the line swapped to it and judges them with `refusalsOf`, the function verify
+ * refuses with, so a BLOCKED row here is exactly one the check would refuse — it cannot be chosen,
+ * and it says which book stopped it. A row the books could read only in part says so, never
+ * "clear" (PD-D13). The books run again at the check (E14); nothing here replaces that.
  */
 export type Substitute = { medicineId: string; brandName: string; available: number };
 
@@ -72,11 +77,11 @@ export function SubstituteSheet({
             <p role="status" style={{ margin: 0, padding: "14px 18px", fontSize: 12.5, color: "var(--dim)" }}>{t("pharmacyDesk.sub.none", { drug: given?.brandName ?? line.rxLine.drug })}</p>
           ) : (
             alts.data.map((a) => (
-              <label key={a.medicineId} className="drow" style={{ padding: "11px 18px", cursor: a.available > 0 ? "pointer" : "not-allowed", opacity: a.available > 0 ? 1 : 0.5 }}>
+              <label key={a.medicineId} className="drow" style={{ padding: "11px 18px", cursor: choosable(a) ? "pointer" : "not-allowed", opacity: choosable(a) ? 1 : 0.55 }}>
                 <input
                   type="radio"
                   name="sub"
-                  disabled={a.available === 0}
+                  disabled={!choosable(a)}
                   checked={chosen?.medicineId === a.medicineId}
                   onChange={() => setChosen(a)}
                   style={{ accentColor: "#0e6b4e" }}
@@ -84,6 +89,11 @@ export function SubstituteSheet({
                 <span style={{ flexGrow: 1, minWidth: 0 }}>
                   <span style={{ display: "block", fontSize: 13, fontWeight: 500 }}>{a.brandName}</span>
                   <span style={{ display: "block", fontSize: 11.5, color: "var(--dim)" }}>{t("pharmacyDesk.sub.same")}</span>
+                  <span style={{ display: "block", fontSize: 11.5, marginTop: 2, color: a.check.verdict === "blocked" ? "var(--red)" : a.check.verdict === "not_checked" ? "var(--gold)" : "var(--green)" }}>
+                    {a.check.verdict === "blocked"
+                      ? t("pharmacyDesk.sub.check.blocked", { why: a.check.blocks.map((b) => `${t(`pharmacyDesk.sub.book.${b.book}`)} ${b.about}`).join("; ") })
+                      : t(`pharmacyDesk.sub.check.${a.check.verdict}`)}
+                  </span>
                 </span>
                 <span className="mo" style={{ fontSize: 12, color: a.available > 0 ? "var(--dim)" : "var(--red)" }}>{t("pharmacyDesk.sub.onShelf", { n: a.available })}</span>
               </label>

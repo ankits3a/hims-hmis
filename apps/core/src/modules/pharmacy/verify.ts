@@ -12,6 +12,7 @@ import { PHARMACY_SUBSTITUTION_ENABLED, REFUSED_FLAGS, SCHEDULED_FLAGS, istDateO
 import { dispenseCancelled, dispenseLineDeclined, dispenseVerified, lineResolved, substitutionRecorded } from "./events";
 import { PharmacyError } from "./errors";
 import { requireRegisteredPharmacist } from "./pharmacists";
+import { refusalsOf, refusalsOn } from "./refusals";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
 import { searchShelfAt } from "./retail";
 import { getSaleItem } from "./sale-items";
@@ -19,7 +20,7 @@ import { shelfByMedicine } from "./shelf";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
-import type { AllergyOverride, RxLine, RxOverride } from "../opd";
+import type { RxLine } from "../opd";
 import type { DispenseView } from "./queue";
 import type { RetailShelfEntry } from "./retail";
 
@@ -62,6 +63,58 @@ export async function alternativesFor(db: Db, dispenseId: string, lineIdx: numbe
     medicineId: m.id, brandName: m.brandName, strengthLabel: m.strengthLabel, form: m.form,
     itemId: e.item.id, itemCode: e.item.code, available: available.get(e.item.id) ?? 0,
   }));
+}
+
+/**
+ * ═══ PD-7 C3 — THE EQUIVALENTS, EACH ALREADY PUT TO THIS PATIENT'S CHECK ═══
+ *
+ * Every alternative is run through `runRxChecks` for THIS patient with the line swapped to it, and
+ * judged by `refusalsOf` — the function `verifyDispense` refuses with — so "blocked" on the sheet is
+ * exactly what the check will refuse, named by book. `not_checked` is a line the books could see
+ * only in part (PD-D13: never drawn as clear).
+ *
+ * MEASURED: an equivalent has the same salt set by construction, so its verdict is almost always the
+ * original line's. The run is still per alternative because the allergy book also matches brand
+ * names, and because that sameness is `isEquivalentMedicine`'s to keep, not this function's to
+ * assume. The price difference the phase doc asked for is NOT here: the bill's price is billing's
+ * `min(batch MRP, ceiling, contract)`, decided at the bill, and this desk does no price arithmetic
+ * (DEFERRED to C7, which can ask billing's preview).
+ */
+export type AlternativeBlock = { book: "allergy" | "interaction" | "duplicate" | "drug_disease"; about: string };
+export type CheckedAlternative = Alternative & { check: { verdict: "clear" | "not_checked" | "blocked"; blocks: AlternativeBlock[] } };
+
+export async function checkedAlternativesFor(db: Db, actor: Actor, dispenseId: string, lineIdx: number, now: Date): Promise<CheckedAlternative[]> {
+  const alternatives = await alternativesFor(db, dispenseId, lineIdx);
+  if (alternatives.length === 0) return [];
+  const d = await getDispenseRow(db, dispenseId);
+  const rx = await getPrescription(db, actor, d.prescriptionId);
+  if (rx === null) {
+    throw new PharmacyError("permission_denied", "this ticket is a sealed record — its checks are read by a pharmacist who may read it", { reason: "patient_restricted" });
+  }
+  const open = (await linesOf(db, dispenseId)).filter((l) => l.status === "open");
+  const target = open.findIndex((l) => l.lineIdx === lineIdx);
+  const medicines = await medicinesByIds(db, [
+    ...open.map((l) => l.dispensedMedicineId), ...alternatives.map((a) => a.medicineId),
+  ].filter((x): x is string => x !== null));
+  const out: CheckedAlternative[] = [];
+  for (const alt of alternatives) {
+    const checkLines: RxLine[] = open.map((l) => {
+      const rxLine = l.rxLine as RxLine;
+      const id = l.lineIdx === lineIdx ? alt.medicineId : l.dispensedMedicineId;
+      return id === null ? rxLine : { ...rxLine, medicineId: id, drug: medicines.get(id)?.brandName ?? rxLine.drug };
+    });
+    const outcome = await runRxChecks(db, d.patientId, checkLines, now, { excludeEncounterId: d.encounterId });
+    const r = refusalsOn(refusalsOf(outcome, (i) => open[i]!.lineIdx, rx, new Set()), lineIdx);
+    const blocks: AlternativeBlock[] = [
+      ...r.allergy.map((x) => ({ book: "allergy" as const, about: x.substance })),
+      ...r.interaction.map((x) => ({ book: "interaction" as const, about: x.note })),
+      ...r.duplicate.map((x) => ({ book: "duplicate" as const, about: x.moiety })),
+      ...r.drugDisease.map((x) => ({ book: "drug_disease" as const, about: x.icd10Title })),
+    ];
+    const partly = outcome.unreviewedLineIndexes.includes(target) || outcome.unresolvedLineIndexes.includes(target);
+    out.push({ ...alt, check: { verdict: blocks.length > 0 ? "blocked" : partly ? "not_checked" : "clear", blocks } });
+  }
+  return out;
 }
 
 /**
@@ -231,65 +284,41 @@ export async function verifyDispense(
   // ── D9: the re-check, on what will be handed over ──
   const checkLines: RxLine[] = settled.map((s) => ({ ...(s.line.rxLine as RxLine), medicineId: s.dispensedMedicineId, drug: medicines.get(s.dispensedMedicineId)?.brandName ?? (s.line.rxLine as RxLine).drug }));
   const outcome = await runRxChecks(db, d.patientId, checkLines, now, { excludeEncounterId: d.encounterId });
-  const allergyOverrides = (rx.allergyOverrides ?? []) as AllergyOverride[];
-  const interactionOverrides = (rx.interactionOverrides ?? []) as RxOverride[];
   const origIdx = (checkIdx: number): number => settled[checkIdx]!.line.lineIdx;
-  const allergyBlocks = outcome.allergyMatches.filter((m) => !allergyOverrides.some((o) => o.lineIndex === origIdx(m.lineIndex) && o.substance === m.substance));
-  if (allergyBlocks.length > 0) {
-    throw new PharmacyError(
-      "allergy_block",
-      `the patient is recorded allergic to ${allergyBlocks.map((m) => m.substance).join(", ")} and the prescriber did not override it — back to the doctor`,
-      { hits: allergyBlocks.map((m) => ({ lineIdx: origIdx(m.lineIndex), substance: m.substance })) },
-    );
-  }
-  const samePair = (a: readonly [string, string], b: readonly [string, string]): boolean => (a[0] === b[0] && a[1] === b[1]) || (a[0] === b[1] && a[1] === b[0]);
-  const severe = outcome.interactions.filter((h) => h.severity === "severe");
-  const interactionBlocks = severe.filter((h) => !interactionOverrides.some((o) => o.lineIndex === origIdx(h.lineIndex) && o.saltPair !== undefined && samePair(o.saltPair, h.saltPair)));
-  if (interactionBlocks.length > 0) {
-    throw new PharmacyError(
-      "interaction_block",
-      `a severe interaction the prescriber did not override: ${interactionBlocks.map((h) => h.note).join("; ")} — back to the doctor`,
-      { hits: interactionBlocks.map((h) => ({ lineIdx: origIdx(h.lineIndex), saltPair: h.saltPair, note: h.note })) },
-    );
-  }
   /**
-   * PD-5b — THE TWO BOOKS ISSUE GATED AND THIS CHECK DID NOT. Issue refuses a hard duplicate and a
-   * severe drug×disease hit unless the prescriber overrides it; verify re-ran both books and acted on
-   * neither. That was sound only while nothing could change between issue and here, and two things can:
-   *   · a line RESOLVED here carries moieties the prescriber never saw — a duplicate or a
-   *     contraindication on it is a decision nobody made (E35, E36);
-   *   · a diagnosis coded AFTER the issue meets a line the doctor did name — the drug×disease twin
-   *     of the allergy recorded after issue, which D9 already stops here (E37, DECIDED).
-   * Both are refused in issue's own grammar, and the prescriber's override on the line still
-   * counts: a doctor who ruled on that moiety and that diagnosis has decided. A hard duplicate is
-   * same-prescription only, so a doctor-named pair was already met at issue; only a reading can make
-   * a new one, and its refusal lands on the line the pharmacist chose — the one they can change.
+   * The four books' refusals, in `refusalsOf`'s one definition (PD-7 C3 asks the same function
+   * before a substitute is chosen). A reading here (PD-5b) is the only way a NEW hard duplicate can
+   * reach this check, and a reading's moieties or a diagnosis coded after the issue are the ways a
+   * severe drug×disease hit can arrive unruled-on — see `refusals.ts` (E35–E37).
    */
   const readHere = new Set(settled.filter((s) => s.resolvedHere).map((s) => s.line.lineIdx));
-  const duplicateOverrides = (rx.duplicateOverrides ?? []) as RxOverride[];
-  const duplicateBlocks = new Map<string, { lineIdx: number; moiety: string }>();
-  for (const h of outcome.duplicates) {
-    if (!h.hard || duplicateOverrides.some((o) => o.lineIndex === origIdx(h.lineIndex) && o.moiety === h.moiety)) continue;
-    const sides = [origIdx(h.lineIndex), ...(h.against.scope === "in_rx" ? [origIdx(h.against.lineIndex)] : [])];
-    const chosen = sides.find((i) => readHere.has(i));
-    if (chosen !== undefined) duplicateBlocks.set(`${String(chosen)}|${h.moiety}`, { lineIdx: chosen, moiety: h.moiety });
-  }
-  if (duplicateBlocks.size > 0) {
-    const hits = [...duplicateBlocks.values()];
+  const refused = refusalsOf(outcome, origIdx, rx, readHere);
+  if (refused.allergy.length > 0) {
     throw new PharmacyError(
-      "duplicate_block",
-      `${[...new Set(hits.map((h) => h.moiety))].join(", ")} is already on this prescription — the doctor's words cannot be read as a second one; choose another or decline the line`,
-      { hits },
+      "allergy_block",
+      `the patient is recorded allergic to ${refused.allergy.map((m) => m.substance).join(", ")} and the prescriber did not override it — back to the doctor`,
+      { hits: refused.allergy },
     );
   }
-  const drugDiseaseOverrides = (rx.drugDiseaseOverrides ?? []) as RxOverride[];
-  const diseaseBlocks = outcome.drugDisease.filter((h) => h.severity === "severe"
-    && !drugDiseaseOverrides.some((o) => o.lineIndex === origIdx(h.lineIndex) && o.moiety === h.moiety && o.icd10Prefix === h.icd10Prefix));
-  if (diseaseBlocks.length > 0) {
+  if (refused.interaction.length > 0) {
+    throw new PharmacyError(
+      "interaction_block",
+      `a severe interaction the prescriber did not override: ${refused.interaction.map((h) => h.note).join("; ")} — back to the doctor`,
+      { hits: refused.interaction.map(({ lineIdx, saltPair, note }) => ({ lineIdx, saltPair, note })) },
+    );
+  }
+  if (refused.duplicate.length > 0) {
+    throw new PharmacyError(
+      "duplicate_block",
+      `${[...new Set(refused.duplicate.map((h) => h.moiety))].join(", ")} is already on this prescription — the doctor's words cannot be read as a second one; choose another or decline the line`,
+      { hits: refused.duplicate },
+    );
+  }
+  if (refused.drugDisease.length > 0) {
     throw new PharmacyError(
       "drug_disease_block",
-      `${diseaseBlocks.map((h) => `${h.moiety} with ${h.icd10Title}`).join("; ")}: contraindicated by a diagnosis this patient carries, and no prescriber has ruled on it — back to the doctor, or decline the line`,
-      { hits: diseaseBlocks.map((h) => ({ lineIdx: origIdx(h.lineIndex), moiety: h.moiety, icd10Prefix: h.icd10Prefix, icd10Title: h.icd10Title })) },
+      `${refused.drugDisease.map((h) => `${h.moiety} with ${h.icd10Title}`).join("; ")}: contraindicated by a diagnosis this patient carries, and no prescriber has ruled on it — back to the doctor, or decline the line`,
+      { hits: refused.drugDisease },
     );
   }
   const scheduled = settled.some((s) => s.scheduleFlag !== null && (SCHEDULED_FLAGS as readonly string[]).includes(s.scheduleFlag));
@@ -435,4 +464,5 @@ export async function cancelDispense(
   });
   return getDispense(db, actor, d.id, now);
 }
+
 

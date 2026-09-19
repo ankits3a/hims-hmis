@@ -108,7 +108,12 @@ export type WireFindResult =
   | { kind: "dispense"; door: string; dispense: WireDispense }
   | { kind: "patients"; door: "uhid"; patients: WirePatientSummary[] }
   | { kind: "none"; door: string; reason: "not_found" | "qr_invalid" | "no_prescription_today" | "restricted" };
-export type WireAlternative = { medicineId: string; brandName: string; strengthLabel: string | null; form: string; itemId: string; itemCode: string; available: number };
+export type WireAlternativeBlock = { book: "allergy" | "interaction" | "duplicate" | "drug_disease"; about: string };
+/** PD-7 C3 — each equivalent comes back already put to this patient's check, judged as verify judges. */
+export type WireAlternative = {
+  medicineId: string; brandName: string; strengthLabel: string | null; form: string; itemId: string; itemCode: string; available: number;
+  check: { verdict: "clear" | "not_checked" | "blocked"; blocks: WireAlternativeBlock[] };
+};
 
 export async function fetchQueue(): Promise<WireQueueRow[]> {
   const { items } = await api<{ items: WireQueueRow[] }>("GET", "/pharmacy/queue");
