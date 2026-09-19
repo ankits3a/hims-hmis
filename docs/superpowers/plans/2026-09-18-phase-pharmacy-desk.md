@@ -142,9 +142,12 @@ original line's; the run stays per alternative because the allergy book also mat
 *DEFERRED to C7:* the price difference per strip. The bill's price is billing's
 `min(batch MRP, ceiling, contract)` decided at the bill; the rail already says the desk does no price
 arithmetic; an out-of-stock original — the usual reason to substitute — has no batch to compare.
-*Walked, and next:* Vijay's Mox line (allergy recorded after issue) shows nothing ON THE LINE until
-the tick fires verify. `refusalsOf` can pre-check the ticket's own lines at the claim the same way —
-the line would say "the check will stop this" before anyone walks to the shelf. Not built here.
+*Walked, and built next as C3b:* Vijay's Mox line (allergy recorded after issue) showed nothing ON
+THE LINE until the tick fired verify. `precheckTicket` (`GET /pharmacy/dispenses/:id/precheck`) asks
+`refusalsOf` about a CLAIMED ticket's own lines as they stand; the line says "the check will stop this
+line: allergy Amoxicillin" before anyone walks to the shelf, and falls silent once the check's own
+refusal is on it (said once, not twice). The tick stays live: the server is the authority, and a
+refused verify moves no stock.
 
 **C4, C6, C10, C11 DONE (PD-7), web only:**
 - **C10** — at the hand-over the agent says each given line's sig in Devanagari, on pine, from a
@@ -156,13 +159,22 @@ the line would say "the check will stop this" before anyone walks to the shelf. 
   words"). Free text is never half-translated.
 - **C6** — the dock says the hold by its END ("holding 2 lines until 14:22"), not its length. The
   batch half of C6 (expiring before collection) is already E8's "dies within the course" advice at
-  the tick; only a line with no duration escapes it. **Walk observation, not fixed (E13):** with no
-  worker sweeping, a draft read "they stay held until 13:43" at 13:51 — the screen does not yet learn
-  that a hold it announced has ended.
+  the tick; only a line with no duration escapes it. **Walk observation (E13), measured:** the desk
+  polls the ticket in hand every 15 s and draws a cancelled one as cancelled with its reason, so once
+  the worker's 60 s sweep cancels an expired pick the screen learns within ~75 s. The dev walk ran no
+  worker, so a draft read "they stay held until 13:43" at 13:51; in production the only gap is that
+  window, where the sentence names a time already past. Not fixed.
 - **C11** — the ticket header counts the open lines the books could read only in part (PD-D13).
 - **Walk finding, fixed:** a PAID ticket's rail read "take the money"; one stage holds money owed and
   money taken, so a billed ticket now reads "hand it over".
-- **C8 (F2 ask) is UNBLOCKED:** `lane/copilot` merged as #239 (`5957ef3f`). Not built here.
+- **C8 (F2 ask) — MEASURED: needs shared kernel files, so COORDINATION, not code, is next.** The copilot
+  merged (#239, `5957ef3f`) and a module may contribute TOOLS through its manifest (`copilotTools`),
+  but the INTENTS and their Hinglish cues are one closed table in `kernel/copilot/phrasebook.ts`, the
+  model's menu descriptions are hard-coded in `kernel/copilot/router.ts`, and answer keys are a closed
+  list in `packages/contracts/src/copilot.ts`. "kitni amoxicillin bachi hai" (stock by name), "kiska
+  paisa pending hai" (billed, not collected) and "ye batch kab expire hoga" need three new intents
+  there. Today's intents answer none of a pharmacist's questions, so an F2 box on the desk now would be
+  a box that does nothing — not drawn.
 
 ## 4. EDGE CASES
 

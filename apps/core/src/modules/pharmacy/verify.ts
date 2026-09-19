@@ -13,6 +13,7 @@ import { dispenseCancelled, dispenseLineDeclined, dispenseVerified, lineResolved
 import { PharmacyError } from "./errors";
 import { requireRegisteredPharmacist } from "./pharmacists";
 import { refusalsOf, refusalsOn } from "./refusals";
+import type { Refusals } from "./refusals";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
 import { searchShelfAt } from "./retail";
 import { getSaleItem } from "./sale-items";
@@ -81,6 +82,16 @@ export async function alternativesFor(db: Db, dispenseId: string, lineIdx: numbe
  * (DEFERRED to C7, which can ask billing's preview).
  */
 export type AlternativeBlock = { book: "allergy" | "interaction" | "duplicate" | "drug_disease"; about: string };
+
+/** A line's refusals as the sheet and the line say them: which book, about what. */
+function blocksOf(r: Refusals): AlternativeBlock[] {
+  return [
+    ...r.allergy.map((x) => ({ book: "allergy" as const, about: x.substance })),
+    ...r.interaction.map((x) => ({ book: "interaction" as const, about: x.note })),
+    ...r.duplicate.map((x) => ({ book: "duplicate" as const, about: x.moiety })),
+    ...r.drugDisease.map((x) => ({ book: "drug_disease" as const, about: x.icd10Title })),
+  ];
+}
 export type CheckedAlternative = Alternative & { check: { verdict: "clear" | "not_checked" | "blocked"; blocks: AlternativeBlock[] } };
 
 export async function checkedAlternativesFor(db: Db, actor: Actor, dispenseId: string, lineIdx: number, now: Date): Promise<CheckedAlternative[]> {
@@ -104,17 +115,48 @@ export async function checkedAlternativesFor(db: Db, actor: Actor, dispenseId: s
       return id === null ? rxLine : { ...rxLine, medicineId: id, drug: medicines.get(id)?.brandName ?? rxLine.drug };
     });
     const outcome = await runRxChecks(db, d.patientId, checkLines, now, { excludeEncounterId: d.encounterId });
-    const r = refusalsOn(refusalsOf(outcome, (i) => open[i]!.lineIdx, rx, new Set()), lineIdx);
-    const blocks: AlternativeBlock[] = [
-      ...r.allergy.map((x) => ({ book: "allergy" as const, about: x.substance })),
-      ...r.interaction.map((x) => ({ book: "interaction" as const, about: x.note })),
-      ...r.duplicate.map((x) => ({ book: "duplicate" as const, about: x.moiety })),
-      ...r.drugDisease.map((x) => ({ book: "drug_disease" as const, about: x.icd10Title })),
-    ];
+    const blocks = blocksOf(refusalsOn(refusalsOf(outcome, (i) => open[i]!.lineIdx, rx, new Set()), lineIdx));
     const partly = outcome.unreviewedLineIndexes.includes(target) || outcome.unresolvedLineIndexes.includes(target);
     out.push({ ...alt, check: { verdict: blocks.length > 0 ? "blocked" : partly ? "not_checked" : "clear", blocks } });
   }
   return out;
+}
+
+/**
+ * ═══ C3b — THE TICKET'S OWN LINES, PUT TO THE SAME CHECK AT THE CLAIM ═══
+ *
+ * Found walking C3: an allergy recorded after the issue sat silent on its line until the last tick
+ * fired verify — after the strips were in hand. This asks `refusalsOf` about the lines as they
+ * stand, so the line can say "the check will stop this" before anyone walks to the shelf. Only a
+ * CLAIMED ticket is asked: after verify the check has spoken, and a declined line is not handed
+ * over. A line nobody placed is `unplaced` — its reading is judged at the check (PD-5b), not here.
+ */
+export type LinePrecheck = { lineIdx: number; verdict: "clear" | "not_checked" | "blocked" | "unplaced"; blocks: AlternativeBlock[] };
+
+export async function precheckTicket(db: Db, actor: Actor, dispenseId: string, now: Date): Promise<{ lines: LinePrecheck[] }> {
+  const d = await getDispenseRow(db, dispenseId);
+  if (d.status !== "claimed") return { lines: [] };
+  const rx = await getPrescription(db, actor, d.prescriptionId);
+  if (rx === null) {
+    throw new PharmacyError("permission_denied", "this ticket is a sealed record — its checks are read by a pharmacist who may read it", { reason: "patient_restricted" });
+  }
+  const open = (await linesOf(db, dispenseId)).filter((l) => l.status === "open");
+  if (open.length === 0) return { lines: [] };
+  const medicines = await medicinesByIds(db, open.map((l) => l.dispensedMedicineId).filter((x): x is string => x !== null));
+  const checkLines: RxLine[] = open.map((l) => {
+    const rxLine = l.rxLine as RxLine;
+    return l.dispensedMedicineId === null ? rxLine : { ...rxLine, medicineId: l.dispensedMedicineId, drug: medicines.get(l.dispensedMedicineId)?.brandName ?? rxLine.drug };
+  });
+  const outcome = await runRxChecks(db, d.patientId, checkLines, now, { excludeEncounterId: d.encounterId });
+  const refused = refusalsOf(outcome, (i) => open[i]!.lineIdx, rx, new Set());
+  return {
+    lines: open.map((l, i): LinePrecheck => {
+      if (l.dispensedMedicineId === null) return { lineIdx: l.lineIdx, verdict: "unplaced", blocks: [] };
+      const blocks = blocksOf(refusalsOn(refused, l.lineIdx));
+      const partly = outcome.unreviewedLineIndexes.includes(i) || outcome.unresolvedLineIndexes.includes(i);
+      return { lineIdx: l.lineIdx, verdict: blocks.length > 0 ? "blocked" : partly ? "not_checked" : "clear", blocks };
+    }),
+  };
 }
 
 /**
@@ -464,5 +506,6 @@ export async function cancelDispense(
   });
   return getDispense(db, actor, d.id, now);
 }
+
 
 

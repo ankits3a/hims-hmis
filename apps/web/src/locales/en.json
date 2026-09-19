@@ -3846,6 +3846,9 @@
       "chosen": "you chose it",
       "undo": "undo"
     },
+    "precheck": {
+      "blocked": "The check will stop this line: {{why}}. Decline it, or back to the doctor — before anyone walks to the shelf."
+    },
     "say": {
       "title": "Say to the patient",
       "own": "say it in the doctor's words — {{words}}",

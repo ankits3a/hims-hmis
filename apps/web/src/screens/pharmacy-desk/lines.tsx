@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { fetchPrecheck } from "../../lib/pharmacy-api";
 import { ResolveSheet } from "./resolve";
 import { SubstituteSheet } from "./substitute";
 import { adviceFor, allSettled, blockedFor, canTick, freshTick, isPartial, isSettled, istToday, pickBody, placeable, qtyOf, sigOf, substitutable, verifyBody } from "./work";
 import type { Tick } from "./work";
-import type { PickLine, VerifyLine, WireDispense, WireDispenseLine } from "../../lib/pharmacy-api";
+import type { PickLine, VerifyLine, WireDispense, WireDispenseLine, WireLinePrecheck } from "../../lib/pharmacy-api";
 
 /**
  * PD-4 — THE LINE LIST (PD-D2, PD-D3, PD-D4; E7–E12). Two columns per line, WHAT THE DOCTOR WROTE →
@@ -36,6 +38,14 @@ export function LineList({
   const [resolving, setResolving] = useState<number | null>(null);
   const settleAfterDecline = useRef(false);
   const today = istToday();
+  /* C3b — asked once per claimed ticket: what the check would refuse, said on the line before the tick. */
+  const precheck = useQuery({
+    queryKey: ["pharmacy", "precheck", dispense.id],
+    queryFn: () => fetchPrecheck(dispense.id),
+    enabled: dispense.status === "claimed" && editable,
+    staleTime: 60_000,
+    retry: false,
+  });
 
   /* A different ticket is a clean slate — the previous patient's ticks must never carry over. */
   useEffect(() => {
@@ -120,6 +130,7 @@ export function LineList({
             busy={busy}
             today={today}
             error={errors[l.lineIdx] ?? null}
+            precheck={dispense.status === "claimed" ? precheck.data?.find((p) => p.lineIdx === l.lineIdx) : undefined}
             declining={declining === l.lineIdx}
             onEdit={(patch, settle) => edit(l.lineIdx, patch, settle)}
             onToggleDecline={() => setDeclining((d) => (d === l.lineIdx ? null : l.lineIdx))}
@@ -164,7 +175,7 @@ export function LineList({
 }
 
 function LineRow({
-  line, tick, editable, busy, today, error, declining, onEdit, onToggleDecline, onDecline, onSubstitute, onResolve,
+  line, tick, editable, busy, today, error, precheck, declining, onEdit, onToggleDecline, onDecline, onSubstitute, onResolve,
 }: {
   line: WireDispenseLine;
   tick: Tick | undefined;
@@ -172,6 +183,7 @@ function LineRow({
   busy: boolean;
   today: string;
   error: string | null;
+  precheck: WireLinePrecheck | undefined;
   declining: boolean;
   onEdit: (patch: Partial<Tick>, settle: boolean) => void;
   onToggleDecline: () => void;
@@ -202,7 +214,7 @@ function LineRow({
   const declined = line.status === "declined";
   /* The amber note's own control — the line menu does not draw it a second time (walk finding). */
   const noteOffers = editable && (blocked === "unresolved" ? placeable(line) : blocked === "empty" || blocked === "not_stocked" || blocked === "not_saleable");
-  const bar = error !== null ? "var(--red)" : declined || blocked !== null ? "var(--gold)" : settled || line.pickedBatch != null ? "var(--green)" : "transparent";
+  const bar = error !== null || (editable && precheck?.verdict === "blocked") ? "var(--red)" : declined || blocked !== null ? "var(--gold)" : settled || line.pickedBatch != null ? "var(--green)" : "transparent";
   const soft = { display: "block", marginTop: 7, fontSize: 11.5, lineHeight: "16px", padding: "7px 9px", borderRadius: 6 } as const;
   const label = `${rx.drug} ${sigOf(rx)}`;
 
@@ -346,6 +358,12 @@ function LineRow({
           ) : null}
 
           {error !== null ? <span role="alert" style={{ ...soft, background: "var(--red-soft)", color: "var(--red)" }}>{error}</span> : null}
+          {/* C3b — said before the tick; once the check itself has refused the line, that refusal speaks alone. */}
+          {editable && error === null && precheck?.verdict === "blocked" ? (
+            <span data-testid={`desk-line-${String(line.lineIdx)}-precheck`} style={{ ...soft, background: "var(--red-soft)", color: "var(--red)" }}>
+              {t("pharmacyDesk.precheck.blocked", { why: precheck.blocks.map((b) => `${t(`pharmacyDesk.sub.book.${b.book}`)} ${b.about}`).join("; ") })}
+            </span>
+          ) : null}
 
           {editable && declining && substitutable(line) === false && line.rxLine.noSubstitution ? (
             <span style={{ ...soft, background: "var(--wash)" }}>{t("pharmacyDesk.sub.noSubstitution")}</span>

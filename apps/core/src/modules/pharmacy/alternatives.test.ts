@@ -4,7 +4,7 @@ import { testCfg } from "../../../test/helpers/opd";
 import { withTx } from "../../kernel/db/client";
 import { adoptDrugDisease } from "../formulary";
 import { claimDispense, findAtCounter } from "./claim";
-import { checkedAlternativesFor, verifyDispense } from "./verify";
+import { checkedAlternativesFor, declineLine, precheckTicket, verifyDispense } from "./verify";
 import type { PharmacyFixture } from "../../../test/helpers/pharmacy";
 import type { Db } from "../../kernel/db/client";
 
@@ -61,5 +61,36 @@ describe("the substitute sheet's alternatives, pre-checked for this patient (PD-
     const id = await claimed([line({ drug: "Crocin 500", medicineId: fx.med.crocin, noSubstitution: true }), line({ drug: "Azee 500", medicineId: fx.med.azithro, frequency: "OD", durationDays: 3 })]);
     expect(await checkedAlternativesFor(db, fx.pharmacist.actor, id, 0, MON2)).toEqual([]);
     expect(await checkedAlternativesFor(db, fx.pharmacist.actor, id, 1, MON2)).toEqual([]);
+  });
+
+  /**
+   * C3b — THE TICKET'S OWN LINES, PUT TO THE SAME CHECK AT THE CLAIM. Found walking C3: an allergy
+   * recorded after the issue sat silent on its line until the tick fired verify, after the strips
+   * were in hand. `refusalsOf` answers it before anyone walks to the shelf.
+   */
+  it("C3b — the ticket's own lines, pre-checked: the allergic line says so before the tick, the others are clear, an unplaced one is unplaced", async () => {
+    const id = await claimed([
+      line({ drug: "Crocin 500", medicineId: fx.med.crocin }),
+      line({ drug: "Azee 500", medicineId: fx.med.azithro, frequency: "OD", durationDays: 3 }),
+      line({ drug: "Tab Mystery 10mg" }),
+    ]);
+    await addAllergy(db, fx.patient.id, "Paracetamol");
+    expect(await precheckTicket(db, fx.pharmacist.actor, id, MON2)).toEqual({ lines: [
+      { lineIdx: 0, verdict: "blocked", blocks: [{ book: "allergy", about: "Paracetamol" }] },
+      { lineIdx: 1, verdict: "clear", blocks: [] },
+      { lineIdx: 2, verdict: "unplaced", blocks: [] },
+    ] });
+    // and the check, when it runs, refuses exactly that line for exactly that reason
+    await declineLine(db, fx.pharmacist.actor, fx.decls, id, 2, "not stocked here", MON2);
+    await expect(verifyDispense(db, fx.pharmacist.actor, fx.decls, id, { lines: [{ lineIdx: 0, qtyBase: 15 }, { lineIdx: 1, qtyBase: 3 }] }, MON2))
+      .rejects.toThrow(expect.objectContaining({ code: "allergy_block", detail: { hits: [{ lineIdx: 0, substance: "Paracetamol" }] } }));
+  });
+
+  it("C3b — a ticket past the check is not pre-checked again; a declined line is not asked", async () => {
+    const id = await claimed([line({ drug: "Crocin 500", medicineId: fx.med.crocin }), line({ drug: "Tab Mystery 10mg" })]);
+    await declineLine(db, fx.pharmacist.actor, fx.decls, id, 1, "not stocked here", MON2);
+    expect((await precheckTicket(db, fx.pharmacist.actor, id, MON2)).lines.map((l) => l.lineIdx)).toEqual([0]);
+    await verifyDispense(db, fx.pharmacist.actor, fx.decls, id, { lines: [{ lineIdx: 0, qtyBase: 15 }] }, MON2);
+    expect(await precheckTicket(db, fx.pharmacist.actor, id, MON2)).toEqual({ lines: [] });
   });
 });

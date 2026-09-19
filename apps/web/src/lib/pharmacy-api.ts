@@ -129,6 +129,12 @@ export async function fetchAlternatives(id: string, lineIdx: number): Promise<Wi
   const { items } = await api<{ items: WireAlternative[] }>("GET", `/pharmacy/dispenses/${id}/lines/${String(lineIdx)}/alternatives`);
   return items;
 }
+/** C3b — the ticket's own lines, put to the check at the claim: what it would refuse, before the tick. */
+export type WireLinePrecheck = { lineIdx: number; verdict: "clear" | "not_checked" | "blocked" | "unplaced"; blocks: WireAlternativeBlock[] };
+export async function fetchPrecheck(id: string): Promise<WireLinePrecheck[]> {
+  const { lines } = await api<{ lines: WireLinePrecheck[] }>("GET", `/pharmacy/dispenses/${id}/precheck`);
+  return lines;
+}
 /** PD-5b — what a line the catalogue could not place may be read as: this ticket's shelf, never Schedule X. */
 export async function fetchPlacements(id: string, lineIdx: number, q: string): Promise<WireRetailShelfEntry[]> {
   const { items } = await api<{ items: WireRetailShelfEntry[] }>("GET", `/pharmacy/dispenses/${id}/lines/${String(lineIdx)}/shelf${qs({ q })}`);

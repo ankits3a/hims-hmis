@@ -155,4 +155,30 @@ describe("the ticket says what was not checked, and when the hold ends (PD-7 C11
     await userEvent.click(within(row).getByRole("checkbox"));
     await waitFor(() => expect(screen.getByTestId("desk-ticker")).toHaveTextContent("holding one line until 13:43"));
   });
+
+  it("C3b — before any tick, a line the check will stop SAYS so, with the book; a clear line says nothing", async () => {
+    mockRoutes(base(() => dispense("claimed", [lineOf(0, { rxLine: { ...lineOf(0).rxLine, drug: "Mox 500" } }), lineOf(1)]), {
+      "GET /api/pharmacy/dispenses/d1/precheck": { status: 200, body: { lines: [
+        { lineIdx: 0, verdict: "blocked", blocks: [{ book: "allergy", about: "Amoxicillin" }] },
+        { lineIdx: 1, verdict: "clear", blocks: [] },
+      ] } },
+    }));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const stop = await screen.findByTestId("desk-line-0-precheck");
+    expect(stop).toHaveTextContent("The check will stop this line: allergy Amoxicillin. Decline it, or back to the doctor — before anyone walks to the shelf.");
+    expect(within(screen.getByTestId("desk-line-1")).queryByTestId("desk-line-1-precheck")).toBeNull();
+  });
+
+  it("C3b — once the check has refused the line, its refusal is said once, not twice", async () => {
+    mockRoutes(base(() => dispense("claimed", [lineOf(0)]), {
+      "GET /api/pharmacy/dispenses/d1/precheck": { status: 200, body: { lines: [{ lineIdx: 0, verdict: "blocked", blocks: [{ book: "allergy", about: "Paracetamol" }] }] } },
+      "POST /api/pharmacy/dispenses/d1/verify": { status: 409, body: { statusCode: 409, code: "allergy_block", message: "…", detail: { hits: [{ lineIdx: 0, substance: "Paracetamol" }] } } },
+    }));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const row = await screen.findByTestId("desk-line-0");
+    await screen.findByTestId("desk-line-0-precheck");
+    await userEvent.click(within(row).getByRole("checkbox"));
+    expect(await within(row).findByRole("alert")).toHaveTextContent(/allergy/i);
+    expect(within(row).queryByTestId("desk-line-0-precheck")).toBeNull();
+  });
 });

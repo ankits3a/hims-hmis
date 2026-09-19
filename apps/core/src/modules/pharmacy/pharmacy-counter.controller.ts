@@ -13,7 +13,7 @@ import { handOverDispense } from "./handover";
 import { labelFor } from "./label";
 import { pickDispense } from "./pick";
 import { checkPickScan } from "./scan";
-import { cancelDispense, checkedAlternativesFor, declineLine, placementsFor, verifyDispense } from "./verify";
+import { cancelDispense, checkedAlternativesFor, declineLine, placementsFor, precheckTicket, verifyDispense } from "./verify";
 import { cancelBilledDispense } from "./refund";
 import { reorderAdvice } from "./replenishment";
 import { acceptReturn } from "./returns";
@@ -32,7 +32,7 @@ import type { Db } from "../../kernel/db/client";
 import type { ModuleRegistry } from "../../kernel/modules/loader";
 import type { FindResult } from "./claim";
 import type { DispenseView, QueueRow } from "./queue";
-import type { CheckedAlternative } from "./verify";
+import type { CheckedAlternative, LinePrecheck } from "./verify";
 import type { RetailShelfEntry } from "./retail";
 import type { PricedDraft } from "../billing";
 import type { LabelData } from "./label";
@@ -134,6 +134,17 @@ export class PharmacyCounterController {
   async alternatives(@CurrentActor() actor: Actor, @Param("id") id: string, @Param("idx") idx: string): Promise<{ items: CheckedAlternative[] }> {
     try {
       return { items: await checkedAlternativesFor(this.db, actor, id, Number(idx), new Date()) };
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** C3b — the ticket's own lines, put to the check before anyone walks to the shelf (`precheckTicket`). */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("dispenses/:id/precheck")
+  async precheck(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ lines: LinePrecheck[] }> {
+    try {
+      return await precheckTicket(this.db, actor, id, new Date());
     } catch (e) {
       return toHttp(e);
     }
