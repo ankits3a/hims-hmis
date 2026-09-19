@@ -141,3 +141,48 @@ describe("matchIntent — the pharmacy counter", () => {
     expect(matchIntent("is the doctor available")?.intent).not.toBe("stock_on_shelf");
   });
 });
+
+/**
+ * ═══ 2026-09-19 — THE TWO WRONG ANSWERS IN 82, BOTH FROM THIS FLOOR ═══
+ *
+ * Measured end to end through the router with live models (PR #250): every question that reached a
+ * model was answered right, and the only two wrong answers were confident floor matches — a strong
+ * cue for one intent and nothing at all for the right one, so the margin rule had nothing to weigh.
+ */
+describe("matchIntent — the two collisions the 82-question run found", () => {
+  it("'is this patient STILL waiting' in Devanagari is about the patient, not the queue", () => {
+    // Was queue_depth: `इंतज़ार` (3) against the placeholder's lone +1.
+    expect(matchIntent("मरीज <<P1>> अभी भी इंतज़ार में है क्या")?.intent).toBe("visit_status");
+    expect(matchIntent("<<P1>> abhi bhi intezaar kar raha hai")?.intent).toBe("visit_status");
+  });
+
+  it("…while waiting with no patient named stays the queue", () => {
+    expect(matchIntent("abhi kitna intezaar hai")?.intent).toBe("queue_depth");
+    expect(matchIntent("कितना इंतज़ार है")?.intent).toBe("queue_depth");
+  });
+
+  it("'who paid and did not come for the medicine' is the pharmacy's uncollected list, not dues", () => {
+    // Was patient_dues: `paisa` (3) against nothing — `lene nahi aaya` was not a cue anywhere.
+    expect(matchIntent("kaun paisa dekar dawai lene nahi aaya")?.intent).toBe("paid_not_collected");
+    expect(matchIntent("जिन्होंने पैसे दे दिए पर दवा नहीं ली")?.intent).toBe("paid_not_collected");
+  });
+
+  it("…while one named patient's money stays dues", () => {
+    expect(matchIntent("<<P1>> ka kitna paisa baaki hai")?.intent).toBe("patient_dues");
+    expect(matchIntent("<<P1>> ka paisa pending hai")?.intent).toBe("patient_dues");
+  });
+});
+
+/*
+  ═══ THE SAME LETTER, TWO WAYS OF TYPING IT ═══
+
+  `ज़` is one code point on some keyboards (U+095B) and two on others (ज U+091C + nukta U+093C). The
+  table's `इंतज़ार` is the two-point form; a clerk whose keyboard emits the one-point form matched
+  nothing and never knew. Unicode's NFC maps both to the same sequence, so both sides are normalised
+  through it.
+*/
+it("a nukta letter typed either way is the same letter", () => {
+  const precomposed = "कितना इंतज़ार है";
+  expect([...precomposed].map((c) => c.codePointAt(0))).toContain(0x095b);
+  expect(matchIntent(precomposed)?.intent).toBe("queue_depth");
+});
