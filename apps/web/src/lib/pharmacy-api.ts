@@ -77,6 +77,8 @@ export type WireDispenseLine = {
   /** Pharmacy P3: a component of this line's medicine is not yet reviewed. Absent from an older server. */
   partlyChecked?: boolean;
   /** PD-4 — the sellable batches an OPEN line's pick would draw from, earliest expiry first. Absent from an older server. */
+  /** What the bill will ask for this line at today's shelf price (`quote.ts`). Absent from an older server. */
+  quote?: WireQuote | null;
   batches?: WireBatch[];
   /** PD-4 — once picked, the batch it was given from. Absent from an older server. */
   pickedBatch?: { batchNo: string; expiryDate: string | null } | null;
@@ -84,6 +86,8 @@ export type WireDispenseLine = {
 export type WireBatch = { batchId: string; batchNo: string; expiryDate: string | null; available: number };
 export type WirePatientSummary = { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean };
 export type WireDispense = {
+  /** The ticket at today's shelf prices, the server's own sum. Absent from an older server. */
+  quotedTotalPaise?: number;
   id: string; status: string; dispenseNo: string | null; orderId: string | null; prescriptionId: string; prescriptionVersion: number;
   encounterId: string; storeResourceId: string | null; scheduled: boolean; invoiceId: string | null; identityConfirmedVia: string | null;
   claimedAt: string | null; verifiedAt: string | null; pickedAt: string | null; billedAt: string | null; handedOverAt: string | null;

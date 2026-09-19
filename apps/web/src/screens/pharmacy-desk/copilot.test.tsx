@@ -81,6 +81,22 @@ describe("the counter agent on a ticket", () => {
     expect(within(sheet).getByRole("button", { name: "Put Pantop 40 on the ticket" })).toBeDisabled();
   });
 
+  it("a line the shelf can fill carries its own money: what it comes to, and the rate", async () => {
+    const stocked = {
+      ...ticket,
+      quotedTotalPaise: 1_600,
+      lines: [{
+        ...line, available: 200, quote: quote(320),
+        batches: [{ batchId: "b1", batchNo: "PTP-1", expiryDate: "2028-01-31", available: 200 }],
+      }],
+    };
+    mockRoutes({ ...base([]), "GET /api/pharmacy/dispenses/d1": { status: 200, body: stocked } });
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const money = await screen.findByTestId("desk-line-0-money");
+    expect(money).toHaveTextContent("₹16.00"); // 5 tablets × ₹3.20, the server's price for that batch
+    expect(money).toHaveTextContent("₹3.20 each");
+  });
+
   it("says so plainly when every equivalent is stopped by the check, and offers nothing", async () => {
     mockRoutes(base([alt({ check: { verdict: "blocked", blocks: [{ book: "allergy", about: "Pantoprazole", key: "Pantoprazole" }] } })]));
     renderWithProviders(<PharmacyDesk ticketId="d1" />);

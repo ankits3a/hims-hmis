@@ -1,10 +1,8 @@
 import { desc, eq } from "drizzle-orm";
 import { stockBatches } from "../../kernel/db/schema";
 import { itemUomRows, sellableBatchesByItem } from "../materials";
-import { gstCategoryMap, priceBatchLine } from "./bill";
+import { priceBatchLine } from "./bill";
 import { PharmacyError } from "./errors";
-import { getDispenseRow, linesOf } from "./queue";
-import { shelfByMedicine } from "./shelf";
 import type { GstCategoryMap } from "./bill";
 import type { Db } from "../../kernel/db/client";
 
@@ -59,22 +57,9 @@ export async function quoteItem(db: Db, gst: GstCategoryMap, storeResourceId: st
   return first === undefined ? null : priceOf(db, gst, itemId, first, false, now);
 }
 
-/**
- * The line AS WRITTEN, quoted: from this store's shelf when it holds any, else from the item's most
- * recent batch (`lastKnown`), else null — a medicine this hospital has never received has no price.
- */
-export async function writtenQuoteFor(db: Db, dispenseId: string, lineIdx: number, now: Date, gst?: GstCategoryMap): Promise<Quote | null> {
-  const d = await getDispenseRow(db, dispenseId);
-  const line = (await linesOf(db, dispenseId)).find((l) => l.lineIdx === lineIdx);
-  if (line === undefined || line.dispensedMedicineId === null) return null;
-  const itemId = line.itemId ?? (await shelfByMedicine(db)).get(line.dispensedMedicineId)?.item.id ?? null;
-  if (itemId === null) return null;
-  const categories = gst ?? await gstCategoryMap(db);
-  if (d.storeResourceId !== null) {
-    const onShelf = await quoteItem(db, categories, d.storeResourceId, itemId, now);
-    if (onShelf !== null) return onShelf;
-  }
+/** The item's most recent batch, priced: the last MRP the patient saw, for when the shelf holds none. */
+export async function lastKnownQuote(db: Db, gst: GstCategoryMap, itemId: string, now: Date): Promise<Quote | null> {
   const [last] = await db.select({ batchId: stockBatches.id, batchNo: stockBatches.batchNo, expiryDate: stockBatches.expiryDate })
     .from(stockBatches).where(eq(stockBatches.itemId, itemId)).orderBy(desc(stockBatches.createdAt), desc(stockBatches.id)).limit(1);
-  return last === undefined ? null : priceOf(db, categories, itemId, last, true, now);
+  return last === undefined ? null : priceOf(db, gst, itemId, last, true, now);
 }

@@ -14,8 +14,9 @@ import { PharmacyError } from "./errors";
 import { requireRegisteredPharmacist } from "./pharmacists";
 import { authorisedKeysFor } from "./authorisation-reads";
 import { gstCategoryMap } from "./bill";
-import { quoteItem } from "./quote";
+import { lastKnownQuote, quoteItem } from "./quote";
 import type { Quote } from "./quote";
+import type { GstCategoryMap } from "./bill";
 import { refusalKey, refusalsOf, refusalsOn } from "./refusals";
 import type { Refusals } from "./refusals";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
@@ -542,3 +543,19 @@ export async function cancelDispense(
 
 
 
+
+/**
+ * The line AS WRITTEN, quoted: from this store's shelf when it holds any, else from the item's most
+ * recent batch (`lastKnown`), else null — a medicine this hospital has never received has no price.
+ * It is what the co-pilot's "saves ₹x a strip" is measured against.
+ */
+export async function writtenQuoteFor(db: Db, dispenseId: string, lineIdx: number, now: Date, gst?: GstCategoryMap): Promise<Quote | null> {
+  const d = await getDispenseRow(db, dispenseId);
+  const line = (await linesOf(db, dispenseId)).find((l) => l.lineIdx === lineIdx);
+  if (line === undefined || line.dispensedMedicineId === null) return null;
+  const itemId = line.itemId ?? (await shelfByMedicine(db)).get(line.dispensedMedicineId)?.item.id ?? null;
+  if (itemId === null) return null;
+  const categories = gst ?? await gstCategoryMap(db);
+  const onShelf = d.storeResourceId === null ? null : await quoteItem(db, categories, d.storeResourceId, itemId, now);
+  return onShelf ?? lastKnownQuote(db, categories, itemId, now);
+}

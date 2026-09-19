@@ -3975,6 +3975,7 @@
     "declinePlaceholder": "out of stock · patient has it at home · not stocked here",
     "declineIt": "Decline",
     "qtyLabel": "Quantity for {{line}}",
+    "eachRate": "{{amount}} each",
     "ofPrescribed": "of {{of}}",
     "lineMenu": "What else for {{line}}",
     "bill": {
@@ -3982,6 +3983,8 @@
       "paid": "PAID",
       "unpaid": "UNPAID",
       "declined": "declined",
+      "soFar": "so far",
+      "soFarWhy": "Today's shelf price for the batch each line would come from. The bill is made when the strips are collected, and a contract price can still lower it.",
       "notYet": "Priced when the strips are collected — a medicine is priced by the batch it comes from, so there is no honest amount before that.",
       "discount": "discount",
       "cgst": "CGST (inside the MRP)",

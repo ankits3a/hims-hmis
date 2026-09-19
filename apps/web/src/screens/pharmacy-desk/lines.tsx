@@ -5,6 +5,8 @@ import { useAuth } from "../../lib/auth";
 import { askPrescriber, fetchPrecheck, pharmacyErrorText, setShelfLocation } from "../../lib/pharmacy-api";
 import { ResolveSheet } from "./resolve";
 import { CopilotOffer, firstLineNeedingHelp } from "./copilot";
+
+const rupees = (paise: number): string => `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 import { SubstituteSheet } from "./substitute";
 import { adviceFor, allSettled, blockedFor, canTick, freshTick, isPartial, isSettled, istToday, pickBody, placeable, qtyOf, sigOf, substitutable, verifyBody } from "./work";
 import type { Tick } from "./work";
@@ -277,6 +279,11 @@ function LineRow({
   const noteOffers = editable && (blocked === "unresolved" ? placeable(line) : blocked === "empty" || blocked === "not_stocked" || blocked === "not_saleable");
   const bar = error !== null || (editable && precheck?.verdict === "blocked") ? "var(--red)" : declined || blocked !== null ? "var(--gold)" : settled || line.pickedBatch != null ? "var(--green)" : "transparent";
   const soft = { display: "block", marginTop: 7, fontSize: 11.5, lineHeight: "16px", padding: "7px 9px", borderRadius: 6 } as const;
+  /* The line's own money at today's shelf price: quantity × the SERVER's quote, and the rate beside it. */
+  const qtyNow = qty ?? line.qtyBase;
+  const money = line.quote == null || qtyNow === null || declined
+    ? null
+    : { amount: rupees(line.quote.unitPaise * qtyNow), rate: t("pharmacyDesk.eachRate", { amount: rupees(line.quote.unitPaise) }) };
   const label = `${rx.drug} ${sigOf(rx)}`;
 
   return (
@@ -548,6 +555,12 @@ function LineRow({
           <span className="mo" style={{ display: "block", fontSize: 10.5, color: "var(--dim)", marginTop: 2 }}>
             {line.item?.baseUom ?? res?.baseUom ?? ""}{line.qtyBase !== null && partial ? ` · ${t("pharmacyDesk.ofPrescribed", { of: line.qtyBase })}` : ""}
           </span>
+          {money === null ? null : (
+            <span data-testid={`desk-line-${String(line.lineIdx)}-money`} style={{ display: "block", marginTop: 6 }}>
+              <span className="mo" style={{ display: "block", fontSize: 13, fontWeight: 600 }}>{money.amount}</span>
+              <span className="mo" style={{ display: "block", fontSize: 10.5, color: "var(--dim)" }}>{money.rate}</span>
+            </span>
+          )}
         </span>
 
         <span style={{ width: 30, flexShrink: 0 }}>

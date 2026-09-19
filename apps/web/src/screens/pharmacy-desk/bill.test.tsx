@@ -112,6 +112,24 @@ describe("the bill rail and the hand-over (PD-6)", () => {
     expect(screen.getByTestId("desk-ticker")).not.toHaveTextContent("₹50.00");
   });
 
+  it("the rail prices the ticket BEFORE it is collected — each line at today's shelf price, and the running total", async () => {
+    const quoted = {
+      ...dispense("d1", "claimed"),
+      quotedTotalPaise: 13_500,
+      lines: [
+        { ...dispense("d1", "claimed").lines[0]!, qtyBase: 10, quote: { batchId: "b", batchNo: "CR-1", expiryDate: "2028-01-31", unitPaise: 1_200, pack: { uom: "strip", multiplier: 10, paise: 12_000 }, lastKnown: false } },
+        { ...dispense("d1", "claimed").lines[0]!, lineIdx: 1, qtyBase: 3, rxLine: { ...dispense("d1", "claimed").lines[0]!.rxLine, drug: "Azee 500" }, quote: { batchId: "b2", batchNo: "AZ-1", expiryDate: "2028-01-31", unitPaise: 500, pack: null, lastKnown: false } },
+      ],
+    };
+    mockRoutes(base(() => quoted, "open", { "GET /api/pharmacy/dispenses/d1/bill/preview": { status: 409, body: { code: "dispense_not_in_state", message: "not picked" } } }));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const rail = await screen.findByTestId("desk-bill");
+    expect(await within(rail).findByTestId("desk-sofar")).toHaveTextContent("₹135.00");
+    expect(rail).toHaveTextContent("₹120.00"); // 10 × ₹12.00, the server's price for the batch the pick would take
+    expect(rail).toHaveTextContent("₹15.00"); // 3 × ₹5.00
+    expect(rail).toHaveTextContent("so far"); // not "to collect": the bill is billing's, at the pick
+  });
+
   it("collected → priced → taken by UPI → handed over against an EMPTY identity box → done", async () => {
     let current = dispense("d1", "picked");
     mockRoutes(base(() => current, "open", {

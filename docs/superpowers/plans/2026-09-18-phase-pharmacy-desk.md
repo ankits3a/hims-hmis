@@ -455,3 +455,27 @@ Message Configuration · Option Tags · Add Initial Data. Their `Reports` menu i
 **Tally export, operator-wise collection, non-moving, top-selling, loss booking and the GST
 register** are the ones we have no answer to. Both are input to the back-office phase, not to this
 one.
+
+## §8 — BACK TO THE APPROVED BOARD (owner, 2026-09-20)
+
+The owner walked the demo and said it "does not even work the way I approved". Measured against
+`Desk.dc.html`, board by board, the gap was never the rules — it was everything that made the board a
+CO-PILOT. What is now built, in the order it was built:
+
+- **PD-C1 — the counter agent names its offer (DONE, PR #259).** `quote.ts` prices a medicine from the
+  batch the pick would take, through `priceBatchLine` — the bill's own function; `writtenQuoteFor`
+  quotes the line as written (its last received batch when the shelf is empty), which is what a saving
+  is measured against. `bestOffer` picks ONE: cleared by the check, on the shelf, covering the quantity,
+  cheapest. The `agchip` says it with stock, price, saving and "clear"; one tap opens the sheet with it
+  ticked, and consent stays the patient's. The dock says the same, so the desk speaks with one voice.
+- **PD-C2 — a price on every line, and a bill that fills in (DONE, PR #259).** Every line carries its
+  quote; the ticket carries `quotedTotalPaise`, the server's own sum. The rail prices each line and
+  totals it as "so far" until billing's preview takes over at the pick. The old copy — "priced when the
+  strips are collected" — answered the first question a patient asks with a refusal.
+- **Still to do, in order:** the patient rail (visits + current medicines); queue rows that name the
+  drugs; the three-box done screen (ticket · money · registers); the slip photo; demo data that looks
+  real (fuller shelf, GST slabs, a member patient).
+
+**The lesson recorded:** several cuts from the board — "the desk does no price arithmetic", the price
+difference deferred to C7 — were mine, written up in this doc as decisions and never put to the owner.
+A departure from an approved design is the owner's call, not the builder's ([[departing-from-an-approved-design]]).

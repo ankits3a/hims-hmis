@@ -4,8 +4,7 @@ import { testCfg } from "../../../test/helpers/opd";
 import { newId } from "@hmis/contracts";
 import { stockBatches } from "../../kernel/db/schema";
 import { claimDispense, findAtCounter } from "./claim";
-import { writtenQuoteFor } from "./quote";
-import { checkedAlternativesFor } from "./verify";
+import { checkedAlternativesFor, writtenQuoteFor } from "./verify";
 import type { PharmacyFixture } from "../../../test/helpers/pharmacy";
 import type { Db } from "../../kernel/db/client";
 
