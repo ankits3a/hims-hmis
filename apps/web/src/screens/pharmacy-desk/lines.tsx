@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../lib/auth";
-import { fetchPrecheck, pharmacyErrorText, setShelfLocation } from "../../lib/pharmacy-api";
+import { askPrescriber, fetchPrecheck, pharmacyErrorText, setShelfLocation } from "../../lib/pharmacy-api";
 import { ResolveSheet } from "./resolve";
 import { SubstituteSheet } from "./substitute";
 import { adviceFor, allSettled, blockedFor, canTick, freshTick, isPartial, isSettled, istToday, pickBody, placeable, qtyOf, sigOf, substitutable, verifyBody } from "./work";
 import type { Tick } from "./work";
-import type { PickLine, VerifyLine, WireDispense, WireDispenseLine, WireLinePrecheck } from "../../lib/pharmacy-api";
+import type { PickLine, VerifyLine, WireAlternativeBlock, WireDispense, WireDispenseLine, WireLinePrecheck } from "../../lib/pharmacy-api";
 
 /**
  * PD-4 — THE LINE LIST (PD-D2, PD-D3, PD-D4; E7–E12). Two columns per line, WHAT THE DOCTOR WROTE →
@@ -43,6 +43,17 @@ export function LineList({
   const { can } = useAuth();
   const canPlace = can("pharmacy.sale_items.manage") && dispense.storeResourceId !== null;
   const qc = useQueryClient();
+  /* PD-9 — the counter asks the prescriber, by name; the server holds the Act's registration check. */
+  const canAsk = can("pharmacy.dispense.place");
+  const askAbout = async (lineIdx: number, blocks: readonly WireAlternativeBlock[], note: string): Promise<string | null> => {
+    try {
+      for (const b of blocks) await askPrescriber(dispense.id, lineIdx, { book: b.book, about: b.key, ...(note.trim() === "" ? {} : { note: note.trim() }) });
+      await qc.invalidateQueries({ queryKey: ["pharmacy", "dispense", dispense.id] });
+      return null;
+    } catch (e) {
+      return pharmacyErrorText(e, t);
+    }
+  };
   const place = async (itemId: string, location: string): Promise<string | null> => {
     try {
       await setShelfLocation(itemId, dispense.storeResourceId ?? "", location);
@@ -53,8 +64,10 @@ export function LineList({
     }
   };
   /* C3b — asked once per claimed ticket: what the check would refuse, said on the line before the tick. */
+  /* PD-9 — the doctor's answer changes what the check refuses, so the pre-check is asked again when any request moves. */
+  const asked = dispense.lines.map((l) => (l.authorisations ?? []).map((a) => `${a.id}:${a.status}`).join(",")).join("|");
   const precheck = useQuery({
-    queryKey: ["pharmacy", "precheck", dispense.id],
+    queryKey: ["pharmacy", "precheck", dispense.id, asked],
     queryFn: () => fetchPrecheck(dispense.id),
     enabled: dispense.status === "claimed" && editable,
     staleTime: 60_000,
@@ -146,6 +159,8 @@ export function LineList({
             error={errors[l.lineIdx] ?? null}
             precheck={dispense.status === "claimed" ? precheck.data?.find((p) => p.lineIdx === l.lineIdx) : undefined}
             onPlace={canPlace && l.item !== null ? (location) => place(l.item!.id, location) : null}
+            prescriberName={dispense.prescriberName ?? null}
+            onAsk={canAsk ? (blocks, note) => askAbout(l.lineIdx, blocks, note) : null}
             declining={declining === l.lineIdx}
             onEdit={(patch, settle) => edit(l.lineIdx, patch, settle)}
             onToggleDecline={() => setDeclining((d) => (d === l.lineIdx ? null : l.lineIdx))}
@@ -190,7 +205,7 @@ export function LineList({
 }
 
 function LineRow({
-  line, tick, editable, busy, today, error, precheck, onPlace, declining, onEdit, onToggleDecline, onDecline, onSubstitute, onResolve,
+  line, tick, editable, busy, today, error, precheck, onPlace, prescriberName, onAsk, declining, onEdit, onToggleDecline, onDecline, onSubstitute, onResolve,
 }: {
   line: WireDispenseLine;
   tick: Tick | undefined;
@@ -201,6 +216,9 @@ function LineRow({
   precheck: WireLinePrecheck | undefined;
   /** PD-D18 — set where this item sits; null for a reader who may not (answers an error sentence, or null). */
   onPlace: ((location: string) => Promise<string | null>) | null;
+  /** PD-9 — the prescribing doctor's name, and the way to ask them; null for a reader who may not ask. */
+  prescriberName: string | null;
+  onAsk: ((blocks: readonly WireAlternativeBlock[], note: string) => Promise<string | null>) | null;
   declining: boolean;
   onEdit: (patch: Partial<Tick>, settle: boolean) => void;
   onToggleDecline: () => void;
@@ -211,6 +229,8 @@ function LineRow({
   const { t } = useTranslation();
   const [why, setWhy] = useState("");
   const [placing, setPlacing] = useState<string | null>(null);
+  const [asking, setAsking] = useState<string | null>(null);
+  const [askError, setAskError] = useState<string | null>(null);
   const [placeError, setPlaceError] = useState<string | null>(null);
   const savePlace = async (): Promise<void> => {
     if (onPlace === null || placing === null) return;
@@ -416,6 +436,62 @@ function LineRow({
               {t("pharmacyDesk.precheck.blocked", { why: precheck.blocks.map((b) => `${t(`pharmacyDesk.sub.book.${b.book}`)} ${b.about}`).join("; ") })}
             </span>
           ) : null}
+
+          {/*
+            PD-9 — THE PRESCRIBER'S ANSWER, on the line it is about. The latest request speaks; a refusal
+            with no open request can be put to the doctor by name. The tick stays the server's to judge.
+          */}
+          {(() => {
+            const doctor = prescriberName ?? t("pharmacyDesk.auth.theDoctor");
+            const requests = line.authorisations ?? [];
+            const latest = requests[requests.length - 1];
+            const unasked = editable && precheck?.verdict === "blocked"
+              ? precheck.blocks.filter((b) => !requests.some((a) => a.book === b.book && a.about === b.key && a.status === "pending"))
+              : [];
+            return (
+              <>
+                {latest === undefined ? null : (
+                  <span data-testid={`desk-line-${String(line.lineIdx)}-auth`} style={{
+                    ...soft,
+                    background: latest.status === "authorised" ? "var(--green-soft, #e3f1ea)" : latest.status === "declined" ? "var(--red-soft)" : "var(--gold-soft)",
+                    color: latest.status === "authorised" ? "var(--green)" : latest.status === "declined" ? "var(--red)" : "inherit",
+                  }}>
+                    {latest.status === "pending" ? t("pharmacyDesk.auth.waiting", { doctor })
+                      : latest.status === "authorised" ? t("pharmacyDesk.auth.authorised", { doctor, reason: latest.decisionReason ?? "" })
+                      : t("pharmacyDesk.auth.declined", { doctor, reason: latest.decisionReason ?? "" })}
+                  </span>
+                )}
+                {onAsk !== null && unasked.length > 0 && asking === null ? (
+                  <button className="sec" style={{ height: 26, marginTop: 6 }} disabled={busy} onClick={() => { setAsking(""); setAskError(null); }}>
+                    {t("pharmacyDesk.auth.ask", { doctor })}
+                  </button>
+                ) : null}
+                {onAsk !== null && asking !== null ? (
+                  <span style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                    <input
+                      className="in"
+                      autoFocus
+                      aria-label={t("pharmacyDesk.auth.noteLabel", { doctor })}
+                      placeholder={t("pharmacyDesk.auth.notePlaceholder")}
+                      value={asking}
+                      onChange={(e) => setAsking(e.target.value)}
+                      style={{ height: 30, fontSize: 12, minWidth: 260 }}
+                    />
+                    <button
+                      className="sec grn"
+                      style={{ height: 30 }}
+                      disabled={busy}
+                      onClick={() => { void (async () => { const err = await onAsk(unasked, asking); setAskError(err); if (err === null) setAsking(null); })(); }}
+                    >
+                      {t("pharmacyDesk.auth.send", { doctor })}
+                    </button>
+                    <button className="sec" style={{ height: 30 }} onClick={() => setAsking(null)}>{t("pharmacyDesk.rack.cancel")}</button>
+                  </span>
+                ) : null}
+                {askError !== null ? <span role="alert" style={{ ...soft, background: "var(--red-soft)", color: "var(--red)" }}>{askError}</span> : null}
+              </>
+            );
+          })()}
 
           {editable && declining && substitutable(line) === false && line.rxLine.noSubstitution ? (
             <span style={{ ...soft, background: "var(--wash)" }}>{t("pharmacyDesk.sub.noSubstitution")}</span>

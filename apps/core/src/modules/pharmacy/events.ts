@@ -69,6 +69,20 @@ export const shelfLocationSet = defineEvent("shelf.location_set", MODULE, z.obje
   storeResourceId: id, itemId: id, location: z.string().min(1).nullable(),
 }));
 
+/**
+ * PD-9 (owner ruling 2026-09-19) — the counter asked the PRESCRIBER to authorise one refusal on one
+ * line, and the prescriber decided. Ids and the book only: the substance and the reasons live on the
+ * row, which the ticket and the doctor read under their own gates.
+ */
+export const authorisationRequested = defineEvent("authorisation.requested", MODULE, z.object({
+  authorisationId: id, dispenseId: id, lineIdx: z.number().int().nonnegative(), patientId: id,
+  book: z.enum(["allergy", "interaction", "duplicate", "drug_disease"]), prescriberUserId: id, requestedBy: id,
+}));
+export const authorisationDecided = defineEvent("authorisation.decided", MODULE, z.object({
+  authorisationId: id, dispenseId: id, lineIdx: z.number().int().nonnegative(), patientId: id,
+  status: z.enum(["authorised", "declined"]), decidedBy: id,
+}));
+
 /** D2 — every line holds a reservation on the ledger; a FEFO override is named, never silent. */
 export const dispensePicked = defineEvent("dispense.picked", MODULE, z.object({
   dispenseId: id, patientId: id,
@@ -173,6 +187,7 @@ export const retailLicenceRecorded = defineEvent("retail.licence_recorded", MODU
 /** The catalog, in source order (`LAB_EVENTS`' discipline). A later task that adds a `defineEvent` above adds it here. */
 export const PHARMACY_EVENTS = [
   dispenseQueued, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved, shelfLocationSet,
+  authorisationRequested, authorisationDecided,
   dispensePicked, dispenseBilled, dispenseHandedOver, dispenseCancelled,
   pharmacistRegistered, pharmacistRegistrationEnded, dispenseLineReturned,
   retailSold, retailLicenceRecorded, retailLineReturned,

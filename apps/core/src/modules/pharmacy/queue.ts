@@ -14,6 +14,8 @@ import { PharmacyError } from "./errors";
 import { shelfChecks } from "./precheck";
 import { getSaleItem } from "./sale-items";
 import { shelfLocationsFor } from "./shelf-locations";
+import { authorisationsOf } from "./authorisation-reads";
+import { getDoctor } from "../opd";
 import type { ShelfCheck } from "./precheck";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -187,6 +189,14 @@ export type DispenseLineView = {
   saleable: boolean;
   /** PD-D18 — where this item sits in the counter's store ("R-12"), or null when nobody has said. */
   location: string | null;
+  /**
+   * PD-9 — every request to the prescriber about this line, oldest first: what was asked, and what the
+   * doctor decided and why. `about` is the hit's identity (`refusalKey`), the same the line's refusal carries.
+   */
+  authorisations: {
+    id: string; book: string; about: string; status: string; requestNote: string | null;
+    decisionReason: string | null; requestedAt: Date; decidedAt: Date | null;
+  }[];
   /** At the counter's store: on hand minus reserved minus frozen, in base units. `null` before the claim names a store. */
   available: number | null;
   batchId: string | null;
@@ -246,6 +256,8 @@ export type DispenseView = {
   transcribedBy: string | null;
   transcribedByName: string | null;
   slipConfirmedBy: string | null;
+  /** PD-9 — the doctor who wrote this prescription, whom the counter asks to authorise. */
+  prescriberName: string | null;
   patient: { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean };
   allergies: { substance: string; severity: string | null }[];
   lines: DispenseLineView[];
@@ -317,7 +329,9 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
   const itemIds = [...new Set(lines.map((l) => l.itemId).filter((x): x is string => x !== null))];
   const items = itemIds.length === 0 ? new Map() : await itemsByIds(db, itemIds);
   const allergies = await listAllergies(db, d.patientId);
-  const [rxRow] = await db.select({ transcribedBy: opdPrescriptions.transcribedBy }).from(opdPrescriptions).where(eq(opdPrescriptions.id, d.prescriptionId));
+  const [rxRow] = await db.select({ transcribedBy: opdPrescriptions.transcribedBy, doctorId: opdPrescriptions.doctorId }).from(opdPrescriptions).where(eq(opdPrescriptions.id, d.prescriptionId));
+  const prescriber = rxRow === undefined ? null : await getDoctor(db, rxRow.doctorId);
+  const asked = await authorisationsOf(db, d.id);
   const transcribedBy = rxRow?.transcribedBy ?? null;
   const names = await userNames(db, [d.claimedBy, transcribedBy]);
   const openItems = lines.filter((l) => l.status === "open" && l.itemId !== null).map((l) => l.itemId as string);
@@ -364,6 +378,10 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
       partlyChecked: (dm ?? om)?.salts.some((s) => unreviewed.has(s.saltId)) ?? false,
       batches: l.status === "open" && l.itemId !== null && l.batchId === null ? (batchesByItem.get(l.itemId) ?? []) : [],
       pickedBatch: picked === undefined ? null : { batchNo: picked.batchNo, expiryDate: picked.expiryDate },
+      authorisations: asked.filter((a) => a.lineIdx === l.lineIdx).map((a) => ({
+        id: a.id, book: a.book, about: a.about, status: a.status, requestNote: a.requestNote,
+        decisionReason: a.decisionReason, requestedAt: a.requestedAt, decidedAt: a.decidedAt,
+      })),
     });
   }
   return {
@@ -376,6 +394,7 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
     transcribedBy,
     transcribedByName: names.get(transcribedBy ?? "") ?? null,
     slipConfirmedBy: d.slipConfirmedBy,
+    prescriberName: prescriber?.displayName ?? null,
     cancelReason: d.cancelReason,
     patient: { id: summary.id, uhid: summary.uhid, name: summary.name, alias: summary.alias, restricted: summary.restricted },
     allergies: allergies.map((a) => ({ substance: a.substance, severity: (a as { severity?: string | null }).severity ?? null })),

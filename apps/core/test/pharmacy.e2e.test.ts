@@ -121,6 +121,30 @@ describe("the OPD dispense counter over HTTP (16c T5)", () => {
     expect(clerk.body).toMatchObject({ answer: { key: "copilot.answer.notPermitted" }, intent: "stock_on_shelf" });
   });
 
+  it("PD-9 — the pharmacist asks the prescriber, the prescriber alone reads and decides it, and the check then passes", async () => {
+    // the seeded `doctor` role holds `opd.consult` (scripts/seed-roles.ts); the fixture's issues directly and never needed it
+    await grantPermissionToRole(db, fx.registry, "doctor", "opd.consult");
+    await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "CR-1", qtyBase: 50 });
+    const { issued } = await issueRx(db, fx, [line({ drug: "Crocin 500", medicineId: fx.med.crocin })], { payFee: true });
+    const found = await as(fx.pharmacist.token)(request(server()).get("/pharmacy/find").query({ q: issued.qrPayload })).expect(200);
+    const id = (found.body as { dispense: { id: string } }).dispense.id;
+    await as(fx.pharmacist.token)(request(server()).post("/pharmacy/dispenses").set("idempotency-key", "c-pd9").send({ dispenseId: id, door: "rx_qr" })).expect(201);
+    await addAllergy(db, fx.patient.id, "Paracetamol");
+    await as(fx.pharmacist.token)(request(server()).post(`/pharmacy/dispenses/${id}/verify`).set("idempotency-key", "v-pd9-1").send({ lines: [{ lineIdx: 0, qtyBase: 15 }] })).expect(409);
+
+    const asked = await as(fx.pharmacist.token)(request(server()).post(`/pharmacy/dispenses/${id}/lines/0/authorisations`)
+      .send({ book: "allergy", about: "Paracetamol", note: "tolerated it last year" })).expect(201);
+    const aid = (asked.body as { id: string }).id;
+    // the counter may not read it as the doctor's, and may not decide it
+    await as(fx.pharmacist.token)(request(server()).get(`/pharmacy/authorisations/${aid}`)).expect(403);
+    await as(fx.pharmacist.token)(request(server()).post(`/pharmacy/authorisations/${aid}/decision`).send({ authorise: true, reason: "fine" })).expect(403);
+    const read = await as(fx.doctor.token)(request(server()).get(`/pharmacy/authorisations/${aid}`)).expect(200);
+    expect(read.body).toMatchObject({ authorisation: { id: aid, status: "pending", about: "Paracetamol" }, line: { drug: "Crocin 500" } });
+    await as(fx.doctor.token)(request(server()).post(`/pharmacy/authorisations/${aid}/decision`).send({ authorise: true, reason: "mild rash only" })).expect(201);
+    const v = await as(fx.pharmacist.token)(request(server()).post(`/pharmacy/dispenses/${id}/verify`).set("idempotency-key", "v-pd9-2").send({ lines: [{ lineIdx: 0, qtyBase: 15 }] })).expect(201);
+    expect(v.body).toMatchObject({ status: "verified", lines: [{ authorisations: [{ id: aid, status: "authorised", decisionReason: "mild rash only" }] }] });
+  });
+
   it("e-Rx → scan → claim → decline the unstocked line → verify (P number) → pick → bill → hand over → label; every row read back", async () => {
     const pharmacist = as(fx.pharmacist.token);
     const aide = as(fx.aide.token);
