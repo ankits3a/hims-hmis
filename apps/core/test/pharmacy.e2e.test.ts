@@ -72,6 +72,9 @@ describe("the OPD dispense counter over HTTP (16c T5)", () => {
     // P13 — the scan check is the picker's, and a missing code is refused before anything is read.
     await as(fx.clerk.token)(request(server()).get("/pharmacy/dispenses/nope/lines/0/scan?code=8901234567897")).expect(403);
     await as(fx.aide.token)(request(server()).get("/pharmacy/dispenses/nope/lines/0/scan")).expect(400);
+    // PD-5b — the shelf a line nobody placed may be read as: the counter's search, not the downtime clerk's.
+    await as(fx.clerk.token)(request(server()).get("/pharmacy/dispenses/nope/lines/0/shelf?q=cal")).expect(403);
+    await as(fx.aide.token)(request(server()).get("/pharmacy/dispenses/nope/lines/x/shelf?q=cal")).expect(400);
     // P16 — the GST plan is the sale-item manager's, and applying it answers with what it did.
     await as(fx.aide.token)(request(server()).get("/pharmacy/sale-items/gst-plan")).expect(403);
     const gst = await as(fx.pharmacist.token)(request(server()).get("/pharmacy/sale-items/gst-plan")).expect(200);
@@ -126,6 +129,9 @@ describe("the OPD dispense counter over HTTP (16c T5)", () => {
     // a replay of the same idempotency key returns the same answer, not a second claim
     await pharmacist(request(server()).post("/pharmacy/dispenses").set("idempotency-key", "claim-1").send({ dispenseId: id, door: "rx_qr" })).expect(201);
 
+    // PD-5b — the unplaced line can be searched for on this counter's shelf (the aide may look); nothing here is it, so it is declined.
+    const shelf = await aide(request(server()).get(`/pharmacy/dispenses/${id}/lines/2/shelf`).query({ q: "croc" })).expect(200);
+    expect((shelf.body as { items: { itemCode: string; available: number }[] }).items.map((e) => [e.itemCode, e.available])).toEqual([["CROC500", 50]]);
     await pharmacist(request(server()).post(`/pharmacy/dispenses/${id}/lines/2/decline`).send({ reason: "not stocked here" })).expect(201);
     const verified = await pharmacist(request(server()).post(`/pharmacy/dispenses/${id}/verify`).set("idempotency-key", "verify-1")
       .send({ lines: [{ lineIdx: 0, qtyBase: 20 }, { lineIdx: 1, qtyBase: 3 }] })).expect(201);

@@ -67,6 +67,9 @@ import type { RxLine } from "../src/modules/opd/prescriptions";
  * An eleventh (PD-8) is TYPED FROM THE DOCTOR'S PAPER by an `opd_scribe` through the real
  * `paper_slip` authority (FD-31), so the desk's cross-check against the slip (E28) can be walked;
  * with no scribe on the roster it is reported absent rather than faked.
+ * A twelfth (PD-5b) carries the doctor's shorthand `Tab PCM 500`: no brand is called that, so the
+ * catalogue cannot place it, but two on the shelf ARE it — the line the pharmacist chooses, where
+ * `Ascoril LS syrup` is the one they decline.
  * The allergy ticket's allergy is recorded AFTER the prescription — `issuePrescription` runs the
  * same checks and would refuse it at issue, so a pre-existing allergy never reaches the counter.
  *
@@ -166,8 +169,8 @@ type Ticket = {
 };
 
 /**
- * Phones `9000000101`–`106` are `seed:lab-demo`'s; this file owns `9000000201`–`211`. Idempotent by
- * phone, and by "already seen today" per ticket — so tomorrow the same ten people are a fresh day.
+ * Phones `9000000101`–`106` are `seed:lab-demo`'s; this file owns `9000000201`–`212`. Idempotent by
+ * phone, and by "already seen today" per ticket — so tomorrow the same people are a fresh day.
  */
 export const TICKETS: readonly Ticket[] = [
   { teaches: "happy path", person: { name: "Ramesh Paswan", sex: "male", ageYears: 38, phone: "9000000201" },
@@ -192,6 +195,8 @@ export const TICKETS: readonly Ticket[] = [
     lines: [med("Alprax 0.5", "1 tab", "0-0-1", 7), med("Calpol 500", "1 tab", "1-0-1", 3)] },
   { teaches: "typed from the doctor's paper — confirm the slip first", person: { name: "Sushila Devi", sex: "female", ageYears: 60, phone: "9000000211" },
     lines: [med("Cetzine 10", "1 tab", "0-0-1", 5), med("Calpol 500", "1 tab", "1-0-1", 3)], typedFromPaper: true },
+  { teaches: "a line the catalogue could not place, and the pharmacist can", person: { name: "Kamla Devi", sex: "female", ageYears: 55, phone: "9000000212" },
+    lines: [typed("Tab PCM 500", "1 tab", "1-0-1", 3), med("Cetzine 10", "1 tab", "0-0-1", 5)] },
 ];
 
 const ADULT_VITALS = { heightCm: 165, weightKg: 62, sbp: 124, dbp: 80, pulse: 76, spo2: 98, tempC: 36.9 };

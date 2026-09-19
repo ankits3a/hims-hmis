@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ResolveSheet } from "./resolve";
 import { SubstituteSheet } from "./substitute";
-import { adviceFor, allSettled, blockedFor, canTick, freshTick, isPartial, isSettled, istToday, pickBody, qtyOf, sigOf, substitutable, verifyBody } from "./work";
+import { adviceFor, allSettled, blockedFor, canTick, freshTick, isPartial, isSettled, istToday, pickBody, placeable, qtyOf, sigOf, substitutable, verifyBody } from "./work";
 import type { Tick } from "./work";
 import type { PickLine, VerifyLine, WireDispense, WireDispenseLine } from "../../lib/pharmacy-api";
 
@@ -32,6 +33,7 @@ export function LineList({
   const [ticketError, setTicketError] = useState<string | null>(null);
   const [declining, setDeclining] = useState<number | null>(null);
   const [subbing, setSubbing] = useState<number | null>(null);
+  const [resolving, setResolving] = useState<number | null>(null);
   const settleAfterDecline = useRef(false);
   const today = istToday();
 
@@ -122,6 +124,7 @@ export function LineList({
             onEdit={(patch, settle) => edit(l.lineIdx, patch, settle)}
             onToggleDecline={() => setDeclining((d) => (d === l.lineIdx ? null : l.lineIdx))}
             onSubstitute={() => setSubbing(l.lineIdx)}
+            onResolve={() => setResolving(l.lineIdx)}
             onDecline={(reason) => void decline(l.lineIdx, reason)}
           />
         ))}
@@ -139,6 +142,19 @@ export function LineList({
           }}
         />
       )}
+      {resolving === null ? null : (
+        <ResolveSheet
+          dispenseId={dispense.id}
+          line={dispense.lines.find((l) => l.lineIdx === resolving)!}
+          onClose={() => setResolving(null)}
+          onChoose={(res) => {
+            /* The shelf this line is served from is only now known: the batch, the scan and the tick restart. */
+            edit(resolving, { res, batchId: null, scan: "", ticked: false }, false);
+            setResolving(null);
+            setDeclining(null);
+          }}
+        />
+      )}
       {busy ? <p role="status" style={{ margin: "12px 0 0 0", fontSize: 12.5, color: "var(--dim)" }}>{t("pharmacyDesk.collecting")}</p> : null}
       {/* A refusal that landed on its lines is said there, once — not again under the list. */}
       {ticketError !== null && Object.keys(errors).length === 0
@@ -148,7 +164,7 @@ export function LineList({
 }
 
 function LineRow({
-  line, tick, editable, busy, today, error, declining, onEdit, onToggleDecline, onDecline, onSubstitute,
+  line, tick, editable, busy, today, error, declining, onEdit, onToggleDecline, onDecline, onSubstitute, onResolve,
 }: {
   line: WireDispenseLine;
   tick: Tick | undefined;
@@ -161,6 +177,7 @@ function LineRow({
   onToggleDecline: () => void;
   onDecline: (reason: string) => void;
   onSubstitute: () => void;
+  onResolve: () => void;
 }): React.ReactElement {
   const { t } = useTranslation();
   const [why, setWhy] = useState("");
@@ -175,12 +192,16 @@ function LineRow({
   */
   const recorded = line.substitutionType === "generic";
   const sub = recorded ? null : (tick?.sub ?? null);
+  /* PD-5b — the reading is drawn only while the server's line is still unplaced; after the check the server's medicine is the line. */
+  const res = given === null ? (tick?.res ?? null) : null;
   const settled = tick !== undefined && isSettled(line, tick);
   const qty = tick === undefined ? null : qtyOf(tick);
   /* The batches on the view are the ORIGINAL item's; a substitute is picked from its own shelf by FEFO. */
-  const advice = editable && qty !== null && blocked === null && sub === null ? adviceFor(line, qty, today, tick?.batchId ?? null) : null;
+  const advice = editable && qty !== null && blocked === null && sub === null && res === null ? adviceFor(line, qty, today, tick?.batchId ?? null) : null;
   const partial = tick !== undefined && isPartial(line, tick);
   const declined = line.status === "declined";
+  /* The amber note's own control — the line menu does not draw it a second time (walk finding). */
+  const noteOffers = editable && (blocked === "unresolved" ? placeable(line) : blocked === "empty" || blocked === "not_stocked" || blocked === "not_saleable");
   const bar = error !== null ? "var(--red)" : declined || blocked !== null ? "var(--gold)" : settled || line.pickedBatch != null ? "var(--green)" : "transparent";
   const soft = { display: "block", marginTop: 7, fontSize: 11.5, lineHeight: "16px", padding: "7px 9px", borderRadius: 6 } as const;
   const label = `${rx.drug} ${sigOf(rx)}`;
@@ -213,7 +234,13 @@ function LineRow({
         <span style={{ width: 14, flexShrink: 0, paddingTop: 3, color: "var(--dim)" }} aria-hidden="true">→</span>
 
         <span style={{ flexGrow: 1, minWidth: 0 }}>
-          {given === null ? (
+          {given === null && res !== null ? (
+            <span style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }} data-testid={`desk-line-${String(line.lineIdx)}-res`}>
+              <span style={{ fontSize: 13.5, fontWeight: 600 }}>{res.brandName}</span>
+              <span className="pill on">{t("pharmacyDesk.res.chosen")}</span>
+              {editable ? <button className="sec" style={{ height: 24 }} onClick={() => onEdit({ res: null, ticked: false }, false)}>{t("pharmacyDesk.res.undo")}</button> : null}
+            </span>
+          ) : given === null ? (
             /* Worked, the amber note below says it and says what to do; one sentence, not two. */
             editable ? null : <span className="pill gd">{t("pharmacyDesk.unresolved")}</span>
           ) : sub !== null ? (
@@ -257,10 +284,15 @@ function LineRow({
                   {t("pharmacyDesk.sub.open")}
                 </button>
               ) : null}
+              {blocked === "unresolved" && placeable(line) ? (
+                <button className="sec grn" style={{ height: 24, marginTop: 5 }} disabled={busy} onClick={onResolve}>
+                  {t("pharmacyDesk.res.open")}
+                </button>
+              ) : null}
             </span>
           ) : null}
-          {editable && sub !== null ? (
-            <span className="mo" style={{ display: "block", fontSize: 11.5, color: "var(--dim)", marginTop: 3 }}>{t("pharmacyDesk.sub.onShelf", { n: sub.available })}</span>
+          {editable && (sub ?? res) !== null ? (
+            <span className="mo" style={{ display: "block", fontSize: 11.5, color: "var(--dim)", marginTop: 3 }}>{t("pharmacyDesk.sub.onShelf", { n: (sub ?? res)!.available })}</span>
           ) : null}
 
           {advice?.kind === "first_short" ? (
@@ -320,7 +352,9 @@ function LineRow({
           ) : null}
           {editable && declining ? (
             <span style={{ display: "flex", gap: 7, marginTop: 8, flexWrap: "wrap" }}>
-              <button className="sec grn" style={{ height: 32 }} disabled={busy || !substitutable(line)} onClick={onSubstitute}>{t("pharmacyDesk.sub.open")}</button>
+              {noteOffers ? null : placeable(line)
+                ? <button className="sec grn" style={{ height: 32 }} disabled={busy} onClick={onResolve}>{t("pharmacyDesk.res.open")}</button>
+                : <button className="sec grn" style={{ height: 32 }} disabled={busy || !substitutable(line)} onClick={onSubstitute}>{t("pharmacyDesk.sub.open")}</button>}
               <input
                 aria-label={t("pharmacyDesk.declineWhy", { line: label })}
                 className="in"
@@ -350,7 +384,7 @@ function LineRow({
             <span className="mo" style={{ fontSize: 13.5, fontWeight: 600 }}>{line.qtyBase === null ? "—" : String(line.qtyBase)}</span>
           )}
           <span className="mo" style={{ display: "block", fontSize: 10.5, color: "var(--dim)", marginTop: 2 }}>
-            {line.item?.baseUom ?? ""}{line.qtyBase !== null && partial ? ` · ${t("pharmacyDesk.ofPrescribed", { of: line.qtyBase })}` : ""}
+            {line.item?.baseUom ?? res?.baseUom ?? ""}{line.qtyBase !== null && partial ? ` · ${t("pharmacyDesk.ofPrescribed", { of: line.qtyBase })}` : ""}
           </span>
         </span>
 

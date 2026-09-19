@@ -54,12 +54,12 @@ describe("dev-pharmacy-standup — the demo QUEUE (PD-0)", () => {
     return t;
   };
 
-  it("queues ten tickets, one of them already held by the SECOND pharmacist", async () => {
+  it("queues every ticket, one of them already held by the SECOND pharmacist", async () => {
     const report = await standUpPharmacyDay(db, testCfg, DAY);
 
     expect(report.tickets.map((t) => t.made)).toEqual(TICKETS.map(() => true));
     /* Read through `listQueue`, as the counter reads it — not a row count of pharmacy_dispenses. */
-    expect({ reader: report.queueReader, rows: report.queueRows }).toEqual({ reader: "ph.incharge", rows: 11 });
+    expect({ reader: report.queueReader, rows: report.queueRows }).toEqual({ reader: "ph.incharge", rows: TICKETS.length });
     expect(report.tickets.map((t) => [t.teaches, t.status, t.claimedBy])).toEqual(TICKETS.map((t) => [
       t.teaches,
       t.claimedByAnother === true ? "claimed" : "queued",
@@ -90,6 +90,8 @@ describe("dev-pharmacy-standup — the demo QUEUE (PD-0)", () => {
     expect(ticket(report, "partial stock").shelf[0]).toMatchObject({ drug: "Glycomet 500", wanted: 270, sellable: 200 });
     /* PD-D4's amber row: typed text the catalogue cannot place on any item. */
     expect(ticket(report, "unresolved free-text line").shelf[0]).toEqual({ drug: "Ascoril LS syrup", wanted: 150, sellable: null, fefo: null });
+    /* PD-5b — the doctor's shorthand no brand is called: unplaced at the claim, placeable at the desk. */
+    expect(ticket(report, "a line the catalogue could not place, and the pharmacist can").shelf[0]).toEqual({ drug: "Tab PCM 500", wanted: 6, sellable: null, fefo: null });
     /* FEFO offers the batch that dies twelve days in — inside a thirty-day course (E8). */
     const pan = ticket(report, "near-expiry batch").shelf[0]!;
     expect(pan).toMatchObject({ drug: "Pan 40", wanted: 30, sellable: 220 });
@@ -121,21 +123,21 @@ describe("dev-pharmacy-standup — the demo QUEUE (PD-0)", () => {
     const again = await standUpPharmacyDay(db, testCfg, new Date(DAY.getTime() + 5 * 60_000));
 
     expect(again.tickets.map((t) => t.made)).toEqual(TICKETS.map(() => false));
-    expect(again.queueRows).toBe(11);
+    expect(again.queueRows).toBe(TICKETS.length);
     expect(again.tickets.map((t) => t.dispenseId)).toEqual(first.tickets.map((t) => t.dispenseId));
     /* and a re-run still says who holds the claimed one — read off the queue row, not remembered */
     expect(again.tickets.map((t) => t.claimedBy)).toEqual(first.tickets.map((t) => t.claimedBy));
     const phones = TICKETS.map((t) => t.person.phone);
     const people = await db.select({ phone: patients.phone }).from(patients);
-    expect(people.filter((p) => phones.includes(p.phone ?? "")).length).toBe(11);
+    expect(people.filter((p) => phones.includes(p.phone ?? "")).length).toBe(TICKETS.length);
     const visits = await db.select({ id: opdEncounters.id }).from(opdEncounters).where(eq(opdEncounters.serviceDate, "2026-08-17"));
-    expect(visits.length).toBe(11);
+    expect(visits.length).toBe(TICKETS.length);
     /* The near-expiry batch is posted once per day, not once per run. */
     expect(ticket(again, "near-expiry batch").shelf[0]!.sellable).toBe(ticket(first, "near-expiry batch").shelf[0]!.sellable);
 
     const issued = await db.select({ eventId: events.eventId, payload: events.payload }).from(events)
       .where(and(eq(events.name, prescriptionIssued.name)));
-    expect(issued.length).toBe(11);
+    expect(issued.length).toBe(TICKETS.length);
     for (const e of issued) {
       const res = await withTx(db, (tx) => handlePrescriptionIssued(tx, e.eventId, e.payload, DAY));
       expect(res).toEqual({ handled: false, dispenseId: null });

@@ -9,10 +9,11 @@ import { equivalentMedicines, isEquivalentMedicine, medicinesByIds } from "../fo
 import { availableQtyByItem, listItems, releaseReservation } from "../materials";
 import { getEncounter, getPrescription, runRxChecks } from "../opd";
 import { PHARMACY_SUBSTITUTION_ENABLED, REFUSED_FLAGS, SCHEDULED_FLAGS, istDateOf } from "./config";
-import { dispenseCancelled, dispenseLineDeclined, dispenseVerified, substitutionRecorded } from "./events";
+import { dispenseCancelled, dispenseLineDeclined, dispenseVerified, lineResolved, substitutionRecorded } from "./events";
 import { PharmacyError } from "./errors";
 import { requireRegisteredPharmacist } from "./pharmacists";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
+import { searchShelfAt } from "./retail";
 import { getSaleItem } from "./sale-items";
 import { shelfByMedicine } from "./shelf";
 import type { Actor } from "@hmis/contracts";
@@ -20,6 +21,7 @@ import type { Db } from "../../kernel/db/client";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
 import type { AllergyOverride, RxLine, RxOverride } from "../opd";
 import type { DispenseView } from "./queue";
+import type { RetailShelfEntry } from "./retail";
 
 export type Alternative = { medicineId: string; brandName: string; strengthLabel: string | null; form: string; itemId: string; itemCode: string; available: number };
 
@@ -62,10 +64,27 @@ export async function alternativesFor(db: Db, dispenseId: string, lineIdx: numbe
   }));
 }
 
+/**
+ * PD-5b — what a line the catalogue could not place may be read as: this ticket's own shelf,
+ * searched by name, code or a scanned pack, Schedule X never offered (R-3, `searchShelfAt`). Only
+ * for such a line — a line the doctor named, or the catalogue placed from the words, has a medicine
+ * already, and anything else in its place is a substitution (`alternativesFor`, with consent).
+ */
+export async function placementsFor(db: Db, dispenseId: string, lineIdx: number, q: string, now: Date): Promise<RetailShelfEntry[]> {
+  const d = await getDispenseRow(db, dispenseId);
+  const line = (await linesOf(db, dispenseId)).find((l) => l.lineIdx === lineIdx);
+  if (line === undefined) throw new PharmacyError("unknown_line", `line ${String(lineIdx)} not found`);
+  if (line.status !== "open" || line.dispensedMedicineId !== null || d.storeResourceId === null) return [];
+  return searchShelfAt(db, d.storeResourceId, q, now);
+}
+
 export type VerifyLineInput = {
   lineIdx: number;
   qtyBase: number;
-  /** D6 — a generic substitution: a different formulary medicine, same salts, strength and route. */
+  /**
+   * D6 — a generic substitution: a different formulary medicine, same salts, strength and route.
+   * PD-5b — on a line the catalogue could not place, the medicine the pharmacist reads it as.
+   */
   dispensedMedicineId?: string;
   patientConsent?: boolean;
 };
@@ -89,6 +108,17 @@ export type VerifyInput = { lines: VerifyLineInput[] };
  * Same salt-id set, same strength label, same form, same route class, `noSubstitution` false,
  * consent captured. Anything else is `substitution_not_allowed` and the pharmacist declines the
  * line instead — a different moiety is a new prescription (doc 16 §3.1a), which is the doctor's.
+ *
+ * ═══ PD-5b — A LINE NOBODY PLACED IS RESOLVED, NOT SUBSTITUTED ═══
+ *
+ * A line whose words the catalogue could not match (no `dispensedMedicineId` after the claim) has no
+ * medicine to substitute FOR. Naming one is reading the doctor's words, which is the pharmacist's
+ * act: no equivalence to prove and no consent to capture, and `noSubstitution` does not forbid it —
+ * "only what I wrote" is what a resolution tries to honour. It is NOT a lighter gate: the medicine
+ * chosen is judged below exactly as a prescribed one is (stocked, sellable, Schedule X refused) and
+ * the books re-run on it (D9), so an allergy the prescriber never saw stops it here. The line records
+ * `resolved` and `dispense.line_resolved` names who read it. Whether a line is "unplaced" is decided
+ * by the claim's own resolution — never by the shape of this body.
  */
 export async function verifyDispense(
   db: Db,
@@ -123,7 +153,7 @@ export async function verifyDispense(
 
   type Settled = {
     line: (typeof lines)[number]; qtyBase: number; dispensedMedicineId: string; itemId: string; serviceId: string;
-    substitution: { from: string; to: string } | null; scheduleFlag: string | null;
+    substitution: { from: string; to: string } | null; resolvedHere: boolean; scheduleFlag: string | null;
   };
   const settled: Settled[] = [];
   let substitutions = 0;
@@ -137,11 +167,15 @@ export async function verifyDispense(
     }
     let dispensedMedicineId = line.dispensedMedicineId;
     let substitution: { from: string; to: string } | null = null;
+    let resolvedHere = false;
     const wanted = edit?.dispensedMedicineId;
-    if (wanted !== undefined && wanted !== dispensedMedicineId) {
+    if (wanted !== undefined && dispensedMedicineId === null) {
+      if (!medicines.has(wanted)) throw new PharmacyError("unresolved_medicine", `unknown medicine on line ${String(line.lineIdx + 1)}`, { lineIdx: line.lineIdx });
+      dispensedMedicineId = wanted;
+      resolvedHere = true;
+    } else if (wanted !== undefined && dispensedMedicineId !== null && wanted !== dispensedMedicineId) {
       if (!PHARMACY_SUBSTITUTION_ENABLED) throw new PharmacyError("substitution_not_allowed", "substitution is switched off", { lineIdx: line.lineIdx });
       if (rxLine.noSubstitution) throw new PharmacyError("substitution_not_allowed", `line ${String(line.lineIdx + 1)} is marked no-substitution by the prescriber`, { lineIdx: line.lineIdx });
-      if (dispensedMedicineId === null) throw new PharmacyError("unresolved_medicine", `line ${String(line.lineIdx + 1)} (${rxLine.drug}) did not resolve to a medicine; a substitute needs a resolved original`, { lineIdx: line.lineIdx });
       const from = medicines.get(dispensedMedicineId);
       const to = medicines.get(wanted);
       if (from === undefined || to === undefined) throw new PharmacyError("unresolved_medicine", `unknown medicine on line ${String(line.lineIdx + 1)}`, { lineIdx: line.lineIdx });
@@ -188,7 +222,7 @@ export async function verifyDispense(
         { lineIdx: line.lineIdx, scheduleFlag },
       );
     }
-    settled.push({ line, qtyBase, dispensedMedicineId, itemId: item.id, serviceId: sale.serviceId, substitution, scheduleFlag });
+    settled.push({ line, qtyBase, dispensedMedicineId, itemId: item.id, serviceId: sale.serviceId, substitution, resolvedHere, scheduleFlag });
   }
   if (settled.length === 0) throw new PharmacyError("nothing_to_dispense", "every line is declined — cancel the dispense instead");
 
@@ -237,7 +271,14 @@ export async function verifyDispense(
         qtyBase: s.qtyBase, dispensedMedicineId: s.dispensedMedicineId, itemId: s.itemId, orderItemId: placed.itemIds[i]!,
         scheduleFlag: s.scheduleFlag,
         ...(s.substitution === null ? {} : { substitutionType: "generic", consentBy: actor.id, consentAt: now }),
+        ...(s.resolvedHere ? { substitutionType: "resolved" } : {}),
       }).where(eq(pharmacyDispenseLines.id, s.line.id));
+      if (s.resolvedHere) {
+        await appendEvent(tx, lineResolved.make({
+          occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
+          payload: { dispenseId: d.id, lineIdx: s.line.lineIdx, patientId: d.patientId, doctorId: rx.doctorId, dispensedMedicineId: s.dispensedMedicineId, resolvedBy: actor.id },
+        }));
+      }
       if (s.substitution !== null) {
         await appendEvent(tx, substitutionRecorded.make({
           occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
@@ -352,3 +393,4 @@ export async function cancelDispense(
   });
   return getDispense(db, actor, d.id, now);
 }
+

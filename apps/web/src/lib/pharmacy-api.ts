@@ -124,6 +124,11 @@ export async function fetchAlternatives(id: string, lineIdx: number): Promise<Wi
   const { items } = await api<{ items: WireAlternative[] }>("GET", `/pharmacy/dispenses/${id}/lines/${String(lineIdx)}/alternatives`);
   return items;
 }
+/** PD-5b — what a line the catalogue could not place may be read as: this ticket's shelf, never Schedule X. */
+export async function fetchPlacements(id: string, lineIdx: number, q: string): Promise<WireRetailShelfEntry[]> {
+  const { items } = await api<{ items: WireRetailShelfEntry[] }>("GET", `/pharmacy/dispenses/${id}/lines/${String(lineIdx)}/shelf${qs({ q })}`);
+  return items;
+}
 export async function claimDispense(dispenseId: string, door: string, idempotencyKey: string): Promise<WireDispense> {
   return api<WireDispense>("POST", "/pharmacy/dispenses", { dispenseId, door }, idempotencyKey);
 }

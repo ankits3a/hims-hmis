@@ -39,7 +39,7 @@ Indian-corporate-hospital answer, taken and marked.
 - **PD-D4. An unresolved line stays in place.** A prescription line the catalogue could not match
   renders as an amber row with `choose ▾` inline — not a separate "add" control at the bottom. This
   is the owner's "a medicine in the prescription but not on screen". Adding a drug the prescription
-  does NOT carry is a different act and is out of scope (§5).
+  does NOT carry is a different act and is out of scope (§5). **DONE (PD-5b), E31–E34.**
 - **PD-D5. The bill is the right rail and builds live.** It replaces the queue on claim. This is a
   DEPARTURE from Desk One's "pricing is not a stage, it is a column" (`dossier.tsx:21-27`), on the
   owner's instruction; the pharmacy's left rail is the patient's history instead.
@@ -193,6 +193,30 @@ Numbered because each one owes a test. **F** = must fail first against the code 
   confirmation already answered — the C3 finding from the same review. **F**
 - **E19** The patient is a child / the dose is weight-based — the sig shorthand has no strength per
   kg. Show the doctor's text verbatim rather than a shorthand that drops it.
+- **E31** A line the claim could not place is RESOLVED, not substituted. **MEASURED (PD-5b):** `verify`
+  refused any medicine on such a line ("a substitute needs a resolved original"), so the amber row's
+  own sentence — *decline it, or choose what it is* — offered an act that did not exist. DONE: the
+  pharmacist's reading goes to `verify` as `dispensedMedicineId` with NO consent (nothing the doctor
+  named is replaced), the line records `resolved`, and `dispense.line_resolved` names the resolver.
+  `noSubstitution` does not forbid it — the sheet says "choose exactly the medicine written". **F**
+- **E32** The books re-run on the reading: an allergy the prescriber never saw stops it at the check,
+  on the line, exactly as for a prescribed medicine. **F**
+- **E33** Schedule X is neither offered by the shelf search nor accepted at the check. **F**
+- **E34** "Unplaced" is decided by the CLAIM's own resolution, never by the shape of the body: a
+  medicine the doctor named, or the catalogue placed from the words, keeps the consent rule. The
+  search is `GET /pharmacy/dispenses/:id/lines/:idx/shelf` under `pharmacy.dispense.place`, at the
+  ticket's own store, and answers only for an unplaced line; `/pharmacy/downtime/shelf` stays the
+  downtime clerk's and was not widened. **F**
+  **Known limit, not fixed here:** the one shelf search (`searchShelfAt`, shared with retail and
+  downtime) matches brand, item code and item name — not the salt. "paracetamol" finds Calpol only if
+  an item's name says so. The sheet seeds the search from the doctor's words minus the dosage form
+  (`Tab. Zincovit` → `Zincovit`); a salt match belongs to the search, for all three counters at once.
+  **Walked (PD-5b), two defects past green suites:** (1) the seeded `PCM` search answered *"nothing
+  matches — decline the line"* while Calpol stood on the shelf; the sentence now says the search reads
+  brand names and codes, not salts, and to try the brand. (2) The open line menu drew the amber note's
+  control a second time; the menu now offers the other act only when the note does not (which also
+  removed PD-5's doubled "give an equivalent" on an empty line). Demo ticket twelve (`Tab PCM 500`,
+  Kamla Devi) is the placeable one; Rekha Singh's `Ascoril LS syrup` is the one to decline.
 
 ### Money
 - **E20** Short tender → `invoice_not_settled`, refused by billing, not by this screen.
@@ -245,6 +269,7 @@ Numbered because each one owes a test. **F** = must fail first against the code 
 | **PD-3** | The desk shell: routes, three columns, stages, left dossier | web |
 | **PD-4** | The line list: two columns, tick-is-pick, sig shorthand, scan (E7–E13) | web |
 | **PD-5** | Substitute with consent and pre-checked alternatives (C3; E14, E16) | web |
+| **PD-5b** | Resolve an unplaceable line: the ticket's shelf search and `verify`'s resolution (PD-D4; E31–E34) | verify + reader |
 | **PD-6** | The bill rail, tender, save draft (E20–E27) | web |
 | **PD-7** | The copilot: the queue pre-check reader and the dock (C1, C2, C8) | reader |
 | **PD-8** | The slip overlay (E30) | web |

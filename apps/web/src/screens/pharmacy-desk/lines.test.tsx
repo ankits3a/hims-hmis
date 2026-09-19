@@ -75,7 +75,7 @@ describe("the line rules, pure (PD-4)", () => {
   });
   it("verify is told the PRESCRIBED quantity, and the short is the pick's with its reason", () => {
     const l = lineOf(0, { drug: "Glycomet 500", qtyBase: 270 });
-    const ticks = { 0: { ticked: true, qty: "200", reason: "only 200 on the shelf", batchId: null, scan: " 890123 ", sub: null } };
+    const ticks = { 0: { ticked: true, qty: "200", reason: "only 200 on the shelf", batchId: null, scan: " 890123 ", sub: null, res: null } };
     expect(verifyBody([l], ticks)).toEqual([{ lineIdx: 0, qtyBase: 270 }]);
     expect(pickBody([l], ticks)).toEqual([{ lineIdx: 0, qtyBase: 200, pickNote: "only 200 on the shelf", scan: "890123" }]);
   });

@@ -14,27 +14,53 @@ import type { PickLine, VerifyLine, WireBatch, WireDispenseLine, WireRxLine } fr
  *     be the keystroke that reserves stock;
  *   · editing a ticked line unticks it — the pharmacist re-affirms what they changed;
  *   · a line the shelf cannot serve (nothing placed, nothing stocked, nothing sellable) cannot be
- *     ticked at all; it is declined, or substituted (PD-5).
+ *     ticked at all; it is declined, substituted (PD-5), or — placed by nobody — read as a shelf
+ *     medicine by the pharmacist (PD-5b).
  */
 /**
  * `sub` is PD-5's generic equivalent, chosen on the sheet with the patient's consent. It is sent to
  * `verify` as `dispensedMedicineId` + `patientConsent`, and while it stands the line is served from
  * the SUBSTITUTE'S stock — the original's empty shelf no longer blocks the tick.
  */
+/**
+ * `res` is PD-5b's reading of a line the catalogue could not place: the pharmacist chose what the
+ * doctor's words are, from this counter's shelf. It is sent as `dispensedMedicineId` WITHOUT consent
+ * (nothing the doctor named is replaced), and `verify` judges it as it judges any prescribed line.
+ */
 export type Tick = {
   ticked: boolean; qty: string; reason: string; batchId: string | null; scan: string;
   sub: { medicineId: string; brandName: string; available: number } | null;
+  res: { medicineId: string; brandName: string; available: number; baseUom: string } | null;
 };
 
 export function freshTick(line: WireDispenseLine): Tick {
-  return { ticked: false, qty: line.qtyBase === null ? "" : String(line.qtyBase), reason: "", batchId: null, scan: "", sub: null };
+  return { ticked: false, qty: line.qtyBase === null ? "" : String(line.qtyBase), reason: "", batchId: null, scan: "", sub: null, res: null };
 }
 
-/** The block that applies to THIS tick: a chosen substitute lifts the shelf's, never the law's or the catalogue's. */
+/**
+ * The block that applies to THIS tick: a chosen substitute lifts the shelf's, never the law's or the
+ * catalogue's; a chosen reading lifts the catalogue's (the shelf search never offers Schedule X).
+ */
 export function blockedFor(line: WireDispenseLine, tick: Tick | undefined): Blocked | null {
   const b = blockedOf(line);
+  if (b === "unresolved" && tick?.res != null) return null;
   if (tick?.sub == null || b === "unresolved" || b === "schedule_x") return b;
   return null;
+}
+
+/** PD-5b — a line nobody could place, still open: the pharmacist may choose what it is. */
+export function placeable(line: WireDispenseLine): boolean {
+  return line.status === "open" && line.dispensedMedicine === null && line.pickedBatch == null;
+}
+
+/**
+ * The word the shelf search starts from: the doctor's words without the dosage form and the numbers
+ * — "Tab. Zincovit" → "Zincovit", "Tab PCM 500" → "PCM". A start, never a choice.
+ */
+const FORM_WORD = /^(tab|tabs|tablet|tablets|cap|caps|capsule|capsules|syp|syr|syrup|susp|inj|oint|gel|cream|drop|drops)$/i;
+export function searchSeed(drug: string): string {
+  const word = drug.trim().split(/\s+/).map((w) => w.replace(/[.,:;]+$/, "")).find((w) => w !== "" && !FORM_WORD.test(w) && !/^\d/.test(w));
+  return word ?? "";
 }
 
 /** A line the sheet may offer an equivalent for: resolved, not marked no-substitution, not yet checked. */
@@ -95,6 +121,7 @@ export function verifyBody(lines: readonly WireDispenseLine[], ticks: Readonly<R
     const t = ticks[l.lineIdx]!;
     return {
       lineIdx: l.lineIdx, qtyBase: prescribedOf(l, t)!,
+      ...(t.res !== null && l.dispensedMedicine === null ? { dispensedMedicineId: t.res.medicineId } : {}),
       ...(t.sub === null ? {} : { dispensedMedicineId: t.sub.medicineId, patientConsent: true }),
     };
   });

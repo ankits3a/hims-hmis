@@ -13,7 +13,7 @@ import { handOverDispense } from "./handover";
 import { labelFor } from "./label";
 import { pickDispense } from "./pick";
 import { checkPickScan } from "./scan";
-import { alternativesFor, cancelDispense, declineLine, verifyDispense } from "./verify";
+import { alternativesFor, cancelDispense, declineLine, placementsFor, verifyDispense } from "./verify";
 import { cancelBilledDispense } from "./refund";
 import { reorderAdvice } from "./replenishment";
 import { acceptReturn } from "./returns";
@@ -33,6 +33,7 @@ import type { ModuleRegistry } from "../../kernel/modules/loader";
 import type { FindResult } from "./claim";
 import type { DispenseView, QueueRow } from "./queue";
 import type { Alternative } from "./verify";
+import type { RetailShelfEntry } from "./retail";
 import type { PricedDraft } from "../billing";
 import type { LabelData } from "./label";
 
@@ -132,6 +133,22 @@ export class PharmacyCounterController {
   async alternatives(@Param("id") id: string, @Param("idx") idx: string): Promise<{ items: Alternative[] }> {
     try {
       return { items: await alternativesFor(this.db, id, Number(idx)) };
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * PD-5b — what a line the catalogue could not place may be read as. The counter's own permission,
+   * not the downtime clerk's (`/pharmacy/downtime/shelf`): the search is part of working a ticket,
+   * and the act that places the line is still verify's, by a registered pharmacist.
+   */
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Get("dispenses/:id/lines/:idx/shelf")
+  async shelf(@Param("id") id: string, @Param("idx") idx: string, @Query("q") q?: string): Promise<{ items: RetailShelfEntry[] }> {
+    const input = parsed(z.object({ idx: z.coerce.number().int().nonnegative(), q: z.string().max(200).default("") }), { idx, q });
+    try {
+      return { items: await placementsFor(this.db, id, input.idx, input.q, new Date()) };
     } catch (e) {
       return toHttp(e);
     }

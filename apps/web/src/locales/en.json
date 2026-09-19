@@ -3811,6 +3811,23 @@
       "undo": "undo",
       "open": "give an equivalent"
     },
+    "res": {
+      "open": "choose what it is",
+      "title": "Choose what “{{drug}}” is",
+      "rule": "Read the doctor's words as one medicine on this counter's shelf. Nothing the doctor named is being replaced, so no consent is asked.",
+      "noSubstitution": "The doctor wrote no substitution: choose exactly the medicine written, or decline the line.",
+      "search": "Search this counter's shelf",
+      "placeholder": "a brand or a code, or scan the pack",
+      "prompt": "Type a brand or a code, or scan the pack.",
+      "loading": "Reading the shelf…",
+      "none": "Nothing on this shelf is named “{{q}}” — the search reads brand names and codes, not salts. Try the brand you would give; decline the line only if the medicine is not here.",
+      "checkedAtVerify": "Allergies and interactions are checked on what you choose when the prescription is checked; a clash stops it there.",
+      "put": "Put it on the ticket",
+      "putNamed": "Put {{brand}} on the ticket",
+      "cancel": "Cancel",
+      "chosen": "you chose it",
+      "undo": "undo"
+    },
     "slip": {
       "title": "What the scribe photographed",
       "see": "See the slip",
