@@ -201,7 +201,7 @@ export function QueueOverlay({
   onClose: () => void;
 }): React.ReactElement {
   const { t } = useTranslation();
-  /* No ticket is numbered before verify (PD-D8, owner-gated); a column of dashes is noise, not news. */
+  /* PD-2: tickets are numbered when queued. Only a line made wholly of pre-PD-2 tickets has no numbers — then no column of dashes. */
   const numbered = rows.some((r) => r.dispenseNo !== null);
   return (
     <div className="ovl" role="dialog" aria-modal="true" aria-label={t("pharmacyDesk.overlayTitle")} onClick={onClose}>

@@ -1,12 +1,14 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
+import { nextEpisodeNo } from "../../kernel/episodes/series";
 import { opdPrescriptions, pharmacyDispenseLines, pharmacyDispenses, users } from "../../kernel/db/schema";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { withTx } from "../../kernel/db/client";
 import { medicinesByIds, unreviewedSaltIds } from "../formulary";
 import { availableQty, getBatch, itemsByIds, itemUomRows, sellableBatchesByItem } from "../materials";
 import { getPatient, getPatientSummaries, listAllergies } from "../patients";
+import { istDateOf } from "./config";
 import { dispenseQueued } from "./events";
 import { PharmacyError } from "./errors";
 import { shelfChecks } from "./precheck";
@@ -52,8 +54,16 @@ export async function enqueueDispense(
     }
   }
   const dispenseId = newId();
+  /*
+    PD-2 — OWNER RULING 2026-09-19: the ticket's P-number is minted HERE, when it is queued, so the
+    queue can call a person by it from the first minute. The medication order placed at the check
+    carries this same number (`placeOrder`'s `preallocatedOrderNo`), so one dispense has one number
+    from the window to the bill. A ticket cancelled while waiting keeps its number — a gap in the
+    series is an explained gap, never a reused number.
+  */
+  const dispenseNo = await nextEpisodeNo(tx, "pharmacy_dispense", istDateOf(now));
   await tx.insert(pharmacyDispenses).values({
-    id: dispenseId, prescriptionId: input.prescriptionId, prescriptionVersion: input.prescriptionVersion,
+    id: dispenseId, dispenseNo, prescriptionId: input.prescriptionId, prescriptionVersion: input.prescriptionVersion,
     patientId: input.patientId, encounterId: input.encounterId, status: "queued", createdBy: actor.id, createdAt: now,
   });
   await appendEvent(tx, dispenseQueued.make({

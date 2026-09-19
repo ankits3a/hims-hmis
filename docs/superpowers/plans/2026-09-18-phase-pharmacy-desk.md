@@ -66,6 +66,12 @@ Indian-corporate-hospital answer, taken and marked.
   (`model.ts` `tokenLabel`). **Allocation moves to `enqueueDispense`.** OWNER RULING REQUESTED —
   this is a numbering series, adjacent to records; the fallback if refused is to call the queue by
   the OPD token (`T-14`), which already exists and is already on the patient's slip.
+  **OWNER RULING 2026-09-19: YES — DONE (PD-2).** `enqueueDispense` mints the P-number from the
+  `pharmacy_dispense` series when the ticket is queued; `verifyDispense` places the medication order
+  under THAT number through `placeOrder`'s new `preallocatedOrderNo` (checked against the kind's own
+  series; `order_no` is UNIQUE), so one dispense has one number from the window to the bill. A ticket
+  superseded while waiting keeps its number, cancelled — a gap is explained, a number is never reused.
+  A ticket queued before PD-2 has none and is numbered at the check, as before.
 - **PD-D9. A claimed ticket names its holder.** Claim is already exclusive (CAS → 409
   `dispense_not_in_state`, `claim.ts:182`) but `QueueRow` carries no `claimedBy`, so a second
   pharmacist learns only by being refused. Add `claimedBy` + `claimedByName`; the row dims and says
@@ -324,7 +330,7 @@ Numbered because each one owes a test. **F** = must fail first against the code 
 |---|---|---|
 | **PD-0** | **The demo QUEUE.** Synthetic patients, seen encounters, prescriptions, tickets — behind the existing production door. | seed only |
 | **PD-1** | `claimedBy` + `claimedByName` on the queue row and on the lost claim's 409; a sealed ticket refused as restricted, not "not found" (PD-D9, PD-D10 as amended; E1, E3) | reader |
-| **PD-2** | The ticket number at open (PD-D8) — gated on the owner | series |
+| **PD-2** | The ticket number at open (PD-D8) — **owner: yes (2026-09-19), DONE** | series |
 | **PD-3** | The desk shell: routes, three columns, stages, left dossier | web |
 | **PD-4** | The line list: two columns, tick-is-pick, sig shorthand, scan (E7–E13) | web |
 | **PD-5** | Substitute with consent and pre-checked alternatives (C3; E14, E16) | web |
