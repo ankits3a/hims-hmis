@@ -70,7 +70,12 @@ export function openAiCompatibleClient(
               sampling.
             */
             temperature: 0,
-            max_tokens: input.maxTokens ?? 64,
+            /*
+              512 when the caller names none. It was 64 — "a dozen tokens" of JSON — and a reasoning
+              model spends 62-74 tokens THINKING before it writes them, so the reply came back cut
+              off and empty (measured 2026-09-19, `copilot/router.ts` carries the numbers).
+            */
+            max_tokens: input.maxTokens ?? 512,
             messages: [
               { role: "system", content: input.system },
               { role: "user", content: input.user },
