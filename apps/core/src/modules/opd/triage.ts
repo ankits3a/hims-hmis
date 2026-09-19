@@ -23,6 +23,7 @@
  * exactly as `proposeWalkIn` proposes and never applies.
  */
 
+import { assertNoIdentifiers, maskQuestion } from "../../kernel/copilot/mask";
 import { defaultTriageCache, triageCacheKey } from "./triage-cache";
 import type { TriageCache } from "./triage-cache";
 
@@ -53,8 +54,17 @@ export type TriageResult = {
   redFlag?: RedFlag;
 };
 
-/** What the desk knows about the patient when the complaint is typed. Both may be absent. */
-export type TriagePatient = { ageYears: number | null };
+/** What the desk knows about the patient when the complaint is typed. All of it may be absent. */
+export type TriagePatient = {
+  ageYears: number | null;
+  /**
+   * The names the desk holds for this patient — the found record, the enrolment form, the guardian
+   * — supplied so they can be MASKED before the model is asked, and used for nothing else. A name
+   * has no shape a pattern can find, so the one surface that knows it supplies it by value. Absent,
+   * the guarantee covers identifier shapes only.
+   */
+  names?: readonly string[];
+};
 
 /**
  * Desk One's own table, carried over verbatim in intent: Hindi and English keys, because the clerk
@@ -318,6 +328,20 @@ export async function suggestDepartments(
   }
 
   /*
+   * ═══ NOTHING THAT NAMES THE PATIENT LEAVES THIS PROCESS ═══
+   *
+   * The plan series' law — "identified PHI never enters an inference request — any stage, any
+   * locus, ever" — which this path broke until 2026-09-19: the complaint went to the provider
+   * verbatim, and a clerk who typed "Ramesh ji ko bukhar, 98765 43210" sent both. The complaint is
+   * masked with the copilot's own masker: identifier SHAPES always, and the names the desk holds by
+   * value, whole or by their parts, because a clerk says "Ramesh" and the record says "Ramesh Kumar".
+   *
+   * Everything local — the brake above, the keyword table — reads the complaint as typed. Only what
+   * leaves is masked, and the cache below is keyed on that, so it never holds a name either.
+   */
+  const masked = maskQuestion(text, nameTerms(patient.names ?? []), { wholeWords: true }).masked;
+
+  /*
    * ═══ FD-11 — THE SAME QUESTION IS NOT PAID FOR TWICE ═══
    *
    * The owner asked for this by name. Two savings, and both are exact: an answer already given for
@@ -327,8 +351,11 @@ export async function suggestDepartments(
    * Neither trades anything away. `triage-cache.ts` carries the reasoning for what is NOT done —
    * short-circuiting the model on a keyword hit was measured and is wrong — and for the rule that
    * a keyword fallback is never stored, so a transient 429 cannot pin the degraded answer.
+   *
+   * Keyed on the MASKED complaint: the answer depends only on what the model saw, so "Ramesh ko
+   * bukhar" and "Suresh ko bukhar" are one question and one call.
    */
-  const key = triageCacheKey(text, departments);
+  const key = triageCacheKey(masked, departments);
   const cached = cache.get(key);
   if (cached !== undefined) return cached;
 
@@ -338,7 +365,7 @@ export async function suggestDepartments(
     return already;
   }
 
-  const pending = askModel(text, departments, { ...config, baseUrl: config.baseUrl, apiKey: config.apiKey }, fetchImpl, keywords);
+  const pending = askModel(masked, departments, { ...config, baseUrl: config.baseUrl, apiKey: config.apiKey }, fetchImpl, keywords);
   cache.inflight.set(key, pending);
   try {
     const result = await pending;
@@ -349,8 +376,27 @@ export async function suggestDepartments(
   }
 }
 
+/**
+ * Each name whole, and each of its words: the clerk types what the patient is called at the
+ * counter, which is rarely the registered name in full. One-letter initials are dropped — an "R"
+ * would mask every standalone r in the complaint and protect nobody.
+ */
+function nameTerms(names: readonly string[]): string[] {
+  const terms = new Set<string>();
+  for (const name of names) {
+    const whole = name.trim();
+    if (whole === "") continue;
+    terms.add(whole);
+    for (const part of whole.split(/[\s.,]+/)) {
+      if ([...part].length >= 2) terms.add(part);
+    }
+  }
+  return [...terms];
+}
+
 /** The call itself. Split out so `suggestDepartments` reads as the caching policy it now is. */
 async function askModel(
+  /** Already masked by the caller. The gate below checks rather than trusts that. */
   text: string,
   departments: TriageDepartment[],
   // Narrowed: `suggestDepartments` has already refused the unconfigured case above.
@@ -358,6 +404,19 @@ async function askModel(
   fetchImpl: typeof fetch,
   keywords: TriageSuggestion[],
 ): Promise<TriageResult> {
+  const prompt = buildPrompt(text, departments);
+  /*
+    THE LAST GATE, on the exact string that goes on the wire — the whole prompt, department list
+    included, because `mask.ts` is right that a masker cannot be its own witness. A refusal costs
+    the model call and nothing else: the clerk gets the keyword table, which is what every other
+    failure here already gives them. `IdentifierLeak` carries only a length, never the text.
+  */
+  try {
+    assertNoIdentifiers(prompt);
+  } catch {
+    return { suggestions: keywords, source: "keywords" };
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), config.timeoutMs);
   try {
@@ -379,7 +438,7 @@ async function askModel(
          */
         stream: false,
         temperature: 0,
-        messages: [{ role: "user", content: buildPrompt(text, departments) }],
+        messages: [{ role: "user", content: prompt }],
       }),
       signal: controller.signal,
     });
