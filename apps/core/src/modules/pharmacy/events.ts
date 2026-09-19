@@ -61,6 +61,14 @@ export const lineResolved = defineEvent("dispense.line_resolved", MODULE, z.obje
   dispensedMedicineId: id, resolvedBy: id,
 }));
 
+/**
+ * PD-D18 — where an item sits in a counter's store was set, replaced or (`location: null`) cleared.
+ * Master data a pharmacist walks by, so a change to it is on the record with who made it.
+ */
+export const shelfLocationSet = defineEvent("shelf.location_set", MODULE, z.object({
+  storeResourceId: id, itemId: id, location: z.string().min(1).nullable(),
+}));
+
 /** D2 — every line holds a reservation on the ledger; a FEFO override is named, never silent. */
 export const dispensePicked = defineEvent("dispense.picked", MODULE, z.object({
   dispenseId: id, patientId: id,
@@ -164,7 +172,7 @@ export const retailLicenceRecorded = defineEvent("retail.licence_recorded", MODU
 
 /** The catalog, in source order (`LAB_EVENTS`' discipline). A later task that adds a `defineEvent` above adds it here. */
 export const PHARMACY_EVENTS = [
-  dispenseQueued, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved,
+  dispenseQueued, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved, shelfLocationSet,
   dispensePicked, dispenseBilled, dispenseHandedOver, dispenseCancelled,
   pharmacistRegistered, pharmacistRegistrationEnded, dispenseLineReturned,
   retailSold, retailLicenceRecorded, retailLineReturned,

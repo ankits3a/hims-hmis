@@ -68,6 +68,8 @@ describe("seed:pharmacy-demo — the synthetic catalogue and shelf", () => {
        it had to make. */
     expect(report.itemsCreated + report.itemsExisting).toBe(8);
     expect(report.saleItemsRegistered + report.saleItemsExisting).toBe(8);
+    /* PD-D18 — every demo item has a rack at the OPD counter. */
+    expect(report.racksSet + report.racksExisting).toBe(8);
     expect(report.medicinesCreated + report.medicinesExisting).toBe(8);
     expect(report.grnsPosted).toBe(2);
     expect(report.vendorCreated).toBe(true);
@@ -130,6 +132,7 @@ describe("seed:pharmacy-demo — the synthetic catalogue and shelf", () => {
     expect(second.medicinesExisting).toBe(8);
     expect(second.itemsCreated).toBe(0);
     expect(second.saleItemsRegistered).toBe(0);
+    expect({ set: second.racksSet, kept: second.racksExisting }).toEqual({ set: 0, kept: 8 });
     expect(second.saleItemsExisting).toBe(8);
     expect(second.vendorCreated).toBe(false);
     expect(second.grnsPosted).toBe(0);
