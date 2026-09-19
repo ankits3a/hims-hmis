@@ -150,6 +150,18 @@ export async function findAtCounter(q: string): Promise<WireFindResult> {
 export async function fetchDispense(id: string): Promise<WireDispense> {
   return api<WireDispense>("GET", `/pharmacy/dispenses/${id}`);
 }
+/** The board's left rail: who is at the window (`patient-rail.ts`). Read once per ticket, never polled. */
+export type WireRailVisit = {
+  encounterId: string; serviceDate: string; departmentName: string | null; doctorName: string | null;
+  status: string; prescriptionLineCount: number;
+};
+export type WireRailMedicine = { drug: string; sig: string; since: string };
+export type WirePatientRail = { ageYears: number | null; sex: string | null; visits: WireRailVisit[]; alreadyTaking: WireRailMedicine[] };
+
+export async function fetchPatientRail(id: string): Promise<WirePatientRail> {
+  return api<WirePatientRail>("GET", `/pharmacy/dispenses/${id}/patient`);
+}
+
 export async function fetchAlternatives(id: string, lineIdx: number): Promise<{ items: WireAlternative[]; written: WireQuote | null }> {
   const r = await api<{ items: WireAlternative[]; written?: WireQuote | null }>("GET", `/pharmacy/dispenses/${id}/lines/${String(lineIdx)}/alternatives`);
   return { items: r.items, written: r.written ?? null };

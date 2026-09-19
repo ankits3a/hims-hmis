@@ -3852,6 +3852,13 @@
       "esc": "बंद करें, फिर डेस्क खाली करें"
     },
     "sealedRecord": "सीलबंद रिकॉर्ड",
+    "years": "{{n}} वर्ष",
+    "alreadyTaking": "पहले से चल रही दवाएँ",
+    "visits": "पिछली विज़िट",
+    "sinceDay": "{{day}} से",
+    "rxLines_one": "1 लाइन",
+    "rxLines_other": "{{count}} लाइनें",
+    "sex": {"female": "महिला", "male": "पुरुष", "other": "—"},
     "noAllergy": "कोई एलर्जी दर्ज नहीं",
     "allergy": "एलर्जी · {{substance}}",
     "flow": {

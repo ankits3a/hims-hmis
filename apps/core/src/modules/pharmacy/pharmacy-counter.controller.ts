@@ -7,6 +7,8 @@ import { withIdempotency } from "../billing";
 import { claimDispense, findAtCounter } from "./claim";
 import { OPD_PHARMACY_STORE_CODE, istDateOf } from "./config";
 import { PHARMACY_IDEMPOTENT_ROUTES, idSchema, parsed, toHttp } from "./pharmacy-http";
+import { patientRail } from "./patient-rail";
+import type { PatientRail } from "./patient-rail";
 import { confirmSlip, getDispense, listQueue } from "./queue";
 import type { Quote } from "./quote";
 import { billDispense, previewDispenseBill } from "./bill";
@@ -127,6 +129,20 @@ export class PharmacyCounterController {
     const q = parsed(z.object({ idx: z.coerce.number().int().nonnegative(), code: z.string().min(1).max(200) }), { idx, code });
     try {
       return await checkPickScan(this.db, id, q.idx, q.code);
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * WHO IS AT THE WINDOW (the board's left rail) — read ONCE when the ticket is opened, never polled:
+   * it records a PHI access, and `getDispense` is on a fifteen-second poll.
+   */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("dispenses/:id/patient")
+  async patientRail(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<PatientRail> {
+    try {
+      return await patientRail(this.db, actor, id, new Date());
     } catch (e) {
       return toHttp(e);
     }

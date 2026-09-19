@@ -97,6 +97,27 @@ describe("the counter agent on a ticket", () => {
     expect(money).toHaveTextContent("₹3.20 each");
   });
 
+  it("the left rail says who is at the window: age and sex, what they are already taking, and the visits behind this one", async () => {
+    mockRoutes({
+      ...base([]),
+      "GET /api/pharmacy/dispenses/d1/patient": { status: 200, body: {
+        ageYears: 58, sex: "male",
+        visits: [{ encounterId: "e9", serviceDate: "2026-09-02", departmentName: "Orthopaedics", doctorName: "Dr S. Mehra", status: "completed", prescriptionLineCount: 2 }],
+        alreadyTaking: [{ drug: "Metformin 500", sig: "1-0-1 × 30d", since: "2026-09-02" }],
+      } },
+    });
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const dossier = await screen.findByTestId("desk-dossier");
+    await waitFor(() => expect(dossier).toHaveTextContent("58y · M · U00110065"));
+    const taking = within(dossier).getByTestId("desk-taking");
+    expect(taking).toHaveTextContent("Metformin 500");
+    expect(taking).toHaveTextContent("1-0-1 × 30d · since 2026-09-02");
+    const visits = within(dossier).getByTestId("desk-visits");
+    expect(visits).toHaveTextContent("Orthopaedics");
+    expect(visits).toHaveTextContent("Dr S. Mehra");
+    expect(visits).toHaveTextContent("2 lines");
+  });
+
   it("says so plainly when every equivalent is stopped by the check, and offers nothing", async () => {
     mockRoutes(base([alt({ check: { verdict: "blocked", blocks: [{ book: "allergy", about: "Pantoprazole", key: "Pantoprazole" }] } })]));
     renderWithProviders(<PharmacyDesk ticketId="d1" />);

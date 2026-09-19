@@ -3852,6 +3852,13 @@
       "esc": "close, then clear the desk"
     },
     "sealedRecord": "sealed record",
+    "years": "{{n}}y",
+    "alreadyTaking": "already taking",
+    "visits": "visits",
+    "sinceDay": "since {{day}}",
+    "rxLines_one": "1 line",
+    "rxLines_other": "{{count}} lines",
+    "sex": {"female": "F", "male": "M", "other": "—"},
     "noAllergy": "no allergy recorded",
     "allergy": "allergy · {{substance}}",
     "flow": {
