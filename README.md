@@ -1381,6 +1381,18 @@ widens how far back the owner may look, never what they may look at, and the pat
 both is harmless: they are a lattice, not a switch, because roles combine and a role-to-horizon
 table would need a `max()` across a person's holdings that nobody writes the first time.
 
+**The OPD day report (owner request and ruling,
+2026-09-19).** `front_office_supervisor`, `medical_superintendent` and `owner` gain
+`opd.reports.read`: the hospital's day department by department — appointments booked,
+consultations completed, and each consultation counted as New (first time at the hospital), Revisit
+or Renewal — and, per department, the list of patients consulted with name, age, sex, a short
+address and the patient type, as a screen, a spreadsheet and a printable letterhead. The owner asked
+for the patient list by name, so unlike `staff.reports.drill` this string DOES carry patient rows —
+the difference being that it lists a DEPARTMENT's register for a day, not the patients behind one
+colleague's shift. Confidential patients are aliased against the reader's own clearance, and every
+department read writes `day_report.patients_listed` naming the reader, the day, the department, the
+format and the row count before the rows leave.
+
 **Two approval types, registered by `seed:ot` in the deploy path.** `ot_definition_publish`
 (approver `medical_superintendent`, 1,440-minute SLA) gates publishing any of the four governed
 definitions — the engine's own requester-vs-approver segregation then forces two distinct humans, and

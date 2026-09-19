@@ -21,6 +21,7 @@ import { PatientStrip } from "./components/patient-strip";
 import { Desk } from "./screens/desk";
 import { MyDay } from "./screens/my-day";
 import { StaffReports } from "./screens/staff-reports";
+import { OpdDayReportScreen } from "./screens/opd-day-report";
 import { DeskOne } from "./screens/desk-one/desk-one";
 import { SeatShell } from "./screens/desk-one/seat-shell";
 import { CounterFigures } from "./screens/counter-figures";
@@ -197,6 +198,8 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   // `desk`: reading a colleague's figures is supervision, not counter work, and putting it beside
   // the counter would make it look like part of a shift.
   { to: "/staff", label: "nav.staffReports", permission: "staff.reports.read", group: "admin" },
+  // The OPD day report (owner, 2026-09-19): the hospital's day by department, PDF and CSV.
+  { to: "/reports/opd-day", label: "nav.opdDayReport", permission: "opd.reports.read", group: "opd" },
   // PLAN 09 T3 — the path and the permission match `membershipManifest.menu`'s own entry exactly,
   // which is where the authoritative pairing lives.
   { to: "/counter/instruments", label: "nav.counterInstruments", permission: "membership.instrument.read", group: "desk" },
@@ -576,6 +579,22 @@ const staffReportsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/staff",
   component: StaffReports,
+});
+
+/**
+ * THE OPD DAY REPORT, department by department (owner, 2026-09-19). The dashboard panel links here
+ * with the day it was showing, so the screen opens on the same day rather than jumping to today.
+ */
+const opdDayReportRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/reports/opd-day",
+  validateSearch: (search: Record<string, unknown>): { date?: string } => ({
+    date: typeof search.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(search.date) ? search.date : undefined,
+  }),
+  component: function OpdDayReportRoute() {
+    const { date } = opdDayReportRoute.useSearch();
+    return <OpdDayReportScreen initialDate={date} />;
+  },
 });
 
 /**
@@ -1254,7 +1273,7 @@ export const router = createRouter({
     loginRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdScribeRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
