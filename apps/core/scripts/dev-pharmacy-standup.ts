@@ -11,7 +11,7 @@ import {
   availableQty, captureGrn, findStoreByCode, listGrns, listItems, listVendors, postGrn, registerItem, runGateQc,
   sellableBatchesByItem,
 } from "../src/modules/materials";
-import { addAllergy, registerPatient } from "../src/modules/patients";
+import { addAllergy, listAllergies, registerPatient } from "../src/modules/patients";
 import {
   claimDispense, currentRegistration, getSaleItem, handlePrescriptionIssued, listQueue, prefillQtyBase, registerSaleItem,
 } from "../src/modules/pharmacy";
@@ -422,6 +422,16 @@ export async function standUpPharmacyDay(db: Db, cfg: AppConfig, now: Date = new
     const seenToday = await db.select({ id: opdEncounters.id }).from(opdEncounters)
       .where(and(eq(opdEncounters.patientId, patient.id), eq(opdEncounters.serviceDate, today)));
     if (seenToday.length > 0) continue;
+    /* A LATER DAY. The allergy this ticket stages was recorded on an earlier day, so the doctor's own
+       check now refuses the prescription at issue (measured 2026-09-20: the second day's run died here,
+       after opening the visit). The collision can be staged once per patient — and that earlier day's
+       ticket is still on the line, because the queue keeps open work across midnight. */
+    const carries = (substance: string): Promise<boolean> => listAllergies(db, patient.id)
+      .then((all) => all.some((a) => a.status === "active" && a.substance.toLowerCase() === substance.toLowerCase()));
+    if (ticket.allergyAfterIssue !== undefined && await carries(ticket.allergyAfterIssue)) {
+      report.absent.push(`${ticket.person.name} already carries ${ticket.allergyAfterIssue} — the allergy ticket is staged once per patient; the earlier day's is still on the line`);
+      continue;
+    }
     if (ticket.typedFromPaper === true && scribe === undefined) {
       report.absent.push("an `opd_scribe` holder — the ticket typed from the doctor's paper (PD-8, E28) was not made");
       continue;
