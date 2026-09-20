@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The ladder — one alert, four ways to reach a doctor</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;600;700&amp;display=swap">
+<style>
+body{margin:0;font-family:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;background:#f4f7f4;color:#132420;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer}
+a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
+</style>
+</helmet>
+<div style="width: 390px; height: 1180px; box-sizing: border-box; display: flex; flex-direction: column; background: #f4f7f4; color: #132420; font-size: 14px; line-height: 20px;">
+
+<header style="display: flex; align-items: center; gap: 10px; height: 52px; flex-shrink: 0; padding: 0 16px; background: #ffffff; border-bottom: 1px solid #dfe7e1;">
+<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0l7 7-7 7-7-7z" fill="#0e6b4e"></path></svg>
+<span style="font-size: 13px; font-weight: 700; letter-spacing: .14em; flex-grow: 1;">REACHING A DOCTOR</span>
+<span style="font-size: 12.5px; color: #5c6f66;">Fri 9 Oct · night</span>
+</header>
+
+<div style="flex-grow: 1; display: flex; flex-direction: column; gap: 14px; padding: 16px;">
+
+<div style="display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: 10px; background: #ffffff; border: 1px solid #f3c9c4;">
+<div style="display: flex; align-items: center; gap: 8px;">
+<span style="font-size: 10px; font-weight: 700; letter-spacing: .08em; padding: 1px 6px; border-radius: 3px; background: #b23a30; color: #ffffff;">CRITICAL</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: #5c6f66;">raised 02:14</span>
+</div>
+<span style="font-size: 16px; line-height: 22px; font-weight: 700;">Potassium 6.8 · Bed 12, Male Ortho</span>
+<span style="font-size: 13px; color: #5c6f66;">For the ward JR on duty now: <span style="color: #132420; font-weight: 600;">Dr. Kavita Rao</span>. The message never carries the patient's name outside the app.</span>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 0;">
+<sc-for list="{{ steps }}" as="s" hint-placeholder-count="4">
+<div style="display: flex; gap: 12px;">
+<div style="width: 46px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; font-weight: 700; {{ s.timeStyle }}">{{ s.time }}</span>
+<span style="width: 2px; flex-grow: 1; margin: 4px 0; {{ s.lineStyle }}"></span>
+</div>
+<div style="flex-grow: 1; display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; padding: 12px; border-radius: 10px; {{ s.boxStyle }}">
+<div style="display: flex; align-items: center; gap: 8px;">
+<span style="font-size: 14.5px; font-weight: 700; flex-grow: 1;">{{ s.title }}</span>
+<span style="font-size: 11px; font-weight: 700; letter-spacing: .06em;">{{ s.state }}</span>
+</div>
+<span style="font-size: 13px; line-height: 18px;">{{ s.body }}</span>
+<sc-if value="{{ s.live }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; gap: 6px; padding-top: 2px;">
+<button onClick="{{ s.ack }}" style="flex-grow: 1; min-height: 44px; border-radius: 8px; border: none; background: #0e6b4e; color: #ffffff; font-size: 13.5px; font-weight: 700;">{{ s.ackLabel }}</button>
+<button onClick="{{ s.skip }}" style="min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid #dfe7e1; background: #ffffff; color: #132420; font-size: 12.5px;">No answer ›</button>
+</div>
+</sc-if>
+</div>
+</div>
+</sc-for>
+</div>
+
+<sc-if value="{{ acked }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 14px; border-radius: 10px; background: #e3f1ea; color: #0a5039;">
+<span style="font-size: 15px; font-weight: 700;">{{ ackLine }}</span>
+<span style="font-size: 13px; line-height: 18px;">Everything stops: no more messages, no call, and the SR is not woken. The nurse who raised it sees "Dr. Kavita is on it". The clock for her to act on the patient keeps running.</span>
+<button onClick="{{ reset }}" style="align-self: flex-start; min-height: 40px; padding: 0 2px; border: none; background: transparent; color: #0a5039; font-size: 13px; font-weight: 600; text-decoration: underline;">Play it again</button>
+</div>
+</sc-if>
+
+<sc-if value="{{ exhausted }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 14px; border-radius: 10px; background: #fdf6f5; border: 1px solid #f3c9c4;">
+<span style="font-size: 15px; font-weight: 700; color: #b23a30;">Nobody answered by 02:21</span>
+<span style="font-size: 13px; line-height: 18px;">Dr. Arjun Nair, her unit's SR on call tonight, has had it since 02:19 on his own ladder — a critical never waits for one person's four steps to finish. After him: the faculty on call, the HOD, the duty manager. The miss is on Dr. Kavita's record as a fact, not a verdict.</span>
+<button onClick="{{ reset }}" style="align-self: flex-start; min-height: 40px; padding: 0 2px; border: none; background: transparent; color: #b23a30; font-size: 13px; font-weight: 600; text-decoration: underline;">Play it again</button>
+</div>
+</sc-if>
+
+<div style="flex-grow: 1;"></div>
+
+<div style="display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 10px; background: #ffffff; border: 1px solid #dfe7e1; font-size: 12.5px; line-height: 18px;">
+<span style="font-size: 11px; font-weight: 600; letter-spacing: .1em; color: #5c6f66;">HOW FAST IT CLIMBS</span>
+<div style="display: flex; gap: 8px;"><span style="width: 66px; font-weight: 700; color: #b23a30;">Critical</span><span>2 minutes a step. The next doctor is told at 5 minutes whatever happens.</span></div>
+<div style="display: flex; gap: 8px;"><span style="width: 66px; font-weight: 700; color: #8a5a0b;">Urgent</span><span>10 minutes a step. Never reaches a phone call before the SR knows.</span></div>
+<div style="display: flex; gap: 8px;"><span style="width: 66px; font-weight: 700; color: #5c6f66;">Routine</span><span>The app only. It never rings anybody.</span></div>
+<span style="color: #5c6f66;">Scrubbed in theatre, or marked "with a code"? The ladder skips you at once and tells the theatre's circulating nurse.</span>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1180}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const at = st.at ?? 0;
+    const ack = st.ack ?? -1;
+    const defs = [
+      ['02:14', 'App notification', 'On her phone and on any Desk One screen she has open. One tap: "I’m on it".', 'I’m on it'],
+      ['02:16', 'WhatsApp', '"Critical lab value, Bed 12 Male Ortho. Open Desk One." Two buttons: I’m on it · I can’t, pass it on.', 'Tap "I’m on it" in WhatsApp'],
+      ['02:18', 'SMS', 'For the phone with no data, or no smartphone. "Reply 1 if you are attending."', 'Reply 1'],
+      ['02:20', 'Automated call', 'Rings twice, a minute apart. A recorded voice in Hindi, then English: "Press 1 if you are attending."', 'Press 1'],
+    ];
+    const steps = defs.map((d, i) => {
+      const done = ack >= 0;
+      const isAck = ack === i;
+      const passed = i < at || (done && i < ack);
+      const live = !done && i === at && at < 4;
+      const waiting = !live && !passed && !isAck;
+      return {
+        time: d[0], title: d[1], body: d[2], ackLabel: d[3], live,
+        state: isAck ? 'ANSWERED' : live ? 'NOW' : passed ? 'NO ANSWER' : done ? 'NOT NEEDED' : 'WAITING',
+        timeStyle: waiting ? 'color:#5c6f66;' : 'color:#132420;',
+        lineStyle: i === 3 ? 'background:transparent;' : passed ? 'background:#b23a30;' : 'background:#dfe7e1;',
+        boxStyle: isAck ? 'background:#e3f1ea;border:1px solid #9fc0b1;color:#0a5039;'
+          : live ? 'background:#ffffff;border:2px solid #132420;'
+          : passed ? 'background:#fdf6f5;border:1px solid #f3c9c4;color:#132420;'
+          : 'background:#eef3ef;border:1px solid #eef3ef;color:#4d5f57;',
+        ack: () => this.setState({ ack: i }),
+        skip: () => this.setState({ at: at + 1 }),
+      };
+    });
+    const via = ['in the app', 'on WhatsApp', 'by SMS', 'on the call'];
+    return {
+      steps,
+      acked: ack >= 0,
+      ackLine: ack >= 0 ? 'Answered ' + via[ack] + ', ' + ['02:15', '02:17', '02:19', '02:20'][ack] : '',
+      exhausted: ack < 0 && at >= 4,
+      reset: () => this.setState({ at: 0, ack: -1 }),
+    };
+  }
+}
+</script>
+</body>
+</html>

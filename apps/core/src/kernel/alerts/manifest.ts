@@ -47,5 +47,14 @@ export const alertsManifest: ModuleManifest = {
     // `escalationTriggered.payloadSchema.parse` and fails the delivery rather than raising anything.
     { event: "imaging.critical_overdue", consumer: "kernel.alerts" },
     { event: "imaging.report_unread", consumer: "kernel.alerts" },
+    // OBLIGATION SPINE T2 (2026-09-20) — FILING TELLS SOMEBODY. The approvals spine measured that
+    // `approval.requested` reached neither surface: an approver learned a request existed only by
+    // opening the screen and looking (phase-approvals-spine M2, handoff E4). This subscription
+    // raises a row for every holder of the approver role — never the requester (O17) — and falls
+    // back to the duty managers, then the owners, SAYING so in the body (edge register A1).
+    //
+    // The one-edit rule above applies for the sixth time: the branch is in `consumer.ts` in THIS
+    // commit, or every filing lands in the escalation parser and fails the delivery.
+    { event: "approval.requested", consumer: "kernel.alerts" },
   ],
 };
