@@ -11,6 +11,8 @@ import {
 } from "./helpers/opd";
 import { grantPermissionToRole, hasPermission, syncPermissions } from "../src/kernel/auth/permissions";
 import { collectDeskProviders } from "../src/kernel/desk/registry";
+import { oldestDayRead } from "../src/kernel/desk/brief";
+import { FLOOR_DAYS, horizonFrom } from "../src/kernel/desk/horizon";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
 import { events } from "../src/kernel/db/schema/events";
@@ -44,11 +46,43 @@ describe("me (desk / report / export) e2e — 07c", () => {
   let clerkB: Awaited<ReturnType<typeof mkUser>>;
   let stranger: Awaited<ReturnType<typeof mkUser>>;
 
-  const T0 = new Date("2026-08-17T04:00:00.000Z"); // Monday 09:30 IST
-  const DATE = "2026-08-17";
   /** An IST day `n` days before today. Relative, so a rolling horizon cannot age these tests out. */
   const daysAgo = (n: number): string =>
     new Date(Date.now() + 330 * 60_000 - n * 86_400_000).toISOString().slice(0, 10);
+
+  /**
+   * ═══ THIS WENT OFF AT IST MIDNIGHT ON 2026-09-21, AND THE ARITHMETIC IS WORTH KEEPING ═══
+   *
+   * `DATE` was `"2026-08-17"` and `T0` the instant 09:30 IST on it. Both were fixed; the window
+   * they are read through is not. A DAY brief reaches back further than the day it asks about:
+   * `oldestDayRead("day", d)` is `baselineWindowFor("day", d).from`, and with `SPAN.day = 1` and
+   * `BASELINE_SPAN.day = 56` (`kernel/desk/brief.ts`) that is **`d − 57` days**. Against
+   * `desk_clerk`'s floor of 91 days (`horizon.ts`: `FLOOR_DAYS`, `oldestDay = today − 90`):
+   *
+   * | today (IST) | horizon oldest | brief reaches | `assertWithinHorizon` |
+   * |---|---|---|---|
+   * | 2026-09-20 | 2026-06-22 | 2026-06-22 | passes — **exactly on the boundary** |
+   * | 2026-09-21 | 2026-06-23 | 2026-06-22 | `history_horizon_exceeded` → **400** |
+   *
+   * So the fixture had been sitting on the last day of the floor since it was written, and one IST
+   * midnight moved the floor past it. Two tests went red in code nobody had touched.
+   *
+   * ═══ WHY THE FIX IS `daysAgo`, AND WHY IT IS THIS FILE'S SECOND TIME ═══
+   *
+   * The helper above already exists, and the A3 test below already carries the reason in prose:
+   * *"a fixed date inside a rolling 91-day window is a test with an expiry date on it."* That was
+   * written when two tests were moved onto it — and `DATE`, which eleven assertions share, was left
+   * behind. **Fixing the instance is not fixing the class.** Every date in this file is now
+   * computed from today.
+   *
+   * THREE days, not thirty-five. The reach is `age + 57`, so the last age that fits inside 91 is
+   * 34 — and a fixture sized to the boundary is the defect again with a different number on it.
+   * Three leaves a month of margin and is still a settled day (never provisional, never today).
+   */
+  const DATE = daysAgo(3);
+  /** 09:30 IST on `DATE`. The weekday is not load-bearing: only one day carries facts, so the
+   *  same-weekday baseline finds no samples whatever day of the week this lands on. */
+  const T0 = new Date(`${DATE}T04:00:00.000Z`);
 
   beforeAll(async () => {
     ({ db, teardown } = await setupTestDb());
@@ -111,6 +145,35 @@ describe("me (desk / report / export) e2e — 07c", () => {
    * that the caller's permissions do not unlock.** A dropped card can only shorten the list, never
    * add a key, so the leak guard survives the budget intact.
    */
+  /**
+   * ═══ THE GUARD THAT MAKES THE FIX A FIX, AND NOT JUST A NEWER DATE ═══
+   *
+   * Moving `DATE` onto `daysAgo` stops TODAY's failure. It does not stop the next one: somebody
+   * hard-codes a date again, or `BASELINE_SPAN.day` grows, or the floor tightens, and this file
+   * goes red at an IST midnight for a reason nobody connects to the commit that caused it — which
+   * is exactly how 2026-09-21 happened, in a file that already carried the lesson in prose.
+   *
+   * So the invariant is ASSERTED, by the same two functions the endpoint uses. It is deliberately
+   * not a re-derivation: `oldestDayRead` and `horizonFrom` are imported, so a change to either
+   * reaches this test. And it demands MARGIN — three weeks of it — because the defect was not that
+   * the fixture was outside the horizon. It was INSIDE it, on the last day, and one midnight was
+   * enough. A fixture sized to a boundary is the same bomb with a different number on it.
+   */
+  it("GUARD: the deepest read these fixtures make sits three weeks inside the floor horizon", () => {
+    const today = daysAgo(0);
+    const floor = horizonFrom(FLOOR_DAYS, today).oldestDay;
+    expect(floor).not.toBeNull();
+
+    // The deepest read in this file: a DAY brief for `DATE` reaches its same-weekday baseline.
+    const reaches = oldestDayRead("day", DATE);
+    expect(`inside: ${reaches >= floor!}`).toBe("inside: true");
+
+    const dayMs = 86_400_000;
+    const margin = Math.round((Date.parse(`${reaches}T00:00:00Z`) - Date.parse(`${floor!}T00:00:00Z`)) / dayMs);
+    expect(`${reaches} is ${margin} days inside ${floor!}: ${margin >= 21}`)
+      .toBe(`${reaches} is ${margin} days inside ${floor!}: true`);
+  });
+
   it("T1: the desk composes the cards the caller's permissions unlock", async () => {
     const unlocked: string[] = [];
     for (const provider of collectDeskProviders(registry)) {
@@ -198,7 +261,10 @@ describe("me (desk / report / export) e2e — 07c", () => {
   it("T3: the CSV carries the download headers, the BOM, and the same rows the screen shows", async () => {
     const res = await get(`/me/report.csv?date=${DATE}`, clerkA.token).expect(200);
     expect(res.headers["content-type"]).toContain("text/csv");
-    expect(res.headers["content-disposition"]).toBe('attachment; filename="my-day-2026-08-17.csv"');
+    // The filename CARRIES the day, so it moves with `DATE` — the last hard-coded date in this file
+    // and the one the relative-fixture change surfaced. Interpolated rather than loosened to a
+    // regex: what is being pinned is that the browser is handed the day it asked for, exactly.
+    expect(res.headers["content-disposition"]).toBe(`attachment; filename="my-day-${DATE}.csv"`);
     expect(res.text.startsWith("﻿")).toBe(true);
     expect(res.text).toContain("Ramesh Kale");
     // T2 A4 travels into the FILE too — a CSV outlives the screen it was pulled from.
