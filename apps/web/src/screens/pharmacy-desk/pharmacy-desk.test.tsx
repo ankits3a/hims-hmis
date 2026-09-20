@@ -275,6 +275,12 @@ describe("PharmacyDesk (PD-3)", () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
+  it("a queue row names the drugs on the ticket, so the line can be read before it is taken", async () => {
+    mockRoutes(base({ "GET /api/pharmacy/queue": { status: 200, body: { items: [row("d7", "Imran Sheikh", { drugs: ["Augmentin 625", "Pan 40", "Alzolam 0.5"] })] } } }));
+    renderWithProviders(<PharmacyDesk ticketId={null} />);
+    expect(await screen.findByTestId("queue-row-d7-drugs")).toHaveTextContent("Augmentin 625, Pan 40, Alzolam 0.5");
+  });
+
   it("a ticket carried over from an earlier day says its day on the line, not a count of hours", async () => {
     const istDay = (ms: number): string => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms));
     const paid = row("d9", "Sunita Devi", { status: "billed", createdAt: ago(26 * 60), queuedOn: istDay(NOW - 24 * 60 * 60_000) });

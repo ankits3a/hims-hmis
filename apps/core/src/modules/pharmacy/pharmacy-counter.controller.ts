@@ -7,6 +7,8 @@ import { withIdempotency } from "../billing";
 import { claimDispense, findAtCounter } from "./claim";
 import { OPD_PHARMACY_STORE_CODE, istDateOf } from "./config";
 import { PHARMACY_IDEMPOTENT_ROUTES, idSchema, parsed, toHttp } from "./pharmacy-http";
+import { closingFor } from "./closing";
+import type { Closing } from "./closing";
 import { patientRail } from "./patient-rail";
 import type { PatientRail } from "./patient-rail";
 import { confirmSlip, getDispense, listQueue } from "./queue";
@@ -129,6 +131,17 @@ export class PharmacyCounterController {
     const q = parsed(z.object({ idx: z.coerce.number().int().nonnegative(), code: z.string().min(1).max(200) }), { idx, code });
     try {
       return await checkPickScan(this.db, id, q.idx, q.code);
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** WHAT CLOSED (the board's three boxes): the ticket, the money as the invoice and receipt record it, the registers. */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("dispenses/:id/closing")
+  async closing(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<Closing> {
+    try {
+      return await closingFor(this.db, actor, id);
     } catch (e) {
       return toHttp(e);
     }

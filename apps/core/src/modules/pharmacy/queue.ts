@@ -99,6 +99,8 @@ export type QueueRow = {
   dispenseNo: string | null;
   scheduled: boolean;
   lineCount: number;
+  /** What the doctor wrote, in order — the board's queue rows name the drugs, not a count. */
+  drugs: string[];
   createdAt: Date;
   /** The IST day the ticket was queued — an earlier day's ticket carried over says so (`listQueue`). */
   queuedOn: string;
@@ -182,6 +184,21 @@ export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: str
     .where(inArray(pharmacyDispenseLines.dispenseId, rows.map((r) => r.id)))
     .groupBy(pharmacyDispenseLines.dispenseId);
   const countById = new Map(counts.map((c) => [c.dispenseId, c.n]));
+  /**
+   * The DRUGS on each waiting ticket (the board's queue rows name them: "Augmentin 625, Pan 40,
+   * Alzolam 0.5"). One query for the page, as the counts are: a pharmacist reads the line to decide
+   * which ticket to take, and "4 lines" does not tell them whether the shelf can serve it.
+   */
+  const drugRows = await db.select({ dispenseId: pharmacyDispenseLines.dispenseId, lineIdx: pharmacyDispenseLines.lineIdx, rxLine: pharmacyDispenseLines.rxLine })
+    .from(pharmacyDispenseLines)
+    .where(inArray(pharmacyDispenseLines.dispenseId, rows.map((r) => r.id)))
+    .orderBy(asc(pharmacyDispenseLines.lineIdx));
+  const drugsById = new Map<string, string[]>();
+  for (const r of drugRows) {
+    const list = drugsById.get(r.dispenseId) ?? [];
+    list.push((r.rxLine as RxLine).drug);
+    drugsById.set(r.dispenseId, list);
+  }
   /* ONE query for the whole page, not one per row: the counter's list is polled. */
   const rxRows = await db
     .select({ id: opdPrescriptions.id, transcribedBy: opdPrescriptions.transcribedBy })
@@ -198,7 +215,8 @@ export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: str
     if (s === undefined) continue; // not visible to this actor — not on their list
     out.push({
       dispenseId: r.id, status: r.status, dispenseNo: r.dispenseNo, scheduled: r.scheduled,
-      lineCount: countById.get(r.id) ?? 0, createdAt: r.createdAt, queuedOn: istDateOf(r.createdAt), claimedAt: r.claimedAt,
+      lineCount: countById.get(r.id) ?? 0, drugs: drugsById.get(r.id) ?? [],
+      createdAt: r.createdAt, queuedOn: istDateOf(r.createdAt), claimedAt: r.claimedAt,
       patient: { id: s.id, uhid: s.uhid, name: s.name, alias: s.alias, restricted: s.restricted },
       transcribedBy: transcribedByRx.get(r.prescriptionId) ?? null,
       slipConfirmedBy: r.slipConfirmedBy,

@@ -106,6 +106,8 @@ export async function confirmDispenseSlip(id: string): Promise<{ slipConfirmedBy
 export type WireQueueRow = {
   dispenseId: string; status: string; dispenseNo: string | null; scheduled: boolean; lineCount: number;
   createdAt: string; claimedAt: string | null; patient: WirePatientSummary;
+  /** What the doctor wrote on that ticket, in order. Absent from an older server. */
+  drugs?: string[];
   /** The IST day it was queued — an earlier day's open ticket stays on the line. Absent from an older server. */
   queuedOn?: string;
   /** FD-31 — who typed a paper slip, and whether a pharmacist has cross-confirmed it. */
@@ -160,6 +162,16 @@ export type WirePatientRail = { ageYears: number | null; sex: string | null; vis
 
 export async function fetchPatientRail(id: string): Promise<WirePatientRail> {
   return api<WirePatientRail>("GET", `/pharmacy/dispenses/${id}/patient`);
+}
+
+/** The board's three boxes on the done screen (`closing.ts`), read once when the ticket has closed. */
+export type WireClosing = {
+  ticket: { dispenseNo: string | null; claimedByName: string | null; claimedAt: string | null; handedOverAt: string | null; lines: number; substituted: number; declined: number };
+  money: { invoiceNo: string; netPayablePaise: number; cgstPaise: number; sgstPaise: number; receiptNo: string | null; changeGivenPaise: number; tenders: { mode: string; amountPaise: number; refText: string | null }[] } | null;
+  registers: { h1Rows: number; batches: number };
+};
+export async function fetchClosing(id: string): Promise<WireClosing> {
+  return api<WireClosing>("GET", `/pharmacy/dispenses/${id}/closing`);
 }
 
 export async function fetchAlternatives(id: string, lineIdx: number): Promise<{ items: WireAlternative[]; written: WireQuote | null }> {

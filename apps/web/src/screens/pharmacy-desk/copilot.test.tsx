@@ -118,6 +118,43 @@ describe("the counter agent on a ticket", () => {
     expect(visits).toHaveTextContent("2 lines");
   });
 
+  it("the done screen says what closed: the ticket, the money, the registers", async () => {
+    const done = { ...ticket, status: "handed_over", handedOverAt: "2026-09-20T05:47:00.000Z" };
+    mockRoutes({
+      ...base([]),
+      "GET /api/pharmacy/dispenses/d1": { status: 200, body: done },
+      "GET /api/pharmacy/dispenses/d1/closing": { status: 200, body: {
+        ticket: { dispenseNo: "P2609200004", claimedByName: "Anita Verma", claimedAt: "2026-09-20T05:42:00.000Z", handedOverAt: "2026-09-20T05:47:00.000Z", lines: 4, substituted: 1, declined: 0 },
+        money: { invoiceNo: "CRK/26-27/P/8841", netPayablePaise: 19_980, cgstPaise: 476, sgstPaise: 475, receiptNo: "8841", changeGivenPaise: 2_000, tenders: [{ mode: "cash", amountPaise: 21_980, refText: null }] },
+        registers: { h1Rows: 1, batches: 4 },
+      } },
+    });
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const closed = await screen.findByTestId("desk-closed");
+    expect(closed).toHaveTextContent("P-4 closed 11:17. Claimed 11:12 by Anita Verma. 4 lines. One was substituted with consent.");
+    expect(closed).toHaveTextContent("Invoice CRK/26-27/P/8841 · receipt 8841 · ₹199.80 by Cash. ₹20.00 handed back. CGST ₹4.76 + SGST ₹4.75 inside the MRP.");
+    expect(closed).toHaveTextContent("One Schedule H1 row written. Stock consumed from 4 batches.");
+  });
+
+  it("a claim from ANOTHER day says its day — a bare time reads backwards across midnight", async () => {
+    const done = { ...ticket, status: "handed_over", handedOverAt: "2026-09-20T05:47:00.000Z" };
+    mockRoutes({
+      ...base([]),
+      "GET /api/pharmacy/dispenses/d1": { status: 200, body: done },
+      "GET /api/pharmacy/dispenses/d1/closing": { status: 200, body: {
+        // claimed 09:01 IST on the 19th, handed over 11:17 IST on the 20th: "closed 11:17, claimed 09:01" reads wrong
+        ticket: { dispenseNo: "P2609190005", claimedByName: "Anita Verma", claimedAt: "2026-09-19T03:31:00.000Z", handedOverAt: "2026-09-20T05:47:00.000Z", lines: 2, substituted: 0, declined: 1 },
+        money: null,
+        registers: { h1Rows: 0, batches: 1 },
+      } },
+    });
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const closed = await screen.findByTestId("desk-closed");
+    expect(closed).toHaveTextContent("closed 11:17. Claimed 19 Sept 09:01 by Anita Verma.");
+    expect(closed).toHaveTextContent("Nothing was charged for this ticket.");
+    expect(closed).toHaveTextContent("No Schedule H1 row was owed. Stock consumed from one batch.");
+  });
+
   it("says so plainly when every equivalent is stopped by the check, and offers nothing", async () => {
     mockRoutes(base([alt({ check: { verdict: "blocked", blocks: [{ book: "allergy", about: "Pantoprazole", key: "Pantoprazole" }] } })]));
     renderWithProviders(<PharmacyDesk ticketId="d1" />);

@@ -211,6 +211,14 @@ export function QueueRail({
                   <span style={{ fontSize: 12.5, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.who}</span>
                   <span className="mo" style={{ fontSize: 10.5, color: m.tone, marginLeft: "auto" }}>{m.wait}</span>
                 </span>
+                {(row.drugs ?? []).length === 0 ? null : (
+                  <span
+                    data-testid={`queue-row-${row.dispenseId}-drugs`}
+                    style={{ display: "block", marginTop: 3, fontSize: 11, color: "var(--dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                  >
+                    {(row.drugs ?? []).join(", ")}
+                  </span>
+                )}
                 <span style={{ display: "flex", gap: 5, marginTop: 5, flexWrap: "wrap" }}>
                   {m.hold.kind === "theirs" ? <span className="pill">{t("pharmacyDesk.heldBy", { name: m.hold.name })}</span> : null}
                   {m.hold.kind === "mine" ? <span className="pill on">{t("pharmacyDesk.yours")}</span> : null}
