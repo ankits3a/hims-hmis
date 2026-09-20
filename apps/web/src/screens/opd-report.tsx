@@ -1,29 +1,30 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { todayIst } from "../lib/desk-api";
 import { useAuth } from "../lib/auth";
 import {
-  downloadDayReportCsv, downloadDepartmentCsv, fetchDayReport, fetchDepartmentDayReport,
+  downloadDepartmentCsv, downloadReportCsv, fetchDepartmentReport, fetchReport,
 } from "../lib/opd-reports-api";
-import type { DayCounts, DayDepartment, PatientType } from "../lib/opd-reports-api";
+import type { DayCounts, DayDepartment, PatientType, Selection } from "../lib/opd-reports-api";
 import {
-  DayFigures, DayPicker, DownloadButtons, ProvisionalPill, longDay, useReportDownloads,
-} from "../components/opd-day-report-panel";
+  DayFigures, DownloadButtons, ExcludedSundayNote, PeriodPicker, ProvisionalPill, rangeText, todaySelection,
+  useReportDownloads,
+} from "../components/opd-report-panel";
 import "../styles/paper-pine.css";
 import "./dashboard.css";
-import "./opd-day-report.css";
+import "./opd-report.css";
 
 /**
- * ═══ THE OPD DAY REPORT, DEPARTMENT BY DEPARTMENT ═══
+ * ═══ THE OPD REPORT, DEPARTMENT BY DEPARTMENT ═══
  *
- * The dashboard panel's second door: the same day, one row per clinical department, each row with
+ * The dashboard panel's second door: the same period, one row per clinical department, each row with
  * its own PDF and CSV, and — one tap — the patients behind the row. Nothing here is computed: every
  * figure is the server's, which also builds the files, so the table and the sheet cannot disagree.
  *
  * Opening a department's patients is a read of names and addresses, and the server logs it
- * (`day_report.patients_listed`), so the list is fetched when asked for and not before.
+ * (`day_report.patients_listed`), so the list is fetched when asked for and not before. Over a week
+ * or a month the list carries the DAY of each visit; over a single day that column would be noise.
  */
 
 const TYPE_KEY: Record<PatientType, string> = { new: "dayReport.new", revisit: "dayReport.revisit", renewal: "dayReport.renewal" };
@@ -38,12 +39,15 @@ function Counts({ c, showOpen, total = false }: { c: DayCounts; showOpen: boolea
   );
 }
 
-function Patients({ department, date, span }: { department: DayDepartment; date: string; span: number }): React.ReactElement {
+const DAY_IN_MONTH = new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", day: "2-digit", month: "short" });
+
+function Patients({ department, sel, span }: { department: DayDepartment; sel: Selection; span: number }): React.ReactElement {
   const { t } = useTranslation();
   const list = useQuery({
-    queryKey: ["opd-day-report", date, "department", department.departmentId],
-    queryFn: () => fetchDepartmentDayReport(department.departmentId, date),
+    queryKey: ["opd-report", sel.period, sel.date, "department", department.departmentId],
+    queryFn: () => fetchDepartmentReport(department.departmentId, sel),
   });
+  const manyDays = list.data !== undefined && list.data.from !== list.data.to;
   return (
     <tr className="odr-sub">
       <td colSpan={span}>
@@ -56,7 +60,9 @@ function Patients({ department, date, span }: { department: DayDepartment; date:
             <table className="odr-ptable" data-testid={`odr-patients-${department.code}`}>
               <thead>
                 <tr>
-                  <th>#</th><th>{t("dayReport.col.time")}</th><th>{t("dayReport.col.patient")}</th><th>{t("dayReport.col.uhid")}</th>
+                  <th>#</th>
+                  {manyDays ? <th>{t("dayReport.col.date")}</th> : null}
+                  <th>{t("dayReport.col.time")}</th><th>{t("dayReport.col.patient")}</th><th>{t("dayReport.col.uhid")}</th>
                   <th>{t("dayReport.col.age")}</th><th>{t("dayReport.col.sex")}</th><th>{t("dayReport.col.address")}</th>
                   <th>{t("dayReport.col.type")}</th><th>{t("dayReport.col.doctor")}</th>
                 </tr>
@@ -65,6 +71,7 @@ function Patients({ department, date, span }: { department: DayDepartment; date:
                 {list.data.rows.map((p, i) => (
                   <tr key={p.visitNo}>
                     <td className="mo">{i + 1}</td>
+                    {manyDays ? <td className="mo">{DAY_IN_MONTH.format(new Date(`${p.date}T00:00:00Z`))}</td> : null}
                     <td className="mo">{p.time}</td>
                     <td className="nm">{p.name}{p.restricted ? <span className="pill odr-sealed">{t("dayReport.sealed")}</span> : null}</td>
                     <td className="mo">{p.uhid}</td>
@@ -84,14 +91,28 @@ function Patients({ department, date, span }: { department: DayDepartment; date:
   );
 }
 
-export function OpdDayReportScreen({ initialDate }: { initialDate?: string }): React.ReactElement {
+export function OpdReportScreen({ initial }: { initial?: Selection }): React.ReactElement {
   const { t } = useTranslation();
   const { can } = useAuth();
-  const [date, setDate] = useState(initialDate ?? todayIst());
+  const [sel, setSel] = useState<Selection>(initial ?? todaySelection());
   const [open, setOpen] = useState<string | null>(null);
+  /*
+    THE URL IS A WAY IN, NOT A ONE-TIME SEED. The dashboard links here with the period it was showing,
+    and a reader who follows a second link — or presses Back — must land on THAT period rather than on
+    whatever this screen was last set to. `useState` alone captures the first search and ignores every
+    later one, which reads as a link that did nothing.
+  */
+  const wanted = initial === undefined ? null : `${initial.period}|${initial.date}`;
+  useEffect(() => {
+    if (initial === undefined) return;
+    setSel(initial);
+    setOpen(null);
+    // The identity of `initial` changes on every render; its VALUE is what should re-select.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wanted]);
   const report = useQuery({
-    queryKey: ["opd-day-report", date],
-    queryFn: () => fetchDayReport(date),
+    queryKey: ["opd-report", sel.period, sel.date],
+    queryFn: () => fetchReport(sel),
     enabled: can("opd.reports.read"),
   });
   const dl = useReportDownloads();
@@ -103,7 +124,7 @@ export function OpdDayReportScreen({ initialDate }: { initialDate?: string }): R
   const r = report.data;
   const showOpen = r !== undefined && r.totals.stillOpen > 0;
   const span = showOpen ? 8 : 7;
-  const pick = (d: string): void => { setDate(d); setOpen(null); };
+  const pick = (s: Selection): void => { setSel(s); setOpen(null); };
 
   return (
     <div className="dash odr-screen" data-testid="odr-screen">
@@ -114,15 +135,17 @@ export function OpdDayReportScreen({ initialDate }: { initialDate?: string }): R
         <div className="odr-head">
           <div>
             <h1 className="odr-title">{t("dayReport.title")}</h1>
-            <div className="odr-long">{longDay(date)}{r === undefined ? null : <> · {r.hospital.name}</>}</div>
+            <div className="odr-long" data-testid="odr-range">
+              {r === undefined ? null : <>{rangeText(r)} · {r.hospital.name}</>}
+            </div>
           </div>
           <div className="odr-head-actions">
             <DownloadButtons busy={dl.busy} pdfKey="odr-pdf" csvKey="odr-csv"
-              onPdf={() => dl.pdf("odr-pdf", "day", date)} onCsv={() => dl.csv("odr-csv", () => downloadDayReportCsv(date))} />
+              onPdf={() => dl.pdf("odr-pdf", "report", sel)} onCsv={() => dl.csv("odr-csv", () => downloadReportCsv(sel))} />
           </div>
         </div>
         <div className="odr-top">
-          <DayPicker date={date} onChange={pick} />
+          <PeriodPicker sel={sel} onChange={pick} />
           {r === undefined ? null : <ProvisionalPill report={r} />}
           <span className="odr-hint">{t("dayReport.pdfHint")}</span>
         </div>
@@ -139,6 +162,7 @@ export function OpdDayReportScreen({ initialDate }: { initialDate?: string }): R
             <p className="odr-people" data-testid="odr-people">
               {t("dayReport.people", { count: r.patientsConsulted, fresh: r.newPatients })}
             </p>
+            <ExcludedSundayNote report={r} />
           </div>
 
           <div className="box odr-tablebox">
@@ -178,12 +202,12 @@ export function OpdDayReportScreen({ initialDate }: { initialDate?: string }): R
                               <div className="odr-acts">
                                 <DownloadButtons compact busy={dl.busy} label={d.name}
                                   pdfKey={`odr-pdf-${d.code}`} csvKey={`odr-csv-${d.code}`}
-                                  onPdf={() => dl.pdf(`odr-pdf-${d.code}`, { departmentId: d.departmentId }, date)}
-                                  onCsv={() => dl.csv(`odr-csv-${d.code}`, () => downloadDepartmentCsv(d.departmentId, d.code, date))} />
+                                  onPdf={() => dl.pdf(`odr-pdf-${d.code}`, { departmentId: d.departmentId }, sel)}
+                                  onCsv={() => dl.csv(`odr-csv-${d.code}`, () => downloadDepartmentCsv(d.departmentId, d.code, sel))} />
                               </div>
                             </td>
                           </tr>
-                          {isOpen ? <Patients department={d} date={date} span={span} /> : null}
+                          {isOpen ? <Patients department={d} sel={sel} span={span} /> : null}
                         </Fragment>
                       );
                     })}
@@ -205,6 +229,7 @@ export function OpdDayReportScreen({ initialDate }: { initialDate?: string }): R
             <p><b>{t("dayReport.revisit")}</b> — {t("dayReport.revisitHint")}</p>
             <p><b>{t("dayReport.renewal")}</b> — {t("dayReport.renewalHint")}</p>
             <p><b>{t("dayReport.booked")}</b> — {t("dayReport.bookedHint")}</p>
+            {sel.period === "week" ? <p data-testid="odr-week-rule"><b>{t("dayReport.thisWeek")}</b> — {t("dayReport.weekRule")}</p> : null}
           </div>
         </>
       )}

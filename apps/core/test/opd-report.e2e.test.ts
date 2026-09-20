@@ -72,10 +72,10 @@ describe("OPD day report e2e", () => {
 
   it("is refused to anyone without opd.reports.read — every one of the six routes", async () => {
     for (const path of [
-      `/opd/reports/day?date=${DATE}`, `/opd/reports/day/csv?date=${DATE}`, `/opd/reports/day/document?date=${DATE}`,
-      `/opd/reports/day/departments/${deptId}?date=${DATE}`,
-      `/opd/reports/day/departments/${deptId}/csv?date=${DATE}`,
-      `/opd/reports/day/departments/${deptId}/document?date=${DATE}`,
+      `/opd/reports/consultations?date=${DATE}`, `/opd/reports/consultations/csv?date=${DATE}`, `/opd/reports/consultations/document?date=${DATE}`,
+      `/opd/reports/consultations/departments/${deptId}?date=${DATE}`,
+      `/opd/reports/consultations/departments/${deptId}/csv?date=${DATE}`,
+      `/opd/reports/consultations/departments/${deptId}/document?date=${DATE}`,
     ]) {
       await get(path, outsider.token).expect(403);
     }
@@ -83,38 +83,61 @@ describe("OPD day report e2e", () => {
   });
 
   it("serves the hospital summary as data, a spreadsheet and a printable letterhead", async () => {
-    const day = await get(`/opd/reports/day?date=${DATE}`, reader.token).expect(200);
+    const day = await get(`/opd/reports/consultations?date=${DATE}`, reader.token).expect(200);
     const med = (day.body.departments as { departmentId: string; stillOpen: number }[]).find((d) => d.departmentId === deptId)!;
     expect(med.stillOpen).toBe(1); // opened, not yet consulted
     expect(JSON.stringify(day.body)).not.toContain("Ramesh Kale");
 
-    const csv = await get(`/opd/reports/day/csv?date=${DATE}`, reader.token).expect(200);
+    const csv = await get(`/opd/reports/consultations/csv?date=${DATE}`, reader.token).expect(200);
     expect(csv.headers["content-type"]).toContain("text/csv");
     expect(csv.headers["content-disposition"]).toBe(`attachment; filename="OPD-Day-Report-${DATE}.csv"`);
     expect(csv.text).toContain("General Medicine,0,0,0,0,0,1");
 
-    const doc = await get(`/opd/reports/day/document?date=${DATE}`, reader.token).expect(200);
+    const doc = await get(`/opd/reports/consultations/document?date=${DATE}`, reader.token).expect(200);
     expect(doc.body.title).toBe(`OPD-Day-Report-${DATE}`);
     expect(doc.body.html).toContain("OPD Day Report");
   });
 
   it("logs a department's patient list BEFORE returning it, naming reader, day, department, format and rows", async () => {
-    await get(`/opd/reports/day/departments/${deptId}?date=${DATE}`, reader.token).expect(200);
-    const csv = await get(`/opd/reports/day/departments/${deptId}/csv?date=${DATE}`, reader.token).expect(200);
+    await get(`/opd/reports/consultations/departments/${deptId}?date=${DATE}`, reader.token).expect(200);
+    const csv = await get(`/opd/reports/consultations/departments/${deptId}/csv?date=${DATE}`, reader.token).expect(200);
     expect(csv.headers["content-disposition"]).toBe(`attachment; filename="OPD-Day-Report-MED-${DATE}.csv"`);
-    await get(`/opd/reports/day/departments/${deptId}/document?date=${DATE}`, reader.token).expect(200);
+    await get(`/opd/reports/consultations/departments/${deptId}/document?date=${DATE}`, reader.token).expect(200);
 
     const logged = await db.select().from(events).where(eq(events.name, "day_report.patients_listed"));
     expect(logged.map((e) => (e.payload as { format: string }).format).sort()).toEqual(["csv", "document", "screen"]);
     for (const e of logged) {
       expect(e.actorId).toBe(reader.id);
-      expect(e.payload).toMatchObject({ date: DATE, departmentId: deptId, rows: 0 });
+      expect(e.payload).toMatchObject({ date: DATE, period: "day", from: DATE, to: DATE, departmentId: deptId, rows: 0 });
     }
   });
 
+  /**
+   * THE PERIODS (owner, 2026-09-20). The server decides what a week is — Monday to Saturday — so the
+   * route is asked for a NAME and answers with the days it counted, and the audit row records them.
+   */
+  it("serves this week and this month, and the audit row names the days that were listed", async () => {
+    const week = await get(`/opd/reports/consultations?period=week&date=${DATE}`, reader.token).expect(200);
+    // DATE is Monday 2026-08-17, so the week starts that day and ends on the anchor.
+    expect(week.body).toMatchObject({ period: "week", from: DATE, to: DATE });
+
+    const month = await get(`/opd/reports/consultations?period=month&date=${DATE}`, reader.token).expect(200);
+    expect(month.body).toMatchObject({ period: "month", from: "2026-08-01", to: DATE });
+
+    const csv = await get(`/opd/reports/consultations/csv?period=month&date=${DATE}`, reader.token).expect(200);
+    expect(csv.headers["content-disposition"]).toBe(`attachment; filename="OPD-Month-Report-2026-08-01-to-${DATE}.csv"`);
+
+    await get(`/opd/reports/consultations/departments/${deptId}/csv?period=month&date=${DATE}`, reader.token).expect(200);
+    const logged = await db.select().from(events).where(eq(events.name, "day_report.patients_listed"));
+    expect(logged).toHaveLength(1);
+    expect(logged[0]!.payload).toMatchObject({ period: "month", from: "2026-08-01", to: DATE, format: "csv" });
+
+    await get(`/opd/reports/consultations?period=fortnight&date=${DATE}`, reader.token).expect(400);
+  });
+
   it("answers 404 for an unknown department, and 400 for a date that is not one", async () => {
-    await get(`/opd/reports/day/departments/nope?date=${DATE}`, reader.token).expect(404);
-    await get(`/opd/reports/day?date=2026-13-45`, reader.token).expect(400);
-    await get(`/opd/reports/day?date=yesterday`, reader.token).expect(400);
+    await get(`/opd/reports/consultations/departments/nope?date=${DATE}`, reader.token).expect(404);
+    await get(`/opd/reports/consultations?date=2026-13-45`, reader.token).expect(400);
+    await get(`/opd/reports/consultations?date=yesterday`, reader.token).expect(400);
   });
 });

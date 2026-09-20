@@ -3,18 +3,21 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { todayIst } from "../lib/desk-api";
-import { downloadDayReportCsv, fetchDayReport, openReportPdf } from "../lib/opd-reports-api";
-import type { DayCounts, OpdDayReport } from "../lib/opd-reports-api";
-import "../screens/opd-day-report.css";
+import { downloadReportCsv, fetchReport, openReportPdf } from "../lib/opd-reports-api";
+import type { DayCounts, OpdReport, ReportRange, Selection } from "../lib/opd-reports-api";
+import "../screens/opd-report.css";
 
 /**
- * ═══ THE OPD DAY REPORT, WHERE THE DAY IS ALREADY OPEN ═══
+ * ═══ THE OPD REPORT, WHERE THE DAY IS ALREADY OPEN ═══
  *
  * Owner, 2026-09-19: *"give me an option in the dashboard to download the day report"*. So the
- * dashboard carries it whole — the day's four figures and both downloads — rather than a link to a
- * screen that has them. Today is chosen before anyone touches it; yesterday is one tap, because the
- * report is most often pulled the morning after. The department-wise screen is one more tap for
- * whoever wants to look before they download.
+ * dashboard carries it whole — the period's figures and both downloads — rather than a link to a
+ * screen that has them.
+ *
+ * Owner, 2026-09-20: *"…the report of 'This Week' (week starts on Monday - Saturday) and 'This
+ * Month' as well along with Today and Yesterday."* Four named periods, one tap each, and the days
+ * they cover printed beside them — because "this week" is a rule, and a reader who cannot see which
+ * days it meant cannot check the number against anything.
  */
 
 export function yesterdayOf(date: string): string {
@@ -23,25 +26,47 @@ export function yesterdayOf(date: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** `19 Sep 2026, Saturday` — the day in words, so a picked date is never read wrong. */
+/** `Sunday, 20 Sept 2026` — the day in words, so a picked date is never read wrong. */
 export function longDay(date: string): string {
   return new Intl.DateTimeFormat("en-IN", {
     timeZone: "UTC", weekday: "long", day: "numeric", month: "short", year: "numeric",
   }).format(new Date(`${date}T00:00:00Z`));
 }
 
-export function DayPicker({ date, onChange }: { date: string; onChange: (d: string) => void }): React.ReactElement {
+const SHORT = new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", day: "numeric", month: "short" });
+
+/** `Mon 14 Sep – Sat 19 Sep 2026 · 6 days`, or the single day in words. */
+export function rangeText(range: { from: string; to: string }): string {
+  if (range.from === range.to) return longDay(range.from);
+  const days = Math.round((Date.parse(`${range.to}T00:00:00Z`) - Date.parse(`${range.from}T00:00:00Z`)) / 86_400_000) + 1;
+  return `${SHORT.format(new Date(`${range.from}T00:00:00Z`))} – ${SHORT.format(new Date(`${range.to}T00:00:00Z`))} ${range.to.slice(0, 4)} · ${String(days)} days`;
+}
+
+export function todaySelection(): Selection {
+  return { period: "day", date: todayIst() };
+}
+
+/**
+ * The four named periods and a date box for any other day. A chip is ON when the selection IS it, so
+ * picking 12 September from the box leaves no chip lit — the reader is looking at that day, not at
+ * "today".
+ */
+export function PeriodPicker({ sel, onChange }: { sel: Selection; onChange: (s: Selection) => void }): React.ReactElement {
   const { t } = useTranslation();
   const today = todayIst();
   const yesterday = yesterdayOf(today);
+  const chip = (key: string, label: string, is: boolean, to: Selection) => (
+    <button type="button" className={is ? "odr-chip on" : "odr-chip"} aria-pressed={is}
+      onClick={() => onChange(to)} data-testid={`odr-${key}`}>{label}</button>
+  );
   return (
-    <div className="odr-days" role="group" aria-label={t("dayReport.pickDay")}>
-      <button type="button" className={date === today ? "odr-chip on" : "odr-chip"} aria-pressed={date === today}
-        onClick={() => onChange(today)} data-testid="odr-today">{t("dayReport.today")}</button>
-      <button type="button" className={date === yesterday ? "odr-chip on" : "odr-chip"} aria-pressed={date === yesterday}
-        onClick={() => onChange(yesterday)} data-testid="odr-yesterday">{t("dayReport.yesterday")}</button>
-      <input type="date" className="odr-date mo" value={date} max={today} aria-label={t("dayReport.otherDay")}
-        onChange={(e) => { if (/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)) onChange(e.target.value); }}
+    <div className="odr-days" role="group" aria-label={t("dayReport.pickPeriod")}>
+      {chip("today", t("dayReport.today"), sel.period === "day" && sel.date === today, { period: "day", date: today })}
+      {chip("yesterday", t("dayReport.yesterday"), sel.period === "day" && sel.date === yesterday, { period: "day", date: yesterday })}
+      {chip("week", t("dayReport.thisWeek"), sel.period === "week", { period: "week", date: today })}
+      {chip("month", t("dayReport.thisMonth"), sel.period === "month", { period: "month", date: today })}
+      <input type="date" className="odr-date mo" value={sel.date} max={today} aria-label={t("dayReport.otherDay")}
+        onChange={(e) => { if (/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)) onChange({ period: "day", date: e.target.value }); }}
         data-testid="odr-date" />
     </div>
   );
@@ -66,16 +91,30 @@ export function DayFigures({ counts, testId }: { counts: DayCounts; testId?: str
   );
 }
 
-/** The day is not over, or visits are still open: say so beside the numbers, never under them. */
-export function ProvisionalPill({ report }: { report: OpdDayReport }): React.ReactElement | null {
+/** The period is not over, or visits are still open: say so beside the numbers, never under them. */
+export function ProvisionalPill({ report }: { report: OpdReport }): React.ReactElement | null {
   const { t } = useTranslation();
   if (!report.provisional && report.totals.stillOpen === 0) return null;
+  const inProgress = report.period === "day" ? t("dayReport.inProgress") : t("dayReport.periodInProgress");
   return (
     <span className="pill gd" data-testid="odr-provisional">
-      {report.totals.stillOpen > 0
-        ? t("dayReport.stillOpen", { count: report.totals.stillOpen })
-        : t("dayReport.inProgress")}
+      {report.totals.stillOpen > 0 ? t("dayReport.stillOpen", { count: report.totals.stillOpen }) : inProgress}
     </span>
+  );
+}
+
+/**
+ * THE SUNDAY A WEEK LEAVES OUT. The owner's week is Monday to Saturday, so a Sunday's consultations
+ * belong to no week at all — and a total that is quietly short of the month is how a hospital stops
+ * trusting both numbers. Shown only when that Sunday actually carried work.
+ */
+export function ExcludedSundayNote({ report }: { report: { excludedSunday: { date: string; consulted: number } | null } }): React.ReactElement | null {
+  const { t } = useTranslation();
+  if (report.excludedSunday === null) return null;
+  return (
+    <p className="odr-sunday" data-testid="odr-sunday">
+      {t("dayReport.sundayExcluded", { count: report.excludedSunday.consulted, day: longDay(report.excludedSunday.date) })}
+    </p>
   );
 }
 
@@ -86,16 +125,16 @@ export function ProvisionalPill({ report }: { report: OpdDayReport }): React.Rea
 export function useReportDownloads(): {
   busy: string | null;
   error: string | null;
-  pdf: (key: string, target: "day" | { departmentId: string }, date: string) => void;
+  pdf: (key: string, target: "report" | { departmentId: string }, sel: Selection) => void;
   csv: (key: string, run: () => Promise<void>) => void;
 } {
   const { t } = useTranslation();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const pdf = (key: string, target: "day" | { departmentId: string }, date: string): void => {
+  const pdf = (key: string, target: "report" | { departmentId: string }, sel: Selection): void => {
     setError(null);
     setBusy(key);
-    openReportPdf(target, date)
+    openReportPdf(target, sel)
       .then((outcome) => { if (outcome === "blocked") setError(t("dayReport.popupBlocked")); })
       .catch(() => setError(t("dayReport.failed")))
       .finally(() => setBusy(null));
@@ -138,11 +177,12 @@ export function DownloadButtons({
   );
 }
 
-export function OpdDayReportPanel(): React.ReactElement {
+export function OpdReportPanel(): React.ReactElement {
   const { t } = useTranslation();
-  const [date, setDate] = useState(todayIst());
-  const report = useQuery({ queryKey: ["opd-day-report", date], queryFn: () => fetchDayReport(date) });
+  const [sel, setSel] = useState<Selection>(todaySelection);
+  const report = useQuery({ queryKey: ["opd-report", sel.period, sel.date], queryFn: () => fetchReport(sel) });
   const dl = useReportDownloads();
+  const range: ReportRange | undefined = report.data;
 
   return (
     <div className="band" data-testid="odr-panel">
@@ -152,10 +192,10 @@ export function OpdDayReportPanel(): React.ReactElement {
       </div>
       <div className="box odr-box">
         <div className="odr-top">
-          <DayPicker date={date} onChange={setDate} />
-          <span className="odr-long">{longDay(date)}</span>
+          <PeriodPicker sel={sel} onChange={setSel} />
+          <span className="odr-long" data-testid="odr-range">{range === undefined ? longDay(sel.date) : rangeText(range)}</span>
           {report.data === undefined ? null : <ProvisionalPill report={report.data} />}
-          <Link to="/reports/opd-day" search={{ date }} className="odr-more" data-testid="odr-open">
+          <Link to="/reports/opd-day" search={{ period: sel.period, date: sel.date }} className="odr-more" data-testid="odr-open">
             {t("dayReport.byDepartment")} →
           </Link>
         </div>
@@ -163,10 +203,11 @@ export function OpdDayReportPanel(): React.ReactElement {
         {report.isPending ? <p className="bandnote">{t("app.loading")}</p> : null}
         {report.isError ? <p role="alert" className="odr-err">{t("dayReport.loadFailed")}</p> : null}
         {report.data === undefined ? null : <DayFigures counts={report.data.totals} testId="odr-figs" />}
+        {report.data === undefined ? null : <ExcludedSundayNote report={report.data} />}
 
         <div className="odr-actions">
           <DownloadButtons busy={dl.busy} pdfKey="odr-pdf" csvKey="odr-csv"
-            onPdf={() => dl.pdf("odr-pdf", "day", date)} onCsv={() => dl.csv("odr-csv", () => downloadDayReportCsv(date))} />
+            onPdf={() => dl.pdf("odr-pdf", "report", sel)} onCsv={() => dl.csv("odr-csv", () => downloadReportCsv(sel))} />
           <span className="odr-hint">{t("dayReport.pdfHint")}</span>
         </div>
         {dl.error === null ? null : <p role="alert" className="odr-err">{dl.error}</p>}
@@ -174,4 +215,3 @@ export function OpdDayReportPanel(): React.ReactElement {
     </div>
   );
 }
-

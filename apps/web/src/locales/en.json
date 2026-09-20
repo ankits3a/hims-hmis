@@ -75,7 +75,7 @@
     "pharmacyRetailLicence": "Retail licence",
     "pharmacyDowntime": "Paper dispenses",
     "materialsTransfers": "Stock transfers",
-    "opdDayReport": "OPD day report"
+    "opdDayReport": "OPD report"
   },
   "palette": {
     "title": "Search",
@@ -2387,10 +2387,9 @@
     }
   },
   "dayReport": {
-    "band": "OPD day report",
-    "bandNote": "The whole hospital, by department — download as PDF or CSV",
-    "title": "OPD day report",
-    "pickDay": "Choose the day",
+    "band": "OPD report",
+    "bandNote": "The whole hospital, by department — today, this week or this month",
+    "title": "OPD report",
     "today": "Today",
     "yesterday": "Yesterday",
     "otherDay": "Another day",
@@ -2403,7 +2402,7 @@
     "renewal": "Renewal",
     "renewalHint": "A returning patient paying a fresh consultation fee: the follow-up period is over, or it is their first visit to this department.",
     "booked": "Booked",
-    "bookedHint": "Appointments for this day that were not cancelled or moved.",
+    "bookedHint": "Appointments booked for these dates and not cancelled or moved.",
     "stillOpen_one": "Day in progress · {{count}} patient still being seen",
     "stillOpen_other": "Day in progress · {{count}} patients still being seen",
     "inProgress": "Day in progress — figures may still change",
@@ -2436,8 +2435,16 @@
       "sex": "Sex",
       "address": "Address",
       "type": "Type",
-      "doctor": "Doctor"
-    }
+      "doctor": "Doctor",
+      "date": "Date"
+    },
+    "thisWeek": "This week",
+    "thisMonth": "This month",
+    "pickPeriod": "Choose the period",
+    "periodInProgress": "Period not over — figures may still change",
+    "weekRule": "Monday to Saturday. A Sunday is not part of a week, so its consultations are listed separately.",
+    "sundayExcluded_one": "{{count}} consultation on {{day}} is not counted here: a week runs Monday to Saturday.",
+    "sundayExcluded_other": "{{count}} consultations on {{day}} are not counted here: a week runs Monday to Saturday."
   },
   "assurance": {
     "self_declared": "Self declared",
@@ -3858,7 +3865,11 @@
     "sinceDay": "since {{day}}",
     "rxLines_one": "1 line",
     "rxLines_other": "{{count}} lines",
-    "sex": {"female": "F", "male": "M", "other": "—"},
+    "sex": {
+      "female": "F",
+      "male": "M",
+      "other": "—"
+    },
     "noAllergy": "no allergy recorded",
     "allergy": "allergy · {{substance}}",
     "flow": {
