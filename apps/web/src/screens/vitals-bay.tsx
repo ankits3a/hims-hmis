@@ -638,7 +638,7 @@ export function VitalsBay(): React.ReactElement {
   const onSaved = useCallback((result: WireVitalsSaveResult, row: WireBenchRow) => {
     const who = row.patient === null ? t("vitalsBay.bench.unknownPatient")
       : row.patient.restricted ? (row.patient.alias ?? t("vitalsBay.bench.restricted")) : (row.patient.name ?? row.patient.uhid);
-    setBanner({ who, doctorName: row.doctorName, flags: result.flags, amended: false });
+    setBanner({ who, doctorName: row.doctorName, flags: result.flags, amended: false, feeWaived: result.feeWaived === true });
     setTrail(null);
     releaseFirstTake(row.encounterId);
     void qc.invalidateQueries({ queryKey: ["vitals-bay", "bench"] });

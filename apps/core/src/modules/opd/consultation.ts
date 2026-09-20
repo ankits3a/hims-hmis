@@ -207,10 +207,14 @@ export function registerVitalsStartGuard(key: string, guard: VitalsStartGuard): 
 }
 
 /**
- * Every registered verdict, first refusal wins — or `{ok:true}` when the front desk has opened the
- * door for this visit. The bypass is read HERE rather than inside each guard so that a module
- * registering a new guard cannot forget to honour it, and so the audit answer to "who let this
- * patient through" has exactly one place to look.
+ * Every registered verdict, first refusal wins — or `{ok:true}` when the door has already been
+ * opened for this visit: by the front desk at the counter, or (owner ruling 2026-09-20) by the bay
+ * itself on an emergency save, which stamps the same columns in the saver's name. The bypass is
+ * read HERE rather than inside each guard so that a module registering a new guard cannot forget to
+ * honour it, and so the audit answer to "who let this patient through" has exactly one place to
+ * look. The emergency save's own decision is NOT read here — `recordVitals` owns it, because a
+ * verdict function that could be told "this one is urgent" would be a guard with an argument for
+ * ignoring itself.
  */
 export async function vitalsGateVerdict(
   db: Db | Tx, encounter: EncounterRow,

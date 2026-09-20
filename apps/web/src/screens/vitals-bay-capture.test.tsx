@@ -180,6 +180,44 @@ describe("CLOSE pass 1 — the hypoxic patient, and a chip that was never asked"
     await waitFor(() => expect(screen.getByTestId("saved-danger").textContent).toContain("spo2 68"));
   });
 
+  /**
+   * ═══ THE BILLING GATE AT THE BAY, AND THE WAY THROUGH IT (OWNER RULING 2026-09-20) ═══
+   *
+   * Owner, off a live screen: *"I am getting `the vitals desk is gated: fee_unsettled` for the
+   * Emergency Vitals case as well."* Two defects in one sentence — the emergency save was refused
+   * like any other (server side), and the refusal handed a person a code (this side). Both halves
+   * are in this one flow, in the order the bay meets them: the ordinary save is refused in words
+   * that name the red button, and the red button then lands and says what it cost.
+   */
+  it("an unbilled patient: Save is refused in words, Save NOW (emergency) goes through and says the fee is still due", async () => {
+    const posted: Posted[] = [];
+    stubBay([ROW_B], (body) => ((body as { emergency?: boolean }).emergency === true
+      ? new Response(JSON.stringify({ vitals: { id: "V-NEW" }, flags: [], encounter: { id: "E" }, feeWaived: true }), { status: 200, headers: { "Content-Type": "application/json" } })
+      : refused("consult_gate_refused", { guard: "billing_fee_gate", door: "vitals", code: "fee_unsettled" })), posted);
+    const user = userEvent.setup();
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-121")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("bench-row-121"));
+    await waitFor(() => expect(screen.getByTestId("capture")).toBeInTheDocument());
+    await user.keyboard("120/80{Enter}70{Enter}98{Enter}36.6{Enter}16{Enter}70{Enter}168{Enter}");
+
+    fireEvent.click(screen.getByTestId("save"));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    /* A sentence, and it names the door that IS open — never `fee_unsettled` at a person. */
+    await waitFor(() => expect(screen.getByTestId("capture-error").textContent).toContain("Not billed yet"));
+    expect(screen.getByTestId("capture-error").textContent).toContain("emergency");
+    expect(screen.queryByTestId("saved-banner")).not.toBeInTheDocument();
+
+    /* The numbers she already took are still on the tiles: the refusal cost her no re-typing. */
+    expect(screen.getByTestId("value-bp").textContent).toBe("120/80");
+
+    fireEvent.click(screen.getByTestId("save-emergency"));
+    await waitFor(() => expect(posted).toHaveLength(2));
+    expect((posted[1]!.body as { emergency: boolean }).emergency).toBe(true);
+    /* And the bay does not waive billing in silence — the person who pressed it is told. */
+    await waitFor(() => expect(screen.getByTestId("saved-fee-waived").textContent).toContain("fee is still due"));
+  });
+
   it("a chip cycles not-asked → yes → no → not-asked, and only an ASKED chip is posted", async () => {
     const posted: Posted[] = [];
     stubBay([ROW_B], () => saved(), posted);
