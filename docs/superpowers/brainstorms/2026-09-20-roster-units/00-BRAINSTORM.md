@@ -326,6 +326,17 @@ worth optimising) · permissions from postings.
 
 ---
 
+## 8A. RULED by the owner, 2026-09-20 — this section overrides §6 and §8 where they differ
+
+| # | ruling | what it changes |
+|---|---|---|
+| **RU-1** | *"This is a medical college & hospital. A teaching hospital, so we need to follow NMC guidelines."* **150 MBBS seats**; units are sanctioned in every department today per the NMC norm for that intake | the unit system is not an option layered on a corporate model — it is the model. The NMC unit table for 150 seats becomes **seed data** for `clinical_units` (phase doc 20-U §2), and NMC's rules (PGMER duty hours and leave, CRMI intern rotation, AEBAS) become the validator's default rule set |
+| **RU-2** | *"ERP is not bought yet, we will build the full suite by our own."* | **§6's first bullet is REVERSED.** The teaching timetable is ours to build, later, as its own module. Consequence for the roster now: a teaching commitment is a **native slot kind**, not an import from somebody else's system — `source = academic` stays, the CSV door stays as the interim, and the slot table must be able to carry a batch, a venue and a topic reference without a migration when the academic module arrives. Students remain not-staff |
+| **RU-3** | **The AEBAS duty-evidence report: YES.** | a task in 20-U. Read-only over records that already exist (theatre case times, roster slots, later labour room and ED). HMIS still never writes to, overrides or imitates AEBAS — it produces the paper a faculty member attaches to a regularisation request |
+| **RU-4** | **The escalation ladder, per person:** app notification (the mobile app later; **Chrome's notification system for now**) → not acted on → **WhatsApp** → not acted on → **SMS** → not acted on → **automated phone call** | answers §8 Q3: the ladder **may** use `users.phone`. It also defines something the kernel does not have: today `notifications.rung` climbs WhatsApp → SMS on **delivery failure**, and `alerts` records `read_at` only. The owner's ladder climbs on **no ACTION** — so an alert needs an *acknowledged* state, an ack must be possible **from every channel** (tap, WhatsApp button, SMS reply, keypress on the call), and a voice adapter must exist. Phase doc 20-U §6 |
+| **RU-5** | *"Always consider the edge cases, because this is India."* | the edge-case register is a first-class section of every roster phase doc, and it names the Indian ones — a holiday declared the evening before, a residents' strike, a bandh, election duty, an NMC surprise inspection, a phone that is switched off, shared, or has no data |
+| **RU-6** | *"Cutting-edge … smooth and frictionless and lower learning curve."* | the roster screens get a **design board the owner signs off before any screen is built** (the Desk One / Bay One method). The substrate — tables, resolvers, validator — needs no board and starts now |
+
 ## 9. Edge-case register — what the phase doc's tests must name
 
 | # | case | expected |
