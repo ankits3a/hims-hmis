@@ -7,13 +7,18 @@ import { withIdempotency } from "../billing";
 import { claimDispense, findAtCounter } from "./claim";
 import { OPD_PHARMACY_STORE_CODE, istDateOf } from "./config";
 import { PHARMACY_IDEMPOTENT_ROUTES, idSchema, parsed, toHttp } from "./pharmacy-http";
+import { closingFor } from "./closing";
+import type { Closing } from "./closing";
+import { patientRail } from "./patient-rail";
+import type { PatientRail } from "./patient-rail";
 import { confirmSlip, getDispense, listQueue } from "./queue";
+import type { Quote } from "./quote";
 import { billDispense, previewDispenseBill } from "./bill";
 import { handOverDispense } from "./handover";
 import { labelFor } from "./label";
 import { pickDispense } from "./pick";
 import { checkPickScan } from "./scan";
-import { cancelDispense, checkedAlternativesFor, declineLine, placementsFor, precheckTicket, verifyDispense } from "./verify";
+import { cancelDispense, checkedAlternativesFor, declineLine, placementsFor, precheckTicket, verifyDispense, writtenQuoteFor } from "./verify";
 import { cancelBilledDispense } from "./refund";
 import { authorisationDetail, decideAuthorisation, requestAuthorisation } from "./authorisations";
 import type { AuthorisationDetail } from "./authorisations";
@@ -131,12 +136,40 @@ export class PharmacyCounterController {
     }
   }
 
+  /** WHAT CLOSED (the board's three boxes): the ticket, the money as the invoice and receipt record it, the registers. */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("dispenses/:id/closing")
+  async closing(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<Closing> {
+    try {
+      return await closingFor(this.db, actor, id);
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * WHO IS AT THE WINDOW (the board's left rail) — read ONCE when the ticket is opened, never polled:
+   * it records a PHI access, and `getDispense` is on a fifteen-second poll.
+   */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("dispenses/:id/patient")
+  async patientRail(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<PatientRail> {
+    try {
+      return await patientRail(this.db, actor, id, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
   /** PD-7 C3 — each equivalent comes back already put to this patient's check (`checkedAlternativesFor`). */
   @RequirePermission("pharmacy.dispense.read", "hospital")
   @Get("dispenses/:id/lines/:idx/alternatives")
-  async alternatives(@CurrentActor() actor: Actor, @Param("id") id: string, @Param("idx") idx: string): Promise<{ items: CheckedAlternative[] }> {
+  async alternatives(@CurrentActor() actor: Actor, @Param("id") id: string, @Param("idx") idx: string): Promise<{ items: CheckedAlternative[]; written: Quote | null }> {
     try {
-      return { items: await checkedAlternativesFor(this.db, actor, id, Number(idx), new Date()) };
+      const now = new Date();
+      /* `written` — the line as the doctor wrote it, quoted — is what the co-pilot's "saves ₹x a strip" is measured against. */
+      const items = await checkedAlternativesFor(this.db, actor, id, Number(idx), now);
+      return { items, written: items.length === 0 ? null : await writtenQuoteFor(this.db, id, Number(idx), now) };
     } catch (e) {
       return toHttp(e);
     }

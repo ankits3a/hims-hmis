@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Closed } from "./closed";
 import { heldByAnother, lineVerdict, stageOf, ticketLabel, whoLabel } from "./model";
 import { LineList } from "./lines";
 import { hindiRefusal, hindiSig } from "./phrasebook";
@@ -114,6 +115,7 @@ export function TicketPanel({
         <p className="mo" style={{ margin: "3px 0 0 0", fontSize: 12, color: "var(--dim)" }}>
           {[label, takenLabel, t("pharmacyDesk.lines", { count: inHand.lines.length })].filter((x) => x !== null).join(" · ")}
         </p>
+        <Closed dispenseId={inHand.id} />
         <button className="pri" style={{ marginTop: 16 }} onClick={onClear}>
           {t("pharmacyDesk.nextTicket")} <span className="kb" style={{ borderColor: "rgba(255,255,255,.35)", background: "rgba(255,255,255,.12)", color: "#d6ece1" }}>Esc</span>
         </button>

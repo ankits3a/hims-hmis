@@ -4,6 +4,9 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../../lib/auth";
 import { askPrescriber, fetchPrecheck, pharmacyErrorText, setShelfLocation } from "../../lib/pharmacy-api";
 import { ResolveSheet } from "./resolve";
+import { CopilotOffer, firstLineNeedingHelp } from "./copilot";
+
+const rupees = (paise: number): string => `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 import { SubstituteSheet } from "./substitute";
 import { adviceFor, allSettled, blockedFor, canTick, freshTick, isPartial, isSettled, istToday, pickBody, placeable, qtyOf, sigOf, substitutable, verifyBody } from "./work";
 import type { Tick } from "./work";
@@ -36,6 +39,8 @@ export function LineList({
   const [ticketError, setTicketError] = useState<string | null>(null);
   const [declining, setDeclining] = useState<number | null>(null);
   const [subbing, setSubbing] = useState<number | null>(null);
+  /** The medicine the co-pilot named, carried into the sheet so its offer is one tap and a consent. */
+  const [offered, setOffered] = useState<string | null>(null);
   const [resolving, setResolving] = useState<number | null>(null);
   const settleAfterDecline = useRef(false);
   const today = istToday();
@@ -126,6 +131,9 @@ export function LineList({
   };
 
   const settledCount = dispense.lines.filter((l) => isSettled(l, ticks[l.lineIdx])).length;
+  /* The co-pilot speaks about the first line the shelf cannot fill as written (the board's `agchip`). */
+  const helpLine = firstLineNeedingHelp(dispense.lines);
+
   return (
     <div data-testid="desk-lines">
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 15 }}>
@@ -170,15 +178,25 @@ export function LineList({
           />
         ))}
       </div>
+      {editable && helpLine !== null ? (
+        <CopilotOffer
+          dispenseId={dispense.id}
+          line={helpLine}
+          tick={ticks[helpLine.lineIdx]}
+          onSubstitute={(medicineId) => { setOffered(medicineId); setSubbing(helpLine.lineIdx); }}
+        />
+      ) : null}
       {subbing === null ? null : (
         <SubstituteSheet
           dispenseId={dispense.id}
           line={dispense.lines.find((l) => l.lineIdx === subbing)!}
-          onClose={() => setSubbing(null)}
+          preselect={offered}
+          onClose={() => { setSubbing(null); setOffered(null); }}
           onChoose={(sub) => {
             /* A different medicine is a different shelf: the batch, the scan and the tick all restart. */
             edit(subbing, { sub, batchId: null, scan: "", ticked: false }, false);
             setSubbing(null);
+            setOffered(null);
             setDeclining(null);
           }}
         />
@@ -261,6 +279,11 @@ function LineRow({
   const noteOffers = editable && (blocked === "unresolved" ? placeable(line) : blocked === "empty" || blocked === "not_stocked" || blocked === "not_saleable");
   const bar = error !== null || (editable && precheck?.verdict === "blocked") ? "var(--red)" : declined || blocked !== null ? "var(--gold)" : settled || line.pickedBatch != null ? "var(--green)" : "transparent";
   const soft = { display: "block", marginTop: 7, fontSize: 11.5, lineHeight: "16px", padding: "7px 9px", borderRadius: 6 } as const;
+  /* The line's own money at today's shelf price: quantity × the SERVER's quote, and the rate beside it. */
+  const qtyNow = qty ?? line.qtyBase;
+  const money = line.quote == null || qtyNow === null || declined
+    ? null
+    : { amount: rupees(line.quote.unitPaise * qtyNow), rate: t("pharmacyDesk.eachRate", { amount: rupees(line.quote.unitPaise) }) };
   const label = `${rx.drug} ${sigOf(rx)}`;
 
   return (
@@ -532,6 +555,18 @@ function LineRow({
           <span className="mo" style={{ display: "block", fontSize: 10.5, color: "var(--dim)", marginTop: 2 }}>
             {line.item?.baseUom ?? res?.baseUom ?? ""}{line.qtyBase !== null && partial ? ` · ${t("pharmacyDesk.ofPrescribed", { of: line.qtyBase })}` : ""}
           </span>
+          {/* C7 — a price held down by law says so, or the pack and the bill disagree at the window. */}
+          {money === null || line.quote?.winner !== "ceiling" ? null : (
+            <span data-testid={`desk-line-${String(line.lineIdx)}-ceiling`} className="pill gd" style={{ marginTop: 6 }}>
+              {t("pharmacyDesk.ceiling", { mrp: rupees((line.quote.mrpUnitPaise ?? line.quote.unitPaise) * (line.quote.pack?.multiplier ?? 1)), pack: line.quote.pack?.uom ?? "" })}
+            </span>
+          )}
+          {money === null ? null : (
+            <span data-testid={`desk-line-${String(line.lineIdx)}-money`} style={{ display: "block", marginTop: 6 }}>
+              <span className="mo" style={{ display: "block", fontSize: 13, fontWeight: 600 }}>{money.amount}</span>
+              <span className="mo" style={{ display: "block", fontSize: 10.5, color: "var(--dim)" }}>{money.rate}</span>
+            </span>
+          )}
         </span>
 
         <span style={{ width: 30, flexShrink: 0 }}>

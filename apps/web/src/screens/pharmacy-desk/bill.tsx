@@ -143,16 +143,29 @@ export function BillRail({
       <div style={{ flexGrow: 1, overflowY: "auto", padding: "4px 15px 0 15px" }}>
         {preview === null ? (
           <>
-            {dispense.lines.map((l) => (
-              <div key={l.lineIdx} style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "7px 0", borderTop: "1px solid var(--line2)" }}>
-                <span style={{ flexGrow: 1, minWidth: 0, fontSize: 12, color: l.status === "declined" ? "var(--dim)" : "var(--ink)" }}>
-                  {l.dispensedMedicine?.brandName ?? l.rxLine.drug}
-                </span>
-                <span className="mo" style={{ fontSize: 12, color: "var(--dim)" }}>{l.status === "declined" ? t("pharmacyDesk.bill.declined") : "—"}</span>
+            {dispense.lines.map((l) => {
+              /* Priced at today's shelf price for the batch the pick would take — the server's quote, never ours. */
+              const amount = l.quote == null || l.qtyBase === null || l.status === "declined" ? null : l.quote.unitPaise * l.qtyBase;
+              return (
+                <div key={l.lineIdx} style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "7px 0", borderTop: "1px solid var(--line2)" }}>
+                  <span style={{ flexGrow: 1, minWidth: 0, fontSize: 12, color: l.status === "declined" ? "var(--dim)" : "var(--ink)" }}>
+                    {l.dispensedMedicine?.brandName ?? l.rxLine.drug}
+                    {amount === null || l.qtyBase === null ? null : <span className="mo" style={{ color: "var(--dim)" }}> × {l.qtyBase}</span>}
+                  </span>
+                  <span className="mo" style={{ fontSize: 12, color: amount === null ? "var(--dim)" : "var(--ink)" }}>
+                    {l.status === "declined" ? t("pharmacyDesk.bill.declined") : amount === null ? "—" : rupees(amount)}
+                  </span>
+                </div>
+              );
+            })}
+            {(dispense.quotedTotalPaise ?? 0) > 0 ? (
+              <div style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "11px 0 0 0", marginTop: 4, borderTop: "2px solid var(--ink)" }}>
+                <span style={{ flexGrow: 1, fontSize: 13, fontWeight: 600 }}>{t("pharmacyDesk.bill.soFar")}</span>
+                <span className="mo" data-testid="desk-sofar" style={{ fontSize: 19, fontWeight: 600, letterSpacing: "-.02em" }}>{rupees(dispense.quotedTotalPaise ?? 0)}</span>
               </div>
-            ))}
+            ) : null}
             <p style={{ margin: "10px 0 0 0", fontSize: 11, color: "var(--dim)", lineHeight: "16px" }}>
-              {previewError ?? t("pharmacyDesk.bill.notYet")}
+              {previewError ?? ((dispense.quotedTotalPaise ?? 0) > 0 ? t("pharmacyDesk.bill.soFarWhy") : t("pharmacyDesk.bill.notYet"))}
             </p>
           </>
         ) : (

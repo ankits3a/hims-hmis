@@ -13,6 +13,10 @@ import { dispenseCancelled, dispenseLineDeclined, dispenseVerified, lineResolved
 import { PharmacyError } from "./errors";
 import { requireRegisteredPharmacist } from "./pharmacists";
 import { authorisedKeysFor } from "./authorisation-reads";
+import { gstCategoryMap } from "./bill";
+import { lastKnownQuote, quoteItem } from "./quote";
+import type { Quote } from "./quote";
+import type { GstCategoryMap } from "./bill";
 import { refusalKey, refusalsOf, refusalsOn } from "./refusals";
 import type { Refusals } from "./refusals";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
@@ -95,7 +99,11 @@ function blocksOf(r: Refusals): AlternativeBlock[] {
     ...r.drugDisease.map((x) => ({ book: "drug_disease" as const, about: x.icd10Title, key: refusalKey("drug_disease", x) })),
   ];
 }
-export type CheckedAlternative = Alternative & { check: { verdict: "clear" | "not_checked" | "blocked"; blocks: AlternativeBlock[] } };
+export type CheckedAlternative = Alternative & {
+  check: { verdict: "clear" | "not_checked" | "blocked"; blocks: AlternativeBlock[] };
+  /** What the bill will ask for it: its first-to-expire sellable batch, priced as the bill prices (`quote.ts`). */
+  quote: Quote | null;
+};
 
 export async function checkedAlternativesFor(db: Db, actor: Actor, dispenseId: string, lineIdx: number, now: Date): Promise<CheckedAlternative[]> {
   const alternatives = await alternativesFor(db, dispenseId, lineIdx);
@@ -111,6 +119,7 @@ export async function checkedAlternativesFor(db: Db, actor: Actor, dispenseId: s
     ...open.map((l) => l.dispensedMedicineId), ...alternatives.map((a) => a.medicineId),
   ].filter((x): x is string => x !== null));
   const authorised = await authorisedKeysFor(db, dispenseId);
+  const gst = await gstCategoryMap(db);
   const out: CheckedAlternative[] = [];
   for (const alt of alternatives) {
     const checkLines: RxLine[] = open.map((l) => {
@@ -121,7 +130,8 @@ export async function checkedAlternativesFor(db: Db, actor: Actor, dispenseId: s
     const outcome = await runRxChecks(db, d.patientId, checkLines, now, { excludeEncounterId: d.encounterId });
     const blocks = blocksOf(refusalsOn(refusalsOf(outcome, (i) => open[i]!.lineIdx, rx, new Set(), authorised), lineIdx));
     const partly = outcome.unreviewedLineIndexes.includes(target) || outcome.unresolvedLineIndexes.includes(target);
-    out.push({ ...alt, check: { verdict: blocks.length > 0 ? "blocked" : partly ? "not_checked" : "clear", blocks } });
+    const quote = d.storeResourceId === null ? null : await quoteItem(db, gst, d.storeResourceId, alt.itemId, now);
+    out.push({ ...alt, check: { verdict: blocks.length > 0 ? "blocked" : partly ? "not_checked" : "clear", blocks }, quote });
   }
   return out;
 }
@@ -533,3 +543,19 @@ export async function cancelDispense(
 
 
 
+
+/**
+ * The line AS WRITTEN, quoted: from this store's shelf when it holds any, else from the item's most
+ * recent batch (`lastKnown`), else null — a medicine this hospital has never received has no price.
+ * It is what the co-pilot's "saves ₹x a strip" is measured against.
+ */
+export async function writtenQuoteFor(db: Db, dispenseId: string, lineIdx: number, now: Date, gst?: GstCategoryMap): Promise<Quote | null> {
+  const d = await getDispenseRow(db, dispenseId);
+  const line = (await linesOf(db, dispenseId)).find((l) => l.lineIdx === lineIdx);
+  if (line === undefined || line.dispensedMedicineId === null) return null;
+  const itemId = line.itemId ?? (await shelfByMedicine(db)).get(line.dispensedMedicineId)?.item.id ?? null;
+  if (itemId === null) return null;
+  const categories = gst ?? await gstCategoryMap(db);
+  const onShelf = d.storeResourceId === null ? null : await quoteItem(db, categories, d.storeResourceId, itemId, now);
+  return onShelf ?? lastKnownQuote(db, categories, itemId, now);
+}

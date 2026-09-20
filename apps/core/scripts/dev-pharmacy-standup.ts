@@ -237,8 +237,8 @@ function shiftMonths(at: Date, months: number): Date {
 }
 const minutes = (n: number): number => n * 60_000;
 
-async function holdersOf(db: Db, roleKey: string): Promise<{ id: string; username: string }[]> {
-  return db.select({ id: users.id, username: users.username })
+async function holdersOf(db: Db, roleKey: string): Promise<{ id: string; username: string; fullName: string }[]> {
+  return db.select({ id: users.id, username: users.username, fullName: users.fullName })
     .from(roleAssignments).innerJoin(users, eq(users.id, roleAssignments.userId))
     .where(eq(roleAssignments.roleKey, roleKey))
     .orderBy(users.username);
@@ -370,7 +370,9 @@ async function prescriber(db: Db, log: string[]): Promise<{ doctorId: string; de
   if (holder === undefined) throw new Error("dev-pharmacy-standup: no user holds \"doctor\" — provision the roster first");
   const admin = await holderOf(db, "opd_admin");
   const { doctorId } = await withTx(db, (tx) => createDoctor(tx, admin, {
-    username: holder.username, displayName: `Dr ${holder.username}`, departmentId: med.id, specialty: "General Medicine",
+    /* the name the patient and the pharmacy read — "Dr dr.anand" was the LOGIN shown on the desk (owner, 2026-09-20) */
+    username: holder.username, displayName: /^dr\.? /i.test(holder.fullName) ? holder.fullName : `Dr ${holder.fullName}`,
+    departmentId: med.id, specialty: "General Medicine",
   }));
   log.push(`doctor of record: MED profile CREATED for ${holder.username} (opd_admin, createDoctor)`);
   return { doctorId, departmentId: med.id, actor: { type: "user", id: holder.id } };

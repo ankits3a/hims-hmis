@@ -1,4 +1,4 @@
-import type { WireDispense, WirePatientSummary, WireQueueRow, WireShelfCheck } from "../../lib/pharmacy-api";
+import type { WireAlternative, WireDispense, WirePatientSummary, WireQuote, WireQueueRow, WireShelfCheck } from "../../lib/pharmacy-api";
 
 /**
  * ═══ PHASE PD — THE PHARMACY DESK'S PURE HALF ═══
@@ -83,6 +83,28 @@ export function queuedDay(queuedOn: string | undefined, now: Date): { kind: "yes
   if (queuedOn === ist(new Date(now.getTime() - 24 * 60 * 60_000))) return { kind: "yesterday" };
   const [y, m, d] = queuedOn.split("-").map(Number);
   return { kind: "date", label: new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(Date.UTC(y!, m! - 1, d!))) };
+}
+
+/**
+ * ═══ THE CO-PILOT'S OFFER — ONE MEDICINE, NAMED, WITH ITS SAVING ═══
+ *
+ * The approved Desk board's agent does not list equivalents; it names the one it would give and says
+ * why. Offered only what the CHECK cleared (never `blocked`, never `not_checked` — PD-D13) and what
+ * the shelf really holds; one that covers the quantity beats one that does not; then the cheaper per
+ * tablet, then the fuller shelf. The saving is the two SERVER prices subtracted over the offer's own
+ * pack, and it is claimed only when the offer is actually cheaper.
+ */
+export type Offer = { alt: WireAlternative; savingPerPackPaise: number | null };
+
+export function bestOffer(alts: readonly WireAlternative[], want: number, written: WireQuote | null): Offer | null {
+  const usable = alts.filter((a) => a.check.verdict === "clear" && a.available > 0 && (a.quote ?? null) !== null);
+  if (usable.length === 0) return null;
+  const covers = usable.filter((a) => a.available >= want);
+  const pool = covers.length > 0 ? covers : usable;
+  const alt = [...pool].sort((a, b) => a.quote!.unitPaise - b.quote!.unitPaise || b.available - a.available)[0]!;
+  const pack = alt.quote!.pack;
+  const cheaperBy = written === null ? 0 : written.unitPaise - alt.quote!.unitPaise;
+  return { alt, savingPerPackPaise: pack === null || cheaperBy <= 0 ? null : cheaperBy * pack.multiplier };
 }
 
 /** Calm under six minutes, warm to a quarter hour, late after — the board's three colours. */

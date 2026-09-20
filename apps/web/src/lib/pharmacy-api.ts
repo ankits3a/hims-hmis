@@ -77,6 +77,8 @@ export type WireDispenseLine = {
   /** Pharmacy P3: a component of this line's medicine is not yet reviewed. Absent from an older server. */
   partlyChecked?: boolean;
   /** PD-4 — the sellable batches an OPEN line's pick would draw from, earliest expiry first. Absent from an older server. */
+  /** What the bill will ask for this line at today's shelf price (`quote.ts`). Absent from an older server. */
+  quote?: WireQuote | null;
   batches?: WireBatch[];
   /** PD-4 — once picked, the batch it was given from. Absent from an older server. */
   pickedBatch?: { batchNo: string; expiryDate: string | null } | null;
@@ -84,6 +86,8 @@ export type WireDispenseLine = {
 export type WireBatch = { batchId: string; batchNo: string; expiryDate: string | null; available: number };
 export type WirePatientSummary = { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean };
 export type WireDispense = {
+  /** The ticket at today's shelf prices, the server's own sum. Absent from an older server. */
+  quotedTotalPaise?: number;
   id: string; status: string; dispenseNo: string | null; orderId: string | null; prescriptionId: string; prescriptionVersion: number;
   encounterId: string; storeResourceId: string | null; scheduled: boolean; invoiceId: string | null; identityConfirmedVia: string | null;
   claimedAt: string | null; verifiedAt: string | null; pickedAt: string | null; billedAt: string | null; handedOverAt: string | null;
@@ -102,6 +106,8 @@ export async function confirmDispenseSlip(id: string): Promise<{ slipConfirmedBy
 export type WireQueueRow = {
   dispenseId: string; status: string; dispenseNo: string | null; scheduled: boolean; lineCount: number;
   createdAt: string; claimedAt: string | null; patient: WirePatientSummary;
+  /** What the doctor wrote on that ticket, in order. Absent from an older server. */
+  drugs?: string[];
   /** The IST day it was queued — an earlier day's open ticket stays on the line. Absent from an older server. */
   queuedOn?: string;
   /** FD-31 — who typed a paper slip, and whether a pharmacist has cross-confirmed it. */
@@ -124,9 +130,18 @@ export type WireLineAuthorisation = {
   decisionReason: string | null; requestedAt: string; decidedAt: string | null;
 };
 /** PD-7 C3 — each equivalent comes back already put to this patient's check, judged as verify judges. */
+/** What the bill will ask for a medicine, from the batch the pick would take (`quote.ts`). `lastKnown`: the shelf is empty and this is the last printed MRP. */
+export type WireQuote = {
+  batchId: string; batchNo: string; expiryDate: string | null; unitPaise: number;
+  pack: { uom: string; multiplier: number; paise: number } | null; lastKnown: boolean;
+  /** Which bound set the price, and the printed MRP beside it. Absent from an older server. */
+  winner?: "batch_mrp" | "ceiling"; mrpUnitPaise?: number | null;
+};
 export type WireAlternative = {
   medicineId: string; brandName: string; strengthLabel: string | null; form: string; itemId: string; itemCode: string; available: number;
   check: { verdict: "clear" | "not_checked" | "blocked"; blocks: WireAlternativeBlock[] };
+  /** Absent from an older server. */
+  quote?: WireQuote | null;
 };
 
 export async function fetchQueue(): Promise<WireQueueRow[]> {
@@ -139,9 +154,31 @@ export async function findAtCounter(q: string): Promise<WireFindResult> {
 export async function fetchDispense(id: string): Promise<WireDispense> {
   return api<WireDispense>("GET", `/pharmacy/dispenses/${id}`);
 }
-export async function fetchAlternatives(id: string, lineIdx: number): Promise<WireAlternative[]> {
-  const { items } = await api<{ items: WireAlternative[] }>("GET", `/pharmacy/dispenses/${id}/lines/${String(lineIdx)}/alternatives`);
-  return items;
+/** The board's left rail: who is at the window (`patient-rail.ts`). Read once per ticket, never polled. */
+export type WireRailVisit = {
+  encounterId: string; serviceDate: string; departmentName: string | null; doctorName: string | null;
+  status: string; prescriptionLineCount: number;
+};
+export type WireRailMedicine = { drug: string; sig: string; since: string };
+export type WirePatientRail = { ageYears: number | null; sex: string | null; visits: WireRailVisit[]; alreadyTaking: WireRailMedicine[] };
+
+export async function fetchPatientRail(id: string): Promise<WirePatientRail> {
+  return api<WirePatientRail>("GET", `/pharmacy/dispenses/${id}/patient`);
+}
+
+/** The board's three boxes on the done screen (`closing.ts`), read once when the ticket has closed. */
+export type WireClosing = {
+  ticket: { dispenseNo: string | null; claimedByName: string | null; claimedAt: string | null; handedOverAt: string | null; lines: number; substituted: number; declined: number };
+  money: { invoiceNo: string; netPayablePaise: number; cgstPaise: number; sgstPaise: number; receiptNo: string | null; changeGivenPaise: number; tenders: { mode: string; amountPaise: number; refText: string | null }[] } | null;
+  registers: { h1Rows: number; batches: number };
+};
+export async function fetchClosing(id: string): Promise<WireClosing> {
+  return api<WireClosing>("GET", `/pharmacy/dispenses/${id}/closing`);
+}
+
+export async function fetchAlternatives(id: string, lineIdx: number): Promise<{ items: WireAlternative[]; written: WireQuote | null }> {
+  const r = await api<{ items: WireAlternative[]; written?: WireQuote | null }>("GET", `/pharmacy/dispenses/${id}/lines/${String(lineIdx)}/alternatives`);
+  return { items: r.items, written: r.written ?? null };
 }
 /** C3b — the ticket's own lines, put to the check at the claim: what it would refuse, before the tick. */
 export type WireLinePrecheck = { lineIdx: number; verdict: "clear" | "not_checked" | "blocked" | "unplaced"; blocks: WireAlternativeBlock[] };

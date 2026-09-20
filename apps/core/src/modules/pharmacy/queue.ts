@@ -10,6 +10,9 @@ import { medicinesByIds, unreviewedSaltIds } from "../formulary";
 import { availableQty, getBatch, itemsByIds, itemUomRows, sellableBatchesByItem } from "../materials";
 import { getPatient, getPatientSummaries, listAllergies } from "../patients";
 import { istDateOf } from "./config";
+import { gstCategoryMap } from "./bill";
+import { quoteItem } from "./quote";
+import type { Quote } from "./quote";
 import { dispenseQueued } from "./events";
 import { PharmacyError } from "./errors";
 import { shelfChecks } from "./precheck";
@@ -96,6 +99,8 @@ export type QueueRow = {
   dispenseNo: string | null;
   scheduled: boolean;
   lineCount: number;
+  /** What the doctor wrote, in order — the board's queue rows name the drugs, not a count. */
+  drugs: string[];
   createdAt: Date;
   /** The IST day the ticket was queued — an earlier day's ticket carried over says so (`listQueue`). */
   queuedOn: string;
@@ -179,6 +184,21 @@ export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: str
     .where(inArray(pharmacyDispenseLines.dispenseId, rows.map((r) => r.id)))
     .groupBy(pharmacyDispenseLines.dispenseId);
   const countById = new Map(counts.map((c) => [c.dispenseId, c.n]));
+  /**
+   * The DRUGS on each waiting ticket (the board's queue rows name them: "Augmentin 625, Pan 40,
+   * Alzolam 0.5"). One query for the page, as the counts are: a pharmacist reads the line to decide
+   * which ticket to take, and "4 lines" does not tell them whether the shelf can serve it.
+   */
+  const drugRows = await db.select({ dispenseId: pharmacyDispenseLines.dispenseId, lineIdx: pharmacyDispenseLines.lineIdx, rxLine: pharmacyDispenseLines.rxLine })
+    .from(pharmacyDispenseLines)
+    .where(inArray(pharmacyDispenseLines.dispenseId, rows.map((r) => r.id)))
+    .orderBy(asc(pharmacyDispenseLines.lineIdx));
+  const drugsById = new Map<string, string[]>();
+  for (const r of drugRows) {
+    const list = drugsById.get(r.dispenseId) ?? [];
+    list.push((r.rxLine as RxLine).drug);
+    drugsById.set(r.dispenseId, list);
+  }
   /* ONE query for the whole page, not one per row: the counter's list is polled. */
   const rxRows = await db
     .select({ id: opdPrescriptions.id, transcribedBy: opdPrescriptions.transcribedBy })
@@ -195,7 +215,8 @@ export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: str
     if (s === undefined) continue; // not visible to this actor — not on their list
     out.push({
       dispenseId: r.id, status: r.status, dispenseNo: r.dispenseNo, scheduled: r.scheduled,
-      lineCount: countById.get(r.id) ?? 0, createdAt: r.createdAt, queuedOn: istDateOf(r.createdAt), claimedAt: r.claimedAt,
+      lineCount: countById.get(r.id) ?? 0, drugs: drugsById.get(r.id) ?? [],
+      createdAt: r.createdAt, queuedOn: istDateOf(r.createdAt), claimedAt: r.claimedAt,
       patient: { id: s.id, uhid: s.uhid, name: s.name, alias: s.alias, restricted: s.restricted },
       transcribedBy: transcribedByRx.get(r.prescriptionId) ?? null,
       slipConfirmedBy: r.slipConfirmedBy,
@@ -238,6 +259,12 @@ export type DispenseLineView = {
   invoiceLineId: string | null;
   unitPaise: number | null;
   priceWinner: string | null;
+  /**
+   * What the bill will ask for this line's own medicine, from the batch the pick would take
+   * (`quote.ts`) — so the counter can answer "how much will this be?" before a strip is pulled.
+   * Null when the shelf cannot fill it. The bill at payment is still billing's, never this.
+   */
+  quote: Quote | null;
   fefoOverride: boolean;
   pickNote: string | null;
   /**
@@ -260,6 +287,8 @@ export type DispenseLineView = {
 
 
 export type DispenseView = {
+  /** The ticket at today's shelf prices, before the bill exists (`quote.ts`): the server's own sum. */
+  quotedTotalPaise: number;
   id: string;
   status: string;
   dispenseNo: string | null;
@@ -372,6 +401,19 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
   const batchesByItem = d.storeResourceId === null || openItems.length === 0
     ? new Map<string, DispenseLineView["batches"]>()
     : await sellableBatchesByItem(db, d.storeResourceId, openItems, now);
+  /**
+   * One quote per ITEM on the ticket, asked once for the whole view (it is polled). A line the shelf
+   * cannot fill has none, and is left out of the running total — a number the server adds up, because
+   * the desk does no arithmetic on money.
+   */
+  const quotes = new Map<string, Quote>();
+  if (d.storeResourceId !== null) {
+    const gst = await gstCategoryMap(db);
+    for (const itemId of [...new Set(lines.map((l) => l.itemId).filter((x): x is string => x !== null))]) {
+      const q = await quoteItem(db, gst, d.storeResourceId, itemId, now);
+      if (q !== null) quotes.set(itemId, q);
+    }
+  }
   const views: DispenseLineView[] = [];
   for (const l of lines) {
     const om = l.orderedMedicineId === null ? undefined : medicines.get(l.orderedMedicineId);
@@ -406,6 +448,7 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
       item: item === undefined ? null : { id: item.id, code: item.code, name: item.name, baseUom: item.baseUom, uoms },
       saleable, location: l.itemId === null ? null : (locations.get(l.itemId) ?? null), available, batchId: l.batchId, reservationId: l.reservationId, ledgerEntryId: l.ledgerEntryId,
       orderItemId: l.orderItemId, invoiceLineId: l.invoiceLineId, unitPaise: l.unitPaise, priceWinner: l.priceWinner,
+      quote: item === undefined ? null : (quotes.get(item.id) ?? null),
       fefoOverride: l.fefoOverride, pickNote: l.pickNote,
       partlyChecked: (dm ?? om)?.salts.some((s) => unreviewed.has(s.saltId)) ?? false,
       batches: l.status === "open" && l.itemId !== null && l.batchId === null ? (batchesByItem.get(l.itemId) ?? []) : [],
@@ -417,6 +460,8 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
     });
   }
   return {
+    /* What the ticket comes to at today's shelf prices, over the quantities the check is made against. */
+    quotedTotalPaise: views.reduce((n, v) => n + (v.quote === null || v.qtyBase === null ? 0 : v.quote.unitPaise * v.qtyBase), 0),
     id: d.id, status: d.status, dispenseNo: d.dispenseNo, orderId: d.orderId, prescriptionId: d.prescriptionId,
     prescriptionVersion: d.prescriptionVersion, encounterId: d.encounterId, storeResourceId: d.storeResourceId,
     scheduled: d.scheduled, invoiceId: d.invoiceId, identityConfirmedVia: d.identityConfirmedVia,

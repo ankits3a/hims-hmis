@@ -1,3 +1,5 @@
+import { useQuery } from "@tanstack/react-query";
+import { fetchPatientRail } from "../../lib/pharmacy-api";
 import { useTranslation } from "react-i18next";
 import { FLOW_STEPS, flowIndex, holdOf, initialsOf, queuedDay, shelfFlag, stageOf, ticketLabel, waitLabel, waitTone, whoLabel } from "./model";
 import type { WaitTone } from "./model";
@@ -22,6 +24,14 @@ export function Dossier({
   paletteBound: boolean;
 }): React.ReactElement {
   const { t } = useTranslation();
+  /* Who is at the window — one read when the ticket opens, never polled: it records a PHI access. */
+  const rail = useQuery({
+    queryKey: ["pharmacy", "patient-rail", inHand?.id ?? ""],
+    queryFn: () => fetchPatientRail(inHand!.id),
+    enabled: inHand !== null,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
   if (inHand === null) {
     const day = summary === null ? [] : [
       { label: t("pharmacyDesk.day.handedOver"), value: String(summary.handedOver) },
@@ -72,7 +82,11 @@ export function Dossier({
         }}>{initialsOf(p)}</div>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 15, fontWeight: 600 }}>{whoLabel(p)}</div>
-          <div className="mo" style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{p.uhid}</div>
+          <div className="mo" style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>
+            {[rail.data?.ageYears == null ? null : t("pharmacyDesk.years", { n: rail.data.ageYears }),
+              rail.data?.sex == null ? null : t(`pharmacyDesk.sex.${rail.data.sex}`, { defaultValue: rail.data.sex }),
+              p.uhid].filter((x) => x !== null).join(" · ")}
+          </div>
           {p.restricted ? <span className="pill gd" style={{ marginTop: 5 }}>{t("pharmacyDesk.sealedRecord")}</span> : null}
         </div>
       </div>
@@ -96,6 +110,34 @@ export function Dossier({
       <div className="tag" style={{ marginTop: 7 }} data-testid="desk-flow">
         {t(`pharmacyDesk.flow.${inHand.status === "billed" && FLOW_STEPS[step] === "money" ? "handOver" : FLOW_STEPS[step]!}`)}
       </div>
+
+      {/* WHO IS AT THE WINDOW (the board's rail): the visits behind this one, and the courses still running. */}
+      {(rail.data?.alreadyTaking.length ?? 0) === 0 ? null : (
+        <div data-testid="desk-taking" style={{ marginTop: 20 }}>
+          <div className="tag">{t("pharmacyDesk.alreadyTaking")}</div>
+          {rail.data!.alreadyTaking.map((m) => (
+            <div key={`${m.drug}-${m.since}`} style={{ marginTop: 6 }}>
+              <div style={{ fontSize: 12.5 }}>{m.drug}</div>
+              <div className="mo" style={{ fontSize: 11, color: "var(--dim)" }}>{m.sig} · {t("pharmacyDesk.sinceDay", { day: m.since })}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {(rail.data?.visits.length ?? 0) === 0 ? null : (
+        <div data-testid="desk-visits" style={{ marginTop: 20 }}>
+          <div className="tag">{t("pharmacyDesk.visits")}</div>
+          {rail.data!.visits.map((v) => (
+            <div key={v.encounterId} style={{ display: "flex", gap: 9, alignItems: "baseline", marginTop: 7, borderTop: "1px solid var(--line2)", paddingTop: 7 }}>
+              <span className="mo" style={{ fontSize: 11, color: "var(--dim)", width: 62, flexShrink: 0 }}>{v.serviceDate}</span>
+              <span style={{ flexGrow: 1, minWidth: 0 }}>
+                <span style={{ display: "block", fontSize: 12 }}>{v.departmentName ?? "—"}</span>
+                <span style={{ display: "block", fontSize: 11, color: "var(--dim)" }}>{v.doctorName ?? "—"}</span>
+              </span>
+              <span className="pill">{t("pharmacyDesk.rxLines", { count: v.prescriptionLineCount })}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <button className="sec" style={{ width: "100%", marginTop: 22 }} onClick={onClear}>
         {t("pharmacyDesk.clear")} <span className="kb">Esc</span>
@@ -169,6 +211,14 @@ export function QueueRail({
                   <span style={{ fontSize: 12.5, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.who}</span>
                   <span className="mo" style={{ fontSize: 10.5, color: m.tone, marginLeft: "auto" }}>{m.wait}</span>
                 </span>
+                {(row.drugs ?? []).length === 0 ? null : (
+                  <span
+                    data-testid={`queue-row-${row.dispenseId}-drugs`}
+                    style={{ display: "block", marginTop: 3, fontSize: 11, color: "var(--dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                  >
+                    {(row.drugs ?? []).join(", ")}
+                  </span>
+                )}
                 <span style={{ display: "flex", gap: 5, marginTop: 5, flexWrap: "wrap" }}>
                   {m.hold.kind === "theirs" ? <span className="pill">{t("pharmacyDesk.heldBy", { name: m.hold.name })}</span> : null}
                   {m.hold.kind === "mine" ? <span className="pill on">{t("pharmacyDesk.yours")}</span> : null}
