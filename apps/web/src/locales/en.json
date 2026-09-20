@@ -3434,6 +3434,7 @@
       "readDevice": "read device",
       "held": "held out of the chart: {{values}}",
       "missing": "Still needed: {{tiles}}",
+      "feeGate": "Not billed yet — the counter has not taken this visit's fee. Bill it at the counter, or press “Save & send NOW (emergency)” if this cannot wait.",
       "save": "Save & send",
       "saveNow": "Save & send NOW (emergency)",
       "keys": "{{typed}} keys · {{device}} device reads",
@@ -3494,6 +3495,7 @@
     "saved": {
       "title": "Saved {{who}} — sent to {{doctor}}'s board",
       "amended": "Amended {{who}} — {{doctor}}'s board refreshed",
+      "feeWaived": "Saved without a bill — emergency. The fee is still due: the counter and the doctor are both shown this.",
       "danger": "DANGER flagged: {{vitals}}",
       "notice": "Told the doctor ahead of the call: {{vitals}}",
       "dismiss": "dismiss"
