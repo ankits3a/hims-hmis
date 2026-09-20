@@ -758,7 +758,13 @@ export type WireVitalsPostBody = Partial<Record<WireVitalKey, number | null>> & 
   unlockReasons?: Partial<Record<WireVitalKey, WireUnlockReason>>;
 };
 export type WireVitalsGate = { key: WireVitalKey; kind: "slipped_digit" | "shrinking_adult" | "probe_error"; value: number; suggestion?: number; message: string };
-export type WireVitalsSaveResult = { vitals: WireVitals; flags: WireDangerFlag[]; encounter: WireEncounter };
+/**
+ * `feeWaived` — FD-32 + the 20-Sep ruling: TRUE when this save was the emergency one AND it is what
+ * opened the fee gate. The bay says so on the green banner rather than saving in silence, because
+ * the person who pressed the button has just put their name on a waiver the counter and the doctor
+ * will both see. Optional on the wire: an older server does not send it.
+ */
+export type WireVitalsSaveResult = { vitals: WireVitals; flags: WireDangerFlag[]; encounter: WireEncounter; feeWaived?: boolean };
 export function postVitals(encounterId: string, body: WireVitalsPostBody): Promise<WireVitalsSaveResult> {
   return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/vitals`, body);
 }

@@ -79,8 +79,9 @@ export type PreStage = {
    * than being fetched separately because the bay holds `opd.vitals.*` and not `billing.*` — the
    * same reason the band's own limits were moved onto this read.
    *
-   * `feeBypass` is the front desk's waiver, carried as the clerk's own sentence so each desk shows
-   * WHY rather than a bare icon. Non-null only where the bypass was granted; the two are
+   * `feeBypass` is the waiver — the front desk's typed sentence, or the bay's own when an emergency
+   * save opened the gate (ruling 2026-09-20) — carried so each desk shows WHY rather than a bare
+   * icon. Non-null only where the bypass was granted; the two are
    * independent, and the pair that matters most is `feeUnpaid: true` WITH a bypass — that is the
    * patient the owner wants a warning against at every desk they reach.
    */
