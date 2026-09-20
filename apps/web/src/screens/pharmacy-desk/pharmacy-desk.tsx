@@ -431,7 +431,11 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
               onOpenDrawer={() => void navigate({ to: "/billing/session" })}
             />
           ) : (
-            <QueueRail rows={rows} me={me} now={now} inHandId={inHandId} onTake={(id, who, mine) => void takeHere(id, who, mine)} />
+            <QueueRail
+              rows={rows} me={me} now={now} inHandId={inHandId}
+              onTake={(id, who, mine) => void takeHere(id, who, mine)}
+              onOpenTab={(id, who, mine) => void openInTab(id, who, mine)}
+            />
           )}
         </div>
 

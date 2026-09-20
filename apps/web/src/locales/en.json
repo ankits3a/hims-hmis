@@ -3922,6 +3922,7 @@
     "slipToConfirm": "slip to confirm",
     "overlayTitle": "Every ticket at this counter",
     "close": "close",
+    "openInTabFor": "Open {{who}}'s ticket in a tab",
     "openInTab": "Open in a tab",
     "openMine": "Open (yours)",
     "overlayFoot": "Opening a ticket here claims it and starts it in a new tab, so this window keeps the patient it already has. A ticket somebody else holds cannot be opened — it says who has it.",

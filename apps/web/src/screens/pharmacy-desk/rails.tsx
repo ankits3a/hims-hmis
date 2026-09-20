@@ -180,13 +180,15 @@ function rowMeta({ row, me, now, yesterday }: RowProps): { who: string; label: s
  * sealed patient's ticket says so before anybody clicks it (PD-1, E3).
  */
 export function QueueRail({
-  rows, me, now, inHandId, onTake,
+  rows, me, now, inHandId, onTake, onOpenTab,
 }: {
   rows: WireQueueRow[];
   me: string | null;
   now: Date;
   inHandId: string | null;
   onTake: (dispenseId: string, who: string, mine: boolean) => void;
+  /** The board's per-row second act: the ticket in its own tab, the queue left where it is. */
+  onOpenTab: (dispenseId: string, who: string, mine: boolean) => void;
 }): React.ReactElement {
   const { t } = useTranslation();
   return (
@@ -206,12 +208,10 @@ export function QueueRail({
           const theirs = m.hold.kind === "theirs";
           const here = row.dispenseId === inHandId;
           return (
-            <button
+            /* TWO acts per row, as the board draws them: take it here, or open it in its own tab. A row
+               that was one big button could hold only one, and "Open in a tab" lived in the Q overlay. */
+            <div
               key={row.dispenseId}
-              data-testid={`queue-row-${row.dispenseId}`}
-              disabled={theirs}
-              aria-current={here ? "true" : undefined}
-              onClick={() => onTake(row.dispenseId, m.who, m.hold.kind === "mine")}
               style={{
                 display: "flex", alignItems: "flex-start", gap: 9, width: "100%", padding: "9px 15px",
                 borderTop: "1px solid var(--line2)",
@@ -219,6 +219,13 @@ export function QueueRail({
                 ...(here ? { background: "var(--green-soft)", boxShadow: "inset 2px 0 0 var(--green)" } : {}),
               }}
             >
+              <button
+                data-testid={`queue-row-${row.dispenseId}`}
+                disabled={theirs}
+                aria-current={here ? "true" : undefined}
+                onClick={() => onTake(row.dispenseId, m.who, m.hold.kind === "mine")}
+                style={{ display: "flex", alignItems: "flex-start", gap: 9, flexGrow: 1, minWidth: 0 }}
+              >
               <span style={{ flexGrow: 1, minWidth: 0 }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
                   {m.label === null ? null : <span className="mo" style={{ fontSize: 11.5, fontWeight: 600 }}>{m.label}</span>}
@@ -242,7 +249,21 @@ export function QueueRail({
                     ? <span className="pill gd">{t("pharmacyDesk.slipToConfirm")}</span> : null}
                 </span>
               </span>
-            </button>
+              </button>
+              {theirs ? null : (
+                <button
+                  data-testid={`queue-row-${row.dispenseId}-tab`}
+                  aria-label={t("pharmacyDesk.openInTabFor", { who: m.who })}
+                  title={t("pharmacyDesk.openInTab")}
+                  onClick={() => onOpenTab(row.dispenseId, m.who, m.hold.kind === "mine")}
+                  style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 5, border: "1px solid var(--line)", color: "var(--dim)", display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1 }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                    <path d="M14 4h6v6M20 4l-8 8M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5" />
+                  </svg>
+                </button>
+              )}
+            </div>
           );
         })}
       </div>
