@@ -1,6 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { opdPrescriptions } from "../../kernel/db/schema";
 import { isCurrentDose, patientTimeline } from "../opd";
+import { patientBalance } from "../billing";
+import { recogniseForActor } from "../membership";
 import { getPatient } from "../patients";
 import { istDateOf } from "./config";
 import { PharmacyError } from "./errors";
@@ -30,12 +32,18 @@ export type RailVisit = {
   status: string; prescriptionLineCount: number;
 };
 export type RailMedicine = { drug: string; sig: string; since: string };
+/** A card the patient holds, as the counter may honour it. SHOWN, never applied: C7 says the desk asks. */
+export type RailBenefit = { planTitle: string; cardCode: string; usable: boolean; validTo: string };
 export type PatientRail = {
   ageYears: number | null;
   sex: string | null;
   visits: RailVisit[];
   /** Live lines from the patient's OTHER active prescriptions — what they are on, beside this ticket. */
   alreadyTaking: RailMedicine[];
+  /** The board's "benefits & links": what they hold. The bill still asks the pharmacist to apply it. */
+  benefits: RailBenefit[];
+  /** The board's "on their account": what the hospital is owed, and what it holds for them. */
+  account: { outstandingPaise: number; advancePaise: number };
 };
 
 const VISITS = 3;
@@ -75,7 +83,16 @@ export async function patientRail(db: Db, actor: Actor, dispenseId: string, now:
   }
 
   const dob = seen.patient.dob;
+  const [recognised, balance] = await Promise.all([
+    recogniseForActor(db, actor, { patientId: d.patientId, at: now }),
+    patientBalance(db, actor, d.patientId),
+  ]);
+
   return {
+    benefits: recognised.memberships.map((m) => ({
+      planTitle: m.planTitle, cardCode: m.cardCode, usable: m.usable, validTo: istDateOf(m.validTo),
+    })),
+    account: { outstandingPaise: balance.outstandingPaise, advancePaise: balance.advancePaise },
     ageYears: dob === null ? null : Math.max(0, Math.floor((now.getTime() - dob.getTime()) / (365.2425 * 24 * 60 * 60_000))),
     sex: seen.patient.sex,
     visits: timeline

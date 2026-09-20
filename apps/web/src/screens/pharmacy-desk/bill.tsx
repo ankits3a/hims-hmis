@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { fetchPatientRail } from "../../lib/pharmacy-api";
 import type { Tender, WireDispense, WirePricedDraft } from "../../lib/pharmacy-api";
 
 /**
@@ -127,6 +129,14 @@ export function BillRail({
     return () => window.removeEventListener("keydown", onKey);
   }, [canTake, collected, drawerOpen, onTake, plan]);
 
+  /* The same read the left rail made — one query key, so this costs no second request. */
+  const rail = useQuery({
+    queryKey: ["pharmacy", "patient-rail", dispense.id],
+    queryFn: () => fetchPatientRail(dispense.id),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const heldCard = (rail.data?.benefits ?? []).find((b) => b.usable) ?? null;
   const until = heldUntil(dispense.pickedAt);
   const ended = dispense.status === "picked" && holdEnded(dispense.pickedAt, now);
 
@@ -189,6 +199,12 @@ export function BillRail({
               <span className="mo" data-testid="desk-payable" style={{ fontSize: 21, fontWeight: 600, letterSpacing: "-.02em" }}>{rupees(preview.totals.netPayablePaise)}</span>
             </div>
             <p style={{ margin: "7px 0 0 0", fontSize: 10.5, color: "var(--dim)", lineHeight: "15px" }}>{t("pharmacyDesk.bill.inside")}</p>
+            {/* C7 — a card the patient holds that is NOT on this bill is said, never applied here (money is billing's). */}
+            {preview.totals.discountPaise > 0 || heldCard === null ? null : (
+              <p role="status" data-testid="desk-member-note" style={{ margin: "9px 0 0 0", fontSize: 11.5, color: "var(--gold-ink, var(--gold))", lineHeight: "16px" }}>
+                {t("pharmacyDesk.bill.memberNotApplied", { plan: heldCard.planTitle })}
+              </p>
+            )}
           </>
         )}
       </div>

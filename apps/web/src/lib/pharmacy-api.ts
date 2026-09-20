@@ -160,7 +160,11 @@ export type WireRailVisit = {
   status: string; prescriptionLineCount: number;
 };
 export type WireRailMedicine = { drug: string; sig: string; since: string };
-export type WirePatientRail = { ageYears: number | null; sex: string | null; visits: WireRailVisit[]; alreadyTaking: WireRailMedicine[] };
+export type WireRailBenefit = { planTitle: string; cardCode: string; usable: boolean; validTo: string };
+export type WirePatientRail = {
+  ageYears: number | null; sex: string | null; visits: WireRailVisit[]; alreadyTaking: WireRailMedicine[];
+  benefits?: WireRailBenefit[]; account?: { outstandingPaise: number; advancePaise: number };
+};
 
 export async function fetchPatientRail(id: string): Promise<WirePatientRail> {
   return api<WirePatientRail>("GET", `/pharmacy/dispenses/${id}/patient`);

@@ -111,6 +111,20 @@ export function Dossier({
         {t(`pharmacyDesk.flow.${inHand.status === "billed" && FLOW_STEPS[step] === "money" ? "handOver" : FLOW_STEPS[step]!}`)}
       </div>
 
+      {/* The board's "benefits & links" and "on their account" — SHOWN. The bill asks before it applies anything. */}
+      {(rail.data?.benefits ?? []).length === 0 && (rail.data?.account?.outstandingPaise ?? 0) === 0 ? null : (
+        <div data-testid="desk-benefits" style={{ marginTop: 18, display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {(rail.data?.benefits ?? []).map((b) => (
+            <span key={b.cardCode} className={b.usable ? "pill on" : "pill"}>
+              {b.usable ? t("pharmacyDesk.benefitHeld", { plan: b.planTitle }) : t("pharmacyDesk.benefitLapsed", { plan: b.planTitle })}
+            </span>
+          ))}
+          {(rail.data?.account?.outstandingPaise ?? 0) === 0 ? null : (
+            <span className="pill gd">{t("pharmacyDesk.owes", { amount: rupees(rail.data!.account!.outstandingPaise) })}</span>
+          )}
+        </div>
+      )}
+
       {/* WHO IS AT THE WINDOW (the board's rail): the visits behind this one, and the courses still running. */}
       {(rail.data?.alreadyTaking.length ?? 0) === 0 ? null : (
         <div data-testid="desk-taking" style={{ marginTop: 20 }}>
