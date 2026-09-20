@@ -555,6 +555,12 @@ function LineRow({
           <span className="mo" style={{ display: "block", fontSize: 10.5, color: "var(--dim)", marginTop: 2 }}>
             {line.item?.baseUom ?? res?.baseUom ?? ""}{line.qtyBase !== null && partial ? ` · ${t("pharmacyDesk.ofPrescribed", { of: line.qtyBase })}` : ""}
           </span>
+          {/* C7 — a price held down by law says so, or the pack and the bill disagree at the window. */}
+          {money === null || line.quote?.winner !== "ceiling" ? null : (
+            <span data-testid={`desk-line-${String(line.lineIdx)}-ceiling`} className="pill gd" style={{ marginTop: 6 }}>
+              {t("pharmacyDesk.ceiling", { mrp: rupees((line.quote.mrpUnitPaise ?? line.quote.unitPaise) * (line.quote.pack?.multiplier ?? 1)), pack: line.quote.pack?.uom ?? "" })}
+            </span>
+          )}
           {money === null ? null : (
             <span data-testid={`desk-line-${String(line.lineIdx)}-money`} style={{ display: "block", marginTop: 6 }}>
               <span className="mo" style={{ display: "block", fontSize: 13, fontWeight: 600 }}>{money.amount}</span>

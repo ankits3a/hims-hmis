@@ -3,6 +3,8 @@ import { MON2, issueRx, line, seedPharmacyBase, stockIn } from "../../../test/he
 import { testCfg } from "../../../test/helpers/opd";
 import { newId } from "@hmis/contracts";
 import { stockBatches } from "../../kernel/db/schema";
+import { withTx } from "../../kernel/db/client";
+import { setPriceRegulation } from "../materials";
 import { claimDispense, findAtCounter } from "./claim";
 import { checkedAlternativesFor, writtenQuoteFor } from "./verify";
 import type { PharmacyFixture } from "../../../test/helpers/pharmacy";
@@ -44,6 +46,20 @@ describe("the co-pilot's offer carries the bill's own prices", () => {
       brandName: "Calpol 500", available: 90,
       quote: { batchNo: "CAL-SOON", expiryDate: "2027-09-30", unitPaise: 900, pack: { uom: "strip", multiplier: 10, paise: 9_000 } },
     });
+  });
+
+  it("a quote says when the price is the DPCO ceiling and not the printed MRP", async () => {
+    await stockIn(db, fx, { itemId: fx.item.calpol, batchNo: "CAL-CAP", expiryDate: "2028-03-31", mrpPaise: 9_000, qtyBase: 50 });
+    /* The notified ceiling is ₹6.00 a strip BEFORE GST; the printed MRP is ₹90. The counter may not
+       charge the MRP, and the pharmacist must be able to say why the patient pays less than the pack. */
+    await withTx(db, (tx) => setPriceRegulation(tx, fx.pharmacist.actor, fx.item.calpol, {
+      ceilingPaise: 6_000, mrpUom: "strip", effectiveFrom: new Date("2026-01-01T00:00:00.000Z"), gazetteRef: "DPCO/2026/DEMO",
+    }));
+    const id = await claimedCrocin();
+    const [calpol] = await checkedAlternativesFor(db, fx.pharmacist.actor, id, 0, MON2);
+    /* A ceiling is notified BEFORE GST and an MRP includes it, so the two are compared on the MRP's
+       basis: ₹6.00 a strip + the item's 12% = ₹6.72, under the ₹9.00 printed. The patient pays the lower. */
+    expect(calpol!.quote).toMatchObject({ winner: "ceiling", unitPaise: 672, mrpUnitPaise: 900 });
   });
 
   it("the line as written is quoted too — from the shelf, or from its last printed MRP when the shelf is empty", async () => {

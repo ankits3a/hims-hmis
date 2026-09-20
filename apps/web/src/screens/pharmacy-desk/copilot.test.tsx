@@ -95,6 +95,22 @@ describe("the counter agent on a ticket", () => {
     const money = await screen.findByTestId("desk-line-0-money");
     expect(money).toHaveTextContent("₹16.00"); // 5 tablets × ₹3.20, the server's price for that batch
     expect(money).toHaveTextContent("₹3.20 each");
+    expect(screen.queryByTestId("desk-line-0-ceiling")).toBeNull(); // nothing caps this one
+  });
+
+  it("a line whose price is held down by the DPCO ceiling says so, and what the pack says", async () => {
+    const capped = {
+      ...ticket,
+      quotedTotalPaise: 3_360,
+      lines: [{
+        ...line, available: 200,
+        quote: { ...quote(672), winner: "ceiling" as const, mrpUnitPaise: 900 },
+        batches: [{ batchId: "b1", batchNo: "PTP-1", expiryDate: "2028-01-31", available: 200 }],
+      }],
+    };
+    mockRoutes({ ...base([]), "GET /api/pharmacy/dispenses/d1": { status: 200, body: capped } });
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    expect(await screen.findByTestId("desk-line-0-ceiling")).toHaveTextContent("at the DPCO ceiling · pack says ₹90.00 a strip");
   });
 
   it("the left rail says who is at the window: age and sex, what they are already taking, and the visits behind this one", async () => {

@@ -134,6 +134,8 @@ export type WireLineAuthorisation = {
 export type WireQuote = {
   batchId: string; batchNo: string; expiryDate: string | null; unitPaise: number;
   pack: { uom: string; multiplier: number; paise: number } | null; lastKnown: boolean;
+  /** Which bound set the price, and the printed MRP beside it. Absent from an older server. */
+  winner?: "batch_mrp" | "ceiling"; mrpUnitPaise?: number | null;
 };
 export type WireAlternative = {
   medicineId: string; brandName: string; strengthLabel: string | null; form: string; itemId: string; itemCode: string; available: number;

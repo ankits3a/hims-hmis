@@ -23,6 +23,10 @@ export type Quote = {
   batchNo: string;
   expiryDate: string | null;
   unitPaise: number;
+  /** Which bound set it: the batch's printed MRP, or a notified DPCO ceiling the counter may not charge above. */
+  winner: "batch_mrp" | "ceiling";
+  /** The printed MRP per base unit, so a ceiling-bound line can say what the pack says. */
+  mrpUnitPaise: number | null;
   /** The pack the pharmacist hands over (a strip of 10), when the item has one. */
   pack: { uom: string; multiplier: number; paise: number } | null;
   lastKnown: boolean;
@@ -33,9 +37,13 @@ const NO_PRICE = new Set(["price_unknown", "gst_slab_unknown", "sale_item_inacti
 
 async function priceOf(db: Db, gst: GstCategoryMap, itemId: string, batch: { batchId: string; batchNo: string; expiryDate: string | null }, lastKnown: boolean, now: Date): Promise<Quote | null> {
   let unitPaise: number;
+  let winner: "batch_mrp" | "ceiling" = "batch_mrp";
+  let mrpUnitPaise: number | null = null;
   try {
-    const { input } = await priceBatchLine(db, gst, { itemId, batchId: batch.batchId, qtyBase: 1 }, now);
-    unitPaise = input.capUnitPaise ?? input.batchUnitPaise ?? 0;
+    const priced = await priceBatchLine(db, gst, { itemId, batchId: batch.batchId, qtyBase: 1 }, now);
+    unitPaise = priced.input.capUnitPaise ?? priced.input.batchUnitPaise ?? 0;
+    winner = priced.winner;
+    mrpUnitPaise = priced.input.batchUnitPaise ?? null;
   } catch (e) {
     if (e instanceof PharmacyError && NO_PRICE.has(e.code)) return null;
     throw e;
@@ -46,7 +54,7 @@ async function priceOf(db: Db, gst: GstCategoryMap, itemId: string, batch: { bat
     .filter((u) => u.toBaseMultiplier > 1)
     .sort((a, b) => a.toBaseMultiplier - b.toBaseMultiplier)[0];
   return {
-    batchId: batch.batchId, batchNo: batch.batchNo, expiryDate: batch.expiryDate, unitPaise, lastKnown,
+    batchId: batch.batchId, batchNo: batch.batchNo, expiryDate: batch.expiryDate, unitPaise, winner, mrpUnitPaise, lastKnown,
     pack: pack === undefined ? null : { uom: pack.uom, multiplier: pack.toBaseMultiplier, paise: unitPaise * pack.toBaseMultiplier },
   };
 }

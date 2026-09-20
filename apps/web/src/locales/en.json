@@ -4002,6 +4002,7 @@
     "declinePlaceholder": "out of stock · patient has it at home · not stocked here",
     "declineIt": "Decline",
     "qtyLabel": "Quantity for {{line}}",
+    "ceiling": "at the DPCO ceiling · pack says {{mrp}} a {{pack}}",
     "eachRate": "{{amount}} each",
     "ofPrescribed": "of {{of}}",
     "lineMenu": "What else for {{line}}",

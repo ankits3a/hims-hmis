@@ -4002,6 +4002,7 @@
     "declinePlaceholder": "स्टॉक नहीं · मरीज़ के पास घर पर है · यहाँ नहीं रखी जाती",
     "declineIt": "मना करें",
     "qtyLabel": "{{line}} की मात्रा",
+    "ceiling": "डीपीसीओ सीमा पर · पैक पर {{mrp}} प्रति {{pack}}",
     "eachRate": "{{amount}} प्रति",
     "ofPrescribed": "{{of}} में से",
     "lineMenu": "{{line}} के लिए और",
