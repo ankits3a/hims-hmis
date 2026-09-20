@@ -6,6 +6,7 @@ import { appendEvent } from "../events/append";
 import { notificationFailed } from "../notify/events";
 import { modeChanged } from "../ops/events";
 import { escalationTriggered } from "../workflow/events";
+import { approvalRequested } from "../approvals/events";
 import { imagingCriticalOverdue, imagingReportUnread } from "../../modules/radiology/events";
 import { usersHoldingRole } from "../workflow/roles";
 import { alertRaised } from "./events";
@@ -35,6 +36,19 @@ const ALERT_KIND_MANUAL_NOTIFY = "manual_notify";
 /** D6: an ID, not an identity. The desk reaches the patient through permission-checked routes. */
 const MANUAL_NOTIFY_REF_TYPE = "patient";
 const ALERT_KIND_OPERATING_MODE = "operating_mode";
+/**
+ * ═══ OBLIGATION SPINE T2 — FILING TELLS SOMEBODY ═══
+ *
+ * `refId` is the APPROVAL row, not the workflow instance behind it: the approval is what an
+ * approver opens (`/approvals`), and the instance is a detail of how it is timed. The title and
+ * body are built from `typeKey`, `urgencyClass`, `approverRole` and `slaMinutes` — the structural
+ * fields — and from nothing else on the payload: `subjectId`, `amountPaise` and the cumulative
+ * snapshots stay on the inbox card behind a permission-checked route. GC6 as everywhere in this
+ * file, and mutant-enforced in `consumer.test.ts` (T2-3): the envelope carries the patient and
+ * the request note names her, one property access away.
+ */
+const ALERT_KIND_APPROVAL_REQUESTED = "approval_requested";
+const APPROVAL_REF_TYPE = "approval";
 /**
  * ═══ PLAN 18a-iii T5 / D7 — THE TWO RADIOLOGY CHASERS ═══
  *
@@ -103,6 +117,10 @@ export function alertsConsumer(db: Db): Handler {
     }
     if (e.name === imagingReportUnread.name) {
       await handleImagingReportUnread(db, e);
+      return;
+    }
+    if (e.name === approvalRequested.name) {
+      await handleApprovalRequested(db, e);
       return;
     }
     await handleEscalationTriggered(db, e);
@@ -329,5 +347,58 @@ async function handleImagingReportUnread(db: Db, e: DispatchedEvent): Promise<vo
       + "its author has opened it. Check that the referring clinician has the result.",
     refType: IMAGING_CHASE_REF_TYPE,
     refId: payload.studyId,
+  });
+}
+
+/**
+ * ═══ OBLIGATION SPINE T2 — A FILED APPROVAL BECOMES A ROW IN FRONT OF EVERY APPROVER ═══
+ *
+ * Recipients are every holder of the approver role the filing snapshotted, MINUS THE REQUESTER:
+ * nobody is told to decide the thing they filed (phase-obligation-spine O17, segregation of
+ * duties), and a cashier who also holds `billing_manager` is the ordinary case in a small
+ * hospital, not an exotic one.
+ *
+ * A role nobody (else) holds is the case the spine measured as "the approvals nobody could
+ * answer" (PR #265). The invariant there stops a TYPE being registered into an empty room; this
+ * is the runtime leg for the day a role's last holder leaves. The fallback is the escalation
+ * ladder's own — duty managers, then owners — and it is SAID in the body (edge register A1: a
+ * fallback is recorded, never silent), because a duty manager who gets a billing request must be
+ * told it is not theirs by design. A durable fallback fact is T5's; until then the body is it.
+ *
+ * `raiseAlerts` is reused verbatim, so `(source_event_id, user_id)` idempotency and the
+ * won-insert-only `alert.raised` append come free, and the dispatcher's at-least-once redelivery
+ * adds nothing (T2-2).
+ */
+async function handleApprovalRequested(db: Db, e: DispatchedEvent): Promise<void> {
+  const payload = approvalRequested.payloadSchema.parse(e.payload);
+
+  const notRequester = (ids: string[]): string[] => ids.filter((id) => id !== payload.requesterId);
+
+  let recipients = notRequester(await withTx(db, (tx) => usersHoldingRole(tx, payload.approverRole)));
+  let fallbackRole: string | null = null;
+  if (recipients.length === 0) {
+    fallbackRole = DUTY_MANAGER_ROLE;
+    recipients = notRequester(await withTx(db, (tx) => usersHoldingRole(tx, DUTY_MANAGER_ROLE)));
+  }
+  if (recipients.length === 0) {
+    fallbackRole = OWNER_ROLE;
+    recipients = notRequester(await withTx(db, (tx) => usersHoldingRole(tx, OWNER_ROLE)));
+  }
+
+  const title = `Approval requested: ${payload.typeKey} (${payload.urgencyClass})`;
+  const waiting =
+    `A "${payload.typeKey}" request (${payload.urgencyClass}) is waiting for the ${payload.approverRole} role; ` +
+    `its closure budget is ${String(payload.slaMinutes)} minutes.`;
+  const body =
+    fallbackRole === null
+      ? waiting
+      : `${waiting} Nobody but the requester holds ${payload.approverRole}, so it is routed to the ${fallbackRole} role.`;
+
+  await raiseAlerts(db, e, recipients, {
+    kind: ALERT_KIND_APPROVAL_REQUESTED,
+    title,
+    body,
+    refType: APPROVAL_REF_TYPE,
+    refId: payload.approvalId,
   });
 }
