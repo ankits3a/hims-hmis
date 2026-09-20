@@ -341,6 +341,27 @@ export const opdEncounters = pgTable(
     feeBypassBy: text("fee_bypass_by"),
     feeBypassReason: text("fee_bypass_reason"),
     feeBypassAt: timestamp("fee_bypass_at", { withTimezone: true }),
+    /**
+     * ═══ THE DOCTOR'S DOOR, AND IT IS A DIFFERENT DOOR (OWNER RULING 2026-09-20) ═══
+     *
+     * Owner: *"the emergency at the bay doesn't open the doctor's door. It waits for bill to be paid
+     * until doctor opens the token from his dashboard manually … once the bill is paid then the
+     * token automatically moves to the display board in the queue towards the doctor consultation."*
+     *
+     * So an unsettled token WAITS — held out of the callable queue and off the public board — and
+     * exactly two things release it: the money arriving (derived, never stored: `feeStatus` flips
+     * the moment the ledger does), or the doctor deciding to see the patient anyway. These three
+     * columns are that second thing, and they are SEPARATE from `feeBypass*` on purpose: FD-32's
+     * waiver opens the vitals bay, this opens the consulting room, and one column serving both
+     * would make a nurse's emergency into a doctor's decision nobody made.
+     *
+     * The reason is mandatory for the same reason the clerk's is: "emergency" and "the chairman's
+     * guest" are different facts with different consequences, and only a sentence can tell them
+     * apart. First writer wins; the fee stays owed either way.
+     */
+    consultFeeOverrideBy: text("consult_fee_override_by"),
+    consultFeeOverrideReason: text("consult_fee_override_reason"),
+    consultFeeOverrideAt: timestamp("consult_fee_override_at", { withTimezone: true }),
     // Consultation record (T7) — nullable until the doctor writes it.
     chiefComplaint: text("chief_complaint"),
     diagnosis: text("diagnosis"),

@@ -283,6 +283,9 @@ export function OpdConsult(): React.ReactElement {
   const [skipping, setSkipping] = useState<WireQueueEntryView | null>(null);
   const [skipReason, setSkipReason] = useState<WireSkipReason>("absent");
   const [skipNote, setSkipNote] = useState("");
+  /* OWNER RULING 2026-09-20 — the held token this doctor is deciding about, and the sentence for it. */
+  const [openingUnpaid, setOpeningUnpaid] = useState<WireQueueEntryView | null>(null);
+  const [unpaidReason, setUnpaidReason] = useState("");
   const [note, setNote] = useState<NoteState>(EMPTY_NOTE);
   /*
     Every ICD-10 row the diagnosis field has offered, by its description. A ref rather than state:
@@ -426,6 +429,19 @@ export function OpdConsult(): React.ReactElement {
     rail carries them now, because the doctor who lost her is the one standing next to her.
   */
   const leftQueue = view?.left ?? [];
+  /*
+    ═══ THE TOKENS WITH THE CASHIER (OWNER RULING 2026-09-20) ═══
+
+    *"It waits for bill to be paid until doctor opens the token from his dashboard manually.
+    Currently the doctor have no screen to do it."* This is that screen. They are waiting, their
+    vitals are charted, and their fee is unsettled — so the server keeps them out of `ordered`,
+    `callNext` cannot reach them and the hall's board never announces them. The doctor sees them
+    anyway, because the whole ruling is that THIS person decides, patient by patient.
+
+    `?? []` is not defensive habit: a tab left open across the deploy that adds the field talks to a
+    server that does not send it, and the right answer there is no group rather than a crash.
+  */
+  const heldForPayment = view?.heldForPayment ?? [];
   /*
     A ROW IS HELD ONLY IF THE SERVER SAID SO, IN WORDS. The field is typed `string | null`, and the
     one moment it is neither is the deploy window: a tab talking to the previous build gets a queue
@@ -1002,6 +1018,27 @@ export function OpdConsult(): React.ReactElement {
       await invalidateQueue();
     } catch (err) {
       setQueueError(opdErrorMessage(err));
+    }
+  };
+
+  /**
+   * THE DOCTOR OPENS AN UNPAID TOKEN. One POST, and then the queue is re-read rather than patched
+   * locally: the server decides what is held, and a rail that moved the row itself would be a
+   * second opinion about the ledger. A refusal (`reason_required`, `not_your_patient`) lands on the
+   * rail's own error line, where the token is.
+   */
+  const confirmOpenUnpaid = async (): Promise<void> => {
+    const entry = openingUnpaid;
+    if (entry === null) return;
+    setQueueError(null);
+    try {
+      await api("POST", `/opd/visits/${entry.encounter.id}/consult/open-unpaid`, { reason: unpaidReason.trim() });
+      setOpeningUnpaid(null);
+      setUnpaidReason("");
+      await invalidateQueue();
+    } catch (e) {
+      setOpeningUnpaid(null);
+      setQueueError(opdErrorMessage(e));
     }
   };
 
@@ -1765,6 +1802,52 @@ export function OpdConsult(): React.ReactElement {
             {inConsult.map((e) => queueRow(e, parkedSince(e) === null ? "seated" : "parked"))}
             {ordered.map((e) => queueRow(e, "waiting"))}
           </ul>
+          {/*
+            ═══ WAITING FOR THE BILL — THE GROUP THE OWNER ASKED FOR (2026-09-20) ═══
+
+            Below the live queue and above the ones who left, because that is where they are in the
+            day: ready, charted, and stopped by money. Each row carries the sentence that explains
+            why it has no bill — the bay's or the front desk's own words — and one button, which is
+            this doctor deciding to see them anyway.
+          */}
+          {heldForPayment.length > 0 && (
+            <>
+              <h2 className="tag" data-testid="held-queue-title" style={{ margin: "8px 0 0" }}>
+                {t("opdConsult.heldQueue", { n: heldForPayment.length })}
+              </h2>
+              <p style={{ margin: 0, fontSize: 11, color: "var(--faint)" }}>{t("opdConsult.heldQueueHint")}</p>
+              <ul data-testid="held-queue" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                {heldForPayment.map((e) => (
+                  <li
+                    key={e.id} data-testid={`held-row-${e.id}`} className="drow"
+                    style={{
+                      display: "flex", flexWrap: "wrap", alignItems: "center", gap: 7, padding: "8px 10px", fontSize: 12.5,
+                      background: "var(--gold-soft)", boxShadow: "inset 3px 0 0 var(--gold)",
+                    }}
+                  >
+                    <span className="mo" style={{ fontSize: 16, fontWeight: 700 }}>{e.tokenNo}</span>
+                    <span style={{ flexGrow: 1, minWidth: 0 }}>{patientLabel(e.patient)}</span>
+                    {(e.danger || e.encounter.dangerFlagged) && (
+                      <span data-testid={`held-danger-${e.id}`} aria-label={t("opdConsult.danger")} style={{ color: "var(--red)", fontWeight: 700 }}>⚠</span>
+                    )}
+                    <span className="pill rd" style={{ fontWeight: 700 }}>{t("opd.feeStatus.unsettled")}</span>
+                    <button
+                      type="button" data-testid={`open-unpaid-${e.id}`} className="sec"
+                      style={{ padding: "3px 10px", fontSize: 12 }}
+                      onClick={() => { setOpeningUnpaid(e); setUnpaidReason(""); }}
+                    >
+                      {t("opdConsult.openUnpaid")}
+                    </button>
+                    {typeof e.encounter.feeBypassReason === "string" && e.encounter.feeBypassReason !== "" && (
+                      <span data-testid={`held-why-${e.id}`} style={{ flexBasis: "100%", fontSize: 11, color: "var(--dim)" }}>
+                        {t("opdConsult.heldWhy", { reason: e.encounter.feeBypassReason })}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           {/*
             ═══ LEFT THE QUEUE — THE GROUP THAT DID NOT EXIST ═══
 
@@ -3182,6 +3265,51 @@ export function OpdConsult(): React.ReactElement {
       </DeskModal>
 
       {/* THE ONLY `.print-doc` RENDER SITE ON THIS SCREEN — one nullable state, one mount. */}
+      {/*
+        ═══ SEEING A PATIENT BEFORE THE BILL — THE DOCTOR'S OWN SENTENCE (OWNER RULING 2026-09-20) ═══
+
+        A reason, typed, mandatory — the same rule the front desk's waiver carries (FD-32) and for
+        the same argument: "emergency" and "the chairman's guest" are different facts with different
+        consequences, and only a sentence tells them apart. The button is disabled until there is
+        one, and the server refuses an empty one too (`reason_required`), so the doctor learns it
+        from the screen rather than from an error. The line about the bill is there because this
+        dialog is the last moment anybody can believe the fee has been waived: it has not been.
+      */}
+      <DeskModal
+        open={openingUnpaid !== null}
+        title={t("opdConsult.openUnpaidTitle", { token: openingUnpaid?.tokenNo ?? "" })}
+        titleId="open-unpaid-title" testId="open-unpaid-dialog" width={460}
+        onClose={() => { setOpeningUnpaid(null); }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+          <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{t("opdConsult.openUnpaidHint")}</p>
+          <div>
+            <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="open-unpaid-reason">
+              {t("opdConsult.openUnpaidReason")}
+            </label>
+            <input
+              id="open-unpaid-reason" data-testid="open-unpaid-reason" value={unpaidReason}
+              onChange={(ev) => { setUnpaidReason(ev.target.value); }}
+              className="in" style={{ width: "100%", height: 34, fontSize: 13 }}
+            />
+          </div>
+          <p style={{ margin: 0, fontSize: 11.5, color: "var(--faint)" }}>{t("opdConsult.openUnpaidStillOwed")}</p>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 7 }}>
+            <button type="button" className="sec" style={{ padding: "4px 13px", fontSize: 12.5 }} onClick={() => { setOpeningUnpaid(null); }}>
+              {t("opdConsult.cancel")}
+            </button>
+            <button
+              type="button" className="pri" data-testid="open-unpaid-confirm"
+              style={{ padding: "4px 13px", fontSize: 12.5 }}
+              disabled={unpaidReason.trim().length < 3}
+              onClick={() => void confirmOpenUnpaid()}
+            >
+              {t("opdConsult.openUnpaidConfirm")}
+            </button>
+          </div>
+        </div>
+      </DeskModal>
+
       {/*
         ═══ THE SKIP DIALOG — SIX BUTTONS AND A BOX, AND IT IS NOT OPTIONAL ═══
 

@@ -359,6 +359,17 @@ export const queueSkipUndone = defineEvent("queue.skip_undone", MODULE, z.object
   wasLeft: z.boolean(),
 }));
 
+/**
+ * OWNER RULING 2026-09-20 — the doctor opened an unsettled token from their own dashboard. NOT
+ * `...where`: the decision is made about a VISIT and can be made before the token is called, so
+ * the session/room/token fields would be a snapshot of a queue position the act does not depend on.
+ * The reason travels in the payload because a month-end asking why the day's collection is short
+ * wants the sentence, not a join.
+ */
+export const consultFeeOverridden = defineEvent("consultation.fee_overridden", MODULE, z.object({
+  encounterId: id, patientId: id, doctorId: id, serviceDate: isoDate, reason: z.string().min(1),
+}));
+
 export const consultationStarted = defineEvent("consultation.started", MODULE, z.object({
   encounterId: id, patientId: id, departmentId: id, ...where,
 }));
