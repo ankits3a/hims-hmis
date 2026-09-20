@@ -381,7 +381,10 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
         // array is `.sort()`ed above, so it lands after `notification.failed`.
         // 18a-iii T5 / D7: the radiology chasers are the alerts consumer's FOURTH and FIFTH
         // subscriptions. `.sort()` above puts them first — `imaging.` precedes `escalation.`.
+        // Obligation spine T2: `approval.requested` is the alerts consumer's SIXTH subscription —
+        // filing tells every holder of the approver role. Sorted, it lands first.
         ["kernel.alerts", [
+          "approval.requested",
           "escalation.triggered", "imaging.critical_overdue", "imaging.report_unread",
           "notification.failed", "ops.mode_changed",
         ].sort()],
