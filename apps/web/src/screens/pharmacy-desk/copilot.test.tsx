@@ -4,7 +4,28 @@ import { setToken } from "../../lib/api";
 import { renderWithProviders } from "../../test-utils";
 import { PharmacyDesk } from "./pharmacy-desk";
 import { resetDeskLog } from "./log";
+import { istToday } from "./work";
 import type { WireAlternative, WireDispense, WireDispenseLine, WireQuote } from "../../lib/pharmacy-api";
+
+/**
+ * A DISPENSE NUMBER PINNED TO A CALENDAR DATE IS A COUNTDOWN, not a constant — #170's lesson, met
+ * again on 2026-09-20. `closed.tsx:52` renders the ticket label as
+ * `ticketLabel(ticket.dispenseNo, istToday())`, and `istToday()` reads the REAL clock. So a pinned
+ * `P2609200004` reads as bare `P-4` only while the IST date is still the 20th; at 18:30 UTC the
+ * date rolls to the 21st, the label acquires a `· 20 Sept` suffix, and this test fails on EVERY
+ * branch at once with nobody having pushed anything. It did exactly that across three PRs — one of
+ * them docs-only, which is what proved the cause was the clock rather than any diff.
+ *
+ * The fix is #170's shape and not a re-date: derive the number from THE SAME clock the component
+ * reads, so two things that must agree cannot drift apart. Re-dating the fixture would clear today
+ * and reload the next one.
+ *
+ * The sibling test below deliberately keeps a PINNED pair (`P2609190005`, claimed the 19th, handed
+ * over the 20th). That is correct and must stay: it asserts `clockOn`, which compares two fixture
+ * timestamps against each other and never reads the clock, so it is immune by construction — and
+ * pinning it is what makes "another day" mean something.
+ */
+const TODAY_DISPENSE_NO = `P${istToday().slice(2).replace(/-/g, "")}0004`;
 
 const navigate = vi.fn();
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => navigate, Link: ({ children }: { children: React.ReactNode }) => <a>{children}</a> }));
@@ -140,7 +161,7 @@ describe("the counter agent on a ticket", () => {
       ...base([]),
       "GET /api/pharmacy/dispenses/d1": { status: 200, body: done },
       "GET /api/pharmacy/dispenses/d1/closing": { status: 200, body: {
-        ticket: { dispenseNo: "P2609200004", claimedByName: "Anita Verma", claimedAt: "2026-09-20T05:42:00.000Z", handedOverAt: "2026-09-20T05:47:00.000Z", lines: 4, substituted: 1, declined: 0 },
+        ticket: { dispenseNo: TODAY_DISPENSE_NO, claimedByName: "Anita Verma", claimedAt: "2026-09-20T05:42:00.000Z", handedOverAt: "2026-09-20T05:47:00.000Z", lines: 4, substituted: 1, declined: 0 },
         money: { invoiceNo: "CRK/26-27/P/8841", netPayablePaise: 19_980, cgstPaise: 476, sgstPaise: 475, receiptNo: "8841", changeGivenPaise: 2_000, tenders: [{ mode: "cash", amountPaise: 21_980, refText: null }] },
         registers: { h1Rows: 1, batches: 4 },
       } },
