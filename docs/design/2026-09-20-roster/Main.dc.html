@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Roster — the unit's month</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;600;700&amp;display=swap">
+<style>
+body{margin:0;font-family:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;background:#f4f7f4;color:#132420;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer}
+input{font:inherit}
+a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1120px; box-sizing: border-box; display: flex; flex-direction: column; background: #f4f7f4; color: #132420; font-size: 13.5px; line-height: 19px;">
+
+<header style="display: flex; align-items: center; gap: 14px; height: 48px; flex-shrink: 0; padding: 0 20px 0 12px; background: #ffffff; border-bottom: 1px solid #dfe7e1;">
+<div style="display: flex; align-items: center; gap: 8px; padding-left: 8px;">
+<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0l7 7-7 7-7-7z" fill="#0e6b4e"></path></svg>
+<span style="font-size: 14px; font-weight: 700; letter-spacing: .14em;">DESK ONE</span>
+</div>
+<div style="font-size: 13px; color: #5c6f66; padding-left: 10px;">Doctor Desk · Orthopaedics · Unit II</div>
+<div style="flex-grow: 1;"></div>
+<div style="display: inline-flex; align-items: center; height: 26px; border: 1px solid #dfe7e1; border-radius: 5px; overflow: hidden; font-size: 12px;">
+<span style="display: inline-flex; align-items: center; height: 26px; padding: 0 9px; background: rgba(14,107,78,.10); color: #0e6b4e; font-weight: 700; letter-spacing: .06em;">TODAY</span>
+<span style="padding: 0 10px; color: #5c6f66;">Unit II · Ward + teaching day · Unit III is on take till 08:00</span>
+</div>
+<div style="flex-grow: 1;"></div>
+<div style="font-size: 13px; color: #5c6f66;">Sun 20 Sep 2026 · 12:40</div>
+<button style="display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 4px; border: none; background: transparent; color: #132420; font-size: 13px; font-weight: 600;">
+<span style="width: 30px; height: 30px; border-radius: 15px; background: #2f5e4e; color: #ffffff; font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center;">PM</span>
+Dr. Pooja Mishra · SR
+</button>
+</header>
+
+<div style="flex-grow: 1; display: flex; min-height: 0;">
+
+<aside style="width: 208px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; padding: 14px 12px 12px; background: #f4f7f4; border-right: 1px solid #ecf1ed;">
+<sc-for list="{{ menu }}" as="g" hint-placeholder-count="5">
+<div style="display: flex; flex-direction: column; gap: 1px;">
+<div style="padding: 4px 10px; font-size: 10.5px; font-weight: 600; letter-spacing: .1em; color: #5c6f66;">{{ g.label }}</div>
+<sc-for list="{{ g.items }}" as="it" hint-placeholder-count="4">
+<a href="{{ it.href }}" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 10px; border-radius: 6px; font-size: 13px; {{ it.style }}">
+<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ it.d }}"></path></svg>
+<span style="flex-grow: 1;">{{ it.name }}</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 700; color: #b23a30;">{{ it.n }}</span>
+</a>
+</sc-for>
+</div>
+</sc-for>
+</aside>
+
+<main style="flex-grow: 1; min-width: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; padding: 20px 20px 16px;">
+
+<div style="display: flex; align-items: flex-end; gap: 16px;">
+<div style="flex-grow: 1; display: flex; flex-direction: column; gap: 4px;">
+<h1 style="margin: 0; font-size: 22px; line-height: 28px; font-weight: 700;">October, Unit II — drafted for you</h1>
+<div style="color: #5c6f66; max-width: 640px;">Built from the unit's pattern, who is posted here, and approved leave. Change any box; it re-checks as you go. Nobody sees it until you publish.</div>
+</div>
+<div style="display: inline-flex; height: 32px; border: 1px solid #dfe7e1; border-radius: 6px; overflow: hidden; background: #ffffff; font-size: 12.5px;">
+<span style="display: inline-flex; align-items: center; padding: 0 12px; background: #e3ede6; font-weight: 600;">2 weeks</span>
+<span style="display: inline-flex; align-items: center; padding: 0 12px; color: #5c6f66; border-left: 1px solid #dfe7e1;">Month</span>
+<span style="display: inline-flex; align-items: center; padding: 0 12px; color: #5c6f66; border-left: 1px solid #dfe7e1;">One day</span>
+</div>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 12px; color: #5c6f66;">
+<sc-for list="{{ legend }}" as="l" hint-placeholder-count="8">
+<span style="display: inline-flex; align-items: center; gap: 6px;"><span style="display: inline-block; width: 22px; height: 14px; border-radius: 3px; box-sizing: border-box; {{ l.sw }}"></span>{{ l.text }}</span>
+</sc-for>
+</div>
+
+<div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; overflow: hidden;">
+
+<div style="display: flex; border-bottom: 1px solid #dfe7e1; background: #f8faf8;">
+<div style="width: 170px; flex-shrink: 0; box-sizing: border-box; padding: 8px 12px; font-size: 11px; font-weight: 600; letter-spacing: .08em; color: #5c6f66; display: flex; align-items: flex-end;">THE UNIT'S DAY</div>
+<sc-for list="{{ days }}" as="d" hint-placeholder-count="14">
+<div style="width: 48px; flex-shrink: 0; box-sizing: border-box; padding: 6px 0 6px; border-left: 1px solid #ecf1ed; display: flex; flex-direction: column; align-items: center; gap: 2px; {{ d.colStyle }}">
+<span style="font-size: 10.5px; color: #5c6f66; letter-spacing: .04em;">{{ d.dow }}</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 700;">{{ d.date }}</span>
+<span style="font-size: 10.5px; font-weight: 700; {{ d.actStyle }}">{{ d.act }}</span>
+<span style="font-size: 9.5px; font-weight: 700; letter-spacing: .06em; height: 12px; line-height: 12px; color: #b23a30;">{{ d.take }}</span>
+</div>
+</sc-for>
+</div>
+
+<sc-for list="{{ rows }}" as="r" hint-placeholder-count="10">
+<div style="display: flex; border-bottom: 1px solid #ecf1ed; {{ r.rowStyle }}">
+<div style="width: 170px; flex-shrink: 0; box-sizing: border-box; padding: 5px 12px; display: flex; flex-direction: column; justify-content: center;">
+<span style="font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ r.name }}</span>
+<span style="font-size: 11px; color: #5c6f66;">{{ r.grade }}</span>
+</div>
+<sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="14">
+<div style="width: 48px; height: 42px; flex-shrink: 0; box-sizing: border-box; padding: 3px; border-left: 1px solid #ecf1ed;">
+<div style="width: 100%; height: 100%; box-sizing: border-box; border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 600; line-height: 13px; {{ c.style }}">
+<span>{{ c.label }}</span>
+<span style="font-size: 9px; font-weight: 600; letter-spacing: .02em; opacity: .85;">{{ c.sub }}</span>
+</div>
+</div>
+</sc-for>
+</div>
+</sc-for>
+
+<div style="display: flex; align-items: center; gap: 10px; padding: 9px 12px; background: #f8faf8; font-size: 12px; color: #5c6f66;">
+<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 14A6 6 0 108 2a6 6 0 000 12zM8 7.2v3.6M8 5v.3"></path></svg>
+<span style="flex-grow: 1;">Every night has one JR in the ward and, on take days, one SR in the building. A night is 20:00 to 08:00 and is always followed by 12 hours' rest — the system adds the rest by itself.</span>
+</div>
+</div>
+
+<div style="display: flex; gap: 14px;">
+<div style="flex-grow: 1; flex-basis: 0; background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px;">
+<div style="font-size: 11px; font-weight: 600; letter-spacing: .08em; color: #5c6f66;">WHO GOES WHERE ON AN OPD DAY</div>
+<div style="display: flex; flex-direction: column; gap: 3px; font-size: 12.5px;">
+<div style="display: flex; gap: 8px;"><span style="width: 96px; color: #5c6f66;">OPD rooms</span><span>Head or one faculty · one SR · one JR</span></div>
+<div style="display: flex; gap: 8px;"><span style="width: 96px; color: #5c6f66;">Ward</span><span>The intern, with the SR a call away</span></div>
+<div style="display: flex; gap: 8px;"><span style="width: 96px; color: #5c6f66;">Emergency call</span><span>The other SR carries it</span></div>
+</div>
+<a href="#" style="font-size: 12.5px; font-weight: 600;">Change how Unit II splits its day</a>
+</div>
+<div style="flex-grow: 1; flex-basis: 0; background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px;">
+<div style="font-size: 11px; font-weight: 600; letter-spacing: .08em; color: #5c6f66;">FAIR SHARE, THE WHOLE OF OCTOBER</div>
+<sc-for list="{{ share }}" as="s" hint-placeholder-count="3">
+<div style="display: flex; align-items: center; gap: 8px; font-size: 12.5px;">
+<span style="width: 120px;">{{ s.name }}</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #5c6f66; width: 150px;">{{ s.line }}</span>
+<span style="color: #5c6f66;">{{ s.note }}</span>
+</div>
+</sc-for>
+</div>
+</div>
+
+<div style="flex-grow: 1;"></div>
+
+<div style="display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px; border-radius: 8px; background: #132420;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #9fc0b1;">ask —</span>
+<label for="ask-roster" style="position: absolute; width: 1px; height: 1px; overflow: hidden;">Ask the copilot</label>
+<input id="ask-roster" type="text" placeholder="&quot;who is free on the 14th?&quot;   &quot;give Meena the Diwali week off&quot;   &quot;kal raat ortho mein on call kaun hai?&quot;" style="flex-grow: 1; height: 30px; box-sizing: border-box; border: none; outline: none; background: transparent; color: #d9efe4; font-family: 'IBM Plex Mono', monospace; font-size: 12.5px;">
+</div>
+</main>
+
+<aside style="width: 348px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; padding: 20px 20px 16px 0;">
+
+<div style="background: #ffffff; border: 1px solid #132420; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 10px;">
+<div style="display: flex; align-items: baseline; gap: 8px;">
+<span style="font-size: 15px; font-weight: 700; flex-grow: 1;">Before you publish</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 700; {{ countStyle }}">{{ countLine }}</span>
+</div>
+
+<sc-for list="{{ findings }}" as="f" hint-placeholder-count="3">
+<div style="display: flex; flex-direction: column; gap: 7px; padding: 10px; border-radius: 6px; {{ f.boxStyle }}">
+<div style="display: flex; align-items: center; gap: 8px;">
+<span style="font-size: 10px; font-weight: 700; letter-spacing: .08em; padding: 1px 6px; border-radius: 3px; {{ f.tagStyle }}">{{ f.tag }}</span>
+<span style="font-size: 12px; color: #5c6f66;">{{ f.when }}</span>
+</div>
+<div style="font-size: 13px; line-height: 18px;">{{ f.text }}</div>
+<sc-if value="{{ f.open }}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; flex-wrap: wrap; gap: 6px;">
+<button onClick="{{ f.fix }}" style="min-height: 34px; padding: 0 12px; border-radius: 6px; border: none; background: #0e6b4e; color: #ffffff; font-size: 12.5px; font-weight: 600; text-align: left;">{{ f.fixLabel }}</button>
+<button style="min-height: 34px; padding: 0 12px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; color: #132420; font-size: 12.5px;">{{ f.altLabel }}</button>
+</div>
+</sc-if>
+<sc-if value="{{ f.done }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #0e6b4e; font-weight: 600;">
+<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3 3 7-7.5"></path></svg>
+<span style="flex-grow: 1;">{{ f.doneLine }}</span>
+<button onClick="{{ f.undo }}" style="border: none; background: transparent; color: #5c6f66; font-size: 12px; text-decoration: underline; padding: 4px;">Undo</button>
+</div>
+</sc-if>
+</div>
+</sc-for>
+
+<div style="display: flex; gap: 8px; padding: 9px 10px; border-radius: 6px; background: #f4f7f4; font-size: 12.5px; line-height: 17px; color: #132420;">
+<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#8a5a0b" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 2px;"><path d="M8 2l6.5 11.5h-13zM8 6.5v3.5M8 12v.3"></path></svg>
+<span>No spare. Three JRs cover every night with nothing left over — one JR's leave leaves a night empty. <a href="#" style="font-weight: 600;">Ask the HOD for a rotating JR</a></span>
+</div>
+
+<sc-if value="{{ notPublished }}" hint-placeholder-val="{{ true }}">
+<button onClick="{{ publish }}" disabled="{{ blocked }}" style="height: 46px; border-radius: 8px; border: none; font-size: 14px; font-weight: 700; {{ publishStyle }}">{{ publishLabel }}</button>
+</sc-if>
+<sc-if value="{{ published }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: 8px; background: #e3f1ea; color: #0a5039;">
+<span style="font-size: 14px; font-weight: 700;">Published · October, Unit II · version 1</span>
+<span style="font-size: 12.5px; line-height: 17px;">10 people have it on the app and on WhatsApp. Dr. Verma and the HOD got a copy. Casualty's "who is on now" board already reads from it. Changes from here are swaps, and each one is checked the same way.</span>
+</div>
+</sc-if>
+</div>
+
+<div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+<div style="display: flex; align-items: baseline; gap: 8px;">
+<span style="font-size: 14px; font-weight: 700; flex-grow: 1;">Asked of you</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #5c6f66;">{{ askCount }}</span>
+</div>
+<sc-if value="{{ swapOpen }}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; flex-direction: column; gap: 7px;">
+<div style="font-size: 13px; line-height: 18px;"><span style="font-weight: 600;">Dr. Imtiaz Khan</span> and <span style="font-weight: 600;">Dr. Neha Saxena</span> want to exchange on-call days: he takes her <span style="font-weight: 600;">Thu 8</span>, she takes his <span style="font-weight: 600;">Mon 12</span>. Dr. Neha has already said yes.</div>
+<div style="font-size: 12px; color: #0e6b4e; font-weight: 600;">Checked: both are free on those days, and neither ends up on call twice in one week.</div>
+<div style="display: flex; gap: 6px;">
+<button onClick="{{ approveSwap }}" style="flex-grow: 1; min-height: 36px; border-radius: 6px; border: none; background: #0e6b4e; color: #ffffff; font-size: 12.5px; font-weight: 600;">Approve</button>
+<button style="flex-grow: 1; min-height: 36px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; color: #132420; font-size: 12.5px;">Not this time</button>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{ swapDone }}" hint-placeholder-val="{{ false }}">
+<div style="font-size: 12.5px; line-height: 17px; color: #0e6b4e; font-weight: 600;">Approved. Both have been told, and the grid shows the exchange.</div>
+</sc-if>
+</div>
+
+<div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 14px; font-weight: 700;">Already taken care of</span>
+<div style="display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; line-height: 17px; color: #132420;">
+<span>Dr. Farhan Ali's internship posting ends <span style="font-weight: 600;">Thu 15</span>. Dr. Ritu Singh joins <span style="font-weight: 600;">Fri 16</span> and takes his place.</span>
+<span><span style="font-weight: 600;">Fri 2 Oct</span> Gandhi Jayanti and <span style="font-weight: 600;">Tue 20 Oct</span> Dussehra: no OPD, no elective list. Take and nights run as usual.</span>
+<span>Sunday take: Unit II has <span style="font-weight: 600;">Sun 18</span>. It never follows the unit's own Saturday take.</span>
+</div>
+</div>
+
+</aside>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"startFixed":{"editor":"boolean","default":false,"section":"Demo"},"$preview":{"width":1440,"height":1120}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const all = this.props.startFixed ?? false;
+    const fx = { rest: st.rest ?? all, leave: st.leave ?? all, lecture: st.lecture ?? all };
+    const published = !!st.published;
+    const swapDone = !!st.swap;
+
+    const I = {
+      grid: 'M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z',
+      user: 'M8 8a3 3 0 100-6 3 3 0 000 6zM2.5 14c.6-2.8 2.8-4 5.5-4s4.9 1.2 5.5 4',
+      clock: 'M8 14A6 6 0 108 2a6 6 0 000 12zM8 4.5V8l2.5 1.5',
+      doc: 'M4 1.5h5.5l3 3v10H4zM9.5 1.5v3h3M6 8h4.5M6 10.5h4.5',
+      bed: 'M1.5 12.5v-8M1.5 9h13v3.5M14.5 9V7.5a2 2 0 00-2-2H6.5V9M4 7.2a1 1 0 100-2 1 1 0 000 2z',
+      chart: 'M2 14h12M4 14V8M8 14V3M12 14V6',
+      clip: 'M5 2.5h6v2H5zM4 3.5H3v11h10v-11h-1M5.5 8h5M5.5 10.5h5',
+      plus: 'M8 2v12M2 8h12',
+      board: 'M2 2.5h12v11H2zM2 6h12M6 6v7.5',
+      team: 'M6 7.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM1.5 13.5c.4-2.4 2.2-3.5 4.5-3.5s4.1 1.1 4.5 3.5M11 7.3a2.2 2.2 0 000-4.4M12 10.2c1.4.4 2.3 1.5 2.5 3.3',
+      cal: 'M2.5 3.5h11v10h-11zM2.5 6.5h11M5.5 2v3M10.5 2v3',
+      swap: 'M2 5.5h10L9.5 3M14 10.5H4L6.5 13',
+      cap: 'M1.5 6L8 3l6.5 3L8 9zM4 7.3v3.2c1 1 2.4 1.5 4 1.5s3-.5 4-1.5V7.3',
+      check: 'M2.5 2.5h11v11h-11zM5 8l2 2 4-4.5',
+      arrow: 'M2 8h11M9.5 4.5L13 8l-3.5 3.5',
+      exit: 'M6 2.5H2.5v11H6M6 8h8M11 5l3 3-3 3',
+      search: 'M7 12A5 5 0 107 2a5 5 0 000 10zM10.8 10.8L14 14',
+      spark: 'M8 1.5l1.6 4.9 4.9 1.6-4.9 1.6L8 14.5 6.4 9.6 1.5 8l4.9-1.6z',
+      pulse: 'M1.5 8h3l2-5 3 10 2-5h3',
+      shield: 'M8 1.5l5.5 2V8c0 3.2-2.3 5.6-5.5 6.5C4.8 13.6 2.5 11.2 2.5 8V3.5zM5.5 8l1.8 1.8 3.2-3.6',
+      phone: 'M3 2.5h3l1 3-1.7 1.2a8 8 0 004 4L10.5 9l3 1v3a1 1 0 01-1 1A10.5 10.5 0 012 3.5a1 1 0 011-1z',
+    };
+    const on = 'background:#e3ede6;color:#132420;font-weight:600;', off = 'color:#132420;';
+    const mk = (name, d, href, n, active) => ({ name, d, href: href || '#', n: n || '', style: active ? on : off });
+    const menu = [
+      { label: 'DOCTOR DESK', items: [mk('Dashboard', I.grid), mk('My Patients', I.user), mk('My Rounds', I.clock), mk('My OPD', I.doc), mk('My Duties', I.cal, 'MyDuties.dc.html')] },
+      { label: 'CLINICAL', items: [mk('Inpatients', I.bed), mk('OPD', I.user), mk('Orders', I.clip), mk('Results', I.chart), mk('Notes', I.doc), mk('Procedures', I.plus)] },
+      { label: 'UNIT', items: [mk('Clocks Running', I.clock, '#', '2'), mk('Unit Board', I.board, '#', '8'), mk('Team', I.team), mk('Roster', I.cal, 'Main.dc.html', '', true), mk('Who Is On Now', I.phone, 'OnNow.dc.html'), mk('Handover', I.swap), mk('Teaching', I.cap)] },
+      { label: 'OPERATIONS', items: [mk('Tasks', I.check), mk('Referrals', I.arrow, '#', '1'), mk('Discharge', I.exit), mk('Investigations', I.search)] },
+      { label: 'AI', items: [mk('AI Briefs', I.spark), mk('Agent Activity', I.pulse), mk('Approvals', I.shield, '#', '3')] },
+    ];
+
+    const S = {
+      OPD: 'background:#e3f1ea;color:#0a5039;',
+      OT: 'background:#e6edf6;color:#23446f;',
+      Ward: 'background:#ffffff;color:#132420;border:1px solid #dfe7e1;',
+      Night: 'background:#132420;color:#ffffff;',
+      Rest: 'background:#eef3ef;color:#4d5f57;font-weight:500;font-style:italic;',
+      Off: 'background:transparent;color:#5c6f66;font-weight:500;',
+      Leave: 'background:#fdf3e3;color:#8a5a0b;',
+      none: 'background:repeating-linear-gradient(135deg,#f4f7f4 0 4px,#ecf1ed 4px 8px);color:transparent;',
+    };
+    const bad = 'outline:2px solid #b23a30;outline-offset:-1px;';
+    const fixedMark = 'outline:2px solid #0e6b4e;outline-offset:-1px;';
+
+    const dayDefs = [
+      ['MON', '5', 'OPD', 'TAKE'], ['TUE', '6', 'OT', ''], ['WED', '7', 'Ward', ''], ['THU', '8', 'OPD', 'TAKE'],
+      ['FRI', '9', 'OT', ''], ['SAT', '10', 'Ward', ''], ['SUN', '11', '—', ''], ['MON', '12', 'OPD', 'TAKE'],
+      ['TUE', '13', 'OT', ''], ['WED', '14', 'Ward', ''], ['THU', '15', 'OPD', 'TAKE'], ['FRI', '16', 'OT', ''],
+      ['SAT', '17', 'Ward', ''], ['SUN', '18', '—', 'TAKE'],
+    ];
+    const actColor = { OPD: 'color:#0a5039;', OT: 'color:#23446f;', Ward: 'color:#132420;', '—': 'color:#5c6f66;' };
+    const days = dayDefs.map((d) => ({
+      dow: d[0], date: d[1], act: d[2], take: d[3], actStyle: actColor[d[2]],
+      colStyle: d[0] === 'SUN' ? 'background:#f1f4f1;' : '',
+    }));
+
+    const A = dayDefs.map((d) => (d[2] === '—' ? 'Ward' : d[2]));
+    const cell = (label, sub, extra) => ({ label: label === 'none' ? '·' : label, sub: sub || '', style: (S[label] || S.Ward) + (extra || '') });
+    const row = (name, grade, codes, rowStyle) => ({ name, grade, rowStyle: rowStyle || '', cells: codes });
+
+    const fac = (offs, calls, overrides) => A.map((a, i) => {
+      if (overrides && overrides[i]) return overrides[i];
+      if (offs.includes(i)) return cell('Off');
+      return cell(dayDefs[i][2] === '—' ? 'Off' : a, calls.includes(i) ? 'on call' : '');
+    });
+
+    const verma = fac([6, 13], [0, 10], {
+      4: fx.lecture ? cell('OT', 'from 09:15', fixedMark) : cell('OT', 'lecture 8', bad),
+    });
+    const neha = fac([6], swapDone ? [7] : [3], { 13: cell('Off', 'on call'), 4: fx.lecture ? cell('OT', 'starts list') : null });
+    const imtiaz = fac([5, 6, 13], swapDone ? [3] : [7]);
+
+    const pooja = [cell('OPD'), cell('OT'), cell('Ward'), cell('Night', 'take'), cell('Rest'), cell('Ward'), cell('Off'),
+      cell('OPD'), cell('OT'), cell('Leave'),
+      fx.leave ? cell('Leave') : cell('Night', 'on leave', bad),
+      cell('Leave'), cell('Ward'), cell('Off')];
+    const arjun = [cell('Night', 'take'), cell('Rest'), cell('Ward'), cell('OPD'), cell('OT'), cell('Ward'), cell('Off'),
+      cell('Night', 'take'), cell('Rest'), cell('Ward'),
+      fx.leave ? cell('Night', 'take', fixedMark) : cell('OPD'),
+      fx.leave ? cell('Rest', '', fixedMark) : cell('OT'),
+      cell('Ward'), cell('Night', 'take')];
+
+    const jr = (offset) => A.map((a, i) => {
+      const k = (i + offset) % 3;
+      return k === 0 ? cell('Night') : k === 1 ? cell('Rest') : cell(a);
+    });
+    const sandeep = jr(0), kavita = jr(2), meena = jr(1);
+    kavita[8] = fx.rest ? cell('Rest', '', fixedMark) : cell('OT', 'after night', bad);
+    sandeep[8] = fx.rest ? cell('OT', '', fixedMark) : cell('Off');
+
+    const farhan = A.map((a, i) => (i > 10 ? cell('none') : dayDefs[i][0] === 'SUN' ? cell('Off') : cell('Ward')));
+    const ritu = A.map((a, i) => (i < 11 ? cell('none') : dayDefs[i][0] === 'SUN' ? cell('Off') : cell('Ward')));
+
+    const rows = [
+      row('Dr. R. K. Verma', 'Associate Professor · Unit head', verma),
+      row('Dr. Neha Saxena', 'Assistant Professor', neha),
+      row('Dr. Imtiaz Khan', 'Assistant Professor', imtiaz),
+      row('Dr. Pooja Mishra', 'Senior Resident', pooja, 'background:#fbfcfb;'),
+      row('Dr. Arjun Nair', 'Senior Resident', arjun, 'background:#fbfcfb;'),
+      row('Dr. Kavita Rao', 'JR-3', kavita),
+      row('Dr. Sandeep Yadav', 'JR-2', sandeep),
+      row('Dr. Meena Kumari', 'JR-1', meena),
+      row('Dr. Farhan Ali', 'Intern · till Thu 15', farhan, 'background:#fbfcfb;'),
+      row('Dr. Ritu Singh', 'Intern · from Fri 16', ritu, 'background:#fbfcfb;'),
+    ];
+
+    const legend = [
+      { text: 'OPD', sw: S.OPD }, { text: 'Theatre', sw: S.OT }, { text: 'Ward', sw: S.Ward }, { text: 'Night 20–08', sw: S.Night },
+      { text: 'Rest after a night', sw: S.Rest }, { text: 'Leave', sw: S.Leave }, { text: 'Not posted here', sw: S.none },
+      { text: 'Needs you', sw: 'background:#ffffff;' + bad },
+    ];
+
+    const tagStop = 'background:#b23a30;color:#ffffff;', tagLook = 'background:#fdf3e3;color:#8a5a0b;', tagDone = 'background:#e3f1ea;color:#0a5039;';
+    const boxOpen = 'background:#fdf6f5;border:1px solid #f3c9c4;', boxLook = 'background:#fffaf1;border:1px solid #f0d9ae;', boxDone = 'background:#f6faf7;border:1px solid #cfe9dd;';
+    const mkF = (key, stop, when, text, fixLabel, altLabel, doneLine) => {
+      const done = fx[key];
+      return {
+        tag: done ? 'SORTED' : stop ? 'MUST FIX' : 'LOOK',
+        tagStyle: done ? tagDone : stop ? tagStop : tagLook,
+        boxStyle: done ? boxDone : stop ? boxOpen : boxLook,
+        when, text, fixLabel, altLabel, doneLine, open: !done && !published, done,
+        fix: () => this.setState({ [key]: true }),
+        undo: () => this.setState({ [key]: false, published: false }),
+      };
+    };
+    const findings = [
+      mkF('rest', true, 'Tue 13 Oct', 'You put Dr. Kavita on Tuesday’s theatre list in place of Dr. Sandeep. She is on night duty Monday, and needs 12 hours’ rest after it.',
+        'Keep Dr. Sandeep on the list; Kavita rests', 'Run the list without a JR', 'Sandeep stays on the list; Kavita rests'),
+      mkF('leave', true, 'Thu 15 Oct', 'Dr. Pooja’s leave for 14–16 Oct was approved yesterday, but she still holds Thursday’s take night. The take would have no SR in the building.',
+        'Dr. Arjun takes Thursday night and rests Friday', 'Pick someone else', 'Arjun has Thursday night; Friday is his rest'),
+      mkF('lecture', false, 'Fri 9 Oct', 'Dr. Verma teaches MBBS Phase III at 08:00 in LT-2 and is first surgeon at 08:30.',
+        'Dr. Neha starts the list; Dr. Verma joins 09:15', 'It’s fine, I’ll note why', 'Neha starts the list; Dr. Verma from 09:15'),
+    ];
+    const stops = ['rest', 'leave'].filter((k) => !fx[k]).length;
+    const looks = fx.lecture ? 0 : 1;
+    const blocked = stops > 0;
+    const countLine = blocked ? stops + ' must fix' + (looks ? ' · 1 to look at' : '') : looks ? '1 to look at' : 'all clear';
+    const countStyle = blocked ? 'color:#b23a30;' : looks ? 'color:#8a5a0b;' : 'color:#0e6b4e;';
+
+    const share = [
+      { name: 'Dr. Kavita Rao', line: 'nights 10 · Sundays 1', note: '' },
+      { name: 'Dr. Sandeep Yadav', line: 'nights 10 · Sundays 1', note: '' },
+      { name: 'Dr. Meena Kumari', line: 'nights 11 · Sundays 2', note: 'one more than the others — she picks first in November' },
+    ];
+
+    return {
+      menu, days, rows, legend, findings, share,
+      countLine, countStyle, blocked,
+      notPublished: !published, published,
+      publishLabel: blocked ? (stops === 1 ? 'One thing stops this from publishing' : 'Two things stop this from publishing') : 'Publish October for Unit II',
+      publishStyle: blocked ? 'background:#e3ede6;color:#4d5f57;cursor:not-allowed;' : 'background:#0e6b4e;color:#ffffff;',
+      publish: () => { if (!blocked) this.setState({ published: true }); },
+      swapOpen: !swapDone, swapDone, askCount: swapDone ? '0' : '1',
+      approveSwap: () => this.setState({ swap: true }),
+    };
+  }
+}
+</script>
+</body>
+</html>
