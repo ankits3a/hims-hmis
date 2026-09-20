@@ -23,6 +23,7 @@ import {
 } from "../src/modules/ot";
 import { availableQty, findStoreByCode, listItems } from "../src/modules/materials";
 import { IMAGING_GATE_DEF_KEY, IMAGING_STUDY_DEF_KEY, activeStudyTypes } from "../src/modules/radiology";
+import { ROSTER_POSITIONS, rosterMasterCounts } from "../src/modules/roster";
 import { appointments, unlicensedDevices } from "../src/modules/aerb";
 import {
   activeRegistrations, registeredMachines, registeredPersons,
@@ -261,6 +262,29 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       // duties is the lab's central control, and one pair of hands holding every role satisfies none.
       check: async (db) => (await withTx(db, (tx) => usersHoldingRoleAtScope(tx, "admin", "hospital"))).length >= 2,
       fix: "§1.3: create a SECOND administrator at /admin/users — one pair of hands cannot hold DD11",
+    },
+    {
+      gate: "G1", code: "roster_masters_seeded",
+      /**
+       * PHASE R (R1) — **under `hospital`, and that placement is the finding, not an accident.**
+       *
+       * The roster is not a department (`standup-check.test.ts`'s classification map says so): it is
+       * a layer over every one of them. And this census has an invariant — *every census module that
+       * is not `hospital` has a go-live runbook* — whose exemption is `hospital` precisely because it
+       * holds *"the rows every department's opening rests on"*. `org_departments` and
+       * `roster_positions` are exactly that: no department's rota can be drafted, and no permission
+       * can be checked at a department's scope, until both lists exist. A `roster` module key here
+       * would have owed a runbook for a department that does not exist, or a second exemption.
+       *
+       * ONE row asking about BOTH lists, because a hospital with twenty-four departments and no
+       * positions and one with seventeen positions and no departments are equally unable to open,
+       * and two rows would have implied the census could be half green.
+       */
+      check: async (db) => {
+        const { departments, positions } = await rosterMasterCounts(db);
+        return departments > 0 && positions >= ROSTER_POSITIONS.length;
+      },
+      fix: "run `pnpm --filter @hmis/core seed:roster` (after `seed:roles` and `seed:opd`) — it seeds org_departments and the seventeen roster_positions, and is safe to re-run",
     },
   ],
 
@@ -835,6 +859,7 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       fix: "18c §3: record the Radiological Safety Officer's appointment at /radiology/radiation-safety",
     },
   ],
+
 };
 
 export type RowResult = { module: string; gate: Gate; code: string; verdict: Verdict; fix: string; detail?: string };

@@ -37,6 +37,7 @@
     "import:nrces": "tsx scripts/import-nrces-formulary.ts",
     "seed:ops": "tsx scripts/seed-ops.ts",
     "seed:roles": "tsx scripts/seed-roles.ts",
+    "seed:roster": "tsx scripts/seed-roster.ts",
     "backfill:facts": "tsx scripts/backfill-facts.ts",
     "seed:staff": "tsx scripts/seed-staff.ts",
     "seed:pharmacy-demo": "tsx scripts/seed-pharmacy-demo.ts",

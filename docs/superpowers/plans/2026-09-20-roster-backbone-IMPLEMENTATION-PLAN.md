@@ -25,6 +25,7 @@ reworked here, not merged.**
 | a posting/slot never tells an external LLM a name, a phone or a leave reason | stress test A-4/L-13 |
 | the system proposes; a human publishes, approves, overrides, acknowledges | Plan 20 D4; matrix in stress test §4 |
 | screens gated on the four boards (approved "as of now") — **out of this plan** | owner RU-6 |
+| **the State is BIHAR** — the college and the hospital are in Bihar (owner, 2026-09-20, answering stress test §5.4). Every `roster_rules` row whose `authority` is `'state'` is written against Bihar; until R8 seeds one there are none, and no rule row anywhere else in this plan is a placeholder | owner 2026-09-20 |
 
 ---
 
@@ -32,15 +33,15 @@ reworked here, not merged.**
 
 | # | fact | how | value on 2026-09-20 |
 |---|---|---|---|
-| G1 | newest migration on `origin/main` | `ls apps/core/drizzle/*.sql \| tail -1` | `0107_pharmacy_authorisations.sql` — **R1 takes the next free serial at rebase time, never at start** |
-| G2 | `usersHoldingRole` runtime call sites | `grep -rn "usersHoldingRole(" apps/core/src --include=*.ts \| grep -v test` | 6 files: `kernel/alerts/consumer.ts`(5), `kernel/workflow/timers.ts`(2), `kernel/notify/consumer.ts`(1), `kernel/desk/staff.controller.ts`(1), `modules/materials/counts.ts`(1), `modules/materials/transfers.ts`(1); `modules/ot/lists.ts` mentions it in a comment |
-| G3 | department rows | `opd_departments` seed in `modules/opd/config.ts` | 12 (MED…PHY); no anaesthesia, radiology, pathology, community medicine, forensic, casualty, nursing |
-| G4 | manifests / permissions / pairs pins | run `test/seed-roles.test.ts`, `src/kernel/modules/manifests.test.ts`, `test/standup-check.test.ts` red and **read the numbers off the failure** | 22 manifests; 175 permissions; 355 pairs; 161 held; 169 non-table pairs |
-| G5 | `standup-check` classification | `test/standup-check.test.ts` "every manifest is classified as a department or not" — `DEPARTMENTS` / `NOT_DEPARTMENTS` in `scripts/standup-check.ts` | **T1 failed CI here**: `roster` must be classified NOT a department |
-| G6 | DB session timezone | `docker exec hmis-db-1 psql … -c 'show timezone'` | `Etc/UTC` — every IST test in this plan relies on it |
-| G7 | `btree_gist` | `select extname from pg_extension` on a lane test DB after R1 | absent before R1; created by R1's migration (0021's `pg_trgm` is the precedent) |
+| G1 | newest migration on `origin/main` | `ls apps/core/drizzle/*.sql \| tail -1` | **RE-MEASURED 2026-09-20 at kickoff: `0107_pharmacy_authorisations.sql`, unmoved.** R1 wrote `0108_roster_masters.sql`; re-checked at rebase before the PR |
+| G2 | `usersHoldingRole` runtime call sites | `grep -rn "usersHoldingRole(" apps/core/src --include=*.ts \| grep -v test` | **CORRECTED 2026-09-20 — EIGHT files and 16 call sites, not six and eleven.** `kernel/alerts/consumer.ts`(**8**, not 5), `kernel/workflow/timers.ts`(2), `kernel/notify/consumer.ts`(1), `kernel/desk/staff.controller.ts`(1), **`kernel/workflow/roles.ts`(1) — absent from the plan's list**, `modules/materials/counts.ts`(1), `modules/materials/transfers.ts`(1), **`modules/ot/lists.ts`(1) — a real call site, not "a comment"**. **R6 owes a decision on the two the plan did not know about**: `workflow/roles.ts` is the kernel helper the others call (it is the DEFINITION, and R6 must not "migrate" it), and `ot/lists.ts` is a leaf module's own read |
+| G3 | department rows | `opd_departments` seed in `modules/opd/config.ts` | **CONFIRMED 2026-09-20: 12 (MED…PHY)**, no anaesthesia, radiology, pathology, community medicine, forensic, casualty, nursing. R1's `org_departments` seeds **24**: those twelve (linked by code) + the eleven of §2.1 + **Respiratory Medicine, which §2.1 omits** — see §9.4 F1 |
+| G4 | manifests / permissions / pairs pins | run `test/seed-roles.test.ts`, `src/kernel/modules/manifests.test.ts`, `test/standup-check.test.ts` red and **read the numbers off the failure** | **CONFIRMED as the pre-R1 values, all five.** After R1, read off the failing run and never predicted: manifests **22 → 23**; declared permissions **175 → 178**; model pairs **355 → 359**; model permissions **155 → 158**; held **155 → 158**; `heldPermissions()` **161 → 164**; `NON_TABLE_PAIRS` **169 → 173**; per-role grants `owner` 16 → 17, `medical_superintendent` 15 → 18 |
+| G5 | `standup-check` classification | `test/standup-check.test.ts` "every manifest is classified as a department or not" | **CORRECTED: `DEPARTMENTS` / `NOT_DEPARTMENTS` are in `test/standup-check.test.ts`, NOT in `scripts/standup-check.ts`.** `roster` is classified NOT a department (done, R1). **And a second constraint the plan did not carry, found by running it red: every census MODULE except `hospital` owes a `docs/runbooks/*-go-live.md`** — so R1's RED row lives under `hospital`, not under a `roster` key. See §9.4 F2 |
+| G6 | DB session timezone | `docker exec hmis-db-1 psql … -c 'show timezone'` | **CONFIRMED 2026-09-20 on `hmis_lane_roster_r1_test_1`: `Etc/UTC`.** Every IST test in this plan — V12 above all — is evidence only because of this |
+| G7 | `btree_gist` | `select extname from pg_extension` on a lane test DB after R1 | **CONFIRMED: absent before, present after.** The lane test DB now reads `btree_gist, pg_trgm, plpgsql, unaccent` — `pg_trgm` and `unaccent` are 0021's, the precedent. Asserted in `schema/roster.test.ts`, which is the only thing that knows 0108 created it |
 | G8 | T1's code to port | lane `roster`, commit `29f5159d` | `kernel/db/schema/roster.ts`, `modules/roster/*`, `schema/roster.test.ts` — the tests are ported, the schema is regenerated |
-| G9 | lanes touching shared files now | `tools/lane.sh status` | `copilot` (kernel/copilot), `desk-upcoming`, `front-desk-fd25` (opd) — coordinate before R6/R7 |
+| G9 | lanes touching shared files now | `tools/lane.sh status` | **RE-MEASURED 2026-09-20: 25 lanes exist**, `copilot`, `desk-upcoming` and `front-desk-fd25` among them, all with 0 dirty files at kickoff. R1 touched one file any of them might: `modules/opd/index.ts`, one additive `export` line (§9.4 F3). **R4 and R6 must re-read this before they start** — it is a snapshot, and the lock, not this row, is what makes a test run safe |
 
 ---
 
@@ -223,6 +224,59 @@ staff masking, roster tools) → Plan 41 consumers.
 ---
 
 ## 9. CLOSE — filled at execution
-9.1 commits by SHA · 9.2 kickoff re-measurement (§1) · 9.3 spike answers · 9.4 findings and their
-disposition · 9.5 the mutant tally per CRITICAL task · 9.6 the two review passes · 9.7 the token
-actuals row (`/token-audit`).
+
+### 9.1 Commits by SHA
+| task | branch | commit | PR |
+|---|---|---|---|
+| R1 | `lane/roster-r1` | *(filled at commit)* | *(filled at open)* |
+
+### 9.2 Kickoff re-measurement (§1), 2026-09-20
+
+Every row of §1 was re-run with the command in its `how` column and **§1 is corrected in place**;
+the three that MOVED are G2, G5 and G9, and one more (G3) grew a consequence. In summary:
+
+- **G1 unmoved** — `0107_pharmacy_authorisations.sql` is still the newest on `origin/main`; R1 wrote
+  `0108_roster_masters.sql` and re-checks the serial at rebase, never at start.
+- **G2 WAS WRONG** — eight files and sixteen call sites, not six and eleven. Two the plan never
+  named: `kernel/workflow/roles.ts` (which is the DEFINITION of `usersHoldingRole`, not a consumer —
+  R6 must not "migrate" it) and `modules/ot/lists.ts` (a real call, which the plan recorded as "a
+  comment"). `kernel/alerts/consumer.ts` has eight, not five.
+- **G3 confirmed at 12**, and it forced F1 below.
+- **G4 confirmed** as the pre-R1 values; every post-R1 number was read off a failing run.
+- **G5 WAS WRONG about the file**, and carried an unstated second constraint — F2 below.
+- **G6 confirmed `Etc/UTC`** on `hmis_lane_roster_r1_test_1`. Every IST assertion in this plan,
+  V12 above all, is evidence only because of this.
+- **G7 confirmed** absent before / present after: the lane test DB now reads `btree_gist, pg_trgm,
+  plpgsql, unaccent`.
+- **G8** — T1's module scaffolding is ported (`manifest`, `index`, `roster.module`, `errors`,
+  `access`); its schema is NOT, and its `0108` is not carried.
+- **G9 re-measured at 25 lanes.** R1 touched one file another lane might: `modules/opd/index.ts`.
+
+### 9.3 Spike answers
+*(none owed by R1)*
+
+### 9.4 Findings and their disposition
+
+| # | task | finding | disposition |
+|---|---|---|---|
+| **F1** | R1 | **§2.1's department list is one short of what §0 requires.** §0 rules the establishment is `5/5/3/3/4/2/2/1/1` **plus Respiratory Medicine as its own one-unit department** — 27 units — and R3 seeds *"the 27 units, one per department per §0"*. §2.1's list is the twelve OPD rows + eleven named departments, and **Respiratory Medicine is not among them**, so R3 would have had 26 departments to hang 27 units on. 20-U §2 records why it is easy to miss: UG-MSR 2023's final table has no Respiratory row at all (its faculty count under Medicine, FAQ Q8). | **FIXED IN R1**, additively: `ORG_DEPARTMENTS` seeds **24** rows — the twelve linked clinics, §2.1's eleven, and `RESP` Respiratory Medicine. Recorded in `masters.ts`' own header so R3 does not re-derive it. |
+| **F2** | R1 | **A census module owes a go-live runbook, and the plan's §4 R1 asked for a `roster` module key that could not have one.** `test/standup-check.test.ts` holds an invariant the plan never carried: *every key of `STANDUP_ROWS` except `hospital` must have a `docs/runbooks/*-go-live.md`*. Adding `roster: [...]` turned it red (`withoutRunbook: ["roster"]`). The roster is classified NOT a department in the same file, so a runbook would have documented a go-live day that does not exist — and the alternative, a second hard-coded exemption, weakens the guard that caught the missing OPD rows. | **R1's RED row is filed under `hospital`**, whose declared exemption is that it holds *"the rows every department's opening rests on"* — which `org_departments` and `roster_positions` literally are. No guard was weakened and no exemption added. **R3 and R7 inherit this**: their rows go under `hospital` too, unless the S-series has by then given the roster a real go-live day and a runbook of its own. |
+| **F3** | R1 | **The census that proves the roster covers every OPD clinic could not be written**: the lint rule (spec §4) forbids a module reaching into another module's internals, and `DEFAULT_DEPARTMENTS` lived only in `modules/opd/config.ts`. Transcribing the twelve codes into the roster would have been a copy that goes stale the first time somebody adds a thirteenth — the exact defect the census exists to catch. | `DEFAULT_DEPARTMENTS` is re-exported from `modules/opd/index.ts`, **additively and read-only**, one line. `modules/opd` is a file everyone imports, so R1 rebases immediately before its PR. |
+| **F4** | R1 | **The plan's "hospital-scope fallback" would have been dead code.** §4 R1 asks for the permission checked at department scope *"with a hospital-scope fallback"*. `kernel/auth/permissions.ts` already grants any required scope to a HOSPITAL-scoped holding (`if (h.scopeType === "hospital") return true`), so a second call would never have changed an answer — and would have looked load-bearing to the next reader, who would widen it. | **No fallback call written.** `requireRosterAct` asks at `department` when the act names one and at `hospital` when it does not; the asymmetry (a department holding does NOT satisfy a hospital check) is asserted in `access.test.ts`. The reason is written into `access.ts` so it is not "fixed" later. |
+| **F5** | R1 | **`events.ts` is in §4 R1's file list and R1 emits no event.** T1's two events are about periods, which arrive in R2; shipping them in R1 would be an event catalog with no writer (`readers-without-writers`, one direction over), and the V9 schema walk would be vacuous over an empty or unused list. | **Deferred to R2**, which owns the events, the writers and V9 together. R1 ships no `events.ts`. |
+
+### 9.5 Mutant tally
+
+| task | mutant | built as | result |
+|---|---|---|---|
+| R1 | `rosterActPolicy` lets a named `system` job publish (`MATRIX.publish.system = open`) | `policy.mutant.ts` + `policy.mutant.test.ts` | **DIED**, 2 failed / 0 passed. `the matrix agrees with stress test §4, cell for cell` → `- "system": "n"` / `+ "system": "y"`; `NOTHING but a person publishes` → *Expected constructor: RosterError / Received function did not throw* |
+| R1 | the positions seed inserts nothing (`for (const p of [])`) | `masters.mutant.ts` + `masters.mutant.test.ts` | **DIED**, 2 failed / 0 passed. `seeds both lists, and a SECOND run adds nothing` → `- "added": 17, "present": 0` / `+ "added": 0, "present": 17`; the standup row's own question → `Expected: "green: true" / Received: "green: false"` |
+
+Both mutant modules and both mutant specs were deleted before the counts below;
+`git status --porcelain` carried no `*.mutant.*`.
+
+### 9.6 The two review passes
+*(filled at R10)*
+
+### 9.7 The token actuals row (`/token-audit`)
+*(filled at R10)*

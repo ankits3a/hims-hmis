@@ -1,0 +1,206 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { ROSTER_ACTOR_KINDS, ROSTER_ACTS, ROSTER_VIAS, rosterActMatrix, rosterActPolicy } from "./policy";
+import { RosterError } from "./errors";
+import type { RosterAct, RosterActorKind } from "./policy";
+import type { Actor } from "@hmis/contracts";
+
+/**
+ * PHASE R (R1) — **INVARIANT V8, AND IT IS THE ONE THIS PHASE EXISTS TO MAKE CHECKABLE.**
+ *
+ * *"A machine actor never edits a draft a human has touched, never publishes, never overrides."*
+ * Stress test §4 is a matrix; this file is that matrix, transcribed a second time, by hand, from
+ * the document — **deliberately not imported from the source it checks.** A test that derives its
+ * expectation from the code it tests can only ever say the code agrees with itself. Every cell
+ * below was typed from the table in `brainstorms/2026-09-20-roster-units/01-STRESS-TEST.md §4`.
+ *
+ * Three legs, and the third is the one that will still be working in six months:
+ *
+ *   1. **the matrix agrees with the document**, cell by cell;
+ *   2. **every `never` cell actually throws**, executed, for a real actor of that kind;
+ *   3. **every exported function in this module is classified** as acting or not acting, and every
+ *      acting one is proved to go through `rosterActPolicy`. R1 exports no acting function at all —
+ *      so leg 3 is *vacuously* satisfied today and would stay green while R2 added `publishPeriod`
+ *      with no policy call. That is exactly what the EXPORT CENSUS below prevents: the set of
+ *      exports is pinned, so R2 cannot add one without coming here and saying which it is.
+ */
+describe("roster — who may do what (V8, stress test §4)", () => {
+  const actor = (type: Actor["type"]): Actor => ({ type, id: `${type}-1` });
+
+  /* ═══════════════════ leg 1: the matrix, transcribed from the document ═══════════════════ */
+
+  /**
+   * `y` = permitted (a grant is then checked, or the actor is a named system job);
+   * `n` = `never` — refused for this KIND of actor, whatever it holds.
+   *
+   * Where §4 reads *"later (needs agent grants)"* the cell is `n`: agent grants live in
+   * `kernel/auth`, which this plan freezes (§5/§7), and a cell that anticipates a grant nobody can
+   * issue is a cell that is wrong today. When that phase lands it changes this table first.
+   */
+  const EXPECTED: Record<RosterAct, Record<RosterActorKind, "y" | "n">> = {
+    //                      user copilot agent system patient
+    read: { user: "y", copilot: "y", agent: "y", system: "y", patient: "n" },
+    draft_machine_period: { user: "y", copilot: "n", agent: "n", system: "y", patient: "n" },
+    edit_human_draft: { user: "y", copilot: "n", agent: "n", system: "n", patient: "n" },
+    propose: { user: "y", copilot: "y", agent: "n", system: "y", patient: "n" },
+    accept_warning: { user: "y", copilot: "n", agent: "n", system: "n", patient: "n" },
+    publish: { user: "y", copilot: "n", agent: "n", system: "n", patient: "n" },
+    declare: { user: "y", copilot: "n", agent: "n", system: "n", patient: "n" },
+    acknowledge: { user: "y", copilot: "n", agent: "n", system: "n", patient: "n" },
+    nag: { user: "y", copilot: "n", agent: "y", system: "y", patient: "n" },
+  };
+
+  it("every act × every actor kind is DECLARED — no cell falls through", () => {
+    const matrix = rosterActMatrix();
+    expect(Object.keys(matrix).sort()).toEqual([...ROSTER_ACTS].sort());
+    for (const act of ROSTER_ACTS) {
+      expect(Object.keys(matrix[act]).sort()).toEqual([...ROSTER_ACTOR_KINDS].sort());
+    }
+  });
+
+  it("the matrix agrees with stress test §4, cell for cell", () => {
+    const matrix = rosterActMatrix();
+    const actual = {} as Record<RosterAct, Record<RosterActorKind, "y" | "n">>;
+    for (const act of ROSTER_ACTS) {
+      const row = {} as Record<RosterActorKind, "y" | "n">;
+      for (const kind of ROSTER_ACTOR_KINDS) row[kind] = matrix[act][kind] === "never" ? "n" : "y";
+      actual[act] = row;
+    }
+    expect(actual).toEqual(EXPECTED);
+  });
+
+  /* ═══════════════════ leg 2: `never` refuses, executed ═══════════════════ */
+
+  const cells = ROSTER_ACTS.flatMap((act) =>
+    ROSTER_ACTOR_KINDS.map((kind) => [act, kind, EXPECTED[act][kind]] as const));
+
+  it.each(cells.filter(([, , v]) => v === "n"))(
+    "%s is refused to a %s, with act_not_available_to_actor",
+    (act, kind) => {
+      const a = kind === "copilot" ? actor("user") : actor(kind as Actor["type"]);
+      const via = kind === "copilot" ? "copilot" : "direct";
+      let thrown: unknown;
+      try { rosterActPolicy(a, act, via); } catch (e) { thrown = e; }
+      expect(thrown).toBeInstanceOf(RosterError);
+      expect((thrown as RosterError).code).toBe("act_not_available_to_actor");
+      // The refusal must carry WHAT was refused and to WHOM — a bare 403 is unreportable.
+      expect((thrown as RosterError).detail).toEqual({ act, actorType: a.type, via });
+    },
+  );
+
+  it.each(cells.filter(([, , v]) => v === "y"))(
+    "%s is available to a %s",
+    (act, kind) => {
+      const a = kind === "copilot" ? actor("user") : actor(kind as Actor["type"]);
+      const via = kind === "copilot" ? "copilot" : "direct";
+      expect(() => rosterActPolicy(a, act, via)).not.toThrow();
+    },
+  );
+
+  /* ═══════════════════ the three that are the whole point ═══════════════════ */
+
+  it("NOTHING but a person publishes — not an agent, not a system job, not the user's own copilot", () => {
+    for (const type of ["agent", "system"] as const) {
+      expect(() => rosterActPolicy(actor(type), "publish")).toThrow(RosterError);
+    }
+    // The copilot is the SAME user: the refusal is about the channel, not the identity, which is
+    // why the same human passes a line later by doing it themselves.
+    expect(() => rosterActPolicy(actor("user"), "publish", "copilot")).toThrow(RosterError);
+    expect(() => rosterActPolicy(actor("user"), "publish", "direct")).not.toThrow();
+  });
+
+  it("a machine may DRAFT its own proposal and may never touch a draft a human has", () => {
+    expect(() => rosterActPolicy(actor("system"), "draft_machine_period")).not.toThrow();
+    expect(() => rosterActPolicy(actor("system"), "edit_human_draft")).toThrow(RosterError);
+  });
+
+  it("a copilot proposes and never confirms — the act that makes it useful and the one that does not", () => {
+    expect(() => rosterActPolicy(actor("user"), "propose", "copilot")).not.toThrow();
+    for (const act of ["publish", "accept_warning", "declare", "acknowledge"] as const) {
+      expect(() => rosterActPolicy(actor("user"), act, "copilot")).toThrow(RosterError);
+    }
+  });
+
+  it("`direct` is the default: a caller that forgets `via` gets the STRICTER answer for a copilot, never the looser", () => {
+    // The default must be the one a mistake is safe under. A caller that omits `via` is a caller
+    // acting as the user themselves, and a copilot integration that forgets to pass it gets MORE
+    // than it should — so the check that matters is that `copilot` is never widened by omission.
+    for (const act of ROSTER_ACTS) {
+      if (EXPECTED[act].copilot === "n" && EXPECTED[act].user === "y") {
+        expect(() => rosterActPolicy(actor("user"), act)).not.toThrow();
+        expect(() => rosterActPolicy(actor("user"), act, "copilot")).toThrow(RosterError);
+      }
+    }
+    expect(ROSTER_VIAS).toEqual(["direct", "copilot"]);
+  });
+
+  /* ═══════════════════ leg 3: the export census ═══════════════════ */
+
+  /**
+   * EVERY EXPORTED FUNCTION IN `modules/roster`, CLASSIFIED. An export missing from both lists
+   * fails this test, which is the friction: R2 cannot land `publishPeriod` without deciding, here,
+   * in writing, that it acts — and an acting function is then PROVED to reach `rosterActPolicy`.
+   */
+  const ACTING: Record<string, string> = {
+    // R1 exports none. R2's `publishPeriod`, `amend` and `assign` are the first.
+  };
+  const NOT_ACTING: Record<string, string> = {
+    rosterActPolicy: "IS the policy",
+    rosterActMatrix: "renders the policy; decides nothing",
+    requireRosterAct: "calls the policy and then the permission read — the one acting wrapper",
+    rosterHttpStatus: "maps a refusal code to a status",
+    seedOrgDepartments: "a deploy seed, run by `seed:roster` under the operator's own shell — there is no Actor",
+    seedRosterPositions: "a deploy seed, as above",
+    listOrgDepartments: "a read",
+    orgDepartmentByCode: "a read",
+    listRosterPositions: "a read",
+    rosterMasterCounts: "a read, for the census",
+  };
+
+  const MODULE_DIR = __dirname;
+  const sourceFiles = readdirSync(MODULE_DIR)
+    .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))
+    .map((f) => [f, readFileSync(join(MODULE_DIR, f), "utf8")] as const);
+
+  const exportedFunctions = (): { name: string; file: string; body: string }[] => {
+    const out: { name: string; file: string; body: string }[] = [];
+    for (const [file, src] of sourceFiles) {
+      const re = /export\s+(?:async\s+)?function\s+([A-Za-z0-9_]+)/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(src)) !== null) {
+        const name = m[1];
+        if (name === undefined) continue;
+        // The function's own text, to the next top-level `export` or the end of the file.
+        const from = m.index;
+        const nextExport = src.indexOf("\nexport ", from + 1);
+        out.push({ name, file, body: src.slice(from, nextExport === -1 ? undefined : nextExport) });
+      }
+    }
+    return out;
+  };
+
+  it("every exported function of this module is classified as acting or not acting", () => {
+    const found = exportedFunctions().map((f) => f.name).sort();
+    const classified = [...Object.keys(ACTING), ...Object.keys(NOT_ACTING)].sort();
+    // Read a failure here as: *a function was added and nobody said whether a machine may run it.*
+    expect(found).toEqual(classified);
+  });
+
+  it("every ACTING export reaches rosterActPolicy — directly or through requireRosterAct", () => {
+    const acting = exportedFunctions().filter((f) => f.name in ACTING);
+    expect(acting.map((f) => f.name).sort()).toEqual(Object.keys(ACTING).sort());
+    for (const fn of acting) {
+      expect(`${fn.name}: ${/rosterActPolicy\(|requireRosterAct\(/.test(fn.body)}`).toBe(`${fn.name}: true`);
+    }
+  });
+
+  it("the scanner FINDS functions — the census cannot be green because it looked at nothing", () => {
+    // Leg 3's two tests above are satisfiable by an empty scan. This is the one that is not: if the
+    // regex, the directory or the file filter ever stops working, THIS goes red rather than the
+    // whole census quietly certifying nothing.
+    const found = exportedFunctions();
+    expect(found.length).toBeGreaterThanOrEqual(Object.keys(NOT_ACTING).length);
+    expect(found.map((f) => f.name)).toContain("rosterActPolicy");
+    expect(found.some((f) => f.file === "access.ts")).toBe(true);
+  });
+});
