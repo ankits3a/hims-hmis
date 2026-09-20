@@ -3,7 +3,7 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
 import { issuePaidInvoice, mkCashier, openSessionFor, seedBillingBase } from "../../../test/helpers/billing";
 import { opdEncounters } from "../../kernel/db/schema";
-import { openUnpaidToken, registerConsultStartGuard, startConsultation } from "./consultation";
+import { openUnpaidToken, registerConsultStartGuard, registerVitalsStartGuard, startConsultation } from "./consultation";
 import { grantFeeBypass, openVisit } from "./encounters";
 import { boardSnapshot, callNext, listQueue, summaryByDoctor } from "./queue";
 import { recordVitals } from "./vitals";
@@ -98,6 +98,47 @@ describe("an unsettled token is held out of the doctor's queue", () => {
 
     const rows = await db.select().from(opdEncounters).where(eq(opdEncounters.id, encounterId));
     expect(rows[0]!.status).toBe("waiting"); // …and nothing about the visit moved
+  });
+
+  /**
+   * ═══ THE WHOLE STORY, END TO END — THE BAY'S OWN EMERGENCY SAVE (#268) MEETS THE HOLD ═══
+   *
+   * The helper above reaches this state through the FRONT DESK's waiver because that is the road
+   * that existed when this suite was written. The road the owner actually walked is the bay's red
+   * button: no clerk, no counter, one tap on a collapsing patient. It writes the same waiver in the
+   * nurse's name (#268), so it arrives at the same hold — and that sentence, not a clerk's, is what
+   * the doctor reads on the rail. Pinned here because the two rulings were made a day apart and
+   * nothing else asserts that they compose.
+   */
+  it("a patient charted by the BAY's emergency save arrives held, carrying the nurse's own sentence", async () => {
+    /*
+      THE VITALS DOOR'S VERDICT IS STUBBED AND THE HOLD IS NOT, which is the same split
+      `vitals-fee-gate.test.ts` draws one door back: billing registers the real `feeGate` on BOTH
+      doors in `billing.module.ts` and `billing.e2e.test.ts` proves that wiring over HTTP. What is
+      real here is everything this suite is about — the waiver the save writes, the ledger the hold
+      reads, and the doctor's own door. MEASURED, not assumed: without this line the save found an
+      OPEN door (no guard is registered in a unit test), waived nothing, and the row failed on
+      `feeWaived` — which is the test telling the truth about what a bare unit world contains.
+    */
+    const unregisterVitals = registerVitalsStartGuard("test_fee_gate", () =>
+      Promise.resolve({ ok: false as const, code: "fee_unsettled", detail: { visitType: "new" } }));
+    const patient = await mkPatient(db, clerk.actor, { name: "Chandan Ram" });
+    const open = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    /* No `grantFeeBypass` anywhere: the emergency save opens the fee gate itself and signs it. */
+    const saved = await recordVitals(db, vd.actor, open.encounter.id, adultOk, MON, { emergency: true });
+    expect(saved.feeWaived).toBe(true);
+    expect(saved.encounter.feeBypassBy).toBe(vd.id);
+
+    const view = await queue();
+    expect(view.ordered).toHaveLength(0);
+    expect(view.heldForPayment.map((e) => e.tokenNo)).toEqual([open.queueEntry.tokenNo]);
+    expect(view.heldForPayment[0]!.encounter.feeBypassReason).toContain("vitals taken at the bay before billing");
+
+    /* And the doctor's own door is the only way through it, exactly as the owner ruled. */
+    const opened = await openUnpaidToken(db, dra.actor, open.encounter.id, "emergency — seeing him now", MON);
+    expect(opened.encounter.consultFeeOverrideBy).toBe(dra.userId);
+    expect((await queue()).ordered.map((e) => e.tokenNo)).toEqual([open.queueEntry.tokenNo]);
+    unregisterVitals();
   });
 
   it("the hall is not told: the public board does not announce an unpaid token", async () => {
