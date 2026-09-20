@@ -4,6 +4,7 @@ import { setToken } from "../../lib/api";
 import { renderWithProviders } from "../../test-utils";
 import { PharmacyDesk } from "./pharmacy-desk";
 import { resetDeskLog } from "./log";
+import { istToday } from "./work";
 import type { WireAlternative, WireDispense, WireDispenseLine, WireQuote } from "../../lib/pharmacy-api";
 
 const navigate = vi.fn();
@@ -59,8 +60,30 @@ const base = (alts: WireAlternative[], written: WireQuote | null = quote(970, { 
  * says what it saves and that the checks passed, and gives one tap to give it.
  */
 describe("the counter agent on a ticket", () => {
-  beforeEach(() => { setToken("t"); navigate.mockReset(); resetDeskLog(); });
-  afterEach(() => { vi.unstubAllGlobals(); });
+  /**
+   * ═══ THE CLOCK IS PINNED, AND MAIN WENT RED AT IST MIDNIGHT FOR WANT OF IT ═══
+   *
+   * `closed.tsx` labels a ticket RELATIVE TO TODAY — `ticketLabel(dispenseNo, istToday())` — because
+   * the serial restarts each day and yesterday's P-4 must not stand on one line with today's (PD,
+   * 20-Sep). So "P-4 closed 11:17" is only what this screen says while today IS 2026-09-20: from
+   * 00:00 IST on the 21st the same fixture renders "P-4 · 20 Sept", and the assertion below became
+   * false at 18:30 UTC with nobody touching the code. Measured: CI on an unrelated PR, 18:36 UTC.
+   *
+   * Pinned to MIDDAY IST — far from both the UTC and the IST rollover — with `vi.setSystemTime` and
+   * no fake timers, which is the pattern `counter-figures`, `my-day`, `billing-office`,
+   * `opd-appointments` and `alerts-bell` already carry for exactly this reason. The date-naming
+   * behaviour itself is not weakened by this: it is pinned by `ticketLabel`'s own unit rows and by
+   * the cross-midnight test below, both of which name their two days explicitly.
+   */
+  const NOON_IST = "2026-09-20T06:30:00.000Z"; // 12:00 IST on 2026-09-20, the day these fixtures are dated
+
+  beforeEach(() => { setToken("t"); navigate.mockReset(); resetDeskLog(); vi.setSystemTime(new Date(NOON_IST)); });
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  /** The guard on the premise: the pinned instant IS the day the assertions below are written for. */
+  it("the frozen clock is the day this ticket was raised", () => {
+    expect(istToday()).toBe("2026-09-20");
+  });
 
   it("names ONE offer with the shelf, the price and the saving, and its tap opens the sheet on that medicine", async () => {
     mockRoutes(base([alt({ medicineId: "m-dear", brandName: "Pantocid 40", quote: quote(410) }), alt()]));
