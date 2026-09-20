@@ -1393,6 +1393,16 @@ colleague's shift. Confidential patients are aliased against the reader's own cl
 department read writes `day_report.patients_listed` naming the reader, the day, the department, the
 format and the row count before the rows leave.
 
+**The roster (Plan 20 T1, owner's "let's build" of
+2026-09-20).** `medical_superintendent` gains `roster.periods.manage`, `roster.periods.publish` and
+`roster.read`; `owner` gains `roster.read`. A roster is a DRAFT until somebody publishes it, and
+publishing is its own string because the person who drafts a unit's month (its senior resident) is
+not the person who answers for it (its head): only a published roster is ever read by anything that
+decides who to wake, a re-publish is a new version that supersedes the old one in the same
+transaction, and nothing published is edited or deleted. Until phase 20-U gives the unit's own
+people their strings, a roster exists only because the medical superintendent made it. The owner
+reads; the owner does not make the rota.
+
 **Two approval types, registered by `seed:ot` in the deploy path.** `ot_definition_publish`
 (approver `medical_superintendent`, 1,440-minute SLA) gates publishing any of the four governed
 definitions — the engine's own requester-vs-approver segregation then forces two distinct humans, and

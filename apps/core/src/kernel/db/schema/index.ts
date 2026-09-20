@@ -97,3 +97,7 @@ export * from "./aerb";
 // `auth.users` (who asked). It knows nothing of opd or billing: the counter, the vitals bay and the
 // cashier all enqueue through the same kernel, for the reason `notify` is a kernel and not a module.
 export * from "./printing";
+// PLAN 20 T1 — the roster. `roster.ts` reads `auth.users`, `auth.roles` and `resources` and nothing
+// of any department's: it is its own MANIFEST for the reason `aerb` is (D1) — the duty manager, the
+// on-call radiologist, the lab's critical ladder and every clinical unit owe rows to the same tables.
+export * from "./roster";
