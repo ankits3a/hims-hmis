@@ -4,6 +4,18 @@
 rulings are RU-1…RU-6 in `brainstorms/2026-09-20-roster-units/00-BRAINSTORM.md` §8A.**
 **Screens are gated on the owner signing off the design boards (§5). The substrate is not.**
 
+> **2026-09-20, later — READ THIS FIRST.** The six-lens stress test
+> (`brainstorms/2026-09-20-roster-units/01-STRESS-TEST.md`) found four structural defects in T1 and
+> in this document's §7. **§7 below is SUPERSEDED by
+> `plans/2026-09-20-roster-backbone-IMPLEMENTATION-PLAN.md`** (executed via its EXECUTE-PROMPT). §2,
+> §6 and §8 remain the reference. Owner rulings the same afternoon: office timings **09:00–17:30**;
+> the default night rule is the planner's (pooled at department level — stress test S4); the four
+> boards are approved "as of now"; units **5/5/3/3/4/2/2/1/1 + Respiratory Medicine as its own
+> one-unit department** (DECIDED under "follow the standard protocol of top teaching hospitals");
+> the three messaging providers come later. Two of §2's citations could not be re-confirmed by the
+> legal reviewer and are marked unverified: the AEBAS OM of 03.09.2026 and the PGMSR amendment of
+> 20.02.2026 — nothing in the design rests on either.
+
 This is the second half of Plan 20. Plan 20 (`2026-09-06-phase1-20-workforce-roster.md`) stands as
 authored — periods, the publication gate, `whoIsOn(role, at)` behind a flag with the static answer
 as fallback — with the one amendment in §7 T1. This document adds what a **medical college** needs
