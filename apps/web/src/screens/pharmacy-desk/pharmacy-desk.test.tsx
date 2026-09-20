@@ -275,6 +275,19 @@ describe("PharmacyDesk (PD-3)", () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
+  it("each queue row opens its ticket in a tab without taking the desk off the line", async () => {
+    const open = vi.fn();
+    vi.stubGlobal("open", open);
+    mockRoutes(base({ "POST /api/pharmacy/dispenses": { status: 201, body: ticket("claimed") } }));
+    renderWithProviders(<PharmacyDesk ticketId={null} />);
+    await screen.findByTestId("queue-row-d1");
+    await userEvent.click(screen.getByTestId("queue-row-d1-tab"));
+    await waitFor(() => expect(open).toHaveBeenCalledWith("/pharmacy/desk/d1", "_blank", "noopener"));
+    expect(navigate).not.toHaveBeenCalled(); // this tab stays on the line
+    // a ticket somebody else holds offers neither act
+    expect(screen.queryByTestId("queue-row-d2-tab")).toBeNull();
+  });
+
   it("a queue row names the drugs on the ticket, so the line can be read before it is taken", async () => {
     mockRoutes(base({ "GET /api/pharmacy/queue": { status: 200, body: { items: [row("d7", "Imran Sheikh", { drugs: ["Augmentin 625", "Pan 40", "Alzolam 0.5"] })] } } }));
     renderWithProviders(<PharmacyDesk ticketId={null} />);
