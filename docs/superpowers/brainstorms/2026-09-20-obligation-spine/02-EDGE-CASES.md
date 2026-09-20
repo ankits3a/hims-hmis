@@ -67,7 +67,7 @@ here; **OWNER** rows are money, procurement or law.
 | G6 | Hand over to dodge. | Handover keeps the first holder's respond-clock record; handover counts per person surface in the digest. |
 | G7 | Sensor returns to range and the obligation closes with no human act. | Auto-close is recorded as closed-by-sensor; the human's seen/owned record stands. |
 | G8 | Batch-approve in the Can wait view without reading. | Same reading-time signal as G4; batch is limited to policy-eligible kinds. |
-| G9 | The ledger used for punishment, then gamed (handoff R-l). | First quarter: coaching-only, visible to the person and their supervisor. No payroll or attendance link. Contractor supervisors' records are visible to the facility manager; export to the contracting firm is OWNER (contract). |
+| G9 | The ledger used for punishment, then gamed (handoff R-l). | First quarter: coaching-only, visible to the person and their supervisor. No payroll or attendance link. Contractor supervisors' records are visible to the facility manager; export to the contracting firm is permitted (RO-5). |
 
 ## 5. Recursion, storms, fan-out
 
@@ -98,6 +98,7 @@ here; **OWNER** rows are money, procurement or law.
 | N3 | Payroll and attendance consequences. | Not in phase one (G9). |
 | N4 | Multi-campus. | Not in phase one; the addressee model has a department scope column so it can come. |
 
-**Owner rulings still open (money, procurement, law):** the three providers and their order · DND
-consent wording · export of contractor records to the contracting firm · policy ceilings per type
-(R2, already owed) · the first N days for the ageing sweep.
+**Ruled later on 2026-09-20:** in-app + Chrome push first, DLT SMS and WhatsApp API purchases started
+(RO-4) · contractor records MAY be exported to the firm (RO-5; G9 amended) · R2 ceilings and the
+sweep interval delegated and decided in the phase doc (RO-6, RO-7). **Still open:** voice/IVR
+provider · DND consent wording with counsel.

@@ -24,9 +24,44 @@ Every seat in the building, gate guard to owner, and the AI agents beside them.
 | **RO-1** | **all support-service classes carry obligations** | 2026-09-20 |
 | **RO-2** | **contractor supervisors sit on the same delay ledger as employees** | 2026-09-20 |
 | **RO-3** | **English is the primary language, Hindi next** | 2026-09-20 |
+| **RO-4** | **First build: in-app notifications and approvals, plus Chrome (Web Push) notifications.** DLT SMS registration and the WhatsApp API purchase are STARTED by the owner. | 2026-09-20 |
+| **RO-5** | **Contractor delay records may be exported to the contracting firm.** | 2026-09-20 |
+| **RO-6** | **R2 ceilings: follow top-hospital standards or the most logical answer** (delegated; the table below is the answer, reversible same-day per D14). | 2026-09-20 |
+| **RO-7** | **The ageing sweep's interval: whatever is most logical** (delegated; O14 below). | 2026-09-20 |
 
-**Still owed:** provider purchases and order (WhatsApp BSP · DLT SMS · voice/IVR) · DND consent
-wording · export of contractor records to the firm · R2 ceilings · the ageing sweep's N.
+**Still owed:** voice/IVR provider (only after the first two are live) · DND consent wording with
+counsel · the date the DLT header and WhatsApp templates are approved (gates T4's external legs).
+
+## R2 · Standing-policy ceilings, per type (RO-6)
+
+Bands are the standard Indian corporate-hospital delegation of authority: a counter grant is small
+and same-day reversible; anything definitional, identity-bearing or fraud-class never auto-grants.
+Every policy row also carries: **self-pay only** (no TPA, no credit accounts), **first request of
+the day for this patient and this payee** (the row's `cumulativePatientPaise` / `cumulativePayeePaise`
+snapshots make this a free check), author = owner, weekly digest (T11), quarterly review.
+"Never" means the type has no policy row at all.
+
+| type | auto-grant ceiling | why this number |
+|---|---|---|
+| `billing_discount` | ≤ 5 % of the bill **and** ≤ ₹1,000 | the front-desk band at corporate hospitals is 5 %; a rupee cap stops 5 % of a large IPD bill |
+| `billing_clearance_discount` | ≤ ₹500 | discharge rounding; anything larger is a write-off decision |
+| `billing_refund` | ≤ ₹2,000, **and** only for a service not yet rendered, to the original tender | an unrendered service refunded the way it was paid is bookkeeping; cash-out of a rendered service is a control |
+| `billing_credit_extension` | **never** | credit is money at risk; a human always |
+| `billing_variance` | short or excess ≤ ₹100 per session, with the cashier's note | the universal cash-drawer tolerance; above it a manager reads the session |
+| `lab_unpaid_report_release` | balance ≤ ₹200 | a balance that costs more to chase than it is worth should not hold a report |
+| `membership_honour_unknown_card` | **never** | identity control |
+| `materials_near_expiry_acceptance` | remaining shelf life ≥ 6 months **and** line value ≤ ₹10,000 | the standard receiving rule; below 6 months a human, above ₹10,000 a human |
+| `materials_stock_adjustment` | \|variance\| ≤ 0.5 % of the item's counted value **and** ≤ ₹2,000 per item, **never** narcotic or cold-chain | count noise vs shrinkage |
+| `materials_vendor_bank_change` | **never**; sequential dual control (O15) | fraud class |
+| `tariff_revision` | **never** | blast radius: every bill |
+| `radiology_definition_publish` | **never** | definitional; PCPNDT and AERB policy inside |
+| `ot_definition_publish` | **never** | definitional |
+| `ot_deposit_shortfall_exception` | shortfall ≤ 10 % of the deposit **and** ≤ ₹5,000 | the list must not stall for a rounding gap; a real shortfall is the owner's (R3) |
+| `patient_merge` | **never**; sequential dual control (O15) | irreversible identity |
+| `patient_unmerge` | **never** | irreversible identity |
+
+The M-6 digest (T11) is what moves these numbers: a type granted ≥ 98 % of the time with no
+rejection in 90 days is a candidate to raise; a type with rejections is never raised.
 
 ## DECIDED (standard answers, recorded, overturnable)
 
@@ -45,7 +80,7 @@ wording · export of contractor records to the firm · R2 ceilings · the ageing
 | O11 | **Two chains:** administrative (role → parent, department-scoped column, seeded global) and clinical unit (JR → SR → faculty → unit head → HOD → MS, from Plan 20-U postings). Kind picks the chain. Both end at MS, then owner. Validated as a DAG. |
 | O12 | **The owner is not the universal last rung.** Q1 at 200 % and a daily digest; MS absorbs the rest. |
 | O13 | **Desk-close compresses the respond clock; the accountability clock is working minutes; a blocking signal is live** ("patient left" drops the lane with the reason). D3 amended by that clause. |
-| O14 | **Ageing sweep = same engine, second anchor** (time since filing), no last rung, accumulates on the owner's rail. |
+| O14 | **Ageing sweep = same engine, second anchor** (time since filing), no last rung, accumulates on the owner's rail. **Intervals (RO-7):** first surfacing at **3 working days** open, then **every 7 days**; the weekly owner digest lists every Q2 item older than 7 days with its age; the MS's rail shows every item older than 3 working days. Compliance-calendar items (T10) use lead times of 30 / 14 / 7 / 1 days instead. |
 | O15 | **Dual control is sequential maker-checker**, second approver ≠ first ≠ requester. Vendor bank change, patient merge, tariff revision on day one. |
 | O16 | **Sensors, agents and external parties file** the way a cashier files; filer kind is on the card. |
 | O17 | **Segregation of duties:** nobody decides what they filed. |
@@ -73,8 +108,10 @@ tasks touch shared files and go alone. Every task lists the pins it moves and th
 | **T11** | **M-6 digest + sequential dual control** (O15) | approvals module | yes: `approval_second_decisions` | T5 | second approver = first or requester refused |
 | **T12** | **Voice / IVR adapter + WhatsApp buttons with one-time tokens** (O9) | `kernel/notify` | yes: `channel_action_tokens` | T4, purchases | replayed token refused; SMS reply carries ack only |
 
-**Order.** T2 and T3 first, in parallel, on their own lanes: filing tells somebody, and somebody can
-say "seen". T1 next and alone. Then T5 → T6 and T7 in parallel → T8 → T9 (after #264) → T10, T11,
+**Order (RO-4).** T2 and T3 first, in parallel, on their own lanes: filing tells somebody, and
+somebody can say "seen". **T4's Web Push leg follows immediately** (service worker, subscription
+table, Chrome permission state on the user's settings page); its WhatsApp and SMS legs wait for the
+DLT header and the BSP templates the owner has started. T1 next and alone. Then T5 → T6 and T7 in parallel → T8 → T9 (after #264) → T10, T11,
 T12 as providers arrive. T4's push adapter can start any time after T3; its WhatsApp / SMS legs
 wait for the purchases.
 
