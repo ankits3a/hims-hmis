@@ -138,21 +138,21 @@ Visible to anyone who can decide anything; absent for everyone else.
 | D14 | **Auto-grant is reversible for the rest of the working day** by any human who could have decided it, without a fresh approval. |
 | D15 | **Agent-filed requests are visibly agent-filed** on the card ("asked by the pharmacy agent, for Dr Sharma"). An approver always knows whether a human or a machine assembled the request. |
 
-## OPEN — owner rulings owed (money, authority and law; CLAUDE.md reserves these)
+## Owner rulings (2026-09-20)
 
-- **R1 · May the `owner` role read and decide approvals?** Granting `approvals.requests.read` +
-  `.decide` is what puts the buttons on the owner's screen. It also shows patient names in every
-  approval — and the `owner` role deliberately excludes `patients.read` today on DPDP
-  minimum-necessary grounds (a recorded 2026-08-26 ruling). The alternatives are: grant both
-  (simplest, and the owner sees names); grant them only for money types; or leave the owner out of the
-  chain and have the medical superintendent and billing manager decide, with the owner reading a
-  digest.
-- **R2 · Standing policy (L7) — yes or no, and at what ceiling?** Whether the hospital pre-authorises
-  routine approvals below a limit at all, and what the limit is per type. Pure delegation of financial
-  authority.
-- **R3 · Who catches an approval nobody answered?** The engine's default last rung is
-  `duty_manager` (`workflow/timers.ts`, `DUTY_MANAGER_ROLE`). For money the owner may want the last
-  rung to be himself.
+- **R1 · The `owner` role gains `approvals.requests.read` AND `approvals.requests.decide`, for every
+  type.** The owner sees patient names in approvals. This narrows the 2026-08-26 minimum-necessary
+  ruling that kept `patients.read` off this role, and the narrowing is deliberate and recorded here:
+  a person who is the last rung of the escalation ladder has to be able to read the thing they are
+  the last rung for. `patients.read` itself is NOT granted — the approval carries its own subject.
+- **R2 · Standing policy ships, with a conservative first ceiling per type**, chosen against the
+  standard Indian corporate-hospital delegation-of-authority bands, plus the weekly auto-grant
+  digest. The owner raises the ceiling after watching the digest; the numbers are a phase-doc table
+  before they are code, and every one of them is reversible same-day (D14).
+- **R3 · The ladder's last rung is the `owner` role for the MONEY types** — `billing_discount`,
+  `billing_clearance_discount`, `billing_credit_extension`, `billing_refund`, `billing_variance`,
+  `ot_deposit_exception` — and `duty_manager` for the clinical and definitional ones. R1 is what
+  makes R3 reachable: a last rung that cannot open the request is not a rung.
 
 ## Not settled here
 

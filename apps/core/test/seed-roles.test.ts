@@ -5,6 +5,14 @@ import type { Db } from "../src/kernel/db/client";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
 import { OPD_ROLE_KEYS } from "../src/modules/opd/config";
+import { BILLING_APPROVAL_TYPES } from "../src/modules/billing/approval-types";
+import { LAB_APPROVAL_TYPES } from "../src/modules/lab/approval-types";
+import { MATERIALS_APPROVAL_TYPES } from "../src/modules/materials/approval-types";
+import { MEMBERSHIP_APPROVAL_TYPES } from "../src/modules/membership/approval-types";
+import { OT_APPROVAL_TYPES } from "../src/modules/ot/approval-types";
+import { PATIENT_APPROVAL_TYPES } from "../src/modules/patients/approval-types";
+import { RADIOLOGY_APPROVAL_TYPES } from "../src/modules/radiology/approval-types";
+import { TARIFF_APPROVAL_TYPES } from "../src/modules/tariff/approval-types";
 import {
   GRANTED_BY_OTHER_SEEDS,
   LOCAL_ROLE_TITLES,
@@ -695,6 +703,23 @@ const ROSTER_PAIRS: readonly string[] = [
   "medical_superintendent/roster.periods.publish",
   "medical_superintendent/roster.read",
   "owner/roster.read",
+/** The README prose line authorising the 2026-09-20 approvals-spine ruling R1. Quoted, not paraphrased. */
+const APPROVALS_SPINE_README_PROSE =
+  "The approvals spine (owner ruling R1,\n2026-09-20)";
+
+/**
+ * THE APPROVALS SPINE, R1 — the owner may now answer an approval, not only define one. The role
+ * held `approvals.types.manage` and neither `approvals.requests.read` nor `.decide`, which made
+ * `ot_deposit_exception` — whose `approverRole` IS `owner` (modules/ot/approval-types.ts) — a type
+ * only the owner could grant and the owner could not open. A kernel string granted to an
+ * administrative role belongs to neither README table by construction, exactly as
+ * `approvals.types.manage` has since Group A.
+ */
+const APPROVALS_SPINE_PAIRS: readonly string[] = [
+  "materials_head/approvals.requests.decide",
+  "materials_head/approvals.requests.read",
+  "owner/approvals.requests.decide",
+  "owner/approvals.requests.read",
 ];
 
 /** All TWENTY non-table sets. A model row outside this union fails V3's last leg. */
@@ -766,6 +791,7 @@ const NON_TABLE_PAIRS: readonly string[] = [
   ...HISTORY_HORIZON_PAIRS,
   ...OPD_DAY_REPORT_PAIRS,
   ...ROSTER_PAIRS,
+  ...APPROVALS_SPINE_PAIRS,
 ];
 
 type GrantTable = {
@@ -1215,7 +1241,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // PLAN 14 T2 / DD11 — the two stores roles. `pharmacy` moved 5 → 8 in the same commit (the
       // three read/QC strings), which is why the grant total moves by twenty and not by seventeen.
       // 14c first slice: the head +2 (counts.manage, counts.perform), the storekeeper +1 (counts.perform).
-      materials_head: 13,
+      materials_head: 15, // approvals spine: +2, approvals.requests.read and .decide — it is the approverRole on materials_near_expiry_acceptance and could not open it
       storekeeper: 7,
       // PLAN 15 T2 / DD14 — the six OT roles. `medical_superintendent` moved 12 → 14 and
       // `billing_manager` 9 → 10 in the same commit (the three `OT_PAIRS`), which is why the grant
@@ -1829,6 +1855,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(OPD_DAY_REPORT_README_PROSE);
     // Phase R's own sentence.
     expect(readme).toContain(ROSTER_README_PROSE);
+    expect(readme).toContain(APPROVALS_SPINE_README_PROSE);
     // `vitals_desk` deliberately does NOT get `patients.register`: registration is the desk's
     // work and vitals record against a patient who already exists.
     expect(nonTable).not.toContain("vitals_desk/patients.register");
@@ -2095,5 +2122,69 @@ describe("seed:roles — executed against a database (V5)", () => {
     const one = await seedRoles(db);
     expect(one.warnings).toHaveLength(1);
     expect(one.ready).toBe(one.problems.length === 0);
+  });
+});
+
+/**
+ * ═══ THE APPROVER-REACHABILITY INVARIANT — approvals spine, 2026-09-20 ═══
+ *
+ * WHY THIS EXISTS. The owner opened `/approvals` and reported that it had no action button. It had:
+ * the `owner` role held `approvals.types.manage` and neither `approvals.requests.read` nor
+ * `.decide`, so the card rendered "you cannot decide this" where the two buttons go. Measuring it
+ * turned up a SECOND instance nobody had reported, because its symptom is silence rather than a
+ * refusal: `materials_head` is the `approverRole` on all three materials types and held neither
+ * string either, which made a stock adjustment, a near-expiry acceptance and a VENDOR BANK CHANGE
+ * unanswerable by anybody at all.
+ *
+ * Two of the four approver roles in the tree were broken, covering four of the sixteen types, and
+ * the reachability census already in this file could not see it: `approvals.requests.decide` WAS
+ * held — by `billing_manager` and `medical_superintendent` — so V2 was satisfied while the types
+ * routed to the other two roles sat in a queue no holder could open. A permission being held by
+ * SOMEBODY is a weaker claim than every approver being able to answer what is routed to them, and
+ * this is the assertion that says the stronger thing.
+ *
+ * Naming a role as a type's `approverRole` IS the grant of that decision. This invariant only
+ * insists the model makes that grant reachable, so the next type that names a role which cannot
+ * answer it fails here rather than shipping a queue nobody can see.
+ */
+describe("approvals — every approver role can answer what is routed to it", () => {
+  const ALL_APPROVAL_TYPES = [
+    ...BILLING_APPROVAL_TYPES, ...LAB_APPROVAL_TYPES, ...MATERIALS_APPROVAL_TYPES,
+    ...MEMBERSHIP_APPROVAL_TYPES, ...OT_APPROVAL_TYPES, ...PATIENT_APPROVAL_TYPES,
+    ...RADIOLOGY_APPROVAL_TYPES, ...TARIFF_APPROVAL_TYPES,
+  ];
+
+  /** The pin that makes an empty sweep visible: a zero-length list would pass every loop below. */
+  it("the tree registers sixteen approval types across eight modules", () => {
+    expect(ALL_APPROVAL_TYPES).toHaveLength(16);
+    expect(new Set(ALL_APPROVAL_TYPES.map((t) => t.typeKey)).size).toBe(16);
+  });
+
+  it("every approverRole is a role the model defines", () => {
+    const modelled = new Set(ROLE_MODEL.map((r) => r.roleKey));
+    for (const t of ALL_APPROVAL_TYPES) {
+      expect(`${t.typeKey} -> ${t.approverRole}`).toBe(
+        modelled.has(t.approverRole) ? `${t.typeKey} -> ${t.approverRole}` : `${t.typeKey} -> <no such role in ROLE_MODEL>`,
+      );
+    }
+  });
+
+  it("every approverRole holds BOTH approvals.requests.read and .decide", () => {
+    const grants = new Map(ROLE_MODEL.map((r) => [r.roleKey, new Set<string>(r.permissions)]));
+    const unanswerable = ALL_APPROVAL_TYPES.filter((t) => {
+      const held = grants.get(t.approverRole);
+      return held === undefined
+        || !held.has("approvals.requests.read")
+        || !held.has("approvals.requests.decide");
+    }).map((t) => `${t.typeKey} (${t.approverRole})`);
+    // Named rather than counted: a failure has to say WHICH type nobody can answer.
+    expect(unanswerable).toEqual([]);
+  });
+
+  /** The four roles the tree actually routes to, pinned so a fifth arrives with a decision. */
+  it("routes to exactly four approver roles", () => {
+    expect([...new Set(ALL_APPROVAL_TYPES.map((t) => t.approverRole))].sort()).toEqual([
+      "billing_manager", "materials_head", "medical_superintendent", "owner",
+    ]);
   });
 });
