@@ -8,7 +8,7 @@ import { fetchCurrentSession, openCashSession, billingErrorMessage } from "../li
 import { useRealtime } from "../lib/realtime";
 import { useAuth } from "../lib/auth";
 import { istClock, istDateLabel } from "./desk-one/model";
-import { OpdDayReportPanel } from "../components/opd-day-report-panel";
+import { OpdReportPanel } from "../components/opd-report-panel";
 import "../styles/paper-pine.css";
 import "./dashboard.css";
 
@@ -432,7 +432,7 @@ export function Desk(): React.ReactElement {
         THE OPD DAY REPORT (owner, 2026-09-19): *"an option in the dashboard to download the day
         report"*. Shown to whoever may pull it; the server refuses everyone else regardless.
       */}
-      {can("opd.reports.read") ? <OpdDayReportPanel /> : null}
+      {can("opd.reports.read") ? <OpdReportPanel /> : null}
 
       {!hasSchemeCards ? null : (
         <div className="band">

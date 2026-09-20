@@ -36,3 +36,32 @@ request — and never built the hospital-by-department view. This lane builds it
 - No new index: `opd_encounters` has none on `service_date` alone, so the day query scans. At this
   hospital's volume that is milliseconds; measure before adding one (migrations are one per PR).
 - No scheduled/e-mailed report. Asked for as a download; a nightly mail is a separate request.
+
+---
+
+# Periods — owner request 2026-09-20
+
+> *"now that you have got the structure right, let the user download the report of "This Week" (week
+> starts on Monday - Saturday) and "This Month" as well along with Today and Yesterday."*
+
+## Owner ruling
+
+- **A week is MONDAY TO SATURDAY.** Sunday is not part of a week.
+
+## DECIDED
+
+| # | Decision |
+|---|---|
+| D10 | **The server owns the period.** The caller asks for `period=day\|week\|month` on a `date` anchor; `rangeFor` turns that into days and the sheet prints the days it counted. A client that computed `from`/`to` would be a second definition of the week, and the first correction would land in only one of them. |
+| D11 | **A period that contains today ends today.** "This week" on a Wednesday covers Monday to Wednesday, and the sheet says so, rather than heading three days of data "Mon–Sat". |
+| D12 | **A week's Sunday is named, not dropped.** When the Sunday after a week's Saturday carried consultations, the screen and the sheet say how many and that a week runs Monday to Saturday. Otherwise a weekly total is quietly short of the month and both numbers lose their credit. Weeks only: a month covers its own Sundays. |
+| D13 | **"This month" is the 1st to today** (month-to-date), not the whole calendar month. |
+| D14 | **Over more than one day the patient list carries a Date column**; over a single day it would be a column of one repeated value. The CSV always carries it — a spreadsheet is data, not a page. |
+| D15 | **The routes are `/opd/reports/consultations…`**, renamed from `…/day` on the day periods arrived. One day old, one consumer, and a route called `day` that serves a month is a lie a future reader has to discover. |
+
+## Not done here
+
+- No custom "from/to" range picker. Four named periods and a single-day picker cover what was asked;
+  an arbitrary range is a different control and a different conversation.
+- The month sheet for a department is long by construction (one row per consultation). Nothing is
+  truncated — a register that silently stopped at N rows would be worse than a long PDF.

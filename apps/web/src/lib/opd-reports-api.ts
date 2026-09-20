@@ -2,12 +2,16 @@ import { api, apiDownload } from "./api";
 import type { WireRenderedDocument } from "./print-api";
 
 /**
- * THE OPD DAY REPORT — the wire shapes of `/opd/reports/day*` (apps/core/src/modules/opd/day-report.ts).
+ * THE OPD REPORT — the wire shapes of `/opd/reports/consultations*`
+ * (apps/core/src/modules/opd/report.ts).
  *
  * Every figure is the server's: the screen, the CSV and the printable sheet are three renderings of
- * one load, so nothing here adds, splits or re-derives a count.
+ * one load, so nothing here adds, splits or re-derives a count. **The PERIOD is the server's too**:
+ * this asks for `day`, `week` or `month` on an anchor day and is told which days were counted. A week
+ * is Monday to Saturday (owner, 2026-09-20) and that rule lives where the sheet is printed, not here.
  */
 export type PatientType = "new" | "revisit" | "renewal";
+export type ReportPeriod = "day" | "week" | "month";
 
 export type DayCounts = {
   booked: number;
@@ -20,8 +24,11 @@ export type DayCounts = {
 
 export type DayDepartment = DayCounts & { departmentId: string; code: string; name: string };
 
-export type OpdDayReport = {
-  date: string;
+export type ExcludedSunday = { date: string; consulted: number };
+
+export type ReportRange = { period: ReportPeriod; anchor: string; from: string; to: string };
+
+export type OpdReport = ReportRange & {
   generatedAt: string;
   provisional: boolean;
   hospital: { name: string; addressLines: string[] };
@@ -29,10 +36,12 @@ export type OpdDayReport = {
   totals: DayCounts;
   patientsConsulted: number;
   newPatients: number;
+  excludedSunday: ExcludedSunday | null;
 };
 
 export type DayPatientRow = {
   visitNo: string;
+  date: string;
   time: string;
   name: string;
   restricted: boolean;
@@ -44,32 +53,42 @@ export type DayPatientRow = {
   doctor: string;
 };
 
-export type OpdDepartmentDayReport = {
-  date: string;
+export type OpdDepartmentReport = ReportRange & {
   generatedAt: string;
   provisional: boolean;
   hospital: { name: string; addressLines: string[] };
   department: DayDepartment;
   rows: DayPatientRow[];
+  excludedSunday: ExcludedSunday | null;
 };
 
-const q = (date: string): string => `?date=${encodeURIComponent(date)}`;
-const dept = (id: string): string => `/opd/reports/day/departments/${encodeURIComponent(id)}`;
+/** What the screen holds while the reader chooses: a named period on a day. */
+export type Selection = { period: ReportPeriod; date: string };
 
-export function fetchDayReport(date: string): Promise<OpdDayReport> {
-  return api("GET", `/opd/reports/day${q(date)}`);
+const q = (sel: Selection): string => `?period=${sel.period}&date=${encodeURIComponent(sel.date)}`;
+const base = "/opd/reports/consultations";
+const dept = (id: string): string => `${base}/departments/${encodeURIComponent(id)}`;
+
+export function fetchReport(sel: Selection): Promise<OpdReport> {
+  return api("GET", `${base}${q(sel)}`);
 }
 
-export function fetchDepartmentDayReport(departmentId: string, date: string): Promise<OpdDepartmentDayReport> {
-  return api("GET", `${dept(departmentId)}${q(date)}`);
+export function fetchDepartmentReport(departmentId: string, sel: Selection): Promise<OpdDepartmentReport> {
+  return api("GET", `${dept(departmentId)}${q(sel)}`);
 }
 
-export function downloadDayReportCsv(date: string): Promise<void> {
-  return apiDownload(`/opd/reports/day/csv${q(date)}`, `OPD-Day-Report-${date}.csv`);
+/** The server names the file; this is only the fallback if the header is missing. */
+function fallbackName(sel: Selection, code?: string): string {
+  const period = sel.period === "day" ? "Day" : sel.period === "week" ? "Week" : "Month";
+  return `OPD-${period}-Report${code === undefined ? "" : `-${code}`}-${sel.date}.csv`;
 }
 
-export function downloadDepartmentCsv(departmentId: string, code: string, date: string): Promise<void> {
-  return apiDownload(`${dept(departmentId)}/csv${q(date)}`, `OPD-Day-Report-${code}-${date}.csv`);
+export function downloadReportCsv(sel: Selection): Promise<void> {
+  return apiDownload(`${base}/csv${q(sel)}`, fallbackName(sel));
+}
+
+export function downloadDepartmentCsv(departmentId: string, code: string, sel: Selection): Promise<void> {
+  return apiDownload(`${dept(departmentId)}/csv${q(sel)}`, fallbackName(sel, code));
 }
 
 /**
@@ -83,12 +102,12 @@ export function downloadDepartmentCsv(departmentId: string, code: string, date: 
  * Returns "blocked" when the browser refused the window, so the caller can say so instead of
  * leaving a button that did nothing.
  */
-export async function openReportPdf(path: "day" | { departmentId: string }, date: string): Promise<"opened" | "blocked"> {
+export async function openReportPdf(target: "report" | { departmentId: string }, sel: Selection): Promise<"opened" | "blocked"> {
   const w = window.open("", "_blank", "width=900,height=960");
   if (w === null) return "blocked";
   w.document.write(`<!doctype html><title>Preparing report…</title><p style="font:14px system-ui;padding:24px;color:#5c6f66">Preparing the report…</p>`);
   try {
-    const url = path === "day" ? `/opd/reports/day/document${q(date)}` : `${dept(path.departmentId)}/document${q(date)}`;
+    const url = target === "report" ? `${base}/document${q(sel)}` : `${dept(target.departmentId)}/document${q(sel)}`;
     const doc = await api<WireRenderedDocument>("GET", url);
     w.document.open();
     w.document.write(doc.html);

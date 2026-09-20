@@ -444,7 +444,16 @@ export const rxQrSignatureFailed = defineEvent("qr.signature_failed", MODULE, z.
  * says whether it went to a screen, a spreadsheet or a printable sheet; `rows` says how much.
  */
 export const dayReportPatientsListed = defineEvent("day_report.patients_listed", MODULE, z.object({
+  /** The day the reader anchored on — the picked day, or today for "this week"/"this month". */
   date: isoDate,
+  /**
+   * 2026-09-20 — the report grew weeks and months, so the row says which DAYS were listed. `period`
+   * defaults and `from`/`to` are optional so the rows written before this change still parse as what
+   * they were: single days, anchored on `date`.
+   */
+  period: z.enum(["day", "week", "month"]).default("day"),
+  from: isoDate.optional(),
+  to: isoDate.optional(),
   departmentId: id,
   format: z.enum(["screen", "csv", "document"]),
   rows: z.number().int().nonnegative(),

@@ -21,7 +21,7 @@ import { PatientStrip } from "./components/patient-strip";
 import { Desk } from "./screens/desk";
 import { MyDay } from "./screens/my-day";
 import { StaffReports } from "./screens/staff-reports";
-import { OpdDayReportScreen } from "./screens/opd-day-report";
+import { OpdReportScreen } from "./screens/opd-report";
 import { DeskOne } from "./screens/desk-one/desk-one";
 import { SeatShell } from "./screens/desk-one/seat-shell";
 import { CounterFigures } from "./screens/counter-figures";
@@ -588,12 +588,14 @@ const staffReportsRoute = createRoute({
 const opdDayReportRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/reports/opd-day",
-  validateSearch: (search: Record<string, unknown>): { date?: string } => ({
+  validateSearch: (search: Record<string, unknown>): { date?: string; period?: "day" | "week" | "month" } => ({
     date: typeof search.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(search.date) ? search.date : undefined,
+    period: search.period === "week" || search.period === "month" || search.period === "day" ? search.period : undefined,
   }),
   component: function OpdDayReportRoute() {
-    const { date } = opdDayReportRoute.useSearch();
-    return <OpdDayReportScreen initialDate={date} />;
+    const { date, period } = opdDayReportRoute.useSearch();
+    /* Both halves or neither: a period without its anchor would silently read as today. */
+    return <OpdReportScreen initial={date === undefined ? undefined : { period: period ?? "day", date }} />;
   },
 });
 
