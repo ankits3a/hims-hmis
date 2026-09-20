@@ -171,6 +171,30 @@ describe("the counter agent on a ticket", () => {
     expect(closed).toHaveTextContent("No Schedule H1 row was owed. Stock consumed from one batch.");
   });
 
+  it("a card the patient holds shows on the rail, and the bill says it is NOT on this bill", async () => {
+    const picked = { ...ticket, status: "picked", lines: [{ ...line, available: 200, quote: quote(320) }] };
+    mockRoutes({
+      ...base([]),
+      "GET /api/pharmacy/dispenses/d1": { status: 200, body: picked },
+      "GET /api/billing/sessions/current": { status: 200, body: { session: { id: "s1", status: "open" } } },
+      "GET /api/pharmacy/dispenses/d1/bill/preview": { status: 200, body: {
+        lines: [{ lineId: "l1", serviceName: "Pan 40 tablet", qty: 5, netPaise: 1_600 }],
+        totals: { netPayablePaise: 1_600, discountPaise: 0, cgstPaise: 38, sgstPaise: 38, roundingPaise: 0 },
+      } },
+      "GET /api/pharmacy/dispenses/d1/patient": { status: 200, body: {
+        ageYears: 58, sex: "male", visits: [], alreadyTaking: [],
+        benefits: [{ planTitle: "Arogya Plus", cardCode: "AP-4471", usable: true, validTo: "2027-06-30" }],
+        account: { outstandingPaise: 45_000, advancePaise: 0 },
+      } },
+    });
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const held = await screen.findByTestId("desk-benefits");
+    expect(held).toHaveTextContent("Arogya Plus");
+    expect(held).toHaveTextContent("owes ₹450");
+    expect(await screen.findByTestId("desk-member-note"))
+      .toHaveTextContent("Arogya Plus is on this patient's file and NOT on this bill");
+  });
+
   it("says so plainly when every equivalent is stopped by the check, and offers nothing", async () => {
     mockRoutes(base([alt({ check: { verdict: "blocked", blocks: [{ book: "allergy", about: "Pantoprazole", key: "Pantoprazole" }] } })]));
     renderWithProviders(<PharmacyDesk ticketId="d1" />);
