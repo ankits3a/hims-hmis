@@ -941,9 +941,17 @@ export async function findVisitByToken(db: Db, filter: { serviceDate: string; to
  *
  * IDEMPOTENT AND NOT RE-ASSIGNABLE: the first clerk's name and reason stand. A second call is a
  * no-op rather than an overwrite, because the audit question is who opened the door FIRST.
+ *
+ * ═══ AND THE BAY HOLDS THE SAME HANDLE IN AN EMERGENCY (OWNER RULING 2026-09-20) ═══
+ *
+ * `Db | Tx`, because `recordVitals` calls this INSIDE the save's transaction when the emergency
+ * button walks a patient through a shut fee gate: the waiver and the chart land together or not at
+ * all. Nothing else changes — same column, same first-writer-wins rule, same sentence carried to
+ * every desk — which is the point. A second mechanism for "who let this patient past the counter"
+ * would be a second answer to the audit question, and there is only one.
  */
 export async function grantFeeBypass(
-  db: Db, actor: Actor, encounterId: string, reason: string, now: Date = new Date(),
+  db: Db | Tx, actor: Actor, encounterId: string, reason: string, now: Date = new Date(),
 ): Promise<EncounterRow> {
   if (actor.type !== "user") throw new OpdError("user_actor_required", "a bypass is a person's decision");
   const trimmed = reason.trim();
