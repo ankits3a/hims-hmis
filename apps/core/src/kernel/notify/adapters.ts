@@ -1,3 +1,4 @@
+import webpush from "web-push";
 import type { AppConfig } from "../config";
 
 /**
@@ -7,13 +8,34 @@ import type { AppConfig } from "../config";
  * `notification.sent` is defined on exactly that basis (D11); `notification.delivered` has no
  * producer in this plan and arrives with the provider integration.
  */
+/**
+ * ═══ PHASE O T4 — THE UNION IS NAMED ONCE AND THE OTHER THREE PLACES IMPORT IT ═══
+ *
+ * `"whatsapp" | "sms"` was written out four times: here, in `templates.ts`'s `channels?`, in
+ * `events.ts`'s `notification.sent` enum, and as a comment on `notifications.sent_channel`.
+ * Widening it by hand in four places is the shape ledger §2.54 is about, so T4 widens it ONCE
+ * and makes the other three read this constant. The comment on `sent_channel` stays a comment,
+ * because a SQL column cannot import a TypeScript union — it is updated in the same commit.
+ */
+export const NOTIFY_CHANNELS = ["whatsapp", "sms", "web_push"] as const;
+export type NotifyChannel = (typeof NOTIFY_CHANNELS)[number];
+
 export type ChannelAdapter = {
-  channel: "whatsapp" | "sms";
+  channel: NotifyChannel;
   send(
     to: string,
     text: string,
     meta: { notificationId: string },
-  ): Promise<{ providerMessageId: string | null }>;
+  ): Promise<{
+    providerMessageId: string | null;
+    /**
+     * PHASE O T4, ADDITIVE and absent on every other channel: addresses the provider says are
+     * permanently gone (a `410`). Push is the only channel whose address the RECIPIENT can
+     * destroy, and a retry against a destroyed one fails identically for ever. The pump revokes
+     * them; it does not climb the ladder over them.
+     */
+    goneAddresses?: string[];
+  }>;
 };
 
 const LOG_BODY_CHARS = 80;
@@ -46,18 +68,153 @@ export const consoleSmsAdapter: ChannelAdapter = {
   },
 };
 
+export const consoleWebPushAdapter: ChannelAdapter = {
+  channel: "web_push",
+  async send(to, text, meta) {
+    logConsoleSend("web_push", to, text, meta.notificationId);
+    return { providerMessageId: null };
+  },
+};
+
 /**
- * Channel → adapter map for the configured `NOTIFY_PROVIDER`. The switch is EXHAUSTIVE on
- * purpose (D11): widening the `NOTIFY_PROVIDER` enum without adding a case here fails
- * compilation at the `never` assignment below, rather than shipping an unmapped provider behind
- * a silently-returned default.
+ * ═══ PHASE O T4 — WEB PUSH, THE ONE CHANNEL THAT NEEDS NO PURCHASE ═══
+ *
+ * RO-4 puts Chrome push first precisely because it is the only loud channel the hospital can
+ * switch on today: no DLT header, no BSP template approval, no per-message cost. The other two
+ * rungs stay on the console sink until those land (§8).
+ *
+ * ═══ `to` IS A SUBSCRIPTION, NOT A NUMBER ═══
+ *
+ * Every other channel addresses a person by one string that means the same thing everywhere. A
+ * push endpoint is a per-BROWSER URL plus two keys, so the pump packs the triple into `to` as
+ * JSON and this adapter unpacks it. That keeps `ChannelAdapter` one shape across three channels
+ * rather than making the pump branch on which kind of address it is holding.
+ *
+ * ═══ A 410 IS NOT A FAILURE, IT IS A FACT ═══
+ *
+ * `410 Gone` (and `404`) mean the browser threw the subscription away — the person cleared site
+ * data, or reinstalled. Retrying it is pointless for ever. The adapter reports it as a distinct
+ * error the pump's caller recognises, so the row is REVOKED rather than climbed against.
+ */
+export class PushSubscriptionGoneError extends Error {
+  constructor(readonly endpoint: string) {
+    super(`push subscription gone: ${endpoint}`);
+    this.name = "PushSubscriptionGoneError";
+  }
+}
+
+export type PushAddress = { endpoint: string; p256dh: string; auth: string };
+
+/**
+ * The pump packs a person's LIVE SUBSCRIPTIONS into `to`; this is the only place either side
+ * knows the shape. A list rather than one address because a person is a set of browsers.
+ */
+export function encodePushAddresses(subs: readonly PushAddress[]): string {
+  return JSON.stringify(subs);
+}
+
+function isPushAddress(v: unknown): v is PushAddress {
+  return typeof v === "object" && v !== null
+    && typeof (v as PushAddress).endpoint === "string"
+    && typeof (v as PushAddress).p256dh === "string"
+    && typeof (v as PushAddress).auth === "string";
+}
+
+export function decodePushAddresses(to: string): PushAddress[] {
+  const parsed: unknown = JSON.parse(to);
+  if (!Array.isArray(parsed) || parsed.length === 0 || !parsed.every(isPushAddress)) {
+    throw new Error("decodePushAddresses: `to` is not a non-empty list of encoded push subscriptions");
+  }
+  return parsed;
+}
+
+const PUSH_GONE_STATUS = new Set([404, 410]);
+
+export function webPushAdapter(vapid: { publicKey: string; privateKey: string; subject: string }): ChannelAdapter {
+  return {
+    channel: "web_push",
+    async send(to, text) {
+      const subs = decodePushAddresses(to);
+      const gone: string[] = [];
+      let delivered = 0;
+      let lastError: unknown = null;
+      let providerMessageId: string | null = null;
+
+      for (const sub of subs) {
+        try {
+          const res = await webpush.sendNotification(
+            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+            // The service worker reads `title` and `link` and renders nothing else. GC6 and
+            // R10: what crosses this wire is a kind, a lane, minutes and a link — never a
+            // patient, never a staff health fact, never a rupee amount.
+            text,
+            { vapidDetails: { subject: vapid.subject, publicKey: vapid.publicKey, privateKey: vapid.privateKey } },
+          );
+          delivered += 1;
+          providerMessageId ??= res.headers?.location ?? null;
+        } catch (err) {
+          const status = (err as { statusCode?: number }).statusCode;
+          if (status !== undefined && PUSH_GONE_STATUS.has(status)) {
+            gone.push(sub.endpoint);
+            continue;
+          }
+          lastError = err;
+        }
+      }
+
+      /**
+       * ONE DELIVERY IS A DELIVERY. A doctor whose desktop subscription is dead and whose phone
+       * rang has been reached, and climbing to WhatsApp over that would be the second message
+       * about one thing that R9's budget exists to prevent. Only when NOTHING landed does this
+       * become a failure the ladder may climb — and if everything that failed was `gone`, the
+       * failure is "this person has no working browser", not "the push service is down".
+       */
+      if (delivered === 0) {
+        if (lastError !== null) throw lastError;
+        throw new PushSubscriptionGoneError(gone.join(", "));
+      }
+      return { providerMessageId, goneAddresses: gone };
+    },
+  };
+}
+
+/**
+ * Channel → adapter map for the configured providers. Both switches are EXHAUSTIVE on purpose
+ * (D11): widening either enum without adding a case fails compilation at the `never` assignment
+ * rather than shipping an unmapped provider behind a silently-returned default.
+ *
+ * TWO PROVIDER KNOBS, NOT ONE. `NOTIFY_PROVIDER` gates WhatsApp and SMS, which are bought
+ * together and arrive together; `NOTIFY_PUSH_PROVIDER` gates push, which needs nothing bought
+ * and can be live while the other two are still on the console sink. One knob would have forced
+ * the hospital to wait for the purchases before turning on the channel RO-4 asked for first.
  */
 export function adaptersFor(
-  cfg: Pick<AppConfig, "notifyProvider">,
+  cfg: Pick<AppConfig, "notifyProvider" | "notifyPushProvider" | "webPushVapid">,
 ): Record<ChannelAdapter["channel"], ChannelAdapter> {
+  let push: ChannelAdapter;
+  switch (cfg.notifyPushProvider) {
+    case "console":
+      push = consoleWebPushAdapter;
+      break;
+    case "webpush": {
+      const vapid = cfg.webPushVapid;
+      if (vapid === null) {
+        // Unreachable through `loadConfig`, which refuses this combination at boot. Kept
+        // because `adaptersFor` takes a structural Pick and a test can hand it anything.
+        throw new Error("adaptersFor: NOTIFY_PUSH_PROVIDER=webpush needs the three VAPID keys");
+      }
+      push = webPushAdapter(vapid);
+      break;
+    }
+    default: {
+      const exhaustive: never = cfg.notifyPushProvider;
+      throw new Error(`adaptersFor: unmapped NOTIFY_PUSH_PROVIDER ${String(exhaustive)}`);
+    }
+  }
+
   switch (cfg.notifyProvider) {
     case "console":
-      return { whatsapp: consoleWhatsappAdapter, sms: consoleSmsAdapter };
+      return { whatsapp: consoleWhatsappAdapter, sms: consoleSmsAdapter, web_push: push };
     default: {
       const exhaustive: never = cfg.notifyProvider;
       throw new Error(`adaptersFor: unmapped NOTIFY_PROVIDER ${String(exhaustive)}`);

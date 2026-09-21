@@ -554,3 +554,107 @@ every case.** The three that moved again since §1a was written are marked.
 2. **T1 takes the SEVENTH alerts subscription, not T5.** §4's T5 text reserves "7th subscription;
    pin 6 → 7" for the addressee fallback event. `respond.overdue` needs one too and T1 lands
    first, so T5's is the eighth. Both are appends; both counts are read off the red run.
+
+### 9.2 Migration serials actually written
+
+| task | serial | what it does | notes |
+|---|---|---|---|
+| T3 | **0115** `obligation_alert_acknowledgement` | six acknowledgement columns + four CHECKs on `alerts` | cut at 0115 first WITHOUT the CHECKs to buy the fail-first red, then re-cut with them; lane DBs dropped |
+| T1 | **0116** `obligation_ladder_and_respond` | `workflow_timers.percent` + `superseded_by` + the kind CHECK; `workflow_instances.budget_minutes` | cut at 0115 pre-rebase, re-cut to 0116 after T3 merged; lane DBs dropped |
+| T4 | **0117** `obligation_reach` | `user_reach_profiles`, `push_subscriptions` | cut at 0116 pre-rebase, re-cut to 0117 after T1 merged; lane DBs dropped |
+
+**Every one of the three had to be re-cut**, because a serial may only be taken after the one
+below it is on `main` (trap 4) and each task was written while its predecessor was still in
+review. The recipe that works, three times over: resolve the `_journal.json` conflict to MAIN's
+side, delete your own `.sql` and snapshot, `drizzle-kit generate` again, **then drop the lane's
+two test databases** — the regenerated `when` sits above the watermark they already applied, so
+without the drop the migration re-runs and dies on `column already exists` (trap 2).
+
+The five checks ran on every generate and all five passed each time: predicted serial equals
+generated, journal `when` strictly increasing, no `idx` hole, no forked snapshot `prevId`, no
+contamination from a neighbouring task, and no `$1` in an emitted CHECK.
+
+### 9.3 Pins moved, per task
+
+| census | T3 | T1 | T4 |
+|---|---|---|---|
+| `submit-button.test.ts` WRITE_LANES `alerts-bell` | 1 → **4** | — | — |
+| `workflow/events.test.ts` catalog names | — | five → **six** | — |
+| `alerts/consumer.test.ts` subscriptions (BOTH censuses) | — | 6 → **7** | — |
+| `worker-runtime.e2e.test.ts` consumer pairs | — | + `kernel.obligations` | + `runReachLadder` |
+| `manifests.test.ts` `workerKeys` | — | 16 → **17** | — |
+| `manifests.test.ts` api/worker difference | — | + `obligations` | — |
+| `seed-cursors.test.ts` consumer keys | — | + `OBLIGATIONS_CONSUMER` | — |
+| `jobs.test.ts` specs | — | — | 19 → **20** |
+| `alerts-parity.test.ts` registered + `Set.size` | — | — | 19 → **20** |
+| `scheduler.test.ts` named array + `spies()` | — | — | + `runReachLadder` |
+| `caddyfile-parity.test.ts` SPA routes | — | — | 68 → **69** |
+| `notify/templates.test.ts` whole-array | — | — | 7 → **10** |
+| `alerts.yml` interval leg + `absent()` chain | — | — | + `runReachLadder` |
+| `JobIntervals` object literals (3 files) | — | — | + `workerReachIntervalMs` |
+
+**Every number was read off a red run.** None was predicted, and the two that CI found rather
+than the lane (`seed-cursors.test.ts`, and T4's two job counts) are why §9.4 records the
+full-suite rule.
+
+### 9.4 Verify counts per task
+
+| task | run | result |
+|---|---|---|
+| T3 | core `test/` directory | 82 suites / 726 tests passed |
+| T3 | kernel alerts + realtime + schema | 6 suites / 69 tests passed |
+| T3 | web, full | 143 files / 1391 tests passed |
+| T1 | core `test/` + 5 kernel directories | 103 suites / 906 tests passed |
+| T1 | **full core suite** | **536 suites / 5898 tests passed** |
+| T4 | notify (all seven suites) | 103 tests passed |
+| T4 | **full core suite**, pre-rebase | 536 passed / 2 failed → both job censuses, moved and re-run |
+
+**THE METHOD FINDING OF THE PHASE, and it cost one CI cycle.** T1's lane ran the whole `test/`
+directory and five `src/kernel` directories green, and CI still failed on
+`src/kernel/worker/seed-cursors.test.ts` — a consumer census expressed as a NAMED ARRAY in a
+directory no targeted batch had included. §1a already warned that a `toHaveLength` grep cannot
+find such a census; what it did not say is that a DIRECTORY LIST cannot either.
+`grep -rln "ALERTS_CONSUMER\|NOTIFY_CONSUMER"` returns eight files across three trees, and the
+next task will add a ninth nobody listed.
+
+**So: a task that adds a CONSUMER, a JOB or a MANIFEST runs the FULL core suite in its lane
+before pushing.** It took 1230 s here, against ~17 minutes for a red CI shard plus a second full
+cycle after the fix plus the diagnosis — the local run is the cheaper branch even when it finds
+nothing. Take the lock, background it, and write the next task's code while it runs. This is V3
+§9.9 rule 6 arriving for the fourth time, after Plan 14's F11, Plan 15's T2-f and 18a's F14.
+
+### 9.5 Mutant tally
+
+| # | task | mutation | verdict | the assertion that killed it |
+|---|---|---|---|---|
+| A | T3 | G5's two-re-own limit deleted | **DIED** | `Received promise resolved instead of rejected / Resolved to value: {"ackExtensions": 3, …}` |
+| B | T3 | R8's `seen` no-op deleted | **DIED** | `- "changed": false / + "changed": true`, and `- {kind: "owned", changed: false} / + {kind: "seen", changed: true}` |
+| C | T3 | the deep-link map replaced by a template | **DIED** | `expected document not to contain element, found <a data-testid="alerts-open-al-2" href="/approvals?focus=wf-9">` |
+| D | T1 | ladder rung anchored on the breach, not state entry | **DIED** | `Expected: 8640000 / Received: 30240000` — 2 h 24 m against 8 h 24 m |
+| E | T1 | C4 coalescing dropped | **DIED** | `Expected length: 1 / Received length: 3` — three messages about one silence |
+
+Five built, five died, none staged; `find . -name "*mutant*"` empty before each commit. T4 is
+ROUTINE and owes none (AGENT-RULES §3), and none is claimed.
+
+**Two defects the SUITES found that no mutant would have**, both recorded because they are the
+class §9.9 is about: `respond.overdue` first derived its `respondMinutes` by subtracting two
+instants that both move, and T4's channel ladder first climbed on every 60-second pass, walking
+a `now` alert through three channels in three minutes.
+
+### 9.6 / 9.7 Close review and token actuals — NOT RUN
+
+The close (§4 of the execute prompt) has **not** happened. It belongs after T11, and this
+session stopped after T4 at the stop-loss the execute prompt sets for T3–T11. No close
+reviewer has read this phase, no `test/obligation-spine.e2e.test.ts` exists, and no
+`/token-audit` has run. The successor owns all of it.
+
+### 9.8 Handoff
+
+**`docs/superpowers/plans/2026-09-21-obligation-spine-T5-HANDOFF.md`** — 6.5 KB, written by the
+session that built T3, T1 and T4, at the stop-loss and before this document grew past the point
+a successor reads rather than greps (§5A.2). It names the state, the seams T5 builds on as they
+now stand, the six traps this session paid for, and which sections of THIS plan a successor does
+not need. **Seed the next session with it first, then the execute prompt.**
+
+This document measures **57 KB / ~14k tokens** at the close of T4 — well inside §5A.2's ~50k-token line,
+which is the reason the handoff is short and this file is still a plan rather than an archive.
