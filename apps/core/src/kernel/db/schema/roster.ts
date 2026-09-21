@@ -771,3 +771,63 @@ export const staffCredentials = pgTable(
     check("staff_credentials_verified_ck", sql`(${t.verifiedBy} is null) = (${t.verifiedAt} is null)`),
   ],
 );
+
+/* ═══════════════════ PHASE R (R6) — WHERE AN ESCALATION GOES, AS CONFIGURATION ═══════════════════ */
+
+/**
+ * ═══ THE DESTINATION STOPS BEING A ROLE CONSTANT IN A KERNEL FILE ═══
+ *
+ * Before this, every escalation in the hospital went to the holder of a hard-coded RBAC role —
+ * `DUTY_MANAGER_ROLE` written into `kernel/alerts/consumer.ts`, and a ladder rung's `toRole` written
+ * into a workflow definition. Both answer *"who holds this role, anywhere"*, which is the S1 defect
+ * one layer up: at 02:14 the hospital does not want whoever holds `duty_manager` on paper, it wants
+ * **whoever is on duty as the duty manager tonight**.
+ *
+ * A row here says: *for this kind of alert, in this department, the person to reach is whoever is on
+ * as this POSITION.* And because it is a row, a hospital changes it without a deploy.
+ *
+ * ═══ AND IT SHIPS INERT, WHICH IS THE WHOLE POINT ═══
+ *
+ * No row is seeded. With no row — and with `ROSTER_RESOLVER_ENABLED` off, and with a row whose
+ * roster has published nothing — the recipients are **exactly** who they were before this phase:
+ * `fallback_role_key`'s holders. A hospital opts in one alert kind at a time, and can see the
+ * difference before it trusts it. The only thing that changes without a row is that the answer now
+ * comes from one function instead of six copies of the same constant.
+ *
+ * ═══ `fallback_role_key` IS NOT OPTIONAL, AND THE DUTY MANAGER IS THE RUNG NEVER REMOVED ═══
+ *
+ * A configuration row that could point at a position and NOTHING else would let somebody configure
+ * an alert into silence: a position nobody is rostered to, and the page simply never arrives. The
+ * fallback is `NOT NULL` so that is unrepresentable.
+ */
+export const ROSTER_ESCALATION_KINDS = [
+  "escalation.triggered", "notification.failed", "ops.mode_changed",
+  "imaging.critical_overdue", "imaging.report_unread", "workflow.timer_rung",
+] as const;
+export type RosterEscalationKind = (typeof ROSTER_ESCALATION_KINDS)[number];
+
+export const rosterEscalationTargets = pgTable(
+  "roster_escalation_targets",
+  {
+    id: text("id").primaryKey(),
+    alertKind: text("alert_kind").notNull(),
+    /** Who to reach, as a DUTY rather than as an office: `duty_manager`, `night_sr_pool`… */
+    positionKey: text("position_key").notNull().references(() => rosterPositions.key),
+    /** NULL = this kind's hospital-wide default. A department row wins over it. */
+    departmentId: text("department_id").references(() => orgDepartments.id),
+    /** Where the answer comes from when no roster answers. NOT NULL: see the header. */
+    fallbackRoleKey: text("fallback_role_key").notNull().references(() => roles.key),
+    active: boolean("active").notNull().default(true),
+    siteId: text("site_id").notNull().default("main"),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: text("updated_by").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    /** One answer per (kind, department). Two rows for one question is two answers at 02:14. */
+    uniqueIndex("roster_escalation_targets_kind_dept_ux")
+      .on(t.siteId, t.alertKind, sql`coalesce(${t.departmentId}, '')`),
+    check("roster_escalation_targets_kind_ck", sql`${t.alertKind} in ('escalation.triggered', 'notification.failed', 'ops.mode_changed', 'imaging.critical_overdue', 'imaging.report_unread', 'workflow.timer_rung')`),
+  ],
+);

@@ -233,7 +233,8 @@ staff masking, roster tools) → Plan 41 consumers.
 | R2 | `lane/roster-r2` (stacked on R1) | `6b7ab715` → merged `c485fcec` | [#275](https://github.com/ankits3a/hims-hmis/pull/275) |
 | R3 | `lane/roster-r3` (stacked on R2) | `d7757844` → merged `9d7c0527` | [#276](https://github.com/ankits3a/hims-hmis/pull/276) |
 | R4 | `lane/roster-r4` (stacked on R3) | `27a98688` → merged `70eebfdb` | [#277](https://github.com/ankits3a/hims-hmis/pull/277) |
-| R5 | `lane/roster-r5` (stacked on R4) | *(filled at commit)* | *(filled at open)* |
+| R5 | `lane/roster-r5` (stacked on R4) | `ed84f3ab` | [#278](https://github.com/ankits3a/hims-hmis/pull/278) |
+| R6 | `lane/roster-r6` (stacked on R5) | *(filled at commit)* | *(filled at open)* |
 | — | `lane/roster-clock-core` | `66b4a2e8` | [#272](https://github.com/ankits3a/hims-hmis/pull/272) — **not a phase-R task**: a clock time bomb that turned `main` red at IST midnight on 2026-09-21, diagnosed from R1's full suite and fixed so the phase could merge at all |
 
 ### 9.2 Kickoff re-measurement (§1), 2026-09-20
@@ -293,6 +294,10 @@ the three that MOVED are G2, G5 and G9, and one more (G3) grew a consequence. In
 
 | **F22** | R5 | **MY OWN GROUND-TRUTH CORRECTION WAS WRONG, and R6's work list depended on it.** At kickoff I re-measured G2 with `grep -rn "usersHoldingRole(" … \| grep -v test` and reported *"EIGHT files and 16 call sites"*, calling `modules/ot/lists.ts` *"a real call site, not a comment"*. It is a comment — line 26 of a doc block, with no import of `workflow/roles` anywhere in the file. **`grep -v test` excludes test FILES; it does not exclude COMMENTS**, and a mention of a function name inside prose reads exactly like a call to a line-oriented search. I had corrected a correct row into an incorrect one, and R6 would have been sent to edit a leaf module that does not call the function. | Re-measured a third time, by reading the matched lines rather than counting them (AGENT-RULES 20's own instruction, which is written about `pgrep` and applies here word for word). §1 G2 now records six files and fourteen call sites, and says which of my two claims survived: only `alerts/consumer.ts` having **eight**. Caught before R6 started, by re-reading the evidence rather than the number. |
 
+| **F23** | R6 | **THE PLAN'S "four kernel files move to `whoIsOn`" OVER-REACHED, and two of the four should not move.** Read one at a time: `kernel/notify/consumer.ts`'s destination is `OWNER_ROLE` — **the owner is an office, not a duty**; nobody is "on as the owner" at 02:14, and there is no position to resolve. `kernel/desk/staff.controller.ts`'s `resolveTeam(roleKey)` is a **supervision report over a DATE RANGE** — a supervisor picks a role from the staff picker and asks for that team's month; resolving it through `whoIsOn` at an instant would answer a different question, and a narrower one. | Both stay on `usersHoldingRole`, with the reason written at each site. What DID move is the two that are genuinely duty questions: `workflow/timers.ts`'s ladder rung and the three duty-manager destinations in `alerts/consumer.ts`. |
+| **F24** | R6 | **The approvals chain's duty-manager rung must NOT become configurable.** `handleApprovalRequested` resolves the approver ROLE named in the payload by the approval type, then falls back to the duty manager, then to the owner. The plan says *"duty manager the rung never removed"* — and making that particular rung a configuration row is precisely how it could be removed, by pointing it at a position nobody is rostered to. | The whole approvals chain stays static. The rung-never-removed principle is instead enforced structurally everywhere else: `roster_escalation_targets.fallback_role_key` is `NOT NULL`, so no row can name a position and nothing else, and an empty roster answer falls back to the role with `rosterWasEmpty` raised. |
+| **F25** | R6 | **An escalation may never answer "nobody", even when the roster correctly says so.** R5 is explicit that an empty `published` answer is not an error — *"this unit published October and nobody is on at 03:10"* is a true and useful statement. But an escalation is not a report: the question is not what the roster says, it is who to wake. | `escalationRecipients` fills the hole from the fallback role and raises **`rosterWasEmpty: true`** so the hole is visible rather than papered over. Mutant M1 restores the defect and the suite reddens with `Expected: "role"` / `Received: "roster"`. |
+
 ### 9.5 Mutant tally
 
 | task | mutant | built as | result |
@@ -319,6 +324,10 @@ the three that MOVED are G2, G5 and G9, and one more (G3) grew a consequence. In
 | R5 | **M2** — a slot's cover scope dropped: every slot reaches every question (Plan 20 T2's actual defect) | `resolve-scope-dropped.mutant.ts` + spec | **DIED**, 1 failed / 16 passed, on the pooled-night leg — **and the single kill is what produced F21** |
 | R5 | **M3** — an undeclared position treated as declared | `resolve-undeclared-treated-as-declared.mutant.ts` + spec | **DIED**, 1 failed / 16 passed. `Expected: "static"` / `Received: "published"` — a hole starts reading as "nobody is on" |
 | R5 | **M4** — approved absence not subtracted | `resolve-absence-not-subtracted.mutant.ts` + spec | **DIED**, 1 failed / 16 passed, on V13 — the phone of somebody on leave |
+
+| R6 | **M1** — the rung IS removed: an empty roster answer is returned as the recipients | `escalation-hole-not-filled.mutant.ts` + spec | **DIED**, 1 failed / 9 passed. `Expected: "role"` / `Received: "roster"` — the escalation answers nobody |
+| R6 | **M2** — a `static` answer taken as a published one, so the flag and the fallback stop mattering | `escalation-static-taken-as-published.mutant.ts` + spec | **DIED**, 2 failed / 8 passed, on both the flag-off and the nothing-published legs |
+| R6 | **M3** — the hospital-wide row wins over a department's own | `escalation-hospital-row-wins.mutant.ts` + spec | **DIED**, 1 failed / 9 passed — Medicine stops being able to page its own night SR |
 
 Every mutant module and spec was deleted before the counts; `git status --porcelain` carried no
 `*.mutant.*` in any task.

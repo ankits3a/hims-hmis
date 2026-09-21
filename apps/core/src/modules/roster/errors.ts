@@ -67,6 +67,10 @@ export const ROSTER_ERROR_CODES = [
   "absence_already_decided",
   "absence_self_approval",
   "unknown_credential",
+
+  /* ── PHASE R (R6) — where an escalation goes ── */
+  "unknown_escalation_kind",
+  "unknown_role",
 ] as const;
 
 export type RosterErrorCode = (typeof ROSTER_ERROR_CODES)[number];
@@ -114,6 +118,9 @@ export const ROSTER_ERROR_SENTENCES: Record<RosterErrorCode, string> = {
   absence_already_decided: "somebody has already decided this one — it cannot be decided twice",
   absence_self_approval: "the person who asks for leave is not the person who allows it; ask whoever answers for the department",
   unknown_credential: "there is no such registration or certificate on record",
+
+  unknown_escalation_kind: "that is not a kind of alert the roster can be asked to route",
+  unknown_role: "that is not a role in this hospital",
 };
 
 export class RosterError extends Error {
@@ -163,6 +170,8 @@ const STATUS: Record<RosterErrorCode, number> = {
 
   unknown_absence: 404,
   unknown_credential: 404,
+  unknown_role: 404,
+  unknown_escalation_kind: 422,
   unknown_absence_kind: 422,
   absence_already_decided: 409,
   absence_self_approval: 409,
