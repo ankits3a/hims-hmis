@@ -1518,7 +1518,15 @@
     "markRead": "Mark read",
     "justNow": "Just now",
     "minutesAgo": "{{n}}m ago",
-    "hoursAgo": "{{n}}h ago"
+    "hoursAgo": "{{n}}h ago",
+    "seen": "Seen",
+    "own": "Own {{n}}m",
+    "handOver": "Hand over",
+    "handOverPrompt": "Staff code of the person taking this on",
+    "open": "Open",
+    "acknowledged": "Seen by you",
+    "owned": "Yours",
+    "handedOver": "Handed over"
   },
   "opsMode": {
     "title": "Operating mode",

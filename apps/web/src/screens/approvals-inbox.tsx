@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { CircleCheck, Inbox as InboxIcon, CircleX } from "lucide-react";
@@ -142,13 +142,15 @@ function UrgencyPill({ urgency }: { urgency: ApprovalItem["urgencyClass"] }): Re
 }
 
 function ApprovalCard({
-  item, onDecide, canDecide, isOwn,
+  item, onDecide, canDecide, isOwn, focused = false,
 }: {
   item: ApprovalItem;
   onDecide?: (verdict: Verdict) => void;
   /** null while the signed-in person's permissions are still loading: show no answer yet, not a wrong one. */
   canDecide: boolean | null;
   isOwn: boolean;
+  /** T3 — this is the card the alerts bell was about (`/approvals?focus=<id>`). */
+  focused?: boolean;
 }): React.ReactElement {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -176,11 +178,15 @@ function ApprovalCard({
     <article
       className="box"
       data-approval-id={item.id}
+      // T3 — the bell's deep link lands here. The attribute is what the scroll finds and what the
+      // test reads; the ring is what the eye finds.
+      data-focused={focused ? "true" : undefined}
       aria-label={headline(item, t)}
       style={{
         padding: "14px 18px 16px", display: "flex", flexDirection: "column", gap: 8,
         // An inset stripe, not a wider border, so an urgent card's text lines up with its neighbours.
         ...(attention ? { boxShadow: "inset 4px 0 0 var(--gold)" } : {}),
+        ...(focused ? { outline: "2px solid var(--gold)", outlineOffset: 2 } : {}),
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -408,6 +414,7 @@ export function ApprovalsInbox(): React.ReactElement {
   const [tab, setTab] = useState<"waiting" | "decided">("waiting");
   const [deciding, setDeciding] = useState<{ item: ApprovalItem; verdict: Verdict } | null>(null);
   const [done, setDone] = useState<{ verdict: Verdict; what: string } | null>(null);
+  const { focus } = useSearch({ strict: false }) as { focus?: string };
 
   const pending = useQuery({
     queryKey: ["approvals", "pending"],
@@ -434,6 +441,25 @@ export function ApprovalsInbox(): React.ReactElement {
 
   const canDecide = ready ? can("approvals.requests.decide") : null;
   const waitingCount = pending.data?.total;
+
+  /*
+    T3 — THE BELL'S DEEP LINK LANDS ON A CARD, NOT ON A LIST.
+
+    Scrolled once per focus id, after the list that contains the card has arrived: the effect is
+    keyed on both, so it cannot fire against an empty list and then never fire again. It scrolls
+    only DOWNWARD-neutral (`block: "center"`) and never steals focus from a field somebody is
+    typing in — the mark is visual, the reader's cursor is their own.
+  */
+  const scrolledTo = useRef<string | null>(null);
+  const waitingItems = pending.data?.items;
+  useEffect(() => {
+    if (focus === undefined || waitingItems === undefined) return;
+    if (scrolledTo.current === focus) return;
+    const card = document.querySelector(`[data-approval-id="${CSS.escape(focus)}"]`);
+    if (card === null) return;
+    scrolledTo.current = focus;
+    card.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [focus, waitingItems]);
 
   return (
     <PaperScreen testId="approvals-inbox">
@@ -478,6 +504,7 @@ export function ApprovalsInbox(): React.ReactElement {
                 item={item}
                 canDecide={canDecide}
                 isOwn={actor !== null && actor.id === item.requesterId}
+                focused={focus !== undefined && focus === item.id}
                 onDecide={(verdict) => { setDone(null); setDeciding({ item, verdict }); }}
               />
             )}

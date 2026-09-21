@@ -808,6 +808,12 @@ const mergeRoute = createRoute({
 const approvalsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/approvals",
+  // PHASE O T3 — the alerts bell deep-links one card: `/approvals?focus=<approvalId>`. The inbox
+  // scrolls to it and marks it, so a reader who tapped a bell lands on the thing the bell was
+  // about instead of on a list they then have to search.
+  validateSearch: (search: Record<string, unknown>): { focus?: string } => ({
+    focus: typeof search.focus === "string" ? search.focus : undefined,
+  }),
   component: ApprovalsInbox,
 });
 
