@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { sql } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
@@ -397,6 +399,41 @@ describe("roster — requirements, rules, the validator and simulate (R8)", () =
     // …and the row is still there, carrying what the roster used to be wrong about.
     expect((await listFindings(db, period.periodId, { includeCleared: true }))
       .some((r) => r.ruleKey === "slot_over_24h")).toBe(true);
+  });
+
+  /**
+   * THE GATE'S ORDERING, PINNED IN THE SOURCE — and the reason it is pinned this way.
+   *
+   * Plan §7's first judgement call says the validator must run in `publishPeriods` step (2), with
+   * the refusals decided from the drafts alone, BEFORE step (3) takes the live version out of
+   * effect. A mutant that moved the call after the supersede was built, and it **survived the
+   * whole roster suite, 251 of 251 green** — because both orders roll back, so inside one
+   * transaction the difference is genuinely unobservable from outside.
+   *
+   * That is precisely why it needs a STRUCTURAL guard rather than a behavioural one. The ordering
+   * is not protecting against a bug anybody can provoke today; it protects the next reader, who
+   * would otherwise reorder these steps for tidiness and produce a gate that un-effects a live
+   * roster before deciding whether to refuse it — correct only by virtue of the rollback, and one
+   * swallowed error away from not being correct at all.
+   */
+  it("the gate validates BEFORE it supersedes — pinned in the source, because a rollback hides it", () => {
+    const src = readFileSync(join(__dirname, "periods.ts"), "utf8");
+    const publish = src.slice(src.indexOf("export async function publishPeriods"));
+
+    const validateAt = publish.indexOf("await validate(tx, period.id)");
+    const supersedeAt = publish.indexOf("set({ effective: false");
+    const intoEffectAt = publish.indexOf("set({ effective: true");
+
+    // All three must be FOUND, or this test is asserting about text it never located — an empty
+    // search reading as a pass is the failure mode a source-scanning test has.
+    expect(validateAt).toBeGreaterThan(-1);
+    expect(supersedeAt).toBeGreaterThan(-1);
+    expect(intoEffectAt).toBeGreaterThan(-1);
+
+    expect(`validate before supersede: ${validateAt < supersedeAt}`)
+      .toBe("validate before supersede: true");
+    expect(`validate before into-effect: ${validateAt < intoEffectAt}`)
+      .toBe("validate before into-effect: true");
   });
 
   /* ═══════════════════════════ simulate ═══════════════════════════ */
