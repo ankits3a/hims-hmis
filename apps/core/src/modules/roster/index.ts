@@ -74,3 +74,14 @@ export {
 export type {
   EscalationContext, EscalationRecipients, RosterEscalationTargetRow, SetEscalationTargetInput,
 } from "./escalation";
+export {
+  HORIZON_DAYS, SHORT_OPD_MINUTES, addIstDays, backupUnit, declareHoliday,
+  departmentsWithTakeGaps, expandCycle, extendWindows, istMidnightUtc, istWeekday,
+  materialiseWindows, publishCycle, sweepRosterWindows, takeGaps, unitOnTake,
+} from "./calendar";
+export type {
+  CycleEntrySpec, CycleSpec, DeclareHolidayInput, HolidaySpec, OnTakeAnswer, OverlayEntrySpec,
+  PlannedWindow, PublishCycleResult, WindowGap,
+} from "./calendar";
+export { CYCLE_TEMPLATES, cycleTemplate, draftCycleFromTemplate } from "./templates";
+export type { CycleTemplate } from "./templates";

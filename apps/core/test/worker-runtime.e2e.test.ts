@@ -170,6 +170,11 @@ const THE_EIGHTEEN = [
    */
   "sweepCriticalChaser",
   "sweepUnreadWatchman",
+  /**
+   * PHASE R (R7) — the NINETEENTH, `dailyIst("01:30")`, and the roster's first scheduled job. It
+   * rolls the duty-window horizon forward; idempotent, so a double run changes nothing.
+   */
+  "sweepRosterWindows",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;
@@ -504,7 +509,7 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
     }
   });
 
-  it("(a) boots the worker context, and its Scheduler names EXACTLY the eighteen jobs", async () => {
+  it("(a) boots the worker context, and its Scheduler names EXACTLY the nineteen jobs", async () => {
     const ctx = await NestFactory.createApplicationContext(WorkerModule, { logger: false });
     try {
       const workerDb = ctx.get<Db>(DB);
@@ -521,7 +526,7 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
       // the same value `worker.ts` passes. `registerAllJobs` reads no environment of its own.
       registerAllJobs(scheduler, workerDb, registry, workerConsumers(workerDb), config);
 
-      // THE CENSUS. `toEqual` on the whole array is the point: it is exactly these eighteen, in
+      // THE CENSUS. `toEqual` on the whole array is the point: it is exactly these nineteen, in
       // registration order — not "at least", not "these among others".
       expect(scheduler.jobs()).toEqual(THE_EIGHTEEN);
       // The scheduler was never started, so nothing was scheduled and nothing needs stopping.

@@ -1,5 +1,7 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, index, integer, pgTable, smallint, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  boolean, check, date, index, integer, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex,
+} from "drizzle-orm/pg-core";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { roles, users } from "./auth";
 import { orgDepartments } from "./org";
@@ -349,8 +351,8 @@ export const rosterAssignments = pgTable(
     callTier: smallint("call_tier"),
     /** V16 — a training slot that is filled and still leaves the requirement unmet. */
     supernumerary: boolean("supernumerary").notNull().default(false),
-    /** FK arrives with R7's `roster_shift_defs`. */
-    shiftDefId: text("shift_def_id"),
+    /** FK added by R7. */
+    shiftDefId: text("shift_def_id").references((): AnyPgColumn => rosterShiftDefs.id),
     locationResourceId: text("location_resource_id").references(() => resources.id),
     batchRef: text("batch_ref"),
     topic: text("topic"),
@@ -829,5 +831,228 @@ export const rosterEscalationTargets = pgTable(
     uniqueIndex("roster_escalation_targets_kind_dept_ux")
       .on(t.siteId, t.alertKind, sql`coalesce(${t.departmentId}, '')`),
     check("roster_escalation_targets_kind_ck", sql`${t.alertKind} in ('escalation.triggered', 'notification.failed', 'ops.mode_changed', 'imaging.critical_overdue', 'imaging.report_unread', 'workflow.timer_rung')`),
+  ],
+);
+
+/* ═══════════════════ PHASE R (R7) — THE CALENDAR A DEPARTMENT ACTUALLY RUNS ON ═══════════════════ */
+
+/**
+ * ═══ A TEACHING HOSPITAL'S WEEK IS A CYCLE, NOT A ROSTER TYPED OUT MONTH BY MONTH ═══
+ *
+ * Medicine's five units take emergencies in turn. Unit I takes Monday, does its post-take round on
+ * Tuesday, theatre Wednesday, ward and teaching Thursday, and is back on take the following Monday.
+ * That is a **five-day cycle anchored on a date**, and every unit's OPD, theatre and teaching hang
+ * off it. Nobody types it: they type the cycle once, and the calendar produces the windows.
+ *
+ * So `roster_cycles` + `roster_cycle_entries` are the department's pattern, and
+ * `roster_duty_windows` is what that pattern MATERIALISES to for a rolling ninety days. The
+ * materialisation is not a cache: it is what the no-gap invariant (V11) is checked against, what a
+ * screen reads, and what an inspection sees. `expandCycle()` is pure and is the ONLY generator, so
+ * the materialised rows and the fallback answer can be compared instant by instant (V15).
+ *
+ * ═══ SUNDAY IS ITS OWN SEQUENCE, AND A DECLARED HOLIDAY DOES NOT ADVANCE IT ═══
+ *
+ * Sundays do not fit the weekday cycle — a five-day rotation would hand Sunday to a different unit
+ * every week in a pattern nobody can remember, so departments keep a separate Sunday roster that
+ * advances one step each Sunday. `roster_cycle_overlays` is that sequence.
+ *
+ * **And a holiday declared at 19:30 the night before must NOT advance it.** A bandh, a state
+ * funeral, an unscheduled closure: the hospital runs the Sunday pattern for the day, and the unit
+ * whose turn Sunday was still has that turn on Sunday. Getting this wrong shifts every unit's
+ * Sunday for the rest of the year, silently, from one evening's decision. That is why
+ * `overlay_index` is PERSISTED on the materialised window rather than recomputed from a date: the
+ * sequence position is a fact about what happened, not a function of the calendar.
+ */
+
+export const ROSTER_ACTIVITIES = [
+  "opd", "elective_ot", "ward_teaching", "take", "post_take", "backup", "minor_ot", "special_clinic",
+] as const;
+export type RosterActivity = (typeof ROSTER_ACTIVITIES)[number];
+
+export const ROSTER_CYCLE_STATUSES = ["draft", "published", "superseded"] as const;
+
+export const ROSTER_HOLIDAY_KINDS = ["gazetted", "restricted", "declared", "local"] as const;
+export type RosterHolidayKind = (typeof ROSTER_HOLIDAY_KINDS)[number];
+
+/**
+ * What a holiday DOES to a department's day. Not every holiday closes the same things: a gazetted
+ * holiday runs the Sunday pattern; a local one may shorten OPD and leave theatre alone; and the
+ * common Indian-hospital case is **OPD off, emergency theatre proceeds** — an elective list is
+ * cancelled and the take unit works exactly as it would on any night.
+ */
+export const ROSTER_HOLIDAY_PATTERNS = ["as_sunday", "opd_short", "opd_off_ot_proceeds"] as const;
+export type RosterHolidayPattern = (typeof ROSTER_HOLIDAY_PATTERNS)[number];
+
+export const ROSTER_WINDOW_SOURCES = ["cycle", "overlay", "amendment"] as const;
+
+const calAudit = {
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedBy: text("updated_by").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+};
+
+export const rosterShiftDefs = pgTable(
+  "roster_shift_defs",
+  {
+    id: text("id").primaryKey(),
+    /** `take`, `night`, `M`, `E`, `N`, `G` — what the ward whiteboard calls it. */
+    code: text("code").notNull(),
+    label: text("label").notNull(),
+    /** NULL = the whole hospital's. A department may define its own `night` and mean something else. */
+    departmentId: text("department_id").references(() => orgDepartments.id),
+    /** Minutes from IST midnight. 08:00 is 480 — never a time string, never a UTC instant. */
+    startMinute: integer("start_minute").notNull(),
+    durationMinutes: integer("duration_minutes").notNull(),
+    /** The overlap at each end where both shifts are present and the ward is handed over. */
+    handoverMinutes: integer("handover_minutes").notNull().default(0),
+    /** Counts against "one night in three" and the night-rest rule (R8). */
+    countsAsNight: boolean("counts_as_night").notNull().default(false),
+    defaultMode: text("default_mode").notNull().default("presence"),
+    maxPresenceHours: integer("max_presence_hours").notNull().default(12),
+    siteId: text("site_id").notNull().default("main"),
+    ...calAudit,
+  },
+  (t) => [
+    uniqueIndex("roster_shift_defs_code_ux").on(t.siteId, sql`coalesce(${t.departmentId}, '')`, t.code),
+    check("roster_shift_defs_start_ck", sql`${t.startMinute} between 0 and 1439`),
+    check("roster_shift_defs_duration_ck", sql`${t.durationMinutes} between 1 and 2160`), // ≤ 36 h
+    check("roster_shift_defs_handover_ck", sql`${t.handoverMinutes} between 0 and 240`),
+    check("roster_shift_defs_mode_ck", sql`${t.defaultMode} in ('presence', 'call')`),
+  ],
+);
+
+export const rosterCycles = pgTable(
+  "roster_cycles",
+  {
+    id: text("id").primaryKey(),
+    departmentId: text("department_id").notNull().references(() => orgDepartments.id),
+    /** 5 for Medicine's five units; 2 for a two-unit department on alternate days. */
+    cycleDays: integer("cycle_days").notNull(),
+    /**
+     * The IST DAY the cycle's day-zero falls on. A real calendar day declared by a human, which is
+     * the one place in this phase a date column is right (§2's convention).
+     */
+    anchorIstDate: date("anchor_ist_date", { mode: "string" }).notNull(),
+    version: integer("version").notNull(),
+    status: text("status").notNull().default("draft"),
+    /** E17 — a new version takes effect mid-period; the old one's windows stand until this instant. */
+    effectiveFrom: timestamp("effective_from", { withTimezone: true }),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    publishedBy: text("published_by"),
+    siteId: text("site_id").notNull().default("main"),
+    ...calAudit,
+  },
+  (t) => [
+    uniqueIndex("roster_cycles_dept_version_ux").on(t.siteId, t.departmentId, t.version),
+    check("roster_cycles_days_ck", sql`${t.cycleDays} between 1 and 28`),
+    check("roster_cycles_status_ck", sql`${t.status} in ('draft', 'published', 'superseded')`),
+    check("roster_cycles_version_ck", sql`${t.version} >= 1`),
+    check(
+      "roster_cycles_published_ck",
+      sql`(${t.status} = 'draft') = (${t.publishedAt} is null)
+          and (${t.publishedAt} is null) = (${t.publishedBy} is null)
+          and (${t.publishedAt} is null) = (${t.effectiveFrom} is null)`,
+    ),
+  ],
+);
+
+export const rosterCycleEntries = pgTable(
+  "roster_cycle_entries",
+  {
+    id: text("id").primaryKey(),
+    cycleId: text("cycle_id").notNull().references(() => rosterCycles.id),
+    /** 0-based, `< cycle_days`. Day 0 is the anchor date. */
+    dayIndex: integer("day_index").notNull(),
+    teamId: text("team_id").notNull().references(() => rosterTeams.id),
+    activity: text("activity").notNull(),
+    startMinute: integer("start_minute").notNull(),
+    durationMinutes: integer("duration_minutes").notNull(),
+    ...calAudit,
+  },
+  (t) => [
+    index("roster_cycle_entries_cycle_idx").on(t.cycleId, t.dayIndex),
+    check("roster_cycle_entries_day_ck", sql`${t.dayIndex} >= 0`),
+    check("roster_cycle_entries_activity_ck", sql`${t.activity} in ('opd', 'elective_ot', 'ward_teaching', 'take', 'post_take', 'backup', 'minor_ot', 'special_clinic')`),
+    check("roster_cycle_entries_start_ck", sql`${t.startMinute} between 0 and 1439`),
+    check("roster_cycle_entries_duration_ck", sql`${t.durationMinutes} between 1 and 2880`),
+  ],
+);
+
+/** The Sunday / holiday sequence, per department, advancing one position each time it is used. */
+export const rosterCycleOverlays = pgTable(
+  "roster_cycle_overlays",
+  {
+    id: text("id").primaryKey(),
+    departmentId: text("department_id").notNull().references(() => orgDepartments.id),
+    /** 0-based position in the sequence. */
+    sequencePosition: integer("sequence_position").notNull(),
+    teamId: text("team_id").notNull().references(() => rosterTeams.id),
+    activity: text("activity").notNull(),
+    startMinute: integer("start_minute").notNull(),
+    durationMinutes: integer("duration_minutes").notNull(),
+    /** The first IST day this sequence is counted from — its own anchor, not the cycle's. */
+    anchorIstDate: date("anchor_ist_date", { mode: "string" }).notNull(),
+    siteId: text("site_id").notNull().default("main"),
+    ...calAudit,
+  },
+  (t) => [
+    uniqueIndex("roster_cycle_overlays_position_ux").on(t.siteId, t.departmentId, t.sequencePosition, t.activity),
+    check("roster_cycle_overlays_position_ck", sql`${t.sequencePosition} >= 0`),
+    check("roster_cycle_overlays_activity_ck", sql`${t.activity} in ('opd', 'elective_ot', 'ward_teaching', 'take', 'post_take', 'backup', 'minor_ot', 'special_clinic')`),
+    check("roster_cycle_overlays_start_ck", sql`${t.startMinute} between 0 and 1439`),
+    check("roster_cycle_overlays_duration_ck", sql`${t.durationMinutes} between 1 and 2880`),
+  ],
+);
+
+export const rosterHolidays = pgTable(
+  "roster_holidays",
+  {
+    istDate: date("ist_date", { mode: "string" }).notNull(),
+    kind: text("kind").notNull(),
+    /** Which classes of staff it applies to — `['faculty','admin']`. Empty means everybody. */
+    appliesTo: text("applies_to").array().notNull().default(sql`'{}'::text[]`),
+    pattern: text("pattern").notNull().default("as_sunday"),
+    declaredBy: text("declared_by").notNull().references(() => users.id),
+    declaredAt: timestamp("declared_at", { withTimezone: true }).notNull().defaultNow(),
+    /** D3's two-step: each HOD confirms what their department will run, by this instant. */
+    confirmationDueAt: timestamp("confirmation_due_at", { withTimezone: true }),
+    siteId: text("site_id").notNull().default("main"),
+    ...calAudit,
+  },
+  (t) => [
+    primaryKey({ columns: [t.siteId, t.istDate] }),
+    check("roster_holidays_kind_ck", sql`${t.kind} in ('gazetted', 'restricted', 'declared', 'local')`),
+    check("roster_holidays_pattern_ck", sql`${t.pattern} in ('as_sunday', 'opd_short', 'opd_off_ot_proceeds')`),
+  ],
+);
+
+export const rosterDutyWindows = pgTable(
+  "roster_duty_windows",
+  {
+    id: text("id").primaryKey(),
+    departmentId: text("department_id").notNull().references(() => orgDepartments.id),
+    teamId: text("team_id").notNull().references(() => rosterTeams.id),
+    activity: text("activity").notNull(),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    cycleId: text("cycle_id").references(() => rosterCycles.id),
+    /**
+     * WHICH POSITION OF THE OVERLAY SEQUENCE THIS DAY USED. Persisted, not derived: a declared
+     * holiday runs the overlay pattern WITHOUT advancing the sequence, so the position is a fact
+     * about what happened rather than a function of the date. See this section's header.
+     */
+    overlayIndex: integer("overlay_index"),
+    source: text("source").notNull().default("cycle"),
+    supersededAt: timestamp("superseded_at", { withTimezone: true }),
+    siteId: text("site_id").notNull().default("main"),
+    ...calAudit,
+  },
+  (t) => [
+    index("roster_duty_windows_dept_idx").on(t.departmentId, t.startsAt),
+    index("roster_duty_windows_live_idx").on(t.departmentId, t.activity, t.startsAt).where(sql`${t.supersededAt} is null`),
+    check("roster_duty_windows_activity_ck", sql`${t.activity} in ('opd', 'elective_ot', 'ward_teaching', 'take', 'post_take', 'backup', 'minor_ot', 'special_clinic')`),
+    check("roster_duty_windows_window_ck", sql`${t.endsAt} > ${t.startsAt}`),
+    check("roster_duty_windows_source_ck", sql`${t.source} in ('cycle', 'overlay', 'amendment')`),
   ],
 );

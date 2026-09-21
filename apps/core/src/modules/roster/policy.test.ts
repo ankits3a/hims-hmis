@@ -178,6 +178,13 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     verifyCredential: { reaches: "requireRosterAct(", why: "as `recordCredential`" },
     // R6 — where an escalation goes.
     setEscalationTarget: { reaches: "requireRosterAct(", why: "deciding who gets woken is the same kind of act as publishing the rota that decides it" },
+    // R7 — the calendar.
+    publishCycle: { reaches: "requireRosterAct(", why: "a department's cycle decides who admits on every day of the quarter" },
+    materialiseWindows: { reaches: "requireRosterAct(", why: "writing the windows IS the calendar; at the department's own scope" },
+    declareHoliday: { reaches: "requireRosterAct(", why: "`declare` — the MS's act, or a delegate's" },
+    extendWindows: { reaches: "materialiseWindows(", why: "the nightly roll-forward, through the checked writer" },
+    sweepRosterWindows: { reaches: "extendWindows(", why: "the scheduler's entry point; see MATERIALISER_ACTOR on why a job is not a `system` actor here" },
+    draftCycleFromTemplate: { reaches: "requireRosterAct(", why: "applying a pattern writes the department's own cycle, as a draft" },
   };
   /**
    * ═══ THE READS TAKE NO ACTOR, AND THAT IS A DELIBERATE BOUNDARY FOR THIS TASK ═══
@@ -240,6 +247,14 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     escalationRecipients: "a read, called from the worker's own consumers, which run as the kernel and carry their own authority — there is no Actor at 02:14 and inventing one would be the wrong shape",
     escalationTarget: "a read",
     listEscalationTargets: "a read",
+    // R7 — pure arithmetic and reads.
+    istMidnightUtc: "pure: the one place a calendar day becomes an instant",
+    expandCycle: "PURE, and the only generator (V15) — no database, no clock, no actor",
+    unitOnTake: "a read",
+    backupUnit: "a read",
+    takeGaps: "a read — V11's other half, which cannot be a constraint because absence is not a row",
+    departmentsWithTakeGaps: "a read, for the census",
+    cycleTemplate: "pure: looks a pattern up in the gallery",
   };
 
   const MODULE_DIR = __dirname;
