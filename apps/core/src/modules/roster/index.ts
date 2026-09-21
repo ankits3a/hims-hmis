@@ -48,3 +48,16 @@ export {
   extensionPostings, internYear, splitBlock,
 } from "./interns";
 export type { CrmiBlock, InternAbsence, InternPosting, InternYearInput } from "./interns";
+export {
+  absentUserIds, approveAbsence, attendanceProjection, cancelAbsence, listAbsences,
+  markAebasEntered, recordAbsence, recordAbsenceUnchecked, recordAbsences, redactReason,
+  rejectAbsence, requestAbsence,
+} from "./absences";
+export type {
+  AbsenceQuery, AttendanceProjection, RequestAbsenceInput, StaffAbsenceRow,
+} from "./absences";
+export {
+  credentialsOf, expiringCredentials, holdsCredential, recordCredential, verifyCredential,
+} from "./credentials";
+export type { RecordCredentialInput, StaffCredentialRow } from "./credentials";
+export { rosterAbsenceApproved, rosterAbsenceRequested } from "./events";

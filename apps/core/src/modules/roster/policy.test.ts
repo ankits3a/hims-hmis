@@ -48,6 +48,8 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     declare: { user: "y", copilot: "n", agent: "n", system: "n", patient: "n" },
     acknowledge: { user: "y", copilot: "n", agent: "n", system: "n", patient: "n" },
     nag: { user: "y", copilot: "n", agent: "y", system: "y", patient: "n" },
+    // R4's own row. NOT from §4 — see the note on `request_absence` in `policy.ts`.
+    request_absence: { user: "y", copilot: "n", agent: "n", system: "n", patient: "n" },
   };
 
   it("every act × every actor kind is DECLARED — no cell falls through", () => {
@@ -164,6 +166,16 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     recordOfficiating: { reaches: "requireRosterAct(", why: "who is standing in decides whose phone is rung" },
     endOfficiating: { reaches: "requireRosterAct(", why: "as `recordOfficiating`" },
     recordDelegation: { reaches: "requireRosterAct(", why: "and then checks, separately, that the DELEGATOR holds what is being handed on" },
+    // R4 — being away, and what you hold.
+    requestAbsence: { reaches: "requireRosterAct(", why: "`request_absence`; and the function itself enforces the part the matrix cannot — your OWN, or the manage permission" },
+    cancelAbsence: { reaches: "requireRosterAct(", why: "as `requestAbsence`" },
+    approveAbsence: { reaches: "decide(", why: "the shared decision path, which takes `publish` — approving a leave decides whether a ward has somebody in it" },
+    rejectAbsence: { reaches: "decide(", why: "as `approveAbsence`" },
+    recordAbsence: { reaches: "requireRosterAct(", why: "the CHECKED front door onto `recordAbsenceUnchecked`" },
+    recordAbsences: { reaches: "recordAbsence(", why: "a bulk act cannot be a way round the checks a single one goes through" },
+    markAebasEntered: { reaches: "requireRosterAct(", why: "the biometric filing mark is a governed record" },
+    recordCredential: { reaches: "requireRosterAct(", why: "what somebody holds decides what they may be rostered to" },
+    verifyCredential: { reaches: "requireRosterAct(", why: "as `recordCredential`" },
   };
   /**
    * ═══ THE READS TAKE NO ACTOR, AND THAT IS A DELIBERATE BOUNDARY FOR THIS TASK ═══
@@ -206,6 +218,15 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     crmiWeeksTotal: "pure, as above",
     internYear: "pure: generates a plan. WRITING one is a membership, and that goes through `addMembership`",
     extensionPostings: "pure, as above",
+    // R4
+    recordAbsenceUnchecked: "**DELIBERATELY UNCHECKED, and the name is the control.** `modules/opd`'s leave screen has held `opd.masters.manage` since long before the roster existed; requiring `roster.periods.publish` as well would break an act an OPD admin has always been allowed to perform, and the realistic repair would be granting them every rota in the hospital. `absences.test.ts` pins its call sites BY NAME so a third cannot appear quietly",
+    redactReason: "pure: decides who may read a reason, and mutates nothing",
+    listAbsences: "a read — and the one that applies D6, so the caller that forgets cannot be the one that renders it",
+    absentUserIds: "a read",
+    attendanceProjection: "a read, and a FINDING rather than a refusal",
+    credentialsOf: "a read",
+    holdsCredential: "a read",
+    expiringCredentials: "a read",
   };
 
   const MODULE_DIR = __dirname;
@@ -213,10 +234,17 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))
     .map((f) => [f, readFileSync(join(MODULE_DIR, f), "utf8")] as const);
 
-  const exportedFunctions = (): { name: string; file: string; body: string }[] => {
+  /** Every function in the module, exported or not — the population the fixpoint walks. */
+  const allFunctions = (): { name: string; file: string; body: string }[] =>
+    scanFunctions(/(?:^|\n)(?:export\s+)?(?:async\s+)?function\s+([A-Za-z0-9_]+)/g);
+
+  const exportedFunctions = (): { name: string; file: string; body: string }[] =>
+    scanFunctions(/export\s+(?:async\s+)?function\s+([A-Za-z0-9_]+)/g);
+
+  const scanFunctions = (re0: RegExp): { name: string; file: string; body: string }[] => {
     const out: { name: string; file: string; body: string }[] = [];
     for (const [file, src] of sourceFiles) {
-      const re = /export\s+(?:async\s+)?function\s+([A-Za-z0-9_]+)/g;
+      const re = new RegExp(re0.source, "g");
       let m: RegExpExecArray | null;
       while ((m = re.exec(src)) !== null) {
         const name = m[1];
@@ -250,10 +278,16 @@ describe("roster — who may do what (V8, stress test §4)", () => {
   it("…and every one of them reaches a REAL check by following those declarations to a fixpoint", () => {
     // A declaration of "I delegate to X" proves nothing unless X itself ends at a check. This
     // follows the edges until nothing new is reachable, and names anything left dangling.
-    const direct = (name: string): boolean =>
-      /rosterActPolicy\(|requireRosterAct\(/.test(exportedFunctions().find((f) => f.name === name)?.body ?? "");
-    const guarded = new Set(Object.keys(ACTING).filter(direct));
-    for (let pass = 0; pass < Object.keys(ACTING).length; pass += 1) {
+    /**
+     * The population is EVERY function in the module, not only the exported ones: `approveAbsence`
+     * delegates to a private `decide`, and a fixpoint that could only see exports would call that
+     * dangling when it is in fact the strictest path in the file.
+     */
+    const all = allFunctions();
+    const bodyOf = (name: string): string => all.find((f) => f.name === name)?.body ?? "";
+    const direct = (name: string): boolean => /rosterActPolicy\(|requireRosterAct\(/.test(bodyOf(name));
+    const guarded = new Set(all.map((f) => f.name).filter(direct));
+    for (let pass = 0; pass < all.length; pass += 1) {
       for (const [name, { reaches }] of Object.entries(ACTING)) {
         const target = reaches.replace("(", "");
         if (!guarded.has(name) && guarded.has(target)) guarded.add(name);

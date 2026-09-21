@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { defineEvent } from "@hmis/contracts";
 import {
-  ROSTER_AMENDMENT_KINDS, ROSTER_ORIGINS, ROSTER_SCOPE_TYPES,
+  ROSTER_AMENDMENT_KINDS, ROSTER_ORIGINS, ROSTER_SCOPE_TYPES, STAFF_ABSENCE_KINDS,
 } from "../../kernel/db/schema/roster";
 
 const MODULE = "roster";
@@ -109,7 +109,34 @@ export const rosterAmendmentApplied = defineEvent("roster.amendment_applied", MO
   appliedAt: instant(),
 }));
 
+/**
+ * PHASE R (R4) — somebody has asked to be away. **The REASON is not here and never will be**: it is
+ * the most sensitive string this phase stores (D6), and an event log outlives every screen that
+ * would have redacted it. A consumer that needs it reads the row under `redactReason`.
+ */
+export const rosterAbsenceRequested = defineEvent("roster.absence_requested", MODULE, z.object({
+  absenceId: id(),
+  userId: id(),
+  kind: code(STAFF_ABSENCE_KINDS),
+  startsAt: instant(),
+  endsAt: instant(),
+}));
+
+/**
+ * The moment a clinic's appointments stop being answerable. `modules/opd`'s `needs_rebooking`
+ * cascade subscribes to this, which is what lets a JUNIOR RESIDENT's approved leave move an OPD
+ * list — something `opd_doctor_leaves` could never express, because a JR has no row in it.
+ */
+export const rosterAbsenceApproved = defineEvent("roster.absence_approved", MODULE, z.object({
+  absenceId: id(),
+  userId: id(),
+  kind: code(STAFF_ABSENCE_KINDS),
+  startsAt: instant(),
+  endsAt: instant(),
+  decidedAt: instant(),
+}));
+
 export const ROSTER_EVENTS = [
   rosterPeriodDrafted, rosterPeriodPublished, rosterPeriodSuperseded,
-  rosterDutyChanged, rosterAmendmentApplied,
+  rosterDutyChanged, rosterAmendmentApplied, rosterAbsenceRequested, rosterAbsenceApproved,
 ] as const;

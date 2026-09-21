@@ -636,3 +636,138 @@ export const rosterBedAllotments = pgTable(
     check("roster_bed_allotments_window_ck", sql`${t.endsAt} is null or ${t.endsAt} > ${t.startsAt}`),
   ],
 );
+
+/* ═════════════════════ PHASE R (R4) — ABSENCE, FOR EVERY MEMBER OF STAFF ═════════════════════ */
+
+/**
+ * ═══ THE SYSTEM OF RECORD FOR WHO IS AWAY, AND WHY IT COULD NOT BE `opd_doctor_leaves` ═══
+ *
+ * The validator "reads approved leave". Before this table the only leave in the building was
+ * `opd_doctor_leaves`, keyed on an **OPD doctor** — so a junior resident, an intern, a staff nurse
+ * and a pharmacist could not have a row at all (stress test S3). They are most of the people a
+ * roster is about, and the hospital's answer to *"is anyone away that night?"* was silently
+ * restricted to the consultants who happen to hold a clinic.
+ *
+ * And owner ruling RU-2 removed the HR SaaS that an earlier plan had given leave to. So this is
+ * ours, it covers everybody, and `opd_doctor_leaves` becomes a PROJECTION of it: `scheduleLeave`
+ * keeps its API and writes both rows in one transaction.
+ *
+ * ═══ THE REASON IS THE APPROVER'S, AND NOBODY ELSE'S (D6) ═══
+ *
+ * A leave reason is *"my father is in ICU"*, *"chemotherapy"*, *"court summons"*. It is the single
+ * most sensitive free-text field this phase stores. The column is nullable, it never travels on an
+ * event (V9), and the read helper nulls it for every reader who is neither the person nor the
+ * person who decided it.
+ *
+ * ═══ `abstaining` AND `unauthorised` ARE ABSENCE KINDS, DELIBERATELY ═══
+ *
+ * A strike and a no-show are not leave, and a hospital that cannot represent them cannot roster
+ * around them. Recording one is not a judgement about it; it is the difference between a ward
+ * everybody believes is staffed and a ward somebody is sent to.
+ */
+export const STAFF_ABSENCE_KINDS = [
+  "CL", "EL", "ML", "maternity", "paternity", "comp_off", "night_off", "duty_off",
+  "deputation", "academic", "study", "abstaining", "unauthorised",
+] as const;
+export type StaffAbsenceKind = (typeof STAFF_ABSENCE_KINDS)[number];
+
+export const STAFF_ABSENCE_STATUSES = ["requested", "approved", "rejected", "cancelled"] as const;
+export type StaffAbsenceStatus = (typeof STAFF_ABSENCE_STATUSES)[number];
+
+/**
+ * What somebody must hold before they may be rostered to a position that needs it. `nmr`/`smr` are
+ * the national and state medical registers; the rest are the certifications a ward actually asks
+ * for before letting a person run a resuscitation, a ventilator or a chemotherapy round.
+ */
+export const STAFF_CREDENTIAL_KEYS = [
+  "nmr", "smr", "nursing_council", "pharmacy_council",
+  "bls", "acls", "nrp", "ventilator", "chemo",
+  "pcpndt_registered", "aerb_rso",
+] as const;
+export type StaffCredentialKey = (typeof STAFF_CREDENTIAL_KEYS)[number];
+
+export const staffAbsences = pgTable(
+  "staff_absences",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    kind: text("kind").notNull(),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(), // exclusive
+    status: text("status").notNull().default("requested"),
+    requestedBy: text("requested_by").notNull().references(() => users.id),
+    approvedBy: text("approved_by").references(() => users.id),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    /** D6 — THE APPROVER'S, AND NOBODY ELSE'S. See the header. */
+    reason: text("reason"),
+    /**
+     * The biometric attendance system the Government requires a medical college to file against.
+     * A leave approved here and not entered there is a discrepancy an inspection finds, so the
+     * mark is a column rather than a habit.
+     */
+    aebasEnteredAt: timestamp("aebas_entered_at", { withTimezone: true }),
+    aebasEnteredBy: text("aebas_entered_by").references(() => users.id),
+    source: text("source").notNull().default("manual"),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: text("updated_by").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("staff_absences_user_window_idx").on(t.userId, t.startsAt),
+    index("staff_absences_status_idx").on(t.status, t.startsAt),
+    check("staff_absences_kind_ck", sql`${t.kind} in ('CL', 'EL', 'ML', 'maternity', 'paternity', 'comp_off', 'night_off', 'duty_off', 'deputation', 'academic', 'study', 'abstaining', 'unauthorised')`),
+    check("staff_absences_status_ck", sql`${t.status} in ('requested', 'approved', 'rejected', 'cancelled')`),
+    check("staff_absences_window_ck", sql`${t.endsAt} > ${t.startsAt}`),
+    check("staff_absences_source_ck", sql`${t.source} in ('manual', 'import', 'opd', 'academic')`),
+    /**
+     * A decision has a decider and an instant, or it has not happened — and **a CANCELLED absence
+     * keeps whatever decision it already had.**
+     *
+     * Written first as `(status in ('approved','rejected')) = (decided_at is not null)`, which is
+     * the obvious reading and is wrong in the ordinary case: a consultant's approved leave is
+     * called off, the status becomes `cancelled`, and the row still carries the name of whoever
+     * approved it — as it must, because that approval happened and the record of it is the point.
+     * The constraint refused the update. Found by the OPD projection test, whose cancel path
+     * exercises an APPROVED row; `absences.test.ts` had only ever cancelled a REQUESTED one.
+     */
+    check(
+      "staff_absences_decided_ck",
+      sql`case
+            when ${t.status} = 'requested' then ${t.decidedAt} is null
+            when ${t.status} in ('approved', 'rejected') then ${t.decidedAt} is not null
+            else true
+          end
+          and (${t.decidedAt} is null) = (${t.approvedBy} is null)`,
+    ),
+    /** Filed with the biometric system, or not — never half. */
+    check("staff_absences_aebas_ck", sql`(${t.aebasEnteredAt} is null) = (${t.aebasEnteredBy} is null)`),
+  ],
+);
+
+export const staffCredentials = pgTable(
+  "staff_credentials",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    credentialKey: text("credential_key").notNull(),
+    /** The register number, the certificate number — what an inspector asks to see. */
+    reference: text("reference").notNull(),
+    validFrom: timestamp("valid_from", { withTimezone: true }).notNull(),
+    validTo: timestamp("valid_to", { withTimezone: true }),
+    verifiedBy: text("verified_by").references(() => users.id),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: text("updated_by").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("staff_credentials_user_idx").on(t.userId, t.credentialKey),
+    check("staff_credentials_key_ck", sql`${t.credentialKey} in ('nmr', 'smr', 'nursing_council', 'pharmacy_council', 'bls', 'acls', 'nrp', 'ventilator', 'chemo', 'pcpndt_registered', 'aerb_rso')`),
+    check("staff_credentials_window_ck", sql`${t.validTo} is null or ${t.validTo} > ${t.validFrom}`),
+    check("staff_credentials_reference_ck", sql`length(btrim(${t.reference})) between 1 and 120`),
+    /** Verified by somebody, at an instant — or not verified. A half-verified credential is not evidence. */
+    check("staff_credentials_verified_ck", sql`(${t.verifiedBy} is null) = (${t.verifiedAt} is null)`),
+  ],
+);

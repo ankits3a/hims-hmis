@@ -55,6 +55,12 @@ export const ROSTER_ACTS = [
   "acknowledge",
   /** Raise a nag about a hole in a roster. Rate-limited and killable when a machine does it. */
   "nag",
+  /**
+   * PHASE R (R4) — ask to be away. **This act is NOT in stress test §4**, which is about acts on a
+   * roster; being absent is a fact about a person's own life and the document does not cover it.
+   * Added here rather than assumed, because that is what the matrix is for.
+   */
+  "request_absence",
 ] as const;
 export type RosterAct = (typeof ROSTER_ACTS)[number];
 
@@ -123,6 +129,20 @@ const MATRIX: Record<RosterAct, Record<RosterActorKind, Cell>> = {
 
   // The ladder's own pacing raises these; a human may always raise one about their own unit.
   nag: { user: grant(ROSTER_READ), copilot: never, agent: open, system: open, patient: never },
+
+  /**
+   * `open` for a person, and the function enforces the part a matrix cannot: you may file YOUR OWN
+   * absence holding nothing at all — a junior resident asking for two days is not an act on the
+   * roster and must not need a roster string — and filing somebody ELSE's additionally requires
+   * `roster.periods.manage`.
+   *
+   * **`never` for the copilot**, which is the one cell worth arguing. A leave request carries a
+   * reason, and the reason is *"my father is in ICU"* or *"chemotherapy"* — the single most
+   * sensitive string this phase stores, and the one A-4/L-13 says never reaches an external model.
+   * A copilot that files one has to handle it. The person can file it themselves in the same
+   * number of taps, so the cell costs nothing and closes the path.
+   */
+  request_absence: { user: open, copilot: never, agent: never, system: never, patient: never },
 };
 
 export type RosterActVerdict =

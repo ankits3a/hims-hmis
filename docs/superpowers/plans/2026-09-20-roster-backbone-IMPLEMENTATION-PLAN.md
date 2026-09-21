@@ -229,9 +229,10 @@ staff masking, roster tools) → Plan 41 consumers.
 ### 9.1 Commits by SHA
 | task | branch | commit | PR |
 |---|---|---|---|
-| R1 | `lane/roster-r1` | `fe53ab8c` | [#273](https://github.com/ankits3a/hims-hmis/pull/273) |
-| R2 | `lane/roster-r2` (stacked on R1) | `6b7ab715` | [#275](https://github.com/ankits3a/hims-hmis/pull/275) |
-| R3 | `lane/roster-r3` (stacked on R2) | *(filled at commit)* | *(filled at open)* |
+| R1 | `lane/roster-r1` | `fe53ab8c` → merged `a5e41562` | [#273](https://github.com/ankits3a/hims-hmis/pull/273) |
+| R2 | `lane/roster-r2` (stacked on R1) | `6b7ab715` → merged `c485fcec` | [#275](https://github.com/ankits3a/hims-hmis/pull/275) |
+| R3 | `lane/roster-r3` (stacked on R2) | `d7757844` | [#276](https://github.com/ankits3a/hims-hmis/pull/276) |
+| R4 | `lane/roster-r4` (stacked on R3) | *(filled at commit)* | *(filled at open)* |
 | — | `lane/roster-clock-core` | `66b4a2e8` | [#272](https://github.com/ankits3a/hims-hmis/pull/272) — **not a phase-R task**: a clock time bomb that turned `main` red at IST midnight on 2026-09-21, diagnosed from R1's full suite and fixed so the phase could merge at all |
 
 ### 9.2 Kickoff re-measurement (§1), 2026-09-20
@@ -279,6 +280,12 @@ the three that MOVED are G2, G5 and G9, and one more (G3) grew a consequence. In
 | **F12** | R3 | **`access.ts` needed the delegation read and `delegations.ts` needed `access.ts`'s permission check** — a require cycle that happens to work under the CommonJS ts-jest emit, because both bindings are only touched at call time, and would stop working the day the module is loaded any other way. | `delegations-read.ts`: a ten-line file that makes the dependency a DAG instead of a bet. |
 | **F13** | R3 | **A delegation test that does not separate the ACTOR from the DELEGATOR only ever sees the first check.** The first version expected `delegation_not_held` and got `not_permitted`, because the actor recording the delegation was also the person whose authority was being handed on. | The test now uses the superintendent's office as the recorder and the HOD as the delegator, and asserts BOTH refusals in their order. A test defect, recorded because the two checks are genuinely distinct and the next reader will conflate them too. |
 
+| **F14** | R4 | **A decided-pair CHECK refuses the cancel of an approved record.** `(status in ('approved','rejected')) = (decided_at is not null)` is the obvious reading and is wrong in the ordinary case: a consultant's approved leave is called off, the status becomes `cancelled`, and the row still carries who approved it — as it must, because that approval happened. **Found by the OPD projection test**, whose cancel path exercises an APPROVED row; `absences.test.ts` had only ever cancelled a REQUESTED one, so the gap was in the test, not the reading. | The CHECK is a `case` on the status; 0111 was re-cut and the lane test DBs dropped. The missing leg was added to `absences.test.ts` — cancelling an approved absence keeps `approved_by` — and mutant M2 covers the segregation beside it. |
+| **F15** | R4 | **`request_absence` is an act stress test §4 does not have.** The document is about acts on a ROSTER; being absent is a fact about a person's own life. | Added to the matrix rather than assumed, with every actor kind decided in writing, and the transcription in `policy.test.ts` marked as R4's own row rather than §4's. `user: open` (you may always file your own; somebody else's additionally needs `roster.periods.manage`, enforced in the function because a matrix cannot say "your own"); **`copilot: never`**, because the reason is the most sensitive string this phase stores and the person can file it themselves in as many taps. |
+| **F16** | R4 | **The OPD leave screen has its own authority and cannot be made to hold a roster string.** `opd_admin` has scheduled consultants' leave since long before the roster existed; requiring `roster.periods.publish` would break that act, and the realistic repair would be granting the OPD admin every rota in the hospital. | `recordAbsenceUnchecked`, whose NAME is the control, with the checked `recordAbsence` as the front door everything else uses — and a test that pins its call sites **by name** (`modules/opd/leaves.ts` and the front door itself), so a third cannot appear quietly. |
+| **F17** | R4 | **`opd_doctor_leaves.absence_id` cannot be a real foreign key.** `org_departments` references `opd_departments` and `roster.ts` references `org.ts`, so an FK from opd to roster closes the loop `opd → roster → org → opd` — and a cycle between drizzle table modules resolves to `undefined` at load time rather than failing loudly. | Plain text, as `opd_doctors.user_id` three columns up already is, with the reason written at the column. |
+| **F18** | R4 | **The export census's fixpoint could only see EXPORTED functions**, so `approveAbsence` — which delegates to a private `decide` that carries the check — read as dangling. The census would have forced a worse design to satisfy itself. | The scan now walks every function in the module, exported or not. The fixpoint is unchanged; only its population grew. |
+
 ### 9.5 Mutant tally
 
 | task | mutant | built as | result |
@@ -296,8 +303,19 @@ the three that MOVED are G2, G5 and G9, and one more (G3) grew a consequence. In
 | R3 | **M3** — any delegated authority satisfies any act (F11's hole, restored) | `access-delegation-widened.mutant.ts` + spec | **DIED**, 2 failed / 7 passed. `expected a RosterError, got: null` — a delegated leave approval publishes the rota |
 | R3 | **M4** — the intern extension is served wherever the year starts, not where the absence happened | `interns-extension-misplaced.mutant.ts` + spec | **DIED**, 3 failed / 9 passed. `Expected: "PED"` / `Received: "COMM"` — V17's second half |
 
+| R4 | **M1** — D6 redaction removed: the reason travels to every reader | `absences-redaction-removed.mutant.ts` + spec | **DIED**, 3 failed / 14 passed. `Received: "my father is in ICU at Patna"` where a stranger's read must be null |
+| R4 | **M2** — the requester/approver segregation removed | `absences-self-approval-allowed.mutant.ts` + spec | **DIED**, 2 failed / 15 passed, on "the person who ASKS is not the person who ALLOWS" |
+| R4 | **M3** — the attendance projection counts absence OUTSIDE the term | `absences-projection-unclipped.mutant.ts` + spec | **DIED**, 2 failed / 15 passed. `Expected: 30` / `Received: 120` — four months of maternity leave counted against a term that had one of them in it |
+| R4 | **M4** — the OPD inclusive→half-open conversion off by one day | `opd-leave-window-off-by-one.mutant.ts` + spec | **DIED**, 2 failed / 2 passed. `Expected: "2026-08-20T18:30:00.000Z"` / `Received: "2026-08-19T18:30:00.000Z"` — the doctor left rostered on the last day of their own leave |
+
 Every mutant module and spec was deleted before the counts; `git status --porcelain` carried no
 `*.mutant.*` in any task.
+
+**One thing the R4 mutant runs surfaced about the instruments themselves:** three of the four
+reddened `recordAbsenceUnchecked`'s call-site census as well, because a mutant file is a COPY of
+`absences.ts` and therefore contains a genuine extra call site. That is the census answering
+correctly about the tree it was given, not a defect — but it is worth knowing before reading a
+mutant run, because it adds one expected failure to every mutant of that file.
 
 ### 9.6 The two review passes
 *(filled at R10)*

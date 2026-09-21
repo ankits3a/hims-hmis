@@ -3,12 +3,16 @@ import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
-import { opdAppointments, opdDoctorLeaves, opdDoctors, opdQueueEntries, opdQueueSessions } from "../../kernel/db/schema";
+import {
+  opdAppointments, opdDoctorLeaves, opdDoctors, opdQueueEntries, opdQueueSessions, staffAbsences,
+} from "../../kernel/db/schema";
 import { LIVE_ENTRY_STATUSES } from "./encounters";
 import { OpdError } from "./errors";
 import { doctorLeaveScheduled } from "./events";
-import { istDate } from "./time";
+import { istDate, istDateTimeToUtc, addDays as addIstDays } from "./time";
+import { recordAbsenceUnchecked } from "../roster";
 import type { Db } from "../../kernel/db/client";
+import type { StaffAbsenceKind } from "../../kernel/db/schema/roster";
 
 export type LeaveRow = typeof opdDoctorLeaves.$inferSelect;
 
@@ -33,7 +37,13 @@ export type LeaveRow = typeof opdDoctorLeaves.$inferSelect;
 export async function scheduleDoctorLeave(
   db: Db,
   actor: Actor,
-  input: { doctorId: string; fromDate: string; toDate: string; reason: string },
+  /**
+   * PHASE R (R4) — `kind` is ADDITIVE and optional, so the API is unchanged for every existing
+   * caller. It defaults to casual leave, which is what a consultant's unspecified OPD leave is in
+   * an Indian hospital — and it is a parameter rather than a constant so that a screen which DOES
+   * ask (the S-series will) can say, instead of every leave in the building being recorded as CL.
+   */
+  input: { doctorId: string; fromDate: string; toDate: string; reason: string; kind?: StaffAbsenceKind },
   now: Date = new Date(),
 ): Promise<{ leaveId: string; affectedAppointmentIds: string[]; strandedEntryIds: string[] }> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
@@ -44,10 +54,32 @@ export async function scheduleDoctorLeave(
     const doctor = (await tx.select().from(opdDoctors).where(eq(opdDoctors.id, input.doctorId)))[0];
     if (!doctor) throw new OpdError("unknown_doctor");
 
+    /**
+     * ═══ PHASE R (R4) — `staff_absences` IS THE SYSTEM OF RECORD; THIS TABLE IS ITS PROJECTION ═══
+     *
+     * Written in the SAME transaction, so no reader can see one without the other. The absence
+     * covers `[fromDate 00:00 IST, toDate+1 00:00 IST)` — half-open instants, because `toDate` is
+     * inclusive here and every other window in the roster is not, and that conversion is exactly
+     * the kind of off-by-one that costs a ward a morning.
+     *
+     * `recordAbsenceUnchecked` is deliberate and its name is the control: this screen has held
+     * `opd.masters.manage` since long before the roster existed, and requiring
+     * `roster.periods.publish` as well would mean an OPD admin can no longer schedule a
+     * consultant's leave. The roster's own test pins how many call sites this writer has.
+     */
+    const { absenceId } = await recordAbsenceUnchecked(tx, actor, {
+      userId: doctor.userId,
+      kind: input.kind ?? "CL",
+      startsAt: istDateTimeToUtc(input.fromDate, "00:00"),
+      endsAt: istDateTimeToUtc(addIstDays(input.toDate, 1), "00:00"),
+      reason: input.reason,
+      source: "opd",
+    });
+
     const leaveId = newId();
     await tx.insert(opdDoctorLeaves).values({
       id: leaveId, doctorId: input.doctorId, fromDate: input.fromDate, toDate: input.toDate, reason: input.reason,
-      status: "scheduled", createdBy: actor.id,
+      status: "scheduled", absenceId, createdBy: actor.id,
     });
 
     const affected = await tx
@@ -104,6 +136,15 @@ export async function cancelDoctorLeave(db: Db, actor: Actor, leaveId: string, n
       .where(and(eq(opdDoctorLeaves.id, leaveId), eq(opdDoctorLeaves.status, "scheduled")))
       .returning();
     if (cancelled.length === 0) throw new OpdError("leave_not_scheduled", `leave ${leaveId} is not scheduled`);
+
+    // The projection must not drift: cancelling the leave cancels the absence it projected, in the
+    // same transaction. Rows written before R4 carry no `absenceId` and simply have nothing to cancel.
+    const absenceId = cancelled[0]!.absenceId;
+    if (absenceId !== null) {
+      await tx.update(staffAbsences)
+        .set({ status: "cancelled", updatedBy: actor.id, updatedAt: now })
+        .where(eq(staffAbsences.id, absenceId));
+    }
 
     const restored = await tx
       .update(opdAppointments)

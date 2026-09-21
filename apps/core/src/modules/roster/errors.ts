@@ -60,6 +60,13 @@ export const ROSTER_ERROR_CODES = [
   "officiating_overlap",
   "delegation_not_held",
   "intern_plan_invalid",
+
+  /* ── PHASE R (R4) — being away, and what you hold ── */
+  "unknown_absence",
+  "unknown_absence_kind",
+  "absence_already_decided",
+  "absence_self_approval",
+  "unknown_credential",
 ] as const;
 
 export type RosterErrorCode = (typeof ROSTER_ERROR_CODES)[number];
@@ -101,6 +108,12 @@ export const ROSTER_ERROR_SENTENCES: Record<RosterErrorCode, string> = {
   officiating_overlap: "somebody is already standing in for that role over part of the same stretch",
   delegation_not_held: "nobody may hand on an authority they do not hold themselves",
   intern_plan_invalid: "that internship plan does not add up to the year the regulator requires",
+
+  unknown_absence: "there is no such absence on record",
+  unknown_absence_kind: "that is not a kind of absence this hospital records",
+  absence_already_decided: "somebody has already decided this one — it cannot be decided twice",
+  absence_self_approval: "the person who asks for leave is not the person who allows it; ask whoever answers for the department",
+  unknown_credential: "there is no such registration or certificate on record",
 };
 
 export class RosterError extends Error {
@@ -147,6 +160,12 @@ const STATUS: Record<RosterErrorCode, number> = {
   head_already_held: 409,
   officiating_overlap: 409,
   delegation_not_held: 409,
+
+  unknown_absence: 404,
+  unknown_credential: 404,
+  unknown_absence_kind: 422,
+  absence_already_decided: 409,
+  absence_self_approval: 409,
 };
 
 export function rosterHttpStatus(code: RosterErrorCode): number {

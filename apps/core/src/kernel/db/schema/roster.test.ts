@@ -78,6 +78,19 @@ describe("roster — 0108 structure", () => {
       "updated_at", "updated_by",
     ],
   };
+  // PHASE R (R4) — `staff_*`, not `roster_*`: these are facts about a MEMBER OF STAFF, true whether
+  // or not anybody ever rosters them, and the prefix is what says so.
+  const STAFF_CENSUS: Record<string, string[]> = {
+    staff_absences: [
+      "aebas_entered_at", "aebas_entered_by", "approved_by", "created_at", "created_by",
+      "decided_at", "ends_at", "id", "kind", "reason", "requested_by", "source", "starts_at",
+      "status", "updated_at", "updated_by", "user_id",
+    ],
+    staff_credentials: [
+      "created_at", "created_by", "credential_key", "id", "reference", "updated_at", "updated_by",
+      "user_id", "valid_from", "valid_to", "verified_at", "verified_by",
+    ],
+  };
 
   let db: Db;
   let teardown: () => Promise<void>;
@@ -127,6 +140,22 @@ describe("roster — 0108 structure", () => {
     const actual: Record<string, string[]> = {};
     for (const table of Object.keys(CENSUS)) actual[table] = await columnsOf(table);
     expect(actual).toEqual(CENSUS);
+  });
+
+  it("the staff_ tables exist with exactly the columns named, and none exists that this census misses", async () => {
+    const actual: Record<string, string[]> = {};
+    for (const table of Object.keys(STAFF_CENSUS)) actual[table] = await columnsOf(table);
+    expect(actual).toEqual(STAFF_CENSUS);
+    const rows = (await db.execute(sql`
+      select table_name as "tableName" from information_schema.tables
+      where table_schema = 'public' and table_name like 'staff\\_%' order by table_name asc
+    `)).rows as { tableName: string }[];
+    expect(rows.map((r) => r.tableName).sort()).toEqual(Object.keys(STAFF_CENSUS).sort());
+  });
+
+  it("opd_doctor_leaves carries the link to the absence it projects", async () => {
+    // The column that makes `opd_doctor_leaves` a projection rather than a second source of truth.
+    expect(await columnsOf("opd_doctor_leaves")).toContain("absence_id");
   });
 
   it("no roster_ table exists that this census does not know about", async () => {
