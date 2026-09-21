@@ -182,13 +182,16 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "radiology",
       // PLAN 16c T1 — appended, so the twenty above keep the order they were installed in.
       "pharmacy",
+      // PHASE R (R1) — appended. Every department will owe the roster rows and it reaches into none
+      // of them (D1), so nothing above depends on where it sits.
+      "roster",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(22); // PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
+    expect(ALL_MANIFESTS).toHaveLength(23); // PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(22);
+    expect(registry.all()).toHaveLength(23);
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -201,7 +204,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     expect(manifestKeys(extras, "app.module.ts")).toEqual([]);
   });
 
-  it("the worker's registry differs from ALL_MANIFESTS in exactly seven enumerated, intentional ways", () => {
+  it("the worker's registry differs from ALL_MANIFESTS in exactly eight enumerated, intentional ways", () => {
     const workerKeys = manifestKeys(
       installArguments(readFileSync(WORKER_MODULE, "utf8"), "worker.module.ts"),
       "worker.module.ts",
@@ -307,8 +310,14 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //      appended `aerb` to the array and left the sentence saying six, which is the one thing
     //      every note from (1d) onward is written to prevent. The assertion below now checks the
     //      sentence against the array, so the next note cannot be the same apology.
+    // (1j) PHASE R (R1) — the TWENTY-THIRD, `roster`, and it is APP-ONLY **FOR THIS TASK AND NO
+    //      LONGER**. R1 is the masters and the seam: no subscription, no job, nothing the worker asks.
+    //      R5's resolver `whoIsOn` IS read from the worker's alert and timer consumers (R6) — but a
+    //      resolver is a FUNCTION over tables, not a manifest capability, so whether the worker needs
+    //      the manifest installed is decided in R5 against the (1b) discipline, not assumed here
+    //      (plan §5: "R5 decides whether the worker installs it").
     const appOnly = allKeys.filter((k) => !workerKeys.includes(k));
-    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb"]);
+    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster"]);
 
     /**
      * ═══ THE COUNT IS THE FRICTION, AND UNTIL NOW NOTHING ENFORCED IT ═══
