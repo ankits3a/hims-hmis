@@ -78,6 +78,20 @@ export const ROSTER_ERROR_CODES = [
   "empty_cycle",
   "unknown_template",
   "template_needs_more_units",
+
+  /* ── PHASE R (R8) — whether the roster is any good ── */
+  /**
+   * The ONE refusal the validator can produce. Deliberately not "rule violated": a roster may
+   * carry a dozen findings and still publish, because a warn is something a named human accepts
+   * with a reason. This fires only for a `block` nobody has accepted, and its `detail` carries
+   * every such code, so a head is told all of them at once rather than one per attempt.
+   */
+  "blocked_by_findings",
+  "unknown_rule",
+  "unknown_finding",
+  "finding_already_accepted",
+  "unknown_mode_declaration",
+  "mode_already_withdrawn",
 ] as const;
 
 export type RosterErrorCode = (typeof ROSTER_ERROR_CODES)[number];
@@ -134,6 +148,12 @@ export const ROSTER_ERROR_SENTENCES: Record<RosterErrorCode, string> = {
   empty_cycle: "a cycle with no days on it would leave the department with no calendar at all",
   unknown_template: "that is not one of the duty patterns this hospital offers",
   template_needs_more_units: "that pattern is written for more units than this department has, and applied to fewer it would give somebody two turns on take at once",
+  blocked_by_findings: "this roster breaks a rule that stops it going live — the findings say which, and each one can be accepted, with a reason, by whoever answers for the department",
+  unknown_rule: "that is not a rule in this hospital's book",
+  unknown_finding: "that finding is not on this roster",
+  finding_already_accepted: "somebody has already accepted this finding, and their reason stands",
+  unknown_mode_declaration: "there is no such declaration on that day",
+  mode_already_withdrawn: "somebody has already stood this down, and the time they did it stands",
 };
 
 export class RosterError extends Error {
@@ -184,6 +204,13 @@ const STATUS: Record<RosterErrorCode, number> = {
   unknown_absence: 404,
   unknown_credential: 404,
   unknown_role: 404,
+  /** 422: the roster is well-formed and the hospital will not stand behind it as it is. */
+  blocked_by_findings: 422,
+  unknown_rule: 404,
+  unknown_finding: 404,
+  finding_already_accepted: 409,
+  unknown_mode_declaration: 404,
+  mode_already_withdrawn: 409,
   unknown_cycle: 404,
   empty_cycle: 422,
   unknown_template: 404,

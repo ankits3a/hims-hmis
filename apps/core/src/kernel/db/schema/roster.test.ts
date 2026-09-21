@@ -111,6 +111,34 @@ describe("roster — 0108 structure", () => {
       "created_at", "created_by", "ends_at", "id", "resource_id", "starts_at", "team_id",
       "updated_at", "updated_by",
     ],
+    // PHASE R (R8) — whether a roster is any GOOD. Transcribed from `roster.ts` like every block
+    // above. `params` being jsonb is exactly the kind of column that otherwise grows a field
+    // nobody decided on: the census pins the COLUMN, and the rule tests pin what may be inside it.
+    roster_requirements: [
+      "active", "authority", "basis", "citation", "created_at", "created_by", "credential_key",
+      "day_class", "id", "max_count", "min_count", "position_key", "ratio_n", "scope_id",
+      "scope_type", "shift_def_id", "site_id", "updated_at", "updated_by", "valid_from", "valid_to",
+    ],
+    roster_rules: [
+      "active", "applies_to", "authority", "citation", "created_at", "created_by", "key", "label",
+      "params", "severity", "updated_at", "updated_by",
+    ],
+    roster_rule_profiles: [
+      "approved_at", "approved_by", "created_at", "created_by", "department_id", "id", "params",
+      "reason", "rule_key", "site_id", "updated_at", "updated_by", "valid_from", "valid_to",
+    ],
+    roster_findings: [
+      "accept_reason", "accepted_at", "accepted_by", "assignment_id", "cleared_at", "created_at",
+      "created_by", "id", "params", "period_id", "rule_key", "severity", "site_id", "updated_at",
+      "updated_by", "user_id",
+    ],
+    // Skeleton mode (D4). `ist_date` and no end column is the design, not an omission: a
+    // declaration expires daily, so there is nothing for an "until" column to hold.
+    roster_mode_declarations: [
+      "created_at", "created_by", "declared_at", "declared_by", "department_id", "id", "ist_date",
+      "mode", "reason", "site_id", "updated_at", "updated_by", "withdraw_reason", "withdrawn_at",
+      "withdrawn_by",
+    ],
   };
   // PHASE R (R4) — `staff_*`, not `roster_*`: these are facts about a MEMBER OF STAFF, true whether
   // or not anybody ever rosters them, and the prefix is what says so.

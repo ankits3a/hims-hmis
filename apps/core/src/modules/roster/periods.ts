@@ -12,6 +12,8 @@ import { roleAssignments, users } from "../../kernel/db/schema/auth";
 import { resources } from "../../kernel/db/schema/resources";
 import { RosterError } from "./errors";
 import { requireRosterAct } from "./access";
+import { blockingFindings, validate } from "./validator";
+import { acceptedFindingKeys } from "./findings";
 import {
   rosterAmendmentApplied, rosterDutyChanged, rosterPeriodDrafted, rosterPeriodPublished,
   rosterPeriodSuperseded,
@@ -556,6 +558,33 @@ export async function publishPeriods(
       // V4. The person approving read a rendering of a different roster from the one in front of us.
       throw new RosterError("draft_changed_since_review", undefined, {
         periodId: period.id, expectedContentHash: expected, actualContentHash: hash,
+      });
+    }
+
+    /**
+     * (2c) R8 — THE VALIDATOR, AND IT BELONGS EXACTLY HERE.
+     *
+     * With the other refusals that are decided from the drafts alone, and **before step (3)
+     * supersedes anything.** A validator called after the supersede would mean a REFUSED publish
+     * had already taken the live roster out of effect inside the transaction: the rollback saves
+     * it, but only the rollback, and a future reader reordering these steps for tidiness would
+     * have no way to see what they had broken. Put where refusals live, it cannot be got wrong.
+     *
+     * Only `block` stops a publish, and only a block nobody has accepted. Every other finding is
+     * the head's to weigh — that is the whole distinction between this gate and R2's.
+     */
+    const findings = await validate(tx, period.id);
+    // One definition of "accepted", shared with the findings reader, so that a later change to
+    // what an acceptance means cannot leave the gate honouring a different rule from the screen.
+    const blocking = blockingFindings(findings, await acceptedFindingKeys(tx, period.id));
+    if (blocking.length > 0) {
+      throw new RosterError("blocked_by_findings", undefined, {
+        periodId: period.id,
+        // Every code at once: a head fixing them one attempt at a time is a head we wasted.
+        codes: [...new Set(blocking.map((f) => f.ruleKey))].sort(),
+        findings: blocking.map((f) => ({
+          ruleKey: f.ruleKey, userId: f.userId, assignmentId: f.assignmentId, params: f.params,
+        })),
       });
     }
   }
