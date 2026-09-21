@@ -19,6 +19,7 @@ import * as labSweepsMod from "../../modules/lab/sweeps";
 import * as pharmacyExpiryMod from "../../modules/pharmacy/expiry";
 import * as radiologyChasersMod from "../../modules/radiology/chasers";
 import * as rosterCalendarMod from "../../modules/roster/calendar";
+import * as rosterProposerMod from "../../modules/roster/proposer";
 import * as dispatcherMod from "../events/dispatcher";
 import * as timersMod from "../workflow/timers";
 import * as tempRolesMod from "../auth/temp-roles";
@@ -347,6 +348,16 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("sweepRosterWindows");
       return { departments: 0, written: 0 };
     }),
+    /**
+     * PHASE R (R9) — stubbed on `modules/roster/proposer` for the same reason as the eleventh's
+     * rule above: `jobs.ts` imports it through the index, and the binding lives in the module the
+     * index re-exports FROM. Un-stubbed it would open a transaction and draft a month inside a
+     * fake-clock test that is about the CLOCK.
+     */
+    jest.spyOn(rosterProposerMod, "runMonthlyProposals").mockImplementation(async () => {
+      invoked.push("runMonthlyProposals");
+      return { skipped: true, drafted: 0, units: 0 };
+    }),
   ];
 }
 
@@ -416,7 +427,9 @@ const THE_EIGHTEEN = [
   "sweepCriticalChaser",
   "sweepUnreadWatchman",
   // PHASE R (R7) — the NINETEENTH, `dailyIst("01:30")`: the roster's duty-window horizon.
-  "sweepRosterWindows"
+  "sweepRosterWindows",
+  // PHASE R (R9) — the TWENTIETH, `dailyIst("02:10")`: next month's draft, cut on the 20th.
+  "runMonthlyProposals"
 ];
 
 /**
@@ -684,7 +697,7 @@ describe("Scheduler", () => {
         .map(([atMs, daily]) => ({ atMs, daily }));
     })();
 
-    it("invokes all twenty jobs across a stepwise advance from a pinned instant", async () => {
+    it("invokes all twenty-one jobs across a stepwise advance from a pinned instant", async () => {
       expect(process.env.DATABASE_URL).toBeUndefined(); // CI's environment, reproduced here
       const invoked: string[] = [];
       const spies = spyOnTheThirteen(invoked);

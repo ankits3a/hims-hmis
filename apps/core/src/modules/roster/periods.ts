@@ -306,6 +306,11 @@ export interface AssignInput {
   topic?: string | null;
   source?: RosterAssignmentSource;
   note?: string | null;
+  /**
+   * Groups every slot one proposer RUN produced (R9), so a head can say "undo that draft" and mean
+   * a set rather than a time range. Null for anything a person typed.
+   */
+  proposalRunId?: string | null;
 }
 
 /**
@@ -413,6 +418,7 @@ export async function assign(
     batchRef: input.batchRef ?? null, topic: input.topic ?? null, note: input.note ?? null,
     effective: false, liveFrom: now, lineageId: assignmentId,
     proposedByActorType: actor.type, proposedByActorId: actor.id,
+    proposalRunId: input.proposalRunId ?? null,
     createdBy: actor.id, updatedBy: actor.id,
   });
   if (actor.type === "user" && period.humanTouchedAt === null) {

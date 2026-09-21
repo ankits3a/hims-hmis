@@ -95,6 +95,13 @@ export { blockingFindings, findingKey, templateFeasibility, validate } from "./v
 export type {
   Feasibility, FeasibilityInput, HypotheticalRoster, RosterFinding, ValidateInput,
 } from "./validator";
+export {
+  PROPOSAL_DAY_OF_MONTH, PROPOSAL_STRATEGIES, PROPOSER_ACTOR, fairnessOf, fairnessSpread,
+  proposeMonth, runMonthlyProposals,
+} from "./proposer";
+export type {
+  FairnessCounters, ProposalResult, ProposalStrategy, ProposeMonthInput,
+} from "./proposer";
 export { hoursCarried, simulate } from "./simulate";
 export type { Exclusion, SimulateDelta, SimulateOptions, SimulateResult } from "./simulate";
 export {

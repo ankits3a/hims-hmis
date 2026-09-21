@@ -24,7 +24,7 @@ import { sweepExpiredPicks } from "../../modules/pharmacy";
 import { sweepCriticalChaser, sweepUnreadWatchman } from "../../modules/radiology";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
-import { sweepRosterWindows } from "../../modules/roster";
+import { runMonthlyProposals, sweepRosterWindows } from "../../modules/roster";
 
 // D9/step 2: the daily jobs' clock instants are CODE CONSTANTS beside their registration, not
 // deployment knobs — design decisions from the roadmap (2026-08-12 owner decision Q4), not
@@ -191,6 +191,8 @@ export type JobIntervals = Pick<
  * caller resolves config; this function is handed the three numbers it actually uses.
  */
 const ROSTER_WINDOWS_IST = "01:30";
+/** After the window sweep, and long before anybody opens a clinic. */
+const ROSTER_PROPOSALS_IST = "02:10";
 
 export function registerAllJobs(
   scheduler: Scheduler,
@@ -496,5 +498,17 @@ export function registerAllJobs(
     name: "sweepRosterWindows",
     dailyIst: ROSTER_WINDOWS_IST,
     run: async (now) => { await sweepRosterWindows(db, now); },
+  });
+
+  /**
+   * PHASE R (R9) — the monthly draft. Registered DAILY and returning early on every day but the
+   * 20th, because the scheduler has `every(ms)` and `dailyIst` and no monthly cadence; adding one
+   * would mean editing `scheduler.ts` — a file every lane shares — to serve one caller. Idempotent:
+   * a unit that already has next month is skipped, so a double run drafts nothing twice.
+   */
+  scheduler.register({
+    name: "runMonthlyProposals",
+    dailyIst: ROSTER_PROPOSALS_IST,
+    run: async (now) => { await runMonthlyProposals(db, now); },
   });
 }

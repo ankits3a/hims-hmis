@@ -163,10 +163,15 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
         // leg 1b and not leg 1a; the two legs are asserted disjoint, so putting it in the wrong one
         // fails here rather than paging somebody at 300 s for a job that runs once a day.
         "sweepRosterWindows",
+        // PHASE R (R9) — the twentieth. Daily at 02:10 IST, so leg 1b, like R7's above. It
+        // no-ops on 29 days in 30 (it drafts only on the 20th) and still HEARTBEATS daily, which
+        // is why an absent series is the right alarm: a job that never ran would stop every unit
+        // getting next month's rota and look exactly like a quiet month.
+        "runMonthlyProposals",
       ].sort(),
     );
-    expect(registered).toHaveLength(20); // PHASE O T4: +1, runReachLadder // PHASE R (R7): +1, sweepRosterWindows
-    expect(new Set(registered).size).toBe(20); // no job registered twice
+    expect(registered).toHaveLength(21); // PHASE O T4: +1, runReachLadder // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
+    expect(new Set(registered).size).toBe(21); // no job registered twice
   });
 
   it("the two staleness legs together cover every registered job, exactly once each", () => {

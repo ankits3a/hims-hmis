@@ -182,6 +182,11 @@ const THE_EIGHTEEN = [
    * rolls the duty-window horizon forward; idempotent, so a double run changes nothing.
    */
   "sweepRosterWindows",
+  /**
+   * PHASE R (R9) — the TWENTIETH, `dailyIst("02:10")`. It drafts next month for every unit on the
+   * 20th and no-ops on every other day, so it heartbeats daily and works monthly.
+   */
+  "runMonthlyProposals",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;
@@ -538,7 +543,7 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
     }
   });
 
-  it("(a) boots the worker context, and its Scheduler names EXACTLY the twenty jobs", async () => {
+  it("(a) boots the worker context, and its Scheduler names EXACTLY the twenty-one jobs", async () => {
     const ctx = await NestFactory.createApplicationContext(WorkerModule, { logger: false });
     try {
       const workerDb = ctx.get<Db>(DB);
