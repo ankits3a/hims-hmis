@@ -23,7 +23,10 @@ import {
 } from "../src/modules/ot";
 import { availableQty, findStoreByCode, listItems } from "../src/modules/materials";
 import { IMAGING_GATE_DEF_KEY, IMAGING_STUDY_DEF_KEY, activeStudyTypes } from "../src/modules/radiology";
-import { ROSTER_POSITIONS, UNIT_COUNT, listTeams, rosterMasterCounts, unconfirmedTeams } from "../src/modules/roster";
+import {
+  HORIZON_DAYS, ROSTER_POSITIONS, UNIT_COUNT, departmentsWithTakeGaps, listTeams,
+  rosterMasterCounts, unconfirmedTeams,
+} from "../src/modules/roster";
 import { appointments, unlicensedDevices } from "../src/modules/aerb";
 import {
   activeRegistrations, registeredMachines, registeredPersons,
@@ -313,6 +316,27 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
         return teams.length > 0 && (await unconfirmedTeams(db)).length === 0;
       },
       fix: `each HOD confirms their department's units (seeded inactive by \`seed:roster\`; ${UNIT_COUNT} clinical units plus one night pool per unit-bearing department) — the establishment is this hospital's, not the NMC's, so a human ratifies it`,
+    },
+    {
+      gate: "G3", code: "take_is_continuous",
+      /**
+       * PHASE R (R7) — **V11's half that no constraint can hold.** A department's take windows may
+       * not OVERLAP, and an EXCLUDE says so; they may also not GAP, and absence is not a row, so
+       * nothing in the database can refuse one. A gap is an hour in which a department has nobody
+       * admitting, and the hospital finds out when an ambulance arrives.
+       *
+       * Green only when a published cycle EXISTS and has no hole — the emptiness lesson this file
+       * learned twice (`radiology_devices_licensed`, then `roster_units_confirmed`): a department
+       * with no cycle at all has no gaps, and that is not the same as being covered.
+       */
+      check: async (db) => {
+        const now = new Date();
+        const horizon = new Date(now.getTime() + HORIZON_DAYS * 86_400_000);
+        const cycles = await listTeams(db, { kind: "clinical_unit" });
+        if (cycles.length === 0) return false;
+        return (await departmentsWithTakeGaps(db, now, horizon)).length === 0;
+      },
+      fix: "publish each unit-bearing department's take cycle (`publishCycle`) so every hour inside the ninety-day horizon has an admitting unit — `departmentsWithTakeGaps` names the holes",
     },
   ],
 

@@ -26,6 +26,7 @@ reworked here, not merged.**
 | the system proposes; a human publishes, approves, overrides, acknowledges | Plan 20 D4; matrix in stress test §4 |
 | screens gated on the four boards (approved "as of now") — **out of this plan** | owner RU-6 |
 | **the stop-loss is RAISED and the phase runs R1 → R10** (owner, 2026-09-20, asked at R1's close when R1's measured cost projected R1–R9 at ~1.3–1.5 M against the prompt's 900 k). The tripwire is lifted, not re-derived; the actuals table in §9.7 still records what it cost | owner 2026-09-20 |
+| **R8 SEEDS NO `state` RULE ROWS** (owner, 2026-09-21, asked at R7's close). Knowing the State is not knowing Bihar's own resident-hours, leave and duty mandates, and a rule row carrying a citation nobody checked is worse than an absent one. The book still works: `nmc`, `nmc_recommended`, `central_law`, `central_directive`, `court`, `accreditation` and `institution` carry it, and a hospital adds its own `state` rows when somebody has read them | owner 2026-09-21 |
 | **the State is BIHAR** — the college and the hospital are in Bihar (owner, 2026-09-20, answering stress test §5.4). Every `roster_rules` row whose `authority` is `'state'` is written against Bihar; until R8 seeds one there are none, and no rule row anywhere else in this plan is a placeholder | owner 2026-09-20 |
 
 ---
@@ -233,8 +234,9 @@ staff masking, roster tools) → Plan 41 consumers.
 | R2 | `lane/roster-r2` (stacked on R1) | `6b7ab715` → merged `c485fcec` | [#275](https://github.com/ankits3a/hims-hmis/pull/275) |
 | R3 | `lane/roster-r3` (stacked on R2) | `d7757844` → merged `9d7c0527` | [#276](https://github.com/ankits3a/hims-hmis/pull/276) |
 | R4 | `lane/roster-r4` (stacked on R3) | `27a98688` → merged `70eebfdb` | [#277](https://github.com/ankits3a/hims-hmis/pull/277) |
-| R5 | `lane/roster-r5` (stacked on R4) | `ed84f3ab` | [#278](https://github.com/ankits3a/hims-hmis/pull/278) |
-| R6 | `lane/roster-r6` (stacked on R5) | *(filled at commit)* | *(filled at open)* |
+| R5 | `lane/roster-r5` (stacked on R4) | `ed84f3ab` → merged `2489e106` | [#278](https://github.com/ankits3a/hims-hmis/pull/278) |
+| R6 | `lane/roster-r6` (stacked on R5) | `b9a8faaa` | [#279](https://github.com/ankits3a/hims-hmis/pull/279) |
+| R7 | `lane/roster-r7` (stacked on R6) | *(filled at commit)* | *(filled at open)* |
 | — | `lane/roster-clock-core` | `66b4a2e8` | [#272](https://github.com/ankits3a/hims-hmis/pull/272) — **not a phase-R task**: a clock time bomb that turned `main` red at IST midnight on 2026-09-21, diagnosed from R1's full suite and fixed so the phase could merge at all |
 
 ### 9.2 Kickoff re-measurement (§1), 2026-09-20
@@ -298,6 +300,11 @@ the three that MOVED are G2, G5 and G9, and one more (G3) grew a consequence. In
 | **F24** | R6 | **The approvals chain's duty-manager rung must NOT become configurable.** `handleApprovalRequested` resolves the approver ROLE named in the payload by the approval type, then falls back to the duty manager, then to the owner. The plan says *"duty manager the rung never removed"* — and making that particular rung a configuration row is precisely how it could be removed, by pointing it at a position nobody is rostered to. | The whole approvals chain stays static. The rung-never-removed principle is instead enforced structurally everywhere else: `roster_escalation_targets.fallback_role_key` is `NOT NULL`, so no row can name a position and nothing else, and an empty roster answer falls back to the role with `rosterWasEmpty` raised. |
 | **F25** | R6 | **An escalation may never answer "nobody", even when the roster correctly says so.** R5 is explicit that an empty `published` answer is not an error — *"this unit published October and nobody is on at 03:10"* is a true and useful statement. But an escalation is not a report: the question is not what the roster says, it is who to wake. | `escalationRecipients` fills the hole from the fallback role and raises **`rosterWasEmpty: true`** so the hole is visible rather than papered over. Mutant M1 restores the defect and the suite reddens with `Expected: "role"` / `Received: "roster"`. |
 
+| **F26** | R7 | **The scheduler census tax is SEVEN sites, and `worker-runtime.e2e.test.ts`'s own comment has had to correct itself twice** — four, then five, then seven. Registering `sweepRosterWindows` moved **four** of them (`jobs.test.ts`, `scheduler.test.ts`, `worker-runtime.e2e.test.ts`, `alerts-parity.test.ts`) plus **`docker/prod/prometheus/alerts.yml`**, a production Prometheus config: the job had to be added to the DAILY staleness leg (not the interval one — the two are asserted disjoint) and to the missing-series `absent()` rule. `alerts/consumer.test.ts`'s two subscription censuses did **not** move, correctly, because the job declares no subscription. | Every number read off a failing run, and the file's own instruction followed rather than its count trusted: *a `toHaveLength` grep cannot find a census expressed as a NAMED ARRAY, so run the whole `test/` directory.* |
+| **F27** | R7 | **A scheduled job cannot act as `system`, because the matrix says `publish` is `never` for one — and that is right.** The job is not deciding who is on; it is writing down more of what a human already decided, by re-expanding a cycle that is already `published`. | `MATERIALISER_ACTOR` is a `user`-typed actor with a reserved id, exactly as `TIMER_ACTOR` is in `kernel/workflow/timers.ts` — this codebase's established shape for a scheduled act that CONTINUES a person's decision rather than making one. `extendWindows` cannot publish a cycle and cannot reach a draft. |
+| **F28** | R7 | **The overlay position must be a function of Sundays alone, and the obvious implementation is a walking counter.** A counter incremented while expanding advances on a declared holiday — so the unit whose turn Sunday was loses it, and **every unit's Sunday shifts for the rest of the year from one evening's decision**. It is also not pure: expanding from a different start date gives a different answer. | `overlayPositionFor` counts Sundays from the overlay's own anchor. Mutant M1 restores the walking counter and the suite reddens. |
+| **F29** | R7 | **A test that truncates the database mid-test breaks its own preconditions.** V11's second half rebuilt the fixture by truncating and re-seeding, which dropped the RBAC roles the position seed depends on — the test failed on its own setup rather than on the thing it was measuring. | The holed cycle goes in a DIFFERENT department (Surgery) instead. No truncate, no rebuild, and the two cases are genuinely independent. |
+
 ### 9.5 Mutant tally
 
 | task | mutant | built as | result |
@@ -328,6 +335,11 @@ the three that MOVED are G2, G5 and G9, and one more (G3) grew a consequence. In
 | R6 | **M1** — the rung IS removed: an empty roster answer is returned as the recipients | `escalation-hole-not-filled.mutant.ts` + spec | **DIED**, 1 failed / 9 passed. `Expected: "role"` / `Received: "roster"` — the escalation answers nobody |
 | R6 | **M2** — a `static` answer taken as a published one, so the flag and the fallback stop mattering | `escalation-static-taken-as-published.mutant.ts` + spec | **DIED**, 2 failed / 8 passed, on both the flag-off and the nothing-published legs |
 | R6 | **M3** — the hospital-wide row wins over a department's own | `escalation-hospital-row-wins.mutant.ts` + spec | **DIED**, 1 failed / 9 passed — Medicine stops being able to page its own night SR |
+
+| R7 | **M1** — the overlay advanced by a declared holiday (the walking counter of F28) | `calendar-overlay-advanced-by-holiday.mutant.ts` + spec | **DIED**, 1 failed / 12 passed, on the leg that every Sunday keeps the position it had |
+| R7 | **M2** — the take window closed at its end, so 08:00 belongs to both units | `calendar-take-window-closed.mutant.ts` + spec | **DIED**, 1 failed / 12 passed. V12 returns the outgoing unit at the handover instant |
+| R7 | **M3** — a SECOND generator: materialisation shifts every window by a minute | `calendar-materialiser-diverges.mutant.ts` + spec | **DIED**, **4 failed** / 9 passed — V15, V12, V11 and the holiday leg all go red, which is the evidence that "one generator" is load-bearing rather than tidy |
+| R7 | **M4** — "OPD off, theatre proceeds" also withdraws the take | `calendar-holiday-withdraws-take.mutant.ts` + spec | **DIED**, 1 failed / 12 passed — the holiday empties the emergency department |
 
 Every mutant module and spec was deleted before the counts; `git status --porcelain` carried no
 `*.mutant.*` in any task.

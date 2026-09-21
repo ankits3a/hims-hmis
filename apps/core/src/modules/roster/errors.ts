@@ -71,6 +71,13 @@ export const ROSTER_ERROR_CODES = [
   /* ── PHASE R (R6) — where an escalation goes ── */
   "unknown_escalation_kind",
   "unknown_role",
+
+  /* ── PHASE R (R7) — the calendar ── */
+  "unknown_cycle",
+  "cycle_not_draft",
+  "empty_cycle",
+  "unknown_template",
+  "template_needs_more_units",
 ] as const;
 
 export type RosterErrorCode = (typeof ROSTER_ERROR_CODES)[number];
@@ -121,6 +128,12 @@ export const ROSTER_ERROR_SENTENCES: Record<RosterErrorCode, string> = {
 
   unknown_escalation_kind: "that is not a kind of alert the roster can be asked to route",
   unknown_role: "that is not a role in this hospital",
+
+  unknown_cycle: "there is no such duty cycle for that department",
+  cycle_not_draft: "a cycle the department is working to is never edited — draft the next version and publish that",
+  empty_cycle: "a cycle with no days on it would leave the department with no calendar at all",
+  unknown_template: "that is not one of the duty patterns this hospital offers",
+  template_needs_more_units: "that pattern is written for more units than this department has, and applied to fewer it would give somebody two turns on take at once",
 };
 
 export class RosterError extends Error {
@@ -171,6 +184,11 @@ const STATUS: Record<RosterErrorCode, number> = {
   unknown_absence: 404,
   unknown_credential: 404,
   unknown_role: 404,
+  unknown_cycle: 404,
+  empty_cycle: 422,
+  unknown_template: 404,
+  template_needs_more_units: 422,
+  cycle_not_draft: 409,
   unknown_escalation_kind: 422,
   unknown_absence_kind: 422,
   absence_already_decided: 409,

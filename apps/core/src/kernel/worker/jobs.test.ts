@@ -352,7 +352,7 @@ describe("registerAllJobs threads WORKER_INTERFACE_SWEEP_INTERVAL_MS to the tent
     // nothing. T5 did not read it, and found this file, that file and `alerts.yml`'s three places by
     // going red instead. The tax is identical either way; the difference is whether it is paid once
     // or discovered three times.
-    expect(specs).toHaveLength(18);
+    expect(specs).toHaveLength(19); // PHASE R (R7): +1, sweepRosterWindows
     expect(specs).toContainEqual(
       expect.objectContaining({ name: "flagLateSurgeons", every: 60_000 }),
     );

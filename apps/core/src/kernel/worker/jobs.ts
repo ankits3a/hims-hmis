@@ -23,6 +23,7 @@ import { sweepExpiredPicks } from "../../modules/pharmacy";
 import { sweepCriticalChaser, sweepUnreadWatchman } from "../../modules/radiology";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
+import { sweepRosterWindows } from "../../modules/roster";
 
 // D9/step 2: the daily jobs' clock instants are CODE CONSTANTS beside their registration, not
 // deployment knobs — design decisions from the roadmap (2026-08-12 owner decision Q4), not
@@ -186,6 +187,8 @@ export type JobIntervals = Pick<
  * green on exactly one machine in the world and red on CI for six consecutive commits. The
  * caller resolves config; this function is handed the three numbers it actually uses.
  */
+const ROSTER_WINDOWS_IST = "01:30";
+
 export function registerAllJobs(
   scheduler: Scheduler,
   db: Db,
@@ -457,5 +460,23 @@ export function registerAllJobs(
     name: "sweepUnreadWatchman",
     dailyIst: RADIOLOGY_UNREAD_WATCHMAN_IST,
     run: async (now) => { await sweepUnreadWatchman(db, now); },
+  });
+  /**
+   * PHASE R (R7) — the NINETEENTH, and the roster's first scheduled job.
+   *
+   * The duty-window horizon is rolling (ninety days), so something must roll it. `dailyIst("01:30")`
+   * is after IST midnight — so "today" is the day it extends from — and long before any clinic
+   * opens. It is idempotent: re-materialising a stretch supersedes the old rows and writes the new
+   * ones identically, so a double run changes nothing.
+   *
+   * **AND THE CENSUS TAX IS SEVEN SITES, WHICH THE COMMENT IN `worker-runtime.e2e.test.ts` HAD TO
+   * CORRECT TWICE** — four, then five, then seven. Its own conclusion is the instruction that was
+   * followed here: *a `toHaveLength` grep cannot find a census expressed as a NAMED ARRAY, so run
+   * the whole `test/` directory.* Every number this registration moved was read off a failing run.
+   */
+  scheduler.register({
+    name: "sweepRosterWindows",
+    dailyIst: ROSTER_WINDOWS_IST,
+    run: async (now) => { await sweepRosterWindows(db, now); },
   });
 }
