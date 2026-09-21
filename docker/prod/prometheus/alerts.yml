@@ -30,7 +30,7 @@ groups:
       - alert: HmisSchedulerJobStaleInterval
         expr: |
           hmis_scheduler_heartbeat_staleness_seconds{
-            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump|sweepInterfaceHeartbeats|flagLateSurgeons|sweepLabSla|sweepExpiredPharmacyPicks|sweepCriticalChaser"
+            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump|runReachLadder|sweepInterfaceHeartbeats|flagLateSurgeons|sweepLabSla|sweepExpiredPharmacyPicks|sweepCriticalChaser"
           } > 300
         for: 2m
         labels:
@@ -62,7 +62,7 @@ groups:
 
       # Leg 2 — THE BLIND SPOT (spike finding 6, flag ⑨). A job that has NEVER started has no row
       # in scheduler_heartbeats at all, so it has no series for leg 1 to threshold against — that
-      # is precisely what leg 1 cannot see. `absent()` over each of the FIFTEEN expected job names
+      # is precisely what leg 1 cannot see. `absent()` over each of the TWENTY expected job names
       # closes it: every term that matches carries that job's own name as $labels.job (from the
       # positive equality matcher inside it), so `or` fires one alert instance PER missing job
       # rather than one alert for all of them together.
@@ -72,6 +72,11 @@ groups:
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="runDueTimers"})
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepExpiredTempRoles"})
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="runNotifyPump"})
+          # PHASE O T4 — the channel ladder. A relay sweep that silently stopped is invisible in
+          # the worst way this board has: the in-app alerts keep arriving and looking healthy,
+          # and the only thing that stops is the part that reaches somebody who is not looking
+          # at a screen. Nothing on any dashboard would show it.
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="runReachLadder"})
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepGuardianMajority"})
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepAppointmentNoShows"})
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="runDailyClose"})

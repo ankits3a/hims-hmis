@@ -1,6 +1,6 @@
 {
-  "id": "f3dc8cdd-5899-4f7f-9237-3cb4a21f12fa",
-  "prevId": "2ba13b87-2fea-44b8-8e09-ce260fec9901",
+  "id": "9f41f874-e3da-4c9e-85bd-ef0b4b1e21be",
+  "prevId": "f3dc8cdd-5899-4f7f-9237-3cb4a21f12fa",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -32171,6 +32171,206 @@
       },
       "isRLSEnabled": false
     },
+    "public.roster_findings": {
+      "name": "roster_findings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "period_id": {
+          "name": "period_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "assignment_id": {
+          "name": "assignment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rule_key": {
+          "name": "rule_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "severity": {
+          "name": "severity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "params": {
+          "name": "params",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "accepted_by": {
+          "name": "accepted_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accepted_at": {
+          "name": "accepted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accept_reason": {
+          "name": "accept_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cleared_at": {
+          "name": "cleared_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "site_id": {
+          "name": "site_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'main'"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "roster_findings_period_idx": {
+          "name": "roster_findings_period_idx",
+          "columns": [
+            {
+              "expression": "period_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"roster_findings\".\"cleared_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "roster_findings_user_idx": {
+          "name": "roster_findings_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "rule_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "roster_findings_period_id_roster_periods_id_fk": {
+          "name": "roster_findings_period_id_roster_periods_id_fk",
+          "tableFrom": "roster_findings",
+          "tableTo": "roster_periods",
+          "columnsFrom": [
+            "period_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_findings_user_id_users_id_fk": {
+          "name": "roster_findings_user_id_users_id_fk",
+          "tableFrom": "roster_findings",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_findings_accepted_by_users_id_fk": {
+          "name": "roster_findings_accepted_by_users_id_fk",
+          "tableFrom": "roster_findings",
+          "tableTo": "users",
+          "columnsFrom": [
+            "accepted_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "roster_findings_severity_ck": {
+          "name": "roster_findings_severity_ck",
+          "value": "\"roster_findings\".\"severity\" in ('block', 'warn', 'info')"
+        },
+        "roster_findings_acceptance_ck": {
+          "name": "roster_findings_acceptance_ck",
+          "value": "(\"roster_findings\".\"accepted_by\" is null and \"roster_findings\".\"accepted_at\" is null and \"roster_findings\".\"accept_reason\" is null) or (\"roster_findings\".\"accepted_by\" is not null and \"roster_findings\".\"accepted_at\" is not null and \"roster_findings\".\"accept_reason\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.roster_holidays": {
       "name": "roster_holidays",
       "schema": "",
@@ -32289,6 +32489,186 @@
         "roster_holidays_pattern_ck": {
           "name": "roster_holidays_pattern_ck",
           "value": "\"roster_holidays\".\"pattern\" in ('as_sunday', 'opd_short', 'opd_off_ot_proceeds')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.roster_mode_declarations": {
+      "name": "roster_mode_declarations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "department_id": {
+          "name": "department_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mode": {
+          "name": "mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'skeleton'"
+        },
+        "ist_date": {
+          "name": "ist_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "declared_by": {
+          "name": "declared_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "declared_at": {
+          "name": "declared_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "withdrawn_by": {
+          "name": "withdrawn_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "withdrawn_at": {
+          "name": "withdrawn_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "withdraw_reason": {
+          "name": "withdraw_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "site_id": {
+          "name": "site_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'main'"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "roster_mode_declarations_day_idx": {
+          "name": "roster_mode_declarations_day_idx",
+          "columns": [
+            {
+              "expression": "ist_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "department_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"roster_mode_declarations\".\"withdrawn_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "roster_mode_declarations_department_id_org_departments_id_fk": {
+          "name": "roster_mode_declarations_department_id_org_departments_id_fk",
+          "tableFrom": "roster_mode_declarations",
+          "tableTo": "org_departments",
+          "columnsFrom": [
+            "department_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_mode_declarations_declared_by_users_id_fk": {
+          "name": "roster_mode_declarations_declared_by_users_id_fk",
+          "tableFrom": "roster_mode_declarations",
+          "tableTo": "users",
+          "columnsFrom": [
+            "declared_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_mode_declarations_withdrawn_by_users_id_fk": {
+          "name": "roster_mode_declarations_withdrawn_by_users_id_fk",
+          "tableFrom": "roster_mode_declarations",
+          "tableTo": "users",
+          "columnsFrom": [
+            "withdrawn_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "roster_mode_declarations_mode_ck": {
+          "name": "roster_mode_declarations_mode_ck",
+          "value": "\"roster_mode_declarations\".\"mode\" in ('skeleton')"
+        },
+        "roster_mode_declarations_withdrawal_ck": {
+          "name": "roster_mode_declarations_withdrawal_ck",
+          "value": "(\"roster_mode_declarations\".\"withdrawn_at\" is null and \"roster_mode_declarations\".\"withdrawn_by\" is null)\n          or (\"roster_mode_declarations\".\"withdrawn_at\" is not null and \"roster_mode_declarations\".\"withdrawn_by\" is not null)"
         }
       },
       "isRLSEnabled": false
@@ -32953,6 +33333,508 @@
         "roster_positions_max_presence_ck": {
           "name": "roster_positions_max_presence_ck",
           "value": "\"roster_positions\".\"max_presence_hours\" between 1 and 36"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.roster_requirements": {
+      "name": "roster_requirements",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "scope_type": {
+          "name": "scope_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope_id": {
+          "name": "scope_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "position_key": {
+          "name": "position_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "shift_def_id": {
+          "name": "shift_def_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "day_class": {
+          "name": "day_class",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'any'"
+        },
+        "min_count": {
+          "name": "min_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_count": {
+          "name": "max_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "credential_key": {
+          "name": "credential_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "basis": {
+          "name": "basis",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'fixed'"
+        },
+        "ratio_n": {
+          "name": "ratio_n",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "authority": {
+          "name": "authority",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "citation": {
+          "name": "citation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "valid_from": {
+          "name": "valid_from",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valid_to": {
+          "name": "valid_to",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "site_id": {
+          "name": "site_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'main'"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "roster_requirements_scope_idx": {
+          "name": "roster_requirements_scope_idx",
+          "columns": [
+            {
+              "expression": "scope_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "scope_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"roster_requirements\".\"active\"",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "roster_requirements_position_key_roster_positions_key_fk": {
+          "name": "roster_requirements_position_key_roster_positions_key_fk",
+          "tableFrom": "roster_requirements",
+          "tableTo": "roster_positions",
+          "columnsFrom": [
+            "position_key"
+          ],
+          "columnsTo": [
+            "key"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_requirements_shift_def_id_roster_shift_defs_id_fk": {
+          "name": "roster_requirements_shift_def_id_roster_shift_defs_id_fk",
+          "tableFrom": "roster_requirements",
+          "tableTo": "roster_shift_defs",
+          "columnsFrom": [
+            "shift_def_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "roster_requirements_scope_ck": {
+          "name": "roster_requirements_scope_ck",
+          "value": "\"roster_requirements\".\"scope_type\" in ('location', 'team', 'department')"
+        },
+        "roster_requirements_day_class_ck": {
+          "name": "roster_requirements_day_class_ck",
+          "value": "\"roster_requirements\".\"day_class\" in ('weekday', 'saturday', 'sunday', 'holiday', 'any')"
+        },
+        "roster_requirements_basis_ck": {
+          "name": "roster_requirements_basis_ck",
+          "value": "\"roster_requirements\".\"basis\" in ('fixed', 'per_occupied_bed')"
+        },
+        "roster_requirements_authority_ck": {
+          "name": "roster_requirements_authority_ck",
+          "value": "\"roster_requirements\".\"authority\" in ('nmc', 'nmc_recommended', 'central_law', 'central_directive', 'court', 'accreditation', 'state', 'institution')"
+        },
+        "roster_requirements_min_ck": {
+          "name": "roster_requirements_min_ck",
+          "value": "\"roster_requirements\".\"min_count\" >= 0"
+        },
+        "roster_requirements_max_ck": {
+          "name": "roster_requirements_max_ck",
+          "value": "\"roster_requirements\".\"max_count\" is null or \"roster_requirements\".\"max_count\" >= \"roster_requirements\".\"min_count\""
+        },
+        "roster_requirements_ratio_ck": {
+          "name": "roster_requirements_ratio_ck",
+          "value": "(\"roster_requirements\".\"basis\" = 'fixed' and \"roster_requirements\".\"ratio_n\" is null) or (\"roster_requirements\".\"basis\" = 'per_occupied_bed' and \"roster_requirements\".\"ratio_n\" > 0)"
+        },
+        "roster_requirements_validity_ck": {
+          "name": "roster_requirements_validity_ck",
+          "value": "\"roster_requirements\".\"valid_to\" is null or \"roster_requirements\".\"valid_to\" >= \"roster_requirements\".\"valid_from\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.roster_rule_profiles": {
+      "name": "roster_rule_profiles",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "department_id": {
+          "name": "department_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rule_key": {
+          "name": "rule_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "params": {
+          "name": "params",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valid_from": {
+          "name": "valid_from",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valid_to": {
+          "name": "valid_to",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "approved_by": {
+          "name": "approved_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "approved_at": {
+          "name": "approved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "site_id": {
+          "name": "site_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'main'"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "roster_rule_profiles_dept_idx": {
+          "name": "roster_rule_profiles_dept_idx",
+          "columns": [
+            {
+              "expression": "department_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "rule_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "valid_from",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "roster_rule_profiles_department_id_org_departments_id_fk": {
+          "name": "roster_rule_profiles_department_id_org_departments_id_fk",
+          "tableFrom": "roster_rule_profiles",
+          "tableTo": "org_departments",
+          "columnsFrom": [
+            "department_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_rule_profiles_rule_key_roster_rules_key_fk": {
+          "name": "roster_rule_profiles_rule_key_roster_rules_key_fk",
+          "tableFrom": "roster_rule_profiles",
+          "tableTo": "roster_rules",
+          "columnsFrom": [
+            "rule_key"
+          ],
+          "columnsTo": [
+            "key"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_rule_profiles_approved_by_users_id_fk": {
+          "name": "roster_rule_profiles_approved_by_users_id_fk",
+          "tableFrom": "roster_rule_profiles",
+          "tableTo": "users",
+          "columnsFrom": [
+            "approved_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "roster_rule_profiles_validity_ck": {
+          "name": "roster_rule_profiles_validity_ck",
+          "value": "\"roster_rule_profiles\".\"valid_to\" >= \"roster_rule_profiles\".\"valid_from\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.roster_rules": {
+      "name": "roster_rules",
+      "schema": "",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "severity": {
+          "name": "severity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "authority": {
+          "name": "authority",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "citation": {
+          "name": "citation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "applies_to": {
+          "name": "applies_to",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "params": {
+          "name": "params",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "roster_rules_severity_ck": {
+          "name": "roster_rules_severity_ck",
+          "value": "\"roster_rules\".\"severity\" in ('block', 'warn', 'info')"
+        },
+        "roster_rules_authority_ck": {
+          "name": "roster_rules_authority_ck",
+          "value": "\"roster_rules\".\"authority\" in ('nmc', 'nmc_recommended', 'central_law', 'central_directive', 'court', 'accreditation', 'state', 'institution')"
         }
       },
       "isRLSEnabled": false

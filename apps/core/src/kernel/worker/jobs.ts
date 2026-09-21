@@ -13,6 +13,7 @@ import { collectOrderKinds } from "../orders/kinds";
 import { flagLateSurgeons } from "../../modules/ot";
 import { runDailyClose } from "../../modules/billing/daily-close";
 import { runNotifyPump } from "../notify/pump";
+import { runReachLadder } from "../notify/reach";
 import { createEventPartitions } from "./partitions";
 import { retentionSweep } from "../retention/sweep";
 import { istDayString } from "../approvals/cumulative";
@@ -126,6 +127,8 @@ export type JobIntervals = Pick<
   // `CENSUS_INTERVALS` in `scheduler.test.ts` is the one that found it. Production is unaffected
   // because `worker.ts` passes the whole `AppConfig`, which satisfies the wider Pick structurally.
   | "workerNotifyIntervalMs"
+  // PHASE O T4 — the channel ladder's own cadence, separate from the pump's.
+  | "workerReachIntervalMs"
   // Plan 11a R0-2: NOT a cadence — the pump's STUCK WINDOW (`NOTIFY_STUCK_AFTER_MS`, default
   // 300 000). config.ts:62 parsed it and config.ts:101 exposed `cfg.notifyStuckAfterMs`, and
   // NOBODY READ IT: the registration below said `runNotifyPump(db, { now })`, so the pump always
@@ -287,6 +290,21 @@ export function registerAllJobs(
     run: async (now) => {
       await runNotifyPump(db, { now, stuckAfterMs: intervals.notifyStuckAfterMs });
     },
+  });
+  /**
+   * PHASE O T4 — THE CHANNEL LADDER. Separate job and separate cadence from the pump, because
+   * they answer different questions: the pump asks *is there anything to send*, and this asks
+   * *has anybody failed to answer for long enough that it should get louder*. Folding it into
+   * the pump would have tied the loudness decision to the outbox's drain rate.
+   *
+   * It only ever WRITES to the outbox; the pump is still the only thing that sends. So a reach
+   * sweep that runs while the provider is on the console sink is not wasted — the rows are
+   * there, with their dedupe keys, and go out on the day the keys are generated.
+   */
+  scheduler.register({
+    name: "runReachLadder",
+    every: intervals.workerReachIntervalMs,
+    run: async (now) => { await runReachLadder(db, now); },
   });
   // Plan 11a D5: THE EIGHTH JOB, and it needs no interval key — `dailyIst` registrations take
   // their instant from a code constant above, which is why this one does NOT widen `JobIntervals`

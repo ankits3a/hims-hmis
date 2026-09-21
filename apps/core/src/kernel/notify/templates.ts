@@ -1,3 +1,4 @@
+import type { NotifyChannel } from "./adapters";
 // The notification template registry (Plan 10, D8). Versioned, typed, code — not data — because
 // the enforcement IS the type: `render: Record<"hi" | "en", ...>` means a template missing a
 // language does not compile. The starter catalog carries only the five templates with LIVE
@@ -13,7 +14,7 @@ export type NotificationTemplate = {
   class: "transactional" | "promotional";
   audience: "patient" | "staff" | "owner";
   urgency: "routine" | "urgent";
-  channels?: ("whatsapp" | "sms")[]; // default ["whatsapp", "sms"]
+  channels?: NotifyChannel[]; // default ["whatsapp", "sms"] — a staff template narrows to ["web_push"]
   waApprovalStatus: "not_submitted" | "pending" | "approved" | "rejected"; // data for §19, later
   expiresAt(params: Record<string, unknown>, occurredAt: Date): Date; // D5 — anchored on MEANING, never elapsed time
   render: Record<"hi" | "en", (params: Record<string, unknown>) => string>; // both, or no compile
@@ -210,6 +211,104 @@ export const notificationTemplates: Record<string, NotificationTemplate> = {
         `Your imaging report for ${paramStr(params, "orderNo")} is ready. Please collect it from the hospital reception. Bring this message and a photo ID.`,
       hi: (params) =>
         `${paramStr(params, "orderNo")} की आपकी इमेजिंग रिपोर्ट तैयार है। कृपया इसे अस्पताल के रिसेप्शन से प्राप्त करें। यह संदेश और एक फोटो पहचान पत्र साथ लाएँ।`,
+    },
+  },
+
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════
+   * PHASE O T4 — THE THREE STAFF RELAY TEMPLATES, AND WHAT THEY MAY NOT SAY
+   * ═══════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * `runReachLadder` relays an unread staff ALERT onto a louder channel. What it relays is the
+   * spine's own four words and nothing else — **kind, lane, remaining minutes, link** (O10,
+   * R10). Not the patient. Not a staff member's health fact. Not a rupee amount, not even as a
+   * number the reader could infer one from: an amount travels as a BAND or not at all, and
+   * these three carry neither.
+   *
+   * The reason is that these bodies leave the hospital. A push notification sits on a lock
+   * screen in a shared house; a WhatsApp message sits in a chat backup; an SMS sits with a
+   * telecom operator. The in-app alert the relay points at is where the detail lives, behind a
+   * permission-checked route — which is what the `link` is for.
+   *
+   * `paramStr` is the only way any of them reads a param, so a caller that passes an object
+   * gets `[object Object]` in the body rather than a leak. The params are exactly four and
+   * `templates.test.ts` asserts the bodies against a params object carrying a patient's name to
+   * prove the omission is real rather than incidental.
+   */
+
+  // Producer: `runReachLadder` for an alert in the `now` lane. URGENT, so quiet hours never
+  // defer it (D7) and the night supervisor's exemption is not even consulted.
+  staff_alert_relay_now: {
+    key: "staff_alert_relay_now",
+    version: 1,
+    class: "transactional",
+    audience: "staff",
+    // THE FULL STAFF LADDER, IN ITS CANONICAL ORDER, AND THE ROW'S `rung` PICKS ONE OF THEM.
+    // `runReachLadder` chooses the channel from the PERSON's ladder and then sets `rung` to
+    // that channel's index here, so the pump sends on the channel the relay decided rather
+    // than re-deriving one from `DEFAULT_CHANNELS` (which is the patient ladder and has no
+    // browser rung at all).
+    channels: ["web_push", "whatsapp", "sms"],
+    urgency: "urgent",
+    waApprovalStatus: "not_submitted",
+    // Two hours. A "now" obligation that nobody has read in two hours is not going to be
+    // answered by this message; it is the role ladder's problem by then.
+    expiresAt: (_params, occurredAt) => new Date(occurredAt.getTime() + 2 * HOUR_MS),
+    render: {
+      en: (params) =>
+        `${paramStr(params, "kind")} · now · ${paramStr(params, "remainingMinutes")} min left. Open: ${paramStr(params, "link")}`,
+      hi: (params) =>
+        `${paramStr(params, "kind")} · अभी · ${paramStr(params, "remainingMinutes")} मिनट शेष। खोलें: ${paramStr(params, "link")}`,
+    },
+  },
+
+  // Producer: `runReachLadder` for the `today` and `can_wait` lanes. ROUTINE, so quiet hours
+  // DO defer it — that is the whole difference between this template and the one above, and it
+  // is why they are two templates rather than one with a variable word.
+  staff_alert_relay_later: {
+    key: "staff_alert_relay_later",
+    version: 1,
+    class: "transactional",
+    audience: "staff",
+    // THE FULL STAFF LADDER, IN ITS CANONICAL ORDER, AND THE ROW'S `rung` PICKS ONE OF THEM.
+    // `runReachLadder` chooses the channel from the PERSON's ladder and then sets `rung` to
+    // that channel's index here, so the pump sends on the channel the relay decided rather
+    // than re-deriving one from `DEFAULT_CHANNELS` (which is the patient ladder and has no
+    // browser rung at all).
+    channels: ["web_push", "whatsapp", "sms"],
+    urgency: "routine",
+    waApprovalStatus: "not_submitted",
+    expiresAt: (_params, occurredAt) => new Date(occurredAt.getTime() + 24 * HOUR_MS),
+    render: {
+      en: (params) =>
+        `${paramStr(params, "kind")} · ${paramStr(params, "lane")} · ${paramStr(params, "remainingMinutes")} min left. Open: ${paramStr(params, "link")}`,
+      hi: (params) =>
+        `${paramStr(params, "kind")} · ${paramStr(params, "lane")} · ${paramStr(params, "remainingMinutes")} मिनट शेष। खोलें: ${paramStr(params, "link")}`,
+    },
+  },
+
+  // Producer: `runReachLadder` when a person has spent their hourly interrupt budget (R9). ONE
+  // message saying how many things are waiting, instead of the seventh, eighth and ninth.
+  // It carries a COUNT and no kinds: five obligations listed by kind is five leaks, not one.
+  staff_alert_digest: {
+    key: "staff_alert_digest",
+    version: 1,
+    class: "transactional",
+    audience: "staff",
+    // THE FULL STAFF LADDER, IN ITS CANONICAL ORDER, AND THE ROW'S `rung` PICKS ONE OF THEM.
+    // `runReachLadder` chooses the channel from the PERSON's ladder and then sets `rung` to
+    // that channel's index here, so the pump sends on the channel the relay decided rather
+    // than re-deriving one from `DEFAULT_CHANNELS` (which is the patient ladder and has no
+    // browser rung at all).
+    channels: ["web_push", "whatsapp", "sms"],
+    urgency: "routine",
+    waApprovalStatus: "not_submitted",
+    expiresAt: (_params, occurredAt) => new Date(occurredAt.getTime() + 12 * HOUR_MS),
+    render: {
+      en: (params) =>
+        `${paramStr(params, "kind")} things are waiting for you. Open: ${paramStr(params, "link")}`,
+      hi: (params) =>
+        `${paramStr(params, "kind")} काम आपकी प्रतीक्षा में हैं। खोलें: ${paramStr(params, "link")}`,
     },
   },
 };

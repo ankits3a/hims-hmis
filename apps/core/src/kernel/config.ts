@@ -30,6 +30,13 @@ export function requireEnv(name: string): string {
  * required-only-when-selected via a zod refinement at that point, not here. */
 const notifyProviderSchema = z.enum(["console"]);
 export type NotifyProvider = z.infer<typeof notifyProviderSchema>;
+/**
+ * PHASE O T4 — A SECOND PROVIDER KNOB, BECAUSE PUSH NEEDS NOTHING BOUGHT. WhatsApp and SMS wait
+ * on a BSP contract and a DLT header; Chrome push needs three generated keys and is the channel
+ * RO-4 asked for first. One knob would have made the hospital wait for the purchases.
+ */
+const notifyPushProviderSchema = z.enum(["console", "webpush"]);
+export type NotifyPushProvider = z.infer<typeof notifyPushProviderSchema>;
 
 const configSchema = z.object({
   DATABASE_URL: z.string().min(1),
@@ -71,6 +78,16 @@ const configSchema = z.object({
   // require a value or a new .env entry anywhere (server or CI).
   WORKER_NOTIFY_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
   NOTIFY_PROVIDER: notifyProviderSchema.default("console"),
+  NOTIFY_PUSH_PROVIDER: notifyPushProviderSchema.default("console"),
+  /**
+   * PHASE O T4 — the channel ladder's cadence. A minute, not five: the `now` lane's patience is
+   * five minutes, and a sweep that ran every five could spend the whole of it before noticing.
+   */
+  WORKER_REACH_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
+  WEB_PUSH_VAPID_PUBLIC_KEY: z.string().default(""),
+  WEB_PUSH_VAPID_PRIVATE_KEY: z.string().default(""),
+  /** `mailto:` or an https URL — the push services require a way to contact the sender. */
+  WEB_PUSH_VAPID_SUBJECT: z.string().default(""),
   /*
    * PHASE 11i T3 (§2b row 22) — WHICH BOX AM I LOOKING AT.
    *
@@ -341,6 +358,14 @@ export type AppConfig = {
   workerDailyTickMs: number;
   workerNotifyIntervalMs: number;
   notifyProvider: NotifyProvider;
+  notifyPushProvider: NotifyPushProvider;
+  workerReachIntervalMs: number;
+  /**
+   * The three VAPID keys, or NULL when push is on the console sink. Null-or-complete rather
+   * than three independent nullable strings: two keys out of three is not a usable
+   * configuration, and `adaptersFor` should not have to re-check what the parse already knows.
+   */
+  webPushVapid: { publicKey: string; privateKey: string; subject: string } | null;
   /** 11i T3 — "UAT", "TRAINING", …; `null` on production, where the key is never set. */
   environmentLabel: string | null;
   /** FD-8 — the triage advisor. `baseUrl`/`apiKey` null ⇒ the desk uses its own keyword table only. */
@@ -387,6 +412,43 @@ export type AppConfig = {
   couponIssuanceEnabled: boolean;
 };
 
+/**
+ * PHASE O T4 — REFUSED AT BOOT, NOT DISCOVERED AT SEND TIME.
+ *
+ * `NOTIFY_PUSH_PROVIDER=webpush` with a missing key is a deployment that starts, looks healthy,
+ * and drops every push on the floor at 02:00 with a stack trace nobody is reading. The boot
+ * refusal is the cheap half of `boot-check-warn-vs-refuse`: this is a CONFIGURATION defect the
+ * operator can fix in thirty seconds, and no amount of running will reveal it.
+ *
+ * The console sink ignores the keys entirely, so a hospital that has not generated them yet
+ * boots normally — which is every hospital until somebody runs `web-push generate-vapid-keys`.
+ */
+function vapidFrom(parsed: {
+  NOTIFY_PUSH_PROVIDER: NotifyPushProvider;
+  WEB_PUSH_VAPID_PUBLIC_KEY: string;
+  WEB_PUSH_VAPID_PRIVATE_KEY: string;
+  WEB_PUSH_VAPID_SUBJECT: string;
+}): { publicKey: string; privateKey: string; subject: string } | null {
+  if (parsed.NOTIFY_PUSH_PROVIDER !== "webpush") return null;
+  const missing = (
+    [
+      ["WEB_PUSH_VAPID_PUBLIC_KEY", parsed.WEB_PUSH_VAPID_PUBLIC_KEY],
+      ["WEB_PUSH_VAPID_PRIVATE_KEY", parsed.WEB_PUSH_VAPID_PRIVATE_KEY],
+      ["WEB_PUSH_VAPID_SUBJECT", parsed.WEB_PUSH_VAPID_SUBJECT],
+    ] as const
+  ).filter(([, v]) => v.trim() === "").map(([k]) => k);
+  if (missing.length > 0) {
+    throw new Error(
+      `NOTIFY_PUSH_PROVIDER=webpush requires ${missing.join(", ")} — set them or leave the provider on "console"`,
+    );
+  }
+  return {
+    publicKey: parsed.WEB_PUSH_VAPID_PUBLIC_KEY,
+    privateKey: parsed.WEB_PUSH_VAPID_PRIVATE_KEY,
+    subject: parsed.WEB_PUSH_VAPID_SUBJECT,
+  };
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (env === process.env) loadEnv();
   const parsed = configSchema.parse(env);
@@ -407,6 +469,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     workerDailyTickMs: parsed.WORKER_DAILY_TICK_MS,
     workerNotifyIntervalMs: parsed.WORKER_NOTIFY_INTERVAL_MS,
     notifyProvider: parsed.NOTIFY_PROVIDER,
+    notifyPushProvider: parsed.NOTIFY_PUSH_PROVIDER,
+    workerReachIntervalMs: parsed.WORKER_REACH_INTERVAL_MS,
+    webPushVapid: vapidFrom(parsed),
     triage: {
       baseUrl: parsed.TRIAGE_BASE_URL ?? null,
       apiKey: parsed.TRIAGE_API_KEY ?? null,

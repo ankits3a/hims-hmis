@@ -1,20 +1,21 @@
-import { and, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
-import { notifications, patients, users } from "../db/schema";
+import { notifications, patients, pushSubscriptions, users } from "../db/schema";
 import { withTx } from "../db/client";
 import type { Db, Tx } from "../db/client";
 import { appendEvent } from "../events/append";
-import { adaptersFor } from "./adapters";
-import type { ChannelAdapter } from "./adapters";
+import { PushSubscriptionGoneError, adaptersFor, encodePushAddresses } from "./adapters";
+import type { ChannelAdapter, PushAddress } from "./adapters";
 import {
   notificationExpired,
   notificationFailed,
   notificationSent,
   notificationSuppressed,
 } from "./events";
+import { reachProfileFor } from "./reach";
 import { templateByKey } from "./templates";
 import type { NotificationTemplate } from "./templates";
-import type { NotifyProvider } from "../config";
+import type { NotifyProvider, NotifyPushProvider } from "../config";
 
 // THE SEND PATH (Plan 10, D2/D3/D4/D6/D7). This is the file where a defect reaches a person.
 //
@@ -80,6 +81,13 @@ const STUCK_ERROR = "claimed for sending and never completed — flagged, never 
  * one in through `opts.adapters`, which is the same seam tests use for fakes.
  */
 const PUMP_PROVIDER: NotifyProvider = "console";
+/**
+ * PHASE O T4 — THE SAME SEAM, FOR THE SECOND KNOB. Push can be live while WhatsApp and SMS are
+ * still on the console sink (RO-4), so it has its own provider; `registerAllJobs` still reads
+ * no environment, so the default here is still the sink and a deployment that has generated
+ * VAPID keys threads the real adapter set in through `opts.adapters` exactly as before.
+ */
+const PUMP_PUSH_PROVIDER: NotifyPushProvider = "console";
 
 /** `next_attempt_at = now + min(2^attempts, 60) s`, attempts counted AFTER this failure (D6). */
 const backoffMs = (attempts: number): number => Math.min(2 ** attempts, MAX_BACKOFF_SECONDS) * 1000;
@@ -112,9 +120,29 @@ export function quietHoursDeferral(
   template: Pick<NotificationTemplate, "urgency">,
   audience: string,
   now: Date,
+  /**
+   * PHASE O T4 — THE STAFF LEG, AND THE ONE SEAT IT DOES NOT APPLY TO.
+   *
+   * Until now this function returned null for everybody but patients, because staff messages
+   * were escalations and an escalation at 03:00 is the point. The relay templates are not
+   * escalations: a `can_wait` obligation relayed to a nurse's personal phone at 02:00 is the
+   * noise that makes her mute the phone before the `now` one arrives (R9's failure, arriving
+   * by a different road). So a ROUTINE staff template defers exactly as a routine patient one
+   * does — and an URGENT one still does not, which is what keeps the `now` lane loud.
+   *
+   * `quietExempt` is R9's two seats: the night supervisor and the CMO, whose entire job is to
+   * be interrupted. It is read from the person's reach profile, or their class's default.
+   *
+   * The hours are 08:00–21:00 IST for everybody. T7 builds `department_hours` and the staff leg
+   * moves onto the addressee's own department — a casualty nurse's quiet hours are not an OPD
+   * clerk's. Until that table exists there is nothing better to read, and inventing a second
+   * copy of it here is what T7 would then have to delete.
+   */
+  opts: { quietExempt?: boolean } = {},
 ): Date | null {
-  if (audience !== "patient") return null;
+  if (audience !== "patient" && audience !== "staff") return null;
   if (template.urgency !== "routine") return null;
+  if (audience === "staff" && opts.quietExempt === true) return null;
 
   // Shift into IST and then read the UTC getters: the shifted instant's UTC fields ARE the IST
   // wall clock, which is what makes this arithmetic and not a locale lookup.
@@ -183,7 +211,7 @@ async function markSuppressed(
 async function markUndeliverable(
   tx: Tx,
   row: NotificationRow,
-  reason: "ladder_exhausted" | "no_phone" | "render_error" | "stuck_sending",
+  reason: "ladder_exhausted" | "no_phone" | "no_push_subscription" | "render_error" | "stuck_sending",
   now: Date,
   lastError: string,
 ): Promise<void> {
@@ -349,27 +377,54 @@ async function prepareRow(tx: Tx, row: NotificationRow, now: Date): Promise<Send
     return { kind: "done" };
   }
 
-  // ── 4. QUIET HOURS (D7). Not a suppression: back to `queued`, no attempt counted.
-  const resumeAt = quietHoursDeferral(template, row.audience, now);
+  // ── 4. QUIET HOURS (D7, + T4's staff leg). Not a suppression: back to `queued`, no attempt
+  // counted. The exemption is read per person, and only for the audience that can carry one.
+  const quietExempt = row.audience === "staff" && row.userId !== null
+    ? (await reachProfileFor(tx, row.userId)).quietExempt
+    : false;
+  const resumeAt = quietHoursDeferral(template, row.audience, now, { quietExempt });
   if (resumeAt !== null) {
     await settle(tx, row, { status: "queued", nextAttemptAt: resumeAt }, now);
     return { kind: "done" };
   }
 
   // ── 5. CHANNEL RESOLUTION (D6).
-  const to = patient !== null ? patient.phone : await userPhone(tx, row.userId);
+  //
+  // PHASE O T4 REVERSED THE ORDER OF THIS STEP, and the reason is not style. It used to resolve
+  // the ADDRESS first and the channel second, because every channel addressed a person by the
+  // same string: a phone number. `web_push` does not — its address is a per-browser endpoint
+  // and two keys — so "what is this person's address" is not answerable until you know which
+  // channel is being asked about. Resolving the phone first would have declared a doctor with
+  // no phone number unreachable by push, which is exactly backwards.
+  const channels = template.channels ?? DEFAULT_CHANNELS;
+  const channel = channels[row.rung];
+  if (channel === undefined) {
+    await markUndeliverable(tx, row, "ladder_exhausted", now, row.lastError ?? "ladder exhausted");
+    return { kind: "done" };
+  }
+
+  let to: string | null;
+  if (channel === "web_push") {
+    // EVERY live subscription, not the newest one. A doctor has a phone, the desk at the
+    // station and the machine in the OT corridor; a push that reaches one of them reaches
+    // nobody. The adapter fans across them and reports which are gone.
+    const subs = row.userId === null ? [] : await livePushSubscriptions(tx, row.userId);
+    if (subs.length === 0) {
+      await markUndeliverable(
+        tx, row, "no_push_subscription", now,
+        "the recipient has granted no browser permission at send time",
+      );
+      return { kind: "done" };
+    }
+    to = encodePushAddresses(subs);
+  } else {
+    to = patient !== null ? patient.phone : await userPhone(tx, row.userId);
+  }
   if (to === null || to === "") {
     // D-34's designed path: a phoneless patient enters at the desk-flag rung DIRECTLY, with
     // ZERO adapter calls (N9). A phoneless staff member or owner degrades to exactly the in-app
     // alert that already ships (D6) — 08.5's D6 guarantees it exists for every escalation.
     await markUndeliverable(tx, row, "no_phone", now, "no phone number on the recipient at send time");
-    return { kind: "done" };
-  }
-
-  const channels = template.channels ?? DEFAULT_CHANNELS;
-  const channel = channels[row.rung];
-  if (channel === undefined) {
-    await markUndeliverable(tx, row, "ladder_exhausted", now, row.lastError ?? "ladder exhausted");
     return { kind: "done" };
   }
 
@@ -390,6 +445,34 @@ async function prepareRow(tx: Tx, row: NotificationRow, now: Date): Promise<Send
   }
 
   return { kind: "send", channel, channels: [...channels], to, text, templateVersion: template.version };
+}
+
+/**
+ * PHASE O T4 — every browser this person has granted permission in, newest first.
+ *
+ * Revoked rows are excluded and KEPT: a revocation is the record that a browser used to be
+ * reachable and stopped being, which is what tells a supervisor why somebody stopped answering.
+ */
+async function livePushSubscriptions(tx: Tx, userId: string): Promise<PushAddress[]> {
+  const rows = await tx
+    .select({ endpoint: pushSubscriptions.endpoint, p256dh: pushSubscriptions.p256dh, auth: pushSubscriptions.auth })
+    .from(pushSubscriptions)
+    .where(and(eq(pushSubscriptions.userId, userId), isNull(pushSubscriptions.revokedAt)));
+  return rows;
+}
+
+/**
+ * A `410 Gone` is the browser telling us the subscription no longer exists. It is not a
+ * transient failure and there is nothing to retry: the row is closed, the others are untouched.
+ */
+export async function revokePushSubscriptions(tx: Tx, endpoints: string[], now: Date): Promise<number> {
+  if (endpoints.length === 0) return 0;
+  const revoked = await tx
+    .update(pushSubscriptions)
+    .set({ revokedAt: now })
+    .where(and(inArray(pushSubscriptions.endpoint, endpoints), isNull(pushSubscriptions.revokedAt)))
+    .returning({ id: pushSubscriptions.id });
+  return revoked.length;
 }
 
 async function userPhone(tx: Tx, userId: string | null): Promise<string | null> {
@@ -529,7 +612,8 @@ export async function runNotifyPump(db: Db, opts: NotifyPumpOptions = {}): Promi
   const maxAttemptsPerRung = opts.maxAttemptsPerRung ?? DEFAULT_MAX_ATTEMPTS_PER_RUNG;
   const stuckAfterMs = opts.stuckAfterMs ?? DEFAULT_STUCK_AFTER_MS;
   const now = opts.now ?? new Date();
-  const adapters = opts.adapters ?? adaptersFor({ notifyProvider: PUMP_PROVIDER });
+  const adapters = opts.adapters
+    ?? adaptersFor({ notifyProvider: PUMP_PROVIDER, notifyPushProvider: PUMP_PUSH_PROVIDER, webPushVapid: null });
 
   await recoverStuckSending(db, now, stuckAfterMs);
 
@@ -541,12 +625,26 @@ export async function runNotifyPump(db: Db, opts: NotifyPumpOptions = {}): Promi
       const plan = await withTx(db, (tx) => prepareRow(tx, row, now));
       if (plan.kind === "done") continue;
 
-      let result: { providerMessageId: string | null };
+      let result: Awaited<ReturnType<ChannelAdapter["send"]>>;
       try {
         result = await adapters[plan.channel].send(plan.to, plan.text, { notificationId: row.id });
       } catch (err) {
+        // Every subscription gone: close them all, then let the ladder climb to the next rung.
+        // Without this the pump would retry three times against endpoints that will answer 410
+        // for ever, and the person would look unreachable rather than un-subscribed.
+        if (err instanceof PushSubscriptionGoneError) {
+          await withTx(db, (tx) => revokePushSubscriptions(tx, err.endpoint.split(", ").filter((e) => e !== ""), now));
+        }
         await withTx(db, (tx) => recordAttemptFailure(tx, row, plan.channels, err, now, maxAttemptsPerRung));
         continue;
+      }
+
+      // PHASE O T4 — a push that reached the phone and not the dead desktop is a DELIVERY, and
+      // the dead desktop is a fact to record rather than a reason to climb. Revoked outside the
+      // completeSend transaction on purpose: closing a subscription must not be able to roll
+      // back the send that discovered it.
+      if (result.goneAddresses !== undefined && result.goneAddresses.length > 0) {
+        await withTx(db, (tx) => revokePushSubscriptions(tx, result.goneAddresses ?? [], now));
       }
 
       const won = await withTx(db, (tx) =>

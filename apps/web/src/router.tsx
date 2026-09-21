@@ -28,6 +28,7 @@ import { CounterFigures } from "./screens/counter-figures";
 import { PatientDetail } from "./screens/patient-detail";
 import { MergeReview } from "./screens/merge-review";
 import { ApprovalsInbox } from "./screens/approvals-inbox";
+import { MyReach } from "./screens/my-reach";
 import { OpdAdmin } from "./screens/opd-admin";
 import { OpdAppointments } from "./screens/opd-appointments";
 import { OpdDesk } from "./screens/opd-desk";
@@ -817,6 +818,17 @@ const approvalsRoute = createRoute({
   component: ApprovalsInbox,
 });
 
+/**
+ * PHASE O T4 — a person's own reach settings. NO NAV ROW, deliberately: it is linked from the
+ * alerts bell's footer, and a settings page somebody visits twice a year does not earn a line
+ * of chrome on every seat's sidebar for ever. The caddy SPA census gains it; the nav one does not.
+ */
+const myReachRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/me/reach",
+  component: MyReach,
+});
+
 const opdAdminRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/opd/admin",
@@ -1281,7 +1293,7 @@ export const router = createRouter({
     loginRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdScribeRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
