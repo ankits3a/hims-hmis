@@ -227,6 +227,13 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     credentialsOf: "a read",
     holdsCredential: "a read",
     expiringCredentials: "a read",
+    // R5 — the resolvers. ALL reads, and all of them take the caller's clock rather than reading one.
+    resolverEnabled: "reads an environment flag; decides nothing about a person",
+    whoIsOn: "THE read. Guarded by its callers (R6's consumers run as the kernel, with their own authority); the S-series screen that exposes it is where a permission check on a read belongs",
+    whoIsAt: "a read — as `whoIsOn`",
+    dutiesOf: "a read — and `My duties` is a screen about yourself, so its guard is the route's",
+    calloutList: "a read — the ladder phase consumes it",
+    onDutyNow: "a read — the board's, and it carries `source` so an unpublished department cannot be rendered as an empty staffed one",
   };
 
   const MODULE_DIR = __dirname;

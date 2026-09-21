@@ -310,12 +310,18 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //      appended `aerb` to the array and left the sentence saying six, which is the one thing
     //      every note from (1d) onward is written to prevent. The assertion below now checks the
     //      sentence against the array, so the next note cannot be the same apology.
-    // (1j) PHASE R (R1) — the TWENTY-THIRD, `roster`, and it is APP-ONLY **FOR THIS TASK AND NO
-    //      LONGER**. R1 is the masters and the seam: no subscription, no job, nothing the worker asks.
-    //      R5's resolver `whoIsOn` IS read from the worker's alert and timer consumers (R6) — but a
-    //      resolver is a FUNCTION over tables, not a manifest capability, so whether the worker needs
-    //      the manifest installed is decided in R5 against the (1b) discipline, not assumed here
-    //      (plan §5: "R5 decides whether the worker installs it").
+    // (1j) PHASE R — the TWENTY-THIRD, `roster`, and it is APP-ONLY. **DECIDED IN R5, which the plan
+    //      (§5) left the question to: the worker does NOT install it, and it is worth saying why
+    //      rather than leaving the absence to look like an oversight.**
+    //
+    //      R6 moves the worker's alert and timer consumers onto `whoIsOn`. That is a FUNCTION over
+    //      tables, and the worker already has the same database — so what it needs is the tables,
+    //      which migrations give it, not the manifest. A manifest carries permissions, a menu and
+    //      SUBSCRIPTIONS; the roster declares no subscription and no job of its own until R7's
+    //      nightly window extension and R9's monthly draft, and each of those is named in the
+    //      scheduler census by the task that adds it. Installing it in the worker today would
+    //      install nothing the worker uses and would make the (1b) count say something untrue about
+    //      what the worker does.
     const appOnly = allKeys.filter((k) => !workerKeys.includes(k));
     expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster"]);
 
