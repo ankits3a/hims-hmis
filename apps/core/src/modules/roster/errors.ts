@@ -30,6 +30,26 @@ export const ROSTER_ERROR_CODES = [
   "act_not_available_to_actor",
   "unknown_department",
   "unknown_position",
+
+  /* ── PHASE R (R2) — drafting, filling and publishing a period ── */
+  "unknown_period",
+  "unknown_assignment",
+  "unknown_user",
+  "unknown_location",
+  "invalid_window",
+  "outside_period",
+  "position_not_covered",
+  "position_ineligible",
+  "period_not_draft",
+  "period_not_published",
+  "empty_period",
+  "presence_overlap",
+  "published_period_overlap",
+  "version_conflict",
+  /** V3 — the lost update of stress test S2(a), turned into a refusal a human can act on. */
+  "stale_base",
+  /** V4 — what the human reviewed is not what is about to go live. */
+  "draft_changed_since_review",
 ] as const;
 
 export type RosterErrorCode = (typeof ROSTER_ERROR_CODES)[number];
@@ -45,6 +65,23 @@ export const ROSTER_ERROR_SENTENCES: Record<RosterErrorCode, string> = {
     "this act is only ever done by a person: publishing, approving and overriding a roster name who answers for patients, and no assistant, agent or scheduled job may do them",
   unknown_department: "that department is not on the hospital's list",
   unknown_position: "that duty position is not one this hospital rosters",
+
+  unknown_period: "there is no roster by that name",
+  unknown_assignment: "there is no such duty on this roster",
+  unknown_user: "there is no member of staff by that name, or they no longer work here",
+  unknown_location: "there is no such ward, theatre or room",
+  invalid_window: "the start and the end of that duty do not make a window a person could work",
+  outside_period: "that duty starts outside the stretch this roster covers",
+  position_not_covered: "this roster does not answer for that duty position — say so on the roster first, or put the duty on the roster that does",
+  position_ineligible: "that person does not hold the role this position needs, so they cannot be put on it",
+  period_not_draft: "a roster people are working to is never edited — draft a new version from it, or amend it",
+  period_not_published: "only a roster that is live can be amended; a draft is edited and then published",
+  empty_period: "there is nobody on this roster, so publishing it would make the hospital's answer to \"who is on?\" — nobody",
+  presence_overlap: "somebody on this roster would have to be in two places at once — on call may overlap a duty, two duties in person may not",
+  published_period_overlap: "another roster is already live for this same scope over part of the same stretch",
+  version_conflict: "somebody else drafted the next version of this roster a moment ago — open theirs",
+  stale_base: "this draft was made from a version that is no longer the live one, so publishing it would silently undo whatever changed in between — draft again from the version that is live now",
+  draft_changed_since_review: "this roster has changed since it was put in front of you — read it again before publishing it",
 };
 
 export class RosterError extends Error {
@@ -64,6 +101,24 @@ const STATUS: Record<RosterErrorCode, number> = {
 
   unknown_department: 404,
   unknown_position: 404,
+  unknown_period: 404,
+  unknown_assignment: 404,
+  unknown_user: 404,
+  unknown_location: 404,
+
+  invalid_window: 422,
+  outside_period: 422,
+  empty_period: 422,
+  position_not_covered: 422,
+
+  period_not_draft: 409,
+  period_not_published: 409,
+  position_ineligible: 409,
+  presence_overlap: 409,
+  published_period_overlap: 409,
+  version_conflict: 409,
+  stale_base: 409,
+  draft_changed_since_review: 409,
 };
 
 export function rosterHttpStatus(code: RosterErrorCode): number {

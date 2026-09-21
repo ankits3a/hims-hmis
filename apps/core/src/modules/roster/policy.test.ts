@@ -141,9 +141,29 @@ describe("roster — who may do what (V8, stress test §4)", () => {
    * fails this test, which is the friction: R2 cannot land `publishPeriod` without deciding, here,
    * in writing, that it acts — and an acting function is then PROVED to reach `rosterActPolicy`.
    */
-  const ACTING: Record<string, string> = {
-    // R1 exports none. R2's `publishPeriod`, `amend` and `assign` are the first.
+  /**
+   * Each acting export names **how it reaches the policy** — either by calling it, or by
+   * delegating to another acting export that does. The second leg below follows those edges to a
+   * fixpoint, so "reaches it eventually" is proved rather than assumed; a delegation that stops
+   * short of a real check fails.
+   */
+  const ACTING: Record<string, { reaches: string; why: string }> = {
+    draftPeriod: { reaches: "requireRosterAct(", why: "a machine drafting is `draft_machine_period`; a person is `propose`" },
+    assign: { reaches: "requireRosterAct(", why: "`edit_human_draft` once a person has touched the draft — V8's central clause" },
+    unassign: { reaches: "requireRosterAct(", why: "as `assign`" },
+    publishPeriods: { reaches: "requireRosterAct(", why: "the governed act; per period, at its own department's scope" },
+    publishPeriod: { reaches: "publishPeriods(", why: "a one-element call of the list form, so the two can never drift apart" },
+    amend: { reaches: "requireRosterAct(", why: "amending a live roster is `publish` — it changes who is on tonight" },
   };
+  /**
+   * ═══ THE READS TAKE NO ACTOR, AND THAT IS A DELIBERATE BOUNDARY FOR THIS TASK ═══
+   *
+   * R2 ships no route and no controller: the module seam is inert (`roster.module.ts`). These are
+   * domain reads called only from tests and from the acting functions above, all of which have
+   * already been through the policy. **R5 owns the guarded read model** (`whoIsOn`, `dutiesOf`,
+   * `onDutyNow`) and the permission check that goes with it. Anything that mounts one of these on
+   * an HTTP route before then is adding an unguarded read, and this list is where that shows up.
+   */
   const NOT_ACTING: Record<string, string> = {
     rosterActPolicy: "IS the policy",
     rosterActMatrix: "renders the policy; decides nothing",
@@ -155,6 +175,11 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     orgDepartmentByCode: "a read",
     listRosterPositions: "a read",
     rosterMasterCounts: "a read, for the census",
+    contentHash: "a pure read: hashes the slots a human is about to review",
+    presenceClashes: "a read the validator (R8) shows as findings long before anybody publishes",
+    asKnownAt: "a read — see the note above; R5 gives the read model its guard",
+    periodWithAssignments: "a read — see the note above",
+    periodsTouching: "a read — see the note above",
   };
 
   const MODULE_DIR = __dirname;
@@ -186,12 +211,30 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     expect(found).toEqual(classified);
   });
 
-  it("every ACTING export reaches rosterActPolicy — directly or through requireRosterAct", () => {
+  it("every ACTING export contains the reach it declares", () => {
     const acting = exportedFunctions().filter((f) => f.name in ACTING);
     expect(acting.map((f) => f.name).sort()).toEqual(Object.keys(ACTING).sort());
     for (const fn of acting) {
-      expect(`${fn.name}: ${/rosterActPolicy\(|requireRosterAct\(/.test(fn.body)}`).toBe(`${fn.name}: true`);
+      const declared = ACTING[fn.name]!.reaches;
+      expect(`${fn.name} contains "${declared}": ${fn.body.includes(declared)}`)
+        .toBe(`${fn.name} contains "${declared}": true`);
     }
+  });
+
+  it("…and every one of them reaches a REAL check by following those declarations to a fixpoint", () => {
+    // A declaration of "I delegate to X" proves nothing unless X itself ends at a check. This
+    // follows the edges until nothing new is reachable, and names anything left dangling.
+    const direct = (name: string): boolean =>
+      /rosterActPolicy\(|requireRosterAct\(/.test(exportedFunctions().find((f) => f.name === name)?.body ?? "");
+    const guarded = new Set(Object.keys(ACTING).filter(direct));
+    for (let pass = 0; pass < Object.keys(ACTING).length; pass += 1) {
+      for (const [name, { reaches }] of Object.entries(ACTING)) {
+        const target = reaches.replace("(", "");
+        if (!guarded.has(name) && guarded.has(target)) guarded.add(name);
+      }
+    }
+    const dangling = Object.keys(ACTING).filter((n) => !guarded.has(n));
+    expect(dangling).toEqual([]);
   });
 
   it("the scanner FINDS functions — the census cannot be green because it looked at nothing", () => {

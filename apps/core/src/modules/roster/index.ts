@@ -16,3 +16,15 @@ export {
 export type {
   OrgDepartmentRow, OrgDepartmentSeed, RosterPositionRow, RosterPositionSeed, SeedCount,
 } from "./masters";
+export {
+  ROSTER_EVENTS, rosterAmendmentApplied, rosterDutyChanged, rosterPeriodDrafted,
+  rosterPeriodPublished, rosterPeriodSuperseded,
+} from "./events";
+export {
+  MAX_PRESENCE_HOURS, amend, asKnownAt, assign, contentHash, draftPeriod, periodWithAssignments,
+  periodsTouching, presenceClashes, publishPeriod, publishPeriods, unassign,
+} from "./periods";
+export type {
+  AmendInput, AssignInput, DraftPeriodInput, PresenceClash, PublishRequest, PublishResult,
+  RosterAmendmentRow, RosterAssignmentRow, RosterPeriodRow, RosterScopeRef,
+} from "./periods";

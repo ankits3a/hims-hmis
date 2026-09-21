@@ -25,6 +25,7 @@ reworked here, not merged.**
 | a posting/slot never tells an external LLM a name, a phone or a leave reason | stress test A-4/L-13 |
 | the system proposes; a human publishes, approves, overrides, acknowledges | Plan 20 D4; matrix in stress test §4 |
 | screens gated on the four boards (approved "as of now") — **out of this plan** | owner RU-6 |
+| **the stop-loss is RAISED and the phase runs R1 → R10** (owner, 2026-09-20, asked at R1's close when R1's measured cost projected R1–R9 at ~1.3–1.5 M against the prompt's 900 k). The tripwire is lifted, not re-derived; the actuals table in §9.7 still records what it cost | owner 2026-09-20 |
 | **the State is BIHAR** — the college and the hospital are in Bihar (owner, 2026-09-20, answering stress test §5.4). Every `roster_rules` row whose `authority` is `'state'` is written against Bihar; until R8 seeds one there are none, and no rule row anywhere else in this plan is a placeholder | owner 2026-09-20 |
 
 ---
@@ -228,7 +229,9 @@ staff masking, roster tools) → Plan 41 consumers.
 ### 9.1 Commits by SHA
 | task | branch | commit | PR |
 |---|---|---|---|
-| R1 | `lane/roster-r1` | *(filled at commit)* | *(filled at open)* |
+| R1 | `lane/roster-r1` | `fe53ab8c` | [#273](https://github.com/ankits3a/hims-hmis/pull/273) |
+| R2 | `lane/roster-r2` (stacked on R1) | *(filled at commit)* | *(filled at open)* |
+| — | `lane/roster-clock-core` | `66b4a2e8` | [#272](https://github.com/ankits3a/hims-hmis/pull/272) — **not a phase-R task**: a clock time bomb that turned `main` red at IST midnight on 2026-09-21, diagnosed from R1's full suite and fixed so the phase could merge at all |
 
 ### 9.2 Kickoff re-measurement (§1), 2026-09-20
 
@@ -265,6 +268,11 @@ the three that MOVED are G2, G5 and G9, and one more (G3) grew a consequence. In
 | **F4** | R1 | **The plan's "hospital-scope fallback" would have been dead code.** §4 R1 asks for the permission checked at department scope *"with a hospital-scope fallback"*. `kernel/auth/permissions.ts` already grants any required scope to a HOSPITAL-scoped holding (`if (h.scopeType === "hospital") return true`), so a second call would never have changed an answer — and would have looked load-bearing to the next reader, who would widen it. | **No fallback call written.** `requireRosterAct` asks at `department` when the act names one and at `hospital` when it does not; the asymmetry (a department holding does NOT satisfy a hospital check) is asserted in `access.test.ts`. The reason is written into `access.ts` so it is not "fixed" later. |
 | **F5** | R1 | **`events.ts` is in §4 R1's file list and R1 emits no event.** T1's two events are about periods, which arrive in R2; shipping them in R1 would be an event catalog with no writer (`readers-without-writers`, one direction over), and the V9 schema walk would be vacuous over an empty or unused list. | **Deferred to R2**, which owns the events, the writers and V9 together. R1 ships no `events.ts`. |
 
+| **F6** | R2 | **`array_length('{}', 1)` is NULL, and a CHECK whose expression is NULL PASSES.** `roster_periods_covers_ck`, written the obvious way as `array_length(covers_positions, 1) >= 1`, accepted exactly the row it exists to refuse — a roster answering for no position at all. Found by the red run of the schema census, not by reading. | `coalesce(..., 0) >= 1`, with the reason written into the constraint's own comment. 0109 was re-cut and the lane test DBs dropped (`drizzle-when-silently-skips` trap 2). |
+| **F7** | R2 | **`amend` inserted its new rows already live, so the exclusion constraint fired before the sentence did.** A ward sister recording a 02:00 cover would have been shown `conflicting key value violates exclusion constraint "roster_assignments_no_double_presence_excl"` instead of the name of the person already on. `publishPeriods` did not have this defect because drafted rows are inserted not-yet-effective. | The amendment now inserts `effective: false`, runs `presenceClashes`, and flips to live only after — with the constraint kept as the backstop it was always meant to be, wrapped and translated. |
+| **F8** | R2 | **The plan's V7 (*"superseded rows keep every original value except `live_to`/`effective`; `updated_by` untouched by supersede"*) was violated by the first draft of both writers**, which stamped the publisher over `updated_by`. Written before the invariant table was re-read. | Both writers now set `effective` and `live_to` only. The reason — that a supersede closes a knowledge window and does not edit a duty, so the senior resident who wrote it must still be named on it two years later — is in the code at both sites, and asserted by a test that plants a different author and reads it back. |
+| **F9** | R2 | **Drafting from a base COPIES its slots**, and three of this task's own tests then added the same person to the same window again and read the resulting refusal as a defect in the gate. A test defect, not a code one — but it is recorded because the next reader will make it too. | The tests now either rely on the copy or `unassign` it first, and `copiedAssignments` is asserted where it matters. The cross-unit swap test models what a human does: take the copied person off, put the other one on. |
+
 ### 9.5 Mutant tally
 
 | task | mutant | built as | result |
@@ -272,8 +280,13 @@ the three that MOVED are G2, G5 and G9, and one more (G3) grew a consequence. In
 | R1 | `rosterActPolicy` lets a named `system` job publish (`MATRIX.publish.system = open`) | `policy.mutant.ts` + `policy.mutant.test.ts` | **DIED**, 2 failed / 0 passed. `the matrix agrees with stress test §4, cell for cell` → `- "system": "n"` / `+ "system": "y"`; `NOTHING but a person publishes` → *Expected constructor: RosterError / Received function did not throw* |
 | R1 | the positions seed inserts nothing (`for (const p of [])`) | `masters.mutant.ts` + `masters.mutant.test.ts` | **DIED**, 2 failed / 0 passed. `seeds both lists, and a SECOND run adds nothing` → `- "added": 17, "present": 0` / `+ "added": 0, "present": 17`; the standup row's own question → `Expected: "green: true" / Received: "green: false"` |
 
-Both mutant modules and both mutant specs were deleted before the counts below;
-`git status --porcelain` carried no `*.mutant.*`.
+| R2 | **M1** — the supersede leaves the old version's rows in effect until AFTER the new ones enter it (the un-effecting moved out of step 3 to after step 5) | `periods.M1-….mutant.ts` + spec | **DIED**, 4 failed / 26 passed. `RosterError: kavita.rao would have to be in two places at once` on the supersede, the cross-unit swap, the stale-base and the event-log legs — which is precisely the failure the ordering exists to prevent |
+| R2 | **M2** — the V3 stale-base check removed | as above | **DIED**, 2 failed / 28 passed. `Expected: "stale_base"` / `Received: "presence_overlap"` — the lost update stops being refused for the reason a human could act on |
+| R2 | **M3** — the V4 content-hash check removed | as above | **DIED**, 1 failed / 29 passed. `expected a RosterError, got: null` — the publish of a roster that moved after the head read it simply succeeds |
+| R2 | **M4** — the advisory lock never taken | as above | **DIED**, 1 failed / 29 passed. `Expected: 1` / `Received: 0` from `pg_locks` inside the transaction — which is why the lock is ASSERTED rather than raced for (a race test flakes on a busy box and proves nothing on an idle one) |
+
+Every mutant module and spec was deleted before the counts; `git status --porcelain` carried no
+`*.mutant.*` in either task.
 
 ### 9.6 The two review passes
 *(filled at R10)*
