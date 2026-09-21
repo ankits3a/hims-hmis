@@ -708,6 +708,24 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // once — the approvals engine's own governance. It belongs with the role that already holds
       // the activator key, and nowhere below it.
       "approvals.types.manage",
+      // ─── THE APPROVALS SPINE, owner ruling R1 of 2026-09-20 ───
+      //
+      // The owner opened `/approvals` and reported: *"It lacks action button."* It does not. The
+      // screen renders "you cannot decide this" wherever `approvals.requests.decide` is absent, and
+      // this role held `approvals.types.manage` — the authority to define what an approval IS —
+      // and neither of the two strings that let a person answer one. The role could write the rules
+      // of a queue it could not open.
+      //
+      // R3 of the same day makes the owner the LAST RUNG of every money type's escalation ladder.
+      // A last rung that cannot read the request is not a rung, so R1 is what makes R3 reachable:
+      // the pair is granted together, or the ladder dead-ends one step below the top.
+      //
+      // THIS NARROWS THE 2026-08-26 MINIMUM-NECESSARY RULING, and the narrowing is deliberate. An
+      // approval carries its subject's name, so deciding one means reading one. `patients.read`
+      // itself is still NOT granted below — the approval carries its own subject, and the right to
+      // decide about one patient is not the right to browse the register.
+      "approvals.requests.read",
+      "approvals.requests.decide",
       // ─── GROUP B, 2026-08-26: the owner can finally see the money ───
       //
       // This role held three `workflow.*` strings and could not open a single invoice, dues ledger
@@ -1032,6 +1050,20 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // else scheduled. The act keeps the scheduler and the store's custodians off the sheet.
       "materials.counts.manage",
       "materials.counts.perform",
+      // ─── THE APPROVALS SPINE, 2026-09-20: the same defect as the owner's, one store over ───
+      //
+      // `materials_head` is the `approverRole` on `materials_near_expiry_acceptance` and held
+      // neither string that lets a person answer one, so that type was unanswerable by anybody: the
+      // engine routes it to this role, the worklist is scoped to the roles the reader holds, and no
+      // holder of this role could see the queue. The failure mode is SILENCE, not a refusal — the
+      // request sits in a list nobody can open — which is why it went unreported while the owner's
+      // identical defect was noticed the day somebody looked at the screen.
+      //
+      // This mints no authority the model had not already assigned: naming a role as `approverRole`
+      // IS the grant of that decision. The pair only makes the assignment reachable. The invariant
+      // in `test/seed-roles.test.ts` now fails if any future type names a role that cannot answer it.
+      "approvals.requests.read",
+      "approvals.requests.decide",
     ],
   },
   {

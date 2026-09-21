@@ -1405,6 +1405,31 @@ Until the unit system gives a unit's own people their strings, a roster exists o
 medical superintendent made it. The owner reads; the owner does not make the rota. **No agent, no
 copilot and no scheduled job may ever publish, amend, approve or override one**, whatever it holds.
 
+**The approvals spine (owner ruling R1,
+2026-09-20).** `owner` gains `approvals.requests.read` and `approvals.requests.decide`. The role
+held `approvals.types.manage` — the authority to define what an approval IS — and neither of the two
+strings that let a person answer one, so the owner opened `/approvals` and found the screen telling
+him he could not decide. The sharpest form of the defect is that THREE registered types name
+**`owner`** as their `approverRole` — `ot_deposit_exception`, `tariff_revision` and
+`materials_vendor_bank_change` — which made them approvals that by construction only the owner may
+grant and that the owner's role could not open or even list. A day-care operation could be postponed
+on a deposit waiver nobody was able to give, and a vendor's bank account could not be re-checked by
+the one person the model appoints to re-check it. Ruling R3 of the
+same day also makes `owner` the last rung of every money type's escalation ladder, and a last rung
+that cannot read the request is not a rung. This NARROWS the 2026-08-26 minimum-necessary ruling:
+an approval carries its subject's name, so deciding one means reading one. `patients.read` is still
+withheld — the approval carries its own subject, and the right to decide about one patient is not
+the right to browse the register.
+
+**`materials_head` gains the same pair, for the same reason and without a ruling**: it is the
+`approverRole` on `materials_near_expiry_acceptance` and held neither string, so that type was
+unanswerable by anybody. Naming a role as a type's `approverRole` IS the grant of that decision; the
+pair only makes it reachable. Together the two grants close FOUR types that no holder of any role
+could answer — `materials_vendor_bank_change`, `ot_deposit_exception` and `tariff_revision`, all
+three routed to `owner`, plus the near-expiry acceptance routed here.
+`test/seed-roles.test.ts` now carries the invariant, so a future type that names a role which cannot
+answer it fails the suite instead of shipping a queue nobody can open.
+
 **Two approval types, registered by `seed:ot` in the deploy path.** `ot_definition_publish`
 (approver `medical_superintendent`, 1,440-minute SLA) gates publishing any of the four governed
 definitions — the engine's own requester-vs-approver segregation then forces two distinct humans, and
