@@ -23,7 +23,7 @@ import {
 } from "../src/modules/ot";
 import { availableQty, findStoreByCode, listItems } from "../src/modules/materials";
 import { IMAGING_GATE_DEF_KEY, IMAGING_STUDY_DEF_KEY, activeStudyTypes } from "../src/modules/radiology";
-import { ROSTER_POSITIONS, rosterMasterCounts } from "../src/modules/roster";
+import { ROSTER_POSITIONS, UNIT_COUNT, listTeams, rosterMasterCounts, unconfirmedTeams } from "../src/modules/roster";
 import { appointments, unlicensedDevices } from "../src/modules/aerb";
 import {
   activeRegistrations, registeredMachines, registeredPersons,
@@ -285,6 +285,34 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
         return departments > 0 && positions >= ROSTER_POSITIONS.length;
       },
       fix: "run `pnpm --filter @hmis/core seed:roster` (after `seed:roles` and `seed:opd`) — it seeds org_departments and the seventeen roster_positions, and is safe to re-run",
+    },
+    {
+      gate: "G4", code: "roster_units_confirmed",
+      /**
+       * PHASE R (R3) — **the row that stops our arithmetic being presented as the regulator's.**
+       *
+       * UG-MSR 2023 dropped the units table altogether. The 27 units `seed:units` writes are one
+       * unit per sanctioned senior resident — a good default, and NOT a number from the gazette
+       * (20-U §2, owner §10.2). So every seeded team lands inactive, and this row stays RED until a
+       * head of department has confirmed each one. It is under `hospital` for the reason the masters
+       * row is: a census MODULE owes a go-live runbook, and the roster is not a department.
+       */
+      /**
+       * **MEASURED, AND IT CHANGED THIS ROW — the same way it changed `radiology_devices_licensed`
+       * one module over.** Written the obvious way as *"nothing is unconfirmed"*, this read GREEN on
+       * a database with no teams at all: `unconfirmedTeams` returns `[]` when nothing has been
+       * seeded, and an empty list satisfies "none outstanding". A row that certifies a control
+       * nobody can exercise is worse than no row, and the fresh-database leg of
+       * `standup-check.test.ts` is what caught it — the guard written for exactly this, doing
+       * exactly its job.
+       *
+       * So the units must EXIST before their confirmation can be evidence of anything.
+       */
+      check: async (db) => {
+        const teams = await listTeams(db);
+        return teams.length > 0 && (await unconfirmedTeams(db)).length === 0;
+      },
+      fix: `each HOD confirms their department's units (seeded inactive by \`seed:roster\`; ${UNIT_COUNT} clinical units plus one night pool per unit-bearing department) — the establishment is this hospital's, not the NMC's, so a human ratifies it`,
     },
   ],
 

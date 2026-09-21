@@ -1,7 +1,9 @@
 import { sql } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../../test/helpers/db";
 import {
-  orgDepartments, roles, rosterAmendments, rosterAssignments, rosterPeriods, rosterPositions, users,
+  orgDepartments, roles, rosterAmendments, rosterAssignments, rosterBedAllotments,
+  rosterDelegations, rosterOfficiating, rosterPeriods, rosterPositions, rosterTeamMemberships,
+  rosterTeams, users,
 } from "./index";
 import type { Db } from "../client";
 
@@ -51,6 +53,29 @@ describe("roster — 0108 structure", () => {
       "off_kind", "period_id", "position_key", "proposal_run_id", "proposed_by_actor_id",
       "proposed_by_actor_type", "shift_def_id", "source", "starts_at", "supernumerary",
       "swap_of_id", "team_id", "topic", "updated_at", "updated_by", "user_id",
+    ],
+    // PHASE R (R3)
+    roster_teams: [
+      "active", "code", "created_at", "created_by", "department_id", "home_location_resource_id",
+      "id", "kind", "lead_user_id", "name", "sanctioned_beds", "site_id", "unit_number",
+      "updated_at", "updated_by", "valid_from", "valid_to",
+    ],
+    roster_team_memberships: [
+      "created_at", "created_by", "ends_at", "grade", "id", "kind", "pattern_offset",
+      "position_key", "retains_parent_nights", "role_in_team", "source", "starts_at",
+      "supernumerary_until", "team_id", "updated_at", "updated_by", "user_id",
+    ],
+    roster_officiating: [
+      "approved_by", "created_at", "created_by", "ends_at", "id", "reason", "role", "starts_at",
+      "team_id", "updated_at", "updated_by", "user_id",
+    ],
+    roster_delegations: [
+      "authority", "created_at", "created_by", "delegate_user_id", "delegator_user_id", "ends_at",
+      "id", "reason", "scope_id", "scope_type", "starts_at", "updated_at", "updated_by",
+    ],
+    roster_bed_allotments: [
+      "created_at", "created_by", "ends_at", "id", "resource_id", "starts_at", "team_id",
+      "updated_at", "updated_by",
     ],
   };
 
@@ -445,5 +470,156 @@ describe("roster — 0109 structure", () => {
     expect(await db.select().from(rosterPeriods)).toHaveLength(0);
     expect(await db.select().from(rosterAssignments)).toHaveLength(0);
     expect(await db.select().from(rosterAmendments)).toHaveLength(0);
+  });
+});
+
+/**
+ * PHASE R (R3) — the three EXCLUDEs that make an establishment representable, executed against the
+ * database and written underneath the domain code, for the reason 0109's are.
+ */
+describe("roster — 0110 structure", () => {
+  const AUDIT = { createdBy: "t", updatedBy: "t" } as const;
+  const U1 = "01USER0000000000000000001";
+  const U2 = "01USER0000000000000000002";
+  const DEPT = "01ORGDEPT00000000000MED1";
+  const T1 = "01TEAM0000000000000MEDU1";
+  const T2 = "01TEAM0000000000000MEDU2";
+  const at = (s: string): Date => new Date(`${s}:00+05:30`);
+
+  let db: Db;
+  let teardown: () => Promise<void>;
+
+  beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
+  afterAll(async () => teardown());
+
+  beforeEach(async () => {
+    await truncateAll(db);
+    await db.insert(roles).values({ key: "doctor", title: "Doctor" }).onConflictDoNothing();
+    await db.insert(orgDepartments).values({
+      id: DEPT, code: "MED", name: "General Medicine", kind: "clinical", admitting: true, ...AUDIT,
+    });
+    await db.insert(rosterPositions).values({
+      key: "unit_sr", label: "Unit senior resident", cadre: "senior_resident", ladderRank: 3,
+      eligibleRoleKey: "doctor", maxPresenceHours: 24, ...AUDIT,
+    });
+    for (const [id, username] of [[U1, "kavita.rao"], [U2, "sandeep.yadav"]] as const) {
+      await db.insert(users).values({ id, username, fullName: username, staffCode: `EMP-${id.slice(-4)}`, passwordHash: "x" });
+    }
+    await db.insert(rosterTeams).values([
+      { id: T1, kind: "clinical_unit", departmentId: DEPT, code: "MED-U1", name: "Medicine Unit I", ...AUDIT },
+      { id: T2, kind: "clinical_unit", departmentId: DEPT, code: "MED-U2", name: "Medicine Unit II", ...AUDIT },
+    ]);
+  });
+
+  const member = (id: string, over: Partial<typeof rosterTeamMemberships.$inferInsert> = {}) =>
+    db.insert(rosterTeamMemberships).values({
+      id, teamId: T1, userId: U1, positionKey: "unit_sr", grade: "senior_resident",
+      roleInTeam: "senior_resident", kind: "parent", startsAt: at("2026-10-01T00:00"), ...AUDIT, ...over,
+    });
+
+  const constraintOf = async (p: Promise<unknown>): Promise<string | undefined> => {
+    const e = await p.then(() => null, (err: unknown) => err);
+    let cur: unknown = e;
+    for (let i = 0; i < 4 && cur != null && typeof cur === "object"; i += 1) {
+      const c = cur as { constraint?: unknown; cause?: unknown };
+      if (typeof c.constraint === "string") return c.constraint;
+      cur = c.cause;
+    }
+    return e === null ? "(accepted)" : undefined;
+  };
+
+  it("all three EXCLUDEs exist and are gist — nothing else in the tree knows they do", async () => {
+    const found = await db.execute(sql`
+      select c.conname as name, pg_get_constraintdef(c.oid) as def
+        from pg_constraint c join pg_class t on t.oid = c.conrelid
+       where c.conname in (
+         'roster_team_memberships_one_parent_excl',
+         'roster_team_memberships_one_head_excl',
+         'roster_officiating_one_per_role_excl')
+       order by c.conname`);
+    expect((found.rows as { name: string }[]).map((r) => r.name)).toEqual([
+      "roster_officiating_one_per_role_excl",
+      "roster_team_memberships_one_head_excl",
+      "roster_team_memberships_one_parent_excl",
+    ]);
+    for (const r of found.rows as { def: string }[]) expect(r.def).toContain("EXCLUDE USING gist");
+  });
+
+  it("a person belongs to ONE unit at a time — and a rotation or a float is an ADDITIONAL place", async () => {
+    await member("M1");
+    // a second parent membership overlapping the first: refused
+    expect(await constraintOf(member("M2", { teamId: T2 }))).toBe("roster_team_memberships_one_parent_excl");
+    // a ROTATION into the other unit, same stretch: this is the commonest posting in the hospital
+    expect(await constraintOf(member("M3", { teamId: T2, kind: "rotation" }))).toBe("(accepted)");
+    // and a FLOAT for one night
+    expect(await constraintOf(member("M4", {
+      teamId: T2, kind: "float", startsAt: at("2026-10-12T20:00"), endsAt: at("2026-10-13T08:00"),
+    }))).toBe("(accepted)");
+    // a parent membership AFTER the first one closes is a transfer, and is fine
+    await db.update(rosterTeamMemberships).set({ endsAt: at("2026-11-01T00:00") }).where(sql`id = 'M1'`);
+    expect(await constraintOf(member("M5", { teamId: T2, startsAt: at("2026-11-01T00:00") }))).toBe("(accepted)");
+  });
+
+  it("a team has ONE substantive head at a time, and officiating is a different table", async () => {
+    await member("H1", { roleInTeam: "head", positionKey: "unit_sr" });
+    expect(await constraintOf(member("H2", { userId: U2, roleInTeam: "head" })))
+      .toBe("roster_team_memberships_one_head_excl");
+    // the other unit's head is a different team
+    expect(await constraintOf(member("H3", { userId: U2, teamId: T2, roleInTeam: "head" }))).toBe("(accepted)");
+  });
+
+  it("one person stands in for one role at a time", async () => {
+    const acting = (id: string, over: Partial<typeof rosterOfficiating.$inferInsert> = {}) =>
+      db.insert(rosterOfficiating).values({
+        id, teamId: T1, userId: U1, role: "head", startsAt: at("2026-10-01T00:00"),
+        endsAt: at("2026-10-21T00:00"), reason: "the head is on leave", approvedBy: U2, ...AUDIT, ...over,
+      });
+    await acting("O1");
+    expect(await constraintOf(acting("O2", { userId: U2 }))).toBe("roster_officiating_one_per_role_excl");
+    // a different ROLE in the same team, and the same role in a different team, are both fine
+    expect(await constraintOf(acting("O3", { userId: U2, role: "lead" }))).toBe("(accepted)");
+    expect(await constraintOf(acting("O4", { userId: U2, teamId: T2 }))).toBe("(accepted)");
+    // and after it ends
+    expect(await constraintOf(acting("O5", { userId: U2, startsAt: at("2026-10-21T00:00"), endsAt: null }))).toBe("(accepted)");
+  });
+
+  it("only a ROTATION may keep its parent unit's nights", async () => {
+    expect(await constraintOf(member("R1", { kind: "parent", retainsParentNights: true })))
+      .toBe("roster_team_memberships_retains_ck");
+    expect(await constraintOf(member("R2", { kind: "rotation", retainsParentNights: true }))).toBe("(accepted)");
+  });
+
+  it("a delegation always ends, is to somebody else, and names a scope it can reach", async () => {
+    const deleg = (id: string, over: Partial<typeof rosterDelegations.$inferInsert> = {}) =>
+      db.insert(rosterDelegations).values({
+        id, delegatorUserId: U1, delegateUserId: U2, authority: "publish",
+        scopeType: "department", scopeId: DEPT,
+        startsAt: at("2026-10-01T00:00"), endsAt: at("2026-10-21T00:00"),
+        reason: "on leave", ...AUDIT, ...over,
+      });
+    expect(await constraintOf(deleg("D1"))).toBe("(accepted)");
+    expect(await constraintOf(deleg("D2", { delegateUserId: U1 }))).toBe("roster_delegations_distinct_ck");
+    expect(await constraintOf(deleg("D3", { endsAt: at("2026-09-01T00:00") }))).toBe("roster_delegations_window_ck");
+    expect(await constraintOf(deleg("D4", { authority: "everything" }))).toBe("roster_delegations_authority_ck");
+    expect(await constraintOf(deleg("D5", { scopeType: "hospital" }))).toBe("roster_delegations_scope_id_ck");
+    expect(await constraintOf(deleg("D6", { reason: "  " }))).toBe("roster_delegations_reason_ck");
+  });
+
+  it("all five tables are emptied by truncateAll", async () => {
+    await member("M1");
+    await db.insert(rosterOfficiating).values({
+      id: "O1", teamId: T1, userId: U1, role: "head", startsAt: at("2026-10-01T00:00"),
+      reason: "r", approvedBy: U2, ...AUDIT,
+    });
+    await db.insert(rosterDelegations).values({
+      id: "D1", delegatorUserId: U1, delegateUserId: U2, authority: "publish", scopeType: "department",
+      scopeId: DEPT, startsAt: at("2026-10-01T00:00"), endsAt: at("2026-10-21T00:00"), reason: "r", ...AUDIT,
+    });
+    await truncateAll(db);
+    expect(await db.select().from(rosterTeams)).toHaveLength(0);
+    expect(await db.select().from(rosterTeamMemberships)).toHaveLength(0);
+    expect(await db.select().from(rosterOfficiating)).toHaveLength(0);
+    expect(await db.select().from(rosterDelegations)).toHaveLength(0);
+    expect(await db.select().from(rosterBedAllotments)).toHaveLength(0);
   });
 });

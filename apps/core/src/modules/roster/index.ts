@@ -28,3 +28,23 @@ export type {
   AmendInput, AssignInput, DraftPeriodInput, PresenceClash, PublishRequest, PublishResult,
   RosterAmendmentRow, RosterAssignmentRow, RosterPeriodRow, RosterScopeRef,
 } from "./periods";
+export {
+  UNIT_COUNT, UNIT_ESTABLISHMENT, closeTeam, confirmTeam, createTeam, listTeams, nightPoolFor,
+  seedUnits, teamByCode, teamMembers, unconfirmedTeams,
+} from "./teams";
+export type { CreateTeamInput, RosterTeamRow, TeamMember } from "./teams";
+export {
+  addMembership, endMembership, importMemberships, membershipsOf, parentTeamOf,
+} from "./memberships";
+export type {
+  AddMembershipInput, ImportProblem, MembershipImportRow, RosterMembershipRow,
+} from "./memberships";
+export { endOfficiating, officiatingAt, recordOfficiating } from "./officiating";
+export type { OfficiatingInput, RosterOfficiatingRow } from "./officiating";
+export { AUTHORITY_PERMISSION, delegationsInForce, recordDelegation } from "./delegations";
+export type { DelegationInput, RosterDelegationRow } from "./delegations";
+export {
+  CRMI_LEAVE_DAYS, CRMI_TABLE, CRMI_TOTAL_WEEKS, MAX_BLOCK_WEEKS, crmiBlocks, crmiWeeksTotal,
+  extensionPostings, internYear, splitBlock,
+} from "./interns";
+export type { CrmiBlock, InternAbsence, InternPosting, InternYearInput } from "./interns";

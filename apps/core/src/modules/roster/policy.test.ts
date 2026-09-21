@@ -154,6 +154,16 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     publishPeriods: { reaches: "requireRosterAct(", why: "the governed act; per period, at its own department's scope" },
     publishPeriod: { reaches: "publishPeriods(", why: "a one-element call of the list form, so the two can never drift apart" },
     amend: { reaches: "requireRosterAct(", why: "amending a live roster is `publish` — it changes who is on tonight" },
+    // R3 — the establishment, and who may act for whom.
+    createTeam: { reaches: "requireRosterAct(", why: "a unit is an establishment decision, at its department's scope" },
+    confirmTeam: { reaches: "requireRosterAct(", why: "the HOD ratifying our arithmetic as their establishment" },
+    closeTeam: { reaches: "requireRosterAct(", why: "as `createTeam`" },
+    addMembership: { reaches: "requireRosterAct(", why: "who is in a unit decides who a resolver can return" },
+    endMembership: { reaches: "requireRosterAct(", why: "as `addMembership`" },
+    importMemberships: { reaches: "addMembership(", why: "resolves and validates the whole file, then writes through the checked path" },
+    recordOfficiating: { reaches: "requireRosterAct(", why: "who is standing in decides whose phone is rung" },
+    endOfficiating: { reaches: "requireRosterAct(", why: "as `recordOfficiating`" },
+    recordDelegation: { reaches: "requireRosterAct(", why: "and then checks, separately, that the DELEGATOR holds what is being handed on" },
   };
   /**
    * ═══ THE READS TAKE NO ACTOR, AND THAT IS A DELIBERATE BOUNDARY FOR THIS TASK ═══
@@ -180,6 +190,22 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     asKnownAt: "a read — see the note above; R5 gives the read model its guard",
     periodWithAssignments: "a read — see the note above",
     periodsTouching: "a read — see the note above",
+    // R3
+    seedUnits: "a deploy seed, run by an operator's own shell — there is no Actor",
+    teamByCode: "a read",
+    listTeams: "a read",
+    unconfirmedTeams: "a read, for the census",
+    teamMembers: "a read — R5's resolver is the guarded reader of it",
+    nightPoolFor: "a read — as `teamMembers`",
+    membershipsOf: "a read",
+    parentTeamOf: "a read",
+    officiatingAt: "a read",
+    delegationsInForce: "a read, and the one `requireRosterAct` itself performs",
+    splitBlock: "pure arithmetic over the CRMI table — no database, no actor",
+    crmiBlocks: "pure, as above",
+    crmiWeeksTotal: "pure, as above",
+    internYear: "pure: generates a plan. WRITING one is a membership, and that goes through `addMembership`",
+    extensionPostings: "pure, as above",
   };
 
   const MODULE_DIR = __dirname;
