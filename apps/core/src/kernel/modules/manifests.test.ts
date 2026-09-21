@@ -8,6 +8,7 @@ import { workflowManifest } from "../workflow/manifest";
 import { approvalsManifest } from "../approvals/manifest";
 import { alertsManifest } from "../alerts/manifest";
 import { notifyManifest } from "../notify/manifest";
+import { obligationsManifest } from "../obligations/manifest";
 import { opsManifest } from "../ops/manifest";
 import { patientsManifest } from "../../modules/patients";
 import { tariffManifest } from "../../modules/tariff";
@@ -75,6 +76,7 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   alertsManifest,
   opsManifest,
   notifyManifest,
+  obligationsManifest, // PHASE O T1 — worker-only, the `notify` shape
   membershipManifest,
   partnersManifest,
   formularyManifest,
@@ -352,7 +354,12 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //     matching handler a BOOT ERROR by design. The handler exists only in `worker.module.ts`'s
     //     `workerConsumers`, so `notifyManifest` may be installed ONLY where that handler is —
     //     installing it in `app.module.ts` would stop the api at startup.
-    expect(workerKeys.filter((k) => !allKeys.includes(k))).toEqual(["notify"]);
+    // PHASE O T1 — `obligations` joins `notify` on this side of the difference, and for exactly
+    // the reason (2) gives: its only declaration is one subscription whose handler exists solely
+    // in `workerConsumers`, so installing it in `app.module.ts` would stop the api at startup.
+    // It moves to `ALL_MANIFESTS` when it first serves an api route — T5's chain management and
+    // T6's ledger reads are the first such things.
+    expect(workerKeys.filter((k) => !allKeys.includes(k))).toEqual(["notify", "obligations"]);
 
     // Everything else is shared, and this is the assertion that makes the two lines above a
     // STATEMENT of the difference rather than a licence for any difference at all.
@@ -392,6 +399,6 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       // PLAN 16c T3 — the pharmacy's `prescription.issued` consumer; installed in both processes.
       "pharmacy",
     ]);
-    expect(workerKeys).toHaveLength(16);
+    expect(workerKeys).toHaveLength(17); // PHASE O T1: 16 -> 17, `obligations`, read off the red run
   });
 });

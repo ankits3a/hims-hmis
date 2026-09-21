@@ -14,6 +14,7 @@ import { buildSubscriptionBus, registerAllJobs } from "../src/kernel/worker/jobs
 import { ALERTS_CONSUMER, alertsConsumer } from "../src/kernel/alerts/consumer";
 import { alertsManifest } from "../src/kernel/alerts/manifest";
 import { NOTIFY_CONSUMER, notifyConsumer } from "../src/kernel/notify/consumer";
+import { OBLIGATIONS_CONSUMER, obligationsConsumer } from "../src/kernel/obligations/consumer";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { runDueTimers } from "../src/kernel/workflow/timers";
 import { runDispatchCycle } from "../src/kernel/events/dispatcher";
@@ -388,10 +389,12 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
         // subscriptions. `.sort()` above puts them first — `imaging.` precedes `escalation.`.
         // Obligation spine T2: `approval.requested` is the alerts consumer's SIXTH subscription —
         // filing tells every holder of the approver role. Sorted, it lands first.
+        // PHASE O T1: `respond.overdue` is the alerts consumer's SEVENTH subscription — the
+        // silence beside the lateness. Sorted, it lands last.
         ["kernel.alerts", [
           "approval.requested",
           "escalation.triggered", "imaging.critical_overdue", "imaging.report_unread",
-          "notification.failed", "ops.mode_changed",
+          "notification.failed", "ops.mode_changed", "respond.overdue",
         ].sort()],
         [
           "kernel.notify",
@@ -418,6 +421,16 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
          * builds the pairs from the registry instead of importing them (#158 — an empty grep is
          * evidence about the search). The suite is what named it.
          */
+        /**
+         * PHASE O T1 — THE OBLIGATION SPINE'S FIRST WIRE, and it is here rather than in
+         * `ALL_MANIFESTS` because `obligationsManifest` is worker-only, the `notify` shape:
+         * one subscription, no permission, no route. `.sort()` puts `kernel.obligations`
+         * between `kernel.notify` and `lab.interface_status`.
+         *
+         * An acknowledgement stops the RESPOND clock and only that clock. A handover
+         * deliberately stops nothing (G6).
+         */
+        ["kernel.obligations", ["alert.acknowledged"]],
         ["lab.interface_status", ["interface.down", "interface.restored"]],
         // PLAN 14 T7 / DD13 — THE FOURTH WIRE, and the first one that subscribes to an event NOTHING
         // IN THIS BUILD PUBLISHES YET. `consignment.deployed` is DEFINED by `modules/materials`
@@ -495,13 +508,23 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
       expect(() =>
         buildSubscriptionBus(registry, { [NOTIFY_CONSUMER]: notifyConsumer(workerDb) }),
       ).toThrow(/kernel\.alerts/);
-      // PLAN 09 T6: the same both-directions proof for the third wire. Pass the two kernel
-      // handlers and omit `partners.accrual` and the worker refuses to boot — which is what makes
+      // PHASE O T1: the same both-directions proof for the obligation spine's wire. Pass the two
+      // shipped kernel handlers, omit `kernel.obligations`, and the worker refuses to boot — the
+      // mechanism that stops "an ack stops the respond clock" being shipped as a dead consumer.
+      expect(() =>
+        buildSubscriptionBus(registry, {
+          [ALERTS_CONSUMER]: alertsConsumer(workerDb),
+          [NOTIFY_CONSUMER]: notifyConsumer(workerDb),
+        }),
+      ).toThrow(/kernel\.obligations/);
+      // PLAN 09 T6: the same both-directions proof for the third wire. Pass the KERNEL handlers
+      // and omit `partners.accrual` and the worker refuses to boot — which is what makes
       // "declare the subscriptions and the handler in ONE commit" a mechanism rather than a habit.
       expect(() =>
         buildSubscriptionBus(registry, {
           [ALERTS_CONSUMER]: alertsConsumer(workerDb),
           [NOTIFY_CONSUMER]: notifyConsumer(workerDb),
+          [OBLIGATIONS_CONSUMER]: obligationsConsumer(workerDb),
         }),
       ).toThrow(/partners\.accrual/);
     } finally {

@@ -56,5 +56,14 @@ export const alertsManifest: ModuleManifest = {
     // The one-edit rule above applies for the sixth time: the branch is in `consumer.ts` in THIS
     // commit, or every filing lands in the escalation parser and fails the delivery.
     { event: "approval.requested", consumer: "kernel.alerts" },
+    // OBLIGATION SPINE T1 (2026-09-21) — THE OTHER CLOCK. `escalation.triggered` says the work
+    // is late; this says NOBODY HAS SAID ANYTHING, which is the failure that comes first and is
+    // the one a person can still fix cheaply. It nudges the people who already hold an alert
+    // about the obligation, and it cannot fire for anybody who answered, because an ack cancels
+    // the respond timer before it is ever due.
+    //
+    // The one-edit rule for the seventh time: `handleRespondOverdue` is in `consumer.ts` in THIS
+    // commit, or every respond clock lands in the escalation parser and fails the delivery.
+    { event: "respond.overdue", consumer: "kernel.alerts" },
   ],
 };

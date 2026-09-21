@@ -4,12 +4,40 @@ export type ChangeClass = "A" | "B" | "C";
 
 const KEY_RE = /^[a-z][a-z0-9_]*$/;
 
+/**
+ * ═══ PHASE O T1 — TWO CLOCKS, TWO LADDERS ═══
+ *
+ * `escalation` (shipped) is a chain of DELTAS anchored on the breach: rung k fires at
+ * `entry + minutes + Σ afterMinutes[0..k]`, scheduled one rung at a time as the previous one
+ * fires. Seven tests pin that arithmetic and none of them moves.
+ *
+ * `ladder` (new) is a set of PERCENTAGES of the budget, anchored at STATE ENTRY and all
+ * scheduled at once: a rung at 70 % of a six-hour budget fires at 4 h 12 m, not at six hours
+ * plus something. That is what makes a budget change re-schedulable (`rescheduleBudget`) and a
+ * storm coalescible (C4) — a chain of deltas is neither, because each rung's time is only known
+ * once its predecessor has fired.
+ *
+ * The two are mutually exclusive per state, and `defineWorkflow` refuses a state that declares
+ * both: they would schedule two independent sets of escalation timers over one silence.
+ *
+ * `respondMinutes` is the OTHER clock. Silence and lateness are different failures — an ack
+ * stops the respond timer and never touches the budget — so it is a separate timer kind rather
+ * than a rung at some small percentage.
+ */
+const ladderRungSchema = z.object({
+  /** Of the budget. Over 100 is the point: a rung at 150 % is the one that fires when it is late. */
+  atPercent: z.number().int().min(1).max(400),
+  toRole: z.string().min(1),
+});
+
 const slaSchema = z.object({
   minutes: z.number().int().positive(),
   alerting: z.enum(["active", "record_only"]),
   escalation: z
     .array(z.object({ afterMinutes: z.number().int().positive(), toRole: z.string().min(1) }))
     .optional(),
+  respondMinutes: z.number().int().positive().optional(),
+  ladder: z.array(ladderRungSchema).min(1).optional(),
 });
 
 const stateSchema = z.object({
@@ -33,6 +61,7 @@ const definitionSchema = z.object({
   transitions: z.array(transitionSchema),
 });
 
+export type LadderRungSpec = z.infer<typeof ladderRungSchema>;
 export type SlaSpec = z.infer<typeof slaSchema>;
 export type StateSpec = z.infer<typeof stateSchema>;
 export type TransitionSpec = z.infer<typeof transitionSchema>;
@@ -79,6 +108,22 @@ export function defineWorkflow(defJson: unknown): WorkflowDefinition {
     }
     if (s.terminal !== true && s.sla === undefined) {
       problems.push(`non-terminal state "${s.name}" must carry an SLA (spec §10.3: structure everywhere)`);
+    }
+    // PHASE O T1 — the two ladder shapes are alternatives, never a pair: both scheduled over one
+    // silence would climb twice, to two different people, from two different anchors.
+    if (s.sla?.escalation !== undefined && s.sla.ladder !== undefined) {
+      problems.push(`state "${s.name}" declares both escalation and ladder — a state may declare one or the other`);
+    }
+    // Strictly ascending, so "the highest rung that is due" (the coalescing rule, C4) names
+    // exactly one rung, and so a reader can see the order the hospital climbs in.
+    const ladder = s.sla?.ladder;
+    if (ladder !== undefined) {
+      for (let i = 1; i < ladder.length; i += 1) {
+        if (ladder[i]!.atPercent <= ladder[i - 1]!.atPercent) {
+          problems.push(`state "${s.name}" ladder percents must be strictly ascending (${String(ladder[i - 1]!.atPercent)} then ${String(ladder[i]!.atPercent)})`);
+          break;
+        }
+      }
     }
   }
 

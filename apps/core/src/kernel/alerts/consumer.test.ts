@@ -4,8 +4,8 @@ import type { Actor } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../db/client";
 import {
-  alerts, configValidationReports, events, notifications, operatingModeChanges, patients,
-  workflowDefinitions, workflowInstances,
+  alerts, approvalTypes, approvals, configValidationReports, events, notifications,
+  operatingModeChanges, patients, workflowDefinitions, workflowInstances,
 } from "../db/schema";
 import { appendEvent } from "../events/append";
 import { createUser } from "../auth/identity";
@@ -17,7 +17,7 @@ import { approvalFlowDefinition } from "../approvals/flow";
 import { activateDefinition, createDraft } from "../workflow/definitions";
 import { seedSodPairs } from "../auth/sod";
 import { buildSubscriptionBus } from "../worker/jobs";
-import { escalationTriggered } from "../workflow/events";
+import { escalationTriggered, respondOverdue } from "../workflow/events";
 import { enqueueNotification } from "../notify/enqueue";
 import { runNotifyPump } from "../notify/pump";
 import { changeOperatingMode } from "../ops/mode";
@@ -202,6 +202,10 @@ describe("kernel alerts consumer", () => {
       // E4): filing an approval notified nobody, ever. Every holder of the approver role gets a
       // row; the requester never does (O17: nobody decides what they filed).
       { event: "approval.requested", consumer: ALERTS_CONSUMER },
+      // PHASE O T1 (2026-09-21): six -> SEVEN, read off the red run. The respond clock is the
+      // other half of the pair — `escalation.triggered` says the work is late, this says nobody
+      // has said anything — and its branch lands in `consumer.ts` in the same commit.
+      { event: "respond.overdue", consumer: ALERTS_CONSUMER },
     ]);
 
     const registry = new ModuleRegistry();
@@ -232,6 +236,8 @@ describe("kernel alerts consumer", () => {
           "imaging.critical_overdue", "imaging.report_unread",
           // Obligation spine T2 — filing tells somebody.
           "approval.requested",
+          // Obligation spine T1 — and this one says nobody has answered yet.
+          "respond.overdue",
         ],
       },
     ]);
@@ -995,4 +1001,170 @@ describe("kernel alerts consumer", () => {
     });
   });
 
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * PHASE O T1 — `respond.overdue`: THE SILENCE, NOT THE LATENESS
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * A separate describe with its own fixtures, deliberately: the suite above is the record of six
+ * shipped branches whose behaviour V20 says does not move, and nothing here reaches into it.
+ */
+describe("kernel alerts consumer — respond.overdue (phase O T1)", () => {
+  let db: Db;
+  let teardown: () => Promise<void>;
+  let handler: Handler;
+  let instanceId: string;
+  let patientId: string;
+
+  const R_DEF_KEY = "ladder_flow";
+  const R_STATE = "open";
+
+  beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
+  afterAll(async () => { await teardown(); });
+
+  const readDispatched = async (eventId: string): Promise<DispatchedEvent> => {
+    const rows = await db
+      .select({
+        seq: events.seq, eventId: events.eventId, name: events.name, payload: events.payload,
+        patientId: events.patientId, correlationId: events.correlationId, occurredAt: events.occurredAt,
+      })
+      .from(events).where(eq(events.eventId, eventId));
+    const row = rows[0]!;
+    return {
+      seq: Number(row.seq), eventId: row.eventId, name: row.name, payload: row.payload,
+      patientId: row.patientId, correlationId: row.correlationId, occurredAt: row.occurredAt,
+    };
+  };
+
+  const fireRespondOverdue = async (): Promise<DispatchedEvent> => {
+    const { eventId } = await withTx(db, (tx) =>
+      appendEvent(tx, respondOverdue.make({
+        actor: { type: "system", id: "workflow-timer" },
+        correlationId: instanceId,
+        // The envelope DOES carry her, exactly as the timer builds it — so the absence
+        // assertions below have a fixture that could have produced the leak (§3.14).
+        patientId,
+        payload: {
+          instanceId, defKey: R_DEF_KEY, state: R_STATE, respondMinutes: 30,
+          dueAt: new Date("2026-09-21T10:30:00.000Z").toISOString(),
+        },
+      })),
+    );
+    return readDispatched(eventId);
+  };
+
+  const seedAlertFor = async (userId: string, refType: string, refId: string): Promise<void> => {
+    await db.insert(alerts).values({
+      id: newId(), userId, kind: "escalation", title: "something", refType, refId,
+      sourceEventId: newId(),
+    });
+  };
+
+  beforeEach(async () => {
+    await truncateAll(db);
+    handler = alertsConsumer(db);
+
+    patientId = newId();
+    await db.insert(patients).values({
+      id: patientId, uhid: ASHA_UHID, name: ASHA_NAME, sex: "female",
+      administrativeGender: "female", phone: ASHA_PHONE, createdBy: "seed", updatedBy: "seed",
+    });
+    const definitionId = newId();
+    await db.insert(workflowDefinitions).values({
+      id: definitionId, defKey: R_DEF_KEY, version: 1, title: "Ladder flow", changeClass: "C",
+      definition: { key: R_DEF_KEY, states: [] }, draftedBy: "seed",
+    });
+    instanceId = newId();
+    await db.insert(workflowInstances).values({
+      id: instanceId, definitionId, defKey: R_DEF_KEY,
+      currentState: R_STATE, subjectType: "approval", subjectId: newId(), patientId,
+      stateEnteredAt: new Date(),
+    });
+  });
+
+  it("nudges exactly the people who were already told, once each, and appends alert.raised for each", async () => {
+    const told = await createUser(db, { username: "told1", fullName: "T", password: "p1234567" });
+    const alsoTold = await createUser(db, { username: "told2", fullName: "U", password: "p1234567" });
+    const neverTold = await createUser(db, { username: "quiet1", fullName: "Q", password: "p1234567" });
+    await seedAlertFor(told.id, "workflow_instance", instanceId);
+    await seedAlertFor(alsoTold.id, "workflow_instance", instanceId);
+    // Somebody else's obligation entirely — the not-over-broad half.
+    await seedAlertFor(neverTold.id, "workflow_instance", newId());
+
+    await handler(await fireRespondOverdue());
+
+    const raised = await db.select().from(alerts).where(eq(alerts.kind, "respond_overdue"));
+    expect(raised.map((r) => r.userId).sort()).toEqual([told.id, alsoTold.id].sort());
+    expect(raised[0]!.title).toBe("ladder_flow · open · no answer in 30 min");
+    expect(await db.select().from(events).where(eq(events.name, "alert.raised"))).toHaveLength(2);
+  });
+
+  it("finds the people told about an APPROVAL — T2 files against the approval row, not the instance", async () => {
+    const approver = await createUser(db, { username: "appr1", fullName: "A", password: "p1234567" });
+    const approvalId = newId();
+    await db.insert(approvalTypes).values({
+      typeKey: "billing_refund", title: "Billing Refund", defKey: "approval_billing_refund",
+      approverRole: "billing_manager", createdBy: "seed",
+    });
+    await db.insert(approvals).values({
+      id: approvalId, typeKey: "billing_refund", instanceId, requesterId: approver.id,
+      approverRole: "billing_manager", urgencyClass: "routine",
+      subjectType: "invoice", subjectId: newId(),
+    });
+    await seedAlertFor(approver.id, "approval", approvalId);
+
+    await handler(await fireRespondOverdue());
+
+    const raised = await db.select().from(alerts).where(eq(alerts.kind, "respond_overdue"));
+    expect(raised.map((r) => r.userId)).toEqual([approver.id]);
+    // The nudge points at the INSTANCE, which is what the event knows and what the timer owns.
+    expect(raised[0]!.refType).toBe("workflow_instance");
+    expect(raised[0]!.refId).toBe(instanceId);
+  });
+
+  it("nobody was ever told, so nobody is nudged — and nothing is invented from a role", async () => {
+    await createRole(db, DUTY_MANAGER_ROLE, "Duty Manager");
+    const dm = await createUser(db, { username: "dm9", fullName: "D", password: "p1234567" });
+    await assignRole(db, { userId: dm.id, roleKey: DUTY_MANAGER_ROLE, scopeType: "hospital" });
+
+    await handler(await fireRespondOverdue());
+
+    // The duty manager holds the role a resolver would have reached for. This event is about
+    // people who did not answer, and he was never asked.
+    expect(await db.select().from(alerts).where(eq(alerts.kind, "respond_overdue"))).toHaveLength(0);
+    expect(await db.select().from(events).where(eq(events.name, "alert.raised"))).toHaveLength(0);
+  });
+
+  it("a redelivery raises nothing further — the (source_event_id, user_id) pair is the unit", async () => {
+    const told = await createUser(db, { username: "told3", fullName: "T", password: "p1234567" });
+    await seedAlertFor(told.id, "workflow_instance", instanceId);
+    const e = await fireRespondOverdue();
+
+    await handler(e);
+    await handler(e);
+
+    expect(await db.select().from(alerts).where(eq(alerts.kind, "respond_overdue"))).toHaveLength(1);
+    expect(await db.select().from(events).where(eq(events.name, "alert.raised"))).toHaveLength(1);
+  });
+
+  it("GC6: the nudge names the flow and the minutes, and never the patient the envelope carries", async () => {
+    const told = await createUser(db, { username: "told4", fullName: "T", password: "p1234567" });
+    await seedAlertFor(told.id, "workflow_instance", instanceId);
+
+    const e = await fireRespondOverdue();
+    expect(e.patientId).toBe(patientId); // the leak is one property access away
+
+    await handler(e);
+
+    const [row] = await db.select().from(alerts).where(eq(alerts.kind, "respond_overdue"));
+    const text = `${row!.title} ${row!.body ?? ""}`;
+    expect(text).not.toContain(ASHA_NAME);
+    expect(text).not.toContain(ASHA_UHID);
+    expect(text).not.toContain(patientId);
+    const [raised] = await db.select().from(events).where(eq(events.name, "alert.raised"));
+    expect(JSON.stringify(raised!.payload)).not.toContain(patientId);
+    expect(raised!.patientId).toBeNull(); // fanned to a browser topic; it carries no patient
+  });
 });
