@@ -16,9 +16,9 @@ You are the **main session of a phase under EXECUTE-METHOD-V3**, executing
 - **One lane, one PR per task.** `tools/lane.sh new oblig-t<N>` per task, from `origin/main`;
   rebase before opening the PR; squash-merge when CI is green; drop the lane. **Every jest or vitest
   run goes through the test lock** (CLAUDE.md "Verify"): `$L run oblig-t<N> …`. Two pools OOM the box.
-- **Phase R (the roster backbone) is executing in parallel** on lanes named `roster-r<N>`. Before
-  T1 and before T5 read `tools/lane.sh status` and `gh pr list --search roster-r`; plan §5 says
-  what to do in each case. Never race a lane on `kernel/workflow/timers.ts` or
+- **Phase R (the roster backbone) is executing in parallel** on lanes named `roster-r<N>`; R1–R6
+  merged 2026-09-20/21, R7 is #280, R8/R9 follow. Before T1 and before T5 read `tools/lane.sh
+  status` and `gh pr list --search roster-r`; plan §1a and §5 say what to do in each case. Never race a lane on `kernel/workflow/timers.ts` or
   `kernel/alerts/consumer.ts`: rebase minutes before, one commit.
 - You are **not** authorised to deploy, to run anything against `/opt/hmis-prod*`, to widen your
   own permissions, to edit `packages/contracts/*`, `kernel/copilot/*`, `kernel/auth/*` beyond
@@ -34,7 +34,8 @@ You are the **main session of a phase under EXECUTE-METHOD-V3**, executing
    the finish block; §6 migrations are irreversible).
 3. `docs/superpowers/EXECUTE-METHOD-V3.md` — §3, §5A, §6, §9.1, §9.6, §9.7, §9.8, §9.9, §9.10 only.
 4. The plan: `docs/superpowers/plans/2026-09-20-obligation-spine-IMPLEMENTATION-PLAN.md` — in
-   full. It is the only plan you execute.
+   full, **§1a (the 2026-09-21 amendment) before §1**: where they disagree, §1a wins. It is the
+   only plan you execute.
 5. The phase doc's DECIDED table and the R2 ceiling table:
    `docs/superpowers/plans/2026-09-20-phase-obligation-spine.md` §DECIDED and §R2 only.
 6. The edge register, in full (it is the test list):
@@ -54,7 +55,7 @@ the project brief, `00-FABLE-REVIEW.md` or `01-STAFF-CENSUS.md` unless a task po
 
 ## 2. Before T3 — the kickoff block, recorded in the plan's §9.1
 
-1. Re-measure every row of plan §1 with the command in its `how` column; correct the plan in place
+1. Re-measure every row of plan §1 and §1a with the command in its `how` column; correct the plan in place
    where a value moved. **G1 decides every migration serial** (`drizzle-when-silently-skips` trap
    4: free ≠ reachable — take the serial after the one on `main`, at rebase; drop the lane test DBs
    after any rebase that brings in a migration you did not have). **G2 and G3 decide sequencing**:
