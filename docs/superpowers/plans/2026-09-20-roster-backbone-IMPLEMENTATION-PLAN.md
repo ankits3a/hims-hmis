@@ -35,7 +35,7 @@ reworked here, not merged.**
 | # | fact | how | value on 2026-09-20 |
 |---|---|---|---|
 | G1 | newest migration on `origin/main` | `ls apps/core/drizzle/*.sql \| tail -1` | **RE-MEASURED 2026-09-20 at kickoff: `0107_pharmacy_authorisations.sql`, unmoved.** R1 wrote `0108_roster_masters.sql`; re-checked at rebase before the PR |
-| G2 | `usersHoldingRole` runtime call sites | `grep -rn "usersHoldingRole(" apps/core/src --include=*.ts \| grep -v test` | **CORRECTED 2026-09-20 — EIGHT files and 16 call sites, not six and eleven.** `kernel/alerts/consumer.ts`(**8**, not 5), `kernel/workflow/timers.ts`(2), `kernel/notify/consumer.ts`(1), `kernel/desk/staff.controller.ts`(1), **`kernel/workflow/roles.ts`(1) — absent from the plan's list**, `modules/materials/counts.ts`(1), `modules/materials/transfers.ts`(1), **`modules/ot/lists.ts`(1) — a real call site, not "a comment"**. **R6 owes a decision on the two the plan did not know about**: `workflow/roles.ts` is the kernel helper the others call (it is the DEFINITION, and R6 must not "migrate" it), and `ot/lists.ts` is a leaf module's own read |
+| G2 | `usersHoldingRole` runtime call sites | `grep -rn "usersHoldingRole(" apps/core/src --include=*.ts \| grep -v test` | **RE-MEASURED TWICE. The plan's FILE LIST was right and my first correction was not — see §9.4 F22.** SIX files hold runtime call sites, and there are **14** of them, not eleven: `kernel/alerts/consumer.ts`(**8**, not 5 — this is the only part of the first correction that stands), `kernel/workflow/timers.ts`(2), `kernel/notify/consumer.ts`(1), `kernel/desk/staff.controller.ts`(1), `modules/materials/counts.ts`(1), `modules/materials/transfers.ts`(1). `kernel/workflow/roles.ts` holds the **DEFINITION** — R6 must not "migrate" it. `modules/ot/lists.ts` mentions it **in a doc comment**, exactly as the plan said: no import, no call |
 | G3 | department rows | `opd_departments` seed in `modules/opd/config.ts` | **CONFIRMED 2026-09-20: 12 (MED…PHY)**, no anaesthesia, radiology, pathology, community medicine, forensic, casualty, nursing. R1's `org_departments` seeds **24**: those twelve (linked by code) + the eleven of §2.1 + **Respiratory Medicine, which §2.1 omits** — see §9.4 F1 |
 | G4 | manifests / permissions / pairs pins | run `test/seed-roles.test.ts`, `src/kernel/modules/manifests.test.ts`, `test/standup-check.test.ts` red and **read the numbers off the failure** | **CONFIRMED as the pre-R1 values, all five.** After R1, read off the failing run and never predicted: manifests **22 → 23**; declared permissions **175 → 178**; model pairs **355 → 359**; model permissions **155 → 158**; held **155 → 158**; `heldPermissions()` **161 → 164**; `NON_TABLE_PAIRS` **169 → 173**; per-role grants `owner` 16 → 17, `medical_superintendent` 15 → 18 |
 | G5 | `standup-check` classification | `test/standup-check.test.ts` "every manifest is classified as a department or not" | **CORRECTED: `DEPARTMENTS` / `NOT_DEPARTMENTS` are in `test/standup-check.test.ts`, NOT in `scripts/standup-check.ts`.** `roster` is classified NOT a department (done, R1). **And a second constraint the plan did not carry, found by running it red: every census MODULE except `hospital` owes a `docs/runbooks/*-go-live.md`** — so R1's RED row lives under `hospital`, not under a `roster` key. See §9.4 F2 |
@@ -231,8 +231,9 @@ staff masking, roster tools) → Plan 41 consumers.
 |---|---|---|---|
 | R1 | `lane/roster-r1` | `fe53ab8c` → merged `a5e41562` | [#273](https://github.com/ankits3a/hims-hmis/pull/273) |
 | R2 | `lane/roster-r2` (stacked on R1) | `6b7ab715` → merged `c485fcec` | [#275](https://github.com/ankits3a/hims-hmis/pull/275) |
-| R3 | `lane/roster-r3` (stacked on R2) | `d7757844` | [#276](https://github.com/ankits3a/hims-hmis/pull/276) |
-| R4 | `lane/roster-r4` (stacked on R3) | *(filled at commit)* | *(filled at open)* |
+| R3 | `lane/roster-r3` (stacked on R2) | `d7757844` → merged `9d7c0527` | [#276](https://github.com/ankits3a/hims-hmis/pull/276) |
+| R4 | `lane/roster-r4` (stacked on R3) | `27a98688` → merged `70eebfdb` | [#277](https://github.com/ankits3a/hims-hmis/pull/277) |
+| R5 | `lane/roster-r5` (stacked on R4) | *(filled at commit)* | *(filled at open)* |
 | — | `lane/roster-clock-core` | `66b4a2e8` | [#272](https://github.com/ankits3a/hims-hmis/pull/272) — **not a phase-R task**: a clock time bomb that turned `main` red at IST midnight on 2026-09-21, diagnosed from R1's full suite and fixed so the phase could merge at all |
 
 ### 9.2 Kickoff re-measurement (§1), 2026-09-20
@@ -242,10 +243,10 @@ the three that MOVED are G2, G5 and G9, and one more (G3) grew a consequence. In
 
 - **G1 unmoved** — `0107_pharmacy_authorisations.sql` is still the newest on `origin/main`; R1 wrote
   `0108_roster_masters.sql` and re-checks the serial at rebase, never at start.
-- **G2 WAS WRONG** — eight files and sixteen call sites, not six and eleven. Two the plan never
-  named: `kernel/workflow/roles.ts` (which is the DEFINITION of `usersHoldingRole`, not a consumer —
-  R6 must not "migrate" it) and `modules/ot/lists.ts` (a real call, which the plan recorded as "a
-  comment"). `kernel/alerts/consumer.ts` has eight, not five.
+- **G2 was wrong about a COUNT and my first correction was wrong about the FILES** (F22). The
+  settled measurement: six files, fourteen call sites, `kernel/alerts/consumer.ts` holding eight of
+  them rather than five. `kernel/workflow/roles.ts` is the DEFINITION; `modules/ot/lists.ts` is a
+  doc comment, as the plan always said.
 - **G3 confirmed at 12**, and it forced F1 below.
 - **G4 confirmed** as the pre-R1 values; every post-R1 number was read off a failing run.
 - **G5 WAS WRONG about the file**, and carried an unstated second constraint — F2 below.
@@ -286,6 +287,12 @@ the three that MOVED are G2, G5 and G9, and one more (G3) grew a consequence. In
 | **F17** | R4 | **`opd_doctor_leaves.absence_id` cannot be a real foreign key.** `org_departments` references `opd_departments` and `roster.ts` references `org.ts`, so an FK from opd to roster closes the loop `opd → roster → org → opd` — and a cycle between drizzle table modules resolves to `undefined` at load time rather than failing loudly. | Plain text, as `opd_doctors.user_id` three columns up already is, with the reason written at the column. |
 | **F18** | R4 | **The export census's fixpoint could only see EXPORTED functions**, so `approveAbsence` — which delegates to a private `decide` that carries the check — read as dangling. The census would have forced a worse design to satisfy itself. | The scan now walks every function in the module, exported or not. The fixpoint is unchanged; only its population grew. |
 
+| **F19** | R5 | **A DEPARTMENT-scoped roster did not answer a question about a TEAM inside it.** The first `periodsAnswering` matched a team question only against periods whose own `team_id` was that team — so a department-pooled night, published at department scope, came back `static` for every unit in the department. That is the S4 shape failing in the one place S4 is about: the pooled night exists *precisely* so that no unit publishes it. | The reach now includes "a period for this team's department that names no team". Mutant M2 covers the slot-level half. |
+| **F20** | R5 | **The worker manifest question the plan (§5) left to this task.** | **DECIDED: the worker does NOT install it.** R6 moves the worker's alert and timer consumers onto `whoIsOn`, which is a FUNCTION over tables — the worker already has the same database, so what it needs is the tables, not the manifest. A manifest carries permissions, a menu and SUBSCRIPTIONS; the roster declares none until R7's nightly job and R9's monthly draft, each named in the scheduler census by the task that adds it. The reasoning is written into `manifests.test.ts` (1j) so the absence does not later read as an oversight. |
+| **F21** | R5 | **My own scoping test proved less than its name claimed.** *"A Medicine question never answers with Surgery's resident"* passed with the slot-level `reaches` stubbed to `true` — because in that fixture Medicine had published nothing, so the answer was `static` whatever the scoping did. It was exercising the PERIOD filter and nothing else. Found by mutant M2 killing only one test instead of two. | A leg added where BOTH departments have published, which is the state a real hospital is in; and the pooled-night test now says in its own comment that it is the one exercising a slot's cover scope. **The mutant's job was to grade the assertion, and it did.** |
+
+| **F22** | R5 | **MY OWN GROUND-TRUTH CORRECTION WAS WRONG, and R6's work list depended on it.** At kickoff I re-measured G2 with `grep -rn "usersHoldingRole(" … \| grep -v test` and reported *"EIGHT files and 16 call sites"*, calling `modules/ot/lists.ts` *"a real call site, not a comment"*. It is a comment — line 26 of a doc block, with no import of `workflow/roles` anywhere in the file. **`grep -v test` excludes test FILES; it does not exclude COMMENTS**, and a mention of a function name inside prose reads exactly like a call to a line-oriented search. I had corrected a correct row into an incorrect one, and R6 would have been sent to edit a leaf module that does not call the function. | Re-measured a third time, by reading the matched lines rather than counting them (AGENT-RULES 20's own instruction, which is written about `pgrep` and applies here word for word). §1 G2 now records six files and fourteen call sites, and says which of my two claims survived: only `alerts/consumer.ts` having **eight**. Caught before R6 started, by re-reading the evidence rather than the number. |
+
 ### 9.5 Mutant tally
 
 | task | mutant | built as | result |
@@ -307,6 +314,11 @@ the three that MOVED are G2, G5 and G9, and one more (G3) grew a consequence. In
 | R4 | **M2** — the requester/approver segregation removed | `absences-self-approval-allowed.mutant.ts` + spec | **DIED**, 2 failed / 15 passed, on "the person who ASKS is not the person who ALLOWS" |
 | R4 | **M3** — the attendance projection counts absence OUTSIDE the term | `absences-projection-unclipped.mutant.ts` + spec | **DIED**, 2 failed / 15 passed. `Expected: 30` / `Received: 120` — four months of maternity leave counted against a term that had one of them in it |
 | R4 | **M4** — the OPD inclusive→half-open conversion off by one day | `opd-leave-window-off-by-one.mutant.ts` + spec | **DIED**, 2 failed / 2 passed. `Expected: "2026-08-20T18:30:00.000Z"` / `Received: "2026-08-19T18:30:00.000Z"` — the doctor left rostered on the last day of their own leave |
+
+| R5 | **M1** — the flag ignored, so the resolver is always on | `resolve-flag-ignored.mutant.ts` + spec | **DIED**, 2 failed / 15 passed. `Expected: "static"` / `Received: "published"` — "off" stops meaning parity |
+| R5 | **M2** — a slot's cover scope dropped: every slot reaches every question (Plan 20 T2's actual defect) | `resolve-scope-dropped.mutant.ts` + spec | **DIED**, 1 failed / 16 passed, on the pooled-night leg — **and the single kill is what produced F21** |
+| R5 | **M3** — an undeclared position treated as declared | `resolve-undeclared-treated-as-declared.mutant.ts` + spec | **DIED**, 1 failed / 16 passed. `Expected: "static"` / `Received: "published"` — a hole starts reading as "nobody is on" |
+| R5 | **M4** — approved absence not subtracted | `resolve-absence-not-subtracted.mutant.ts` + spec | **DIED**, 1 failed / 16 passed, on V13 — the phone of somebody on leave |
 
 Every mutant module and spec was deleted before the counts; `git status --porcelain` carried no
 `*.mutant.*` in any task.

@@ -61,3 +61,10 @@ export {
 } from "./credentials";
 export type { RecordCredentialInput, StaffCredentialRow } from "./credentials";
 export { rosterAbsenceApproved, rosterAbsenceRequested } from "./events";
+export {
+  LOOK_BACK_DAYS, ROSTER_RESOLVER_FLAG, calloutList, dutiesOf, onDutyNow, resolverEnabled,
+  whoIsAt, whoIsOn,
+} from "./resolve";
+export type {
+  CallRung, Duty, OnDutyNow, RosterAnswerSource, WhoIsOnAnswer, WhoIsOnQuery,
+} from "./resolve";
