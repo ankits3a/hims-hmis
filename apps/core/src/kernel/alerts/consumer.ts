@@ -1,11 +1,12 @@
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
+import { and, eq, inArray, or } from "drizzle-orm";
 import { withTx } from "../db/client";
-import { alerts } from "../db/schema";
+import { alerts, approvals } from "../db/schema";
 import { appendEvent } from "../events/append";
 import { notificationFailed } from "../notify/events";
 import { modeChanged } from "../ops/events";
-import { escalationTriggered } from "../workflow/events";
+import { escalationTriggered, respondOverdue } from "../workflow/events";
 import { approvalRequested } from "../approvals/events";
 import { imagingCriticalOverdue, imagingReportUnread } from "../../modules/radiology/events";
 import { usersHoldingRole } from "../workflow/roles";
@@ -37,6 +38,14 @@ const ALERT_KIND_MANUAL_NOTIFY = "manual_notify";
 /** D6: an ID, not an identity. The desk reaches the patient through permission-checked routes. */
 const MANUAL_NOTIFY_REF_TYPE = "patient";
 const ALERT_KIND_OPERATING_MODE = "operating_mode";
+/**
+ * ═══ PHASE O T1 — NOBODY HAS SAID ANYTHING YET ═══
+ *
+ * Distinct from `escalation`, which means the WORK is late. This means the SILENCE is: the
+ * respond clock ran out with no `seen` and no `owned`, and the same people are being asked
+ * again before the role ladder starts climbing over their heads.
+ */
+const ALERT_KIND_RESPOND_OVERDUE = "respond_overdue";
 /**
  * ═══ OBLIGATION SPINE T2 — FILING TELLS SOMEBODY ═══
  *
@@ -122,6 +131,10 @@ export function alertsConsumer(db: Db): Handler {
     }
     if (e.name === approvalRequested.name) {
       await handleApprovalRequested(db, e);
+      return;
+    }
+    if (e.name === respondOverdue.name) {
+      await handleRespondOverdue(db, e);
       return;
     }
     await handleEscalationTriggered(db, e);
@@ -416,5 +429,62 @@ async function handleApprovalRequested(db: Db, e: DispatchedEvent): Promise<void
     body,
     refType: APPROVAL_REF_TYPE,
     refId: payload.approvalId,
+  });
+}
+
+/**
+ * ═══ PHASE O T1 — THE RESPOND CLOCK RAN OUT, SO THE SAME PEOPLE ARE ASKED AGAIN ═══
+ *
+ * ═══ WHO IT GOES TO, AND WHY IT NEEDS NO RESOLVER ═══
+ *
+ * The people who already hold an alert about this obligation. That is not a placeholder for a
+ * proper addressee resolver (T5's) — it is the honest answer to the question this event asks.
+ * `respond.overdue` means *the people we told have not answered*, so the set it nudges is
+ * exactly the set we told, and re-deriving it from a role would silently nudge somebody who was
+ * never told in the first place. It also needs no roster call, which is what §1a asks of T1.
+ *
+ * ═══ AND IT CANNOT FIRE FOR SOMEBODY WHO ANSWERED ═══
+ *
+ * The filter that would look right here — "…whose alert is unacknowledged" — is not written,
+ * because an acknowledgement CANCELS the respond timer (`cancelTimersOfKind(…, "respond")`), so
+ * this event does not exist for an obligation somebody answered. Re-testing it here would be a
+ * second opinion about a fact the timer already settled, free to disagree with it.
+ *
+ * ═══ THE TWO REF SHAPES ═══
+ *
+ * T2 files an approval's alert against the APPROVAL row (that is what an approver opens) and
+ * every other alert against the workflow instance. `respond.overdue` knows only the instance, so
+ * both shapes are matched — the approval by its unique `instance_id`.
+ *
+ * Title and body from `defKey`, `state` and minutes, and from nothing else (GC6): the envelope
+ * carries the patient, and this row is one property access away from naming her.
+ */
+async function handleRespondOverdue(db: Db, e: DispatchedEvent): Promise<void> {
+  const payload = respondOverdue.payloadSchema.parse(e.payload);
+
+  const approvalRows = await db
+    .select({ id: approvals.id })
+    .from(approvals)
+    .where(eq(approvals.instanceId, payload.instanceId));
+  const refIds = [payload.instanceId, ...approvalRows.map((r) => r.id)];
+
+  const told = await db
+    .selectDistinct({ userId: alerts.userId })
+    .from(alerts)
+    .where(
+      and(
+        or(eq(alerts.refType, ALERT_REF_TYPE), eq(alerts.refType, APPROVAL_REF_TYPE)),
+        inArray(alerts.refId, refIds),
+      ),
+    );
+  const recipients = told.map((r) => r.userId);
+  if (recipients.length === 0) return; // nobody was ever told; there is nobody to nudge
+
+  await raiseAlerts(db, e, recipients, {
+    kind: ALERT_KIND_RESPOND_OVERDUE,
+    title: `${payload.defKey} · ${payload.state} · no answer in ${String(payload.respondMinutes)} min`,
+    body: `Nobody has said they have this. Open it and mark it seen, or take it on, before it climbs.`,
+    refType: ALERT_REF_TYPE,
+    refId: payload.instanceId,
   });
 }

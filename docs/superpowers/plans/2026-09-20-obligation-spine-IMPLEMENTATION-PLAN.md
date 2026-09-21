@@ -521,3 +521,36 @@ GSTR, TDS, NMC) → the copilot phase (agents file, chase, answer their own dela
 9.1 kickoff measurements (§1, corrected) · 9.2 migration serials actually written · 9.3 pins
 before/after each task · 9.4 verify counts per task · 9.5 mutant tally · 9.6 close review pass 1 +
 remediation + pass 2 · 9.7 token actuals · 9.8 handoff if any.
+
+### 9.1 Kickoff measurements — taken 2026-09-21 on lane `oblig-t3`, `origin/main` @ `1a3e9367`
+
+Every row re-measured with its own `how` command. **Where §1 and §1a disagreed, §1a was right in
+every case.** The three that moved again since §1a was written are marked.
+
+| # | measured value |
+|---|---|
+| G1′ | newest migration on `origin/main` = **`0114_opd_consult_fee_override.sql`** (§1a said 0112; #280 and #269 both landed after it was written). T3 therefore took **0115**. |
+| G2′ | phase R is **DONE through R7**: #273 (R1), #275 (R2), #276 (R3), #277 (R4), #278 (R5), #279 (R6), #280 (R7) all MERGED. R8/R9 have no lane and no PR, so **T1 does not race anybody on `timers.ts` or `alerts/consumer.ts`** — it rebases onto R6 rather than merging before it. |
+| G3 / G14 | **#265 MERGED** 2026-09-21T14:29Z (`1a3e9367`). T5's derived ladders may end at `owner`. |
+| G4 | `ALL_MANIFESTS` **23** · `allPermissions` **178** · `modelPairs` **363** · `modelPermissions` **158** · `heldPermissions` **164** · `NOT_YET_MODELLED` **14** (held + not-modelled = 178) · `workerKeys` **16** |
+| G5′ | scheduler job census **19** — R7's `sweepRosterWindows` has landed, so §1a's "19 once #280 lands" is now the standing number |
+| G6 | SPA route census **68** (`caddyfile-parity.test.ts:415`) |
+| G7 | alerts subscriptions **6** · notify templates **7** (whole-array) · notify consumer subscriptions **5** |
+| G8 | `show timezone` on `hmis_lane_oblig_t3_test_1` = **`Etc/UTC`** ✓ — T7's five IST instants will be evidence |
+| G9′ | exactly as §1a describes. `escalationRecipients` at `timers.ts:158`, `alerts/consumer.ts:251, 327, 354`. Still `usersHoldingRole`: `alerts/consumer.ts:198, 290, 393, 397, 401`, `timers.ts:166`, `notify/consumer.ts:230`, `desk/staff.controller.ts:226`, `materials/counts.ts:170`, `materials/transfers.ts:270`, and inside the roster itself at `escalation.ts:85` / `resolve.ts:105`. |
+| G10 | all seven chain pins present; the whole `src/kernel/workflow` suite is **75/75** after T1's changes, with no pin edited |
+| G11 | web push **absent everywhere**; `apps/web/public/` holds only `fonts/` |
+| G12′ | test lock **FREE** at kickoff, 8 GB of 15 available; `roster-r7`'s worktree survives its merged PR and 22 other lanes are idle. No lane held the lock at any point during T3. |
+| V20 | `alerts/consumer.test.ts` **17/17** — the baseline the phase carries |
+
+**Two things the kickoff learned that neither §1 nor §1a records:**
+
+1. **The `obligations` manifest is WORKER-ONLY, the `notify` shape** (DECIDED, T1). §5's table
+   assigns it to T5/T6, but T1's consumer cannot be wired without it, and an unwired consumer is
+   `readers-without-writers`. It declares one subscription, no permission and no route, so it is
+   installed in `worker.module.ts` and deliberately absent from `ALL_MANIFESTS` — exactly the
+   reason `manifests.test.ts` already gives for `notify`. It joins `ALL_MANIFESTS` at T5, which is
+   the first task that gives it something the api serves.
+2. **T1 takes the SEVENTH alerts subscription, not T5.** §4's T5 text reserves "7th subscription;
+   pin 6 → 7" for the addressee fallback event. `respond.overdue` needs one too and T1 lands
+   first, so T5's is the eighth. Both are appends; both counts are read off the red run.

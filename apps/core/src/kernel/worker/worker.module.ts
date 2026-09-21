@@ -9,6 +9,8 @@ import { ALERTS_CONSUMER, alertsConsumer } from "../alerts/consumer";
 import { alertsManifest } from "../alerts/manifest";
 import { NOTIFY_CONSUMER, notifyConsumer } from "../notify/consumer";
 import { notifyManifest } from "../notify/manifest";
+import { OBLIGATIONS_CONSUMER, obligationsConsumer } from "../obligations/consumer";
+import { obligationsManifest } from "../obligations/manifest";
 import { authManifest } from "../auth/manifest";
 import { workflowManifest } from "../workflow/manifest";
 import { approvalsManifest } from "../approvals/manifest";
@@ -94,6 +96,13 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
         // startup (`buildSubscriptionBus`); pass the entry without installing and the gateway
         // hears nothing at all. Both halves live in this file now, which is the point.
         registry.install(notifyManifest);
+        // PHASE O T1 — THE ONE-EDIT RULE FOR THE OBLIGATION SPINE, and it is the `notify` shape:
+        // worker-only, because its single subscription's handler exists only in
+        // `workerConsumers` below and nothing it declares is served by an api route. An
+        // acknowledgement stops the respond clock; install this without the handler and the
+        // worker throws at boot, pass the handler without installing and every ack leaves the
+        // clock running while the suite stays green.
+        registry.install(obligationsManifest);
         // PLAN 09 T6 / DD7, AND IT IS THE SAME ONE EDIT A THIRD TIME. `partnersManifest` declares
         // FOUR billing subscriptions to `partners.accrual`, and `workerConsumers` below is the only
         // place that key's handler is produced. T1 shipped this manifest APP-SIDE ONLY, with
@@ -244,6 +253,7 @@ export function workerConsumers(db: Db): Record<string, Handler> {
   return {
     [ALERTS_CONSUMER]: alertsConsumer(db),
     [NOTIFY_CONSUMER]: notifyConsumer(db),
+    [OBLIGATIONS_CONSUMER]: obligationsConsumer(db),
     // PLAN 09 T6 — the other half of the install above. Deleting either fails
     // `worker-runtime.e2e.test.ts`'s whole-equality assertion instead of a hospital's ledger.
     [PARTNERS_ACCRUAL_CONSUMER]: accrualConsumer(db),
