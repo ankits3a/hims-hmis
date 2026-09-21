@@ -73,6 +73,35 @@ describe("roster — 0108 structure", () => {
       "authority", "created_at", "created_by", "delegate_user_id", "delegator_user_id", "ends_at",
       "id", "reason", "scope_id", "scope_type", "starts_at", "updated_at", "updated_by",
     ],
+    // PHASE R (R7)
+    roster_shift_defs: [
+      "code", "counts_as_night", "created_at", "created_by", "default_mode", "department_id",
+      "duration_minutes", "handover_minutes", "id", "label", "max_presence_hours", "site_id",
+      "start_minute", "updated_at", "updated_by",
+    ],
+    roster_cycles: [
+      "anchor_ist_date", "created_at", "created_by", "cycle_days", "department_id",
+      "effective_from", "id", "published_at", "published_by", "site_id", "status", "updated_at",
+      "updated_by", "version",
+    ],
+    roster_cycle_entries: [
+      "activity", "created_at", "created_by", "cycle_id", "day_index", "duration_minutes", "id",
+      "start_minute", "team_id", "updated_at", "updated_by",
+    ],
+    roster_cycle_overlays: [
+      "activity", "anchor_ist_date", "created_at", "created_by", "department_id",
+      "duration_minutes", "id", "sequence_position", "site_id", "start_minute", "team_id",
+      "updated_at", "updated_by",
+    ],
+    roster_holidays: [
+      "applies_to", "confirmation_due_at", "created_at", "created_by", "declared_at",
+      "declared_by", "ist_date", "kind", "pattern", "site_id", "updated_at", "updated_by",
+    ],
+    roster_duty_windows: [
+      "activity", "created_at", "created_by", "cycle_id", "department_id", "ends_at", "id",
+      "overlay_index", "site_id", "source", "starts_at", "superseded_at", "team_id", "updated_at",
+      "updated_by",
+    ],
     // PHASE R (R6)
     roster_escalation_targets: [
       "active", "alert_kind", "created_at", "created_by", "department_id", "fallback_role_key",
@@ -315,6 +344,21 @@ describe("roster — 0109 structure", () => {
     expect(def).toContain("tstzrange");
     expect(def).toContain("&&");
     expect(def).toContain("'published'");
+  });
+
+  it("the take-overlap EXCLUDE exists — V11's half that a constraint can hold", async () => {
+    const found = await db.execute(sql`
+      select pg_get_constraintdef(c.oid) as def
+        from pg_constraint c join pg_class t on t.oid = c.conrelid
+       where t.relname = 'roster_duty_windows' and c.conname = 'roster_duty_windows_take_no_overlap_excl'`);
+    expect(found.rows).toHaveLength(1);
+    const def = String((found.rows[0] as { def: string }).def);
+    expect(def).toContain("EXCLUDE USING gist");
+    expect(def).toContain("department_id WITH =");
+    expect(def).toContain("'take'");
+    // Partial on LIVE rows: re-materialising supersedes and rewrites in one transaction, and
+    // without this every republish would collide with what it is replacing.
+    expect(def).toContain("superseded_at IS NULL");
   });
 
   it("the resolver's gist index exists and is partial on effective", async () => {

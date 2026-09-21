@@ -155,10 +155,14 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
         // once or discover it three times.
         "sweepCriticalChaser",
         "sweepUnreadWatchman",
+        // PHASE R (R7) — the nineteenth. Registered as a DAILY job (01:30 IST), so it belongs to
+        // leg 1b and not leg 1a; the two legs are asserted disjoint, so putting it in the wrong one
+        // fails here rather than paging somebody at 300 s for a job that runs once a day.
+        "sweepRosterWindows",
       ].sort(),
     );
-    expect(registered).toHaveLength(18);
-    expect(new Set(registered).size).toBe(18); // no job registered twice
+    expect(registered).toHaveLength(19); // PHASE R (R7): +1, sweepRosterWindows
+    expect(new Set(registered).size).toBe(19); // no job registered twice
   });
 
   it("the two staleness legs together cover every registered job, exactly once each", () => {

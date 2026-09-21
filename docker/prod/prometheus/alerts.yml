@@ -42,14 +42,14 @@ groups:
             `docker compose -p hmis-prod logs worker`.
 
       # Leg 1b — the NINE `dailyIst` jobs (six until Plan 07c T8, eight since 17a T5 added
-      # `sweepLabNonReturn` at 07:00, nine since 18a-iii T5's `sweepUnreadWatchman` at 08:00). Each runs once every ~24h by design
+      # `sweepLabNonReturn` at 07:00, nine since 18a-iii T5's `sweepUnreadWatchman` at 08:00, ten since phase R's `sweepRosterWindows` at 01:30). Each runs once every ~24h by design
       # (kernel/worker/scheduler.ts's `isDailyDue`), so staleness legitimately climbs to ~24h
       # between runs; 26h (93600s) gives a two-hour margin for scheduling jitter before treating
       # a missed day as an incident.
       - alert: HmisSchedulerJobStaleDaily
         expr: |
           hmis_scheduler_heartbeat_staleness_seconds{
-            job=~"sweepGuardianMajority|sweepAppointmentNoShows|sweepBatchExpiry|runDailyClose|createEventPartitions|retentionSweep|rollupUserDayFacts|sweepLabNonReturn|sweepUnreadWatchman"
+            job=~"sweepGuardianMajority|sweepAppointmentNoShows|sweepBatchExpiry|runDailyClose|createEventPartitions|retentionSweep|rollupUserDayFacts|sweepLabNonReturn|sweepUnreadWatchman|sweepRosterWindows"
           } > 93600
         for: 5m
         labels:
@@ -116,6 +116,7 @@ groups:
           # series to be stale.
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepCriticalChaser"})
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepUnreadWatchman"})
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepRosterWindows"})
         for: 5m
         labels:
           severity: critical
