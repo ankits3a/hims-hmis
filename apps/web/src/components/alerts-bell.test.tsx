@@ -2,7 +2,7 @@ import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { resetRealtimeClientForTests } from "../lib/realtime";
-import { renderWithProviders } from "../test-utils";
+import { renderWithRouter } from "../test-utils";
 import { AlertsBell } from "./alerts-bell";
 
 /**
@@ -72,6 +72,8 @@ function alertRow(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id: "al-1", kind: "escalation", title: "OPD wait escalated — reception queue", body: null,
     refType: "workflow_instance", refId: "wf-1", createdAt: NOW_ISO, readAt: null,
+    ackKind: null, acknowledgedAt: null, ownedUntil: null, ackNote: null,
+    handedToUserId: null, ackExtensions: 0,
     ...over,
   };
 }
@@ -107,7 +109,7 @@ describe("AlertsBell", () => {
       },
     });
 
-    renderWithProviders(<AlertsBell />);
+    renderWithRouter(<AlertsBell />);
 
     const badge = await screen.findByTestId("alerts-unread-badge");
     expect(badge).toHaveTextContent("1");
@@ -130,7 +132,7 @@ describe("AlertsBell", () => {
   });
 
   it("nothing renders before the actor resolves — no token, no /alerts call, no bell", () => {
-    renderWithProviders(<AlertsBell />);
+    renderWithRouter(<AlertsBell />);
     expect(screen.queryByTestId("alerts-bell-toggle")).not.toBeInTheDocument();
   });
 
@@ -159,7 +161,7 @@ describe("AlertsBell", () => {
       "GET /api/alerts": { status: 200, body: { items: [], unreadCount: 0 } },
     });
 
-    renderWithProviders(<AlertsBell />);
+    renderWithRouter(<AlertsBell />);
     await flush();
     await flush();
     const before = callsTo("GET", "/api/alerts").length;
@@ -167,5 +169,95 @@ describe("AlertsBell", () => {
 
     await flush(15_000);
     expect(callsTo("GET", "/api/alerts").length).toBeGreaterThan(before);
+  });
+
+  // ═══════════════════════════ PHASE O T3 — THE ANSWER LINE AND THE DEEP LINK ═══════════════════════════
+
+  it("offers the three answers on an unanswered alert, and `Own` posts a bounded promise", async () => {
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    setToken("tok-1");
+    let row = alertRow();
+    mockRoutes({
+      "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" } } },
+      "GET /api/alerts": () => ({ status: 200, body: { items: [row], unreadCount: row.readAt === null ? 1 : 0 } }),
+      "POST /api/alerts/al-1/ack": () => {
+        row = alertRow({ ackKind: "owned", acknowledgedAt: NOW_ISO, ownedUntil: NOW_ISO, readAt: NOW_ISO });
+        return { status: 201, body: { alertId: "al-1", kind: "owned", acknowledgedAt: NOW_ISO, ownedUntil: NOW_ISO, handedToUserId: null, ackExtensions: 0, changed: true } };
+      },
+    });
+
+    renderWithRouter(<AlertsBell />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("alerts-bell-toggle"));
+
+    expect(await screen.findByTestId("alerts-ack-seen-al-1")).toBeInTheDocument();
+    expect(screen.getByTestId("alerts-ack-own-al-1")).toBeInTheDocument();
+    expect(screen.getByTestId("alerts-ack-handover-al-1")).toBeInTheDocument();
+    // The offer says how long it is for. "Own" with no number is the promise G5 is about.
+    expect(screen.getByTestId("alerts-ack-own-al-1")).toHaveTextContent("Own 30m");
+
+    await user.click(screen.getByTestId("alerts-ack-own-al-1"));
+
+    await waitFor(() => expect(callsTo("POST", "/api/alerts/al-1/ack")).toHaveLength(1));
+    const sent = vi.mocked(fetch).mock.calls.find(([i, init]) => String(i).includes("/ack") && init?.method === "POST");
+    expect(JSON.parse(String(sent![1]!.body))).toEqual({ kind: "owned", untilMinutes: 30 });
+
+    // Answered: the row now says what the answer WAS instead of offering it again.
+    await waitFor(() => expect(screen.getByTestId("alerts-ack-state-al-1")).toHaveTextContent("Yours"));
+    expect(screen.queryByTestId("alerts-ack-own-al-1")).not.toBeInTheDocument();
+  });
+
+  it("deep-links an APPROVAL alert to the card it is about, and links nothing for a ref type with no screen", async () => {
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    setToken("tok-1");
+    mockRoutes({
+      "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" } } },
+      "GET /api/alerts": {
+        status: 200,
+        body: {
+          items: [
+            alertRow({ id: "al-1", refType: "approval", refId: "ap-9" }),
+            // The ref EVERY escalation alert carries, and the one with no screen to land on.
+            // A link built by template rather than by the closed map would send a reader to a
+            // route that renders nothing — this is the negative half of the same claim.
+            alertRow({ id: "al-2", refType: "workflow_instance", refId: "wf-9" }),
+          ],
+          unreadCount: 2,
+        },
+      },
+    });
+
+    renderWithRouter(<AlertsBell />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("alerts-bell-toggle"));
+
+    const link = await screen.findByTestId("alerts-open-al-1");
+    expect(link).toHaveAttribute("href", "/approvals?focus=ap-9");
+    expect(screen.queryByTestId("alerts-open-al-2")).not.toBeInTheDocument();
+  });
+
+  it("hand over asks for a staff code and posts it; a cancelled prompt posts nothing", async () => {
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    setToken("tok-1");
+    mockRoutes({
+      "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" } } },
+      "GET /api/alerts": { status: 200, body: { items: [alertRow()], unreadCount: 1 } },
+      "POST /api/alerts/al-1/ack": { status: 201, body: { alertId: "al-1", kind: "handed_over", acknowledgedAt: NOW_ISO, ownedUntil: null, handedToUserId: "u-2", ackExtensions: 0, changed: true } },
+    });
+
+    renderWithRouter(<AlertsBell />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("alerts-bell-toggle"));
+
+    vi.stubGlobal("prompt", vi.fn(() => null));
+    await user.click(await screen.findByTestId("alerts-ack-handover-al-1"));
+    expect(callsTo("POST", "/api/alerts/al-1/ack")).toHaveLength(0);
+
+    vi.stubGlobal("prompt", vi.fn(() => "  EMP-0002  "));
+    await user.click(screen.getByTestId("alerts-ack-handover-al-1"));
+    await waitFor(() => expect(callsTo("POST", "/api/alerts/al-1/ack")).toHaveLength(1));
+    const sent = vi.mocked(fetch).mock.calls.find(([i, init]) => String(i).includes("/ack") && init?.method === "POST");
+    // Trimmed: a badge number typed with a stray space is the same badge number.
+    expect(JSON.parse(String(sent![1]!.body))).toEqual({ kind: "handed_over", handedToStaffCode: "EMP-0002" });
   });
 });

@@ -1518,7 +1518,15 @@
     "markRead": "पढ़ा हुआ चिह्नित करें",
     "justNow": "अभी",
     "minutesAgo": "{{n}} मिनट पहले",
-    "hoursAgo": "{{n}} घंटे पहले"
+    "hoursAgo": "{{n}} घंटे पहले",
+    "seen": "देखा",
+    "own": "{{n}} मिनट के लिए लें",
+    "handOver": "सौंपें",
+    "handOverPrompt": "जिसे सौंपना है उसका स्टाफ कोड",
+    "open": "खोलें",
+    "acknowledged": "आपने देखा",
+    "owned": "आपके पास",
+    "handedOver": "सौंप दिया"
   },
   "opsMode": {
     "title": "परिचालन मोड",

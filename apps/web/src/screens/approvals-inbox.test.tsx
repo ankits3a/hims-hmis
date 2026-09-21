@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ApiError, setToken } from "../lib/api";
-import { renderWithProviders } from "../test-utils";
+import { renderWithRouter } from "../test-utils";
 import en from "../locales/en.json";
 import hi from "../locales/hi.json";
 import { ApprovalsInbox } from "./approvals-inbox";
@@ -15,6 +15,12 @@ import { APPROVAL_KINDS, ageOf, decisionErrorKey } from "./approval-kinds";
  */
 
 const navigate = vi.hoisted(() => vi.fn());
+/**
+ * `useNavigate` only. PHASE O T3 moved this suite onto `renderWithRouter`, so `useSearch` — which
+ * the screen now calls to read `?focus=` — resolves against a REAL memory router rather than a
+ * stub. Mocking it too would make the deep-link arrival a test of the mock; the focus case lives
+ * in `approvals-inbox-focus.test.tsx` and drives the query string through the history.
+ */
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tanstack/react-router")>()),
   useNavigate: () => navigate,
@@ -65,7 +71,7 @@ const list = (items: unknown[]): Reply => ({ status: 200, body: { items, total: 
 function mount(handlers: Record<string, Handler>, seen?: Seen[]): Seen[] {
   const out = mockRoutes({ "GET /api/auth/me": OWNER, ...handlers }, seen);
   setToken("t-1");
-  renderWithProviders(<ApprovalsInbox />);
+  renderWithRouter(<ApprovalsInbox />);
   return out;
 }
 
@@ -243,7 +249,7 @@ describe("deciding", () => {
   it("without the decide permission, the list is readable and says why there are no buttons", async () => {
     mockRoutes({ "GET /api/auth/me": me("u-viewer", ["approvals.requests.read"]), "GET /api/approvals": list([REFUND]) });
     setToken("t-1");
-    renderWithProviders(<ApprovalsInbox />);
+    renderWithRouter(<ApprovalsInbox />);
     expect(await screen.findByText("You can see these requests, but your login cannot approve or reject them.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
   });

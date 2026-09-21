@@ -218,4 +218,67 @@ describe("alerts e2e", () => {
     // And an unauthenticated caller is still a 401 — the handler refusal did not replace auth.
     expect((await request(app.getHttpServer()).get("/alerts")).status).toBe(401);
   });
+
+  // ═══ PHASE O T3 — `POST /alerts/:id/ack` OVER THE WIRE ═══
+  //
+  // The decision logic is `src/kernel/alerts/alerts.test.ts`'s. These four legs are about what
+  // the ROUTE adds and nothing else: the body schema, the status mapping, and the fact that the
+  // third route inherited the same identity scoping as its two neighbours rather than being a
+  // new hole beside them.
+
+  it("T3: a user acks their own alert, and the row and the wire agree", async () => {
+    const aAlert = await seedAlert(userA, { title: "A unread", createdAt: new Date("2026-08-20T09:00:00.000Z") });
+
+    const res = await request(app.getHttpServer())
+      .post(`/alerts/${aAlert}/ack`)
+      .set("Authorization", `Bearer ${tokenA}`)
+      .send({ kind: "owned", untilMinutes: 30, note: "on my way" });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ alertId: aAlert, kind: "owned", changed: true });
+    const row = (await db.select().from(alerts).where(eq(alerts.id, aAlert)))[0]!;
+    expect(row.ackKind).toBe("owned");
+    expect(row.ownedUntil).not.toBeNull();
+    expect(row.readAt).not.toBeNull();
+  });
+
+  it("T3: the body schema refuses a kind outside the vocabulary and an unbounded promise", async () => {
+    const aAlert = await seedAlert(userA, { title: "A unread", createdAt: new Date("2026-08-20T09:00:00.000Z") });
+    const post = (body: object) =>
+      request(app.getHttpServer()).post(`/alerts/${aAlert}/ack`).set("Authorization", `Bearer ${tokenA}`).send(body);
+
+    expect((await post({ kind: "maybe" })).status).toBe(400);
+    // G5 with a bigger number is still G5: one tap may not buy more than a working day of silence.
+    expect((await post({ kind: "owned", untilMinutes: 60 * 24 * 7 })).status).toBe(400);
+    expect((await post({ kind: "owned" })).status).toBe(400); // own_requires_until, from the domain
+    expect((await db.select({ ackKind: alerts.ackKind }).from(alerts).where(eq(alerts.id, aAlert)))[0]!.ackKind).toBeNull();
+  });
+
+  it("T3: another user's alert is a 404 and an exhausted owner is a 409", async () => {
+    const bAlert = await seedAlert(userB, { title: "B unread", createdAt: new Date("2026-08-20T09:00:00.000Z") });
+    const foreign = await request(app.getHttpServer())
+      .post(`/alerts/${bAlert}/ack`).set("Authorization", `Bearer ${tokenA}`).send({ kind: "seen" });
+    expect(foreign.status).toBe(404);
+
+    const mine = await seedAlert(userA, { title: "A unread", createdAt: new Date("2026-08-20T09:00:00.000Z") });
+    const ownA = () =>
+      request(app.getHttpServer()).post(`/alerts/${mine}/ack`).set("Authorization", `Bearer ${tokenA}`).send({ kind: "owned", untilMinutes: 30 });
+    expect((await ownA()).status).toBe(201);
+    expect((await ownA()).status).toBe(201);
+    expect((await ownA()).status).toBe(201);
+    const fourth = await ownA();
+    expect(fourth.status).toBe(409);
+    expect(fourth.body.message).toBe("ack_limit");
+  });
+
+  it("T3: an agent key is refused on the ack route too — the third route did not open a hole beside the two", async () => {
+    const aAlert = await seedAlert(userA, { title: "A unread", createdAt: new Date("2026-08-20T09:00:00.000Z") });
+    const agentAck = await request(app.getHttpServer())
+      .post(`/alerts/${aAlert}/ack`).set("x-agent-key", agentKey).send({ kind: "seen" });
+    expect(agentAck.status).toBe(403);
+    expect(agentAck.body.message).toBe("user_actor_required");
+    expect((await db.select({ ackKind: alerts.ackKind }).from(alerts).where(eq(alerts.id, aAlert)))[0]!.ackKind).toBeNull();
+
+    expect((await request(app.getHttpServer()).post(`/alerts/${aAlert}/ack`).send({ kind: "seen" })).status).toBe(401);
+  });
 });
