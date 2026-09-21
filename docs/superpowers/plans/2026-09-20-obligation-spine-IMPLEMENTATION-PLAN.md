@@ -48,6 +48,32 @@ T3–T13. Screens beyond the six named in §7 are a later phase.
 | G11 | web push readiness | `grep -rniE "serviceWorker\|PushManager\|vapid" apps/web/src apps/core/src` | absent everywhere; `public/` holds only `fonts/` |
 | G12 | lanes touching shared files | `tools/lane.sh status` | `roster-r1`, `copilot`, `desk-upcoming`, `cds` — coordinate before T1/T5/T9 |
 
+
+## 1a. Amendment, 2026-09-21 — measured after roster phase R merged R1–R6 overnight (read this before §1)
+
+Written after coordinating with the three live sessions on the box (roster executor `hmis-27`,
+`hmis-58` on #269, the orchestrator). **Where §1 and this section disagree, this section wins; the
+kickoff re-measures both.**
+
+| # | what moved | now |
+|---|---|---|
+| G1′ | migration serial | `0112_roster_escalation_targets` on main; **#280 (R7) and #269 both target 0113** and #280 is armed to auto-merge — whoever lands second renumbers; R8/R9 take the next two. Take every serial at rebase. |
+| G2′ | phase R | R1–R6 MERGED as #273–#279; R7 = #280 open; the roster session ended and a fresh one resumes from `plans/2026-09-21-roster-R8-HANDOFF.md` on lanes `roster-r8` / `roster-r9`, touching `modules/roster/**`, `periods.ts` (R8) and `kernel/worker/jobs.ts` (R9's job). |
+| G5′ | scheduler job census | 18 on main today; **19 once #280 lands** (`sweepRosterWindows`, daily IST 01:30). Registering a job moves **SEVEN** sites: `jobs.test.ts`, `scheduler.test.ts` (the named array AND the `spies()` helper), `test/worker-runtime.e2e.test.ts` (the named array), `test/alerts-parity.test.ts` (sorted list + count + `Set.size`), `docker/prod/prometheus/alerts.yml` (the correct staleness leg — interval and daily are asserted disjoint — plus an `absent()` term), and `alerts/consumer.test.ts`'s two subscription censuses if the task declares a subscription. A `toHaveLength` grep cannot find a census expressed as a named array: **run the whole `test/` directory and read the counts off the red run.** Registrations are appends; two lanes registering coexist — do not wait for R9. |
+| G9′ | the resolver seam | R6 (#279) moved `alerts/consumer.ts:251, 327, 354` (`notification.failed`, the two imaging chasers) and `timers.ts:158` (the ladder rung) to **`escalationRecipients(exec, alertKind, { fallbackRoleKey, departmentId? }, at, env)` → `{ userIds, via: "roster" \| "role", rosterWasEmpty, roleKey, positionKey }`** from `modules/roster/escalation.ts`. It ships INERT: with no `roster_escalation_targets` row it returns exactly `usersHoldingRole(fallbackRoleKey)`; it also falls back when the flag is off, when nothing is published, or when the roster answers nobody (`rosterWasEmpty`). `ROSTER_ESCALATION_KINDS` is closed (`escalation.triggered`, `notification.failed`, `ops.mode_changed`, `imaging.critical_overdue`, `imaging.report_unread`, `workflow.timer_rung`) with a CHECK — a new kind is a migration. **Deliberately still on `usersHoldingRole`, and to stay so (roster findings F23/F24):** `alerts/consumer.ts:198, 290` (the OWNER is an office, not a duty), `:393/397/401` (the approvals chain; its duty-manager rung is the one never removed), `timers.ts:166` (the duty-manager fallback after the seam), `desk/staff.controller.ts`. |
+| G13 | `roster_holidays` (#280) | PK `(site_id, ist_date)`; `kind` ('gazetted' \| 'restricted' \| 'declared' \| 'local'), `applies_to text[]`, `pattern` ('as_sunday' \| 'opd_short' \| 'opd_off_ot_proceeds'), `declared_by`, `declared_at`, `confirmation_due_at`. Writer `declareHoliday()` re-materialises that date's duty windows. **A declared holiday runs the Sunday pattern but never advances the Sunday sequence** — phase O reads this table and never writes it. |
+| G14 | #265 (`lane/approvals-spine`) | docs + the R1 grant in `seed-roles.ts`/its test/`README.md`. Merge before T5 (G3 stands). Its L1 packet and L9 rail stay its own. |
+| G15 | #269 (`lane/doctor-token`) | adds `consultation.fee_overridden` (a doctor sees the patient before the bill, reason in the payload), unconsumed — a clean hook for a T8 task kind `fee_override_billing` (the counter bills within the day). |
+| G16 | dossiers 03/04 | their `consumer.ts` / `timers.ts` line numbers are pre-R6. Re-measure. |
+
+**Task deltas (these override the task text below):**
+- **T1:** `resolveRung()` WRAPS `escalationRecipients(tx, "workflow.timer_rung", { fallbackRoleKey: rung.toRole }, now)` for a percent rung exactly as #279 does for a chain rung, then the static duty-manager fallback at `timers.ts:166` — no new `usersHoldingRole` site, no new escalation kind. The `respond.overdue` nudge goes to the assignee in-app and needs no roster resolution.
+- **T5:** `resolveAddressee` kind `role` inside the approvals chain (`consumer.ts:393-401`) STAYS `usersHoldingRole` (F24); kinds `post` and `unit` use `whoIsOn` behind `ROSTER_RESOLVER_ENABLED`; the OWNER is never routed through the roster (F23). The fallback event still fires for every rung that fell through.
+- **T7:** **`hospital_calendar_days` is DROPPED.** T7 builds `department_hours` only and reads `roster_holidays`: `as_sunday` → the department is closed; `opd_short` → closes 13:00; `opd_off_ot_proceeds` → OPD closed, `ot_desk` open. The half-day case of V12 becomes the `opd_short` case.
+- **T4, T10 (jobs):** the seven-site census; register, run `test/`, read the counts; put the relay in the interval leg and the sweeps in the daily leg of `alerts.yml`.
+- **Every migration task:** `kernel/db/schema/index.ts` is the one file every open PR shares (#264 too); whoever lands second re-reads it. `seed-roles` pins are three-way against the merge base — equal totals from disjoint causes have already fooled a two-way diff on this box (163 = 163, true 166).
+- **The lock:** `$L run <lane> pnpm …` with NO `--` (the script shifts two and runs `"$@"`; a `--` becomes the command and exits 127 having run nothing). Never `git stash` — every worktree shares one `refs/stash`.
+
 ---
 
 ## 2. The data model — what the tasks build
@@ -434,8 +460,8 @@ header and BSP templates and are a §8 follow-up when they land.
 
 | file | task | rule |
 |---|---|---|
-| `kernel/workflow/{definition,timers,instances,events,flow}.ts` | T1 | **alone, one PR, before phase R's R6** or rebased onto it; `resolveRung()` is the single seam R6 then moves |
-| `kernel/alerts/consumer.ts` + test | T1 (respond nudge), T5 (resolver, fallback branch) | rebased minutes before; if R6 has landed, wrap its `whoIsOn` call; never a third `usersHoldingRole` site |
+| `kernel/workflow/{definition,timers,instances,events,flow}.ts` | T1 | **alone, one PR**; R6 has merged (#279) — `resolveRung()` wraps `escalationRecipients` at `timers.ts:158` and keeps the static fallback at `:166` (§1a G9′) |
+| `kernel/alerts/consumer.ts` + test | T1 (respond nudge), T5 (resolver, fallback branch) | rebased minutes before; the three moved sites (251/327/354) stay on `escalationRecipients`; the OWNER and approvals-chain sites stay on `usersHoldingRole` (§1a G9′) |
 | `kernel/notify/{adapters,pump,templates,events,consumer}.ts`, `config.ts` | T4, T12 | the channel union in four places at once; templates pin whole-array |
 | `kernel/db/schema/index.ts` | T1, T3, T4, T5, T6, T7, T8, T10, T11, T12, T13 | one `export *` line each; rebase first; serial at rebase (G1) |
 | `kernel/modules/manifests.ts` + test | T5/T6 (`obligations` kernel manifest, worker-installed), T8 (`obligations-tasks`) | append; count read off the red run; the app-only word unchanged |
