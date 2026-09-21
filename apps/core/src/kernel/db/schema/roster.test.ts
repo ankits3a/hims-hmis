@@ -132,6 +132,13 @@ describe("roster — 0108 structure", () => {
       "created_by", "id", "params", "period_id", "rule_key", "severity", "site_id", "updated_at",
       "updated_by", "user_id",
     ],
+    // Skeleton mode (D4). `ist_date` and no end column is the design, not an omission: a
+    // declaration expires daily, so there is nothing for an "until" column to hold.
+    roster_mode_declarations: [
+      "created_at", "created_by", "declared_at", "declared_by", "department_id", "id", "ist_date",
+      "mode", "reason", "site_id", "updated_at", "updated_by", "withdraw_reason", "withdrawn_at",
+      "withdrawn_by",
+    ],
   };
   // PHASE R (R4) — `staff_*`, not `roster_*`: these are facts about a MEMBER OF STAFF, true whether
   // or not anybody ever rosters them, and the prefix is what says so.

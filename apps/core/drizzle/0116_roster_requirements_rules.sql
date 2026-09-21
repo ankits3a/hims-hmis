@@ -19,6 +19,27 @@ CREATE TABLE "roster_findings" (
 	CONSTRAINT "roster_findings_acceptance_ck" CHECK (("roster_findings"."accepted_by" is null and "roster_findings"."accepted_at" is null and "roster_findings"."accept_reason" is null) or ("roster_findings"."accepted_by" is not null and "roster_findings"."accepted_at" is not null and "roster_findings"."accept_reason" is not null))
 );
 --> statement-breakpoint
+CREATE TABLE "roster_mode_declarations" (
+	"id" text PRIMARY KEY NOT NULL,
+	"department_id" text,
+	"mode" text DEFAULT 'skeleton' NOT NULL,
+	"ist_date" date NOT NULL,
+	"reason" text NOT NULL,
+	"declared_by" text NOT NULL,
+	"declared_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"withdrawn_by" text,
+	"withdrawn_at" timestamp with time zone,
+	"withdraw_reason" text,
+	"site_id" text DEFAULT 'main' NOT NULL,
+	"created_by" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_by" text NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "roster_mode_declarations_mode_ck" CHECK ("roster_mode_declarations"."mode" in ('skeleton')),
+	CONSTRAINT "roster_mode_declarations_withdrawal_ck" CHECK (("roster_mode_declarations"."withdrawn_at" is null and "roster_mode_declarations"."withdrawn_by" is null)
+          or ("roster_mode_declarations"."withdrawn_at" is not null and "roster_mode_declarations"."withdrawn_by" is not null))
+);
+--> statement-breakpoint
 CREATE TABLE "roster_requirements" (
 	"id" text PRIMARY KEY NOT NULL,
 	"scope_type" text NOT NULL,
@@ -89,6 +110,9 @@ CREATE TABLE "roster_rules" (
 ALTER TABLE "roster_findings" ADD CONSTRAINT "roster_findings_period_id_roster_periods_id_fk" FOREIGN KEY ("period_id") REFERENCES "public"."roster_periods"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "roster_findings" ADD CONSTRAINT "roster_findings_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "roster_findings" ADD CONSTRAINT "roster_findings_accepted_by_users_id_fk" FOREIGN KEY ("accepted_by") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "roster_mode_declarations" ADD CONSTRAINT "roster_mode_declarations_department_id_org_departments_id_fk" FOREIGN KEY ("department_id") REFERENCES "public"."org_departments"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "roster_mode_declarations" ADD CONSTRAINT "roster_mode_declarations_declared_by_users_id_fk" FOREIGN KEY ("declared_by") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "roster_mode_declarations" ADD CONSTRAINT "roster_mode_declarations_withdrawn_by_users_id_fk" FOREIGN KEY ("withdrawn_by") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "roster_requirements" ADD CONSTRAINT "roster_requirements_position_key_roster_positions_key_fk" FOREIGN KEY ("position_key") REFERENCES "public"."roster_positions"("key") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "roster_requirements" ADD CONSTRAINT "roster_requirements_shift_def_id_roster_shift_defs_id_fk" FOREIGN KEY ("shift_def_id") REFERENCES "public"."roster_shift_defs"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "roster_rule_profiles" ADD CONSTRAINT "roster_rule_profiles_department_id_org_departments_id_fk" FOREIGN KEY ("department_id") REFERENCES "public"."org_departments"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -96,5 +120,6 @@ ALTER TABLE "roster_rule_profiles" ADD CONSTRAINT "roster_rule_profiles_rule_key
 ALTER TABLE "roster_rule_profiles" ADD CONSTRAINT "roster_rule_profiles_approved_by_users_id_fk" FOREIGN KEY ("approved_by") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "roster_findings_period_idx" ON "roster_findings" USING btree ("period_id") WHERE "roster_findings"."cleared_at" is null;--> statement-breakpoint
 CREATE INDEX "roster_findings_user_idx" ON "roster_findings" USING btree ("user_id","rule_key");--> statement-breakpoint
+CREATE INDEX "roster_mode_declarations_day_idx" ON "roster_mode_declarations" USING btree ("ist_date","department_id") WHERE "roster_mode_declarations"."withdrawn_at" is null;--> statement-breakpoint
 CREATE INDEX "roster_requirements_scope_idx" ON "roster_requirements" USING btree ("scope_type","scope_id") WHERE "roster_requirements"."active";--> statement-breakpoint
 CREATE INDEX "roster_rule_profiles_dept_idx" ON "roster_rule_profiles" USING btree ("department_id","rule_key","valid_from");

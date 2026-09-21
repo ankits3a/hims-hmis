@@ -179,6 +179,8 @@ describe("roster — requirements, rules, the validator and simulate (R8)", () =
     expect(f).toHaveLength(1);
     expect(f[0]!.params.restHours).toBe(6);
     expect(f[0]!.userId).toBe(SR);
+    // doc 10 §3.9 rules this a HARD BLOCK with an evented HOD override — not a warning.
+    expect(f[0]!.severity).toBe("block");
 
     const green = await draft();
     await slot(green.periodId, { startsAt: at("2026-10-12T20:00"), endsAt: at("2026-10-13T08:00") });
@@ -297,6 +299,8 @@ describe("roster — requirements, rules, the validator and simulate (R8)", () =
     const f = (await validate(db, period.periodId))
       .filter((x) => x.ruleKey === "requirement_shortfall");
     expect(f).toHaveLength(1);
+    // R-067: staffing ratios are roster GATES — a violating roster does not publish.
+    expect(f[0]!.severity).toBe("block");
     // Two slots, and cover of NONE: the supernumerary does not relieve the establishment and the
     // vacancy is the hole the requirement exists to find.
     expect(f[0]!.params).toMatchObject({
@@ -359,6 +363,24 @@ describe("roster — requirements, rules, the validator and simulate (R8)", () =
     expect(kept.acceptedBy).toBe(MS);
     expect(kept.acceptReason).toBe("consultant cover arranged, MS informed");
     expect(kept.acceptedAt).not.toBeNull();
+  });
+
+  it("the override is EVENTED — doc 10 §3.9 asks for it, and the reason does not travel (V9)", async () => {
+    const period = await overLongDraft();
+    await withTx(db, (tx) => recordFindings(tx, ms, period.periodId));
+    const block = (await listFindings(db, period.periodId)).find((r) => r.ruleKey === "slot_over_24h")!;
+    await withTx(db, (tx) => acceptFinding(tx, ms, block.id, "night administrator on site all shift"));
+
+    const rows = await db.execute(sql`
+      select name, payload::text as payload from events where name = 'roster.finding_accepted'
+    `);
+    expect(rows.rows).toHaveLength(1);
+    const payload = (rows.rows[0] as { payload: string }).payload;
+    expect(payload).toContain("slot_over_24h");
+    expect(payload).toContain(block.id);
+    // V9 — ids, codes and instants only. The acceptance REASON stays in the row, where the
+    // hospital's access rules cover it, and never enters a log a summariser may read.
+    expect(payload).not.toContain("night administrator on site all shift");
   });
 
   it("a WARN never stopped it in the first place", async () => {
@@ -553,6 +575,14 @@ describe("roster — requirements, rules, the validator and simulate (R8)", () =
 
     // A weekly off is a warn with a reason, never a block: PGMER says "subject to exigencies".
     expect(book.find((r) => r.key === "weekly_off")!.severity).toBe("warn");
+
+    // THE TWO SEVERITIES THAT ARE RULINGS, NOT DESIGN CHOICES. An earlier draft of the book had
+    // both of these as warns, reasoned from first principles. They are pinned here so the next
+    // person to find that reasoning persuasive has to come and read the ruling first.
+    // R-067 — staffing ratios are roster gates, a violating roster does not publish.
+    expect(book.find((r) => r.key === "requirement_shortfall")!.severity).toBe("block");
+    // doc 10 §3.9 — post-night rest >= 12 h, hard block, HOD override evented.
+    expect(book.find((r) => r.key === "rest_after_duty")!.severity).toBe("block");
 
     // And the column can still hold a `state` rule when somebody has actually read one.
     await db.execute(sql`

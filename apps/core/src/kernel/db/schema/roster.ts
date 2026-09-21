@@ -1290,3 +1290,64 @@ export const rosterFindings = pgTable(
     check("roster_findings_acceptance_ck", sql`(${t.acceptedBy} is null and ${t.acceptedAt} is null and ${t.acceptReason} is null) or (${t.acceptedBy} is not null and ${t.acceptedAt} is not null and ${t.acceptReason} is not null)`),
   ],
 );
+
+/**
+ * PHASE R (R8) — **SKELETON MODE: THE DAY THE HOSPITAL RUNS ON WHAT IT HAS.**
+ *
+ * A strike, a bandh, a mass casualty, a night when half the residents have flu. The rota on the
+ * wall stops describing the building, and somebody senior has to say so out loud.
+ *
+ * ═══ A DECLARATION IS FOR ONE DAY AND EXPIRES BY ITSELF (D4) ═══
+ *
+ * `ist_date` is the whole of it: there is no "until further notice", and no end date somebody has
+ * to remember to come back and set. A hospital that is still on skeleton cover tomorrow declares it
+ * again tomorrow, by somebody who is awake and answerable for that. **The failure this shape exists
+ * to prevent is the one every such flag has**: declared during a crisis at 02:00, never withdrawn,
+ * and six months later the escalation ladder is still quietly rooted somewhere nobody intended.
+ * Expiring daily makes the cost of forgetting one day instead of forever.
+ *
+ * ═══ WITHDRAWAL IS A ROW, NOT A DELETE ═══
+ *
+ * The question afterwards is never "is it on now" — it is *"who said the hospital was on skeleton
+ * cover that Tuesday, and when did they say it stopped?"* So a withdrawal stamps the row rather
+ * than removing it, and the day's declarations are the checklist somebody walks at handover.
+ *
+ * ═══ WHAT THIS DOES NOT DO ═══
+ *
+ * It does not mark anybody absent. Bulk abstention is `staff_absences` with kind `abstaining`,
+ * which R4 already built and guards — the mode says the hospital is short, the absences say who is
+ * not coming, and conflating them would let one declaration silently mark a department away.
+ */
+export const ROSTER_MODES = ["skeleton"] as const;
+export type RosterMode = (typeof ROSTER_MODES)[number];
+
+export const rosterModeDeclarations = pgTable(
+  "roster_mode_declarations",
+  {
+    id: text("id").primaryKey(),
+    /** NULL = the whole hospital. A department may be on skeleton cover while the rest is not. */
+    departmentId: text("department_id").references(() => orgDepartments.id),
+    mode: text("mode").notNull().default("skeleton"),
+    /** The ONE day this declaration speaks about. See the header: there is no open end. */
+    istDate: date("ist_date").notNull(),
+    reason: text("reason").notNull(),
+    declaredBy: text("declared_by").notNull().references(() => users.id),
+    declaredAt: timestamp("declared_at", { withTimezone: true }).notNull().defaultNow(),
+    withdrawnBy: text("withdrawn_by").references(() => users.id),
+    withdrawnAt: timestamp("withdrawn_at", { withTimezone: true }),
+    withdrawReason: text("withdraw_reason"),
+    siteId: text("site_id").notNull().default("main"),
+    ...ruleAudit,
+  },
+  (t) => [
+    index("roster_mode_declarations_day_idx").on(t.istDate, t.departmentId)
+      .where(sql`${t.withdrawnAt} is null`),
+    check("roster_mode_declarations_mode_ck", sql`${t.mode} in ('skeleton')`),
+    /** A withdrawal is two facts or none — as an acceptance is three. */
+    check(
+      "roster_mode_declarations_withdrawal_ck",
+      sql`(${t.withdrawnAt} is null and ${t.withdrawnBy} is null)
+          or (${t.withdrawnAt} is not null and ${t.withdrawnBy} is not null)`,
+    ),
+  ],
+);

@@ -90,6 +90,8 @@ export const ROSTER_ERROR_CODES = [
   "unknown_rule",
   "unknown_finding",
   "finding_already_accepted",
+  "unknown_mode_declaration",
+  "mode_already_withdrawn",
 ] as const;
 
 export type RosterErrorCode = (typeof ROSTER_ERROR_CODES)[number];
@@ -150,6 +152,8 @@ export const ROSTER_ERROR_SENTENCES: Record<RosterErrorCode, string> = {
   unknown_rule: "that is not a rule in this hospital's book",
   unknown_finding: "that finding is not on this roster",
   finding_already_accepted: "somebody has already accepted this finding, and their reason stands",
+  unknown_mode_declaration: "there is no such declaration on that day",
+  mode_already_withdrawn: "somebody has already stood this down, and the time they did it stands",
 };
 
 export class RosterError extends Error {
@@ -205,6 +209,8 @@ const STATUS: Record<RosterErrorCode, number> = {
   unknown_rule: 404,
   unknown_finding: 404,
   finding_already_accepted: 409,
+  unknown_mode_declaration: 404,
+  mode_already_withdrawn: 409,
   unknown_cycle: 404,
   empty_cycle: 422,
   unknown_template: 404,

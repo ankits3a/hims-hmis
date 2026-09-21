@@ -7,7 +7,7 @@ import {
 import type {
   RosterCadre, RosterRuleAuthority, RosterRuleSeverity,
 } from "../../kernel/db/schema/roster";
-import { addIstDays, istDateOfInstant, istWeekday } from "./calendar";
+import { addIstDays, istDateOfInstant, istMinutesOfInstant, istWeekday } from "./calendar";
 import { absentUserIds } from "./absences";
 import { RosterError } from "./errors";
 /**
@@ -114,12 +114,6 @@ const num = (rule: EffectiveRule, key: string, fallback: number): number => {
   return typeof v === "number" && Number.isFinite(v) ? v : fallback;
 };
 
-/** IST minutes past midnight of an instant, used only to ask whether a window touches the night. */
-const istMinuteOf = (at: Date): number => {
-  const shifted = new Date(at.getTime() + 330 * 60_000);
-  return shifted.getUTCHours() * 60 + shifted.getUTCMinutes();
-};
-
 /**
  * Does `[from, to)` cover any instant of the 01:00–05:00 IST band on any day it spans? Written as a
  * sweep rather than an arithmetic trick because a 26-hour duty crosses the band twice and a
@@ -127,7 +121,7 @@ const istMinuteOf = (at: Date): number => {
  */
 function touchesNight(from: Date, to: Date): boolean {
   for (let t = from.getTime(); t < to.getTime(); t += 15 * 60_000) {
-    const m = istMinuteOf(new Date(t));
+    const m = istMinutesOfInstant(new Date(t));
     if (m >= NIGHT_FROM_MINUTE && m < NIGHT_TO_MINUTE) return true;
   }
   return false;
@@ -506,9 +500,10 @@ export async function validate(
   });
 
   const dates: string[] = [];
+  const lastDate = istDateOfInstant(new Date(period.endsAt.getTime() - 1));
   for (
     let d = istDateOfInstant(period.startsAt);
-    Date.parse(`${d}T00:00:00Z`) < period.endsAt.getTime() + 330 * 60_000;
+    d <= lastDate;
     d = addIstDays(d, 1)
   ) {
     dates.push(d);

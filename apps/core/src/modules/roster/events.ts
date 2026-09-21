@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { defineEvent } from "@hmis/contracts";
 import {
-  ROSTER_AMENDMENT_KINDS, ROSTER_ORIGINS, ROSTER_SCOPE_TYPES, STAFF_ABSENCE_KINDS,
+  ROSTER_AMENDMENT_KINDS, ROSTER_ORIGINS, ROSTER_RULE_SEVERITIES, ROSTER_SCOPE_TYPES,
+  STAFF_ABSENCE_KINDS,
 } from "../../kernel/db/schema/roster";
 
 const MODULE = "roster";
@@ -136,7 +137,29 @@ export const rosterAbsenceApproved = defineEvent("roster.absence_approved", MODU
   decidedAt: instant(),
 }));
 
+/**
+ * PHASE R (R8) — **THE OVERRIDE, EVENTED.**
+ *
+ * Doc 10 §3.9 rules post-night rest a hard block with an *evented* HOD override, and R-067 makes a
+ * staffing shortfall a gate. Both are overridden the same way: a named human accepts the finding.
+ * This is the event that makes the override visible outside the roster.
+ *
+ * **The REASON is deliberately not in the payload.** V9 admits ids, codes and instants only, and an
+ * acceptance reason is exactly the free text this file's header warns about — *"covering for Dr
+ * Rao, her father is in ICU"*. Whoever needs the reason reads `roster_findings`, where it is kept
+ * forever under the hospital's own access rules; the event says that an override happened, who did
+ * it and against which rule, and nothing a summariser could turn into a disclosure.
+ */
+export const rosterFindingAccepted = defineEvent("roster.finding_accepted", MODULE, z.object({
+  findingId: id(),
+  periodId: id(),
+  ruleKey: id(),
+  severity: code(ROSTER_RULE_SEVERITIES),
+  acceptedAt: instant(),
+}));
+
 export const ROSTER_EVENTS = [
   rosterPeriodDrafted, rosterPeriodPublished, rosterPeriodSuperseded,
   rosterDutyChanged, rosterAmendmentApplied, rosterAbsenceRequested, rosterAbsenceApproved,
+  rosterFindingAccepted,
 ] as const;

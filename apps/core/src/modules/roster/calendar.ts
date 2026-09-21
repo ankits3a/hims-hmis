@@ -55,6 +55,17 @@ export function istDateOfInstant(at: Date): string {
   return new Date(at.getTime() + IST_OFFSET_MINUTES * MINUTE_MS).toISOString().slice(0, 10);
 }
 
+/**
+ * Minutes past IST midnight of an instant — the only question the validator asks about a clock
+ * face, and it lives here for the same reason `istDateOfInstant` does: `ist-clock-parity` pins the
+ * number of places in this codebase that carry the IST offset, and a fourteenth copy of it inside
+ * a rule evaluator is exactly the drift that census exists to refuse.
+ */
+export function istMinutesOfInstant(at: Date): number {
+  const shifted = new Date(at.getTime() + IST_OFFSET_MINUTES * MINUTE_MS);
+  return shifted.getUTCHours() * 60 + shifted.getUTCMinutes();
+}
+
 function assertIstDate(d: string): void {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || Number.isNaN(Date.parse(`${d}T00:00:00Z`))) {
     throw new RosterError("invalid_window", `"${d}" is not a calendar day`, { date: d });

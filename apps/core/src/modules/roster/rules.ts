@@ -18,20 +18,29 @@ import type { SeedCount } from "./masters";
  *
  * ═══ SEVERITY IS A CLAIM ABOUT WHAT THE HOSPITAL CAN DO, NOT ABOUT HOW BAD IT IS ═══
  *
- * Almost everything here is a `warn`, and that is deliberate rather than timid. A `block` stops a
- * roster being published at all — so a `block` on "at least two junior residents per unit" would
- * mean a department that is short-staffed (which is most of them, most months) cannot publish a
- * roster, and the answer to *"we only have one JR this month"* would be to have no roster at all.
- * That is worse than the shortage. The two blocks here are the ones where publishing the roster is
- * itself the harm:
+ * **The severities here are not mine to choose freely — two are rulings already on the register,**
+ * and an earlier draft of this file got both wrong by reasoning from first principles instead of
+ * reading them:
  *
- *   - **`slot_over_24h`** — a single planned duty longer than a day. Nobody can safely do it, and a
- *     roster that plans it is a mistake rather than a shortage.
- *   - **`credential_expired`** — a person on duty in a post whose requirement names a credential
- *     they no longer hold. That is not short staffing; it is unlawful, and the hospital's own
- *     signature is on the rota.
+ *   - **R-067** — *"staffing ratios are roster gates, a violating roster does not publish, a breach
+ *     never blocks an admission."* So `requirement_shortfall` BLOCKS. Stress test S3 records that
+ *     this ruling had "no row to be violated"; `roster_requirements` is that row.
+ *   - **doc 10 §3.9** — post-night rest ≥ 12 h is a **hard block with an evented HOD override**.
+ *     So `rest_after_duty` BLOCKS.
  *
- * Everything else is a finding a named human may accept with a reason that is kept forever.
+ * The objection that talked me out of this the first time — *a short-staffed department could then
+ * never publish a roster at all* — is answered by the override rather than by softening the rule.
+ * `acceptFinding` lets a named human take responsibility, with a reason kept forever and an event
+ * emitted. That IS the "HOD override evented" the ruling asks for, and it is a better record than a
+ * warning nobody had to sign for.
+ *
+ * Two more block because publishing the roster is itself the harm:
+ *
+ *   - **`slot_over_24h`** — a single planned duty, present on site, longer than a day.
+ *   - **`credential_expired`** — on duty in a post whose requirement names a credential the holder
+ *     no longer has. Not short staffing: unlawful, with the hospital's signature on the rota.
+ *
+ * The rest warn, and a named human may accept any of them with a reason that is kept.
  *
  * ═══ THE TWO RULINGS ALREADY INSIDE THIS BOOK (plan §0, owner) ═══
  *
@@ -85,11 +94,16 @@ export const ROSTER_RULES: readonly RosterRuleSeed[] = [
 
   /* ── hours and rest ── */
   {
+    /**
+     * A HARD BLOCK, and not my judgement: **doc 10 §3.9 rules post-night rest ≥ 12 h a hard block
+     * with an evented HOD override.** The override is `acceptFinding`, which records who allowed it
+     * and why and emits `roster.finding_accepted` — which is what "evented" asks for.
+     */
     key: "rest_after_duty",
     label: "at least 12 hours off after a duty period",
-    severity: "warn",
+    severity: "block",
     authority: "nmc_recommended",
-    citation: "NMC PGMER 2023 — rest after duty",
+    citation: "NMC PGMER 2023 — rest after duty; doc 10 §3.9 (hard block, HOD override evented)",
     appliesTo: ["junior_resident", "senior_resident", "intern"],
     params: { minHours: 12 },
   },
@@ -173,16 +187,24 @@ export const ROSTER_RULES: readonly RosterRuleSeed[] = [
   /* ── the roster against the hospital's own requirement rows ── */
   {
     /**
-     * The generic finding a REQUIREMENT row produces when it is not met. The requirement carries
-     * its own authority and citation, and the finding copies them into `params` — so a shortfall
-     * against an NMC requirement and one against a house rule are told apart by a reader, without
-     * needing a rule row per requirement.
+     * **R-067, AND IT IS A GATE.** The ruling on the register reads *"staffing ratios are roster
+     * gates, a violating roster does not publish, a breach never blocks an admission"*, and stress
+     * test S3 records that it had *"no row to be violated"* — which is exactly what
+     * `roster_requirements` now supplies. So a shortfall against a requirement the hospital has
+     * declared BLOCKS, and the HOD's override is `acceptFinding`, recorded and evented.
+     *
+     * Note what is NOT gated: a breach never blocks an admission. This refuses a ROSTER, never a
+     * patient, and nothing in this module is on the admission path.
+     *
+     * The finding copies the requirement's own authority and citation into `params`, so a shortfall
+     * against an NMC requirement and one against a house rule read differently to the person
+     * signing for it.
      */
     key: "requirement_shortfall",
-    label: "fewer on duty than a requirement asks for",
-    severity: "warn",
+    label: "fewer on duty than a requirement the hospital has declared",
+    severity: "block",
     authority: "institution",
-    citation: null,
+    citation: "R-067 — staffing ratios are roster gates",
     appliesTo: [],
     params: {},
   },

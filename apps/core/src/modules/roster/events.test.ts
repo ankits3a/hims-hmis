@@ -55,6 +55,12 @@ describe("roster — event payloads carry ids, codes and instants only (V9)", ()
     "roster.absence_approved": {
       absenceId: ID, userId: ID, kind: "CL", startsAt: WHEN, endsAt: WHEN, decidedAt: WHEN,
     },
+    // R8. NOTE WHAT IS ABSENT, for the same reason as the absence events above: the acceptance
+    // REASON. This event says a named human overrode a gate — doc 10 §3.9 asks for exactly that —
+    // and whoever needs to know WHY reads `roster_findings`, under the hospital's access rules.
+    "roster.finding_accepted": {
+      findingId: ID, periodId: ID, ruleKey: ID, severity: "block", acceptedAt: WHEN,
+    },
   };
 
   /**
@@ -125,6 +131,6 @@ describe("roster — event payloads carry ids, codes and instants only (V9)", ()
     for (const event of ROSTER_EVENTS) {
       expect(`${event.name}: ${event.module}/${event.version}`).toBe(`${event.name}: roster/1`);
     }
-    expect(ROSTER_EVENTS).toHaveLength(7);
+    expect(ROSTER_EVENTS).toHaveLength(8);
   });
 });

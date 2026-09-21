@@ -85,7 +85,7 @@ export type {
 } from "./calendar";
 export { CYCLE_TEMPLATES, cycleTemplate, draftCycleFromTemplate } from "./templates";
 export type { CycleTemplate } from "./templates";
-export { istDateOfInstant } from "./calendar";
+export { istDateOfInstant, istMinutesOfInstant } from "./calendar";
 // PHASE R (R8) — whether a roster is any good.
 export {
   BLOCKING_RULE_KEYS, ROSTER_RULES, ROSTER_RULE_COUNT, rulesInForce, seedRosterRules,
@@ -101,3 +101,7 @@ export {
   acceptFinding, acceptedFindingKeys, asFinding, listFindings, recordFindings,
 } from "./findings";
 export type { RosterFindingRow } from "./findings";
+export {
+  declareSkeletonMode, modeDeclarations, skeletonModeOn, withdrawSkeletonMode,
+} from "./modes";
+export type { DeclareModeInput, RosterModeDeclarationRow } from "./modes";

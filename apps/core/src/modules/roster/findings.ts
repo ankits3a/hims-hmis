@@ -3,8 +3,10 @@ import type { Actor } from "@hmis/contracts";
 import { newId } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import { rosterFindings, rosterPeriods } from "../../kernel/db/schema/roster";
+import { appendEvent } from "../../kernel/events/append";
 import { RosterError } from "./errors";
 import { requireRosterAct } from "./access";
+import { rosterFindingAccepted } from "./events";
 import { findingKey, validate } from "./validator";
 import type { RosterFinding } from "./validator";
 
@@ -137,6 +139,16 @@ export async function acceptFinding(
   const [updated] = await tx.update(rosterFindings).set({
     acceptedBy: actor.id, acceptedAt: now, acceptReason: trimmed, updatedBy: actor.id, updatedAt: now,
   }).where(eq(rosterFindings.id, findingId)).returning();
+
+  // "HOD override evented" (doc 10 §3.9). The reason stays in the row — see the event's own note.
+  await appendEvent(tx, rosterFindingAccepted.make({
+    payload: {
+      findingId, periodId: row.periodId, ruleKey: row.ruleKey,
+      severity: row.severity as "block" | "warn" | "info",
+      acceptedAt: now.toISOString(),
+    },
+    actor, correlationId: row.periodId,
+  }));
   return updated!;
 }
 
