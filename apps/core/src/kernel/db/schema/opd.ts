@@ -142,6 +142,22 @@ export const opdDoctorLeaves = pgTable(
     toDate: date("to_date", { mode: "string" }).notNull(), // inclusive
     reason: text("reason").notNull(),
     status: text("status").notNull().default("scheduled"), // 'scheduled' | 'cancelled'
+    /**
+     * PHASE R (R4) — **THE ABSENCE THIS ROW PROJECTS.**
+     *
+     * `staff_absences` is the system of record for who is away, for EVERY member of staff; this
+     * table is the OPD's own view of the subset that belongs to a consultant with a clinic. The
+     * link is here rather than on the absence because the absence knows nothing of OPD — the
+     * roster reaches into no module (plan §2.4) — and because a cancel on either side must be able
+     * to find the other. NULL on rows written before this phase.
+     *
+     * **PLAIN TEXT, NOT A FOREIGN KEY, and for a structural reason rather than laziness.**
+     * `org_departments` references `opd_departments`, and `roster.ts` references `org.ts`; a real
+     * FK here would close the loop `opd → roster → org → opd`, and a cycle between drizzle table
+     * modules resolves to `undefined` at load time rather than failing loudly. `opd_doctors.user_id`
+     * is the precedent three columns up, for the same reason.
+     */
+    absenceId: text("absence_id"),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     cancelledBy: text("cancelled_by"),

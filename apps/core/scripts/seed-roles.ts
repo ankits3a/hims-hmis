@@ -750,6 +750,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * logged (`day_report.patients_listed`).
        */
       "opd.reports.read",
+      /**
+       * PHASE R (R1) — THE ROSTER, to READ. The owner sees who is meant to be on; the owner does
+       * not make the rota (the MS does), for the reason the owner does not write prescriptions.
+       */
+      "roster.read",
       // PHARMACY P17 — the Schedule H1 register, and its unredacted copy for an inspector: the
       // licensee answers for the register.
       "pharmacy.register.read",
@@ -798,6 +803,18 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * logged (`day_report.patients_listed`).
        */
       "opd.reports.read",
+      /**
+       * PHASE R (R1) — THE ROSTER. The medical superintendent is the authority a clinical roster
+       * answers to, so the MS may draft one, PUBLISH one (the governed act, D3) and read them all.
+       * The MS holds these at HOSPITAL scope, which satisfies every department's check; the people
+       * who will draft day to day — a unit's senior resident, its head, the nursing superintendent —
+       * get their strings, scoped to their own department, with their roles in phase R's successors.
+       * Until then a roster can exist only because the MS made it, which is the right default for a
+       * thing that decides who is woken at 02:00.
+       */
+      "roster.periods.manage",
+      "roster.periods.publish",
+      "roster.read",
       "auth.elevation.review",
       // ─── The merge approver's kit, owner ruling 2026-08-26 ───
       //

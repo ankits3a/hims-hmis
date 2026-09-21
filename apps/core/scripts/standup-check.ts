@@ -23,6 +23,7 @@ import {
 } from "../src/modules/ot";
 import { availableQty, findStoreByCode, listItems } from "../src/modules/materials";
 import { IMAGING_GATE_DEF_KEY, IMAGING_STUDY_DEF_KEY, activeStudyTypes } from "../src/modules/radiology";
+import { ROSTER_POSITIONS, UNIT_COUNT, listTeams, rosterMasterCounts, unconfirmedTeams } from "../src/modules/roster";
 import { appointments, unlicensedDevices } from "../src/modules/aerb";
 import {
   activeRegistrations, registeredMachines, registeredPersons,
@@ -261,6 +262,57 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       // duties is the lab's central control, and one pair of hands holding every role satisfies none.
       check: async (db) => (await withTx(db, (tx) => usersHoldingRoleAtScope(tx, "admin", "hospital"))).length >= 2,
       fix: "§1.3: create a SECOND administrator at /admin/users — one pair of hands cannot hold DD11",
+    },
+    {
+      gate: "G1", code: "roster_masters_seeded",
+      /**
+       * PHASE R (R1) — **under `hospital`, and that placement is the finding, not an accident.**
+       *
+       * The roster is not a department (`standup-check.test.ts`'s classification map says so): it is
+       * a layer over every one of them. And this census has an invariant — *every census module that
+       * is not `hospital` has a go-live runbook* — whose exemption is `hospital` precisely because it
+       * holds *"the rows every department's opening rests on"*. `org_departments` and
+       * `roster_positions` are exactly that: no department's rota can be drafted, and no permission
+       * can be checked at a department's scope, until both lists exist. A `roster` module key here
+       * would have owed a runbook for a department that does not exist, or a second exemption.
+       *
+       * ONE row asking about BOTH lists, because a hospital with twenty-four departments and no
+       * positions and one with seventeen positions and no departments are equally unable to open,
+       * and two rows would have implied the census could be half green.
+       */
+      check: async (db) => {
+        const { departments, positions } = await rosterMasterCounts(db);
+        return departments > 0 && positions >= ROSTER_POSITIONS.length;
+      },
+      fix: "run `pnpm --filter @hmis/core seed:roster` (after `seed:roles` and `seed:opd`) — it seeds org_departments and the seventeen roster_positions, and is safe to re-run",
+    },
+    {
+      gate: "G4", code: "roster_units_confirmed",
+      /**
+       * PHASE R (R3) — **the row that stops our arithmetic being presented as the regulator's.**
+       *
+       * UG-MSR 2023 dropped the units table altogether. The 27 units `seed:units` writes are one
+       * unit per sanctioned senior resident — a good default, and NOT a number from the gazette
+       * (20-U §2, owner §10.2). So every seeded team lands inactive, and this row stays RED until a
+       * head of department has confirmed each one. It is under `hospital` for the reason the masters
+       * row is: a census MODULE owes a go-live runbook, and the roster is not a department.
+       */
+      /**
+       * **MEASURED, AND IT CHANGED THIS ROW — the same way it changed `radiology_devices_licensed`
+       * one module over.** Written the obvious way as *"nothing is unconfirmed"*, this read GREEN on
+       * a database with no teams at all: `unconfirmedTeams` returns `[]` when nothing has been
+       * seeded, and an empty list satisfies "none outstanding". A row that certifies a control
+       * nobody can exercise is worse than no row, and the fresh-database leg of
+       * `standup-check.test.ts` is what caught it — the guard written for exactly this, doing
+       * exactly its job.
+       *
+       * So the units must EXIST before their confirmation can be evidence of anything.
+       */
+      check: async (db) => {
+        const teams = await listTeams(db);
+        return teams.length > 0 && (await unconfirmedTeams(db)).length === 0;
+      },
+      fix: `each HOD confirms their department's units (seeded inactive by \`seed:roster\`; ${UNIT_COUNT} clinical units plus one night pool per unit-bearing department) — the establishment is this hospital's, not the NMC's, so a human ratifies it`,
     },
   ],
 
@@ -835,6 +887,7 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       fix: "18c §3: record the Radiological Safety Officer's appointment at /radiology/radiation-safety",
     },
   ],
+
 };
 
 export type RowResult = { module: string; gate: Gate; code: string; verdict: Verdict; fix: string; detail?: string };

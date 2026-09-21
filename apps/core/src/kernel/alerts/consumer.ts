@@ -9,6 +9,7 @@ import { escalationTriggered } from "../workflow/events";
 import { approvalRequested } from "../approvals/events";
 import { imagingCriticalOverdue, imagingReportUnread } from "../../modules/radiology/events";
 import { usersHoldingRole } from "../workflow/roles";
+import { escalationRecipients } from "../../modules/roster";
 import { alertRaised } from "./events";
 import type { Db } from "../db/client";
 import type { DispatchedEvent, Handler } from "../events/subscriptions";
@@ -244,7 +245,12 @@ async function handleNotificationFailed(db: Db, e: DispatchedEvent): Promise<voi
     );
   }
 
-  const recipients = await withTx(db, (tx) => usersHoldingRole(tx, DUTY_MANAGER_ROLE));
+  // PHASE R (R6) — the destination is configuration now, resolved at the EVENT's own
+  // instant. With no `roster_escalation_targets` row this is exactly the duty manager's
+  // holders, as before; with one, it is whoever is ON as that position tonight.
+  const recipients = (await withTx(db, (tx) => escalationRecipients(
+    tx, "notification.failed", { fallbackRoleKey: DUTY_MANAGER_ROLE }, e.occurredAt,
+  ))).userIds;
 
   await raiseAlerts(db, e, recipients, {
     kind: ALERT_KIND_MANUAL_NOTIFY,
@@ -315,7 +321,12 @@ async function handleModeChanged(db: Db, e: DispatchedEvent): Promise<void> {
  */
 async function handleImagingCriticalOverdue(db: Db, e: DispatchedEvent): Promise<void> {
   const payload = imagingCriticalOverdue.payloadSchema.parse(e.payload);
-  const recipients = await withTx(db, (tx) => usersHoldingRole(tx, DUTY_MANAGER_ROLE));
+  // PHASE R (R6) — the destination is configuration now, resolved at the EVENT's own
+  // instant. With no `roster_escalation_targets` row this is exactly the duty manager's
+  // holders, as before; with one, it is whoever is ON as that position tonight.
+  const recipients = (await withTx(db, (tx) => escalationRecipients(
+    tx, "imaging.critical_overdue", { fallbackRoleKey: DUTY_MANAGER_ROLE }, e.occurredAt,
+  ))).userIds;
 
   await raiseAlerts(db, e, recipients, {
     kind: ALERT_KIND_IMAGING_CHASE,
@@ -337,7 +348,12 @@ async function handleImagingCriticalOverdue(db: Db, e: DispatchedEvent): Promise
  */
 async function handleImagingReportUnread(db: Db, e: DispatchedEvent): Promise<void> {
   const payload = imagingReportUnread.payloadSchema.parse(e.payload);
-  const recipients = await withTx(db, (tx) => usersHoldingRole(tx, DUTY_MANAGER_ROLE));
+  // PHASE R (R6) — the destination is configuration now, resolved at the EVENT's own
+  // instant. With no `roster_escalation_targets` row this is exactly the duty manager's
+  // holders, as before; with one, it is whoever is ON as that position tonight.
+  const recipients = (await withTx(db, (tx) => escalationRecipients(
+    tx, "imaging.report_unread", { fallbackRoleKey: DUTY_MANAGER_ROLE }, e.occurredAt,
+  ))).userIds;
 
   await raiseAlerts(db, e, recipients, {
     kind: ALERT_KIND_IMAGING_CHASE,

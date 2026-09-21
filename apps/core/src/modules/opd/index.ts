@@ -47,7 +47,14 @@ export type { PrescriptionRow } from "./encounters";
 export type { RxLine } from "./fhir";
 export { classifyVisit } from "./visit-type";
 export type { VisitType } from "./visit-type";
-export { loadOpdConfig } from "./config";
+/**
+ * PHASE R (R1) — `DEFAULT_DEPARTMENTS` joins the declared interface, ADDITIVELY and read-only.
+ * The roster's own department master must cover every clinic the OPD opens, and the census that
+ * proves it (`modules/roster/masters.test.ts`) may only see another module through this file
+ * (spec §4). A transcription of the twelve into the roster would be a copy that goes stale the
+ * first time somebody adds a thirteenth — which is the exact defect the census exists to catch.
+ */
+export { DEFAULT_DEPARTMENTS, loadOpdConfig } from "./config";
 export type { OpdConfig } from "./config";
 export { orderQueue, nextInQueue, classOf } from "./queue-engine";
 export { SKIP_REASONS } from "./skip-reasons";

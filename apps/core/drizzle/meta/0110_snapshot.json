@@ -1,6 +1,6 @@
 {
-  "id": "45d48553-7fed-427a-a611-8accc5444b51",
-  "prevId": "7e0c687d-9a8e-487d-918c-dca772b5a721",
+  "id": "ef57289c-bfac-4ee1-8480-b12196ff7ac8",
+  "prevId": "deed04bf-1e52-456f-b775-f4cedc2e69f8",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -30031,6 +30031,1467 @@
       },
       "isRLSEnabled": false
     },
+    "public.roster_amendments": {
+      "name": "roster_amendments",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "period_id": {
+          "name": "period_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "requested_by": {
+          "name": "requested_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "approved_by": {
+          "name": "approved_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "approved_at": {
+          "name": "approved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "after_the_fact": {
+          "name": "after_the_fact",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "applied_at": {
+          "name": "applied_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "superseded_count": {
+          "name": "superseded_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "added_count": {
+          "name": "added_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "roster_amendments_period_idx": {
+          "name": "roster_amendments_period_idx",
+          "columns": [
+            {
+              "expression": "period_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "applied_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "roster_amendments_period_id_roster_periods_id_fk": {
+          "name": "roster_amendments_period_id_roster_periods_id_fk",
+          "tableFrom": "roster_amendments",
+          "tableTo": "roster_periods",
+          "columnsFrom": [
+            "period_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_amendments_requested_by_users_id_fk": {
+          "name": "roster_amendments_requested_by_users_id_fk",
+          "tableFrom": "roster_amendments",
+          "tableTo": "users",
+          "columnsFrom": [
+            "requested_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_amendments_approved_by_users_id_fk": {
+          "name": "roster_amendments_approved_by_users_id_fk",
+          "tableFrom": "roster_amendments",
+          "tableTo": "users",
+          "columnsFrom": [
+            "approved_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "roster_amendments_kind_ck": {
+          "name": "roster_amendments_kind_ck",
+          "value": "\"roster_amendments\".\"kind\" in ('swap', 'cover', 'float', 'withdrawal', 'correction', 'hold_over')"
+        },
+        "roster_amendments_reason_ck": {
+          "name": "roster_amendments_reason_ck",
+          "value": "length(btrim(\"roster_amendments\".\"reason\")) between 1 and 500"
+        },
+        "roster_amendments_counts_ck": {
+          "name": "roster_amendments_counts_ck",
+          "value": "\"roster_amendments\".\"superseded_count\" >= 0 and \"roster_amendments\".\"added_count\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.roster_assignments": {
+      "name": "roster_assignments",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "period_id": {
+          "name": "period_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "position_key": {
+          "name": "position_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "starts_at": {
+          "name": "starts_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ends_at": {
+          "name": "ends_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mode": {
+          "name": "mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'presence'"
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'duty'"
+        },
+        "off_kind": {
+          "name": "off_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "department_id": {
+          "name": "department_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cover_scope": {
+          "name": "cover_scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'team'"
+        },
+        "call_tier": {
+          "name": "call_tier",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "supernumerary": {
+          "name": "supernumerary",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "shift_def_id": {
+          "name": "shift_def_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "location_resource_id": {
+          "name": "location_resource_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "batch_ref": {
+          "name": "batch_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "topic": {
+          "name": "topic",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "swap_of_id": {
+          "name": "swap_of_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'manual'"
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "effective": {
+          "name": "effective",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "live_from": {
+          "name": "live_from",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "live_to": {
+          "name": "live_to",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "amendment_id": {
+          "name": "amendment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lineage_id": {
+          "name": "lineage_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "proposed_by_actor_type": {
+          "name": "proposed_by_actor_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'user'"
+        },
+        "proposed_by_actor_id": {
+          "name": "proposed_by_actor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "proposal_run_id": {
+          "name": "proposal_run_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "confirmed_by_user_id": {
+          "name": "confirmed_by_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "confirmed_at": {
+          "name": "confirmed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "roster_assignments_period_idx": {
+          "name": "roster_assignments_period_idx",
+          "columns": [
+            {
+              "expression": "period_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "roster_assignments_user_window_idx": {
+          "name": "roster_assignments_user_window_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "starts_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "roster_assignments_lineage_idx": {
+          "name": "roster_assignments_lineage_idx",
+          "columns": [
+            {
+              "expression": "lineage_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "roster_assignments_period_id_roster_periods_id_fk": {
+          "name": "roster_assignments_period_id_roster_periods_id_fk",
+          "tableFrom": "roster_assignments",
+          "tableTo": "roster_periods",
+          "columnsFrom": [
+            "period_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_assignments_user_id_users_id_fk": {
+          "name": "roster_assignments_user_id_users_id_fk",
+          "tableFrom": "roster_assignments",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_assignments_position_key_roster_positions_key_fk": {
+          "name": "roster_assignments_position_key_roster_positions_key_fk",
+          "tableFrom": "roster_assignments",
+          "tableTo": "roster_positions",
+          "columnsFrom": [
+            "position_key"
+          ],
+          "columnsTo": [
+            "key"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_assignments_department_id_org_departments_id_fk": {
+          "name": "roster_assignments_department_id_org_departments_id_fk",
+          "tableFrom": "roster_assignments",
+          "tableTo": "org_departments",
+          "columnsFrom": [
+            "department_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_assignments_team_id_roster_teams_id_fk": {
+          "name": "roster_assignments_team_id_roster_teams_id_fk",
+          "tableFrom": "roster_assignments",
+          "tableTo": "roster_teams",
+          "columnsFrom": [
+            "team_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_assignments_location_resource_id_resources_id_fk": {
+          "name": "roster_assignments_location_resource_id_resources_id_fk",
+          "tableFrom": "roster_assignments",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "location_resource_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_assignments_swap_of_id_roster_assignments_id_fk": {
+          "name": "roster_assignments_swap_of_id_roster_assignments_id_fk",
+          "tableFrom": "roster_assignments",
+          "tableTo": "roster_assignments",
+          "columnsFrom": [
+            "swap_of_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_assignments_amendment_id_roster_amendments_id_fk": {
+          "name": "roster_assignments_amendment_id_roster_amendments_id_fk",
+          "tableFrom": "roster_assignments",
+          "tableTo": "roster_amendments",
+          "columnsFrom": [
+            "amendment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_assignments_confirmed_by_user_id_users_id_fk": {
+          "name": "roster_assignments_confirmed_by_user_id_users_id_fk",
+          "tableFrom": "roster_assignments",
+          "tableTo": "users",
+          "columnsFrom": [
+            "confirmed_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "roster_assignments_window_ck": {
+          "name": "roster_assignments_window_ck",
+          "value": "\"roster_assignments\".\"ends_at\" > \"roster_assignments\".\"starts_at\""
+        },
+        "roster_assignments_mode_ck": {
+          "name": "roster_assignments_mode_ck",
+          "value": "\"roster_assignments\".\"mode\" is null or \"roster_assignments\".\"mode\" in ('presence', 'call')"
+        },
+        "roster_assignments_kind_ck": {
+          "name": "roster_assignments_kind_ck",
+          "value": "\"roster_assignments\".\"kind\" in ('duty', 'teaching', 'off')"
+        },
+        "roster_assignments_source_ck": {
+          "name": "roster_assignments_source_ck",
+          "value": "\"roster_assignments\".\"source\" in ('manual', 'import', 'proposer', 'academic')"
+        },
+        "roster_assignments_cover_scope_ck": {
+          "name": "roster_assignments_cover_scope_ck",
+          "value": "\"roster_assignments\".\"cover_scope\" in ('team', 'department', 'location', 'hospital')"
+        },
+        "roster_assignments_off_kind_ck": {
+          "name": "roster_assignments_off_kind_ck",
+          "value": "\"roster_assignments\".\"off_kind\" is null or \"roster_assignments\".\"off_kind\" in ('WO', 'NO', 'DO', 'CO', 'PH', 'RH')"
+        },
+        "roster_assignments_off_ck": {
+          "name": "roster_assignments_off_ck",
+          "value": "case when \"roster_assignments\".\"kind\" = 'off' then \"roster_assignments\".\"mode\" is null and \"roster_assignments\".\"user_id\" is not null and \"roster_assignments\".\"off_kind\" is not null\n                else \"roster_assignments\".\"mode\" is not null and \"roster_assignments\".\"off_kind\" is null end"
+        },
+        "roster_assignments_call_tier_ck": {
+          "name": "roster_assignments_call_tier_ck",
+          "value": "\"roster_assignments\".\"call_tier\" is null or \"roster_assignments\".\"call_tier\" >= 1"
+        },
+        "roster_assignments_presence_hours_ck": {
+          "name": "roster_assignments_presence_hours_ck",
+          "value": "\"roster_assignments\".\"mode\" is distinct from 'presence' or \"roster_assignments\".\"ends_at\" - \"roster_assignments\".\"starts_at\" <= interval '36 hours'"
+        },
+        "roster_assignments_window_cap_ck": {
+          "name": "roster_assignments_window_cap_ck",
+          "value": "\"roster_assignments\".\"ends_at\" - \"roster_assignments\".\"starts_at\" <= interval '35 days'"
+        },
+        "roster_assignments_live_ck": {
+          "name": "roster_assignments_live_ck",
+          "value": "\"roster_assignments\".\"live_to\" is null or \"roster_assignments\".\"live_to\" > \"roster_assignments\".\"live_from\""
+        },
+        "roster_assignments_effective_ck": {
+          "name": "roster_assignments_effective_ck",
+          "value": "not \"roster_assignments\".\"effective\" or \"roster_assignments\".\"live_to\" is null"
+        },
+        "roster_assignments_confirmed_ck": {
+          "name": "roster_assignments_confirmed_ck",
+          "value": "(\"roster_assignments\".\"confirmed_by_user_id\" is null) = (\"roster_assignments\".\"confirmed_at\" is null)"
+        },
+        "roster_assignments_actor_type_ck": {
+          "name": "roster_assignments_actor_type_ck",
+          "value": "\"roster_assignments\".\"proposed_by_actor_type\" in ('user', 'agent', 'system', 'patient')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.roster_bed_allotments": {
+      "name": "roster_bed_allotments",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resource_id": {
+          "name": "resource_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "starts_at": {
+          "name": "starts_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ends_at": {
+          "name": "ends_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "roster_bed_allotments_team_idx": {
+          "name": "roster_bed_allotments_team_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "starts_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "roster_bed_allotments_team_id_roster_teams_id_fk": {
+          "name": "roster_bed_allotments_team_id_roster_teams_id_fk",
+          "tableFrom": "roster_bed_allotments",
+          "tableTo": "roster_teams",
+          "columnsFrom": [
+            "team_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_bed_allotments_resource_id_resources_id_fk": {
+          "name": "roster_bed_allotments_resource_id_resources_id_fk",
+          "tableFrom": "roster_bed_allotments",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "resource_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "roster_bed_allotments_window_ck": {
+          "name": "roster_bed_allotments_window_ck",
+          "value": "\"roster_bed_allotments\".\"ends_at\" is null or \"roster_bed_allotments\".\"ends_at\" > \"roster_bed_allotments\".\"starts_at\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.roster_delegations": {
+      "name": "roster_delegations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "delegator_user_id": {
+          "name": "delegator_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "delegate_user_id": {
+          "name": "delegate_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "authority": {
+          "name": "authority",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope_type": {
+          "name": "scope_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope_id": {
+          "name": "scope_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "starts_at": {
+          "name": "starts_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ends_at": {
+          "name": "ends_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "roster_delegations_delegate_idx": {
+          "name": "roster_delegations_delegate_idx",
+          "columns": [
+            {
+              "expression": "delegate_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "starts_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ends_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "roster_delegations_delegator_user_id_users_id_fk": {
+          "name": "roster_delegations_delegator_user_id_users_id_fk",
+          "tableFrom": "roster_delegations",
+          "tableTo": "users",
+          "columnsFrom": [
+            "delegator_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_delegations_delegate_user_id_users_id_fk": {
+          "name": "roster_delegations_delegate_user_id_users_id_fk",
+          "tableFrom": "roster_delegations",
+          "tableTo": "users",
+          "columnsFrom": [
+            "delegate_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "roster_delegations_authority_ck": {
+          "name": "roster_delegations_authority_ck",
+          "value": "\"roster_delegations\".\"authority\" in ('publish', 'approve_swap', 'override_rule', 'approve_leave', 'declare_holiday', 'declare_mode')"
+        },
+        "roster_delegations_scope_ck": {
+          "name": "roster_delegations_scope_ck",
+          "value": "\"roster_delegations\".\"scope_type\" in ('hospital', 'department', 'team', 'location')"
+        },
+        "roster_delegations_scope_id_ck": {
+          "name": "roster_delegations_scope_id_ck",
+          "value": "(\"roster_delegations\".\"scope_type\" = 'hospital') = (\"roster_delegations\".\"scope_id\" is null)"
+        },
+        "roster_delegations_window_ck": {
+          "name": "roster_delegations_window_ck",
+          "value": "\"roster_delegations\".\"ends_at\" > \"roster_delegations\".\"starts_at\""
+        },
+        "roster_delegations_reason_ck": {
+          "name": "roster_delegations_reason_ck",
+          "value": "length(btrim(\"roster_delegations\".\"reason\")) between 1 and 500"
+        },
+        "roster_delegations_distinct_ck": {
+          "name": "roster_delegations_distinct_ck",
+          "value": "\"roster_delegations\".\"delegate_user_id\" <> \"roster_delegations\".\"delegator_user_id\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.roster_officiating": {
+      "name": "roster_officiating",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "starts_at": {
+          "name": "starts_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ends_at": {
+          "name": "ends_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "approved_by": {
+          "name": "approved_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "roster_officiating_team_idx": {
+          "name": "roster_officiating_team_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "role",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "starts_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "roster_officiating_team_id_roster_teams_id_fk": {
+          "name": "roster_officiating_team_id_roster_teams_id_fk",
+          "tableFrom": "roster_officiating",
+          "tableTo": "roster_teams",
+          "columnsFrom": [
+            "team_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_officiating_user_id_users_id_fk": {
+          "name": "roster_officiating_user_id_users_id_fk",
+          "tableFrom": "roster_officiating",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_officiating_approved_by_users_id_fk": {
+          "name": "roster_officiating_approved_by_users_id_fk",
+          "tableFrom": "roster_officiating",
+          "tableTo": "users",
+          "columnsFrom": [
+            "approved_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "roster_officiating_role_ck": {
+          "name": "roster_officiating_role_ck",
+          "value": "\"roster_officiating\".\"role\" in ('head', 'hod', 'lead')"
+        },
+        "roster_officiating_window_ck": {
+          "name": "roster_officiating_window_ck",
+          "value": "\"roster_officiating\".\"ends_at\" is null or \"roster_officiating\".\"ends_at\" > \"roster_officiating\".\"starts_at\""
+        },
+        "roster_officiating_reason_ck": {
+          "name": "roster_officiating_reason_ck",
+          "value": "length(btrim(\"roster_officiating\".\"reason\")) between 1 and 500"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.roster_periods": {
+      "name": "roster_periods",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "scope_type": {
+          "name": "scope_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope_id": {
+          "name": "scope_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "starts_at": {
+          "name": "starts_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ends_at": {
+          "name": "ends_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'draft'"
+        },
+        "department_id": {
+          "name": "department_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "covers_positions": {
+          "name": "covers_positions",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "based_on_period_id": {
+          "name": "based_on_period_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "content_hash": {
+          "name": "content_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "origin": {
+          "name": "origin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'human'"
+        },
+        "drafted_by_actor_type": {
+          "name": "drafted_by_actor_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'user'"
+        },
+        "human_touched_at": {
+          "name": "human_touched_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "published_at": {
+          "name": "published_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "published_by": {
+          "name": "published_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "superseded_at": {
+          "name": "superseded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "superseded_by_period_id": {
+          "name": "superseded_by_period_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "site_id": {
+          "name": "site_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'main'"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "roster_periods_scope_start_version_ux": {
+          "name": "roster_periods_scope_start_version_ux",
+          "columns": [
+            {
+              "expression": "site_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "scope_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "coalesce(\"scope_id\", '')",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "starts_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "version",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "roster_periods_status_window_idx": {
+          "name": "roster_periods_status_window_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "starts_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ends_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "roster_periods_based_on_idx": {
+          "name": "roster_periods_based_on_idx",
+          "columns": [
+            {
+              "expression": "based_on_period_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "roster_periods_department_id_org_departments_id_fk": {
+          "name": "roster_periods_department_id_org_departments_id_fk",
+          "tableFrom": "roster_periods",
+          "tableTo": "org_departments",
+          "columnsFrom": [
+            "department_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_periods_team_id_roster_teams_id_fk": {
+          "name": "roster_periods_team_id_roster_teams_id_fk",
+          "tableFrom": "roster_periods",
+          "tableTo": "roster_teams",
+          "columnsFrom": [
+            "team_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_periods_based_on_period_id_roster_periods_id_fk": {
+          "name": "roster_periods_based_on_period_id_roster_periods_id_fk",
+          "tableFrom": "roster_periods",
+          "tableTo": "roster_periods",
+          "columnsFrom": [
+            "based_on_period_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_periods_superseded_by_period_id_roster_periods_id_fk": {
+          "name": "roster_periods_superseded_by_period_id_roster_periods_id_fk",
+          "tableFrom": "roster_periods",
+          "tableTo": "roster_periods",
+          "columnsFrom": [
+            "superseded_by_period_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "roster_periods_status_ck": {
+          "name": "roster_periods_status_ck",
+          "value": "\"roster_periods\".\"status\" in ('draft', 'published', 'superseded')"
+        },
+        "roster_periods_scope_type_ck": {
+          "name": "roster_periods_scope_type_ck",
+          "value": "\"roster_periods\".\"scope_type\" in ('hospital', 'department', 'team', 'location')"
+        },
+        "roster_periods_scope_id_ck": {
+          "name": "roster_periods_scope_id_ck",
+          "value": "(\"roster_periods\".\"scope_type\" = 'hospital') = (\"roster_periods\".\"scope_id\" is null)"
+        },
+        "roster_periods_window_ck": {
+          "name": "roster_periods_window_ck",
+          "value": "\"roster_periods\".\"ends_at\" > \"roster_periods\".\"starts_at\""
+        },
+        "roster_periods_version_ck": {
+          "name": "roster_periods_version_ck",
+          "value": "\"roster_periods\".\"version\" >= 1"
+        },
+        "roster_periods_origin_ck": {
+          "name": "roster_periods_origin_ck",
+          "value": "\"roster_periods\".\"origin\" in ('human', 'machine')"
+        },
+        "roster_periods_actor_type_ck": {
+          "name": "roster_periods_actor_type_ck",
+          "value": "\"roster_periods\".\"drafted_by_actor_type\" in ('user', 'agent', 'system', 'patient')"
+        },
+        "roster_periods_covers_ck": {
+          "name": "roster_periods_covers_ck",
+          "value": "coalesce(array_length(\"roster_periods\".\"covers_positions\", 1), 0) >= 1"
+        },
+        "roster_periods_published_ck": {
+          "name": "roster_periods_published_ck",
+          "value": "(\"roster_periods\".\"status\" = 'draft') = (\"roster_periods\".\"published_at\" is null) and (\"roster_periods\".\"published_at\" is null) = (\"roster_periods\".\"published_by\" is null)"
+        },
+        "roster_periods_superseded_ck": {
+          "name": "roster_periods_superseded_ck",
+          "value": "(\"roster_periods\".\"status\" = 'superseded') = (\"roster_periods\".\"superseded_at\" is not null)"
+        },
+        "roster_periods_supersede_order_ck": {
+          "name": "roster_periods_supersede_order_ck",
+          "value": "\"roster_periods\".\"superseded_at\" is null or \"roster_periods\".\"superseded_at\" >= \"roster_periods\".\"published_at\""
+        },
+        "roster_periods_hash_ck": {
+          "name": "roster_periods_hash_ck",
+          "value": "(\"roster_periods\".\"status\" = 'draft') = (\"roster_periods\".\"content_hash\" is null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.roster_positions": {
       "name": "roster_positions",
       "schema": "",
@@ -30170,6 +31631,454 @@
         "roster_positions_max_presence_ck": {
           "name": "roster_positions_max_presence_ck",
           "value": "\"roster_positions\".\"max_presence_hours\" between 1 and 36"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.roster_team_memberships": {
+      "name": "roster_team_memberships",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "position_key": {
+          "name": "position_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "grade": {
+          "name": "grade",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role_in_team": {
+          "name": "role_in_team",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'parent'"
+        },
+        "retains_parent_nights": {
+          "name": "retains_parent_nights",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "supernumerary_until": {
+          "name": "supernumerary_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pattern_offset": {
+          "name": "pattern_offset",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "starts_at": {
+          "name": "starts_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ends_at": {
+          "name": "ends_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'manual'"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "roster_team_memberships_team_idx": {
+          "name": "roster_team_memberships_team_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "starts_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "roster_team_memberships_user_idx": {
+          "name": "roster_team_memberships_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "starts_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "roster_team_memberships_team_id_roster_teams_id_fk": {
+          "name": "roster_team_memberships_team_id_roster_teams_id_fk",
+          "tableFrom": "roster_team_memberships",
+          "tableTo": "roster_teams",
+          "columnsFrom": [
+            "team_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_team_memberships_user_id_users_id_fk": {
+          "name": "roster_team_memberships_user_id_users_id_fk",
+          "tableFrom": "roster_team_memberships",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_team_memberships_position_key_roster_positions_key_fk": {
+          "name": "roster_team_memberships_position_key_roster_positions_key_fk",
+          "tableFrom": "roster_team_memberships",
+          "tableTo": "roster_positions",
+          "columnsFrom": [
+            "position_key"
+          ],
+          "columnsTo": [
+            "key"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "roster_team_memberships_kind_ck": {
+          "name": "roster_team_memberships_kind_ck",
+          "value": "\"roster_team_memberships\".\"kind\" in ('parent', 'rotation', 'float')"
+        },
+        "roster_team_memberships_role_ck": {
+          "name": "roster_team_memberships_role_ck",
+          "value": "\"roster_team_memberships\".\"role_in_team\" in ('head', 'faculty', 'senior_resident', 'junior_resident', 'intern', 'member', 'lead')"
+        },
+        "roster_team_memberships_grade_ck": {
+          "name": "roster_team_memberships_grade_ck",
+          "value": "\"roster_team_memberships\".\"grade\" in ('professor', 'associate_professor', 'assistant_professor', 'senior_resident', 'jr1', 'jr2', 'jr3', 'intern', 'medical_officer', 'nursing_superintendent', 'ward_sister', 'staff_nurse', 'technician', 'pharmacist', 'admin', 'support')"
+        },
+        "roster_team_memberships_window_ck": {
+          "name": "roster_team_memberships_window_ck",
+          "value": "\"roster_team_memberships\".\"ends_at\" is null or \"roster_team_memberships\".\"ends_at\" > \"roster_team_memberships\".\"starts_at\""
+        },
+        "roster_team_memberships_source_ck": {
+          "name": "roster_team_memberships_source_ck",
+          "value": "\"roster_team_memberships\".\"source\" in ('manual', 'import', 'academic')"
+        },
+        "roster_team_memberships_retains_ck": {
+          "name": "roster_team_memberships_retains_ck",
+          "value": "not \"roster_team_memberships\".\"retains_parent_nights\" or \"roster_team_memberships\".\"kind\" = 'rotation'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.roster_teams": {
+      "name": "roster_teams",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "department_id": {
+          "name": "department_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "home_location_resource_id": {
+          "name": "home_location_resource_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lead_user_id": {
+          "name": "lead_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "unit_number": {
+          "name": "unit_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sanctioned_beds": {
+          "name": "sanctioned_beds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "valid_from": {
+          "name": "valid_from",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "valid_to": {
+          "name": "valid_to",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "site_id": {
+          "name": "site_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'main'"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "roster_teams_code_ux": {
+          "name": "roster_teams_code_ux",
+          "columns": [
+            {
+              "expression": "site_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "roster_teams_department_idx": {
+          "name": "roster_teams_department_idx",
+          "columns": [
+            {
+              "expression": "department_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "active",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "roster_teams_department_id_org_departments_id_fk": {
+          "name": "roster_teams_department_id_org_departments_id_fk",
+          "tableFrom": "roster_teams",
+          "tableTo": "org_departments",
+          "columnsFrom": [
+            "department_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_teams_home_location_resource_id_resources_id_fk": {
+          "name": "roster_teams_home_location_resource_id_resources_id_fk",
+          "tableFrom": "roster_teams",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "home_location_resource_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_teams_lead_user_id_users_id_fk": {
+          "name": "roster_teams_lead_user_id_users_id_fk",
+          "tableFrom": "roster_teams",
+          "tableTo": "users",
+          "columnsFrom": [
+            "lead_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "roster_teams_kind_ck": {
+          "name": "roster_teams_kind_ck",
+          "value": "\"roster_teams\".\"kind\" in ('clinical_unit', 'ward_team', 'service', 'pool')"
+        },
+        "roster_teams_validity_ck": {
+          "name": "roster_teams_validity_ck",
+          "value": "\"roster_teams\".\"valid_to\" is null or \"roster_teams\".\"valid_to\" > \"roster_teams\".\"valid_from\""
+        },
+        "roster_teams_unit_number_ck": {
+          "name": "roster_teams_unit_number_ck",
+          "value": "\"roster_teams\".\"unit_number\" is null or \"roster_teams\".\"unit_number\" >= 1"
+        },
+        "roster_teams_beds_ck": {
+          "name": "roster_teams_beds_ck",
+          "value": "\"roster_teams\".\"sanctioned_beds\" is null or \"roster_teams\".\"sanctioned_beds\" >= 0"
         }
       },
       "isRLSEnabled": false
