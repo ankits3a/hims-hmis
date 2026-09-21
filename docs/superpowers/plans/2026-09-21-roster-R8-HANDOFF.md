@@ -8,7 +8,9 @@ first and in full; it tells you which other files you need and, more importantly
 ## 0. What you are
 
 You are continuing **phase R (the roster backbone)** under EXECUTE-METHOD-V3's LIGHT lane. Seven of
-ten tasks are built; **R1–R6 are merged to `main`** and **R7 is in review**. You are picking up at
+ten tasks are built; **R1–R6 are merged to `main`** and **R7 is PR #280, armed to auto-merge**.
+If #280 has landed by the time you start, branch your lane from `origin/main`; if it has not, branch
+from `lane/roster-r7` and expect the squash collision in trap 1. You are picking up at
 **R8**, then **R9**, then **R10 (close)**.
 
 The rules of engagement are unchanged from the original execute prompt
@@ -65,7 +67,7 @@ a roster is any *good*: requirements, rules, the validator, and the proposer tha
 | R4 | `70eebfdb` (#277) | `staff_absences`, `staff_credentials`; OPD leave becomes a projection |
 | R5 | `2489e106` (#278) | the scoped resolvers behind `ROSTER_RESOLVER_ENABLED` |
 | R6 | `77327031` (#279) | `roster_escalation_targets`; two kernel consumers ask the roster |
-| R7 | **`<R7_SHA>` (#`<R7_PR>`)** | the calendar: cycles, overlay, holidays, materialised windows |
+| R7 | **`c7eac768`, PR [#280](https://github.com/ankits3a/hims-hmis/pull/280) — armed to auto-merge** | the calendar: cycles, overlay, holidays, materialised windows |
 | — | `b92ab7b8` (#271) | not a phase-R task: two IST-midnight clock bombs, one of them mine |
 
 ---
