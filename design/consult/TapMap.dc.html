@@ -1,0 +1,109 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: "IBM Plex Sans", system-ui, sans-serif; color: #132420; background: #f4f7f4; }
+    a { color: #0e6b4e; } a:hover { color: #0a5038; }
+    .mo { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+    .tag { font-family: "IBM Plex Mono", monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: #8ea69a; }
+    .box { background: #fff; border: 1px solid #dfe7e1; border-radius: 8px; }
+    .step { display: flex; align-items: flex-start; gap: 13px; }
+    .num { width: 27px; height: 27px; border-radius: 14px; background: #0e6b4e; color: #f2faf6; display: flex; align-items: center; justify-content: center; font-family: "IBM Plex Mono", monospace; font-size: 12px; font-weight: 600; flex-shrink: 0; }
+    .num.opt { background: #fff; border: 1px dashed #8ea69a; color: #8ea69a; }
+    .rail { width: 1px; background: #dfe7e1; margin: 3px 0 3px 13px; flex-shrink: 0; }
+  </style>
+</helmet>
+
+<div style="padding: 26px 30px; background: #f4f7f4; min-height: 880px;">
+  <h1 style="margin: 0 0 3px; font-size: 20px; font-weight: 700; letter-spacing: -.01em;">One consultation, counted</h1>
+  <p style="margin: 0 0 20px; font-size: 13px; color: #5c6f66; max-width: 600px;">
+    A four-drug URI visit for a 7 kg child, from the doctor sitting down to the slip printing.
+    Keyboard where a doctor's hands already are; nothing here needs a mouse.
+  </p>
+
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; max-width: 820px;">
+
+    <div>
+      <div class="tag" style="color: #b23a30; margin-bottom: 10px;">Today</div>
+      <div class="box" style="padding: 16px 18px;">
+        <div class="mo" style="font-size: 34px; font-weight: 600; color: #b23a30; line-height: 1;">~40</div>
+        <div class="tag" style="margin: 4px 0 12px;">typed values</div>
+        <div style="font-size: 12.5px; color: #5c6f66; line-height: 1.75;">
+          Complaint prose · diagnosis prose · ICD-10 recalled · advice prose<br>
+          then, four times over: drug, dose, route, frequency, days<br>
+          then the paediatric millilitres, worked out on paper
+        </div>
+        <div style="height: 1px; background: #ecf1ed; margin: 13px 0;"></div>
+        <div class="mo" style="font-size: 11.5px; color: #8ea69a;">and the weight was on the screen the whole time</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="tag" style="color: #0e6b4e; margin-bottom: 10px;">After</div>
+      <div class="box" style="padding: 16px 18px;">
+        <div class="mo" style="font-size: 34px; font-weight: 600; color: #0e6b4e; line-height: 1;">7</div>
+        <div class="tag" style="margin: 4px 0 12px;">taps · 0 typed values</div>
+        <div style="font-size: 12.5px; color: #5c6f66; line-height: 1.75;">
+          Everything the hospital already knows is offered, not asked for.<br>
+          Typing stays for the half-sentence only this doctor can write.
+        </div>
+        <div style="height: 1px; background: #ecf1ed; margin: 13px 0;"></div>
+        <div class="mo" style="font-size: 11.5px; color: #0e6b4e;">under 60 seconds, unhurried</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top: 26px; max-width: 820px;">
+    <div class="tag" style="margin-bottom: 13px;">The seven</div>
+    <div style="display: flex; flex-direction: column; gap: 0;">
+      <sc-for list="{{ steps }}" as="s" hint-placeholder-count="7">
+        <div class="step" style="padding-bottom: 15px;">
+          <div class="num {{ s.cls }}">{{ s.n }}</div>
+          <div style="min-width: 0; padding-top: 3px;">
+            <div style="font-size: 13.5px; font-weight: 600;">{{ s.what }}</div>
+            <div style="font-size: 12.5px; color: #5c6f66; margin-top: 2px;">{{ s.why }}</div>
+          </div>
+          <span style="flex-grow: 1;"></span>
+          <span class="mo" style="font-size: 10.5px; color: #8ea69a; padding-top: 5px; white-space: nowrap;">{{ s.key }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div class="box" style="margin-top: 8px; max-width: 820px; padding: 15px 18px; border-color: rgba(221,143,28,.45); background: rgba(221,143,28,.10);">
+    <div class="tag" style="color: #dd8f1c;">The tap that is not saved</div>
+    <p style="margin: 6px 0 0; font-size: 12.5px; color: #5c6f66; line-height: 1.6;">
+      Reading the danger cards. They are the one place the design deliberately does not save a
+      motion: a card that can be dismissed without being read is a card that will be. Everything
+      else collapses to a tap so that this one gets the doctor's attention.
+    </p>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":880,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      steps: [
+        { n: "1", cls: "", key: "⏎", what: "Call next", why: "The patient is in the chair; the rail already holds their weight, vitals and allergies." },
+        { n: "2", cls: "", key: "tap ×2", what: "Tap the complaints", why: "Fever, sore throat. The chips are this department's twelve, in both scripts." },
+        { n: "3", cls: "", key: "tap", what: "Tap the syndrome", why: "URI · J06.9. Keyword-matched from the chips — no model in the path." },
+        { n: "4", cls: "opt", key: "read", what: "Read the danger cards", why: "One paediatric dose needs review; the antibiotic is AWaRe Access, capped at 5 days." },
+        { n: "5", cls: "", key: "A", what: "Accept the regimen", why: "Three lines fill, the 7 kg doses already computed. The unreviewed one carries its reason, not a number." },
+        { n: "6", cls: "", key: "tap", what: "Tap the follow-up", why: "3 · 5 · 7 days. The default is the department's own." },
+        { n: "7", cls: "", key: "Ctrl ⏎", what: "Complete", why: "Note, diagnosis, ICD-10 and prescription are already written. The slip prints." },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

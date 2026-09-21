@@ -1,0 +1,103 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: "IBM Plex Sans", system-ui, sans-serif; color: #132420; background: #f4f7f4; }
+    a { color: #0e6b4e; } a:hover { color: #0a5038; }
+    .mo { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+    .tag { font-family: "IBM Plex Mono", monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: #8ea69a; }
+    .box { background: #fff; border: 1px solid #dfe7e1; border-radius: 8px; }
+    .in { height: 34px; border-radius: 6px; border: 1px solid #dfe7e1; background: #fff; padding: 0 11px; font-size: 13px; display: flex; align-items: center; color: #8ea69a; }
+    .sec { display: inline-flex; align-items: center; justify-content: center; height: 30px; padding: 0 11px; border-radius: 6px; border: 1px solid #dfe7e1; background: #fff; font-size: 12px; }
+    .count { position: absolute; right: -9px; top: -9px; width: 20px; height: 20px; border-radius: 10px; background: #b23a30; color: #fff; font-size: 10.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; font-family: "IBM Plex Mono", monospace; }
+  </style>
+</helmet>
+
+<div style="padding: 26px 30px; background: #f4f7f4; min-height: 700px;">
+  <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px;">
+    <h1 style="margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -.01em;">The seat today</h1>
+    <span class="mo" style="font-size: 11px; color: #8ea69a;">/opd/consult · 2,126 lines</span>
+  </div>
+  <p style="margin: 0 0 20px; font-size: 13px; color: #5c6f66; max-width: 620px;">
+    Everything works. The cost is that a consultation is a <strong>form</strong>: the doctor supplies
+    every value the software could have known or offered.
+  </p>
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 22px;">
+    <div class="box" style="padding: 15px 16px;">
+      <div class="mo" style="font-size: 30px; font-weight: 600; color: #b23a30;">13</div>
+      <div class="tag" style="margin-top: 3px;">free-text fields</div>
+      <div style="font-size: 12px; color: #5c6f66; margin-top: 6px;">Complaint, diagnosis, ICD-10, advice, referral — each typed from memory.</div>
+    </div>
+    <div class="box" style="padding: 15px 16px;">
+      <div class="mo" style="font-size: 30px; font-weight: 600; color: #b23a30;">7</div>
+      <div class="tag" style="margin-top: 3px;">fields per drug line</div>
+      <div style="font-size: 12px; color: #5c6f66; margin-top: 6px;">Drug, dose, route, frequency, days, instructions, substitution — times four drugs.</div>
+    </div>
+    <div class="box" style="padding: 15px 16px;">
+      <div class="mo" style="font-size: 30px; font-weight: 600; color: #b23a30;">~40</div>
+      <div class="tag" style="margin-top: 3px;">typed values, one visit</div>
+      <div style="font-size: 12px; color: #5c6f66; margin-top: 6px;">A four-drug URI consultation, counted field by field on the shipped screen.</div>
+    </div>
+  </div>
+
+  <!-- the form as it stands, drawn honestly -->
+  <div class="box" style="padding: 17px 19px; max-width: 840px;">
+    <div class="tag" style="margin-bottom: 11px;">Note tab — what a doctor faces</div>
+    <div style="display: flex; flex-direction: column; gap: 11px;">
+      <div style="position: relative;">
+        <div class="tag" style="margin-bottom: 4px;">Chief complaint</div>
+        <div class="in" style="height: 46px; align-items: flex-start; padding-top: 8px;">type here…</div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px;">
+        <div><div class="tag" style="margin-bottom: 4px;">Diagnosis</div><div class="in">type here…</div></div>
+        <div><div class="tag" style="margin-bottom: 4px;">ICD-10 code</div><div class="in">look it up, then type…</div></div>
+      </div>
+      <div><div class="tag" style="margin-bottom: 4px;">Advice</div><div class="in">type here…</div></div>
+
+      <div style="height: 1px; background: #ecf1ed; margin: 4px 0;"></div>
+      <div class="tag">Prescription — per line</div>
+      <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr .7fr; gap: 8px;">
+        <div><div class="tag" style="margin-bottom: 4px;">Drug</div><div class="in">type…</div></div>
+        <div><div class="tag" style="margin-bottom: 4px;">Dose</div><div class="in">type…</div></div>
+        <div><div class="tag" style="margin-bottom: 4px;">Route</div><div class="in">select…</div></div>
+        <div><div class="tag" style="margin-bottom: 4px;">Frequency</div><div class="in">select…</div></div>
+        <div><div class="tag" style="margin-bottom: 4px;">Days</div><div class="in">type…</div></div>
+      </div>
+      <div style="display: flex; gap: 8px;"><span class="sec">+ Add line</span><span class="sec">+ Add line</span><span class="sec">+ Add line</span></div>
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 22px; margin-top: 20px; max-width: 840px;">
+    <div style="flex: 1;">
+      <div class="tag" style="color: #b23a30;">What the software already knew</div>
+      <ul style="margin: 7px 0 0; padding-left: 17px; font-size: 12.5px; color: #5c6f66; line-height: 1.65;">
+        <li>The child weighs 7 kg — it is on the vitals chart it just rendered.</li>
+        <li>The allergy list is on the patient record, two inches above the form.</li>
+        <li>J06.9 is the ICD-10 for the syndrome the doctor is about to name.</li>
+        <li>The four-drug URI regimen is in the clinical bundle, with doses.</li>
+      </ul>
+    </div>
+    <div style="flex: 1;">
+      <div class="tag" style="color: #0e6b4e;">What the redesign changes</div>
+      <ul style="margin: 7px 0 0; padding-left: 17px; font-size: 12.5px; color: #5c6f66; line-height: 1.65;">
+        <li>The form becomes a <strong>spine of four decisions</strong>, one visible at a time.</li>
+        <li>Every value the system knows is offered as a tap, never a blank.</li>
+        <li>Typing stays available for everything — it stops being the default.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":900,"height":760}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+--paper #f4f7f4  --card #fff  --ink #132420  --line #dfe7e1  --line2 #ecf1ed
+--dim #5c6f66  --faint #8ea69a  --wash #eef3ef
+--green #0e6b4e  green-soft rgba(14,107,78,.08)  green-line rgba(14,107,78,.35)
+--gold #dd8f1c   gold-soft rgba(221,143,28,.10)  gold-line rgba(221,143,28,.45)
+--red #b23a30    red-soft rgba(178,58,48,.08)    red-line rgba(178,58,48,.4)
+--agent #132420  --agent-fg #d9efe4  --agent-dim #7fa392  --mint #35c48f
+pri h40 pad0-18 r6 13/600   sec h34 pad0-13 r6 12.5/500   pill h23 pad0-9 r4 10.5/600
+box r8 1px line   in h40 r6 pad0-12 14px   tag mono 9.5/600 ls.14em upper faint
