@@ -52,9 +52,14 @@ describe("roster — refusals (V10)", () => {
    * review pointed out that for every message a user will actually read, that clause was unproven.
    *
    * So this walks the SOURCE for custom messages and refuses the two ways an instant gets into one:
-   * a `.toISOString()` interpolated directly, and a bare `Date` variable dropped into a template.
-   * Instants belong in `detail`, where the client renders them in IST — which is the whole reason
+   * a `.toISOString()` interpolated directly, and a bare `Date`-ish identifier dropped into a
+   * template. Instants belong in `detail`, where the client renders them in IST — the whole reason
    * the clause exists, because "20:00Z" to somebody standing in a ward in Patna is a lie.
+   *
+   * **The lookahead is anchored, and the first version of it was not.** `(?!undefined)` after
+   * `\s*` is evaluated at the space, which the engine can match zero-width, so it succeeded on
+   * every site: 118 matches, 67 of them the literal `undefined`. A second reviewer measured it.
+   * The count below therefore means what it says — sites that pass a message of their own.
    */
   it("V10: NO throw site interpolates an instant into a MESSAGE — they go in `detail`", () => {
     const SRC = resolve(__dirname);
@@ -65,19 +70,29 @@ describe("roster — refusals (V10)", () => {
       if (!file.endsWith(".ts") || file.endsWith(".test.ts")) continue;
       const src = readFileSync(join(SRC, file), "utf8");
       // `new RosterError("code", <message>, …` — the second argument, when it is not `undefined`.
-      const re = /new RosterError\(\s*"[a-z_]+"\s*,\s*(?!undefined)([\s\S]{0,240}?)(?:,\s*\{|\)\s*;)/g;
+      const re = /new RosterError\(\s*"[a-z_]+"\s*,\s*(?!undefined\s*[,)])([\s\S]{0,240}?)(?:,\s*\{|\)\s*;)/g;
       let m: RegExpExecArray | null;
       while ((m = re.exec(src)) !== null) {
         const msg = m[1];
         if (msg === undefined) continue;
         customMessages += 1;
         if (/toISOString\(\)/.test(msg)) offenders.push(`${file}: toISOString in a message — ${msg.slice(0, 70)}`);
-        if (/\bUTC\b|[+-]\d{2}:\d{2}/.test(msg)) offenders.push(`${file}: a zone in a message — ${msg.slice(0, 70)}`);
+        if (/\bUTC\b|[+-]\d{2}:\d{2}/.test(msg)) offenders.push(`${file}: a zone literal in a message — ${msg.slice(0, 70)}`);
+        // The harder half: a Date-ish identifier interpolated bare. `${startsAt}` stringifies to
+        // "Mon Oct 12 2026 20:00:00 GMT+0000" — no `toISOString()` to grep for, and the same lie.
+        // `At` capitalised on purpose: the module's Date-ish names are `startsAt`, `endsAt`,
+        // `decidedAt`. A lower-case `at` would also match `${what}`, a plain noun — which the
+        // first version of this line did, and it is the difference between a guard and a nuisance.
+        for (const g of msg.matchAll(/\$\{\s*([A-Za-z0-9_.]*(?:At|Date|From|To))\s*\}/g)) {
+          offenders.push(`${file}: bare ${g[1]!} interpolated into a message — ${msg.slice(0, 70)}`);
+        }
       }
     }
 
-    // The scan FOUND the call sites — a census that matched nothing would pass while saying nothing.
-    expect(customMessages).toBeGreaterThan(5);
+    // The scan FOUND custom-message sites — a census that matched nothing would pass vacuously.
+    // This module has ~50; the assertion is loose on purpose so a refactor that moves messages
+    // about does not fail it, and tight enough that a regex matching nothing does.
+    expect(customMessages).toBeGreaterThan(20);
     expect(offenders).toEqual([]);
   });
 

@@ -417,7 +417,52 @@ grammar — every G3/G4 row is RED until an ACT — and two existing tests said 
 The row is now RED until a roster is published, and the flag appears in the FIX, where it tells a
 reader which of the two repairs they want.
 
-**PASS 2 — a second fresh reviewer over the remediation diff only** (§9.10): *(filled at R10 close)*
+**PASS 2 — a second fresh reviewer over the remediation diff only** (§9.10). Scope was exactly one
+commit. **It found the remediation wanting on five of six claims**, and two of those were the same
+class of defect the remediation was written to fix:
+
+| # | against | verdict | what it was |
+|---|---|---|---|
+| F35 | F30's fix | **WEAK** | `publishedCycleCount > 0` closed only the ZERO case. `departmentsWithTakeGaps` iterates published CYCLES, so a department with none contributes no gaps — publish Medicine's and Casualty still reads covered |
+| F36 | F31's test | **WEAK** | only one direction injected. A DRAFT row with `effective = true` is constraint-legal and unasserted, so a mutant dropping `p.status = 'published'` survived |
+| F37 | F33's census | **BROKEN** | keyed on parameter NAMES, so it saw 29 functions against a map of 49 — twenty dead entries — and was blind to `knownAt`, `fromIstDate` and every `export const`. One-directional, so the dead entries never surfaced. Its "none of them STAMPS" clause was two POSITIVE greps that could only fail if the text were deleted |
+| F38 | F34's census | **WEAK** | `(?!undefined)` after `\s*` is evaluated at the space, which matches zero-width — so the lookahead never fired. 118 matches, 67 of them the literal `undefined`. And the "bare `Date` in a template" check the comment advertised did not exist |
+| F39 | both new rows | **WEAK** | neither census row had a GREEN leg anywhere in the repo: `check: async () => false` passed the whole suite. And `publishedPeriodCount` counted `status = 'published'`, which a period keeps FOR EVER once published — one rota from last year would have kept the row green while every question today fell back |
+
+All five remediated in turn, and the fixes were themselves caught by the existing tests twice:
+
+- **F35** — the population is now every department that RUNS UNITS, via
+  `departmentsWithoutPublishedCycle`. The first version of that function early-returned `[]` when
+  there were no unit-bearing departments, which made a FRESH database read green — **the same
+  emptiness, met for the third time inside the fix for it**, and caught within a minute by the
+  census's own "on a fresh database every row is RED" test. The row now asks both questions.
+- **F36** — both directions injected, and the overclaiming sentence deleted. What the constraint
+  actually refuses is a SUPERSEDED row being made effective; a draft's row is legal and is now
+  pinned by its own injection.
+- **F37** — rebuilt: keyed on TYPE (`: Date`) plus the IST-date convention, matching `export const`
+  as well as `export function`, and **bidirectional**, so a dead entry fails exactly as an
+  undeclared function does. It now sees 42. The stamp clause became a NEGATIVE scan over
+  `.set({…})` / `.values({…})` blocks — and the first version of THAT reported thirteen offenders,
+  every one correct code (`instant()` in an event schema, `iso(now)` in a payload), because it
+  conflated a column write with a payload. Instants are supposed to travel as ISO in payloads (V9).
+- **F38** — lookahead anchored, and the bare-`Date` check implemented. Its first pattern matched
+  `${what}` — a plain noun ending in "at" — which is the difference between a guard and a nuisance.
+- **F39** — a green leg added for `resolver_has_a_roster` (publish a roster covering NOW, assert
+  `ok`), and `publishedPeriodCount` replaced by `livePeriodCount(exec, at)`, which counts rosters
+  that COVER an instant.
+
+**Two corrections to the F30–F34 commit message**, which overstated two counts: it says the clock
+census "names all 48" functions (the map had 49 entries and its own scanner classified 29), and that
+"~30 sites pass their own message" (the real number is 51 of 118). Both numbers are restated
+correctly above rather than amended, because that commit is part of this branch's history.
+
+**PRODUCTION EFFECT, stated here because the commit understated it.** Two census rows change verdict
+on a live box: `take_is_continuous` flips green → RED wherever the roster is seeded and no cycle is
+published, and `resolver_has_a_roster` is new and RED until a roster covering now exists. On prod
+this is **not** a deploy breaker — `docker/prod/deploy.sh` runs the census with its exit code
+deliberately not the deploy's. On **UAT it is the stand-up gate**, whose exit code IS read as the
+verdict, so a UAT stand-up gains two reds until somebody publishes a cycle and a roster. That is the
+intended grammar (RED until an act) and it should be expected rather than discovered.
 
 ### 9.7 The token actuals row (`/token-audit`)
 *(filled at R10 close)*

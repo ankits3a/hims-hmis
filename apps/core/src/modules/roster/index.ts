@@ -22,7 +22,7 @@ export {
 } from "./events";
 export {
   MAX_PRESENCE_HOURS, amend, asKnownAt, assign, contentHash, draftPeriod, effectiveDrift,
-  periodWithAssignments, publishedPeriodCount,
+  livePeriodCount, periodWithAssignments,
   periodsTouching, presenceClashes, publishPeriod, publishPeriods, unassign,
 } from "./periods";
 export type {
@@ -78,7 +78,8 @@ export type {
 export {
   HORIZON_DAYS, SHORT_OPD_MINUTES, addIstDays, backupUnit, declareHoliday,
   departmentsWithTakeGaps, expandCycle, extendWindows, istMidnightUtc, istWeekday,
-  materialiseWindows, publishCycle, publishedCycleCount, sweepRosterWindows, takeGaps,
+  departmentsWithoutPublishedCycle, materialiseWindows, publishCycle, publishedCycleCount,
+  sweepRosterWindows, takeGaps,
   unitOnTake,
 } from "./calendar";
 export type {

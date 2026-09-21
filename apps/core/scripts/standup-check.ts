@@ -25,8 +25,8 @@ import { availableQty, findStoreByCode, listItems } from "../src/modules/materia
 import { IMAGING_GATE_DEF_KEY, IMAGING_STUDY_DEF_KEY, activeStudyTypes } from "../src/modules/radiology";
 import {
   HORIZON_DAYS, ROSTER_POSITIONS, UNIT_COUNT, departmentsWithTakeGaps, listTeams,
-  ROSTER_RESOLVER_FLAG, publishedCycleCount, publishedPeriodCount, rosterMasterCounts,
-  unconfirmedTeams,
+  ROSTER_RESOLVER_FLAG, departmentsWithoutPublishedCycle, livePeriodCount, publishedCycleCount,
+  rosterMasterCounts, unconfirmedTeams,
 } from "../src/modules/roster";
 import { appointments, unlicensedDevices } from "../src/modules/aerb";
 import {
@@ -347,8 +347,18 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
          * `roster_units_confirmed`), so the population is now asked for BY NAME: a PUBLISHED CYCLE
          * must exist before "no gaps" is evidence of anything.
          */
-        const published = await publishedCycleCount(db);
-        if (published === 0) return false;
+        /**
+         * R10, second pass: asking "is ANY cycle published?" was the same hole one level up.
+         * `departmentsWithTakeGaps` iterates published CYCLES, so a department with none
+         * contributes no gaps — publish Medicine's and Casualty still reads covered. The
+         * population is every department that runs units, and each must have a cycle.
+         */
+        // The hospital has published SOMETHING. On a fresh database there are no unit-bearing
+        // departments at all, and "every one of nothing has a cycle" is vacuously true — the same
+        // emptiness this row keeps producing, met here for the third time while fixing it.
+        if ((await publishedCycleCount(db)) === 0) return false;
+        // …and every department that runs units has one of its own.
+        if ((await departmentsWithoutPublishedCycle(db)).length > 0) return false;
         return (await departmentsWithTakeGaps(db, now, horizon)).length === 0;
       },
       fix: "publish each unit-bearing department's take cycle (`publishCycle`) so every hour inside the ninety-day horizon has an admitting unit — `departmentsWithTakeGaps` names the holes",
@@ -378,7 +388,7 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
        * appears in the FIX rather than in the verdict — where it tells a reader which of the two
        * repairs they want.
        */
-      check: async (db) => (await publishedPeriodCount(db)) > 0,
+      check: async (db) => (await livePeriodCount(db, new Date())) > 0,
       fix: `either publish a roster (a department's rota, via \`publishPeriods\`) or unset ${ROSTER_RESOLVER_FLAG} — with the flag on and nothing published, every on-call question falls back to role holders and nothing says so`,
     },
   ],

@@ -933,10 +933,22 @@ export async function effectiveDrift(exec: Db | Tx): Promise<number> {
   return (r.rows[0] as { n: number }).n;
 }
 
-/** How many rosters are LIVE right now — the population question behind Plan 20 T7's census row. */
-export async function publishedPeriodCount(exec: Db | Tx): Promise<number> {
-  const rows = await (exec as Db).select({ id: rosterPeriods.id }).from(rosterPeriods)
-    .where(eq(rosterPeriods.status, "published"));
+/**
+ * How many rosters actually COVER an instant — Plan 20 T7's population question.
+ *
+ * **Not `status = 'published'`**, and the difference is the whole row. A period only leaves
+ * `published` when a new version supersedes it, so a roster for March 2026 is still `published` in
+ * 2030. Counting those would let one rota, published once, keep `resolver_has_a_roster` green for
+ * ever while every on-call question today falls back to role holders — which is precisely the
+ * silent fallback the row exists to catch. The second reviewer of this phase found that in the
+ * first draft: the row was checking the adjacent property.
+ */
+export async function livePeriodCount(exec: Db | Tx, at: Date): Promise<number> {
+  const rows = await (exec as Db).select({ id: rosterPeriods.id }).from(rosterPeriods).where(and(
+    eq(rosterPeriods.status, "published"),
+    lt(rosterPeriods.startsAt, at),
+    gt(rosterPeriods.endsAt, at),
+  ));
   return rows.length;
 }
 
