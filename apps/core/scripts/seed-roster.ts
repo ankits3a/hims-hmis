@@ -1,6 +1,6 @@
 import { createDb } from "../src/kernel/db/client";
 import { requireEnv } from "../src/kernel/config";
-import { seedOrgDepartments, seedRosterPositions } from "../src/modules/roster";
+import { seedOrgDepartments, seedRosterPositions, seedUnits } from "../src/modules/roster";
 
 /**
  * PHASE R (R1) — seeds the two master lists the roster is keyed on: the hospital's organisational
@@ -24,6 +24,11 @@ async function main(): Promise<void> {
     console.log(`org_departments: ${d.added} added, ${d.present} already present`);
     const p = await seedRosterPositions(db);
     console.log(`roster_positions: ${p.added} added, ${p.present} already present`);
+    const u = await seedUnits(db);
+    console.log(`roster_teams: ${u.added} added, ${u.present} already present — ALL INACTIVE:`);
+    console.log("  the 27-unit establishment is this hospital's own (UG-MSR 2023 dropped the units");
+    console.log("  table), so each head of department confirms their units before anything rosters");
+    console.log("  against them. `pnpm --filter @hmis/core standup:check` lists what is unconfirmed.");
   } finally {
     await pool.end();
   }

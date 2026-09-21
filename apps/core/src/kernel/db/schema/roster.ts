@@ -204,8 +204,8 @@ export const rosterPeriods = pgTable(
     status: text("status").notNull().default("draft"),
     /** Which department answers for this roster. NULL only for a hospital-wide one. */
     departmentId: text("department_id").references(() => orgDepartments.id),
-    /** The clinical unit or ward team, when the roster is one team's. FK arrives with R3's tables. */
-    teamId: text("team_id"),
+    /** The clinical unit or ward team, when the roster is one team's. FK added by R3. */
+    teamId: text("team_id").references((): AnyPgColumn => rosterTeams.id),
     /**
      * THE POSITIONS THIS PERIOD ANSWERS FOR, and it is what makes the fallback safe (V14). A
      * resolver asked about a position this period does not declare must NOT read "nobody is on" off
@@ -343,7 +343,7 @@ export const rosterAssignments = pgTable(
     offKind: text("off_kind"),
     /** Whose work this duty is done for. Always known: a slot belongs to a department even when pooled. */
     departmentId: text("department_id").notNull().references(() => orgDepartments.id),
-    teamId: text("team_id"),
+    teamId: text("team_id").references((): AnyPgColumn => rosterTeams.id),
     coverScope: text("cover_scope").notNull().default("team"),
     /** 1 is the first person rung. NULL where the slot is presence and there is no ladder to climb. */
     callTier: smallint("call_tier"),
@@ -414,5 +414,225 @@ export const rosterAssignments = pgTable(
     check("roster_assignments_effective_ck", sql`not ${t.effective} or ${t.liveTo} is null`),
     check("roster_assignments_confirmed_ck", sql`(${t.confirmedByUserId} is null) = (${t.confirmedAt} is null)`),
     check("roster_assignments_actor_type_ck", sql`${t.proposedByActorType} in ('user', 'agent', 'system', 'patient')`),
+  ],
+);
+
+/* ═════════════════════════ PHASE R (R3) — TEAMS, PEOPLE, AND WHO STANDS IN ═════════════════════════ */
+
+/**
+ * ═══ THE UNIT IS THE THING THE WHOLE TEACHING HOSPITAL IS ORGANISED AROUND ═══
+ *
+ * A "unit" in an Indian medical college is a standing team — a professor, an associate, an
+ * assistant, a senior resident, its junior residents and its interns — that owns beds, takes
+ * emergency admissions on its own day, runs its own OPD and teaches its own students. UG-MSR 2023's
+ * implied establishment for 150 seats is 5/5/3/3/4/2/2/1/1 plus Respiratory Medicine: **27 units.**
+ *
+ * ═══ AND IT IS GENERALISED, BECAUSE NURSES ARE THE LARGER WORKFORCE (stress test S3) ═══
+ *
+ * A ward's nursing team, a service like the blood bank, and a department's night POOL are the same
+ * shape: a standing group of people with positions in it. So the table is `roster_teams` with a
+ * `kind`, not `clinical_units` — the alternative was a second set of tables for nursing, and the
+ * stress test's whole S3 finding is that the second set never gets written and the ward gets no
+ * roster.
+ *
+ * ═══ A MEMBERSHIP IS DATED, AND JUDGED AT THE SLOT'S START ═══
+ *
+ * People move: a JR rotates to another unit for three months, an intern for two weeks, a nurse is
+ * floated for one night. `starts_at`/`ends_at` make that representable, and the resolver asks
+ * *"who was a member when this duty began"* rather than *"who is a member now"* — otherwise
+ * yesterday's roster changes when somebody transfers today.
+ *
+ *   · **`parent`** — where you belong. Exactly one at a time, and the EXCLUDE says so.
+ *   · **`rotation`** — where you are posted for a while. The district residency, the intern's
+ *     two weeks in ENT, the PG's stint in ICU.
+ *   · **`float`** — one night's cover somewhere else, and you are still your own unit's.
+ *
+ * **`retains_parent_nights`** is the one that surprises people: a resident on rotation usually
+ * still takes their parent unit's nights, because the night pool is a department's and the rotation
+ * is within it. Getting this wrong empties a night pool silently.
+ */
+
+export const ROSTER_TEAM_KINDS = ["clinical_unit", "ward_team", "service", "pool"] as const;
+export type RosterTeamKind = (typeof ROSTER_TEAM_KINDS)[number];
+
+export const ROSTER_MEMBERSHIP_KINDS = ["parent", "rotation", "float"] as const;
+export type RosterMembershipKind = (typeof ROSTER_MEMBERSHIP_KINDS)[number];
+
+export const ROSTER_TEAM_ROLES = ["head", "faculty", "senior_resident", "junior_resident", "intern", "member", "lead"] as const;
+export type RosterTeamRole = (typeof ROSTER_TEAM_ROLES)[number];
+
+/** What payroll and the NMC return call somebody. Distinct from POSITION (what they answer as). */
+export const ROSTER_GRADES = [
+  "professor", "associate_professor", "assistant_professor", "senior_resident",
+  "jr1", "jr2", "jr3", "intern", "medical_officer",
+  "nursing_superintendent", "ward_sister", "staff_nurse", "technician", "pharmacist", "admin", "support",
+] as const;
+export type RosterGrade = (typeof ROSTER_GRADES)[number];
+
+/** Someone standing in for a head who is away. The head's own membership is untouched. */
+export const ROSTER_OFFICIATING_ROLES = ["head", "hod", "lead"] as const;
+export type RosterOfficiatingRole = (typeof ROSTER_OFFICIATING_ROLES)[number];
+
+/**
+ * What one person may let another do in their absence. Deliberately a SHORT list, and deliberately
+ * not "everything": a delegation is how a HOD going on leave keeps their department running, not a
+ * way to hand over an identity. `rosterActPolicy`'s `never` column is unaffected — a delegation
+ * moves a PERMISSION between people and never makes a machine into a person.
+ */
+export const ROSTER_AUTHORITIES = [
+  "publish", "approve_swap", "override_rule", "approve_leave", "declare_holiday", "declare_mode",
+] as const;
+export type RosterAuthority = (typeof ROSTER_AUTHORITIES)[number];
+
+const teamAudit = {
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedBy: text("updated_by").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+};
+
+export const rosterTeams = pgTable(
+  "roster_teams",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    departmentId: text("department_id").notNull().references(() => orgDepartments.id),
+    /** `MED-U2`, `WARD-3B`, `MED-NIGHT` — what a human says out loud and a duty roster prints. */
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    /** The ward or theatre this team is normally found in. NULL for a pool, which is everywhere. */
+    homeLocationResourceId: text("home_location_resource_id").references(() => resources.id),
+    leadUserId: text("lead_user_id").references(() => users.id),
+    /** Unit II's `2`. Ordering for a screen and for the take sequence, not an identifier. */
+    unitNumber: integer("unit_number"),
+    /** What the NMC return says this unit holds. The bed ALLOTMENT table says which beds. */
+    sanctionedBeds: integer("sanctioned_beds"),
+    /**
+     * FALSE until a head of department confirms the unit exists as seeded. 20-U §2 is explicit that
+     * the 5/5/3/3/4/2/2/1/1 establishment is **ours, not a regulator's number** — UG-MSR 2023
+     * dropped the units table entirely — so the seed is a DRAFT a human ratifies, and
+     * `standup:check` lists what is still unconfirmed rather than letting a screen present our
+     * arithmetic as the NMC's.
+     */
+    active: boolean("active").notNull().default(false),
+    validFrom: timestamp("valid_from", { withTimezone: true }).notNull().defaultNow(),
+    validTo: timestamp("valid_to", { withTimezone: true }),
+    siteId: text("site_id").notNull().default("main"),
+    ...teamAudit,
+  },
+  (t) => [
+    uniqueIndex("roster_teams_code_ux").on(t.siteId, t.code),
+    index("roster_teams_department_idx").on(t.departmentId, t.active),
+    check("roster_teams_kind_ck", sql`${t.kind} in ('clinical_unit', 'ward_team', 'service', 'pool')`),
+    check("roster_teams_validity_ck", sql`${t.validTo} is null or ${t.validTo} > ${t.validFrom}`),
+    check("roster_teams_unit_number_ck", sql`${t.unitNumber} is null or ${t.unitNumber} >= 1`),
+    check("roster_teams_beds_ck", sql`${t.sanctionedBeds} is null or ${t.sanctionedBeds} >= 0`),
+  ],
+);
+
+export const rosterTeamMemberships = pgTable(
+  "roster_team_memberships",
+  {
+    id: text("id").primaryKey(),
+    teamId: text("team_id").notNull().references(() => rosterTeams.id),
+    userId: text("user_id").notNull().references(() => users.id),
+    /** What they answer as in this team — the same vocabulary a slot carries. */
+    positionKey: text("position_key").notNull().references(() => rosterPositions.key),
+    grade: text("grade").notNull(),
+    roleInTeam: text("role_in_team").notNull(),
+    kind: text("kind").notNull().default("parent"),
+    /** A rotation usually still takes the PARENT department's nights. Getting this wrong empties a pool. */
+    retainsParentNights: boolean("retains_parent_nights").notNull().default(false),
+    /** Until this instant they are extra, and do not fill a requirement (V16). */
+    supernumeraryUntil: timestamp("supernumerary_until", { withTimezone: true }),
+    /** Where this person sits in a rotating pattern — the proposer's (R9) balance point. */
+    patternOffset: integer("pattern_offset"),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    source: text("source").notNull().default("manual"),
+    ...teamAudit,
+  },
+  (t) => [
+    index("roster_team_memberships_team_idx").on(t.teamId, t.startsAt),
+    index("roster_team_memberships_user_idx").on(t.userId, t.startsAt),
+    check("roster_team_memberships_kind_ck", sql`${t.kind} in ('parent', 'rotation', 'float')`),
+    check("roster_team_memberships_role_ck", sql`${t.roleInTeam} in ('head', 'faculty', 'senior_resident', 'junior_resident', 'intern', 'member', 'lead')`),
+    check("roster_team_memberships_grade_ck", sql`${t.grade} in ('professor', 'associate_professor', 'assistant_professor', 'senior_resident', 'jr1', 'jr2', 'jr3', 'intern', 'medical_officer', 'nursing_superintendent', 'ward_sister', 'staff_nurse', 'technician', 'pharmacist', 'admin', 'support')`),
+    check("roster_team_memberships_window_ck", sql`${t.endsAt} is null or ${t.endsAt} > ${t.startsAt}`),
+    check("roster_team_memberships_source_ck", sql`${t.source} in ('manual', 'import', 'academic')`),
+    /** Only a PARENT membership has a night-retention question; a float is one night by definition. */
+    check("roster_team_memberships_retains_ck", sql`not ${t.retainsParentNights} or ${t.kind} = 'rotation'`),
+  ],
+);
+
+export const rosterOfficiating = pgTable(
+  "roster_officiating",
+  {
+    id: text("id").primaryKey(),
+    teamId: text("team_id").notNull().references(() => rosterTeams.id),
+    userId: text("user_id").notNull().references(() => users.id),
+    role: text("role").notNull(),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    reason: text("reason").notNull(),
+    approvedBy: text("approved_by").notNull().references(() => users.id),
+    ...teamAudit,
+  },
+  (t) => [
+    index("roster_officiating_team_idx").on(t.teamId, t.role, t.startsAt),
+    check("roster_officiating_role_ck", sql`${t.role} in ('head', 'hod', 'lead')`),
+    check("roster_officiating_window_ck", sql`${t.endsAt} is null or ${t.endsAt} > ${t.startsAt}`),
+    check("roster_officiating_reason_ck", sql`length(btrim(${t.reason})) between 1 and 500`),
+  ],
+);
+
+export const rosterDelegations = pgTable(
+  "roster_delegations",
+  {
+    id: text("id").primaryKey(),
+    delegatorUserId: text("delegator_user_id").notNull().references(() => users.id),
+    delegateUserId: text("delegate_user_id").notNull().references(() => users.id),
+    authority: text("authority").notNull(),
+    scopeType: text("scope_type").notNull(),
+    scopeId: text("scope_id"),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    reason: text("reason").notNull(),
+    ...teamAudit,
+  },
+  (t) => [
+    index("roster_delegations_delegate_idx").on(t.delegateUserId, t.startsAt, t.endsAt),
+    check("roster_delegations_authority_ck", sql`${t.authority} in ('publish', 'approve_swap', 'override_rule', 'approve_leave', 'declare_holiday', 'declare_mode')`),
+    check("roster_delegations_scope_ck", sql`${t.scopeType} in ('hospital', 'department', 'team', 'location')`),
+    check("roster_delegations_scope_id_ck", sql`(${t.scopeType} = 'hospital') = (${t.scopeId} is null)`),
+    /**
+     * A delegation ALWAYS ends. An open-ended one is a transfer of authority nobody reviews, which
+     * is the thing a delegation is meant not to be — so `ends_at` is NOT NULL here, unlike every
+     * other window in this file.
+     */
+    check("roster_delegations_window_ck", sql`${t.endsAt} > ${t.startsAt}`),
+    check("roster_delegations_reason_ck", sql`length(btrim(${t.reason})) between 1 and 500`),
+    /** Delegating to yourself is not a delegation. */
+    check("roster_delegations_distinct_ck", sql`${t.delegateUserId} <> ${t.delegatorUserId}`),
+  ],
+);
+
+/**
+ * Which beds a unit holds. NMC's return asks for it, and a new admission's default placement uses
+ * it — nothing else. The BED itself is a `resources` row; this table only says whose it is, when.
+ */
+export const rosterBedAllotments = pgTable(
+  "roster_bed_allotments",
+  {
+    id: text("id").primaryKey(),
+    teamId: text("team_id").notNull().references(() => rosterTeams.id),
+    resourceId: text("resource_id").notNull().references(() => resources.id),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    ...teamAudit,
+  },
+  (t) => [
+    index("roster_bed_allotments_team_idx").on(t.teamId, t.startsAt),
+    check("roster_bed_allotments_window_ck", sql`${t.endsAt} is null or ${t.endsAt} > ${t.startsAt}`),
   ],
 );

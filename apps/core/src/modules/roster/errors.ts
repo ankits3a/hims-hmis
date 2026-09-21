@@ -50,6 +50,16 @@ export const ROSTER_ERROR_CODES = [
   "stale_base",
   /** V4 — what the human reviewed is not what is about to go live. */
   "draft_changed_since_review",
+
+  /* ── PHASE R (R3) — teams, the people in them, and who stands in ── */
+  "unknown_team",
+  "unknown_membership",
+  "duplicate_team_code",
+  "parent_membership_overlap",
+  "head_already_held",
+  "officiating_overlap",
+  "delegation_not_held",
+  "intern_plan_invalid",
 ] as const;
 
 export type RosterErrorCode = (typeof ROSTER_ERROR_CODES)[number];
@@ -82,6 +92,15 @@ export const ROSTER_ERROR_SENTENCES: Record<RosterErrorCode, string> = {
   version_conflict: "somebody else drafted the next version of this roster a moment ago — open theirs",
   stale_base: "this draft was made from a version that is no longer the live one, so publishing it would silently undo whatever changed in between — draft again from the version that is live now",
   draft_changed_since_review: "this roster has changed since it was put in front of you — read it again before publishing it",
+
+  unknown_team: "there is no such unit, ward team, service or pool",
+  unknown_membership: "that person does not have a place in this team over that stretch",
+  duplicate_team_code: "another team already goes by that code, and two teams with one name is a rota nobody can read",
+  parent_membership_overlap: "a person belongs to ONE unit at a time — close the place they hold now before giving them another, or post them on rotation instead",
+  head_already_held: "this team already has a head over that stretch; record an officiating head instead of a second substantive one",
+  officiating_overlap: "somebody is already standing in for that role over part of the same stretch",
+  delegation_not_held: "nobody may hand on an authority they do not hold themselves",
+  intern_plan_invalid: "that internship plan does not add up to the year the regulator requires",
 };
 
 export class RosterError extends Error {
@@ -119,6 +138,15 @@ const STATUS: Record<RosterErrorCode, number> = {
   version_conflict: 409,
   stale_base: 409,
   draft_changed_since_review: 409,
+
+  unknown_team: 404,
+  unknown_membership: 404,
+  intern_plan_invalid: 422,
+  duplicate_team_code: 409,
+  parent_membership_overlap: 409,
+  head_already_held: 409,
+  officiating_overlap: 409,
+  delegation_not_held: 409,
 };
 
 export function rosterHttpStatus(code: RosterErrorCode): number {

@@ -230,7 +230,8 @@ staff masking, roster tools) → Plan 41 consumers.
 | task | branch | commit | PR |
 |---|---|---|---|
 | R1 | `lane/roster-r1` | `fe53ab8c` | [#273](https://github.com/ankits3a/hims-hmis/pull/273) |
-| R2 | `lane/roster-r2` (stacked on R1) | *(filled at commit)* | *(filled at open)* |
+| R2 | `lane/roster-r2` (stacked on R1) | `6b7ab715` | [#275](https://github.com/ankits3a/hims-hmis/pull/275) |
+| R3 | `lane/roster-r3` (stacked on R2) | *(filled at commit)* | *(filled at open)* |
 | — | `lane/roster-clock-core` | `66b4a2e8` | [#272](https://github.com/ankits3a/hims-hmis/pull/272) — **not a phase-R task**: a clock time bomb that turned `main` red at IST midnight on 2026-09-21, diagnosed from R1's full suite and fixed so the phase could merge at all |
 
 ### 9.2 Kickoff re-measurement (§1), 2026-09-20
@@ -273,6 +274,11 @@ the three that MOVED are G2, G5 and G9, and one more (G3) grew a consequence. In
 | **F8** | R2 | **The plan's V7 (*"superseded rows keep every original value except `live_to`/`effective`; `updated_by` untouched by supersede"*) was violated by the first draft of both writers**, which stamped the publisher over `updated_by`. Written before the invariant table was re-read. | Both writers now set `effective` and `live_to` only. The reason — that a supersede closes a knowledge window and does not edit a duty, so the senior resident who wrote it must still be named on it two years later — is in the code at both sites, and asserted by a test that plants a different author and reads it back. |
 | **F9** | R2 | **Drafting from a base COPIES its slots**, and three of this task's own tests then added the same person to the same window again and read the resulting refusal as a defect in the gate. A test defect, not a code one — but it is recorded because the next reader will make it too. | The tests now either rely on the copy or `unassign` it first, and `copiedAssignments` is asserted where it matters. The cross-unit swap test models what a human does: take the copied person off, put the other one on. |
 
+| **F10** | R3 | **An emptiness check reads GREEN on an empty box, and this file had already learned it once.** The `roster_units_confirmed` census row, written the obvious way as *"nothing is unconfirmed"*, was green on a fresh database: `unconfirmedTeams` returns `[]` when nothing is seeded, and an empty list satisfies "none outstanding". It is the same defect `radiology_devices_licensed` was fixed for one module over, in the same file, with the reason written beside it. | The row now requires the units to EXIST before their confirmation is evidence of anything. **Found by `standup-check.test.ts`'s fresh-database leg** — the guard written for that exact lesson, doing exactly its job, which is the argument for keeping it. |
+| **F11** | R3 | **A delegation mapped to a PERMISSION rather than an ACT is a hole.** All six roster authorities are gated on `roster.periods.publish` today, so the natural implementation — *"a delegation grants the permission it corresponds to"* — would let a head who delegated **leave approval** find their deputy publishing the month's rota. | `ACT_AUTHORITIES` maps act → the authorities that satisfy it (`publish` ← `publish`; `accept_warning` ← `override_rule`; `declare` ← `declare_holiday`/`declare_mode`), and mutant M3 widens it to prove the narrowing is load-bearing. Two further narrowings recorded in `access.ts`: the delegation path runs only after the ordinary check fails, and only after `rosterActPolicy` — so **no delegation can ever put a machine through the `never` column**. |
+| **F12** | R3 | **`access.ts` needed the delegation read and `delegations.ts` needed `access.ts`'s permission check** — a require cycle that happens to work under the CommonJS ts-jest emit, because both bindings are only touched at call time, and would stop working the day the module is loaded any other way. | `delegations-read.ts`: a ten-line file that makes the dependency a DAG instead of a bet. |
+| **F13** | R3 | **A delegation test that does not separate the ACTOR from the DELEGATOR only ever sees the first check.** The first version expected `delegation_not_held` and got `not_permitted`, because the actor recording the delegation was also the person whose authority was being handed on. | The test now uses the superintendent's office as the recorder and the HOD as the delegator, and asserts BOTH refusals in their order. A test defect, recorded because the two checks are genuinely distinct and the next reader will conflate them too. |
+
 ### 9.5 Mutant tally
 
 | task | mutant | built as | result |
@@ -285,8 +291,13 @@ the three that MOVED are G2, G5 and G9, and one more (G3) grew a consequence. In
 | R2 | **M3** — the V4 content-hash check removed | as above | **DIED**, 1 failed / 29 passed. `expected a RosterError, got: null` — the publish of a roster that moved after the head read it simply succeeds |
 | R2 | **M4** — the advisory lock never taken | as above | **DIED**, 1 failed / 29 passed. `Expected: 1` / `Received: 0` from `pg_locks` inside the transaction — which is why the lock is ASSERTED rather than raced for (a race test flakes on a busy box and proves nothing on an idle one) |
 
+| R3 | **M1** — `teamMembers` ignores officiating rows | `teams-officiating-ignored.mutant.ts` + spec | **DIED**, 1 failed / 14 passed. `Expected: "head"` / `Received: "faculty"` — the head on leave is the one whose phone gets rung |
+| R3 | **M2** — `nightPoolFor` counts every member whatever place they hold | `teams-night-pool-ignores-retention.mutant.ts` + spec | **DIED**, 1 failed / 14 passed, on the leg that a rotation which did NOT keep its nights leaves the pool |
+| R3 | **M3** — any delegated authority satisfies any act (F11's hole, restored) | `access-delegation-widened.mutant.ts` + spec | **DIED**, 2 failed / 7 passed. `expected a RosterError, got: null` — a delegated leave approval publishes the rota |
+| R3 | **M4** — the intern extension is served wherever the year starts, not where the absence happened | `interns-extension-misplaced.mutant.ts` + spec | **DIED**, 3 failed / 9 passed. `Expected: "PED"` / `Received: "COMM"` — V17's second half |
+
 Every mutant module and spec was deleted before the counts; `git status --porcelain` carried no
-`*.mutant.*` in either task.
+`*.mutant.*` in any task.
 
 ### 9.6 The two review passes
 *(filled at R10)*
