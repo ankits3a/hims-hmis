@@ -465,4 +465,32 @@ verdict, so a UAT stand-up gains two reds until somebody publishes a cycle and a
 intended grammar (RED until an act) and it should be expected rather than discovered.
 
 ### 9.7 The token actuals row (`/token-audit`)
-*(filled at R10 close)*
+
+**What this row can honestly say, and what it cannot.** The stop-loss was raised at R1's close
+(§0) against a projection of ~1.3–1.5 M for R1–R9 versus the prompt's 900 k, and the ruling was
+that the actuals table "still records what it cost". Phase R ran across **several sessions on
+different days**, and no single session holds the others' meters. So this row records what is
+measurable from the artefacts rather than a total nobody can substantiate.
+
+| what | measured |
+|---|---|
+| tasks | R1–R10, ten PRs (#273, #275, #276, #277, #278, #279, #280, #285, #286, and this one) |
+| migrations | six on `main` from R1–R7 (`0108`–`0113`), one from R8, **none deployed** |
+| serial re-cuts | **four in one evening**, two of them on R8's branch (#280 took 0113 under #269; #283 took 0116; #284 took 0117 mid-CI) |
+| module at close | 30 source files, ~9.5k lines, 356 tests / 23 suites green |
+| phase-wide censuses touched | schema (5 tables), V8 export census (×4), V9 event census, `ist-clock-parity`, the seven-site scheduler census, `standup:check` (×2 rows) |
+| mutants | 31 built and killed R1–R7; 6 more at R8 (**one survived and produced a structural guard**); 1 at R9 |
+| review passes | 2, as the method requires — **pass 1 found 5 problems including a live defect, pass 2 found 5 more, all in pass 1's own remediation** |
+
+**The one number worth carrying forward is not a token count.** The most expensive recurring cost
+in this phase was the **migration serial collision**: four re-cuts in a single evening, each one a
+full regenerate-plus-drop-lane-databases cycle, because a ~16-minute core CI run is longer than the
+interval between merges on this box. "Take the serial at rebase, not at start" contained the damage
+every time — no migration was ever corrupted — but the containment is the tax, not the fix. A merge
+train or a serial reservation is the standing answer, and it is an owner-scale decision rather than
+a lane's.
+
+**The second is the review arithmetic.** Ten findings across two passes, on code that was already
+green on 356 tests and had been through its own author's checks. Five of the ten were in the
+remediation written to close the first five — including the same emptiness defect met a third time
+INSIDE the fix for it. A close review that stops after one pass would have shipped that.
