@@ -4,7 +4,7 @@ import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
-import { completeConsultation, parkConsultation, resumeConsultation, saveConsultNote, startConsultation } from "./consultation";
+import { completeConsultation, openUnpaidToken, parkConsultation, resumeConsultation, saveConsultNote, startConsultation } from "./consultation";
 import { transferQueue } from "./encounters";
 import { parsed, toHttp } from "./opd-masters.controller";
 import {
@@ -35,6 +35,8 @@ const transferBody = z.object({
 });
 const queueQuery = z.object({ doctorId: z.string().min(1), serviceDate: z.string().max(10).optional() });
 const sessionStatusBody = z.object({ status: z.enum(["in", "out", "closed"]) });
+/** The doctor's sentence for seeing a patient before the bill — shown at every desk after this one. */
+const openUnpaidBody = z.object({ reason: z.string().max(500) });
 /**
  * THE SKIP NOW STATES ITS REASON (owner, 2026-09-13). `reason` is REQUIRED, so the shipped client
  * that posted an empty body gets a 400 rather than writing a reasonless skip — which is the right
@@ -255,6 +257,30 @@ export class OpdQueueController {
   }
 
   // ——— the consultation ———
+
+  /**
+   * ═══ THE DOCTOR OPENS AN UNSETTLED TOKEN (OWNER RULING 2026-09-20) ═══
+   *
+   * *"It waits for bill to be paid until doctor opens the token from his dashboard manually.
+   * Currently the doctor have no screen to do it. But we need it to be built."*
+   *
+   * `opd.consult` and NO new permission: this is not a new authority but the one every doctor
+   * already holds over their own session, and `openUnpaidToken` refuses anybody who is not this
+   * encounter's treating doctor (`requireTreatingDoctor`, the same rule as the note, the park and
+   * the completion). A permission of its own would be a second name for a grant that exists, and
+   * `seed-roles.ts` pins the count. Deliberately not the cashier's and not the front desk's: a
+   * counter that can excuse its own collection is the separation this hospital draws everywhere.
+   */
+  @RequirePermission("opd.consult", "hospital")
+  @Post("visits/:id/consult/open-unpaid")
+  async openUnpaid(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ encounter: EncounterRow }> {
+    const b = parsed(openUnpaidBody, body);
+    try {
+      return { encounter: (await openUnpaidToken(this.db, actor, id, b.reason)).encounter };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
 
   @RequirePermission("opd.consult", "hospital")
   @Post("visits/:id/consult/start")

@@ -3415,3 +3415,109 @@ describe("FD-30 — the transcription draft on the doctor's screen", () => {
     expect(screen.queryByTestId("rx-draft")).not.toBeInTheDocument();
   });
 });
+
+/**
+ * ═══ THE TOKEN WAITING FOR ITS BILL, AND THE DOCTOR'S OWN DOOR (OWNER RULING 2026-09-20) ═══
+ *
+ * Owner: *"the emergency at the bay doesn't open the doctor's door. It waits for bill to be paid
+ * until doctor opens the token from his dashboard manually. Currently the doctor have no screen to
+ * do it. But we need it to be built."*
+ *
+ * The server holds an unsettled token out of `ordered` — so before this group existed, a patient
+ * charted by the bay and stopped by the counter was on NO screen a doctor looks at, which is the
+ * same disappearance the `left` group was built for one ruling ago. These three run against that
+ * screen and fail on it.
+ */
+describe("OpdConsult — the token waiting for its bill", () => {
+  const HELD = entry({
+    id: "qe-held", seq: 4, encounterId: "enc-5", tokenNo: 9, status: "waiting", position: null, queueClass: null,
+    encounter: {
+      id: "enc-5", patientId: "p-5", visitType: "new", dangerFlagged: true, status: "waiting",
+      feeBypassReason: "emergency — vitals taken at the bay before billing; the fee is still due",
+      consultFeeOverrideReason: null,
+    },
+    patient: summary("p-5", "HMS0000000050", "Ramesh Yadav"),
+    feeStatus: "unsettled",
+  });
+  const HELD_VIEW = { ...QUEUE_VIEW, heldForPayment: [HELD], counts: { ...QUEUE_VIEW.counts, heldForPayment: 1 } };
+  /** What the server answers AFTER the doctor opens it: held no longer, ordered now, still unpaid. */
+  const RELEASED_VIEW = {
+    ...QUEUE_VIEW,
+    ordered: [...QUEUE_VIEW.ordered, { ...HELD, position: 3, queueClass: 3 }],
+    heldForPayment: [], counts: { ...QUEUE_VIEW.counts, waiting: 3, heldForPayment: 0 },
+  };
+
+  /** The queue read answers HELD until the open lands, then RELEASED — the screen re-reads, never patches. */
+  function withHeld(over: Record<string, Handler> = {}): Record<string, Handler> {
+    let opened = false;
+    return {
+      ...baseRoutes(),
+      "GET /api/opd/queues": () => ({ status: 200, body: opened ? RELEASED_VIEW : HELD_VIEW }),
+      "POST /api/opd/visits/enc-5/consult/open-unpaid": () => {
+        opened = true;
+        return { status: 201, body: { encounter: ENCOUNTER } };
+      },
+      ...over,
+    };
+  }
+
+  it("U1: it is on the rail and NOT in the queue, and it says why it has no bill", async () => {
+    mockRoutes(withHeld());
+    renderWithProviders(<OpdConsult />);
+
+    const row = await screen.findByTestId("held-row-qe-held");
+    expect(within(row).getByText("9")).toBeInTheDocument();
+    expect(within(row).getByText("Ramesh Yadav")).toBeInTheDocument();
+    /* The bay's own sentence, carried two desks: it is what tells the doctor this was an emergency. */
+    expect(screen.getByTestId("held-why-qe-held").textContent).toContain("emergency");
+    expect(screen.getByTestId("held-danger-qe-held")).toBeInTheDocument();
+    expect(screen.getByTestId("held-queue-title").textContent).toContain("1");
+
+    /* NOT in the callable queue — the row the doctor can call is a row the server let them call. */
+    expect(within(screen.getByTestId("consult-queue")).queryByText("Ramesh Yadav")).toBeNull();
+    expect(screen.queryByTestId("queue-row-qe-held")).toBeNull();
+  });
+
+  it("U2: opening it asks for a sentence first, and posts nothing until there is one", async () => {
+    mockRoutes(withHeld());
+    const user = userEvent.setup();
+    renderWithProviders(<OpdConsult />);
+
+    await user.click(await screen.findByTestId("open-unpaid-qe-held"));
+    const dialog = await screen.findByTestId("open-unpaid-dialog");
+    /* Opening the dialog has decided nothing — the same rule the skip dialog carries beside it. */
+    expect(callsTo("POST", "/api/opd/visits/enc-5/consult/open-unpaid")).toHaveLength(0);
+    expect(within(dialog).getByTestId("open-unpaid-confirm")).toBeDisabled();
+
+    await user.type(within(dialog).getByTestId("open-unpaid-reason"), "emergency — chest pain, seeing him now");
+    expect(within(dialog).getByTestId("open-unpaid-confirm")).toBeEnabled();
+    await user.click(within(dialog).getByTestId("open-unpaid-confirm"));
+
+    await waitFor(() => expect(callsTo("POST", "/api/opd/visits/enc-5/consult/open-unpaid")).toHaveLength(1));
+    expect(bodiesOf("POST", "/api/opd/visits/enc-5/consult/open-unpaid")[0]).toEqual({
+      reason: "emergency — chest pain, seeing him now",
+    });
+
+    /* And the rail is REREAD: the group empties and the token is in the queue, still stamped unpaid. */
+    await waitFor(() => expect(screen.queryByTestId("held-row-qe-held")).toBeNull());
+    expect(await screen.findByTestId("queue-row-qe-held")).toBeInTheDocument();
+  });
+
+  it("U3: a refusal lands on the rail, and the token stays where it was", async () => {
+    mockRoutes(withHeld({
+      "POST /api/opd/visits/enc-5/consult/open-unpaid": {
+        status: 409,
+        body: { statusCode: 409, message: "encounter enc-5 is not this doctor's", code: "not_your_patient" },
+      },
+    }));
+    const user = userEvent.setup();
+    renderWithProviders(<OpdConsult />);
+
+    await user.click(await screen.findByTestId("open-unpaid-qe-held"));
+    await user.type(await screen.findByTestId("open-unpaid-reason"), "seeing him now");
+    await user.click(screen.getByTestId("open-unpaid-confirm"));
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.getByTestId("held-row-qe-held")).toBeInTheDocument();
+  });
+});

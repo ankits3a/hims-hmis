@@ -171,7 +171,16 @@ export type WireSkipReason = (typeof SKIP_REASONS)[number];
 export type WireQueueEntryView = WireQueueEntry & {
   position: number | null;
   queueClass: OpdQueueClass | null;
-  encounter: { id: string; patientId: string; visitType: string; dangerFlagged: boolean; status: string };
+  encounter: {
+    id: string; patientId: string; visitType: string; dangerFlagged: boolean; status: string;
+    /**
+     * OWNER RULING 2026-09-20 — the two sentences that explain an unpaid token. `feeBypassReason`
+     * is the front desk's or the bay's (FD-32: why this patient reached the nurse unbilled);
+     * `consultFeeOverrideReason` is the doctor's own, and its presence is what put an unsettled
+     * token back in the callable order. Optional on the wire: an older server sends neither.
+     */
+    feeBypassReason?: string | null; consultFeeOverrideReason?: string | null;
+  };
   patient: WirePatientSummary | null;
   /**
    * RC-4 T3 — THE PAID STAMP, AND IT WAS ALREADY ON THE WIRE. **Third time this series.**
@@ -210,8 +219,15 @@ export type WireQueueView = {
   current: WireQueueEntryView | null; inConsult: WireQueueEntryView[];
   /** The tokens that fell out after the skip cap — newest first. `counts.left` counts them; this names them. */
   left: WireQueueEntryView[];
+  /**
+   * OWNER RULING 2026-09-20 — waiting, vitals done, fee unsettled, nobody has opened them: held out
+   * of `ordered` (so `callNext` cannot reach them and the hall's board never announces them) and
+   * listed here for the one screen that may act on them, the treating doctor's. Defaulted to `[]`
+   * by every reader: a tab talking to an older server must show no group rather than crash.
+   */
+  heldForPayment?: WireQueueEntryView[];
   waitingVitals: number;
-  counts: { waiting: number; called: number; inConsult: number; done: number; left: number };
+  counts: { waiting: number; called: number; inConsult: number; done: number; left: number; heldForPayment?: number };
 };
 
 /**

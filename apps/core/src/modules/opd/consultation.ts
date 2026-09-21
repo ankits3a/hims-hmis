@@ -9,7 +9,8 @@ import { getEncounter, moveEncounter } from "./encounters";
 import { recordComplaintUsage } from "./complaints";
 import { OpdError } from "./errors";
 import {
-  admissionRequested, consultationCompleted, consultationParked, consultationResumed, consultationStarted, referralIssued,
+  admissionRequested, consultFeeOverridden, consultationCompleted, consultationParked, consultationResumed,
+  consultationStarted, referralIssued,
 } from "./events";
 import { doctorForUser } from "./masters";
 import { markDone, markInConsult } from "./queue";
@@ -227,6 +228,73 @@ export async function vitalsGateVerdict(
   return { ok: true };
 }
 
+/**
+ * ══════════ THE DOCTOR OPENS THE TOKEN (OWNER RULING 2026-09-20) ══════════
+ *
+ * Owner: *"the emergency at the bay doesn't open the doctor's door. It waits for bill to be paid
+ * until doctor opens the token from his dashboard manually. Currently the doctor have no screen to
+ * do it. But we need it to be built. Once the bill is paid then the token automatically moves to
+ * the display board in the queue towards the doctor consultation."*
+ *
+ * An unsettled token WAITS: `listQueue` holds it out of the callable order, `callNext` will not
+ * reach it, and the public board does not announce it. Two things release it and they are not
+ * alike — the money arriving is DERIVED (nothing is written; the ledger flips and the next read
+ * sees it, which is what "automatically" has to mean if it is never to be wrong), and this, which
+ * is a person deciding, and therefore written down.
+ *
+ * ═══ WHOSE DECISION, AND WHY IT IS NOT THE COUNTER'S ═══
+ *
+ * `requireTreatingDoctor`: the encounter's OWN doctor, the same rule the note, the park and the
+ * completion beside it already carry. A clerk may not seat a patient in a room they do not run,
+ * and a doctor down the corridor may not spend this doctor's session on someone else's unpaid
+ * patient. It is deliberately NOT `feeBypass*` — FD-32's waiver opens the bay, this opens the
+ * consulting room, and one column serving both would turn a nurse's emergency into a doctor's
+ * decision nobody made (the owner ruled exactly that, twice).
+ *
+ * ═══ AND IT DOES NOT MOVE ONE RUPEE ═══
+ *
+ * The invoice is still owed and still raised; `feeStatus` goes on saying `unsettled` and the ⚠
+ * mark goes on riding every desk this visit reaches. What is waived is the ORDER of paying and
+ * being seen, for one visit, by a named doctor, for a stated reason. First writer wins: the audit
+ * question is who opened the door, and a second call must not be able to re-answer it.
+ */
+export async function openUnpaidToken(
+  db: Db, actor: Actor, encounterId: string, reason: string, now: Date = new Date(),
+): Promise<{ encounter: EncounterRow; doctor: DoctorRow }> {
+  const current = await getEncounter(db, encounterId);
+  if (!current) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
+  const doctor = await requireTreatingDoctor(db, actor, current);
+  const trimmed = reason.trim();
+  if (trimmed.length < 3) {
+    throw new OpdError("reason_required", "say why this patient is being seen before the bill — it is shown at every desk after this one");
+  }
+  if (current.consultFeeOverrideBy !== null) return { encounter: current, doctor };
+  return withTx(db, async (tx) => {
+    const updated = await tx
+      .update(opdEncounters)
+      .set({ consultFeeOverrideBy: actor.id, consultFeeOverrideReason: trimmed, consultFeeOverrideAt: now })
+      .where(and(eq(opdEncounters.id, current.id), isNull(opdEncounters.consultFeeOverrideBy)))
+      .returning();
+    const encounter = updated[0] ?? current;
+    /*
+      THE EVENT IS THE LEDGER'S COPY. The columns answer "is this token open" on every read; the
+      event answers "when, and on whose word" for a month-end that asks why the day's collection is
+      short. Appended only on the write that actually landed — a second caller returns above and
+      appends nothing, so the ledger cannot say the door was opened twice.
+    */
+    if (updated.length > 0) {
+      await appendEvent(tx, consultFeeOverridden.make({
+        actor, patientId: encounter.patientId, encounterId: encounter.id, correlationId: encounter.workflowInstanceId,
+        payload: {
+          encounterId: encounter.id, patientId: encounter.patientId, doctorId: doctor.id,
+          serviceDate: encounter.serviceDate, reason: trimmed,
+        },
+      }));
+    }
+    return { encounter, doctor };
+  });
+}
+
 /** The encounter's newest queue entry (seq, never id — ledger §3.26) and its session's room: the doctor-day event fields. */
 async function entryWhere(tx: Tx, encounterId: string): Promise<{ sessionId: string; roomId: string | null; tokenNo: number }> {
   const entries = await tx
@@ -251,6 +319,20 @@ export async function startConsultation(
   for (const [key, guard] of consultStartGuards) {
     const verdict = await guard(db, current);
     if (!verdict.ok) {
+      /*
+        ═══ THE DOCTOR HAS ALREADY DECIDED (OWNER RULING 2026-09-20) ═══
+
+        Owner: *"It waits for bill to be paid until doctor opens the token from his dashboard
+        manually."* `openUnpaidToken` is that decision, written down with a name and a sentence on
+        it, and this is where it is spent.
+
+        IT EXCUSES ONE CODE AND NOT ONE GUARD. `fee_unsettled` is the money, and the money is the
+        only thing a doctor may decide to proceed without; a guard that starts refusing for a
+        clinical reason — a sealed patient, a closed session, a statute — must go on refusing a
+        doctor who has waived a BILL. Keying on the verdict rather than on the registry key is what
+        makes that true for guards this file has never heard of.
+      */
+      if (verdict.code === "fee_unsettled" && current.consultFeeOverrideBy !== null) continue;
       throw new OpdError(
         "consult_gate_refused",
         `consult start refused by ${key}: ${verdict.code}`,
