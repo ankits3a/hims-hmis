@@ -85,3 +85,19 @@ export type {
 } from "./calendar";
 export { CYCLE_TEMPLATES, cycleTemplate, draftCycleFromTemplate } from "./templates";
 export type { CycleTemplate } from "./templates";
+export { istDateOfInstant } from "./calendar";
+// PHASE R (R8) — whether a roster is any good.
+export {
+  BLOCKING_RULE_KEYS, ROSTER_RULES, ROSTER_RULE_COUNT, rulesInForce, seedRosterRules,
+} from "./rules";
+export type { EffectiveRule, RosterRuleSeed } from "./rules";
+export { blockingFindings, findingKey, templateFeasibility, validate } from "./validator";
+export type {
+  Feasibility, FeasibilityInput, HypotheticalRoster, RosterFinding, ValidateInput,
+} from "./validator";
+export { hoursCarried, simulate } from "./simulate";
+export type { Exclusion, SimulateDelta, SimulateOptions, SimulateResult } from "./simulate";
+export {
+  acceptFinding, acceptedFindingKeys, asFinding, listFindings, recordFindings,
+} from "./findings";
+export type { RosterFindingRow } from "./findings";

@@ -45,6 +45,16 @@ export function istMidnightUtc(istDate: string): Date {
   return new Date(Date.parse(`${istDate}T00:00:00Z`) - IST_OFFSET_MINUTES * MINUTE_MS);
 }
 
+/**
+ * The IST calendar day an instant falls on — the exact inverse of `istMidnightUtc`, and here
+ * rather than in the validator so that the hospital has ONE opinion about where a day begins.
+ * A night duty starting 20:00 IST and a handover at 02:00 IST are different days by this function,
+ * which is what a ward whiteboard means by them too.
+ */
+export function istDateOfInstant(at: Date): string {
+  return new Date(at.getTime() + IST_OFFSET_MINUTES * MINUTE_MS).toISOString().slice(0, 10);
+}
+
 function assertIstDate(d: string): void {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || Number.isNaN(Date.parse(`${d}T00:00:00Z`))) {
     throw new RosterError("invalid_window", `"${d}" is not a calendar day`, { date: d });

@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
-  boolean, check, date, index, integer, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex,
+  boolean, check, date, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { roles, users } from "./auth";
@@ -1054,5 +1055,238 @@ export const rosterDutyWindows = pgTable(
     check("roster_duty_windows_activity_ck", sql`${t.activity} in ('opd', 'elective_ot', 'ward_teaching', 'take', 'post_take', 'backup', 'minor_ot', 'special_clinic')`),
     check("roster_duty_windows_window_ck", sql`${t.endsAt} > ${t.startsAt}`),
     check("roster_duty_windows_source_ck", sql`${t.source} in ('cycle', 'overlay', 'amendment')`),
+  ],
+);
+
+/**
+ * PHASE R (R8) — **WHETHER A ROSTER IS ANY GOOD.** Requirements, rules, findings, and the dated
+ * overrides a department is allowed for a season.
+ *
+ * ═══ THE DISTINCTION THIS WHOLE SECTION RESTS ON ═══
+ *
+ * R2's publish gate refuses what can never be right: a window that ends before it starts, a person
+ * in two rooms, a publish that would silently undo somebody's work. **Everything here is different
+ * in kind.** "Fewer than two junior residents on this unit" is not impossible — it is most Indian
+ * teaching hospitals on most nights of the year, and a roster that says so is telling the truth.
+ * So a rule produces a FINDING, a finding carries a severity, and a human with a name may accept a
+ * `warn` with a reason that is kept. Only `block` stops a publish, and even a block is a rule row
+ * somebody can see rather than a branch in code.
+ *
+ * ═══ WHY REQUIREMENTS ARE ROWS AND NOT CODE (R-067, R-182) ═══
+ *
+ * "A take window needs at least one SR and one JR present and a faculty on call" is a sentence that
+ * changes per department, per day class, and per whatever the regulator said last. Written as code
+ * it needs a developer and a deploy; written as rows it needs a HOD and an approval. Every
+ * requirement therefore carries its own `authority` and `citation`, so a screen can always answer
+ * *who says so* — and so that a requirement nobody can source is visibly an `institution` rule
+ * rather than passing itself off as the NMC's.
+ *
+ * ═══ THE `state` AUTHORITY IS IN THE VOCABULARY AND HAS NO ROWS (owner, 2026-09-21) ═══
+ *
+ * The college is in Bihar. Knowing the State is not knowing the State's mandates, and a rule row
+ * carrying a citation nobody has read is worse than an absent one — it would be enforced, shown to
+ * a HOD as law, and believed. So `state` is a value this column must be able to hold, and R8 seeds
+ * not one row with it. A hospital adds them when somebody has actually read them.
+ */
+
+/** `block` stops a publish. `warn` may be accepted by a named human with a reason. `info` never stops anything. */
+export const ROSTER_RULE_SEVERITIES = ["block", "warn", "info"] as const;
+export type RosterRuleSeverity = (typeof ROSTER_RULE_SEVERITIES)[number];
+
+/**
+ * WHO SAYS SO. Ordered loosely by how hard it is to argue with, and kept separate from
+ * `ROSTER_AUTHORITIES` (which is about what one person may let another DO, not about where a rule
+ * comes from). `nmc_recommended` and `central_directive` are deliberately distinct from `nmc` and
+ * `central_law`: the 74 h/24 h figure is a recommendation, and the 12 h/48 h one is sub judice —
+ * both are real, neither is settled, and a screen that renders them identically is lying by layout.
+ */
+export const ROSTER_RULE_AUTHORITIES = [
+  "nmc", "nmc_recommended", "central_law", "central_directive", "court", "accreditation",
+  "state", "institution",
+] as const;
+export type RosterRuleAuthority = (typeof ROSTER_RULE_AUTHORITIES)[number];
+
+export const ROSTER_REQUIREMENT_SCOPES = ["location", "team", "department"] as const;
+export type RosterRequirementScope = (typeof ROSTER_REQUIREMENT_SCOPES)[number];
+
+/**
+ * A requirement that holds on a weekday need not hold on a Sunday, and a declared holiday runs the
+ * Sunday pattern (R7). `any` is the escape for a requirement that never varies — a lone-worker rule
+ * does not care what day it is.
+ */
+export const ROSTER_DAY_CLASSES = ["weekday", "saturday", "sunday", "holiday", "any"] as const;
+export type RosterDayClass = (typeof ROSTER_DAY_CLASSES)[number];
+
+/**
+ * `fixed` is a count. `per_occupied_bed` is a RATIO — one nurse per `ratio_n` occupied beds — and
+ * it is the reason `min_count` alone cannot express a nursing requirement: the number needed on a
+ * ward tonight is a function of who is in the beds tonight.
+ */
+export const ROSTER_REQUIREMENT_BASES = ["fixed", "per_occupied_bed"] as const;
+export type RosterRequirementBasis = (typeof ROSTER_REQUIREMENT_BASES)[number];
+
+const ruleAudit = {
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedBy: text("updated_by").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+};
+
+/**
+ * HOW MANY OF WHAT, WHERE, ON WHICH KIND OF DAY — and who says so.
+ *
+ * `scope_id` is deliberately NOT a foreign key: it names a location, a team or a department
+ * depending on `scope_type`, and the three live in different tables. The validator resolves it;
+ * a bad id produces a finding naming the requirement rather than a constraint violation nobody
+ * can read.
+ */
+export const rosterRequirements = pgTable(
+  "roster_requirements",
+  {
+    id: text("id").primaryKey(),
+    scopeType: text("scope_type").notNull(),
+    scopeId: text("scope_id").notNull(),
+    positionKey: text("position_key").notNull().references(() => rosterPositions.key),
+    /** NULL = the requirement holds across the whole day rather than inside one named shift. */
+    shiftDefId: text("shift_def_id").references(() => rosterShiftDefs.id),
+    dayClass: text("day_class").notNull().default("any"),
+    minCount: integer("min_count").notNull(),
+    /** NULL = no ceiling. A ceiling exists for teaching ratios, not for safety. */
+    maxCount: integer("max_count"),
+    /** NULL = the position alone is enough. Otherwise the holder must also hold this credential. */
+    credentialKey: text("credential_key"),
+    basis: text("basis").notNull().default("fixed"),
+    /** Only for `per_occupied_bed`: one per this many occupied beds. */
+    ratioN: integer("ratio_n"),
+    authority: text("authority").notNull(),
+    citation: text("citation"),
+    validFrom: date("valid_from").notNull(),
+    validTo: date("valid_to"),
+    active: boolean("active").notNull().default(true),
+    siteId: text("site_id").notNull().default("main"),
+    ...ruleAudit,
+  },
+  (t) => [
+    index("roster_requirements_scope_idx").on(t.scopeType, t.scopeId).where(sql`${t.active}`),
+    check("roster_requirements_scope_ck", sql`${t.scopeType} in ('location', 'team', 'department')`),
+    check("roster_requirements_day_class_ck", sql`${t.dayClass} in ('weekday', 'saturday', 'sunday', 'holiday', 'any')`),
+    check("roster_requirements_basis_ck", sql`${t.basis} in ('fixed', 'per_occupied_bed')`),
+    check("roster_requirements_authority_ck", sql`${t.authority} in ('nmc', 'nmc_recommended', 'central_law', 'central_directive', 'court', 'accreditation', 'state', 'institution')`),
+    check("roster_requirements_min_ck", sql`${t.minCount} >= 0`),
+    check("roster_requirements_max_ck", sql`${t.maxCount} is null or ${t.maxCount} >= ${t.minCount}`),
+    /** A ratio basis without a divisor is a requirement that cannot be evaluated at all. */
+    check("roster_requirements_ratio_ck", sql`(${t.basis} = 'fixed' and ${t.ratioN} is null) or (${t.basis} = 'per_occupied_bed' and ${t.ratioN} > 0)`),
+    check("roster_requirements_validity_ck", sql`${t.validTo} is null or ${t.validTo} >= ${t.validFrom}`),
+  ],
+);
+
+/**
+ * THE RULE BOOK. Keyed by a stable code because a finding, a refusal and a screen all name the rule
+ * by that code; `params` holds the numbers so that changing "one night in three" to "one night in
+ * four" is a row edit and not a release.
+ */
+export const rosterRules = pgTable(
+  "roster_rules",
+  {
+    key: text("key").primaryKey(),
+    label: text("label").notNull(),
+    severity: text("severity").notNull(),
+    authority: text("authority").notNull(),
+    citation: text("citation"),
+    /** Which cadres the rule speaks about. Empty = everybody. */
+    appliesTo: text("applies_to").array().notNull().default(sql`'{}'::text[]`),
+    params: jsonb("params").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    active: boolean("active").notNull().default(true),
+    ...ruleAudit,
+  },
+  (t) => [
+    check("roster_rules_severity_ck", sql`${t.severity} in ('block', 'warn', 'info')`),
+    check("roster_rules_authority_ck", sql`${t.authority} in ('nmc', 'nmc_recommended', 'central_law', 'central_directive', 'court', 'accreditation', 'state', 'institution')`),
+  ],
+);
+
+/**
+ * A DEPARTMENT'S DATED EXCEPTION — the "lean period" of the stress test.
+ *
+ * Exam month, a ward closed for renovation, four residents at a conference: the rule does not
+ * change, its PARAMETERS do, for a named department between two dates, approved once by somebody
+ * who answers for it. Kept as rows rather than as an edit to `roster_rules` so that the book still
+ * says what the hospital's standing position is, and so that the exception expires by itself.
+ */
+export const rosterRuleProfiles = pgTable(
+  "roster_rule_profiles",
+  {
+    id: text("id").primaryKey(),
+    departmentId: text("department_id").notNull().references(() => orgDepartments.id),
+    ruleKey: text("rule_key").notNull().references(() => rosterRules.key),
+    params: jsonb("params").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    reason: text("reason").notNull(),
+    validFrom: date("valid_from").notNull(),
+    validTo: date("valid_to").notNull(),
+    approvedBy: text("approved_by").notNull().references(() => users.id),
+    approvedAt: timestamp("approved_at", { withTimezone: true }).notNull().defaultNow(),
+    siteId: text("site_id").notNull().default("main"),
+    ...ruleAudit,
+  },
+  (t) => [
+    index("roster_rule_profiles_dept_idx").on(t.departmentId, t.ruleKey, t.validFrom),
+    /** An exception with no end date is a rule change wearing a disguise. */
+    check("roster_rule_profiles_validity_ck", sql`${t.validTo} >= ${t.validFrom}`),
+  ],
+);
+
+/**
+ * WHAT THE VALIDATOR SAID, AND WHAT A HUMAN DID ABOUT IT.
+ *
+ * A finding is not an error log: it is the record that a named person saw "Dr Rao is on her third
+ * night in a row" and published anyway, at a stated time, for a stated reason. That record is the
+ * entire point of letting a warn be accepted at all — `accepted_by` is the answer to "who decided
+ * this was alright", two years later, when somebody asks.
+ *
+ * `cleared_at` is for a finding the next draft no longer produces: it is closed, not deleted,
+ * because the history of what a roster USED to be wrong about is how a department learns.
+ */
+export const rosterFindings = pgTable(
+  "roster_findings",
+  {
+    id: text("id").primaryKey(),
+    periodId: text("period_id").notNull().references(() => rosterPeriods.id),
+    /**
+     * The slot the finding is about, when it is about one — **deliberately NOT a foreign key.**
+     *
+     * A draft's slots are mutable: `unassign` deletes them outright, which is the whole point of a
+     * draft. An FK here made that impossible the moment a head recorded findings — the delete was
+     * refused by the constraint, so reviewing a roster locked the roster against being fixed, which
+     * is precisely backwards. Found by the "cleared, not deleted" test.
+     *
+     * A dangling id is the honest outcome: the finding records what was true when it was evaluated,
+     * and the next `recordFindings` clears it, because a key naming a slot that no longer exists is
+     * not in the newly computed set. Keeping the id also keeps `findingKey` stable, which is what
+     * lets an ACCEPTANCE survive re-evaluation.
+     */
+    assignmentId: text("assignment_id"),
+    /** The person the finding is about, when it is about one. */
+    userId: text("user_id").references(() => users.id),
+    ruleKey: text("rule_key").notNull(),
+    /** Copied from the rule AT EVALUATION, because a rule's severity may change afterwards. */
+    severity: text("severity").notNull(),
+    params: jsonb("params").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    acceptedBy: text("accepted_by").references(() => users.id),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    acceptReason: text("accept_reason"),
+    clearedAt: timestamp("cleared_at", { withTimezone: true }),
+    siteId: text("site_id").notNull().default("main"),
+    ...ruleAudit,
+  },
+  (t) => [
+    index("roster_findings_period_idx").on(t.periodId).where(sql`${t.clearedAt} is null`),
+    index("roster_findings_user_idx").on(t.userId, t.ruleKey),
+    check("roster_findings_severity_ck", sql`${t.severity} in ('block', 'warn', 'info')`),
+    /**
+     * AN ACCEPTANCE IS THREE FACTS OR NONE. A finding accepted by nobody, or at no time, or for no
+     * stated reason is not an acceptance — it is a finding somebody cleared without answering for
+     * it, and this check is what stops that being representable.
+     */
+    check("roster_findings_acceptance_ck", sql`(${t.acceptedBy} is null and ${t.acceptedAt} is null and ${t.acceptReason} is null) or (${t.acceptedBy} is not null and ${t.acceptedAt} is not null and ${t.acceptReason} is not null)`),
   ],
 );

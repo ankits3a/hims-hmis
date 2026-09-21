@@ -173,6 +173,8 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     rejectAbsence: { reaches: "decide(", why: "as `approveAbsence`" },
     recordAbsence: { reaches: "requireRosterAct(", why: "the CHECKED front door onto `recordAbsenceUnchecked`" },
     recordAbsences: { reaches: "recordAbsence(", why: "a bulk act cannot be a way round the checks a single one goes through" },
+    // R8 — the one act in the validator's half of the phase. Everything else there READS.
+    acceptFinding: { reaches: "requireRosterAct(", why: "`accept_warning` — a person takes responsibility for a finding, and the whole value of the record is that a HUMAN can be asked about it later. No agent, no job, no copilot" },
     markAebasEntered: { reaches: "requireRosterAct(", why: "the biometric filing mark is a governed record" },
     recordCredential: { reaches: "requireRosterAct(", why: "what somebody holds decides what they may be rostered to" },
     verifyCredential: { reaches: "requireRosterAct(", why: "as `recordCredential`" },
@@ -255,6 +257,18 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     takeGaps: "a read — V11's other half, which cannot be a constraint because absence is not a row",
     departmentsWithTakeGaps: "a read, for the census",
     cycleTemplate: "pure: looks a pattern up in the gallery",
+    // R8 — the validator and the what-if. NOT ONE OF THEM WRITES, and that is exactly why a
+    // machine may run them: R9's proposer evaluates its own drafts hundreds of times, and an
+    // evaluation that could write would make the harness's own runs part of the hospital's record.
+    istDateOfInstant: "pure: the inverse of `istMidnightUtc`, and the hospital's one opinion about where a day begins",
+    templateFeasibility: "PURE arithmetic — hours per week from an establishment, answerable before anybody drafts anything",
+    validate: "a read that returns findings. It does not persist them, takes no `now` it could stamp with, and the publish gate computes its refusal from the returned array rather than from a table it has just written",
+    simulate: "a what-if. Applies its deltas to an in-memory COPY and writes nothing — asserted by a row count before and after, rather than merely intended",
+    rulesInForce: "a read: the rule book as it applies to one department on one day",
+    seedRosterRules: "a deploy seed, as above",
+    listFindings: "a read",
+    acceptedFindingKeys: "a read — the set the publish gate honours, shared with it so the gate and the screen cannot disagree about what `accepted` means",
+    recordFindings: "brings the STORED findings into line with what `validate()` computed. It writes, and it is deliberately NOT an acting function: it decides nothing, grants nothing and refuses nothing — the judgement is `acceptFinding`, which is guarded. A proposer may record what it found; it may not accept it",
   };
 
   const MODULE_DIR = __dirname;
