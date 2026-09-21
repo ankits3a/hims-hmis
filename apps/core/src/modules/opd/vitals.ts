@@ -7,7 +7,7 @@ import { opdEncounters, opdQueueEntries, opdQueueSessions, opdVitals, users } fr
 import { getPatientSummaries } from "../patients";
 import { loadOpdConfig } from "./config";
 import { vitalsGateVerdict } from "./consultation";
-import { getEncounter, moveEncounter } from "./encounters";
+import { getEncounter, grantFeeBypass, moveEncounter } from "./encounters";
 import { OpdError } from "./errors";
 import { visibleEncounterFor } from "./read-gate";
 import { recordPhiAccess } from "../../kernel/phi/audit";
@@ -38,7 +38,12 @@ export type VitalsDetail = {
   contextChips?: ContextChip[];
   /** Keys not measured today, carried from the last reading. They are PRESENT for completeness (D7). */
   carriedForward?: VitalKey[];
-  /** D11 — declared, never inferred. Trims the required set to BP + pulse + SpO₂. */
+  /**
+   * D11 — declared, never inferred. Trims the required set to BP + pulse + SpO₂, and (owner ruling
+   * 2026-09-20) opens the fee gate at this door, stamping the waiver in the saver's name. The two
+   * are one declaration on purpose: a bay that could skip the required set but not the counter
+   * still cannot chart the patient it was built for.
+   */
   emergency?: boolean;
   /**
    * T2 / D9 — the per-key answer to a sanity gate. A gate is a refusal a named human can pass
@@ -209,6 +214,27 @@ const DANGER_ENTRY_STATUSES = ["waiting_vitals", "waiting", "called"] as const;
  */
 const NOT_QUEUED = "this visit has not joined a queue yet — a bill-first walk-in takes vitals after billing releases its token";
 
+/**
+ * FD-32 + the 20-Sep ruling — what the bay is told when the fee gate is shut. The old text was
+ * `the vitals desk is gated: fee_unsettled`, which is a code with a preposition in front of it: the
+ * owner read it off a real screen and could not tell from it that the red button beside the one he
+ * pressed was the way through. The code is still in `detail` for the screens to branch on; this
+ * string is for the person, and it names the door that IS open.
+ */
+function gateRefusalMessage(code: string): string {
+  return code === "fee_unsettled"
+    ? "this visit has not been billed yet — take the fee at the counter, or use the emergency save if it cannot wait"
+    : `the vitals desk is gated: ${code}`;
+}
+
+/**
+ * The sentence every desk after the bay is shown when the emergency save opens the fee gate itself.
+ * It is written by the code rather than typed because the alternative is a text box between a
+ * collapsing patient and their first BP; the person's name is on the row (`fee_bypass_by`), the
+ * clinical fact is on the chart (`opd_vitals.emergency`), and this says which door was used.
+ */
+const EMERGENCY_FEE_WAIVER = "emergency — vitals taken at the bay before billing; the fee is still due";
+
 async function latestEntry(db: Db | Tx, encounterId: string): Promise<QueueEntryRow | null> {
   const entries = await db
     .select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, encounterId))
@@ -232,7 +258,7 @@ async function latestEntryWhere(tx: Tx, encounterId: string): Promise<{ entry: Q
  */
 export async function recordVitals(
   db: Db, actor: Actor, encounterId: string, input: VitalsInput, now: Date = new Date(), detail: VitalsDetail = {},
-): Promise<{ vitals: VitalsRowWithRecorder; flags: DangerFlag[]; encounter: EncounterRow }> {
+): Promise<{ vitals: VitalsRowWithRecorder; flags: DangerFlag[]; encounter: EncounterRow; feeWaived: boolean }> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
   // ONE input path (vitals-rules.ts's own header): readings win and the scalars are derived from
   // them; a flat body gets one typed take per vital synthesised. Nothing downstream branches.
@@ -253,13 +279,35 @@ export async function recordVitals(
     `consult_gate_refused` is reused as the CODE deliberately — it is already in
     `OPD_CONFLICT_CODES`, already 409, and already rendered by every screen that shows a gate
     refusal; the `detail.guard` names which door refused, which is what a screen branches on.
+
+    ═══ THE BAY'S OWN EMERGENCY DOOR (OWNER RULING 2026-09-20) ═══
+
+    Owner: *"he fails to bypass when the condition of the patient is emergency … I think, we should
+    allow the patient to record his vitals if the condition is like emergency."*
+
+    FD-32 gave the waiver to the front desk alone, and that is a counter nobody can walk to with a
+    collapsing patient on the chair: the emergency save — the red button that already trims the
+    required set to BP, pulse and SpO₂ — answered `fee_unsettled` like every other save, so the
+    numbers taken in the worst five minutes of the day were the ones that could not be charted.
+
+    SO IT OPENS THE DOOR, AND OPENING IT IS A WRITE RATHER THAN A SKIP. The waiver is stamped on the
+    encounter in the name of whoever pressed the button (`grantFeeBypass`, the SAME column the
+    clerk's waiver uses), so the ⚠ mark and its sentence reach the consultation and the Order Desk
+    exactly as the owner asked on 13-Sep. Three things it deliberately does not do: it does not
+    waive the FEE (`feeUnpaid` keeps saying `unsettled` until money lands, and the counter still
+    bills the visit); it does not open the DOCTOR's door (`consultStartGuards` is a second registry
+    and still refuses an unpaid visit — the patient is charted, then billed, then seen); and it does
+    not open on an ordinary save, which still refuses and names the emergency button in its message.
   */
+  const emergency = detail.emergency === true;
   const gate = await vitalsGateVerdict(db, enc);
-  if (!gate.ok) {
-    throw new OpdError("consult_gate_refused", `the vitals desk is gated: ${gate.code}`, {
+  if (!gate.ok && !emergency) {
+    throw new OpdError("consult_gate_refused", gateRefusalMessage(gate.code), {
       guard: "billing_fee_gate", door: "vitals", code: gate.code, detail: gate.detail,
     });
   }
+  /** An emergency save that walked through a shut gate owes a waiver, written below, in the tx. */
+  const feeWaived = !gate.ok;
   // The pre-flight half of the deferred-visit guard (see `latestEntryWhere`): refuse before the
   // transaction opens, so nothing is attempted and rolled back.
   if ((await latestEntry(db, encounterId)) === null) throw new OpdError("unknown_queue_entry", NOT_QUEUED, { encounterId });
@@ -268,7 +316,6 @@ export async function recordVitals(
   const ageYears = summary?.dob ? ageYearsAt(summary.dob, now) : null;
   const band = bandFor(ageYears, cfg.dangerRanges);
   const carriedForward = detail.carriedForward ?? [];
-  const emergency = detail.emergency === true;
   const overrides = detail.overrides ?? {};
 
   /**
@@ -315,6 +362,14 @@ export async function recordVitals(
         .set({ status: "waiting", eligibleAt: now })
         .where(and(eq(opdQueueEntries.encounterId, encounterId), eq(opdQueueEntries.status, "waiting_vitals")));
     }
+    /*
+      THE WAIVER IS WRITTEN WHERE THE CHART LANDS — inside this transaction and after the move, so
+      the two facts cannot separate: a save that dies on `role_denied` above leaves nobody's name on
+      a door that never opened, and a chart that exists always has the waiver that let it exist.
+      `grantFeeBypass` is idempotent and first-writer-wins, so a second emergency save on the same
+      visit does not re-assign the waiver to whoever pressed the button last.
+    */
+    if (feeWaived) encounter = await grantFeeBypass(tx, actor, encounterId, EMERGENCY_FEE_WAIVER, now);
 
     const [vitals] = await tx.insert(opdVitals).values({
       id: newId(), encounterId, patientId: encounter.patientId,
@@ -369,7 +424,7 @@ export async function recordVitals(
       dangerCount: dangerFlags.length, noticeCount: flags.length - dangerFlags.length,
     } }));
 
-    return { vitals: await withRecorder(tx, vitals!), flags, encounter };
+    return { vitals: await withRecorder(tx, vitals!), flags, encounter, feeWaived };
   });
 }
 

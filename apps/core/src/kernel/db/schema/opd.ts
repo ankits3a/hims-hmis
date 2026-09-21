@@ -329,9 +329,14 @@ export const opdEncounters = pgTable(
      * that person, `feeBypassReason` is what they typed, and neither is nullable-by-accident: the
      * bypass exists only where all three are set together.
      *
+     * TWO DOORS WRITE THESE COLUMNS, AND ONLY TWO (owner ruling 2026-09-20): the front desk's
+     * `POST /opd/visits/:id/fee-bypass`, where a clerk types the sentence, and the vitals bay's
+     * emergency save, which stamps a fixed one in the nurse's name rather than put a text box
+     * between a collapsing patient and their first BP. First writer wins in both.
+     *
      * ON THE ENCOUNTER AND NOT ON A CONFIG FLAG, deliberately. A hospital-wide "skip billing" switch
      * is a switch somebody leaves on; this is per-visit, per-patient, and carries the name of the
-     * clerk who opened it to every desk downstream. The marker the owner asked for on the vitals
+     * person who opened it to every desk downstream. The marker the owner asked for on the vitals
      * bay, the consultation and the OPD Order Desk is rendered FROM THESE COLUMNS, so the warning
      * and the authority that created it can never drift apart.
      *
