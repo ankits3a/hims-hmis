@@ -26,6 +26,7 @@ import * as guardiansMod from "../../modules/patients/guardians";
 import * as appointmentsMod from "../../modules/opd/appointments";
 import * as dailyCloseMod from "../../modules/billing/daily-close";
 import * as notifyPumpMod from "../notify/pump";
+import * as reachMod from "../notify/reach";
 import * as partitionsMod from "./partitions";
 import * as retentionMod from "../retention/sweep";
 import * as interfacesMod from "../ops/interfaces";
@@ -242,6 +243,13 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("runNotifyPump");
       return 0;
     }),
+    // PHASE O T4 — the second half of this census. The named array above says the job is
+    // REGISTERED; this spy is what makes "and it FIRES" an assertion rather than a hope, and
+    // §1a names it as the site a `toHaveLength` grep cannot find.
+    jest.spyOn(reachMod, "runReachLadder").mockImplementation(async () => {
+      invoked.push("runReachLadder");
+      return 0;
+    }),
     jest.spyOn(partitionsMod, "createEventPartitions").mockImplementation(async () => {
       invoked.push("createEventPartitions");
       return [];
@@ -357,6 +365,12 @@ const THE_EIGHTEEN = [
   "flagLateSurgeons",
   "runDailyClose",
   "runNotifyPump",
+  /**
+   * PHASE O T4 — THE CHANNEL LADDER, an `every(60_000)` INTERVAL job registered immediately
+   * after the pump, which is where `jobs.ts` puts it — so it sits there here too, and this
+   * array stays the REGISTRATION order rather than an alphabetical one.
+   */
+  "runReachLadder",
   "createEventPartitions",
   // PLAN 07c T8 — the THIRTEENTH, a `dailyIst("02:00")` job. Registered between the partition
   // creator and the retention sweep, which is where `jobs.ts` puts it — so it sits there here too,
@@ -486,6 +500,7 @@ describe("Scheduler", () => {
       // like its three neighbours, for the same reason: at the shipped 5 s default a
       // 25-fake-hour advance would tick the pump 18 000 times.
       workerNotifyIntervalMs: 8 * 60 * 60 * 1000,
+      workerReachIntervalMs: 60_000, // PHASE O T4
       // Plan 11a R0-2, and it is deliberately NOT hours. This one is a WINDOW, not a cadence: it
       // gates which `sending` rows a cycle recovers and it never causes an invocation, so the
       // 25-fake-hour reasoning that sets its four neighbours does not apply and copying it here
@@ -669,7 +684,7 @@ describe("Scheduler", () => {
         .map(([atMs, daily]) => ({ atMs, daily }));
     })();
 
-    it("invokes all nineteen jobs across a stepwise advance from a pinned instant", async () => {
+    it("invokes all twenty jobs across a stepwise advance from a pinned instant", async () => {
       expect(process.env.DATABASE_URL).toBeUndefined(); // CI's environment, reproduced here
       const invoked: string[] = [];
       const spies = spyOnTheThirteen(invoked);

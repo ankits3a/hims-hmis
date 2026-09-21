@@ -54,6 +54,10 @@ const alwaysThrows = (channel: ChannelAdapter["channel"]): ChannelAdapter => ({
 const REFUSING_ADAPTERS: Record<ChannelAdapter["channel"], ChannelAdapter> = {
   whatsapp: alwaysThrows("whatsapp"),
   sms: alwaysThrows("sms"),
+  // PHASE O T4: the union gained `web_push`, so the map does too. N8 is a PATIENT ladder
+  // exhaustion and the patient ladder is still whatsapp → sms, so this leg is never reached —
+  // it refuses like the others so that a route to it would fail loudly rather than quietly.
+  web_push: alwaysThrows("web_push"),
 };
 
 type EscalationPayload = {

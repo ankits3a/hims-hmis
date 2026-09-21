@@ -11,6 +11,7 @@ export * from "./billing";
 export * from "./worker";
 export * from "./alerts";
 export * from "./notifications";
+export * from "./reach";
 export * from "./retention";
 export * from "./ops";
 export * from "./search";

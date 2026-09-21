@@ -1,4 +1,7 @@
-import { adaptersFor, consoleSmsAdapter, consoleWhatsappAdapter } from "./adapters";
+import {
+  adaptersFor, consoleSmsAdapter, consoleWebPushAdapter, consoleWhatsappAdapter,
+  decodePushAddresses, encodePushAddresses,
+} from "./adapters";
 
 describe("consoleWhatsappAdapter / consoleSmsAdapter", () => {
   it("consoleWhatsappAdapter logs one structured line and reports no provider message id", async () => {
@@ -65,8 +68,55 @@ describe("consoleWhatsappAdapter / consoleSmsAdapter", () => {
 
 describe("adaptersFor", () => {
   it("returns the console adapters for NOTIFY_PROVIDER=console", () => {
-    const map = adaptersFor({ notifyProvider: "console" });
+    const map = adaptersFor({ notifyProvider: "console", notifyPushProvider: "console", webPushVapid: null });
     expect(map.whatsapp).toBe(consoleWhatsappAdapter);
     expect(map.sms).toBe(consoleSmsAdapter);
+    expect(map.web_push).toBe(consoleWebPushAdapter);
+  });
+
+  /**
+   * ═══ PHASE O T4 — TWO PROVIDER KNOBS, AND THE POINT IS THAT THEY MOVE SEPARATELY ═══
+   *
+   * RO-4 puts Chrome push first because it needs nothing bought, while WhatsApp and SMS wait on
+   * a BSP contract and a DLT header. A single knob would have made the hospital wait for the
+   * purchases before turning on the one channel it could already have.
+   */
+  it("push goes live while WhatsApp and SMS stay on the sink", () => {
+    const map = adaptersFor({
+      notifyProvider: "console",
+      notifyPushProvider: "webpush",
+      webPushVapid: { publicKey: "pub", privateKey: "priv", subject: "mailto:ops@example.test" },
+    });
+    expect(map.whatsapp).toBe(consoleWhatsappAdapter);
+    expect(map.sms).toBe(consoleSmsAdapter);
+    expect(map.web_push).not.toBe(consoleWebPushAdapter);
+    expect(map.web_push.channel).toBe("web_push");
+  });
+
+  it("refuses `webpush` with no keys rather than returning an adapter that cannot send", () => {
+    expect(() =>
+      adaptersFor({ notifyProvider: "console", notifyPushProvider: "webpush", webPushVapid: null }),
+    ).toThrow(/VAPID/);
+  });
+});
+
+describe("the push address", () => {
+  const SUB = { endpoint: "https://fcm.example.test/x/abc", p256dh: "BPk", auth: "s3cr3t" };
+  const SUB2 = { endpoint: "https://fcm.example.test/x/def", p256dh: "BPl", auth: "0th3r" };
+
+  it("round-trips a person's BROWSERS through `to`, which is one string for every channel", () => {
+    // A person is a set of browsers, not an address. The phone, the station desktop and the OT
+    // corridor machine are three subscriptions and one human.
+    expect(decodePushAddresses(encodePushAddresses([SUB, SUB2]))).toEqual([SUB, SUB2]);
+  });
+
+  it("refuses anything that is not one — a phone number in `to` is a routing bug, not a send", () => {
+    expect(() => decodePushAddresses("9876500001")).toThrow();
+    expect(() => decodePushAddresses(encodePushAddresses([]))).toThrow(/non-empty/);
+    expect(() => decodePushAddresses(JSON.stringify([{ endpoint: "x" }]))).toThrow(/encoded push subscription/);
+    expect(() => decodePushAddresses(JSON.stringify([{ ...SUB, auth: 7 }]))).toThrow(/encoded push subscription/);
+    // A single object rather than a list: the shape before T4 widened it, and it is refused
+    // rather than silently treated as one address.
+    expect(() => decodePushAddresses(JSON.stringify(SUB))).toThrow(/non-empty/);
   });
 });

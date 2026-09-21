@@ -5232,5 +5232,42 @@
       "dismiss": "Close",
       "emptySection": "Nothing in this section."
     }
+  },
+  "reach": {
+    "title": "How you are reached",
+    "lead": "Which language, which channels, and whether this browser may notify you.",
+    "loading": "Loading…",
+    "failed": "Could not load your settings.",
+    "language": {
+      "title": "Language",
+      "en": "English",
+      "hi": "हिन्दी"
+    },
+    "ladder": {
+      "title": "Channels, in order",
+      "lead": "When an alert goes unanswered, the next channel is tried.",
+      "atLeastOne": "Keep at least one channel — otherwise nothing can reach you."
+    },
+    "channel": {
+      "web_push": "Browser",
+      "whatsapp": "WhatsApp",
+      "sms": "SMS"
+    },
+    "push": {
+      "title": "Browser notifications",
+      "notConfigured": "Browser notifications are not switched on for this hospital yet.",
+      "unsupported": "This browser cannot show notifications. On an iPhone, add the app to the home screen first.",
+      "denied": "You have blocked notifications for this site. Change it in your browser's site settings.",
+      "on_one": "On, in {{count}} browser.",
+      "on_other": "On, in {{count}} browsers.",
+      "off": "Off in this browser.",
+      "turnOn": "Turn on here",
+      "turnOff": "Turn off here",
+      "unknownBrowser": "An unnamed browser"
+    },
+    "consent": {
+      "none": "You have not yet been asked to consent to messages outside the app.",
+      "given": "You have consented to messages outside the app."
+    }
   }
 }

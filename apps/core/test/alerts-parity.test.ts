@@ -116,6 +116,10 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
         "runDispatchCycle",
         "runDueTimers",
         "runNotifyPump",
+        // PHASE O T4 — the channel ladder. An INTERVAL job (`every(60_000)`), so it joins leg
+        // 1a's `job=~` alternation and leg 2's `absent()` chain in `alerts.yml`; the DAILY leg
+        // does not move. Sorted, it lands between the pump and the no-show sweep.
+        "runReachLadder",
         "sweepAppointmentNoShows",
         "sweepGuardianMajority",
         "sweepExpiredTempRoles",
@@ -161,8 +165,8 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
         "sweepRosterWindows",
       ].sort(),
     );
-    expect(registered).toHaveLength(19); // PHASE R (R7): +1, sweepRosterWindows
-    expect(new Set(registered).size).toBe(19); // no job registered twice
+    expect(registered).toHaveLength(20); // PHASE O T4: +1, runReachLadder // PHASE R (R7): +1, sweepRosterWindows
+    expect(new Set(registered).size).toBe(20); // no job registered twice
   });
 
   it("the two staleness legs together cover every registered job, exactly once each", () => {
