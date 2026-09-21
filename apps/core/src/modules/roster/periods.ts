@@ -902,6 +902,44 @@ export async function periodWithAssignments(
   return { period, assignments };
 }
 
+/**
+ * PHASE R (R10) — **V5's REPAIR QUERY, which the plan named and nothing supplied.**
+ *
+ * The invariant is a BICONDITIONAL: `effective ⇔ period.status = 'published' ∧ live_to IS NULL`.
+ * The database holds one eighth of it — `roster_assignments_effective_ck` refuses a row that is
+ * effective and already superseded — and its own comment says so ("the half a constraint can
+ * hold"). A constraint cannot see through a foreign key to the PERIOD's status, so the other half
+ * had no guard and no test: nothing anywhere asserted that a draft's rows are not effective, or
+ * that a published period's live rows are.
+ *
+ * `effective` is denormalised precisely so the one-body-two-rooms EXCLUDE can be a constraint, and
+ * a denormalisation nobody audits is a lie waiting to happen: three writers touch it
+ * (`publishPeriods`, `amend`, the supersede inside publish), and a fourth added later would drift
+ * silently and be discovered by a resolver answering "nobody is on" for a ward that is staffed.
+ *
+ * Zero on an empty database is CORRECT here, and that is not the emptiness trap. This is a
+ * consistency claim ("no row disagrees with its period"), not a readiness claim ("the hospital can
+ * open") — a hospital with no rosters genuinely has no drifted rows. The trap is a test that only
+ * ever looks at an empty database, which is why `periods.test.ts` asserts this AFTER a publish, an
+ * amendment and a supersede, and then again with drift deliberately injected.
+ */
+export async function effectiveDrift(exec: Db | Tx): Promise<number> {
+  const r = await (exec as Db).execute(sql`
+    select count(*)::int as n
+      from roster_assignments a
+      join roster_periods p on p.id = a.period_id
+     where a.effective <> (p.status = 'published' and a.live_to is null)
+  `);
+  return (r.rows[0] as { n: number }).n;
+}
+
+/** How many rosters are LIVE right now — the population question behind Plan 20 T7's census row. */
+export async function publishedPeriodCount(exec: Db | Tx): Promise<number> {
+  const rows = await (exec as Db).select({ id: rosterPeriods.id }).from(rosterPeriods)
+    .where(eq(rosterPeriods.status, "published"));
+  return rows.length;
+}
+
 /** Every version of every roster whose window touches `[from, to)`, newest version first. */
 export async function periodsTouching(
   exec: Db | Tx, from: Date, to: Date,

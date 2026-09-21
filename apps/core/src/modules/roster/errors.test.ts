@@ -1,3 +1,5 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { ROSTER_ERROR_CODES, ROSTER_ERROR_SENTENCES, RosterError, rosterHttpStatus } from "./errors";
 
 /**
@@ -39,6 +41,44 @@ describe("roster — refusals (V10)", () => {
       expect(sentence).not.toMatch(/\d{2}:\d{2}/);
       expect(sentence).not.toMatch(/\bUTC\b|\bZ\b|[+-]\d{2}:\d{2}/);
     }
+  });
+
+  /**
+   * PHASE R (R10) — **THE CENSUS ABOVE WALKS THE FALLBACK TABLE, NOT THE MESSAGES PEOPLE SEE.**
+   *
+   * `RosterError`'s constructor is `super(message ?? ROSTER_ERROR_SENTENCES[code])`, and roughly
+   * thirty call sites across this module pass a message of their own — built from caller input,
+   * from a person's name, from a window. V10 says *"no UTC ISO string in a `message`"*, and a close
+   * review pointed out that for every message a user will actually read, that clause was unproven.
+   *
+   * So this walks the SOURCE for custom messages and refuses the two ways an instant gets into one:
+   * a `.toISOString()` interpolated directly, and a bare `Date` variable dropped into a template.
+   * Instants belong in `detail`, where the client renders them in IST — which is the whole reason
+   * the clause exists, because "20:00Z" to somebody standing in a ward in Patna is a lie.
+   */
+  it("V10: NO throw site interpolates an instant into a MESSAGE — they go in `detail`", () => {
+    const SRC = resolve(__dirname);
+    const offenders: string[] = [];
+    let customMessages = 0;
+
+    for (const file of readdirSync(SRC)) {
+      if (!file.endsWith(".ts") || file.endsWith(".test.ts")) continue;
+      const src = readFileSync(join(SRC, file), "utf8");
+      // `new RosterError("code", <message>, …` — the second argument, when it is not `undefined`.
+      const re = /new RosterError\(\s*"[a-z_]+"\s*,\s*(?!undefined)([\s\S]{0,240}?)(?:,\s*\{|\)\s*;)/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(src)) !== null) {
+        const msg = m[1];
+        if (msg === undefined) continue;
+        customMessages += 1;
+        if (/toISOString\(\)/.test(msg)) offenders.push(`${file}: toISOString in a message — ${msg.slice(0, 70)}`);
+        if (/\bUTC\b|[+-]\d{2}:\d{2}/.test(msg)) offenders.push(`${file}: a zone in a message — ${msg.slice(0, 70)}`);
+      }
+    }
+
+    // The scan FOUND the call sites — a census that matched nothing would pass while saying nothing.
+    expect(customMessages).toBeGreaterThan(5);
+    expect(offenders).toEqual([]);
   });
 
   it("a thrown error carries its code, its sentence and its facts separately", () => {

@@ -483,6 +483,20 @@ export async function departmentsWithTakeGaps(
   return out;
 }
 
+/**
+ * PHASE R (R10) — **how many cycles a department is actually working to.**
+ *
+ * Added because `take_is_continuous` asked the wrong question. "Are there units?" is answered yes
+ * by `seed:roster` on the day the hospital is installed; "is anybody's take cycle PUBLISHED?" is
+ * the question whose no means every department is admitting nobody. A census row may only call
+ * "no gaps" evidence once this is greater than zero.
+ */
+export async function publishedCycleCount(exec: Db | Tx): Promise<number> {
+  const rows = await (exec as Db).select({ id: rosterCycles.id }).from(rosterCycles)
+    .where(eq(rosterCycles.status, "published"));
+  return rows.length;
+}
+
 export const ROSTER_CALENDAR_ACTIVITIES = ROSTER_ACTIVITIES;
 
 /* ═══════════════════════════════ the scheduled job ═══════════════════════════════ */

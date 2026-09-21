@@ -28,6 +28,9 @@ import { ensureOtUnit } from "../scripts/seed-ot";
 import { seedOtBase } from "./helpers/ot";
 import { setupPcpndtFixture } from "./helpers/pcpndt";
 import { registerOtApprovalTypes } from "../src/modules/ot";
+import {
+  ROSTER_RESOLVER_FLAG, seedOrgDepartments, seedRosterPositions, seedUnits,
+} from "../src/modules/roster";
 import { STANDUP_ROWS, anyRed, censusLines, isNotModelled, runCensus } from "../scripts/standup-check";
 import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
 import type { Actor } from "@hmis/contracts";
@@ -394,6 +397,67 @@ describe("standup:check — the readiness census (11i T2)", () => {
     expect(billing?.detail).toContain("seed:billing");
     // and the printed line carries both the fix and the detail
     expect(censusLines([billing!])[0]).toContain("RED");
+  });
+
+  /**
+   * PHASE R (R10) — **THE STATE IN WHICH `take_is_continuous` USED TO LIE.**
+   *
+   * The row's own comment has always claimed *"Green only when a published cycle EXISTS and has no
+   * hole — the emptiness lesson this file learned twice"*. Its code asked `listTeams(...)`, bound
+   * the answer to a variable called `cycles`, and refused only when there were no TEAMS. Since
+   * `seed:roster` seeds the units, that guard was satisfied on day one, and
+   * `departmentsWithTakeGaps` — which reads only PUBLISHED cycles — returned an empty list. Empty
+   * gaps, green row, every department admitting nobody.
+   *
+   * `deployG2State` never reached this state because it seeds no roster masters at all, so the
+   * blanket "no G3 row is green" assertion above stepped straight over it. **A census can only be
+   * caught lying in the state it lies about**, and this test builds exactly that state: masters
+   * seeded, units seeded, no cycle published.
+   */
+  it("take_is_continuous is RED when the units exist and NO cycle is published", async () => {
+    await deployG2State(db);
+    // `seedRosterPositions` refuses if a position names a role that does not exist — the R1 guard
+    // that stops a position's `eligible_role_key` being tied to nothing.
+    for (const key of ["doctor", "duty_manager", "radiologist", "pathologist", "anaesthetist", "pharmacy"]) {
+      await ensureRole(db, key);
+    }
+    await seedOrgDepartments(db, "t");
+    await seedRosterPositions(db, "t");
+    await seedUnits(db, "t");
+
+    const results = await runCensus(db, "all");
+    const take = results.find((r) => r.code === "take_is_continuous");
+    expect(take).toBeDefined();
+
+    // The population EXISTS — otherwise this test would be green for the old, wrong reason.
+    const masters = results.find((r) => r.code === "roster_masters_seeded");
+    expect(masters!.verdict).toBe("ok");
+
+    // …and with nothing published, "no gaps" is not evidence of cover.
+    expect(`${take!.code}: ${take!.verdict}`).toBe("take_is_continuous: RED");
+  });
+
+  /**
+   * PLAN 20 T7 / PHASE R (R10). The row is RED until a roster is published — this census's grammar,
+   * which the first draft of the row broke by being green while the resolver flag was off. The
+   * state T7 actually names (flag ON, nothing published) is the worst case of the same red: every
+   * on-call question falls back to role holders, correctly and silently, and nothing says so.
+   */
+  it("resolver_has_a_roster is RED until a roster is published, flag or no flag", async () => {
+    await deployG2State(db);
+    const flagWas = process.env[ROSTER_RESOLVER_FLAG];
+    try {
+      delete process.env[ROSTER_RESOLVER_FLAG];
+      const off = (await runCensus(db, "all")).find((r) => r.code === "resolver_has_a_roster");
+      expect(`flag off, nothing published: ${off!.verdict}`).toBe("flag off, nothing published: RED");
+
+      process.env[ROSTER_RESOLVER_FLAG] = "true";
+      const on = (await runCensus(db, "all")).find((r) => r.code === "resolver_has_a_roster");
+      expect(`flag on, nothing published: ${on!.verdict}`).toBe("flag on, nothing published: RED");
+    } finally {
+      if (flagWas === undefined) delete process.env[ROSTER_RESOLVER_FLAG];
+      else process.env[ROSTER_RESOLVER_FLAG] = flagWas;
+    }
   });
 
   it("after the DEPLOY'S seeds, exactly the G2 rows are green — and no G3 or G4 row is", async () => {

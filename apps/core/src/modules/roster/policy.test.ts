@@ -239,6 +239,8 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     redactReason: "pure: decides who may read a reason, and mutates nothing",
     listAbsences: "a read — and the one that applies D6, so the caller that forgets cannot be the one that renders it",
     absentUserIds: "a read",
+    publishedPeriodCount: "a read — the population behind Plan 20 T7's census row: whether ANY roster is live, which is what makes the resolver flag being on either an answer or a silent fallback",
+    effectiveDrift: "a read — V5's repair query. It counts rows whose `effective` disagrees with their period's status, which is the half of the biconditional no constraint can see through a foreign key to hold",
     attendanceProjection: "a read, and a FINDING rather than a refusal",
     credentialsOf: "a read",
     holdsCredential: "a read",
@@ -261,6 +263,7 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     backupUnit: "a read",
     takeGaps: "a read — V11's other half, which cannot be a constraint because absence is not a row",
     departmentsWithTakeGaps: "a read, for the census",
+    publishedCycleCount: "a read — the POPULATION question `take_is_continuous` should have been asking all along, so that \"no gaps\" cannot be evidence on a hospital with no published cycle",
     cycleTemplate: "pure: looks a pattern up in the gallery",
     // R8 — the validator and the what-if. NOT ONE OF THEM WRITES, and that is exactly why a
     // machine may run them: R9's proposer evaluates its own drafts hundreds of times, and an

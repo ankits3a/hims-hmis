@@ -25,7 +25,8 @@ import { availableQty, findStoreByCode, listItems } from "../src/modules/materia
 import { IMAGING_GATE_DEF_KEY, IMAGING_STUDY_DEF_KEY, activeStudyTypes } from "../src/modules/radiology";
 import {
   HORIZON_DAYS, ROSTER_POSITIONS, UNIT_COUNT, departmentsWithTakeGaps, listTeams,
-  rosterMasterCounts, unconfirmedTeams,
+  ROSTER_RESOLVER_FLAG, publishedCycleCount, publishedPeriodCount, rosterMasterCounts,
+  unconfirmedTeams,
 } from "../src/modules/roster";
 import { appointments, unlicensedDevices } from "../src/modules/aerb";
 import {
@@ -332,11 +333,53 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       check: async (db) => {
         const now = new Date();
         const horizon = new Date(now.getTime() + HORIZON_DAYS * 86_400_000);
-        const cycles = await listTeams(db, { kind: "clinical_unit" });
-        if (cycles.length === 0) return false;
+        /**
+         * PHASE R (R10) — **THIS ROW USED TO READ GREEN ON THE EMPTINESS IT SAYS IT REFUSES.**
+         *
+         * It asked `listTeams(...)`, bound the answer to a variable called `cycles`, and refused
+         * only when the hospital had no TEAMS. `seed:roster` seeds the units (inactive), so that
+         * guard was satisfied from the first deploy — and `departmentsWithTakeGaps` iterates
+         * `roster_cycles WHERE status = 'published'`, which with nothing published returns `[]`.
+         * Empty gaps, row green, and every department admitting nobody.
+         *
+         * The comment above was already right and the code did not do it. That is the third time
+         * this file has learned the same lesson (`radiology_devices_licensed`, then
+         * `roster_units_confirmed`), so the population is now asked for BY NAME: a PUBLISHED CYCLE
+         * must exist before "no gaps" is evidence of anything.
+         */
+        const published = await publishedCycleCount(db);
+        if (published === 0) return false;
         return (await departmentsWithTakeGaps(db, now, horizon)).length === 0;
       },
       fix: "publish each unit-bearing department's take cycle (`publishCycle`) so every hour inside the ninety-day horizon has an admitting unit — `departmentsWithTakeGaps` names the holes",
+    },
+    {
+      gate: "G3", code: "resolver_has_a_roster",
+      /**
+       * PLAN 20 T7, and PHASE R (R10) — **the row for the state where the flag is on and every
+       * escalation has quietly fallen back.**
+       *
+       * `ROSTER_RESOLVER_ENABLED` switches the kernel's consumers from `usersHoldingRole` to the
+       * roster's own answer. V14 makes that safe when the flag is OFF: the answer is byte-identical
+       * to the static one. It also makes it safe when the flag is ON and a position is UNDECLARED —
+       * the resolver says `source: "static"` and falls back.
+       *
+       * What nothing covers is the middle: **flag ON, and not one roster published anywhere.** Every
+       * question then falls back, correctly and silently, and the hospital believes it has switched
+       * to a roster it has never published. Nobody is paged, because the fallback works.
+       *
+       * **RED UNTIL A ROSTER IS PUBLISHED, WHATEVER THE FLAG SAYS** — and the first draft of this
+       * row got that wrong. It was written asymmetric (green while the flag is off, red only for
+       * the lying combination), which reads well and breaks this census's own grammar: every G3 and
+       * G4 row is RED until an ACT, and two existing tests say so. A row that is green because a
+       * feature is switched OFF is a row that cannot tell "ready" from "not started".
+       *
+       * So the act is publishing a roster, the row is red until somebody performs it, and the flag
+       * appears in the FIX rather than in the verdict — where it tells a reader which of the two
+       * repairs they want.
+       */
+      check: async (db) => (await publishedPeriodCount(db)) > 0,
+      fix: `either publish a roster (a department's rota, via \`publishPeriods\`) or unset ${ROSTER_RESOLVER_FLAG} — with the flag on and nothing published, every on-call question falls back to role holders and nothing says so`,
     },
   ],
 
