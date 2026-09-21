@@ -176,6 +176,8 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     markAebasEntered: { reaches: "requireRosterAct(", why: "the biometric filing mark is a governed record" },
     recordCredential: { reaches: "requireRosterAct(", why: "what somebody holds decides what they may be rostered to" },
     verifyCredential: { reaches: "requireRosterAct(", why: "as `recordCredential`" },
+    // R6 — where an escalation goes.
+    setEscalationTarget: { reaches: "requireRosterAct(", why: "deciding who gets woken is the same kind of act as publishing the rota that decides it" },
   };
   /**
    * ═══ THE READS TAKE NO ACTOR, AND THAT IS A DELIBERATE BOUNDARY FOR THIS TASK ═══
@@ -234,6 +236,10 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     dutiesOf: "a read — and `My duties` is a screen about yourself, so its guard is the route's",
     calloutList: "a read — the ladder phase consumes it",
     onDutyNow: "a read — the board's, and it carries `source` so an unpublished department cannot be rendered as an empty staffed one",
+    // R6
+    escalationRecipients: "a read, called from the worker's own consumers, which run as the kernel and carry their own authority — there is no Actor at 02:14 and inventing one would be the wrong shape",
+    escalationTarget: "a read",
+    listEscalationTargets: "a read",
   };
 
   const MODULE_DIR = __dirname;

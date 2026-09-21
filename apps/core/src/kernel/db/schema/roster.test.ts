@@ -73,6 +73,11 @@ describe("roster — 0108 structure", () => {
       "authority", "created_at", "created_by", "delegate_user_id", "delegator_user_id", "ends_at",
       "id", "reason", "scope_id", "scope_type", "starts_at", "updated_at", "updated_by",
     ],
+    // PHASE R (R6)
+    roster_escalation_targets: [
+      "active", "alert_kind", "created_at", "created_by", "department_id", "fallback_role_key",
+      "id", "position_key", "site_id", "updated_at", "updated_by",
+    ],
     roster_bed_allotments: [
       "created_at", "created_by", "ends_at", "id", "resource_id", "starts_at", "team_id",
       "updated_at", "updated_by",

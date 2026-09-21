@@ -10,6 +10,7 @@ import { appendEvent } from "../events/append";
 import { withTx } from "../db/client";
 import { parseDefinition } from "./definition";
 import { usersHoldingRole } from "./roles";
+import { escalationRecipients } from "../../modules/roster";
 import { slaBreached, escalationTriggered } from "./events";
 import type { Db } from "../db/client";
 
@@ -145,7 +146,19 @@ export async function runDueTimers(db: Db, now: Date = new Date()): Promise<numb
       } else {
         const rung = timer.rung!;
         const rungSpec = ladder[rung]!;
-        let resolvedUserIds = await usersHoldingRole(tx, rungSpec.toRole);
+        /**
+         * PHASE R (R6) — the rung's destination now goes through the roster, **anchored on
+         * `timer.dueAt`** rather than the wall clock, for the same reason the ladder itself is
+         * (a late tick must not skew who was on when the SLA broke).
+         *
+         * With no `roster_escalation_targets` row — which is every hospital until somebody
+         * configures one — this returns exactly `usersHoldingRole(rungSpec.toRole)`, byte for byte.
+         * The DUTY MANAGER fallback below is untouched: it is the rung never removed.
+         */
+        const resolved = await escalationRecipients(
+          tx, "workflow.timer_rung", { fallbackRoleKey: rungSpec.toRole }, timer.dueAt,
+        );
+        let resolvedUserIds = resolved.userIds;
         let fallback = false;
         let fallbackExhausted = false;
         if (resolvedUserIds.length === 0) {

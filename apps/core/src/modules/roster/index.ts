@@ -68,3 +68,9 @@ export {
 export type {
   CallRung, Duty, OnDutyNow, RosterAnswerSource, WhoIsOnAnswer, WhoIsOnQuery,
 } from "./resolve";
+export {
+  escalationRecipients, escalationTarget, listEscalationTargets, setEscalationTarget,
+} from "./escalation";
+export type {
+  EscalationContext, EscalationRecipients, RosterEscalationTargetRow, SetEscalationTargetInput,
+} from "./escalation";
