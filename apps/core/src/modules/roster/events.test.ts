@@ -47,6 +47,14 @@ describe("roster — event payloads carry ids, codes and instants only (V9)", ()
       amendmentId: ID, periodId: ID, kind: "swap", afterTheFact: false,
       supersededCount: 1, addedCount: 1, appliedAt: WHEN,
     },
+    // R4. NOTE WHAT IS ABSENT: the REASON. It is the most sensitive string this phase stores (D6),
+    // and an event log outlives every screen that would have redacted it.
+    "roster.absence_requested": {
+      absenceId: ID, userId: ID, kind: "CL", startsAt: WHEN, endsAt: WHEN,
+    },
+    "roster.absence_approved": {
+      absenceId: ID, userId: ID, kind: "CL", startsAt: WHEN, endsAt: WHEN, decidedAt: WHEN,
+    },
   };
 
   /**
@@ -117,6 +125,6 @@ describe("roster — event payloads carry ids, codes and instants only (V9)", ()
     for (const event of ROSTER_EVENTS) {
       expect(`${event.name}: ${event.module}/${event.version}`).toBe(`${event.name}: roster/1`);
     }
-    expect(ROSTER_EVENTS).toHaveLength(5);
+    expect(ROSTER_EVENTS).toHaveLength(7);
   });
 });
