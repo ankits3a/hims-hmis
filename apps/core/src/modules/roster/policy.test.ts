@@ -176,6 +176,9 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     // R8 — the one act in the validator's half of the phase. Everything else there READS.
     declareSkeletonMode: { reaches: "requireRosterAct(", why: "`declare` — the same act a holiday goes through. NO machine may put a hospital on skeleton cover however sure it is: the whole content of the declaration is that a person is answerable for it" },
     withdrawSkeletonMode: { reaches: "requireRosterAct(", why: "standing it down is the same authority as declaring it, at the same scope" },
+    // R9 — the proposer. It ACTS, and the act is the one the matrix grants a machine.
+    proposeMonth: { reaches: "draftPeriod(", why: "`draft_machine_period` — a machine may draft a roster OF ITS OWN, and `assign` then judges every slot edit as `propose` or, once a human has touched the draft, `edit_human_draft`, which no machine may do" },
+    runMonthlyProposals: { reaches: "proposeMonth(", why: "the scheduled entry point; it decides only WHICH units need next month, and every write goes through the checked path above" },
     acceptFinding: { reaches: "requireRosterAct(", why: "`accept_warning` — a person takes responsibility for a finding, and the whole value of the record is that a HUMAN can be asked about it later. No agent, no job, no copilot" },
     markAebasEntered: { reaches: "requireRosterAct(", why: "the biometric filing mark is a governed record" },
     recordCredential: { reaches: "requireRosterAct(", why: "what somebody holds decides what they may be rostered to" },
@@ -271,6 +274,7 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     seedRosterRules: "a deploy seed, as above",
     listFindings: "a read",
     acceptedFindingKeys: "a read — the set the publish gate honours, shared with it so the gate and the screen cannot disagree about what `accepted` means",
+    fairnessOf: "PURE: counts nights, Sundays and holidays from rows it is handed. It reads no database and is the same answer for a roster somebody typed by hand as for one the proposer drafted",
     skeletonModeOn: "a read — and it answers `mine OR the whole hospital's`, because a department cannot be off skeleton cover on a day the hospital is on it",
     modeDeclarations: "a read: the day's checklist, withdrawn rows included",
     recordFindings: "brings the STORED findings into line with what `validate()` computed. It writes, and it is deliberately NOT an acting function: it decides nothing, grants nothing and refuses nothing — the judgement is `acceptFinding`, which is guarded. A proposer may record what it found; it may not accept it",
