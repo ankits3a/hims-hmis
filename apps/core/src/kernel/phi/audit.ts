@@ -134,6 +134,21 @@ export type PhiSurface =
    */
   | "opd.vitals_prestage"
   /**
+   * ═══ FD-COPILOT — A CLERK ASKED THE DESK AGENT ABOUT SOMEBODY BY NAME ═══
+   *
+   * Its own name rather than a reuse of `opd.visit`, and the distinction is the one this log exists
+   * to make. `opd.visit` is a screen a clerk opened; this is a QUESTION a clerk typed — "has
+   * U00110012 been seen yet" — answered without any record being opened at all. The disclosure is
+   * small (are they here, have they seen the doctor, what is their token) and the act is different
+   * in kind: it is cheap, it leaves no other trace, and it can be repeated about anybody whose UHID
+   * somebody has. An enquiry asking "who was looking this patient up" must be able to see that.
+   *
+   * `counterState`, which produces the answer, deliberately reads no patient record and writes no
+   * row — right for a screen polling it every few seconds, and not enough when a person has
+   * deliberately asked about somebody by name.
+   */
+  | "copilot.visit_status"
+  /**
    * ═══ PLAN 18a T3 / DD11 — THE FOUR IMAGING SURFACES, AND THIS IS AN APPEND AND NOTHING ELSE ═══
    *
    * The line above predicted this edit in as many words: *"18a appends `radiology.*` and rebases if
@@ -189,7 +204,26 @@ export type PhiSurface =
    * one an enquiry would ask about — it is how a clerk with a legitimate reason to open ONE record
    * reaches the names of everyone who shares a phone with them.
    */
-  | "patient.linked";
+  | "patient.linked"
+  /**
+   * PHARMACY P9 — **THE SCHEDULE H1 REGISTER, and it is an APPEND to a union and nothing else.**
+   *
+   * Drugs and Cosmetics Rules 1945 r.65(3A): the register names the patient, the prescriber and the
+   * drug, and is produced to an inspector. Reading a month of it is the `aerb.dose_register` shape,
+   * a list of patients and what was given to them. It is its own name because a pharmacist opening
+   * one dispense and an inspector's copy of a month are different disclosures.
+   */
+  | "pharmacy.h1_register"
+  /**
+   * APPROVALS-UX — **THE APPROVER'S INBOX, and it is an APPEND to a union and nothing else.**
+   *
+   * `GET /approvals` now names the patient each request is about (display name under the reader's
+   * clearance, and the UHID), because a refund or a discount cannot be decided on an id. That makes
+   * it a list-of-patients read of the `billing.collection_worklist` shape, logged one row per
+   * distinct patient for the same reason. Its own name: an approver reading their queue is a
+   * different disclosure from opening a record, and an enquiry must be able to tell them apart.
+   */
+  | "approvals.worklist";
 
 /** How the reader was connected to this patient's care AT THE MOMENT OF THE READ. */
 export type CareContext = "treating" | "serving" | "none";

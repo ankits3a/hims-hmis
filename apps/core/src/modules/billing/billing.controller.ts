@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpException, Inject, Param, Post, Put, Query, Headers } from "@nestjs/common";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
+import { gstinState } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
@@ -85,7 +86,7 @@ import { issueCreditNote, listCreditNotes } from "./credit-notes";
 import { MembershipError, membershipHttpStatus } from "../membership";
 import { BillingError, billingHttpStatus } from "./errors";
 import { withIdempotency } from "./idempotency";
-import { getInvoice, invoiceSettlement, issueInvoice, listInvoices, liveInvoiceCharging, previewInvoiceWithBalances } from "./invoices";
+import { encounterRefSpellings, getInvoice, invoiceSettlement, issueInvoice, listInvoices, liveInvoiceCharging, previewInvoiceWithBalances } from "./invoices";
 import { chargeOrphans } from "./daily-close";
 import type { ChargeOrphanRow } from "./daily-close";
 import { collectionWorklist } from "./worklist";
@@ -484,6 +485,7 @@ type RefundVoucherListRow = Omit<RefundVoucherRow, "payeeIdRef">;
 type InvoiceDetail = { invoice: InvoiceRow; lines: InvoiceLineRow[]; settlement: Settlement };
 type InvoicePrint = {
   letterhead: OpdConfig["letterhead"];
+  supplierState: { code: string; name: string } | null;
   invoice: InvoiceRow;
   lines: InvoiceLineRow[];
   patient: PatientSummary | null;
@@ -573,11 +575,36 @@ export class BillingController {
     return { items: await collectionWorklist(this.db, actor, q.serviceDate) };
   }
 
+  /**
+   * ═══ ASKED BY THE NUMBER ON THE SLIP, BECAUSE THAT IS THE SPELLING THE CASHIER HOLDS ═══
+   *
+   * Owner, 2026-09-15: the papers sheet, opened at `/billing` on a visit reached by typing
+   * `V2609150001`, listed no bills at all — on a visit the rail beside it was stamping PAID.
+   *
+   * 2026-09-12 canonicalised what `issueInvoice` STORES (`canonicalEncounterRef`, whose header is
+   * the whole argument). It did not canonicalise what a reader ASKS, and this route is the read the
+   * papers sheet makes: `listInvoices` compares the caller's string to `invoices.encounter_id`, so a
+   * visit number matched nothing and the answer was an empty list rather than a refusal — the shape
+   * an encounter with genuinely no bills returns, which is why nothing noticed.
+   *
+   * BOTH SPELLINGS, not the canonical one: that repair shipped no backfill, so rows keyed on a visit
+   * number are in production today and asking only the resolved id would lose them. The argument is
+   * in `encounterRefSpellings`, including why this is a plaster and what the actual repair is.
+   *
+   * The resolution is here rather than inside `listInvoices` deliberately: this is the boundary an
+   * outside string crosses, and it is exactly where `feeQuoteRoute` already performs the same act.
+   * Every internal caller of `listInvoices` passes an id it read out of a row, and a resolver in
+   * the shared reader would be a lookup those callers pay for and never need.
+   *
+   * `patientId` is NOT resolved alongside it, and that is not an omission: the merge chain is
+   * `getPatient`'s to walk and `invoices.patient_id` carries a real FK, so a patient reference that
+   * reaches this route is already a row id. The ambiguity being repaired belongs to the visit.
+   */
   @RequirePermission("billing.invoice.read", "hospital")
   @Get("invoices")
   async invoices(@Query() query: unknown): Promise<{ items: InvoiceRow[] }> {
     const q = parsed(invoicesQuery, query);
-    return { items: await listInvoices(this.db, q) };
+    return { items: await listInvoices(this.db, { ...q, encounterId: await encounterRefSpellings(this.db, q.encounterId) }) };
   }
 
   @RequirePermission("billing.invoice.read", "hospital")
@@ -605,6 +632,8 @@ export class BillingController {
       const qrBody = `bil1.invoice.${id}`;
       return {
         letterhead: opd.letterhead,
+        // r.46: the supplier's state, read off its GSTIN (the letterhead only stores a valid one).
+        supplierState: opd.letterhead.gstin === undefined ? null : gstinState(opd.letterhead.gstin),
         invoice: found.invoice,
         lines: found.lines,
         patient: patient ?? null,

@@ -1,4 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  RouterProvider, createMemoryHistory, createRootRoute, createRoute, createRouter,
+} from "@tanstack/react-router";
 import { render } from "@testing-library/react";
 import { AuthProvider } from "./lib/auth";
 import { PatientInHandProvider } from "./lib/patient-in-hand";
@@ -14,6 +17,48 @@ export function renderWithProviders(ui: React.ReactElement): ReturnType<typeof r
         the patient in hand pass its own suite while throwing in the app.
       */}
       <AuthProvider><PatientInHandProvider>{ui}</PatientInHandProvider></AuthProvider>
+    </QueryClientProvider>,
+  );
+}
+
+/**
+ * ═══ PHASE O T3 — THE SAME PROVIDERS, PLUS A REAL ROUTER ═══
+ *
+ * `renderWithProviders` mounts a component with no router above it, so anything that renders a
+ * `<Link>` or calls `useSearch`/`useNavigate` throws — which is why every screen that routes has
+ * so far been tested with its navigation stubbed out. T3's bell renders a real `<Link>` into the
+ * approvals inbox and T3's inbox reads `?focus=` back out, and a stub on either side would be a
+ * test of the stub: the deep link is the ONE thing the pair exists to do.
+ *
+ * So: a memory history at `path`, one catch-all route rendering `ui` under the same three
+ * providers production uses. `useSearch({ strict: false })` reads the query string off the
+ * history, exactly as it does in the app, so `?focus=x` arrives the way the bell would send it.
+ */
+export function renderWithRouter(ui: React.ReactElement, path = "/"): ReturnType<typeof render> {
+  // jsdom implements neither, and the router calls `scrollTo` on every navigation while a
+  // deep-linked screen calls `scrollIntoView` on arrival. Both are no-ops a browser provides;
+  // without them every routed test drowns in "Not implemented" stderr or throws outright.
+  window.scrollTo = (): void => {};
+  Element.prototype.scrollIntoView = function scrollIntoView(): void {};
+
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const rootRoute = createRootRoute();
+  const anyRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "$",
+    validateSearch: (search: Record<string, unknown>): Record<string, unknown> => search,
+    component: () => ui,
+  });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([anyRoute]),
+    history: createMemoryHistory({ initialEntries: [path] }),
+  });
+  return render(
+    <QueryClientProvider client={qc}>
+      <AuthProvider><PatientInHandProvider>
+        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+        <RouterProvider router={router as any} />
+      </PatientInHandProvider></AuthProvider>
     </QueryClientProvider>,
   );
 }

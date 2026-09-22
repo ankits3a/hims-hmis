@@ -1,0 +1,1 @@
+ALTER TABLE "formulary_salts" ADD COLUMN "allergy_classes" jsonb DEFAULT '[]'::jsonb NOT NULL;

@@ -74,7 +74,10 @@ describe("opd queue (list / call / skip / in-consult / board / desk summary)", (
     expect(view.waitingVitals).toBe(1);
     expect(view.current).toBeNull();
     expect(view.inConsult).toEqual([]);
-    expect(view.counts).toEqual({ waiting: 4, called: 0, inConsult: 0, done: 0, left: 0 });
+    /* `heldForPayment: 0` — this hospital's fixture has no billing configured, so nothing can be
+       held for money (owner ruling 2026-09-20); the census stays exhaustive and says so. */
+    expect(view.counts).toEqual({ waiting: 4, called: 0, inConsult: 0, done: 0, left: 0, heldForPayment: 0 });
+    expect(view.heldForPayment).toEqual([]);
     expect(view.session.id).toBe(d.sessionId);
     expect(view.doctor.id).toBe(dra.doctorId);
     expect(view.ordered[0]!.patient!.uhid).toBe(patient.uhid);

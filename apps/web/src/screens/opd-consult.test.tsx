@@ -1325,9 +1325,9 @@ describe("OpdConsult", () => {
     await user.click(screen.getByRole("tab", { name: "Prescription" }));
     await user.type(await screen.findByLabelText("Drug"), "Tab Penicillin V");
     await user.type(screen.getByLabelText("Dose"), "1 tab");
-    await user.selectOptions(screen.getByLabelText("Frequency"), "TDS");
+    await user.click(screen.getByTestId("sig-0-freq-TDS"));
     await user.selectOptions(screen.getByLabelText("Route"), "oral");
-    await user.type(screen.getByLabelText("Days"), "5");
+    await user.click(screen.getByTestId("sig-0-days-5"));
     await user.type(screen.getByLabelText("Instructions"), "after food");
     await user.click(screen.getByRole("button", { name: "Issue & print" }));
 
@@ -1498,6 +1498,102 @@ describe("OpdConsult", () => {
   });
 
   /**
+   * ═══ FORMULARY P24 — THE FOURTH AXIS, AND THE ONE-TAP SWITCH ═══
+   *
+   * The alternative on this hit has ALREADY been vetted server-side against this patient (D6), so
+   * what the button offers is safe. What is asserted here is the screen's half: that the alert
+   * names the diagnosis and the date it was coded — a doctor overrides a fact they can see — and
+   * that one tap rewrites the line and does NOT submit on the doctor's behalf.
+   */
+  const DISEASE_HIT = {
+    severity: "severe", lineIndex: 0, moiety: "propranolol",
+    icd10Prefix: "J45", icd10Title: "Asthma",
+    diagnosis: { code: "J45.909", text: "Bronchial asthma", codedOn: "2026-08-01" },
+    note: "A non-selective beta-blocker can trigger severe bronchospasm in asthma.",
+    alternatives: [{ moiety: "amlodipine", label: "Amlodipine 5 mg" }],
+    stale: false,
+  };
+
+  const diseaseRoutes = (rxBody: unknown) => ({
+    ...baseRoutes(),
+    "GET /api/formulary/medicines/search": { status: 200, body: DRUG_HITS },
+    "GET /api/formulary/coverage": { status: 200, body: { coverage: 0.92, noticeEnabled: true } },
+    "POST /api/opd/visits/enc-1/rx-precheck": {
+      status: 201,
+      body: {
+        allergyMatches: [], interactions: [], duplicates: [], notices: [],
+        drugDisease: [DISEASE_HIT], unresolvedLineIndexes: [],
+      },
+    },
+    "POST /api/opd/visits/enc-1/prescriptions": { status: 201, body: rxBody },
+    "GET /api/opd/prescriptions/rx-1/print": { status: 200, body: PRINT_DATA },
+  });
+
+  async function toTheDialog(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await screen.findByLabelText("Drug");
+    await user.type(screen.getByLabelText("Drug"), "warf");
+    await user.click(await screen.findByTestId("rx-drug-0-hit-m-warf"));
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+    return screen.findByRole("dialog");
+  }
+
+  it("P24: the diagnosis that forbids the drug is named with its code and date, and one tap switches the line", async () => {
+    mockRoutes(diseaseRoutes({ prescriptionId: "rx-1", version: 1, notices: [] }));
+    const user = userEvent.setup();
+    const path = "/api/opd/visits/enc-1/prescriptions";
+
+    const dialog = await toTheDialog(user);
+
+    expect(within(dialog).getByText(/contraindicated in Asthma/)).toBeInTheDocument();
+    // The evidence, not just the verdict: WHICH code, and WHEN it was recorded.
+    expect(within(dialog).getByText(/recorded J45\.909 on 2026-08-01/)).toBeInTheDocument();
+    expect(callsTo("POST", path)).toHaveLength(0);
+
+    await user.click(within(dialog).getByTestId("disease-switch-0-amlodipine"));
+
+    expect(screen.getByLabelText("Drug")).toHaveValue("Amlodipine 5 mg");
+    // The switch does NOT issue. The doctor decides; the next Issue re-runs every check server-side.
+    expect(callsTo("POST", path)).toHaveLength(0);
+  });
+
+  it("P24: the dialog does not call a drug-disease warning an allergy", async () => {
+    mockRoutes(diseaseRoutes({ prescriptionId: "rx-1", version: 1, notices: [] }));
+    const user = userEvent.setup();
+
+    const dialog = await toTheDialog(user);
+
+    // A browser walk at 400 px found "Allergy conflict" over this warning, above a hint telling the
+    // doctor the patient was recorded allergic — for a patient with no allergy at all.
+    expect(within(dialog).getByRole("heading", { name: "Prescribing warnings" })).toBeInTheDocument();
+    expect(within(dialog).queryByText(/recorded as allergic/)).not.toBeInTheDocument();
+  });
+
+  it("P24: overriding it carries the reason, the moiety AND the ruling that was cleared", async () => {
+    mockRoutes(diseaseRoutes({ prescriptionId: "rx-1", version: 1, notices: [] }));
+    const user = userEvent.setup();
+    const path = "/api/opd/visits/enc-1/prescriptions";
+
+    const dialog = await toTheDialog(user);
+    await user.type(
+      within(dialog).getByTestId("disease-reason-0"),
+      "asthma quiescent 6 years, cardiology advised, salbutamol to hand",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Override and issue" }));
+
+    await waitFor(() => expect(callsTo("POST", path)).toHaveLength(1));
+    const body = bodiesOf("POST", path)[0]! as {
+      drugDiseaseOverrides: { lineIndex: number; reason: string; moiety: string; icd10Prefix: string }[];
+    };
+    expect(body.drugDiseaseOverrides).toEqual([{
+      lineIndex: 0, reason: "asthma quiescent 6 years, cardiology advised, salbutamol to hand",
+      moiety: "propranolol", icd10Prefix: "J45",
+    }]);
+  });
+
+  /**
    * C7 (independent review) — 16a's STATE MUST NOT OUTLIVE THE PATIENT IT BELONGS TO.
    *
    * `resetPanel` cleared the shipped allergy state and none of the seven fields T6 added. The
@@ -1576,6 +1672,11 @@ describe("OpdConsult", () => {
       moiety: "paracetamol", lineIndex: 0, hard: false,
       against: { scope: "prior", prescriptionId: "rx-old", issuedAt: "2026-08-08T04:00:00.000Z", assumedCurrent: true },
     };
+    // FORMULARY P23 — a second agent of a class is a notice too, and it says which class.
+    const CLASS_SOFT = {
+      moiety: "rosuvastatin", drugClass: "statin", with: "atorvastatin", lineIndex: 0, hard: false,
+      against: { scope: "prior", prescriptionId: "rx-statin", issuedAt: "2026-08-08T04:00:00.000Z", assumedCurrent: false },
+    };
     mockRoutes({
       ...baseRoutes(),
       "GET /api/formulary/medicines/search": { status: 200, body: DRUG_HITS },
@@ -1593,7 +1694,7 @@ describe("OpdConsult", () => {
         status: 201,
         body: {
           prescriptionId: "rx-1", version: 1, qrPayload: PRINT_DATA.qrPayload,
-          allergyOverrideCount: 0, interactionOverrideCount: 0, duplicateOverrideCount: 0, notices: [SOFT],
+          allergyOverrideCount: 0, interactionOverrideCount: 0, duplicateOverrideCount: 0, notices: [SOFT, CLASS_SOFT],
         },
       },
       "GET /api/opd/prescriptions/rx-1/print": { status: 200, body: PRINT_DATA },
@@ -1613,6 +1714,7 @@ describe("OpdConsult", () => {
 
     const panel = await screen.findByTestId("rx-notices");
     expect(within(panel).getByTestId("rx-notice-0")).toHaveTextContent("already contains paracetamol");
+    expect(within(panel).getByTestId("rx-notice-1")).toHaveTextContent("Line 1: rosuvastatin is a second statin, with atorvastatin");
     // The assumed-currency label, and the in-system-only honesty line (design law 10).
     expect(within(panel).getByText(/may no longer be current/)).toBeInTheDocument();
     expect(within(panel).getByText("Checked against in-system prescriptions only")).toBeInTheDocument();
@@ -1620,6 +1722,8 @@ describe("OpdConsult", () => {
     // THE COVERAGE GATE. The line is unresolved and the server said so — and the hint is still
     // absent, because coverage is unknown. Below the threshold it would fire on nearly every line.
     expect(screen.queryByTestId("rx-uncovered-0")).toBeNull();
+    // An older server sends no `unreviewedLineIndexes`, and the screen says nothing about it.
+    expect(within(panel).queryByTestId("rx-unreviewed")).toBeNull();
 
     // The e-Rx print dialog is open on top after a successful issue — the notices are BEHIND it,
     // which is the real order of events: the doctor prints, closes, and then reads what was noted.
@@ -1628,6 +1732,47 @@ describe("OpdConsult", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     await user.click(within(await screen.findByTestId("rx-notices")).getByRole("button", { name: "Dismiss" }));
     expect(screen.queryByTestId("rx-notices")).toBeNull();
+  });
+
+  /**
+   * FORMULARY PHASE 3 — A LINE CHECKED ONLY IN PART IS NAMED, AND THE ISSUE'S OWN ANSWER CARRIES IT.
+   *
+   * The pre-check's answer reaches the screen only when a hard warning pauses the issue. Here the
+   * pre-check FAILS outright (its catch clears every hint), so the only source left is the issue
+   * response. A screen that read the list from the pre-check alone would say nothing.
+   */
+  it("phase 3: a line with a component pharmacy has not reviewed is named after the issue", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/formulary/medicines/search": { status: 200, body: DRUG_HITS },
+      "GET /api/formulary/coverage": { status: 200, body: { coverage: 0.92, noticeEnabled: true } },
+      "POST /api/opd/visits/enc-1/rx-precheck": { status: 500, body: { message: "boom" } },
+      "POST /api/opd/visits/enc-1/prescriptions": {
+        status: 201,
+        body: {
+          prescriptionId: "rx-1", version: 1, qrPayload: PRINT_DATA.qrPayload,
+          allergyOverrideCount: 0, interactionOverrideCount: 0, duplicateOverrideCount: 0,
+          notices: [], unreviewedLineIndexes: [0],
+        },
+      },
+      "GET /api/opd/prescriptions/rx-1/print": { status: 200, body: PRINT_DATA },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(screen.getByLabelText("Drug"), "warf");
+    await user.click(await screen.findByTestId("rx-drug-0-hit-m-warf"));
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+
+    await waitFor(() => expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions")).toHaveLength(1));
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    const note = within(await screen.findByTestId("rx-notices")).getByTestId("rx-unreviewed");
+    expect(note).toHaveTextContent("Line 1: checked only in part");
+    expect(note).toHaveTextContent("not yet reviewed by pharmacy");
   });
 
   it("K49: completing with the DEFAULT follow-up OMITS followUpDays from the posted key set; an extension travels as a number, a stubbed 409 extension_cap_reached renders inline and keeps the form, and a real 201 closes the panel and refetches the queue", async () => {
@@ -1989,8 +2134,8 @@ describe("OpdConsult", () => {
     await user.type(await screen.findByLabelText("Drug"), "Tab Paracetamol");
     await user.type(screen.getByLabelText("Dose"), "500 mg");
     await user.selectOptions(screen.getByLabelText("Route"), "oral");
-    await user.selectOptions(screen.getByLabelText("Frequency"), "TDS");
-    await user.type(screen.getByLabelText("Days"), "3");
+    await user.click(screen.getByTestId("sig-0-freq-TDS"));
+    await user.click(screen.getByTestId("sig-0-days-3"));
     await user.keyboard("{Alt>}s{/Alt}");
 
     await waitFor(() => expect(document.querySelectorAll(".print-doc")).toHaveLength(1));
@@ -2907,6 +3052,8 @@ describe("OpdConsult — the drug typeahead", () => {
     items: [
       { id: "m-pcm500", name: "Paracetamol 500 mg oral capsule", form: "Oral capsule", strength: "500 mg", code: "D7611", routeClass: "systemic", salts: ["Paracetamol"], prefix: true },
       { id: "m-pcm1g", name: "Paracetamol 1 g oral tablet", form: "Oral tablet", strength: "1 g", code: "D10146", routeClass: "systemic", salts: ["Paracetamol"], prefix: true },
+      // The case the second line EXISTS for: a brand whose name hides what is in it.
+      { id: "m-aug", name: "Augmentin 625", form: "Tablet", strength: "625 mg", code: "D1680", routeClass: "systemic", salts: ["Amoxicillin", "Clavulanic acid"], prefix: false },
     ],
   };
   function drugRoutes(over: Record<string, Handler> = {}): Record<string, Handler> {
@@ -2932,7 +3079,16 @@ describe("OpdConsult — the drug typeahead", () => {
     expect(callsTo("GET", "/api/formulary/medicines/search").at(-1)!.url).toContain("q=par");
   });
 
-  it("D2: the row shows the moiety, strength and the hospital's own code — not just a name", async () => {
+  /**
+   * D2 — WHAT THE ROW SAYS BEYOND THE NAME, AND NOTHING IT HAS ALREADY SAID.
+   *
+   * This asserted `Paracetamol · 500 mg · D7611` beside `Paracetamol 500 mg oral capsule`, and the
+   * owner named that on 2026-09-17: "remove the duplicacy in sentence while autosuggesting". The
+   * PROPERTY it was written for is unchanged — the row still tells a doctor more than the name, and
+   * the hospital's own code is still there, which is the part no name carries. What it no longer
+   * does is repeat the molecule, the strength and the form back at a doctor already reading them.
+   */
+  it("D2: the row adds the code a name cannot carry, and repeats nothing the name already says", async () => {
     mockRoutes(drugRoutes());
     const user = userEvent.setup();
     await openPanel(user);
@@ -2941,8 +3097,198 @@ describe("OpdConsult — the drug typeahead", () => {
 
     const row = await screen.findByTestId("rx-drug-0-hit-m-pcm500");
     expect(row).toHaveTextContent("Paracetamol 500 mg oral capsule");
-    expect(row).toHaveTextContent("Paracetamol · 500 mg · D7611");
-    expect(row).toHaveTextContent("Oral capsule");
+    expect(row).toHaveTextContent("D7611"); // still more than a name
+    expect(row.textContent).not.toMatch(/Paracetamol\s*·/); // and not the molecule twice
+    expect(row.textContent).not.toMatch(/500 mg\s*·/);
+
+    // The combination is the case the second line exists for, and it keeps everything.
+    const combo = await screen.findByTestId("rx-drug-0-hit-m-aug");
+    expect(combo).toHaveTextContent("Amoxicillin + Clavulanic acid · 625 mg · D1680");
+    expect(combo).toHaveTextContent("Tablet");
+  });
+
+  /**
+   * ═══ P26 → 2026-09-18 — THE SIG PANEL, AND THE PATH IT MUST NOT CLOSE ═══
+   *
+   * P26 put the taps IN FRONT OF the line's own Frequency, Days and Instructions boxes, and the
+   * owner read the deployed screen as saying each of those twice. The boxes went; the panel is now
+   * the only control. So these assert both halves: that each fact is on screen once, AND that a
+   * doctor can still write anything the taps do not offer — `1-0-0 for 4 days` is the phase doc's
+   * own example. This lane has a scar where every test drove a field through its accelerator and
+   * the typed path broke unnoticed; here the typed path goes through `Other`, and is tested.
+   */
+  async function pickDrug(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(screen.getByLabelText("Drug"), "par");
+    await user.click(await screen.findByTestId("rx-drug-0-hit-m-pcm1g"));
+  }
+
+  it("P26a: each fact is on screen once — the taps, and no Frequency, Days or repeated timing box", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+
+    const panel = await screen.findByTestId("sig-0-panel");
+    await user.click(within(panel).getByTestId("sig-0-freq-BD"));
+    await user.click(within(panel).getByTestId("sig-0-timing-afterFood"));
+    await user.click(within(panel).getByTestId("sig-0-days-5"));
+
+    expect(within(panel).getByTestId("sig-0-freq-BD")).toHaveAttribute("aria-checked", "true");
+    expect(within(panel).getByTestId("sig-0-days-5")).toHaveAttribute("aria-checked", "true");
+    // THE OWNER'S REPORT, as an assertion: no second control for how often or how long…
+    expect(screen.queryByLabelText("Frequency")).toBeNull();
+    expect(screen.queryByLabelText("Days")).toBeNull();
+    expect(screen.queryAllByRole("combobox").map((c) => c.getAttribute("id"))).not.toContain("f-lines.0.frequency");
+    // …and the note box does not repeat the timing the tap already shows.
+    expect(screen.getByLabelText("Instructions")).toHaveValue("");
+  });
+
+  it("P26f: a hand-typed line gets the panel too — it is the only way to say how often", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(screen.getByLabelText("Drug"), "Syp Ambroxol");
+
+    expect(screen.getByTestId("sig-0-panel")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add line" }));
+    expect(screen.getByTestId("sig-1-panel")).toBeInTheDocument();
+  });
+
+  /**
+   * A BROWSER WALK FOUND THIS AND THE SHIPPED TEST COULD NOT.
+   *
+   * D3 asserts the list is closed immediately after a pick, and it is. But the pick writes the
+   * drug's name into the field, which re-runs the search, and 180 ms later the answers arrive and
+   * reopen the list — over the sig drawer, swallowing the taps meant for its pills. jsdom never
+   * got that far; Chromium at 1280 px did. So this one WAITS.
+   */
+  it("P26e: the list does not reopen on top of the drawer after a pick", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+    await screen.findByTestId("sig-0-panel");
+
+    // past the 180 ms debounce and the answer that follows it
+    await new Promise((r) => setTimeout(r, 450));
+
+    expect(screen.queryByTestId("rx-drug-0-hits")).toBeNull();
+  });
+
+  /**
+   * ═══ P27 — WHICH PARACETAMOL ═══
+   *
+   * The line shows a NAME. Two lines reading "Paracetamol" could be the 500 and the 650 and the
+   * screen would not say which, so the shorthand goes under the name the way the owner's reference
+   * UI prints it. It lives exactly as long as `medicineId` does.
+   */
+  it("P27a: a picked line shows the product's strength, form and code", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+
+    expect(await screen.findByTestId("rx-shorthand-0")).toHaveTextContent("[1 g | Oral tablet | D10146]");
+  });
+
+  it("P27b: typing over the name drops the shorthand with the id it described", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+    await screen.findByTestId("rx-shorthand-0");
+
+    await user.type(screen.getByLabelText("Drug"), "x");
+
+    // What is shown must not outlive the pick it describes.
+    expect(screen.queryByTestId("rx-shorthand-0")).toBeNull();
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions").length).toBeGreaterThan(0); });
+    const body = bodiesOf("POST", "/api/opd/visits/enc-1/prescriptions")[0] as { lines: { medicineId: string | null }[] };
+    expect(body.lines[0]!.medicineId).toBeNull();
+  });
+
+  it("P27c: a hand-typed line shows no shorthand, which is how a doctor tells the two apart", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(screen.getByLabelText("Drug"), "Syp Ambroxol");
+
+    expect(screen.queryByTestId("rx-shorthand-0")).toBeNull();
+  });
+
+  it("P26b: a second tap on a chosen pill clears it, so a wrong tap costs one tap", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+    const panel = await screen.findByTestId("sig-0-panel");
+
+    await user.click(within(panel).getByTestId("sig-0-days-7"));
+    expect(within(panel).getByTestId("sig-0-days-7")).toHaveAttribute("aria-checked", "true");
+    await user.click(within(panel).getByTestId("sig-0-days-7"));
+    expect(within(panel).getByTestId("sig-0-days-7")).toHaveAttribute("aria-checked", "false");
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions").length).toBeGreaterThan(0); });
+    const body = bodiesOf("POST", "/api/opd/visits/enc-1/prescriptions")[0] as { lines: { durationDays: number | null }[] };
+    expect(body.lines[0]!.durationDays).toBeNull();
+  });
+
+  it("P26c: the doctor writes what the taps do not offer, through Other, and that is what posts", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+    const panel = await screen.findByTestId("sig-0-panel");
+
+    // THE MANUAL PATH — the phase doc's own example, `1-0-0 for 4 days`, with no preset involved.
+    await user.click(within(panel).getByTestId("sig-0-freq-other"));
+    await user.keyboard("1-0-0");
+    await user.click(within(panel).getByTestId("sig-0-days-other"));
+    await user.keyboard("4");
+    await user.type(screen.getByLabelText("Instructions"), "alternate days, with milk");
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions").length).toBeGreaterThan(0); });
+    const body = bodiesOf("POST", "/api/opd/visits/enc-1/prescriptions")[0] as {
+      lines: { frequency: string; durationDays: number | null; instructions: string | null }[];
+    };
+    expect(body.lines[0]).toMatchObject({ frequency: "1-0-0", durationDays: 4, instructions: "alternate days, with milk" });
+  });
+
+  it("P26d: what the taps wrote is what the prescription POSTs — the timing and the note as one column", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+    const panel = await screen.findByTestId("sig-0-panel");
+    await user.click(within(panel).getByTestId("sig-0-freq-TDS"));
+    await user.click(within(panel).getByTestId("sig-0-days-3"));
+    await user.click(within(panel).getByTestId("sig-0-timing-afterFood"));
+    await user.type(screen.getByLabelText("Instructions"), "with milk");
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions").length).toBeGreaterThan(0); });
+    const body = bodiesOf("POST", "/api/opd/visits/enc-1/prescriptions")[0] as {
+      lines: { frequency: string; durationDays: number | null; instructions: string | null; medicineId: string | null }[];
+    };
+    expect(body.lines[0]).toMatchObject({ frequency: "TDS", durationDays: 3, instructions: "After food, with milk", medicineId: "m-pcm1g" });
+  });
+
+  it("P26g: Other left empty refuses to issue, and says so under the row", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+    await user.click(within(await screen.findByTestId("sig-0-panel")).getByTestId("sig-0-freq-other"));
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+
+    expect(await within(screen.getByTestId("sig-0-panel")).findByRole("alert")).toBeInTheDocument();
+    expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions")).toHaveLength(0);
+    await user.type(screen.getByLabelText("Frequency"), "weekly");
+    await waitFor(() => { expect(within(screen.getByTestId("sig-0-panel")).queryByRole("alert")).toBeNull(); });
   });
 
   it("D3: tapping a row fills the name AND the id — which is what makes the line checkable", async () => {
@@ -3067,5 +3413,111 @@ describe("FD-30 — the transcription draft on the doctor's screen", () => {
     await user.click(screen.getByRole("tab", { name: "Prescription" }));
     await screen.findByTestId("rx-row-0");
     expect(screen.queryByTestId("rx-draft")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * ═══ THE TOKEN WAITING FOR ITS BILL, AND THE DOCTOR'S OWN DOOR (OWNER RULING 2026-09-20) ═══
+ *
+ * Owner: *"the emergency at the bay doesn't open the doctor's door. It waits for bill to be paid
+ * until doctor opens the token from his dashboard manually. Currently the doctor have no screen to
+ * do it. But we need it to be built."*
+ *
+ * The server holds an unsettled token out of `ordered` — so before this group existed, a patient
+ * charted by the bay and stopped by the counter was on NO screen a doctor looks at, which is the
+ * same disappearance the `left` group was built for one ruling ago. These three run against that
+ * screen and fail on it.
+ */
+describe("OpdConsult — the token waiting for its bill", () => {
+  const HELD = entry({
+    id: "qe-held", seq: 4, encounterId: "enc-5", tokenNo: 9, status: "waiting", position: null, queueClass: null,
+    encounter: {
+      id: "enc-5", patientId: "p-5", visitType: "new", dangerFlagged: true, status: "waiting",
+      feeBypassReason: "emergency — vitals taken at the bay before billing; the fee is still due",
+      consultFeeOverrideReason: null,
+    },
+    patient: summary("p-5", "HMS0000000050", "Ramesh Yadav"),
+    feeStatus: "unsettled",
+  });
+  const HELD_VIEW = { ...QUEUE_VIEW, heldForPayment: [HELD], counts: { ...QUEUE_VIEW.counts, heldForPayment: 1 } };
+  /** What the server answers AFTER the doctor opens it: held no longer, ordered now, still unpaid. */
+  const RELEASED_VIEW = {
+    ...QUEUE_VIEW,
+    ordered: [...QUEUE_VIEW.ordered, { ...HELD, position: 3, queueClass: 3 }],
+    heldForPayment: [], counts: { ...QUEUE_VIEW.counts, waiting: 3, heldForPayment: 0 },
+  };
+
+  /** The queue read answers HELD until the open lands, then RELEASED — the screen re-reads, never patches. */
+  function withHeld(over: Record<string, Handler> = {}): Record<string, Handler> {
+    let opened = false;
+    return {
+      ...baseRoutes(),
+      "GET /api/opd/queues": () => ({ status: 200, body: opened ? RELEASED_VIEW : HELD_VIEW }),
+      "POST /api/opd/visits/enc-5/consult/open-unpaid": () => {
+        opened = true;
+        return { status: 201, body: { encounter: ENCOUNTER } };
+      },
+      ...over,
+    };
+  }
+
+  it("U1: it is on the rail and NOT in the queue, and it says why it has no bill", async () => {
+    mockRoutes(withHeld());
+    renderWithProviders(<OpdConsult />);
+
+    const row = await screen.findByTestId("held-row-qe-held");
+    expect(within(row).getByText("9")).toBeInTheDocument();
+    expect(within(row).getByText("Ramesh Yadav")).toBeInTheDocument();
+    /* The bay's own sentence, carried two desks: it is what tells the doctor this was an emergency. */
+    expect(screen.getByTestId("held-why-qe-held").textContent).toContain("emergency");
+    expect(screen.getByTestId("held-danger-qe-held")).toBeInTheDocument();
+    expect(screen.getByTestId("held-queue-title").textContent).toContain("1");
+
+    /* NOT in the callable queue — the row the doctor can call is a row the server let them call. */
+    expect(within(screen.getByTestId("consult-queue")).queryByText("Ramesh Yadav")).toBeNull();
+    expect(screen.queryByTestId("queue-row-qe-held")).toBeNull();
+  });
+
+  it("U2: opening it asks for a sentence first, and posts nothing until there is one", async () => {
+    mockRoutes(withHeld());
+    const user = userEvent.setup();
+    renderWithProviders(<OpdConsult />);
+
+    await user.click(await screen.findByTestId("open-unpaid-qe-held"));
+    const dialog = await screen.findByTestId("open-unpaid-dialog");
+    /* Opening the dialog has decided nothing — the same rule the skip dialog carries beside it. */
+    expect(callsTo("POST", "/api/opd/visits/enc-5/consult/open-unpaid")).toHaveLength(0);
+    expect(within(dialog).getByTestId("open-unpaid-confirm")).toBeDisabled();
+
+    await user.type(within(dialog).getByTestId("open-unpaid-reason"), "emergency — chest pain, seeing him now");
+    expect(within(dialog).getByTestId("open-unpaid-confirm")).toBeEnabled();
+    await user.click(within(dialog).getByTestId("open-unpaid-confirm"));
+
+    await waitFor(() => expect(callsTo("POST", "/api/opd/visits/enc-5/consult/open-unpaid")).toHaveLength(1));
+    expect(bodiesOf("POST", "/api/opd/visits/enc-5/consult/open-unpaid")[0]).toEqual({
+      reason: "emergency — chest pain, seeing him now",
+    });
+
+    /* And the rail is REREAD: the group empties and the token is in the queue, still stamped unpaid. */
+    await waitFor(() => expect(screen.queryByTestId("held-row-qe-held")).toBeNull());
+    expect(await screen.findByTestId("queue-row-qe-held")).toBeInTheDocument();
+  });
+
+  it("U3: a refusal lands on the rail, and the token stays where it was", async () => {
+    mockRoutes(withHeld({
+      "POST /api/opd/visits/enc-5/consult/open-unpaid": {
+        status: 409,
+        body: { statusCode: 409, message: "encounter enc-5 is not this doctor's", code: "not_your_patient" },
+      },
+    }));
+    const user = userEvent.setup();
+    renderWithProviders(<OpdConsult />);
+
+    await user.click(await screen.findByTestId("open-unpaid-qe-held"));
+    await user.type(await screen.findByTestId("open-unpaid-reason"), "seeing him now");
+    await user.click(screen.getByTestId("open-unpaid-confirm"));
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.getByTestId("held-row-qe-held")).toBeInTheDocument();
   });
 });

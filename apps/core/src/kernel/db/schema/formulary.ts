@@ -73,6 +73,13 @@ export const formularySalts = pgTable(
     name: text("name").notNull(),
     aliases: jsonb("aliases").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     drugClass: text("drug_class"),
+    /**
+     * FORMULARY P22 — the allergy classes this moiety belongs to (`formulary/allergy-classes.ts` names
+     * the vocabulary). A list, because a class is about cross-reactivity, not therapy: cefalexin is a
+     * cephalosporin and sits in the penicillin allergy class for its shared side chain. The prescribing
+     * check reads it beside `drugClass`.
+     */
+    allergyClasses: jsonb("allergy_classes").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     atcCode: text("atc_code"),
     /** The bundle's `substance_sctid` — see `formulary_medicines.source_ref`. */
     sourceRef: text("source_ref"),
@@ -109,6 +116,16 @@ export const formularySalts = pgTable(
      */
     /** The same trigram instrument for the moiety: a doctor searching `amox` must reach the salt. */
     index("formulary_salts_name_trgm_idx").using("gin", sql`lower(${t.name}) gin_trgm_ops`),
+    /**
+     * ONE RELEASE IMAGE PER RELEASE SUBSTANCE. This does not contradict the paragraph above.
+     * `source_ref` is set only on a RELEASE IMAGE, the importer's verbatim copy of one substance,
+     * which is one-to-one with that substance by construction. A curated moiety carries null here,
+     * so the many-to-one shape is untouched. Measured on `hmis_formulary_dev`: 3,258 images and
+     * 3,258 distinct refs. The projection in `modules/formulary/mapping.ts` joins on this column to
+     * find where an unmapped row goes back to, and a second image would silently double every row
+     * it moves.
+     */
+    uniqueIndex("formulary_salts_source_ref_ux").on(t.sourceRef).where(sql`${t.sourceRef} is not null`),
   ],
 );
 
@@ -135,6 +152,26 @@ export const formularyMedicines = pgTable(
      * carry one, a branded row does not, and nothing here may assume it is present or unique.
      */
     code: text("code"),
+    /**
+     * ═══ THE BRAND NAME AS `normalizeDrugName` SEES IT, STORED ═══
+     *
+     * `resolveDrugTexts` names this column as its own extension point, in as many words: "a stored
+     * normalized column ... filled by the SAME function, so there is still one normalizer and the
+     * WHERE clause reads a column rather than re-deriving a value." This is that column.
+     *
+     * It is filled by the TypeScript `normalizeDrugName` at every write site — NOT by a generated
+     * SQL expression. That is the whole point: a `GENERATED ALWAYS AS (regexp_replace(...))` column
+     * would make a second normalizer permanent and authoritative, and §2.54's objection is that two
+     * copies of one fact drift. One function fills it; the only SQL copy is the one-shot backfill in
+     * the migration, and a test holds the two to one answer over an adversarial corpus.
+     *
+     * THE INDEX IS NOT UNIQUE, and the extension point's own wording ("with a unique index") is
+     * wrong about that — measured on the loaded national catalogue, 103,383 brand names collapse to
+     * 103,332 normalized keys, so 51 groups collide (`Ab-Xone` and `Abxone`, `A-Pan` and `Apan`).
+     * A unique index will not build. Same shape and same reason as
+     * `formulary_generics_name_norm_idx`, where 774 groups collide.
+     */
+    nameNormalized: text("name_normalized").notNull(),
     /**
      * ═══ THE TYPEAHEAD'S SORT KEY, DENORMALISED ONTO THE PRODUCT ═══
      *
@@ -168,6 +205,8 @@ export const formularyMedicines = pgTable(
     */
     index("formulary_medicines_brand_trgm_idx").using("gin", sql`lower(${t.brandName}) gin_trgm_ops`),
     index("formulary_medicines_code_idx").using("btree", sql`lower(${t.code})`),
+    /* The free-text resolver's lane: `resolveDrugTexts` asks for a SET of normalized names. */
+    index("formulary_medicines_name_norm_idx").using("btree", t.nameNormalized),
     check("formulary_medicines_route_class_ck", sql`${t.routeClass} in ('systemic', 'topical')`),
     check(
       "formulary_medicines_schedule_flag_ck",
@@ -179,15 +218,48 @@ export const formularyMedicines = pgTable(
 /**
  * The composition join - a fixed-dose combination is simply a medicine with more than one row.
  *
- * === `source` EXISTS BECAUSE TWO WRITERS ARE ABOUT TO SHARE THIS TABLE ===
+ * === `source` EXISTS BECAUSE TWO WRITERS SHARE THIS TABLE ===
  *
- * Today the only writer is a pharmacist through `addMedicine`/`updateMedicine`, and
- * `updateMedicine` does an unconditional `delete ... where medicine_id = $1` before re-inserting
- * (`masters.ts:247`). Once a derivation also writes here - medicine -> generic -> substance ->
- * curated moiety - those two overwrite each other in both directions and neither can tell which
- * rows were its own. A pharmacist's correction would vanish on the next derivation run, silently.
+ * A pharmacist writes here through `addMedicine`/`updateMedicine`, and the catalogue importer
+ * writes here too. `updateMedicine` does an unconditional `delete ... where medicine_id = $1`
+ * before re-inserting. Without provenance those two overwrite each other in both directions and
+ * neither can tell which rows were its own, so a pharmacist's correction would vanish on the next
+ * import run, silently. Every row therefore says where it came from.
  *
- * So every row says where it came from, and the curated delete is scoped to `curated`.
+ * === WHAT THIS COMMENT USED TO CLAIM, AND WHY THE CORRECTION IS THE INTERESTING PART ===
+ *
+ * It said, in the present tense, "the curated delete is scoped to `curated`". It never was:
+ * `updateMedicine`'s delete is unscoped. And the column could not have told the two apart even if
+ * it were, because `source` carried a DEFAULT and no writer ever set it — measured on the loaded
+ * catalogue, all 142,759 release-derived rows read `'curated'`. A column nobody writes, described
+ * by a comment nobody could check, is worse than no column: it reads as a guarantee.
+ *
+ * So: the DEFAULT IS GONE and every writer states its own provenance. An unprovenanced insert is
+ * now a COMPILE error rather than a silently mislabelled row — `$inferInsert` makes the field
+ * required and `tsc` names every site, which is only safe because all five writers are drizzle
+ * builder inserts and none is raw SQL.
+ *
+ * === THE RULE THE FIRST DERIVATION WRITER IS HELD TO ===
+ *
+ * The curated delete STAYS UNSCOPED, because `updateMedicine` is a whole-composition replace: a
+ * pharmacist who submits a composition is stating the whole of it, and leaving derived rows behind
+ * would silently merge their statement with the importer's. What a derivation may do is narrower:
+ *
+ *   A DERIVATION MAY WRITE ONLY WHERE THE MEDICINE HAS NO `curated` ROW,
+ *   AND MAY DELETE ONLY ITS OWN `derived` ROWS.
+ *
+ * The write half matters as much as the delete half: scoping only the delete leaves a derivation
+ * free to add a moiety beside a pharmacist's and produce a composition neither of them stated.
+ *
+ * === THE DERIVATION NOW EXISTS, AND `derived_from` IS WHAT MAKES IT A PROJECTION ===
+ *
+ * `modules/formulary/mapping.ts` is that derivation, and it keeps both halves of the rule. A
+ * derived row names the RELEASE SUBSTANCE it came from (`derived_from`, the SNOMED CT id), so the
+ * moiety it points at is a function of two things: that substance, and whatever the pharmacist
+ * mapped it to. It points at the curated moiety when the substance is mapped, and back at the
+ * release image otherwise. Keyed on the substance rather than on the salt it points at today, a
+ * correction or an "unmappable" ruling can find its rows again after they have moved. The release
+ * image is never deleted, so every projection can be reverted.
  */
 export const formularyMedicineSalts = pgTable(
   "formulary_medicine_salts",
@@ -196,12 +268,32 @@ export const formularyMedicineSalts = pgTable(
     saltId: text("salt_id").notNull().references(() => formularySalts.id),
     /** Per-salt strength, e.g. '500 mg' on the amoxicillin row of an Augmentin 625. */
     strength: text("strength"),
-    /** 'curated' (a pharmacist typed it) or 'derived' (the release produced it). */
-    source: text("source").notNull().default("curated"),
+    /**
+     * 'curated' (a pharmacist typed it) or 'derived' (the release produced it). NO DEFAULT, on
+     * purpose — see the header. It means WHO LAST ASSERTED THIS ROW, not who first created it.
+     */
+    source: text("source").notNull(),
+    /**
+     * The release substance (`formulary_substances.sctid`) a DERIVED row was produced from. Null on
+     * every curated row, by constraint: a pharmacist's statement is not derived from anything.
+     *
+     * NULL ON SOME DERIVED ROWS TOO, and that is disclosed rather than backfilled by guesswork. The
+     * catalogue importer reuses an existing moiety when the release names one exactly
+     * (`Paracetamol` onto the seeded `Paracetamol`), and rows written that way before this column
+     * existed carry no record of which substance they came from. They already name a curated
+     * moiety, so no projection ever needs to move them.
+     */
+    derivedFrom: text("derived_from"),
   },
   (t) => [
     primaryKey({ columns: [t.medicineId, t.saltId] }),
     check("formulary_medicine_salts_source_ck", sql`${t.source} in ('curated', 'derived')`),
+    check(
+      "formulary_medicine_salts_curated_underived_ck",
+      sql`${t.source} = 'derived' or ${t.derivedFrom} is null`,
+    ),
+    /* A mapping decision re-projects exactly the rows derived from one substance: this is that lookup. */
+    index("formulary_medicine_salts_derived_from_idx").on(t.derivedFrom),
     /*
       THE PRIMARY KEY LEADS WITH `medicine_id`, so "which products contain this moiety" — the
       direction the drug typeahead asks in — had no index at all and scanned all 142,759 rows on
@@ -266,6 +358,16 @@ export const formularySubstances = pgTable(
     mappingStatus: text("mapping_status").notNull().default("pending"),
     mappedBy: text("mapped_by"),
     mappedAt: timestamp("mapped_at", { withTimezone: true }),
+    /**
+     * FORMULARY PHASE 3: THE RESOLUTION A DECISION WAS ADOPTED UNDER, or null.
+     *
+     * Null means the person in `mapped_by` made this decision themselves, on the worklist. A value
+     * means `mapped_by` adopted it in bulk, under the named resolution, from drafts that nobody
+     * reviewed one by one (owner ruling 2026-09-16, phase-3 doc §1). Both are decisions, and the
+     * checks treat them alike. This column is what stops the second kind being read as the first.
+     * A pharmacist's later correction clears it, because that decision is then the pharmacist's.
+     */
+    adoptedUnder: text("adopted_under"),
     /** Which national release put this row here. */
     source: text("source").notNull(),
     active: boolean("active").notNull().default(true),
@@ -291,6 +393,11 @@ export const formularySubstances = pgTable(
     check(
       "formulary_substances_decided_audit_ck",
       sql`(${t.mappingStatus} = 'pending') = (${t.mappedBy} is null and ${t.mappedAt} is null)`,
+    ),
+    // Only a decision can have been adopted.
+    check(
+      "formulary_substances_adopted_decided_ck",
+      sql`${t.adoptedUnder} is null or ${t.mappingStatus} <> 'pending'`,
     ),
   ],
 );
@@ -404,7 +511,77 @@ export const formularyGenericSubstances = pgTable(
     strength: text("strength"),
     unit: text("unit"),
   },
-  (t) => [primaryKey({ columns: [t.genericId, t.substanceId] })],
+  (t) => [
+    primaryKey({ columns: [t.genericId, t.substanceId] }),
+    /*
+      The key leads with the GENERIC, and the mapping worklist asks the other way round: "which
+      clinical drugs contain this substance", for up to fifty substances on every page.
+    */
+    index("formulary_generic_substances_substance_idx").on(t.substanceId),
+  ],
+);
+
+/** What a proposal rests on. Shown to the pharmacist verbatim; never read by any check. */
+export type MappingProposalEvidence = {
+  /** `release_*`: a few of the clinical drugs whose names make the statement, verbatim. */
+  generics?: { sctid: string; name: string }[];
+  /** `release_*`: how many clinical drugs make the statement the draft chose. */
+  support?: number;
+  /**
+   * `release_boss`: every OTHER base the release states for the same substance, with its support.
+   * The release is not always right. Generic 1621000189106 says "Menthol (as guaifenesin)". So the
+   * drafter takes the majority and shows the dissent, and never hides it.
+   */
+  alternatives?: { name: string; support: number }[];
+  /** A hydrate word the drafter removed from the release's base ("levofloxacin anhydrous" → "levofloxacin"). */
+  droppedWord?: string;
+  /** `agent`: the model that drafted it, and why. */
+  model?: string;
+  rationale?: string;
+};
+
+/**
+ * ═══ A DRAFT OF A MAPPING — ADVICE TO A PHARMACIST, AND NOTHING READS IT BUT THE WORKLIST ═══
+ *
+ * Owner ruling R1 (`docs/superpowers/plans/2026-09-16-phase2-formulary-mapping-loop.md`): the
+ * ~500 substance → moiety decisions are DRAFTED by the system and ATTESTED one at a time by the
+ * hospital's pharmacist. This table holds the drafts. It is deliberately not the decision: the
+ * decision is `formulary_substances.salt_id`, and the only writer of that column is a named human
+ * act (`attestSubstance`, which refuses every non-user actor). The house law is
+ * `kernel/orders/place.ts`'s: a drafter proposes, a human orders.
+ *
+ * `moiety_name` is a NAME, not a `salt_id`. The matching curated moiety is resolved when the
+ * worklist is read, so renaming a moiety cannot leave a draft pointing at the old one, and a draft
+ * can name a moiety that does not exist yet ("create clavulanic acid and map it").
+ *
+ * One row per (substance, drafter): a re-run of a drafter replaces its own draft and never
+ * anybody else's.
+ */
+export const formularyMappingProposals = pgTable(
+  "formulary_mapping_proposals",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    substanceId: text("substance_id").notNull().references(() => formularySubstances.id),
+    moietyName: text("moiety_name").notNull(),
+    /**
+     * `release_boss` — the release names this substance's basis of strength ("precisely X (as Y)").
+     * `release_base` — the release uses this substance itself as a basis of strength.
+     * `agent`        — a model drafted it; `evidence.model` and `evidence.rationale` say which and why.
+     */
+    basis: text("basis").notNull(),
+    evidence: jsonb("evidence").$type<MappingProposalEvidence>().notNull(),
+    /** `drafter:release@1`, or `agent:<model id>`. Part of the row's identity. */
+    draftedBy: text("drafted_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("formulary_mapping_proposals_substance_drafter_ux").on(t.substanceId, t.draftedBy),
+    check(
+      "formulary_mapping_proposals_basis_ck",
+      sql`${t.basis} in ('release_boss', 'release_base', 'agent')`,
+    ),
+    check("formulary_mapping_proposals_moiety_name_ck", sql`length(btrim(${t.moietyName})) > 0`),
+  ],
 );
 
 /** MOIETY-level interaction pairs. Ordered, unique, provenanced, optionally route-scoped. */
@@ -459,5 +636,95 @@ export const formularyStaging = pgTable(
   (t) => [
     check("formulary_staging_kind_ck", sql`${t.kind} in ('medicine')`),
     check("formulary_staging_status_ck", sql`${t.status} in ('pending', 'approved', 'rejected')`),
+  ],
+);
+
+/**
+ * ═══ WHAT THE PATIENT'S DIAGNOSIS FORBIDS — THE FOURTH SAFETY AXIS (formulary P24) ═══
+ *
+ * Phase doc `docs/superpowers/plans/2026-09-17-phase-formulary-p24-drug-disease.md`.
+ *
+ * Three axes were already built: moiety × moiety (`formulary_interactions`), moiety × allergy
+ * (`formulary_salts.allergy_classes`) and moiety × moiety-of-the-same-class (`drug_class`). This
+ * one asks the question the other three cannot: what does this patient's own DISEASE forbid.
+ *
+ * ═══ THE KEY IS A CODE PREFIX, NOT A CATEGORY ═══
+ *
+ * A diagnosis is recorded as a full dotted code (`J45.909`). A rule names a PREFIX of one, matched
+ * with `like prefix || '%'`, and three characters is only the DEFAULT grain — not the law.
+ *
+ * Measured against the released catalogue, three characters is wrong twice:
+ *
+ *   `H40`  glaucoma       anticholinergics threaten the ANGLE-CLOSURE eye (H40.03, H40.06, H40.2x
+ *                         — 47 codes) and are safe in OPEN-ANGLE disease (H40.1x — 112 codes, and
+ *                         the commoner illness). Keyed at `H40` the rule fires on the majority.
+ *   `N18`  kidney disease metformin is FIRST-LINE at stages 1 and 2 (N18.1, N18.2). The lactic
+ *                         acidosis hazard is stage 4 and beyond (N18.4, N18.5, N18.6). Keyed at
+ *                         `N18` the rule refuses the correct drug to a stage-1 patient.
+ *
+ * Asthma has no such fork — a non-selective beta-blocker is dangerous at every severity — so `J45`
+ * stays three characters. The grain is a clinical decision per rule, which is why it is data.
+ *
+ * A false alert costs more than a missing one: it teaches the prescriber to clear the dialog
+ * without reading it, and the true alert is then cleared the same way.
+ *
+ * ═══ NO FOREIGN KEY TO `icd10_codes`, FOR THE THIRD TIME ═══
+ *
+ * `opd_encounter_diagnoses.icd10_code` has none and `formulary_salts` has none, for the same
+ * reason: a foreign standard's coverage must never become a clinical constraint. `icd10Title` is
+ * the catalogue's own words COPIED at adoption, so the alert reads the same after a release
+ * changes its wording — adopting a new release is a decision with a date on it.
+ */
+export type DrugDiseaseAlternative = {
+  /** A moiety name in THIS formulary, so the offer can be resolved and re-checked before it shows. */
+  moiety: string;
+  /** What the prescriber reads: "Amlodipine 5 mg". */
+  label: string;
+};
+
+export const formularyDrugDisease = pgTable(
+  "formulary_drug_disease",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    saltId: text("salt_id").notNull().references(() => formularySalts.id),
+    /** Uppercase and dotted, 3-7 characters: `J45`, `N18.4`, `H40.2`. A PREFIX of the diagnosis. */
+    icd10Prefix: text("icd10_prefix").notNull(),
+    /** The catalogue's words for that prefix, copied at adoption. Part of the alert. */
+    icd10Title: text("icd10_title").notNull(),
+    /** 'severe' → hard warning with an override reason. 'moderate' → a soft notice, never a gate. */
+    severity: text("severity").notNull(),
+    /** One clinical line. This text IS the alert a doctor reads, so it is notNull. */
+    note: text("note").notNull(),
+    /**
+     * The safer drugs this book offers in its place. EMPTY IS ORDINARY: a rule that has no safe
+     * alternative says so, and the alert then carries its prose and no button.
+     *
+     * Never rendered straight from here. The book contradicts itself on purpose — its `I50` rule
+     * offers carvedilol, which its own `J45` rule forbids — so an offer is re-checked against THIS
+     * patient before it is shown, and one that raises a hit of its own is not shown at all.
+     */
+    alternatives: jsonb("alternatives").$type<DrugDiseaseAlternative[]>().notNull().default([]),
+    /** Where the rule came from — a dataset name, a curator's ruling, `resolution:<ref> (<rule>)`. */
+    source: text("source").notNull(),
+    /** 'systemic_only' or null (all routes) — a diclofenac gel does not perforate an ulcer. */
+    routeScope: text("route_scope"),
+    active: boolean("active").notNull().default(true),
+    ...auditColumns,
+  },
+  (t) => [
+    uniqueIndex("formulary_drug_disease_ux").on(t.saltId, t.icd10Prefix),
+    /** The check reads by prefix for every diagnosis the patient carries. */
+    index("formulary_drug_disease_prefix_idx").on(t.icd10Prefix),
+    check("formulary_drug_disease_severity_ck", sql`${t.severity} in ('severe', 'moderate')`),
+    check(
+      "formulary_drug_disease_prefix_ck",
+      sql`${t.icd10Prefix} ~ '^[A-Z][A-Z0-9]{2}([.][A-Z0-9]{1,3})?$'`,
+    ),
+    check("formulary_drug_disease_note_ck", sql`length(btrim(${t.note})) > 0`),
+    check("formulary_drug_disease_title_ck", sql`length(btrim(${t.icd10Title})) > 0`),
+    check(
+      "formulary_drug_disease_route_scope_ck",
+      sql`${t.routeScope} is null or ${t.routeScope} = 'systemic_only'`,
+    ),
   ],
 );

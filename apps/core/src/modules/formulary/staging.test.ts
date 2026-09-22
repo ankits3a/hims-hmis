@@ -2,7 +2,8 @@ import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
 import { events, formularyStaging } from "../../kernel/db/schema";
-import { addSalt, listMedicines } from "./masters";
+import { addSalt } from "./masters";
+import { catalogueCensus, medicinesByIds } from "./reads";
 import { resolveDrugTexts, resolveMedicines } from "./resolve";
 import { admitStaging, getStagingRow, rejectStaging, searchStaging } from "./staging";
 import type { Actor } from "@hmis/contracts";
@@ -43,7 +44,7 @@ describe("formulary staging (Plan 16a T7)", () => {
 
     expect((await resolveDrugTexts(db, ["Augmentin 625"])).get("Augmentin 625")).toBeNull();
     expect((await resolveMedicines(db, ["G1"])).size).toBe(0);
-    expect(await listMedicines(db)).toHaveLength(0);
+    expect((await catalogueCensus(db)).medicines).toBe(0);
     // It IS findable by the human who is about to admit it — that is the whole point of the table.
     expect((await searchStaging(db, "augmentin")).map((r) => r.id)).toEqual(["G1"]);
   });
@@ -90,8 +91,10 @@ describe("formulary staging (Plan 16a T7)", () => {
       salts: [{ saltId: amox, strength: "500 mg" }, { saltId: clav, strength: "125 mg" }],
     }, AT));
 
-    const [medicine] = await listMedicines(db);
-    expect(medicine!.id).toBe(medicineId);
+    // By the id admission returned, not by position in a list: this asserts that THIS medicine
+    // carries the composition and the back-link, which is the claim the admission makes.
+    const medicine = (await medicinesByIds(db, [medicineId])).get(medicineId);
+    expect(medicine).toBeDefined();
     expect(medicine!.salts.map((s) => s.saltId).sort()).toEqual([amox, clav].sort());
     expect(medicine!.stagingId).toBe("G1");
 
@@ -118,11 +121,12 @@ describe("formulary staging (Plan 16a T7)", () => {
     await mine("G1", "Invented Brand", { salts: ["something the crawl got wrong"], schedule: "X" });
     const { saltId } = await withTx(db, (tx) => addSalt(tx, PHARMACIST, { name: "paracetamol" }));
 
-    await withTx(db, (tx) => admitStaging(tx, PHARMACIST, "G1", {
+    const { medicineId } = await withTx(db, (tx) => admitStaging(tx, PHARMACIST, "G1", {
       brandName: "Invented Brand", form: "syrup", routeClass: "systemic", salts: [{ saltId }],
     }, AT));
 
-    const [medicine] = await listMedicines(db);
+    const medicine = (await medicinesByIds(db, [medicineId])).get(medicineId);
+    expect(medicine).toBeDefined();
     expect(medicine!.salts.map((s) => s.saltId)).toEqual([saltId]);
     expect(medicine!.form).toBe("syrup");
     expect(medicine!.scheduleFlag).toBeNull(); // the payload said "X"; nobody confirmed it
@@ -147,7 +151,7 @@ describe("formulary staging (Plan 16a T7)", () => {
       withTx(db, (tx) => admitStaging(tx, PHARMACIST, "G2", { ...admit, brandName: "Dolo 650" }, AT)),
     ).rejects.toMatchObject({ code: "staging_not_pending" });
 
-    expect(await listMedicines(db)).toHaveLength(1);
+    expect((await catalogueCensus(db)).medicines).toBe(1);
   });
 
   it("a rejection keeps the payload and says who refused it", async () => {

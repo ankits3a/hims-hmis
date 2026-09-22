@@ -1,4 +1,4 @@
-import { desc, sql } from "drizzle-orm";
+import { desc, lte, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { configValidationReports, operatingModeChanges } from "../db/schema";
 import { appendEvent } from "../events/append";
@@ -63,6 +63,27 @@ export async function getOperatingMode(exec: Db | Tx): Promise<OperatingMode> {
     .select({ toMode: operatingModeChanges.toMode })
     .from(operatingModeChanges)
     .orderBy(desc(operatingModeChanges.seq))
+    .limit(1);
+  const row = rows[0];
+  return row === undefined ? "commissioning" : (row.toMode as OperatingMode);
+}
+
+/**
+ * PHARMACY P20 — THE MODE IN FORCE AT AN INSTANT IN THE PAST. A recovery desk asks this before it
+ * accepts a paper entry: a sheet dated while the hospital was running normally was not written
+ * because the screens were dark.
+ *
+ * The mode in force is the last change made AT OR BEFORE the instant. This is the one reader that
+ * orders by `at` first, because the question is about the timeline; `seq` breaks a tie between two
+ * changes stamped with the same instant, in the order they were written. Before any change, the
+ * hospital was commissioning (the `getOperatingMode` rule).
+ */
+export async function operatingModeAt(exec: Db | Tx, at: Date): Promise<OperatingMode> {
+  const rows = await exec
+    .select({ toMode: operatingModeChanges.toMode })
+    .from(operatingModeChanges)
+    .where(lte(operatingModeChanges.at, at))
+    .orderBy(desc(operatingModeChanges.at), desc(operatingModeChanges.seq))
     .limit(1);
   const row = rows[0];
   return row === undefined ? "commissioning" : (row.toMode as OperatingMode);

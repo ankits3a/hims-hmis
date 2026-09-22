@@ -7,14 +7,15 @@ import { withTx } from "../../kernel/db/client";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { transition } from "../../kernel/workflow/instances";
 import { invoiceSettlement } from "../billing";
-import { listMedicines } from "../formulary";
+import { medicinesByIds } from "../formulary";
 import { consumeReservation, effectiveRegulation, getBatch, itemUomRows, itemsByIds, materialConsumed } from "../materials";
 import { getDoctor, getPrescription, getVisit } from "../opd";
 import { getPatient } from "../patients";
 import { REFUSED_FLAGS, REGISTER_FLAGS, SCHEDULED_FLAGS, istDateOf } from "./config";
 import { dispenseHandedOver } from "./events";
 import { PharmacyError } from "./errors";
-import { priceForBatch } from "./price";
+import { registrationNoOf, requireRegisteredPharmacist } from "./pharmacists";
+import { batchTermsPerBase } from "./price";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -94,10 +95,14 @@ export async function handOverDispense(
   const patient = visible.patient;
 
   let identityConfirmedVia: "token" | "phone_last4" | null = null;
+  // P2 — the number the records carry: the scheduled path has just required it; the aide has none.
+  const pharmacistRegNo = actor.type === "user" ? await registrationNoOf(db, actor.id, now) : null;
   if (scheduled) {
     if (actor.type !== "user" || !(await hasPermission(db, actor.id, "pharmacy.dispense.scheduled", "hospital"))) {
       throw new PharmacyError("scheduled_needs_pharmacist", "a Schedule H/H1 dispense is completed by a registered pharmacist (Pharmacy Act 1948 §42) — call one to the window");
     }
+    // P2 — the permission says the login may; the register says the person is a registered pharmacist today.
+    await requireRegisteredPharmacist(db, actor, now);
     if (input.identity === undefined || input.identity.value.trim() === "") {
       throw new PharmacyError("identity_confirmation_required", "confirm the person at the window: today's token, or the last four digits of the phone on the record");
     }
@@ -116,7 +121,7 @@ export async function handOverDispense(
   const rx = await getPrescription(db, actor, d.prescriptionId);
   if (rx === null) throw new PharmacyError("unknown_prescription", `prescription ${d.prescriptionId} not found`);
   const doctor = await getDoctor(db, rx.doctorId);
-  const medicines = new Map((await listMedicines(db)).map((m) => [m.id, m]));
+  const medicines = await medicinesByIds(db, lines.map((l) => l.dispensedMedicineId).filter((x): x is string => x !== null));
   const items = await itemsByIds(db, lines.map((l) => l.itemId).filter((x): x is string => x !== null));
 
   const ledgerEntryIds: string[] = [];
@@ -172,13 +177,14 @@ export async function handOverDispense(
        * WHAT THIS LEAVES BEHIND, SAID OUT LOUD BECAUSE THE PR MUST CARRY IT: the patient has paid
        * and now cannot collect, and `cancelDispense` refuses a `billed` dispense (verify.ts:288)
        * while the sweep skips it — so there is no exit in the shipped UI. That is still the right
-       * trade (a stuck payment beats an expired drug in a patient) but it is a REFUND, and refunds
-       * are 16d's. Until 16d lands, the counter's answer is the billing desk's credit note.
+       * trade (a stuck payment beats an expired drug in a patient) but it is a REFUND. PHARMACY P5
+       * built the exit: `cancelBilledDispense` (refund.ts) cancels the dispense, frees its stock,
+       * credits the bill and files the approval-gated refund request.
        */
       if (batch.expiryDate !== null && batch.expiryDate < istDateOf(now)) {
         throw new PharmacyError(
           "batch_expired_before_collection",
-          `line ${String(line.lineIdx + 1)}: batch ${batch.batchNo} expired on ${batch.expiryDate} and cannot be handed over — it was in date when it was picked. Quarantine the strip and send the patient to the billing desk; the bill is already paid and needs a credit note.`,
+          `line ${String(line.lineIdx + 1)}: batch ${batch.batchNo} expired on ${batch.expiryDate} and cannot be handed over — it was in date when it was picked. Quarantine the strip, then cancel this dispense with a refund at the counter (the bill is credited and the refund goes to billing for approval); scan the prescription again to dispense from a batch in date.`,
           { lineIdx: line.lineIdx, batchId: line.batchId, batchNo: batch.batchNo, expiryDate: batch.expiryDate, asOf: istDateOf(now) },
         );
       }
@@ -187,15 +193,13 @@ export async function handOverDispense(
       });
       ledgerEntryIds.push(ledgerEntryId);
       const [uoms, regulation] = await Promise.all([itemUomRows(tx, line.itemId), effectiveRegulation(tx, line.itemId, now)]);
-      let mrpPaisePerBase: number | null = null;
-      let ceilingPaisePerBase: number | null = null;
-      try {
-        const price = priceForBatch({ uoms, batch: { mrpPaise: batch.mrpPaise, mrpUom: batch.mrpUom }, regulation: regulation === undefined ? null : { ceilingPaise: regulation.ceilingPaise, mrpUom: regulation.mrpUom } });
-        mrpPaisePerBase = price.mrpPaisePerBase;
-        ceilingPaisePerBase = price.ceilingPaisePerBase;
-      } catch { /* an unsaleable batch was refused at the bill; the event carries nulls */ }
+      // As printed and as notified: the ledger event carries the terms, never a tax (pharmacy P1).
+      const { mrpPaisePerBase, ceilingPaisePerBase } = batchTermsPerBase({
+        uoms, batch: { mrpPaise: batch.mrpPaise, mrpUom: batch.mrpUom },
+        regulation: regulation === undefined ? null : { ceilingPaise: regulation.ceilingPaise, mrpUom: regulation.mrpUom },
+      });
       await appendEvent(tx, materialConsumed.make({
-        actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
+        occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
         payload: {
           ledgerEntryId, itemId: line.itemId, batchId: line.batchId, ownership: batch.ownership as "owned" | "consignment" | "loaner" | "donated",
           vendorId: batch.vendorId, qtyBase: line.qtyBase, patientId: d.patientId, encounterId: d.encounterId,
@@ -215,6 +219,7 @@ export async function handOverDispense(
           prescriberName: doctor?.displayName ?? rx.doctorId, prescriberRegNo: doctor?.registrationNo ?? null,
           drugName: med === undefined ? (line.rxLine as RxLine).drug : `${med.brandName}${med.strengthLabel === null ? "" : ` ${med.strengthLabel}`} ${med.form}`,
           medicineId: line.dispensedMedicineId, batchNo: batch.batchNo, qtyBase: line.qtyBase, unit: item?.baseUom ?? "unit", recordedBy: actor.id,
+          pharmacistRegNo,
         });
         h1Rows += 1;
       }
@@ -226,10 +231,10 @@ export async function handOverDispense(
     if (won.length === 0) throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} moved while handing over`);
     if (d.workflowInstanceId !== null) await transition(tx, d.workflowInstanceId, "handed_over", actor);
     await appendEvent(tx, dispenseHandedOver.make({
-      actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
+      occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
       payload: {
         dispenseId: d.id, dispenseNo: d.dispenseNo ?? d.id, patientId: d.patientId, encounterId: d.encounterId, handedOverBy: actor.id,
-        ledgerEntryIds, h1RegisterRows: h1Rows, identityConfirmedVia,
+        ledgerEntryIds, h1RegisterRows: h1Rows, identityConfirmedVia, pharmacistRegNo,
       },
     }));
   });

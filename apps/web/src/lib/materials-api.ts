@@ -207,6 +207,40 @@ export async function fetchExpiring(): Promise<WireExpiringBatch[]> {
   return batches;
 }
 
+// ── the transfer screen (2026-09-17) ──
+export type WireTransferView = {
+  id: string; ref: string; status: "in_transit" | "received" | "discrepancy"; note: string | null;
+  from: { id: string; code: string; name: string }; to: { id: string; code: string; name: string };
+  issuedBy: { id: string; name: string }; issuedAt: string;
+  receivedBy: { id: string; name: string } | null; receivedAt: string | null;
+  lines: {
+    id: string; itemId: string; itemCode: string; itemName: string; baseUom: string;
+    batchId: string; batchNo: string; expiryDate: string | null;
+    qtyIssued: number; qtyReceived: number | null; discrepancyReason: string | null;
+  }[];
+};
+export async function fetchTransferWorklist(storeId?: string): Promise<{ awaiting: WireTransferView[]; recent: WireTransferView[] }> {
+  const q = storeId === undefined || storeId === "" ? "" : `?${new URLSearchParams({ storeId }).toString()}`;
+  return api<{ awaiting: WireTransferView[]; recent: WireTransferView[] }>("GET", `/materials/transfers/worklist${q}`);
+}
+/** What a store can give of an item now: on hand, less reserved and frozen, over every batch. */
+export async function fetchAvailableAt(resourceId: string, itemId: string): Promise<number> {
+  const { balances } = await api<{ balances: { qtyOnHand: number; qtyReserved: number; qtyFrozen: number }[] }>(
+    "GET", `/materials/stock/balances?${new URLSearchParams({ resourceId, itemId }).toString()}`,
+  );
+  return balances.reduce((sum, b) => sum + Math.max(0, b.qtyOnHand - b.qtyReserved - b.qtyFrozen), 0);
+}
+export async function issueTransfer(input: {
+  fromResourceId: string; toResourceId: string; note?: string; lines: { itemId: string; qtyBase: number }[];
+}): Promise<{ transferId: string; lines: { transferLineId: string; batchId: string; qtyIssued: number }[] }> {
+  return api("POST", "/materials/transfers", input);
+}
+export async function receiveTransfer(
+  transferId: string, lines: { lineId: string; qtyReceived: number }[],
+): Promise<{ status: string; shortfalls: { transferLineId: string; qtyShort: number }[] }> {
+  return api("POST", `/materials/transfers/${transferId}/receive`, { lines });
+}
+
 export async function fetchDiscrepancies(): Promise<WireTransfer[]> {
   const { transfers } = await api<{ transfers: WireTransfer[] }>("GET", "/materials/transfers/discrepancies");
   return transfers;
@@ -277,4 +311,72 @@ export function materialsErrorText(e: unknown, t: (key: string) => string): stri
     return t(`materialsErrors.${code}`);
   }
   return materialsErrorMessage(e);
+}
+
+// ── Plan 14c, first slice — blind counts ──
+export type WireCountHeader = {
+  id: string; storeResourceId: string; storeCode: string; storeName: string;
+  status: "counting" | "submitted" | "closed" | "cancelled";
+  scheduledBy: string; counterUserId: string; counterName: string;
+  recountOf: string | null; recountId: string | null;
+  frozenAt: string; countedAt: string | null; submittedAt: string | null;
+  closedBy: string | null; closedAt: string | null; closeNote: string | null;
+  cancelledBy: string | null; cancelledAt: string | null; cancelReason: string | null;
+};
+export type WireCountReviewLine = {
+  lineId: string; itemId: string; itemCode: string; itemName: string; baseUom: string;
+  batchId: string; batchNo: string; expiryDate: string | null;
+  systemQty: number; countedQty: number | null; movedQty: number | null;
+  varianceQty: number | null; variancePaise: number | null; flag: "match" | "variance" | "recount" | null;
+};
+export type WireCountReview = WireCountHeader & {
+  lines: WireCountReviewLine[];
+  totals: { lines: number; matched: number; variances: number; recounts: number; netVariancePaise: number };
+};
+export type WireCountSheet = {
+  id: string; storeCode: string; storeName: string; frozenAt: string;
+  lines: { lineId: string; itemCode: string; itemName: string; baseUom: string; batchNo: string; expiryDate: string | null }[];
+};
+
+export async function scheduleCount(storeResourceId: string): Promise<WireCountHeader> {
+  return api<WireCountHeader>("POST", "/materials/counts", { storeResourceId });
+}
+export async function fetchCounts(): Promise<WireCountHeader[]> {
+  return (await api<{ items: WireCountHeader[] }>("GET", "/materials/counts")).items;
+}
+export async function fetchMyCounts(): Promise<WireCountHeader[]> {
+  return (await api<{ items: WireCountHeader[] }>("GET", "/materials/counts/mine")).items;
+}
+export async function fetchCount(id: string): Promise<WireCountReview> {
+  return api<WireCountReview>("GET", `/materials/counts/${encodeURIComponent(id)}`);
+}
+export async function fetchCountSheet(id: string): Promise<WireCountSheet> {
+  return api<WireCountSheet>("GET", `/materials/counts/${encodeURIComponent(id)}/sheet`);
+}
+export async function submitCount(id: string, body: { countedAt: string; lines: { lineId: string; countedQty: number }[] }): Promise<WireCountHeader> {
+  return api<WireCountHeader>("POST", `/materials/counts/${encodeURIComponent(id)}/submit`, body);
+}
+export async function closeCount(id: string, note: string): Promise<WireCountHeader> {
+  return api<WireCountHeader>("POST", `/materials/counts/${encodeURIComponent(id)}/close`, { note });
+}
+export async function cancelCount(id: string, reason: string): Promise<WireCountHeader> {
+  return api<WireCountHeader>("POST", `/materials/counts/${encodeURIComponent(id)}/cancel`, { reason });
+}
+
+// ── Plan 14c, second slice — booking a count's variance with a second key ──
+export type AdjustmentReason = "shrinkage" | "damage" | "expiry" | "entry_error" | "found";
+export type WireAdjustment = {
+  id: string; countId: string; countLineId: string; batchId: string; batchNo: string; itemId: string; itemCode: string;
+  qtyDelta: number; valuePaise: number; reasonCode: AdjustmentReason; note: string | null;
+  approvalId: string; approvalStatus: string; status: "requested" | "posted" | "refused";
+  requestedBy: string; requestedAt: string; postedAt: string | null; ledgerEntryId: string | null;
+};
+export async function requestAdjustment(countId: string, body: { lines: { lineId: string; reasonCode: AdjustmentReason }[]; note?: string }): Promise<{ approvalId: string; adjustments: WireAdjustment[] }> {
+  return api("POST", `/materials/counts/${encodeURIComponent(countId)}/adjustments`, body);
+}
+export async function fetchAdjustments(countId: string): Promise<WireAdjustment[]> {
+  return (await api<{ items: WireAdjustment[] }>("GET", `/materials/counts/${encodeURIComponent(countId)}/adjustments`)).items;
+}
+export async function postAdjustment(approvalId: string): Promise<{ posted: number; refused: number }> {
+  return api("POST", `/materials/adjustments/${encodeURIComponent(approvalId)}/post`, {});
 }

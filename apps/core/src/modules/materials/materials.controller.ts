@@ -22,9 +22,14 @@ import { balances, movementsFor, recallBatch } from "./ledger";
 import {
   captureGrn, getGrn, listGrns, postGrn, requestNearExpiryAcceptance, runGateQc,
 } from "./grn";
-import { getTransfer, issueStock, listDiscrepancies, listTransfers, receiveStock } from "./transfers";
+import { getTransfer, issueStock, listDiscrepancies, listTransfers, receiveStock, transferWorklist } from "./transfers";
+import type { TransferView } from "./transfers";
 import { consumptionsFor } from "./consumption";
 import { expiringBatches } from "./expiry";
+import { cancelCount, closeCount, countSheet, getCount, listCounts, myCounts, scheduleCount, submitCount } from "./counts";
+import { ADJUSTMENT_REASONS, listAdjustments, postAdjustments, requestCountAdjustment } from "./adjustments";
+import type { AdjustmentView } from "./adjustments";
+import type { CountHeader, CountReview, CountSheet } from "./counts";
 import { BLACKLIST_REASONS } from "./config";
 import type { BlacklistReason } from "./config";
 import type { Actor } from "@hmis/contracts";
@@ -492,6 +497,91 @@ export class MaterialsController {
     };
   }
 
+  // ═══ 14c, FIRST SLICE — BLIND COUNTS. Every act checks its own grant and its own counter too. ═══
+
+  @RequirePermission("materials.counts.manage", "hospital")
+  @Post("counts")
+  async scheduleCount(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<CountHeader> {
+    const b = parsed(z.object({ storeResourceId: id }), body);
+    try { return await scheduleCount(this.db, actor, b, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.counts.manage", "hospital")
+  @Get("counts")
+  async counts(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ items: CountHeader[] }> {
+    const q = parsed(z.object({ status: z.enum(["counting", "submitted", "closed", "cancelled"]).optional() }), query);
+    try { return { items: await listCounts(this.db, actor, q.status === undefined ? {} : { status: q.status }) }; } catch (e) { toHttp(e); }
+  }
+
+  /** The counter's own open sheets. Declared before `counts/:id` so "mine" is never read as an id. */
+  @RequirePermission("materials.counts.perform", "hospital")
+  @Get("counts/mine")
+  async myCounts(@CurrentActor() actor: Actor): Promise<{ items: CountHeader[] }> {
+    try { return { items: await myCounts(this.db, actor) }; } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.counts.manage", "hospital")
+  @Get("counts/:id")
+  async count(@CurrentActor() actor: Actor, @Param("id") countId: string): Promise<CountReview> {
+    try { return await getCount(this.db, actor, countId); } catch (e) { toHttp(e); }
+  }
+
+  /** Blind: the shelf, never the books. The assigned counter's alone. */
+  @RequirePermission("materials.counts.perform", "hospital")
+  @Get("counts/:id/sheet")
+  async countSheet(@CurrentActor() actor: Actor, @Param("id") countId: string): Promise<CountSheet> {
+    try { return await countSheet(this.db, actor, countId); } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.counts.perform", "hospital")
+  @Post("counts/:id/submit")
+  async submitCount(@CurrentActor() actor: Actor, @Param("id") countId: string, @Body() body: unknown): Promise<CountHeader> {
+    const b = parsed(z.object({
+      countedAt: z.string().min(1).max(40),
+      lines: z.array(z.object({ lineId: id, countedQty: z.number() })).max(5000),
+    }), body);
+    try { return await submitCount(this.db, actor, countId, b, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.counts.manage", "hospital")
+  @Post("counts/:id/close")
+  async closeCount(@CurrentActor() actor: Actor, @Param("id") countId: string, @Body() body: unknown): Promise<CountHeader> {
+    const b = parsed(z.object({ note: z.string().max(500) }), body);
+    try { return await closeCount(this.db, actor, countId, b, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.counts.manage", "hospital")
+  @Post("counts/:id/cancel")
+  async cancelCount(@CurrentActor() actor: Actor, @Param("id") countId: string, @Body() body: unknown): Promise<CountHeader> {
+    const b = parsed(z.object({ reason: z.string().max(500) }), body);
+    try { return await cancelCount(this.db, actor, countId, b, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  // ═══ 14c, SECOND SLICE — booking a count's variance, after the medical superintendent grants it ═══
+
+  @RequirePermission("materials.counts.manage", "hospital")
+  @Post("counts/:id/adjustments")
+  async requestAdjustment(@CurrentActor() actor: Actor, @Param("id") countId: string, @Body() body: unknown): Promise<{ approvalId: string; adjustments: AdjustmentView[] }> {
+    const b = parsed(z.object({
+      lines: z.array(z.object({ lineId: id, reasonCode: z.enum(ADJUSTMENT_REASONS) })).max(500),
+      note: z.string().max(500).optional(),
+    }), body);
+    try { return await requestCountAdjustment(this.db, actor, countId, b, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.counts.manage", "hospital")
+  @Get("counts/:id/adjustments")
+  async countAdjustments(@CurrentActor() actor: Actor, @Param("id") countId: string): Promise<{ items: AdjustmentView[] }> {
+    try { return { items: await listAdjustments(this.db, actor, { countId }) }; } catch (e) { toHttp(e); }
+  }
+
+  /** Books a granted request's lines; a rejected one marks them refused. Idempotent. */
+  @RequirePermission("materials.counts.manage", "hospital")
+  @Post("adjustments/:approvalId/post")
+  async postAdjustment(@CurrentActor() actor: Actor, @Param("approvalId") approvalId: string): Promise<{ posted: number; refused: number }> {
+    try { return await postAdjustments(this.db, actor, approvalId, new Date()); } catch (e) { toHttp(e); }
+  }
+
   /** DD14's worklist. A read route, not an alert — see `expiry.ts`'s header. */
   @RequirePermission("materials.stock.read", "hospital")
   @Get("expiring")
@@ -609,6 +699,17 @@ export class MaterialsController {
       status: z.string().max(32).optional(), fromResourceId: id.optional(), toResourceId: id.optional(),
     }), query);
     return { transfers: await listTransfers(this.db, q) };
+  }
+
+  /**
+   * The transfer screen's read (2026-09-17): what awaits receipt and the latest moves, with store,
+   * item, batch and person names. `storeId` narrows both to one store.
+   */
+  @RequirePermission("materials.stock.read", "hospital")
+  @Get("transfers/worklist")
+  async transferBoard(@Query() query: unknown): Promise<{ awaiting: TransferView[]; recent: TransferView[] }> {
+    const q = parsed(z.object({ storeId: id.optional() }), query);
+    return transferWorklist(this.db, q);
   }
 
   @RequirePermission("materials.stock.read", "hospital")

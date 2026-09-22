@@ -5,6 +5,7 @@ import { opdPrescriptions, pharmacyDispenseLines, pharmacyDispenses } from "../.
 import { withTx } from "../../kernel/db/client";
 import { transition } from "../../kernel/workflow/instances";
 import { getInvoice, issueInvoice, previewInvoice } from "../billing";
+import { listGstCategories, serviceCategoriesByIds } from "../tariff";
 import { effectiveRegulation, getBatch, itemUomRows } from "../materials";
 import { getEncounter } from "../opd";
 import { dispenseBilled } from "./events";
@@ -38,26 +39,71 @@ type PricedLinePlan = { lineId: string; lineIdx: number; input: InvoiceLineInput
 async function priceLines(db: Db, dispenseId: string, now: Date): Promise<PricedLinePlan[]> {
   const lines = await linesOf(db, dispenseId);
   const plan: PricedLinePlan[] = [];
+  const gstByCategory = await gstCategoryMap(db);
   for (const line of lines) {
     if (line.status !== "open") continue;
     if (line.itemId === null || line.batchId === null || line.qtyBase === null) {
       throw new PharmacyError("dispense_not_in_state", `line ${String(line.lineIdx + 1)} has not been picked`, { lineIdx: line.lineIdx });
     }
-    const sale = await requireActiveSaleItem(db, line.itemId);
-    const batch = await getBatch(db, line.batchId);
-    if (batch === undefined) throw new PharmacyError("batch_not_saleable", `batch ${line.batchId} not found`);
-    const [uoms, regulation] = await Promise.all([itemUomRows(db, line.itemId), effectiveRegulation(db, line.itemId, now)]);
-    const price = priceForBatch({
-      uoms, batch: { mrpPaise: batch.mrpPaise, mrpUom: batch.mrpUom },
-      regulation: regulation === undefined ? null : { ceilingPaise: regulation.ceilingPaise, mrpUom: regulation.mrpUom },
-    });
-    plan.push({
-      lineId: line.id, lineIdx: line.lineIdx, winner: price.winner,
-      input: { lineId: newId(), serviceId: sale.serviceId, qty: line.qtyBase, batchUnitPaise: price.batchUnitPaise, capUnitPaise: price.capUnitPaise },
-    });
+    const priced = await priceBatchLine(db, gstByCategory, { itemId: line.itemId, batchId: line.batchId, qtyBase: line.qtyBase }, now);
+    plan.push({ lineId: line.id, lineIdx: line.lineIdx, ...priced });
   }
   if (plan.length === 0) throw new PharmacyError("nothing_to_dispense", "no open line to bill");
   return plan;
+}
+
+export type GstCategoryMap = Map<string, Awaited<ReturnType<typeof listGstCategories>>[number]>;
+
+export async function gstCategoryMap(db: Db): Promise<GstCategoryMap> {
+  return new Map((await listGstCategories(db)).map((c) => [c.category, c] as const));
+}
+
+/**
+ * One line of drug, priced from the batch it leaves from. Shared by the counter's bill and the
+ * walk-in sale (P19), so the two can never price a strip differently.
+ *
+ * PHARMACY P1: the rate each line will be taxed at is read from the same GST configuration the
+ * tariff engine taxes it with, so the ceiling is converted at the rate the bill applies (L2). An
+ * exempt category carries no tax, so its ceiling stands as notified.
+ */
+export async function priceBatchLine(
+  db: Db, gstByCategory: GstCategoryMap, line: { itemId: string; batchId: string; qtyBase: number }, now: Date,
+): Promise<{ input: InvoiceLineInput; winner: "batch_mrp" | "ceiling" }> {
+  const sale = await requireActiveSaleItem(db, line.itemId);
+  const batch = await getBatch(db, line.batchId);
+  if (batch === undefined) throw new PharmacyError("batch_not_saleable", `batch ${line.batchId} not found`);
+  const [uoms, regulation] = await Promise.all([itemUomRows(db, line.itemId), effectiveRegulation(db, line.itemId, now)]);
+  const category = (await serviceCategoriesByIds(db, [sale.serviceId])).get(sale.serviceId);
+  const gst = category === undefined ? undefined : gstByCategory.get(category);
+  if (gst === undefined) {
+    throw new PharmacyError("gst_slab_unknown", `the sale item's category "${category ?? "?"}" has no GST configuration — seed or correct it before selling`, { category: category ?? null });
+  }
+  const price = priceForBatch({
+    uoms, batch: { mrpPaise: batch.mrpPaise, mrpUom: batch.mrpUom },
+    regulation: regulation === undefined ? null : { ceilingPaise: regulation.ceilingPaise, mrpUom: regulation.mrpUom },
+    taxRateBps: gst.exempt ? 0 : gst.rateBps,
+  });
+  return {
+    winner: price.winner,
+    // P1: an MRP includes its GST (L1), so the bill carves the tax out of the price, never adds it.
+    input: {
+      lineId: newId(), serviceId: sale.serviceId, qty: line.qtyBase,
+      batchUnitPaise: price.batchUnitPaise, capUnitPaise: price.capUnitPaise, taxInclusive: true,
+    },
+  };
+}
+
+/**
+ * Which bound set an issued invoice line's price. Read back off the line, never re-derived (F5: the
+ * bill is the freeze).
+ */
+export function winnerOf(
+  row: { regulatedClamp: unknown; unitPaise: number }, planned: { winner: "batch_mrp" | "ceiling"; batchUnitPaise?: number | null },
+): "batch_mrp" | "ceiling" | "tariff" {
+  const clamp = row.regulatedClamp as { boundApplied?: string } | null;
+  return clamp === null || clamp.boundApplied === "batch_mrp" ? "batch_mrp"
+    : clamp.boundApplied === "caller_cap" ? planned.winner
+      : row.unitPaise === planned.batchUnitPaise ? "batch_mrp" : "tariff";
 }
 
 /** What the window shows before a rupee is taken: the priced draft, through billing's own preview. */
@@ -142,10 +188,7 @@ export async function billDispense(db: Db, actor: Actor, dispenseId: string, inp
     for (const [i, p] of plan.entries()) {
       const row = byNo[i];
       if (row === undefined) throw new PharmacyError("not_found", `invoice line ${String(i + 1)} missing`);
-      const clamp = row.regulatedClamp as { boundApplied?: string } | null;
-      const winner = clamp === null || clamp.boundApplied === "batch_mrp" ? "batch_mrp"
-        : clamp.boundApplied === "caller_cap" ? p.winner
-          : row.unitPaise === p.input.batchUnitPaise ? "batch_mrp" : "tariff";
+      const winner = winnerOf(row, { winner: p.winner, batchUnitPaise: p.input.batchUnitPaise });
       await tx.update(pharmacyDispenseLines)
         .set({ invoiceLineId: row.id, unitPaise: row.unitPaise, priceWinner: winner })
         .where(eq(pharmacyDispenseLines.id, p.lineId));
@@ -157,7 +200,7 @@ export async function billDispense(db: Db, actor: Actor, dispenseId: string, inp
     if (won.length === 0) throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} moved while billing`);
     if (d.workflowInstanceId !== null) await transition(tx, d.workflowInstanceId, "billed", actor);
     await appendEvent(tx, dispenseBilled.make({
-      actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
+      occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
       payload: { dispenseId: d.id, patientId: d.patientId, encounterId: d.encounterId, invoiceId: result.invoiceId, netPaise: result.totals.netPayablePaise },
     }));
   });

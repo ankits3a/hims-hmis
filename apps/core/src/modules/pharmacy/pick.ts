@@ -9,6 +9,7 @@ import { PICK_RESERVATION_MINUTES, istDateOf } from "./config";
 import { dispensePicked } from "./events";
 import { PharmacyError } from "./errors";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
+import { resolveScan } from "./scan";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
@@ -21,6 +22,11 @@ export type PickLineInput = {
   pickNote?: string;
   /** A later batch than FEFO offered (the patient asks for the longer-dated strip). Named, evented. */
   batchId?: string;
+  /**
+   * P13 — the code read off the pack in hand. It must be the line's item (`scan_wrong_item`), and a
+   * GS1 code's batch becomes the named batch, under the same checks as `batchId`.
+   */
+  scan?: string;
 };
 export type PickInput = { lines?: PickLineInput[] };
 
@@ -56,7 +62,7 @@ export async function pickDispense(
   const lines = await linesOf(db, dispenseId);
   const edits = new Map((input.lines ?? []).map((l) => [l.lineIdx, l]));
 
-  type Plan = { lineId: string; lineIdx: number; itemId: string; batchId: string; qtyBase: number; fefoOverride: boolean; pickNote: string | null };
+  type Plan = { lineId: string; lineIdx: number; itemId: string; batchId: string; qtyBase: number; fefoOverride: boolean; pickNote: string | null; scanned: boolean };
   const plan: Plan[] = [];
   for (const line of lines) {
     if (line.status !== "open") continue;
@@ -70,9 +76,16 @@ export async function pickDispense(
     const note = edit?.pickNote?.trim() ?? "";
     if (partial && note === "") throw new PharmacyError("qty_required", `line ${String(line.lineIdx + 1)}: a partial dispense needs a reason`, { lineIdx: line.lineIdx });
 
-    if (edit?.batchId !== undefined) {
-      const rows = await balances(db, { resourceId: store, batchId: edit.batchId });
-      const batch = await getBatch(db, edit.batchId);
+    const scanned = edit?.scan !== undefined && edit.scan.trim() !== "";
+    const scan = scanned ? await resolveScan(db, store, line.lineIdx, line.itemId, edit.scan!) : undefined;
+    if (scan?.batchId != null && edit?.batchId !== undefined && edit.batchId !== scan.batchId) {
+      throw new PharmacyError("scan_batch_mismatch", `line ${String(line.lineIdx + 1)}: the scanned pack is batch ${scan.batchNo ?? ""}, not the batch named`, { lineIdx: line.lineIdx });
+    }
+    const named = scan?.batchId ?? edit?.batchId;
+
+    if (named !== undefined) {
+      const rows = await balances(db, { resourceId: store, batchId: named });
+      const batch = await getBatch(db, named);
       const available = rows.reduce((n, b) => n + b.qtyOnHand - b.qtyReserved - b.qtyFrozen, 0);
       /**
        * A NAMED batch is told WHY (close review, second contract sweep). `fefoPick` now excludes an
@@ -84,14 +97,14 @@ export async function pickDispense(
         throw new PharmacyError(
           "batch_expired",
           `line ${String(line.lineIdx + 1)}: batch ${batch.batchNo} expired on ${batch.expiryDate} — it cannot be dispensed`,
-          { lineIdx: line.lineIdx, batchId: edit.batchId, expiryDate: batch.expiryDate },
+          { lineIdx: line.lineIdx, batchId: named, expiryDate: batch.expiryDate },
         );
       }
       if (batch === undefined || batch.itemId !== line.itemId || batch.recallStatus !== "none" || available < qty) {
-        throw new PharmacyError("fefo_override_unavailable", `line ${String(line.lineIdx + 1)}: batch ${edit.batchId} cannot cover ${String(qty)} at this store`, { lineIdx: line.lineIdx, available });
+        throw new PharmacyError("fefo_override_unavailable", `line ${String(line.lineIdx + 1)}: batch ${named} cannot cover ${String(qty)} at this store`, { lineIdx: line.lineIdx, available });
       }
       const offered = await fefoPick(db, store, line.itemId, qty, now);
-      plan.push({ lineId: line.id, lineIdx: line.lineIdx, itemId: line.itemId, batchId: edit.batchId, qtyBase: qty, fefoOverride: offered[0]?.batchId !== edit.batchId, pickNote: partial ? note : null });
+      plan.push({ lineId: line.id, lineIdx: line.lineIdx, itemId: line.itemId, batchId: named, qtyBase: qty, fefoOverride: offered[0]?.batchId !== named, pickNote: partial ? note : null, scanned });
       continue;
     }
     const offered = await fefoPick(db, store, line.itemId, qty, now);
@@ -107,7 +120,7 @@ export async function pickDispense(
         { lineIdx: line.lineIdx, offered, available },
       );
     }
-    plan.push({ lineId: line.id, lineIdx: line.lineIdx, itemId: line.itemId, batchId: first.batchId, qtyBase: qty, fefoOverride: false, pickNote: partial ? note : null });
+    plan.push({ lineId: line.id, lineIdx: line.lineIdx, itemId: line.itemId, batchId: first.batchId, qtyBase: qty, fefoOverride: false, pickNote: partial ? note : null, scanned });
   }
   if (plan.length === 0) throw new PharmacyError("nothing_to_dispense", "no open line to pick");
 
@@ -128,8 +141,8 @@ export async function pickDispense(
     if (won.length === 0) throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} moved while picking`);
     if (d.workflowInstanceId !== null) await transition(tx, d.workflowInstanceId, "picked", actor);
     await appendEvent(tx, dispensePicked.make({
-      actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
-      payload: { dispenseId: d.id, patientId: d.patientId, lines: plan.map((p) => ({ lineIdx: p.lineIdx, batchId: p.batchId, qtyBase: p.qtyBase, fefoOverride: p.fefoOverride })) },
+      occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
+      payload: { dispenseId: d.id, patientId: d.patientId, lines: plan.map((p) => ({ lineIdx: p.lineIdx, batchId: p.batchId, qtyBase: p.qtyBase, fefoOverride: p.fefoOverride, scanned: p.scanned })) },
     }));
   });
   return getDispense(db, actor, d.id, now);

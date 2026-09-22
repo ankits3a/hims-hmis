@@ -21,6 +21,7 @@ import { pcpndtManifest } from "../../modules/pcpndt";
 import { aerbManifest } from "../../modules/aerb";
 import { radiologyManifest } from "../../modules/radiology";
 import { pharmacyManifest } from "../../modules/pharmacy";
+import { rosterManifest } from "../../modules/roster";
 
 /**
  * `ALL_MANIFESTS` — ONE list of the manifests the API installs, consumed by everything that
@@ -176,4 +177,8 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // PLAN 16c T1 — appended, so the twenty above keep the order they were installed in. It claims
   // the `medication` order kind (`parity.test.ts` grew by one) and, this task, no menu and no subscription.
   pharmacyManifest,
+  // PHASE R (R1) — appended. The roster is its own manifest for the reason `aerb` is (D1): every
+  // department owes it rows and it reaches into none of them. This task: three permissions, no
+  // menu, no subscription, no job — the seam ships inert and R5's resolver is its first reader.
+  rosterManifest,
 ];

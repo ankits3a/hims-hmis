@@ -1,10 +1,13 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import {
-  formularyInteractions, formularyMedicineSalts, formularyMedicines, formularySalts,
+  formularyDrugDisease, formularyInteractions, formularyMedicineSalts, formularyMedicines, formularySalts,
 } from "../../kernel/db/schema";
 import type { Db } from "../../kernel/db/client";
+import type { DrugDiseaseAlternative } from "../../kernel/db/schema";
+import { anyOfText } from "../../kernel/db/any-of";
 
-export type SaltRef = { saltId: string; moiety: string; drugClass: string | null };
+/** `allergyClasses` (P22) is what the allergy check reads beside `drugClass`; absent means none. */
+export type SaltRef = { saltId: string; moiety: string; drugClass: string | null; allergyClasses?: readonly string[] };
 export type ResolvedDrug = {
   medicineId: string | null;
   brandName: string | null;
@@ -61,14 +64,63 @@ export function normalizeDrugName(raw: string): string {
   return raw.toLowerCase().replace(/[.,()\-/]/g, "").replace(/\s+/g, " ").trim();
 }
 
-type SaltRow = { id: string; name: string; aliases: string[]; drugClass: string | null };
+type SaltRow = { id: string; name: string; aliases: string[]; drugClass: string | null; allergyClasses: string[] };
 
 async function activeSalts(db: Db): Promise<SaltRow[]> {
   const rows = await db.select({
     id: formularySalts.id, name: formularySalts.name,
-    aliases: formularySalts.aliases, drugClass: formularySalts.drugClass,
+    aliases: formularySalts.aliases, drugClass: formularySalts.drugClass, allergyClasses: formularySalts.allergyClasses,
   }).from(formularySalts).where(eq(formularySalts.active, true));
-  return rows.map((r) => ({ ...r, aliases: r.aliases ?? [] }));
+  return rows.map((r) => ({ ...r, aliases: r.aliases ?? [], allergyClasses: r.allergyClasses ?? [] }));
+}
+
+/**
+ * ═══ A MAPPED RELEASE ENTRY ALSO NAMES THE MOIETY IT WAS MAPPED TO (formulary phase 2) ═══
+ *
+ * A pharmacist's decision re-points DERIVED composition rows from a release entry to a moiety
+ * (`mapping.ts`). Two things still name the entry itself after that:
+ *   - a TEXT: an allergy recorded as "Amoxicillin trihydrate" resolves, by exact name, to the entry;
+ *   - a medicine a pharmacist COMPOSED BY HAND from the entry, which no projection touches.
+ * Left alone, the first stops matching the products that moved: no shared id, no class, no
+ * substring. So an allergy check that was firing went silent BECAUSE of the decision. The second
+ * never gains the moiety's class.
+ *
+ * So wherever the entry is named, the moiety it was mapped to is named beside it: both, never a
+ * swap. It is the C1/C2 union's reasoning, and the direction is the same. A check that over-warns
+ * costs a reasoned override; one that misses costs a patient. Not filtered by `active`, for C3's
+ * reason below: identity is not a stocking question.
+ *
+ * `refs` are salt ids already resolved. Returns entry id → the moiety it names, for those that are
+ * mapped entries only.
+ */
+async function mappedMoieties(db: Db, saltIds: string[]): Promise<Map<string, SaltRef>> {
+  const out = new Map<string, SaltRef>();
+  if (saltIds.length === 0) return out;
+  const res = await db.execute<{ entry_id: string; id: string; name: string; drug_class: string | null; allergy_classes: string[] | null }>(sql`
+    select entry.id as entry_id, m.id, m.name, m.drug_class, m.allergy_classes
+      from formulary_salts entry
+      join formulary_substances sub on sub.sctid = entry.source_ref and sub.mapping_status = 'mapped'
+      join formulary_salts m on m.id = sub.salt_id
+     where entry.id = any(${sql.param([...new Set(saltIds)])}::text[])
+       and m.id <> entry.id
+  `);
+  for (const r of res.rows) {
+    out.set(r.entry_id, { saltId: r.id, moiety: r.name, drugClass: r.drug_class, allergyClasses: r.allergy_classes ?? [] });
+  }
+  return out;
+}
+
+/** Each list, with every mapped entry's moiety appended once. Order is kept: the entry, then its moiety. */
+function withMapped(refs: SaltRef[], mapped: Map<string, SaltRef>): SaltRef[] {
+  const out: SaltRef[] = [];
+  const seen = new Set<string>();
+  const push = (ref: SaltRef): void => { if (!seen.has(ref.saltId)) { seen.add(ref.saltId); out.push(ref); } };
+  for (const ref of refs) {
+    push(ref);
+    const moiety = mapped.get(ref.saltId);
+    if (moiety !== undefined) push(moiety);
+  }
+  return out;
 }
 
 /**
@@ -92,30 +144,45 @@ async function activeSalts(db: Db): Promise<SaltRow[]> {
 async function compositionOf(
   db: Db,
   medicineIds: string[],
-  saltsById: Map<string, SaltRow>,
 ): Promise<Map<string, SaltRef[]>> {
   const out = new Map<string, SaltRef[]>();
   if (medicineIds.length === 0) return out;
   const rows = await db.select({
     medicineId: formularyMedicineSalts.medicineId, saltId: formularyMedicineSalts.saltId,
-  }).from(formularyMedicineSalts).where(inArray(formularyMedicineSalts.medicineId, medicineIds));
+  }).from(formularyMedicineSalts).where(anyOfText(formularyMedicineSalts.medicineId, medicineIds));
   // Every referenced moiety, resolved from the WHOLE table rather than the active subset (C3).
   const referenced = [...new Set(rows.map((r) => r.saltId))];
   const allSalts = referenced.length === 0
     ? []
     : await db.select({
       id: formularySalts.id, name: formularySalts.name,
-      aliases: formularySalts.aliases, drugClass: formularySalts.drugClass,
-    }).from(formularySalts).where(inArray(formularySalts.id, referenced));
+      aliases: formularySalts.aliases, drugClass: formularySalts.drugClass, allergyClasses: formularySalts.allergyClasses,
+    }).from(formularySalts).where(anyOfText(formularySalts.id, referenced));
   const byId = new Map(allSalts.map((s) => [s.id, s]));
   for (const row of rows) {
-    const salt = byId.get(row.saltId) ?? saltsById.get(row.saltId);
-    // A composition row whose salt has been DELETED (not merely deactivated) is a broken reference
-    // the schema's foreign key makes impossible; skipping is unreachable and safe.
+    const salt = byId.get(row.saltId);
+    /*
+      UNREACHABLE, AND THE REASON IS LOCAL RATHER THAN A FOREIGN KEY. `byId` is built four lines up
+      from `formulary_salts where id = any(referenced)` with NO `active` filter, and `referenced` IS
+      the distinct set of salt ids just read from the composition — so every key in this loop is
+      covered by construction. `Map.get` is typed `| undefined`, which is why the branch is written
+      at all. (The foreign key says the same thing more weakly: it is `NO ACTION`, and a count of
+      composition rows whose salt is absent is 0 over the 142,759 on the loaded catalogue.)
+
+      IT USED TO FALL BACK to an `activeSalts()` map passed in by the caller, and that arm was worse
+      than unreachable: the map is ACTIVE-ONLY, a strict subset of what `byId` already holds, and it
+      was read EARLIER — so in the only race that could have reached it, it answered with staler
+      data than the lookup it was "backing". Deleting it removed a full 3,283-row read of
+      `formulary_salts` from `resolveMedicines`, which runs on every prescription check.
+    */
     if (salt === undefined) continue;
     const list = out.get(row.medicineId) ?? [];
-    list.push({ saltId: salt.id, moiety: salt.name, drugClass: salt.drugClass });
+    list.push({ saltId: salt.id, moiety: salt.name, drugClass: salt.drugClass, allergyClasses: salt.allergyClasses ?? [] });
     out.set(row.medicineId, list);
+  }
+  const mapped = await mappedMoieties(db, referenced);
+  if (mapped.size > 0) {
+    for (const [medicineId, list] of out) out.set(medicineId, withMapped(list, mapped));
   }
   return out;
 }
@@ -137,13 +204,12 @@ export async function resolveMedicines(db: Db, medicineIds: string[]): Promise<M
     id: formularyMedicines.id, brandName: formularyMedicines.brandName,
     routeClass: formularyMedicines.routeClass,
   }).from(formularyMedicines).where(and(
-    inArray(formularyMedicines.id, wanted),
+    anyOfText(formularyMedicines.id, wanted),
     eq(formularyMedicines.active, true),
   ));
   if (medicines.length === 0) return out;
 
-  const saltsById = new Map((await activeSalts(db)).map((s) => [s.id, s]));
-  const composition = await compositionOf(db, medicines.map((m) => m.id), saltsById);
+  const composition = await compositionOf(db, medicines.map((m) => m.id));
   for (const medicine of medicines) {
     out.set(medicine.id, {
       medicineId: medicine.id, brandName: medicine.brandName,
@@ -172,8 +238,10 @@ export async function resolveDrugTexts(db: Db, texts: string[]): Promise<Map<str
   const wanted = new Set([...out.keys()].map(normalizeDrugName).filter((t) => t !== ""));
   if (wanted.size === 0) return out;
 
+  /* `activeSalts` is EARNED here and only here: `byMoiety`/`byAlias` below are built from it, which
+     is the DD2 resolution path. It is no longer read by `resolveMedicines`, so the dispensing gate's
+     two-medicine call no longer pays for the whole moiety table. */
   const salts = await activeSalts(db);
-  const saltsById = new Map(salts.map((s) => [s.id, s]));
 
   /** normalized moiety name → salt, and normalized alias → salt. Names win over aliases. */
   const byMoiety = new Map<string, SaltRow>();
@@ -186,26 +254,75 @@ export async function resolveDrugTexts(db: Db, texts: string[]): Promise<Map<str
     }
   }
 
+  /*
+    ASK FOR THE NAMES WANTED, NOT FOR THE CATALOGUE. This used to read every active medicine —
+    measured at 103,383 rows on the loaded national catalogue, on EVERY prescription issue and every
+    claim — and then normalize each brand in JavaScript to build a lookup map. The normalized key is
+    stored now, so the set of texts the caller asked about goes into the WHERE clause instead.
+
+    `normalizeDrugName` is still called exactly ONCE in TypeScript, on the caller's texts, at
+    `wanted` above. The column holds what the same function produced at write time. That is the
+    arrangement this file's header asks for: one normalizer, and a WHERE clause that reads a column
+    rather than re-deriving a value.
+  */
   const medicines = await db.select({
     id: formularyMedicines.id, brandName: formularyMedicines.brandName,
-    routeClass: formularyMedicines.routeClass,
-  }).from(formularyMedicines).where(eq(formularyMedicines.active, true));
-  const byBrand = new Map(medicines.map((m) => [normalizeDrugName(m.brandName), m]));
+    routeClass: formularyMedicines.routeClass, nameNormalized: formularyMedicines.nameNormalized,
+  }).from(formularyMedicines).where(and(
+    eq(formularyMedicines.active, true),
+    anyOfText(formularyMedicines.nameNormalized, [...wanted]),
+  ));
+  /*
+    KEYED OFF THE STORED COLUMN, not off a re-normalized brand name. Keying off the latter would
+    make this map agree with itself while disagreeing with the WHERE clause that filled it, and the
+    disagreement would be invisible: a row would arrive and then fail to be found.
 
-  const hitMedicineIds = [...wanted].map((t) => byBrand.get(t)?.id).filter((id): id is string => id !== undefined);
-  const composition = await compositionOf(db, hitMedicineIds, saltsById);
+    ═══ A NAME TWO PRODUCTS SHARE RESOLVES TO THEIR MOIETIES, AND TO NO PRODUCT ═══
+
+    51 normalized names collide on the loaded catalogue (`Ab-Xone` / `Abxone`). This used to keep the
+    LAST row, and that row's id became the DISPENSED medicine for a free-typed line at the pharmacy
+    counter (`pharmacy/claim.ts`, `substitutionType: "resolved"`). 6 of the 51 differ in strength,
+    form or route, so the server was choosing which product the doctor meant. DD2 (exact only) and
+    FD-35 (a guard, not a correction) decide it. The text exactly names SEVERAL products, so:
+      - `medicineId`/`brandName` are null: no product is resolved, and the counter asks a person;
+      - `salts` are the UNION of theirs: every check still fires, and if the products ever differ in
+        composition the union is the conservative answer (C1/C2);
+      - `routeClass` is systemic if ANY of them is, because a topical guess suppresses warnings.
+    `test/formulary-mapping-safety.test.ts` pins all three.
+  */
+  const byBrand = new Map<string, typeof medicines>();
+  for (const m of medicines) byBrand.set(m.nameNormalized, [...(byBrand.get(m.nameNormalized) ?? []), m]);
+
+  const hitMedicineIds = [...wanted].flatMap((t) => (byBrand.get(t) ?? []).map((m) => m.id));
+  const composition = await compositionOf(db, hitMedicineIds);
 
   for (const text of out.keys()) {
     const key = normalizeDrugName(text);
     if (key === "") continue;
 
     // 1. brand — the only path that carries a composition.
-    const medicine = byBrand.get(key);
-    if (medicine !== undefined) {
+    const named = byBrand.get(key) ?? [];
+    const [medicine] = named;
+    if (named.length === 1 && medicine !== undefined) {
       out.set(text, {
         medicineId: medicine.id, brandName: medicine.brandName,
         routeClass: asRouteClass(medicine.routeClass),
         salts: composition.get(medicine.id) ?? [],
+      });
+      continue;
+    }
+    if (named.length > 1) {
+      const union: SaltRef[] = [];
+      const seen = new Set<string>();
+      for (const m of named) {
+        for (const ref of composition.get(m.id) ?? []) {
+          if (!seen.has(ref.saltId)) { seen.add(ref.saltId); union.push(ref); }
+        }
+      }
+      out.set(text, {
+        medicineId: null, brandName: null,
+        routeClass: named.some((m) => asRouteClass(m.routeClass) === "systemic") ? "systemic" : "topical",
+        salts: union,
       });
       continue;
     }
@@ -215,10 +332,23 @@ export async function resolveDrugTexts(db: Db, texts: string[]): Promise<Map<str
     if (salt !== undefined) {
       out.set(text, {
         medicineId: null, brandName: null, routeClass: null,
-        salts: [{ saltId: salt.id, moiety: salt.name, drugClass: salt.drugClass }],
+        salts: [{ saltId: salt.id, moiety: salt.name, drugClass: salt.drugClass, allergyClasses: salt.allergyClasses }],
       });
     }
     // 4. nothing else. No substring, no distance — the entry stays `null` (DD2).
+  }
+
+  // A name that resolved to a mapped release entry also names its moiety (`mappedMoieties`).
+  const namedSalts = [...out.values()]
+    .filter((r): r is ResolvedDrug => r !== null && r.medicineId === null && r.brandName === null && r.routeClass === null)
+    .flatMap((r) => r.salts.map((s) => s.saltId));
+  const mapped = await mappedMoieties(db, namedSalts);
+  if (mapped.size > 0) {
+    for (const [text, r] of out) {
+      if (r !== null && r.medicineId === null && r.brandName === null && r.routeClass === null) {
+        out.set(text, { ...r, salts: withMapped(r.salts, mapped) });
+      }
+    }
   }
   return out;
 }
@@ -239,13 +369,68 @@ export async function listInteractionsAmong(db: Db, saltIds: string[]): Promise<
     routeScope: formularyInteractions.routeScope,
   }).from(formularyInteractions).where(and(
     eq(formularyInteractions.active, true),
-    inArray(formularyInteractions.saltAId, wanted),
-    inArray(formularyInteractions.saltBId, wanted),
+    anyOfText(formularyInteractions.saltAId, wanted),
+    anyOfText(formularyInteractions.saltBId, wanted),
   ));
   return rows.map((r) => ({
     saltAId: r.saltAId, saltBId: r.saltBId,
     severity: r.severity === "moderate" ? "moderate" : "severe",
     note: r.note,
+    routeScope: r.routeScope === "systemic_only" ? "systemic_only" : null,
+  }));
+}
+
+/** P24 — one adopted rule: what this moiety does to a patient carrying this diagnosis. */
+export type DrugDiseaseRow = {
+  saltId: string;
+  /** The prefix that matched, kept so the alert can say WHICH ruling fired: `N18` or `N18.4`. */
+  icd10Prefix: string;
+  icd10Title: string;
+  severity: "severe" | "moderate";
+  note: string;
+  alternatives: DrugDiseaseAlternative[];
+  routeScope: "systemic_only" | null;
+};
+
+/**
+ * ═══ THE RULES THAT REACH THESE MOIETIES AND THESE DIAGNOSIS CODES ═══
+ *
+ * The join is a PREFIX match, done in Postgres and not in JavaScript, because the grain is per
+ * rule: `N18.4` and `N18.3` are two rulings about one disease and only the code can say which one
+ * a patient is in. `unnest` rather than a chain of ORs — a patient may carry a dozen diagnoses and
+ * the query shape should not change with the count.
+ *
+ * Codes are upper-cased here because the catalogue stores them upper-case and the column's CHECK
+ * pins the prefix the same way; a lower-case code from anywhere would otherwise match nothing and
+ * report a clean bill of health, which is the worst possible way for this to fail.
+ */
+export async function listDrugDiseaseFor(
+  db: Db, saltIds: string[], icd10Codes: string[],
+): Promise<DrugDiseaseRow[]> {
+  const salts = [...new Set(saltIds)].filter((id) => id !== "");
+  const codes = [...new Set(icd10Codes.map((c) => c.trim().toUpperCase()))].filter((c) => c !== "");
+  if (salts.length === 0 || codes.length === 0) return [];
+  const rows = await db.select({
+    saltId: formularyDrugDisease.saltId,
+    icd10Prefix: formularyDrugDisease.icd10Prefix,
+    icd10Title: formularyDrugDisease.icd10Title,
+    severity: formularyDrugDisease.severity,
+    note: formularyDrugDisease.note,
+    alternatives: formularyDrugDisease.alternatives,
+    routeScope: formularyDrugDisease.routeScope,
+  }).from(formularyDrugDisease).where(and(
+    eq(formularyDrugDisease.active, true),
+    anyOfText(formularyDrugDisease.saltId, salts),
+    sql`exists (select 1 from unnest(${sql.param(codes)}::text[]) as c
+                 where c like ${formularyDrugDisease.icd10Prefix} || '%')`,
+  ));
+  return rows.map((r) => ({
+    saltId: r.saltId,
+    icd10Prefix: r.icd10Prefix,
+    icd10Title: r.icd10Title,
+    severity: r.severity === "moderate" ? "moderate" : "severe",
+    note: r.note,
+    alternatives: r.alternatives,
     routeScope: r.routeScope === "systemic_only" ? "systemic_only" : null,
   }));
 }

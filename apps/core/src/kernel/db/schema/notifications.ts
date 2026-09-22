@@ -47,7 +47,10 @@ export const notifications = pgTable(
     lastError: text("last_error"),
     nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }), // nullable; the claim predicate's other half
     sentAt: timestamp("sent_at", { withTimezone: true }),
-    sentChannel: text("sent_channel"), // 'whatsapp' | 'sms' — which adapter accepted it (D11)
+    // PHASE O T4: the fourth of the four places the channel union is written down, and the one
+    // that cannot import it — a SQL column has no TypeScript. The other three now read
+    // `NOTIFY_CHANNELS` in `notify/adapters.ts`; this comment is updated in the same commit.
+    sentChannel: text("sent_channel"), // 'whatsapp' | 'sms' | 'web_push' — which adapter accepted it (D11)
     sentTemplateVersion: integer("sent_template_version"), // the template version that actually rendered (D8)
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

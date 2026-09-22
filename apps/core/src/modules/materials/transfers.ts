@@ -1,11 +1,12 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
-import { transferLines, transfers } from "../../kernel/db/schema";
+import { items, resources, stockBatches, transferLines, transfers, users } from "../../kernel/db/schema";
+import { usersHoldingRole } from "../../kernel/workflow/roles";
 import { MaterialsError } from "./errors";
 import { materialDiscrepancyFlagged, materialIssued, materialReceived } from "./events";
 import { fefoPick, getBatch, postMovements } from "./ledger";
-import { ensureTransitStore, requireStore } from "./stores";
+import { ensureTransitStore, requireStore, storeCustodianRoles } from "./stores";
 import type { MovementInput } from "./ledger";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -252,6 +253,27 @@ export async function receiveStock(
     );
   }
 
+  /*
+    TWO SIGNATURES, AND THE RIGHT SECOND ONE (the transfer screen, 2026-09-17). The stores issue and
+    the receiving department acknowledges: the Indian hospital indent voucher has both signatures,
+    and one person signing both is a transfer nobody checked. A store that names its keepers
+    (`attributes.custodianRoles`, which `seed:pharmacy` sets on both pharmacy counters) is received
+    into only by one of them, so the pharmacy, not the storekeeper, confirms what reached its shelf.
+  */
+  if (actor.id === transfer.issuedBy) {
+    throw new MaterialsError("transfer_self_receipt", `you issued transfer ${transferId}; the receiving store confirms it`);
+  }
+  const keepers = storeCustodianRoles(await requireStore(tx, transfer.toResourceId));
+  if (keepers.length > 0) {
+    let keeps = false;
+    for (const roleKey of keepers) {
+      if ((await usersHoldingRole(tx, roleKey)).includes(actor.id)) { keeps = true; break; }
+    }
+    if (!keeps) {
+      throw new MaterialsError("not_store_keeper", `only the receiving store's own staff (${keepers.join(", ")}) confirm what reached it`, { keepers });
+    }
+  }
+
   const existing = await tx.select().from(transferLines)
     .where(eq(transferLines.transferId, transferId)).orderBy(asc(transferLines.id));
   const byId = new Map(existing.map((l) => [l.id, l]));
@@ -378,6 +400,92 @@ export async function listDiscrepancies(db: Db | Tx): Promise<TransferWithLines[
     const lines = await db.select().from(transferLines)
       .where(eq(transferLines.transferId, h.id)).orderBy(asc(transferLines.id));
     out.push({ ...h, lines });
+  }
+  return out;
+}
+
+// ═══════════════════════ THE TRANSFER SCREEN'S READ (2026-09-17) ═══════════════════════
+
+export type TransferView = {
+  id: string;
+  /** What staff say aloud: `TR-` and the id's last six characters. */
+  ref: string;
+  status: string;
+  note: string | null;
+  from: { id: string; code: string; name: string };
+  to: { id: string; code: string; name: string };
+  issuedBy: { id: string; name: string };
+  issuedAt: string;
+  receivedBy: { id: string; name: string } | null;
+  receivedAt: string | null;
+  lines: {
+    id: string; itemId: string; itemCode: string; itemName: string; baseUom: string;
+    batchId: string; batchNo: string; expiryDate: string | null;
+    qtyIssued: number; qtyReceived: number | null; discrepancyReason: string | null;
+  }[];
+};
+
+const RECENT_TRANSFERS = 50;
+
+/**
+ * What the transfer screen shows, with names instead of ids: every transfer still in transit (to
+ * `storeId` when given), oldest first, and the latest moves (from or to `storeId`), newest first.
+ */
+export async function transferWorklist(
+  db: Db | Tx, filter: { storeId?: string },
+): Promise<{ awaiting: TransferView[]; recent: TransferView[] }> {
+  const store = filter.storeId;
+  const awaitingRows = await db.select().from(transfers)
+    .where(and(eq(transfers.status, "in_transit"), store === undefined ? undefined : eq(transfers.toResourceId, store)))
+    .orderBy(asc(transfers.issuedAt), asc(transfers.id)).limit(200);
+  const recentRows = await db.select().from(transfers)
+    .where(store === undefined ? undefined : or(eq(transfers.fromResourceId, store), eq(transfers.toResourceId, store)))
+    .orderBy(desc(transfers.issuedAt), desc(transfers.id)).limit(RECENT_TRANSFERS);
+  const views = await transferViews(db, [...awaitingRows, ...recentRows]);
+  return {
+    awaiting: awaitingRows.map((r) => views.get(r.id)!),
+    recent: recentRows.map((r) => views.get(r.id)!),
+  };
+}
+
+async function transferViews(db: Db | Tx, rows: TransferRow[]): Promise<Map<string, TransferView>> {
+  const out = new Map<string, TransferView>();
+  const ids = [...new Set(rows.map((r) => r.id))];
+  if (ids.length === 0) return out;
+  const lines = await db.select({
+    line: transferLines, itemId: stockBatches.itemId, itemCode: items.code, itemName: items.name, baseUom: items.baseUom,
+    batchNo: stockBatches.batchNo, expiryDate: stockBatches.expiryDate,
+  })
+    .from(transferLines)
+    .innerJoin(stockBatches, eq(stockBatches.id, transferLines.batchId))
+    .innerJoin(items, eq(items.id, stockBatches.itemId))
+    .where(inArray(transferLines.transferId, ids))
+    .orderBy(asc(transferLines.id));
+  const storeIds = [...new Set(rows.flatMap((r) => [r.fromResourceId, r.toResourceId]))];
+  const stores = new Map((await db.select({ id: resources.id, code: resources.code, name: resources.name })
+    .from(resources).where(inArray(resources.id, storeIds))).map((s) => [s.id, s] as const));
+  const people = [...new Set(rows.flatMap((r) => [r.issuedBy, r.receivedBy]).filter((x): x is string => x !== null))];
+  const nameOf = new Map((people.length === 0 ? [] : await db.select({ id: users.id, fullName: users.fullName })
+    .from(users).where(inArray(users.id, people))).map((u) => [u.id, u.fullName] as const));
+  const storeOf = (id: string): TransferView["from"] => {
+    const s = stores.get(id);
+    return { id, code: s?.code ?? "", name: s?.name ?? id };
+  };
+  for (const r of rows) {
+    if (out.has(r.id)) continue;
+    out.set(r.id, {
+      id: r.id, ref: `TR-${r.id.slice(-6)}`, status: r.status, note: r.note,
+      from: storeOf(r.fromResourceId), to: storeOf(r.toResourceId),
+      issuedBy: { id: r.issuedBy, name: nameOf.get(r.issuedBy) ?? r.issuedBy },
+      issuedAt: r.issuedAt.toISOString(),
+      receivedBy: r.receivedBy === null ? null : { id: r.receivedBy, name: nameOf.get(r.receivedBy) ?? r.receivedBy },
+      receivedAt: r.receivedAt === null ? null : r.receivedAt.toISOString(),
+      lines: lines.filter((l) => l.line.transferId === r.id).map((l) => ({
+        id: l.line.id, itemId: l.itemId, itemCode: l.itemCode, itemName: l.itemName, baseUom: l.baseUom,
+        batchId: l.line.batchId, batchNo: l.batchNo, expiryDate: l.expiryDate,
+        qtyIssued: l.line.qtyIssued, qtyReceived: l.line.qtyReceived, discrepancyReason: l.line.discrepancyReason,
+      })),
+    });
   }
   return out;
 }

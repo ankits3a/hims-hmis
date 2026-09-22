@@ -166,6 +166,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * months of history cannot be asked.
        */
       "staff.reports.history.year",
+      /**
+       * THE OPD DAY REPORT — owner request and ruling 2026-09-19: the person who runs the counter
+       * closes the day with it. Every department read is logged (`day_report.patients_listed`).
+       */
+      "opd.reports.read",
     ],
   },
   {
@@ -440,6 +445,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "materials.items.read",
       "materials.stock.read",
       "materials.grn.qc",
+      // THE TRANSFER SCREEN (2026-09-17) — the dispensary acknowledges what the stores sent to its
+      // shelf; `receiveStock` refuses the issuer and anyone who does not keep the destination.
+      "materials.stock.receive",
       // PLAN 16c T1 — THE DISPENSING COUNTER, +11. The four `pharmacy.*` strings are the counter's
       // own; `orders.place/read/cancel` because the claim PLACES the `medication` order (D1, the
       // `lab_reception` shape); and the four billing strings `lab_reception` holds for the same
@@ -449,6 +457,24 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "pharmacy.dispense.read",
       "pharmacy.dispense.scheduled",
       "pharmacy.sale_items.manage",
+      // PHARMACY P2 — the register of pharmacists: the pharmacist in charge files a colleague's state
+      // council registration. `recordPharmacistRegistration` refuses one's own whatever this says.
+      "pharmacy.pharmacists.manage",
+      // PHARMACY P9 — the Schedule H1 register, read and printed for an inspector. The pharmacist's:
+      // it lists patients by name and what they were given.
+      "pharmacy.register.read",
+      // 14c — a pharmacist may count the main store; the counter's own store is theirs and is refused.
+      "materials.counts.perform",
+      // PHARMACY P5 — a paid dispense that cannot be collected: the counter that issued the invoice
+      // credits it and REQUESTS the refund. The payout stays the cashier's, behind billing's approval.
+      "billing.credit_note.issue",
+      "billing.refund.request",
+      // PHARMACY P19 — the walk-in counter: sell, and register the customer who has no UHID yet.
+      // `sellRetail` asserts `patients.register` itself, and only on the branch that registers.
+      "pharmacy.retail.sell",
+      "patients.register",
+      // PHARMACY P20 — a pharmacist enters the paper dispenses written while the screens were dark.
+      "pharmacy.downtime.enter",
       "orders.place",
       "orders.read",
       "orders.cancel",
@@ -682,6 +708,24 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // once — the approvals engine's own governance. It belongs with the role that already holds
       // the activator key, and nowhere below it.
       "approvals.types.manage",
+      // ─── THE APPROVALS SPINE, owner ruling R1 of 2026-09-20 ───
+      //
+      // The owner opened `/approvals` and reported: *"It lacks action button."* It does not. The
+      // screen renders "you cannot decide this" wherever `approvals.requests.decide` is absent, and
+      // this role held `approvals.types.manage` — the authority to define what an approval IS —
+      // and neither of the two strings that let a person answer one. The role could write the rules
+      // of a queue it could not open.
+      //
+      // R3 of the same day makes the owner the LAST RUNG of every money type's escalation ladder.
+      // A last rung that cannot read the request is not a rung, so R1 is what makes R3 reachable:
+      // the pair is granted together, or the ladder dead-ends one step below the top.
+      //
+      // THIS NARROWS THE 2026-08-26 MINIMUM-NECESSARY RULING, and the narrowing is deliberate. An
+      // approval carries its subject's name, so deciding one means reading one. `patients.read`
+      // itself is still NOT granted below — the approval carries its own subject, and the right to
+      // decide about one patient is not the right to browse the register.
+      "approvals.requests.read",
+      "approvals.requests.decide",
       // ─── GROUP B, 2026-08-26: the owner can finally see the money ───
       //
       // This role held three `workflow.*` strings and could not open a single invoice, dues ledger
@@ -718,6 +762,23 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        */
       "staff.reports.read",
       "staff.reports.history.full",
+      /**
+       * THE OPD DAY REPORT — owner request and ruling 2026-09-19: the day by department, and each
+       * department's patient list, on the letterhead and as a spreadsheet. Every department read is
+       * logged (`day_report.patients_listed`).
+       */
+      "opd.reports.read",
+      /**
+       * PHASE R (R1) — THE ROSTER, to READ. The owner sees who is meant to be on; the owner does
+       * not make the rota (the MS does), for the reason the owner does not write prescriptions.
+       */
+      "roster.read",
+      // PHARMACY P17 — the Schedule H1 register, and its unredacted copy for an inspector: the
+      // licensee answers for the register.
+      "pharmacy.register.read",
+      "pharmacy.register.read_sealed",
+      // PHARMACY P19 — the retail licence is the licensee's document.
+      "pharmacy.retail.manage",
     ],
   },
   {
@@ -754,6 +815,24 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "staff.reports.read",
       /** OWNER RULING 2026-09-14 — hospital-level governance is not a one-year question. */
       "staff.reports.history.full",
+      /**
+       * THE OPD DAY REPORT — owner request and ruling 2026-09-19: the day by department, and each
+       * department's patient list, on the letterhead and as a spreadsheet. Every department read is
+       * logged (`day_report.patients_listed`).
+       */
+      "opd.reports.read",
+      /**
+       * PHASE R (R1) — THE ROSTER. The medical superintendent is the authority a clinical roster
+       * answers to, so the MS may draft one, PUBLISH one (the governed act, D3) and read them all.
+       * The MS holds these at HOSPITAL scope, which satisfies every department's check; the people
+       * who will draft day to day — a unit's senior resident, its head, the nursing superintendent —
+       * get their strings, scoped to their own department, with their roles in phase R's successors.
+       * Until then a roster can exist only because the MS made it, which is the right default for a
+       * thing that decides who is woken at 02:00.
+       */
+      "roster.periods.manage",
+      "roster.periods.publish",
+      "roster.read",
       "auth.elevation.review",
       // ─── The merge approver's kit, owner ruling 2026-08-26 ───
       //
@@ -776,6 +855,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // lines up, applied to a definition instead of a patient.
       "ot.definitions.read",
       "ot.definitions.manage",
+      // PHARMACY P17 — the administrative head answers the drug inspector too.
+      "pharmacy.register.read",
+      "pharmacy.register.read_sealed",
+      // PHARMACY P19 — and records the retail licence when the owner is away.
+      "pharmacy.retail.manage",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -962,6 +1046,24 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "materials.stock.issue",
       "materials.stock.receive",
       "materials.recall.manage",
+      // PLAN 14c, FIRST SLICE — the head schedules and reviews counts, and may count a store someone
+      // else scheduled. The act keeps the scheduler and the store's custodians off the sheet.
+      "materials.counts.manage",
+      "materials.counts.perform",
+      // ─── THE APPROVALS SPINE, 2026-09-20: the same defect as the owner's, one store over ───
+      //
+      // `materials_head` is the `approverRole` on `materials_near_expiry_acceptance` and held
+      // neither string that lets a person answer one, so that type was unanswerable by anybody: the
+      // engine routes it to this role, the worklist is scoped to the roles the reader holds, and no
+      // holder of this role could see the queue. The failure mode is SILENCE, not a refusal — the
+      // request sits in a list nobody can open — which is why it went unreported while the owner's
+      // identical defect was noticed the day somebody looked at the screen.
+      //
+      // This mints no authority the model had not already assigned: naming a role as `approverRole`
+      // IS the grant of that decision. The pair only makes the assignment reachable. The invariant
+      // in `test/seed-roles.test.ts` now fails if any future type names a role that cannot answer it.
+      "approvals.requests.read",
+      "approvals.requests.decide",
     ],
   },
   {
@@ -979,6 +1081,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "materials.grn.capture",
       "materials.stock.issue",
       "materials.stock.receive",
+      // 14c — the storekeeper counts other stores (the pharmacy's, a ward's), never the one they keep.
+      "materials.counts.perform",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -1396,6 +1500,19 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "patients.read",
       "formulary.read",
     ],
+  },  /**
+   * PHARMACY P17 — THE PHARMACIST IN CHARGE, held IN ADDITION to `pharmacy`. The pharmacist named on
+   * the drug licence maintains the statutory registers and produces them to the inspector, so the
+   * unredacted H1 copy is theirs; every other pharmacist reads the sealed rows as the alias.
+   */
+  {
+    roleKey: "pharmacy_incharge",
+    permissions: [
+      "pharmacy.register.read",
+      "pharmacy.register.read_sealed",
+      // P19 — the pharmacist named on the Form 20/21 licence records it.
+      "pharmacy.retail.manage",
+    ],
   },
 ];
 
@@ -1640,6 +1757,7 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   lab_bridge: "Laboratory instrument bridge (a MACHINE account: asks what to run on a tube and posts what it measured; holds nothing else)",
   // PLAN 16c T1 — the aide's title names the one thing the role cannot do.
   pharmacy_assistant: "Pharmacy Assistant (claims, picks and labels; completes NO Schedule H/H1 dispense)",
+  pharmacy_incharge: "Pharmacist in Charge (held with pharmacy; the unredacted H1 register for the inspector)",
 };
 
 /** The title for a model role key. Throws rather than inventing one — an unresolved role is a defect. */

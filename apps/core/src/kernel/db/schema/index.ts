@@ -11,6 +11,7 @@ export * from "./billing";
 export * from "./worker";
 export * from "./alerts";
 export * from "./notifications";
+export * from "./reach";
 export * from "./retention";
 export * from "./ops";
 export * from "./search";
@@ -97,3 +98,11 @@ export * from "./aerb";
 // `auth.users` (who asked). It knows nothing of opd or billing: the counter, the vitals bay and the
 // cashier all enqueue through the same kernel, for the reason `notify` is a kernel and not a module.
 export * from "./printing";
+// PHASE R (R1) — the hospital's ORGANISATIONAL departments, beside `opd_departments` and never
+// instead of them (stress test S3): the intern year posts to Community Medicine, Anaesthesia,
+// Casualty and Forensic Medicine, and none of those four is a place a patient is given a token for.
+export * from "./org";
+// PHASE R (R1) — the roster's own vocabulary of DUTY. `roster.ts` reads `auth.roles` and nothing of
+// any department's: it is its own MANIFEST for the reason `aerb` is (D1) — the duty manager, the
+// on-call radiologist, the lab's critical ladder, every ward and every clinical unit owe it rows.
+export * from "./roster";

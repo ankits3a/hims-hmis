@@ -12,6 +12,8 @@ import {
 import type { WireDepartment, WireDoctor, WireLeave, WireRoom, WireSchedule } from "../lib/opd-api";
 import { FormKit, SelectField, TextField } from "../components/form-kit";
 import { PaperScreen, ScreenTitle } from "../components/paper-screen";
+import { useCopilot } from "../lib/use-copilot";
+import { CopilotReport } from "../components/copilot-report";
 import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
 /*
@@ -742,7 +744,6 @@ export function OpdAdmin(): React.ReactElement {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<"departments" | "rooms" | "doctors" | "schedules" | "vocabulary">("departments");
-  const [agentAnswer, setAgentAnswer] = useState<string | null>(null);
   const [agentLog, setAgentLog] = useState<AgentLine[]>([]);
 
   const departments = useQuery({ queryKey: ["opd", "departments"], queryFn: listDepartments, refetchInterval: POLL_MS });
@@ -758,22 +759,35 @@ export function OpdAdmin(): React.ReactElement {
     is the useful one: a deactivated department is invisible at the counter and still on every past
     visit, so "why can nobody book Dermatology" has an answer this screen holds and never volunteers.
   */
-  const ask = (question: string): void => {
+  const localAnswer = (question: string): string | null => {
     const q = question.toLowerCase();
     const off = [...departmentItems, ...roomItems].filter((x) => !x.active).map((x) => x.name)
       .concat(doctorItems.filter((d) => !d.active).map((d) => d.displayName));
-    const answer = /inactive|deactivat|off|disabled|missing|hidden/.test(q)
-      ? (off.length === 0 ? t("opdAdmin.agent.allActive") : t("opdAdmin.agent.inactive", { list: off.join(", ") }))
-      : /how many|count|department|room|doctor|list/.test(q)
-        ? t("opdAdmin.agent.counts", {
-            departments: t("opdAdmin.agent.countDepartments", { count: departmentItems.length }),
-            rooms: t("opdAdmin.agent.countRooms", { count: roomItems.length }),
-            doctors: t("opdAdmin.agent.countDoctors", { count: doctorItems.length }),
-          })
-        : t("opdAdmin.agent.cannot");
-    setAgentAnswer(answer);
-    setAgentLog((l) => logged(l, question));
+    if (/inactive|deactivat|off|disabled|missing|hidden/.test(q)) {
+      return off.length === 0 ? t("opdAdmin.agent.allActive") : t("opdAdmin.agent.inactive", { list: off.join(", ") });
+    }
+    if (/how many|count|department|room|doctor|list/.test(q)) {
+      return t("opdAdmin.agent.counts", {
+        departments: t("opdAdmin.agent.countDepartments", { count: departmentItems.length }),
+        rooms: t("opdAdmin.agent.countRooms", { count: roomItems.length }),
+        doctors: t("opdAdmin.agent.countDoctors", { count: doctorItems.length }),
+      });
+    }
+    return null;
   };
+
+  /*
+    ═══ FD-COPILOT — AND THE HALF OF THIS CHAIN THAT NO SERVER SHOULD EVER TAKE OVER ═══
+
+    The useful branch is the second one, as this file's own header says: a deactivated department is
+    invisible at the counter and still on every past visit, so "why can nobody book Dermatology" has
+    an answer THIS SCREEN holds and never volunteers. That is a fact about the masters as currently
+    loaded here, and it stays here.
+  */
+  const copilot = useCopilot({
+    fallback: localAnswer,
+    onNote: (text) => { setAgentLog((l) => logged(l, text)); },
+  });
 
   return (
     <PaperScreen testId="opd-admin" style={{ padding: "18px 22px", gap: 14 }}>
@@ -805,7 +819,10 @@ export function OpdAdmin(): React.ReactElement {
       </div>
 
       <AgentDock
-        answer={agentAnswer} log={agentLog} onAsk={ask}
+        answer={copilot.answer} log={agentLog} onAsk={copilot.ask}
+        panel={copilot.report === null ? undefined : (
+          <CopilotReport report={copilot.report} onDismiss={copilot.dismissReport} />
+        )}
         placeholder={t("opdAdmin.askPlaceholder")} idle={t("opdAdmin.agentIdle")}
       />
     </PaperScreen>

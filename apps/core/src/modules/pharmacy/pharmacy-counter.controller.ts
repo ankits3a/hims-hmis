@@ -5,21 +5,43 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { withIdempotency } from "../billing";
 import { claimDispense, findAtCounter } from "./claim";
-import { istDateOf } from "./config";
+import { OPD_PHARMACY_STORE_CODE, istDateOf } from "./config";
 import { PHARMACY_IDEMPOTENT_ROUTES, idSchema, parsed, toHttp } from "./pharmacy-http";
+import { closingFor } from "./closing";
+import type { Closing } from "./closing";
+import { patientRail } from "./patient-rail";
+import type { PatientRail } from "./patient-rail";
 import { confirmSlip, getDispense, listQueue } from "./queue";
+import type { Quote } from "./quote";
 import { billDispense, previewDispenseBill } from "./bill";
 import { handOverDispense } from "./handover";
 import { labelFor } from "./label";
 import { pickDispense } from "./pick";
-import { alternativesFor, cancelDispense, declineLine, verifyDispense } from "./verify";
+import { checkPickScan } from "./scan";
+import { cancelDispense, checkedAlternativesFor, declineLine, placementsFor, precheckTicket, verifyDispense, writtenQuoteFor } from "./verify";
+import { cancelBilledDispense } from "./refund";
+import { authorisationDetail, decideAuthorisation, requestAuthorisation } from "./authorisations";
+import type { AuthorisationDetail } from "./authorisations";
+import type { AuthorisationRow } from "./authorisation-reads";
+import { reorderAdvice } from "./replenishment";
+import { acceptReturn } from "./returns";
+import { h1Register } from "./registers";
+import { LEAKAGE_STORE_CODES, pharmacyLeakage } from "./leakage";
+import type { LeakageReport } from "./leakage";
+import { counterSummary } from "./summary";
+import type { CounterSummary } from "./summary";
+import type { H1Register } from "./registers";
+import type { ReturnResult } from "./returns";
+import type { ReorderAdvice } from "./replenishment";
+import type { CancelBilledResult } from "./refund";
 import type { Actor } from "@hmis/contracts";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
 import type { ModuleRegistry } from "../../kernel/modules/loader";
 import type { FindResult } from "./claim";
 import type { DispenseView, QueueRow } from "./queue";
-import type { Alternative } from "./verify";
+import type { CheckedAlternative, LinePrecheck } from "./verify";
+import type { RetailShelfEntry } from "./retail";
 import type { PricedDraft } from "../billing";
 import type { LabelData } from "./label";
 
@@ -33,12 +55,21 @@ const verifyBody = z.object({
   })),
 });
 const reasonBody = z.object({ reason: z.string().min(1).max(240) });
+const refundBody = z.object({ reason: z.string().min(3).max(500), reasonClass: z.enum(["mistake", "genuine"]) });
+const returnBody = z.object({
+  lines: z.array(z.object({ lineIdx: z.number().int().nonnegative(), qtyBase: z.number().int().positive() })).min(1).max(50),
+  sealedIntact: z.literal(true),
+  reason: z.string().min(3).max(500),
+  reasonClass: z.enum(["mistake", "genuine"]),
+});
 const pickBody = z.object({
   lines: z.array(z.object({
     lineIdx: z.number().int().nonnegative(),
     qtyBase: z.number().int().positive().optional(),
     pickNote: z.string().max(240).optional(),
     batchId: idSchema.optional(),
+    /** P13 — the code read off the pack in hand. */
+    scan: z.string().min(1).max(200).optional(),
   })).optional(),
 });
 const billBody = z.object({
@@ -93,11 +124,121 @@ export class PharmacyCounterController {
     }
   }
 
+  /** P13 — what a pack scan says about a line, as the pack is scanned. Nothing is reserved. */
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Get("dispenses/:id/lines/:idx/scan")
+  async scan(@Param("id") id: string, @Param("idx") idx: string, @Query("code") code?: string): Promise<{ itemCode: string; batchNo: string | null; expiryDate: string | null }> {
+    const q = parsed(z.object({ idx: z.coerce.number().int().nonnegative(), code: z.string().min(1).max(200) }), { idx, code });
+    try {
+      return await checkPickScan(this.db, id, q.idx, q.code);
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** WHAT CLOSED (the board's three boxes): the ticket, the money as the invoice and receipt record it, the registers. */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("dispenses/:id/closing")
+  async closing(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<Closing> {
+    try {
+      return await closingFor(this.db, actor, id);
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * WHO IS AT THE WINDOW (the board's left rail) — read ONCE when the ticket is opened, never polled:
+   * it records a PHI access, and `getDispense` is on a fifteen-second poll.
+   */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("dispenses/:id/patient")
+  async patientRail(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<PatientRail> {
+    try {
+      return await patientRail(this.db, actor, id, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** PD-7 C3 — each equivalent comes back already put to this patient's check (`checkedAlternativesFor`). */
   @RequirePermission("pharmacy.dispense.read", "hospital")
   @Get("dispenses/:id/lines/:idx/alternatives")
-  async alternatives(@Param("id") id: string, @Param("idx") idx: string): Promise<{ items: Alternative[] }> {
+  async alternatives(@CurrentActor() actor: Actor, @Param("id") id: string, @Param("idx") idx: string): Promise<{ items: CheckedAlternative[]; written: Quote | null }> {
     try {
-      return { items: await alternativesFor(this.db, id, Number(idx)) };
+      const now = new Date();
+      /* `written` — the line as the doctor wrote it, quoted — is what the co-pilot's "saves ₹x a strip" is measured against. */
+      const items = await checkedAlternativesFor(this.db, actor, id, Number(idx), now);
+      return { items, written: items.length === 0 ? null : await writtenQuoteFor(this.db, id, Number(idx), now) };
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * PD-9 (owner ruling 2026-09-19) — ask THE PRESCRIBER to authorise one refusal on one line. The
+   * counter's permission to ask; the Act's registration inside (`requestAuthorisation`).
+   */
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Post("dispenses/:id/lines/:idx/authorisations")
+  async askPrescriber(@CurrentActor() actor: Actor, @Param("id") id: string, @Param("idx") idx: string, @Body() body: unknown): Promise<AuthorisationRow> {
+    const lineIdx = parsed(z.object({ idx: z.coerce.number().int().nonnegative() }), { idx }).idx;
+    const input = parsed(z.object({
+      book: z.enum(["allergy", "interaction", "duplicate", "drug_disease"]), about: z.string().min(1).max(200),
+      note: z.string().max(500).optional(), medicineId: idSchema.optional(),
+    }), body);
+    try {
+      return await requestAuthorisation(this.db, actor, { dispenseId: id, lineIdx, ...input }, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** PD-9 — the request as the prescriber reads it. The doctor's permission; the prescriber alone inside. */
+  @RequirePermission("opd.consult", "hospital")
+  @Get("authorisations/:id")
+  async authorisation(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<AuthorisationDetail> {
+    try {
+      return await authorisationDetail(this.db, actor, id);
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** PD-9 — the prescriber authorises or declines, with a reason. */
+  @RequirePermission("opd.consult", "hospital")
+  @Post("authorisations/:id/decision")
+  async decide(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<AuthorisationRow> {
+    const input = parsed(z.object({ authorise: z.boolean(), reason: z.string().max(500) }), body);
+    try {
+      return await decideAuthorisation(this.db, actor, id, input, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** C3b — the ticket's own lines, put to the check before anyone walks to the shelf (`precheckTicket`). */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("dispenses/:id/precheck")
+  async precheck(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ lines: LinePrecheck[] }> {
+    try {
+      return await precheckTicket(this.db, actor, id, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * PD-5b — what a line the catalogue could not place may be read as. The counter's own permission,
+   * not the downtime clerk's (`/pharmacy/downtime/shelf`): the search is part of working a ticket,
+   * and the act that places the line is still verify's, by a registered pharmacist.
+   */
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Get("dispenses/:id/lines/:idx/shelf")
+  async shelf(@Param("id") id: string, @Param("idx") idx: string, @Query("q") q?: string): Promise<{ items: RetailShelfEntry[] }> {
+    const input = parsed(z.object({ idx: z.coerce.number().int().nonnegative(), q: z.string().max(200).default("") }), { idx, q });
+    try {
+      return { items: await placementsFor(this.db, id, input.idx, input.q, new Date()) };
     } catch (e) {
       return toHttp(e);
     }
@@ -211,6 +352,88 @@ export class PharmacyCounterController {
     const { reason } = parsed(reasonBody, body);
     try {
       return await declineLine(this.db, actor, this.decls(), id, Number(idx), reason, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** P6 — a sealed pack comes back: restocked, credited, its refund requested. The act asserts the rest. */
+  @RequirePermission("billing.refund.request", "hospital")
+  @Post("dispenses/:id/returns")
+  async returns(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown, @Headers("idempotency-key") key?: string): Promise<ReturnResult> {
+    const input = parsed(returnBody, body);
+    try {
+      return await withIdempotency(this.db, { actorId: actor.id, route: PHARMACY_IDEMPOTENT_ROUTES.returns, key }, { id, ...input },
+        () => acceptReturn(this.db, actor, this.decls(), id, input, new Date()));
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** P7 — the counter's day. `day` is an IST date; today when absent. Read-only. */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("summary")
+  async summary(@Query("day") day?: string): Promise<CounterSummary> {
+    try {
+      return await counterSummary(this.db, day ?? istDateOf(new Date()));
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * P9 — the Schedule H1 register for `from`..`to` (IST dates, at most 31 days). The read asserts the
+   * permission itself, and logs one PHI access row per patient it shows.
+   */
+  @RequirePermission("pharmacy.register.read", "hospital")
+  @Get("registers/h1")
+  async h1Register(
+    @CurrentActor() actor: Actor, @Query("from") from?: string, @Query("to") to?: string,
+  ): Promise<H1Register> {
+    try {
+      return await h1Register(this.db, actor, { from: from ?? "", to: to ?? "" });
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * P12 — the leakage triangle for one IST day (today when absent). The Leakage Auditor's report is
+   * the billing supervisor's and the owner's, not the counter's: `billing.reports.read`. P19b:
+   * `store` picks the counter, `PHARM-OPD` (the default) or `PHARM-RETAIL`.
+   */
+  @RequirePermission("billing.reports.read", "hospital")
+  @Get("leakage")
+  async leakage(@Query("day") day?: string, @Query("store") store?: string): Promise<LeakageReport> {
+    try {
+      return await pharmacyLeakage(this.db, day ?? istDateOf(new Date()), parsed(z.enum(LEAKAGE_STORE_CODES), store ?? OPD_PHARMACY_STORE_CODE));
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** P4 — the reorder list: what the counter will run out of, and where it can come from. Read-only. */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("reorder")
+  async reorder(): Promise<ReorderAdvice> {
+    try {
+      return await reorderAdvice(this.db, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * P5 — a paid dispense that cannot be collected. The act asserts the Act's registration and both
+   * billing strings itself; this decorator is the first gate, not the only one.
+   */
+  @RequirePermission("billing.refund.request", "hospital")
+  @Post("dispenses/:id/refund")
+  async refund(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown, @Headers("idempotency-key") key?: string): Promise<CancelBilledResult> {
+    const input = parsed(refundBody, body);
+    try {
+      return await withIdempotency(this.db, { actorId: actor.id, route: PHARMACY_IDEMPOTENT_ROUTES.refund, key }, { id, ...input },
+        () => cancelBilledDispense(this.db, actor, this.decls(), id, input, new Date()));
     } catch (e) {
       return toHttp(e);
     }

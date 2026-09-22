@@ -2551,3 +2551,83 @@ and RC-3's three), every one found by a revert, none by reasoning — and R37 is
 correct response to the green revert was NOT to delete the check. The revert is the instrument; the
 guard's *reason for existing* is what it measures; and when the reason is "nothing can arrive", the
 next question is *from which module*.
+
+### 2.167 — `--since` HAS NO `--until`, SO AN AUDIT TOTAL SILENTLY INCLUDES WHATEVER IS STILL RUNNING
+
+**THE RULE. `token-audit.js` filters transcripts by mtime ≥ since and nothing else. On a box where
+several sessions run at once, the TOTAL line is therefore "your phase plus everyone else's live
+work". Read the PER-WORKFLOW rows, and identify your own by running the script TWICE a few minutes
+apart: your phase's workflow is finished and its numbers are STABLE; anything that grows between the
+two runs belongs to somebody who is still working.**
+
+**THE SPECIMEN, 2026-09-22 (roster phase R audit, close `3f2044e9`).** First reading, `--since
+2026-09-20`, reported a total of 27 agents / 959 calls / 180,322 per call across two workflows, and
+the second workflow looked like a gift: 71,342 per call against the first's 192,867 — **2.7x apart on
+what I took to be the same phase's papers**, which is exactly the shape of a behavioural finding.
+The draft of this entry was written on it.
+
+Re-running the same command minutes later returned **12 agents / 166 calls** for that second
+workflow, then **174**. It was growing. It was a **different session's live workflow** — the
+orchestrator's board sweep, running on its own brief, sharing nothing but the clock. The control was
+never a control, and the 2.7x gap measured two unrelated populations.
+
+**Phase R's own workflow, isolated** (`--json`, `runs[]`, the row that did not move):
+
+```
+wf_c3569b4f-f99   21 agents   860 calls   out 894,900   ctx 165,865,690   192,867/call   185x
+tools: Bash 702 · Edit 85 · Read 51 · StructuredOutput 17 · Write 5      (Bash 81.6%, Read 5.9%)
+```
+
+**THE MECHANICAL FORM.**
+
+```
+node docs/superpowers/pipelines/token-audit.js --since <date> --json   # then again, 3 minutes later
+```
+
+Diff the two `runs[]` arrays by `run` id. A workflow whose `calls` is identical in both is finished
+and is safe to attribute; one that grew is live and belongs to someone else. **Never quote the TOTAL
+line on a shared box** — and note that `--json` carries `tools` PER WORKFLOW, which the printed turn
+mix does not.
+
+**THE MECHANISM, STATED GENERALLY, BECAUSE THE NEXT PERSON WILL MEET IT THROUGH A DIFFERENT SCRIPT.**
+Any instrument that selects by TIME and not by IDENTITY — mtime, `--since`, a date-filtered log query,
+`git log --since` across a shared repo — returns "my work plus whoever else was awake". The defect is
+not in this script; it is in using a time window as a proxy for ownership on a box that runs ten
+sessions. The general form of the fix: **select by identity where the instrument offers one (here the
+workflow id), and where it does not, establish identity by STABILITY — measure twice and keep what did
+not move.**
+
+**Why it matters beyond the arithmetic.** The contaminated reading did not merely inflate a number,
+it manufactured a CONTROL: two workflows, "same papers", 2.7x apart, which is precisely the evidence
+one wants for "the cost is behavioural, not documentary". A number that is too big announces itself;
+a false control does not, and it is what turns a measurement into a conclusion. The instrument had no
+`--until`; the audit had no business pretending it did.
+
+**WHAT THE PHASE'S OWN NUMBERS STILL SAY, with the contamination removed.** Lever 1 was **already
+pulled** — phase R's EXECUTE-PROMPT (line 47) forbids `EXECUTION-LESSONS.md`, the plan-series index,
+the brainstorm series and the project brief — and the papers an agent legitimately held were
+`AGENT-RULES.md` (26,563 B) plus its own phase document (74,377 B), about **25.2k tokens against
+192,867 per call. So ~87% of the average call's context was accumulated in-run**, and no document
+edit could have touched it. The cost model is `calls x per-call`, so the whole lever lives in that
+accumulated term: **every 1,000 tokens shaved off the average call is 860,000 tokens for this phase,
+and halving the accumulated share would have cost 93.7M instead of 165.9M.** The fix is the brief's
+reading contract (method §9.11), not a smaller ledger.
+
+**WHAT THE ACCUMULATED 87% IS ACTUALLY MADE OF — two witnessed instances from the phase's own
+session, and both are ordinary.** A `git diff` written with the pathspec BEFORE `--shortstat` ignored
+the flag and emitted **2.8 MB into a single tool result** — one malformed Bash call, one billed turn,
+and a context cost every later turn in that run would have carried had the harness inlined it rather
+than persisting it to a file. And the same session re-ran suites to read counts it had already read,
+and re-measured lane state it had measured minutes earlier. **That is the Bash-versus-Read thesis in
+one sentence: `Read` on a known path costs a bounded amount you choose in advance, while
+`cat`/`grep`/`diff` through Bash costs whatever the command happens to emit, and you find out
+afterwards.** Neither instance is exotic; both are what an ordinary competent run looks like, which is
+why the term is 87% and not a rounding error.
+
+**AND THE COST SIDE, SO A CUT IS NEVER REPORTED ALONE (§5 honesty rule 3).** 38 mutants, of which
+**one survived** — R8's, which passed 251 of 251 because moving a validator past a supersede is
+unobservable inside a transaction that rolls back either way, and which bought a structural
+source-order guard. **Two review passes, ten findings, and the second pass's five were every one
+inside the first pass's own remediation**, including the same emptiness defect a third time, in the
+fix for it. A close that stopped at one pass would have shipped all five. The review passes earned
+the phase; the mutants mostly confirmed, and the single refuting one bought the guard.

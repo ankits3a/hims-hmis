@@ -62,6 +62,81 @@ export const PHARMACY_ERROR_CODES = [
    * pharmacist an impossible instruction at the one moment they are facing a patient.
    */
   "batch_expired_before_collection",
+  // ── P2: the register of pharmacists (Pharmacy Act 1948 §42) ──
+  /** The acting login has no current state council registration on file. */
+  "pharmacist_not_registered",
+  /** A registration is filed, and ended, by someone other than its holder. */
+  "self_registration",
+  "invalid_registration",
+  "registration_expired",
+  "registration_in_use",
+  "registration_ended",
+  "not_a_pharmacist_role",
+  // ── P5: a paid dispense that cannot be collected ──
+  /** An act whose record a reviewer will read, attempted without saying why. */
+  "reason_required",
+  // ── P6: sales returns (doc 16 O-7) ──
+  "return_window_closed",
+  "return_not_sealed",
+  /** A cold-chain, frozen or narcotic item: its storage after it left the counter cannot be vouched for. */
+  "return_not_accepted",
+  "return_cut_strip",
+  "return_short_expiry",
+  "return_exceeds_dispensed",
+  // ── P7 ──
+  "invalid_day",
+  // ── P9 ──
+  "invalid_range",
+  // ── P13 ──
+  "scan_unknown",
+  "scan_wrong_item",
+  "scan_batch_unknown",
+  "scan_batch_mismatch",
+  // ── P19: walk-in retail sales ──
+  /** No Form 20/21 licence is recorded for the retail store (Drugs and Cosmetics Act §18(c)). */
+  "retail_licence_missing",
+  /** The recorded licence does not cover today. */
+  "retail_licence_lapsed",
+  "invalid_retail_licence",
+  "retail_store_missing",
+  /** A Schedule H or H1 line with no outside prescription captured (r.65(9)). */
+  "prescription_required",
+  "invalid_prescription",
+  "registration_not_permitted",
+  "duplicate_suspected",
+  "unknown_retail_sale",
+  /**
+   * The prescription photo could not be written (the kernel document store is not writable). The
+   * sale is refused whole: a Schedule H sale without its prescription on file is not a sale.
+   */
+  "document_store_unavailable",
+  // ── P20: paper dispenses entered after an outage ──
+  /** Not a downtime kit's receipt sheet, or a serial the kit never reserved. */
+  "sheet_invalid",
+  "sheet_already_entered",
+  /** The time on the sheet is in the future, or before the kit was printed. */
+  "invalid_dispense_time",
+  /** The time on the sheet fell while the hospital was not in downtime or degraded mode. */
+  "not_in_downtime",
+  "backfill_window_closed",
+  /** A paper line must name the batch written on the sheet. */
+  "batch_required",
+  /** The person named as handing the medicine over is not pharmacy staff. */
+  "unknown_pharmacist",
+  // ── PD-5b: a line the pharmacist read, and the two books only a new moiety can trip ──
+  /** The medicine chosen for a line nobody could place repeats a moiety already on the prescription. */
+  "duplicate_block",
+  /** A diagnosis the patient carries rules the medicine out and no prescriber ruled on it (a reading, or a code added after issue). */
+  "drug_disease_block",
+  // ── PD-D18: where the drug is ──
+  /** A shelf label longer than the line can print (24 characters). */
+  "invalid_shelf_location",
+  // ── PD-9: the prescriber authorises what the check would refuse ──
+  /** The check raises no such refusal on that line — there is nothing for the doctor to authorise. */
+  "authorisation_not_needed",
+  /** The request was already authorised or declined. */
+  "authorisation_not_pending",
+  "unknown_authorisation",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -112,6 +187,49 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   batch_expired: 409,
   slip_not_confirmed: 409,
   batch_expired_before_collection: 409,
+  pharmacist_not_registered: 403,
+  self_registration: 403,
+  invalid_registration: 400,
+  registration_expired: 409,
+  registration_in_use: 409,
+  registration_ended: 409,
+  not_a_pharmacist_role: 409,
+  reason_required: 400,
+  return_window_closed: 409,
+  return_not_sealed: 409,
+  return_not_accepted: 409,
+  return_cut_strip: 409,
+  return_short_expiry: 409,
+  return_exceeds_dispensed: 409,
+  invalid_day: 400,
+  invalid_range: 400,
+  scan_unknown: 409,
+  scan_wrong_item: 409,
+  scan_batch_unknown: 409,
+  scan_batch_mismatch: 409,
+  retail_licence_missing: 409,
+  retail_licence_lapsed: 409,
+  invalid_retail_licence: 400,
+  retail_store_missing: 409,
+  prescription_required: 409,
+  invalid_prescription: 400,
+  registration_not_permitted: 403,
+  duplicate_suspected: 409,
+  unknown_retail_sale: 404,
+  document_store_unavailable: 503,
+  sheet_invalid: 409,
+  sheet_already_entered: 409,
+  invalid_dispense_time: 400,
+  not_in_downtime: 409,
+  backfill_window_closed: 409,
+  batch_required: 400,
+  unknown_pharmacist: 409,
+  duplicate_block: 409,
+  drug_disease_block: 409,
+  invalid_shelf_location: 400,
+  authorisation_not_needed: 409,
+  authorisation_not_pending: 409,
+  unknown_authorisation: 404,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {

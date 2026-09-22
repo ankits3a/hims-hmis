@@ -271,6 +271,46 @@ export const materialConsumed = defineEvent("material.consumed", MODULE, z.objec
  * The catalog, in source order. A later task that adds a `defineEvent` above adds it here too;
  * `manifests.test.ts`'s discipline applied to a list one module owns.
  */
+/**
+ * ═══ PLAN 14c, FIRST SLICE — COUNTS ═══
+ *
+ * `stock.counted` and `stock.variance_flagged` are doc 09 §3.9's names. `stock.adjusted` is not
+ * defined: nothing posts an adjustment until runbook O1 gives the write-off its second key.
+ * Readers: the variance review on `/materials/counts`, and later the leakage triangle and the
+ * owner's digest.
+ */
+export const stockCountScheduled = defineEvent("stock_count.scheduled", MODULE, z.object({
+  countId: id, storeResourceId: id, scheduledBy: id, counterUserId: id,
+  lines: z.number().int(), frozenAt: z.string(), recountOf: id.nullable(),
+}));
+export const stockCounted = defineEvent("stock.counted", MODULE, z.object({
+  countId: id, storeResourceId: id, countedBy: id, countedAt: z.string(),
+  lines: z.number().int(), matched: z.number().int(), variances: z.number().int(), recounts: z.number().int(),
+  netVariancePaise: paise, recountId: id.nullable(),
+}));
+export const stockVarianceFlagged = defineEvent("stock.variance_flagged", MODULE, z.object({
+  countId: id, storeResourceId: id, batchId: id, itemId: id,
+  systemQty: qty, movedQty: qty, countedQty: qty, varianceQty: qty, variancePaise: paise, recount: z.boolean(),
+}));
+export const stockCountClosed = defineEvent("stock_count.closed", MODULE, z.object({
+  countId: id, storeResourceId: id, closedBy: id, note: z.string(),
+}));
+export const stockCountCancelled = defineEvent("stock_count.cancelled", MODULE, z.object({
+  countId: id, storeResourceId: id, cancelledBy: id, reason: z.string(),
+}));
+
+/**
+ * 14c, second slice — `stock.adjusted`, doc 09 §3.9's name: a count's variance booked after its
+ * approval was granted. One event per posting, carrying every line and its ledger row.
+ */
+export const stockAdjusted = defineEvent("stock.adjusted", MODULE, z.object({
+  approvalId: id, countId: id, storeResourceId: id, postedBy: id,
+  lines: z.array(z.object({
+    adjustmentId: id, batchId: id, itemId: id, qtyDelta: qty, valuePaise: paise, reasonCode: z.string(), ledgerEntryId: id,
+  })).min(1),
+  netValuePaise: paise,
+}));
+
 export const MATERIALS_EVENTS = [
   itemRegistered, itemUpdated,
   vendorRegistered, vendorUpdated, vendorStatusChanged,
@@ -278,4 +318,6 @@ export const MATERIALS_EVENTS = [
   materialIssued, materialReceived, materialDiscrepancyFlagged,
   batchRecalled, batchExpiring,
   consignmentDeployed, materialConsumed,
+  stockCountScheduled, stockCounted, stockVarianceFlagged, stockCountClosed, stockCountCancelled,
+  stockAdjusted,
 ] as const;

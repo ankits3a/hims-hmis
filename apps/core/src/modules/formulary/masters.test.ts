@@ -4,9 +4,9 @@ import { withTx } from "../../kernel/db/client";
 import { events } from "../../kernel/db/schema";
 import { FormularyError } from "./errors";
 import {
-  addInteraction, addMedicine, addSalt, listInteractions, listMedicines, listSalts,
-  updateInteraction, updateMedicine, updateSalt,
+  addInteraction, addMedicine, addSalt, updateInteraction, updateMedicine, updateSalt,
 } from "./masters";
+import { catalogueCensus, medicinesByIds, pageInteractions, pageSalts, saltsByIds } from "./reads";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -45,20 +45,33 @@ describe("formulary masters (Plan 16a T2)", () => {
     return { amox, clav, augmentin };
   }
 
+  /**
+   * The composition of ONE medicine, by the id its write returned — and a throw if that id names no
+   * row, so a vanished medicine fails as itself rather than as an empty array that quietly equals
+   * whatever the caller expected.
+   */
+  async function compositionOf(medicineId: string): Promise<string[]> {
+    const medicine = (await medicinesByIds(db, [medicineId])).get(medicineId);
+    if (medicine === undefined) throw new Error(`the formulary has no medicine ${medicineId}`);
+    return medicine.salts.map((s) => s.saltId);
+  }
+
   // ────────────────────────────── composition, round trip ──────────────────────────────
 
   it("a brand round-trips with its moieties — the Augmentin composition, by name", async () => {
     const { amox, clav, augmentin } = await seedAugmentin();
-    const [medicine] = await listMedicines(db);
-    expect(medicine!.id).toBe(augmentin);
+    // Read back BY THE ID THE WRITE RETURNED. Scanning a list for the row just written asserts
+    // "some row looks like this"; naming the row asserts "THIS row is this", which is the claim.
+    const medicine = (await medicinesByIds(db, [augmentin])).get(augmentin);
+    expect(medicine).toBeDefined();
     expect(medicine!.brandName).toBe("Augmentin 625");
     expect(medicine!.salts.map((s) => s.saltId).sort()).toEqual([amox, clav].sort());
     expect(medicine!.salts.find((s) => s.saltId === amox)!.strength).toBe("500 mg");
 
     // The class that makes the Augmentin allergy case possible at all (T4 consumes it).
-    const salts = await listSalts(db);
-    expect(salts.find((s) => s.id === amox)!.drugClass).toBe("penicillin");
-    expect(salts.find((s) => s.id === amox)!.aliases).toEqual(["amoxycillin"]);
+    const salts = await saltsByIds(db, [amox]);
+    expect(salts.get(amox)!.drugClass).toBe("penicillin");
+    expect(salts.get(amox)!.aliases).toEqual(["amoxycillin"]);
   });
 
   it("every mutation lands its event, and the event carries what a later reader needs", async () => {
@@ -103,7 +116,7 @@ describe("formulary masters (Plan 16a T2)", () => {
         salts: [{ saltId: "01HNOSUCHSALT00000000000001" }],
       })),
     ).rejects.toMatchObject({ code: "unknown_salt" });
-    expect(await listMedicines(db)).toHaveLength(0);
+    expect((await catalogueCensus(db)).medicines).toBe(0);
   });
 
   // ──────────────────────── the pair is one fact, whichever way it is typed ────────────────────────
@@ -122,7 +135,7 @@ describe("formulary masters (Plan 16a T2)", () => {
       note: "bleeding risk — avoid or monitor INR closely", source: "seed-2026-08",
     }));
 
-    const [pair] = await listInteractions(db);
+    const [pair] = (await pageInteractions(db)).items;
     expect({ a: pair!.saltAId, b: pair!.saltBId }).toEqual({ a: low, b: high });
 
     // The same fact entered again, this time the right way round, is still the same fact.
@@ -146,7 +159,7 @@ describe("formulary masters (Plan 16a T2)", () => {
         severity: "severe", note: "n/a", source: "manual",
       })),
     ).rejects.toMatchObject({ code: "unknown_salt" });
-    expect(await listInteractions(db)).toHaveLength(0);
+    expect((await catalogueCensus(db)).interactions).toBe(0);
   });
 
   // ─────────────────────────────── DD8: the intra-FDC gate ───────────────────────────────
@@ -171,13 +184,13 @@ describe("formulary masters (Plan 16a T2)", () => {
     }));
     await expect(attempt).rejects.toBeInstanceOf(FormularyError);
     await expect(attempt).rejects.toMatchObject({ code: "intra_fdc_interaction" });
-    expect(await listMedicines(db)).toHaveLength(0);
+    expect((await catalogueCensus(db)).medicines).toBe(0);
 
     const { medicineId } = await withTx(db, (tx) => addMedicine(tx, PHARMACIST, {
       brandName: "Invented Combination", form: "tablet", routeClass: "systemic",
       salts: [{ saltId: a }, { saltId: b }], acknowledgeIntraFdc: true,
     }));
-    expect(await listMedicines(db)).toHaveLength(1);
+    expect((await catalogueCensus(db)).medicines).toBe(1);
 
     // The acknowledgement is ON THE EVENT: an FDC admitted over a known internal interaction is a
     // fact somebody may want to find later, and the row itself does not record it.
@@ -214,14 +227,15 @@ describe("formulary masters (Plan 16a T2)", () => {
       })),
     ).rejects.toMatchObject({ code: "intra_fdc_interaction" });
 
-    // The composition did not move.
-    expect((await listMedicines(db))[0]!.salts.map((s) => s.saltId)).toEqual([a]);
+    // The composition did not move. `medicineId` is in hand, so the read NAMES the row under test
+    // instead of trusting that the only medicine in the table is that one.
+    expect(await compositionOf(medicineId)).toEqual([a]);
 
     // Acknowledged, it lands — and the correction is evented.
     await withTx(db, (tx) => updateMedicine(tx, PHARMACIST, medicineId, {
       salts: [{ saltId: a }, { saltId: b }], acknowledgeIntraFdc: true,
     }));
-    expect((await listMedicines(db))[0]!.salts.map((s) => s.saltId).sort()).toEqual([a, b].sort());
+    expect((await compositionOf(medicineId)).sort()).toEqual([a, b].sort());
     expect(await eventsNamed(db, "medicine.corrected")).toHaveLength(1);
   });
 
@@ -232,7 +246,7 @@ describe("formulary masters (Plan 16a T2)", () => {
         brandName: "Empty Thing", form: "tablet", routeClass: "systemic", salts: [],
       })),
     ).rejects.toMatchObject({ code: "unknown_salt" });
-    expect(await listMedicines(db)).toHaveLength(0);
+    expect((await catalogueCensus(db)).medicines).toBe(0);
   });
 
   it("a single-moiety medicine never consults the pair table at all", async () => {
@@ -269,8 +283,7 @@ describe("formulary masters (Plan 16a T2)", () => {
     expect([...payload.fromSaltIds].sort()).toEqual([amox, clav].sort());
     expect(payload.toSaltIds).toEqual([amox]);
     // The composition really moved, not just the event.
-    const [medicine] = await listMedicines(db);
-    expect(medicine!.salts.map((s) => s.saltId)).toEqual([amox]);
+    expect(await compositionOf(augmentin)).toEqual([amox]);
 
     // Re-stating the SAME composition is not a correction — nothing about the medicine changed.
     await withTx(db, (tx) => updateMedicine(tx, PHARMACIST, augmentin, { salts: [{ saltId: amox }] }));
@@ -297,7 +310,9 @@ describe("formulary masters (Plan 16a T2)", () => {
       saltAId: a, saltBId: b, severity: "severe", note: "INR rise on sustained use", source: "manual",
     }));
     await withTx(db, (tx) => updateInteraction(tx, PHARMACIST, interactionId, { severity: "moderate" }));
-    const [pair] = await listInteractions(db);
+    // Narrowed to the pairs touching these two moieties, so the row read back is the row written.
+    const [pair] = (await pageInteractions(db, { saltIds: [a, b] })).items;
+    expect(pair!.id).toBe(interactionId);
     expect(pair!.severity).toBe("moderate");
     const evs = await eventsNamed(db, "interaction.updated");
     expect(evs).toHaveLength(1);
@@ -305,12 +320,24 @@ describe("formulary masters (Plan 16a T2)", () => {
   });
 
   it("deactivating hides a row from the active-only reads without deleting it", async () => {
-    const { amox, augmentin } = await seedAugmentin();
+    const { amox, clav, augmentin } = await seedAugmentin();
     await withTx(db, (tx) => updateMedicine(tx, PHARMACIST, augmentin, { active: false }));
     await withTx(db, (tx) => updateSalt(tx, PHARMACIST, amox, { active: false }));
-    expect(await listMedicines(db, { activeOnly: true })).toHaveLength(0);
-    expect(await listSalts(db, { activeOnly: true })).toHaveLength(1); // clavulanic acid survives
-    expect(await listMedicines(db)).toHaveLength(1);
-    expect(await listSalts(db)).toHaveLength(2);
+
+    // Both halves of "hidden, not deleted" in ONE statement of the census: the ACTIVE counts fell
+    // and the TOTAL counts did not. A row that had really been deleted moves both, so a census that
+    // only counted the active ones could not tell the two apart.
+    const census = await catalogueCensus(db);
+    expect({
+      medicines: census.medicines, activeMedicines: census.activeMedicines,
+      salts: census.salts, activeSalts: census.activeSalts,
+    }).toEqual({ medicines: 1, activeMedicines: 0, salts: 2, activeSalts: 1 });
+
+    // And the surviving moiety is the clavulanic acid, not merely "one of them": the comment this
+    // assertion used to carry beside it is now the assertion.
+    expect((await pageSalts(db, { activeOnly: true })).items.map((s) => s.id)).toEqual([clav]);
+    // Hidden, yet still nameable by id — which is what "not deleted" means to a dispensing label.
+    expect((await medicinesByIds(db, [augmentin])).get(augmentin)!.active).toBe(false);
+    expect((await saltsByIds(db, [amox])).get(amox)!.active).toBe(false);
   });
 });

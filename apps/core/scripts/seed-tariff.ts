@@ -86,6 +86,10 @@ const GST_CATEGORIES = [
    * category and takes no per-line rate. `pharmacy` above is the 12% slab; these three are nil, 5%
    * and 18%. `registerSaleItem` picks one from `items.gst_rate_bps` (owner ruling R-2). All four
    * begin `pharmacy` so the tariff engine's `batchUnitPaise` guard (16c T0b) admits them.
+   *
+   * PHARMACY P1 (2026-09-16): the counter's lines are `taxInclusive`, so these rates are CARVED OUT
+   * of the printed MRP, never added to it. A real rate here cannot raise a price above the MRP. The
+   * CA still signs which rate each slab carries.
    */
   {
     category: "pharmacy_exempt",

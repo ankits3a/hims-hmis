@@ -1,7 +1,15 @@
 import {
-  pgTable, text, integer, boolean, timestamp, jsonb, index, uniqueIndex,
+  check, pgTable, text, integer, boolean, timestamp, jsonb, index, uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
+
+/**
+ * PHASE O T1 — the vocabulary the `kind` column has always had and never declared. `respond` is
+ * the new one: silence, as opposed to `sla`'s lateness and `escalation`'s climb.
+ */
+export const WORKFLOW_TIMER_KINDS = ["sla", "escalation", "respond"] as const;
+export type WorkflowTimerKind = (typeof WORKFLOW_TIMER_KINDS)[number];
 
 export const workflowDefinitions = pgTable(
   "workflow_definitions",
@@ -54,6 +62,16 @@ export const workflowInstances = pgTable(
     patientId: text("patient_id"),
     encounterId: text("encounter_id"),
     stateEnteredAt: timestamp("state_entered_at", { withTimezone: true }).notNull(),
+    /**
+     * PHASE O T1 — a PER-INSTANCE override of `sla.minutes`, and the only thing a percent ladder
+     * is a percentage OF. Null means "use the definition's minutes", which is every instance
+     * that shipped before this column existed and every instance nobody has re-budgeted.
+     *
+     * Written only by `rescheduleBudget`, deliberately: a budget change has to cancel and
+     * re-schedule the whole ladder in the same transaction, and a caller that set the column
+     * directly would leave timers pointing at a budget that no longer exists.
+     */
+    budgetMinutes: integer("budget_minutes"),
     startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
     endedAt: timestamp("ended_at", { withTimezone: true }),
   },
@@ -85,8 +103,22 @@ export const workflowTimers = pgTable(
     id: text("id").primaryKey(),
     instanceId: text("instance_id").notNull().references(() => workflowInstances.id),
     state: text("state").notNull(),
-    kind: text("kind").notNull(), // 'sla' | 'escalation'
+    kind: text("kind").notNull(), // 'sla' | 'escalation' | 'respond'
     rung: integer("rung"), // null for kind='sla'; 0-based ladder index for 'escalation'
+    /**
+     * PHASE O T1 — set on `kind='escalation'` rows that came from a percent LADDER, null on the
+     * rows that came from the shipped `escalation` CHAIN. The two kinds of rung are stored in
+     * one column and told apart by this field, and its null-ness is read at the consumer: a
+     * delay record is filed at `percent >= 100`, so a chain rung must not look like a 0 % one.
+     */
+    percent: integer("percent"),
+    /**
+     * C4 — THE WORKER WAS DOWN AND EVERY RUNG CAME DUE AT ONCE. The highest rung emits; the
+     * lower ones are recorded as fired and point here, at the rung that spoke instead. Without
+     * it, three hours of downtime becomes three messages to three people about one silence, and
+     * the ledger cannot tell that from three real climbs.
+     */
+    supersededBy: text("superseded_by").references((): AnyPgColumn => workflowTimers.id),
     dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
     firedAt: timestamp("fired_at", { withTimezone: true }),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
@@ -95,5 +127,14 @@ export const workflowTimers = pgTable(
   (t) => [
     index("workflow_timers_due_idx").on(t.dueAt),
     index("workflow_timers_instance_idx").on(t.instanceId),
+    /**
+     * The column has carried a two-word vocabulary since Plan 03 with nothing enforcing it.
+     * T1 adds a third word and the constraint at the same time: a typo'd kind is a timer that
+     * `runDueTimers` claims, matches no branch, and fires into silence.
+     */
+    check(
+      "workflow_timers_kind_ck",
+      sql`${t.kind} in ('sla', 'escalation', 'respond')`,
+    ),
   ],
 );

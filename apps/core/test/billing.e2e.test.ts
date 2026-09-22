@@ -7,7 +7,7 @@ import { configureApp } from "../src/app.bootstrap";
 import { setupTestDb, truncateAll } from "./helpers/db";
 import { mkDoctor, mkUser, seedOpdBase, seedOpdMasters, activateOpdVisitDefinition } from "./helpers/opd";
 import { mkBillingManager, mkCashier, seedBillingBase } from "./helpers/billing";
-import { billingConfig, events, receipts, refundVouchers } from "../src/kernel/db/schema";
+import { billingConfig, events, invoices, opdConfig, receipts, refundVouchers } from "../src/kernel/db/schema";
 import { assignRole, createRole, grantPermissionToRole, syncPermissions } from "../src/kernel/auth/permissions";
 import { DEFAULT_LETTERHEAD } from "../src/modules/opd/config";
 import { authManifest } from "../src/kernel/auth/manifest";
@@ -18,6 +18,7 @@ import { tariffManifest } from "../src/modules/tariff";
 import { opdManifest } from "../src/modules/opd";
 import { billingManifest } from "../src/modules/billing";
 import { istDay } from "../src/modules/billing/time";
+import { newId } from "@hmis/contracts";
 import { isInvoicePatientFkViolation } from "../src/modules/billing/billing.controller";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { requireEnv } from "../src/kernel/config";
@@ -320,6 +321,14 @@ describe("billing e2e", () => {
     expect(printed.body.patient.uhid).toEqual(expect.any(String));
     expect(printed.body.qrPayload.startsWith(`bil1.invoice.${invoiceId}.`)).toBe(true);
     expect(printed.body.qrPayload.split(".")).toHaveLength(4); // bil1 . invoice . <id> . <sig>
+    expect(printed.body.supplierState).toBeNull(); // no GSTIN on the letterhead yet
+
+    // 2026-09-17 — the trust's legal name and GSTIN on the letterhead reach the printed invoice, with
+    // the state read off the GSTIN (tax invoice r.46).
+    await db.update(opdConfig).set({ letterhead: { ...DEFAULT_LETTERHEAD, legalName: "LEELAWATI DEVI EDUCATIONAL TRUST", gstin: "10AAATL6484H1ZP" } });
+    const withGstin = await http().get(`/billing/invoices/${invoiceId}/print`).set(...auth(cashier.token)).expect(200);
+    expect(withGstin.body.letterhead).toMatchObject({ legalName: "LEELAWATI DEVI EDUCATIONAL TRUST", gstin: "10AAATL6484H1ZP" });
+    expect(withGstin.body.supplierState).toEqual({ code: "10", name: "Bihar" });
 
     expect(await eventNames()).toEqual(expect.arrayContaining(["invoice.issued", "receipt.recorded", "payment.received"]));
   });
@@ -405,6 +414,15 @@ describe("billing e2e", () => {
     const started = await http().post(`/opd/visits/${encounterId}/consult/start`).set(...auth(dra.token)).expect(201);
     expect(started.body.encounter.status).toBe("in_consultation");
 
+    // 3b — THE LEDGER READ, ASKED BY THE NUMBER ON THE SLIP. Leg 1 proved the row is STORED
+    //      canonically; it never asked whether a reader may ASK by the other spelling. The papers
+    //      sheet does exactly that (`GET /billing/invoices?encounterId=`), so a visit reached at the
+    //      counter by its number listed no bills at all — on a visit whose own rail was, in the same
+    //      breath, stamping PAID from leg 2. Owner, 2026-09-15.
+    const byNumber = await http().get(`/billing/invoices?encounterId=${visitNo}`).set(...auth(cashier.token)).expect(200);
+    expect(byNumber.body.items.map((i: { id: string }) => i.id)).toEqual([issued.body.invoiceId]);
+    expect(byNumber.body.items).toEqual(listed.body.items); // one visit, one answer, either spelling
+
     // 4 — THE DUPLICATE GUARD, ACROSS THE TWO SPELLINGS. A second bill on the canonical id is the
     //     same visit and must be refused; spelled differently it used to be a visit nothing knew.
     const dup = await http().post("/billing/invoices").set(...auth(cashier.token)).send({
@@ -414,6 +432,86 @@ describe("billing e2e", () => {
     }).expect(409);
     expect(dup.body.code).toBe("duplicate_invoice_refused");
     expect(dup.body.detail.invoiceNo).toBe(issued.body.invoiceNo);
+  });
+
+  /**
+   * ═══ THE ROWS THE CANONICAL REPAIR LEFT BEHIND, AND WHY THE READ MUST STILL FIND THEM ═══
+   *
+   * `canonicalEncounterRef` shipped in #200 and fixes what the ledger stores FROM THAT DEPLOY ON.
+   * It carried no backfill, and the owner's 2026-09-12 report — a visit billed twice, ₹1000
+   * collected, the counter stamping UNPAID — is direct evidence that rows keyed on a VISIT NUMBER
+   * exist in production right now.
+   *
+   * So the read cannot simply swap one key for the other. Resolving `V…` to the row id and asking
+   * only that would find every new bill and LOSE every legacy one — trading the reported defect for
+   * a quieter one on older visits, which is the worse of the two because nobody would report it.
+   * The route asks for BOTH spellings: the reference as given, and whatever it resolves to. That is
+   * strictly additive — it can only ever find more rows than the raw compare did, never fewer.
+   *
+   * The two spellings are one visit by construction (`getEncounter` resolved one from the other),
+   * so this widens the answer about a single encounter and not the set of encounters answerable.
+   *
+   * THIS IS A READ-SIDE PLASTER OVER A DATA DEFECT AND IS NAMED AS ONE. A legacy row is still
+   * invisible to `feeGate`, `encounterFeeStatuses` and `daily-close`, which key on
+   * `opd_encounters.id` alone — a patient who paid can still be refused at the doctor's door. The
+   * repair for that is a backfill migration over `invoices.encounter_id`, which is an irreversible
+   * host mutation and the owner's call, not this route's.
+   */
+  it("a bill stored under the OLD visit-number key is still found — the canonical repair shipped no backfill", async () => {
+    const patientId = await registerPatient("Leela Nair", "9876543222");
+    const open = await http().post("/opd/visits").set(...auth(cashier.token))
+      .send({ patientId, departmentId: deptId, doctorId: dra.doctorId }).expect(201);
+    const encounterId = open.body.encounter.id as string;
+    const visitNo = open.body.encounter.visitNo as string;
+    await http().post(`/opd/visits/${encounterId}/fee-bypass`).set(...auth(cashier.token))
+      .send({ reason: "fixture: a bill that predates the canonical repair" }).expect(201);
+    await http().post(`/opd/visits/${encounterId}/vitals`).set(...auth(cashier.token)).send(adultOk).expect(201);
+    await openSession(cashier.token);
+
+    const issued = await http().post("/billing/invoices").set(...auth(cashier.token)).send({
+      draftId: "draft-legacy-1", patientId, encounterId,
+      lines: [{ lineId: "fee", serviceId: base.consultNewServiceId, qty: 1 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 50_000 }] },
+    }).expect(201);
+
+    /*
+      ═══ THE LEGACY ROW IS SHAPED, NOT EDITED — AND THAT IS THE SCHEMA TALKING ═══
+
+      The first draft of this test issued a bill and then UPDATEd its `encounter_id` back to the
+      visit number. `billing_immutable: invoices rows are append-only (UPDATE refused)` — a database
+      trigger, and exactly the guard that should refuse it. So the row is INSERTed in the shape the
+      pre-#200 writer left behind, which is the house precedent `shapeInvoiceWithLine` already sets
+      for rows no current code path can mint. No route can produce one any more; that is the repair.
+
+      Its own consequence is worth stating: **a backfill over these rows cannot be an UPDATE
+      either.** Whatever the owner decides about the legacy data has to reckon with this trigger,
+      which is one more reason the decision is not a route's to make.
+    */
+    const legacyId = newId();
+    await db.insert(invoices).values({
+      id: legacyId,
+      invoiceNo: `INV/LEGACY/${legacyId.slice(-6)}`,
+      patientId,
+      encounterId: visitNo, // ← the defect, preserved: the display string, not the row id
+      tariffVersionId: base.tariffVersionId,
+      intendedPayer: "self",
+      grossPaise: 50_000, discountPaise: 0, taxableBasePaise: 50_000,
+      cgstPaise: 0, sgstPaise: 0, rawTotalPaise: 50_000, roundingPaise: 0, netPayablePaise: 50_000,
+      issuedBy: cashier.id,
+      issuedAt: new Date(),
+      serviceDay: istDay(new Date()),
+    });
+
+    /*
+      BOTH BILLS, BY BOTH NAMES. The legacy row is the one the raw compare could only reach through
+      the visit number and the canonical read could only reach through the id; asking each spelling
+      for the pair is what proves neither road lost a bill the patient actually paid.
+    */
+    for (const spelling of [visitNo, encounterId]) {
+      const listed = await http().get(`/billing/invoices?encounterId=${spelling}`).set(...auth(cashier.token)).expect(200);
+      expect(listed.body.items.map((i: { id: string }) => i.id).sort())
+        .toEqual([issued.body.invoiceId, legacyId].sort());
+    }
   });
 
   it("dues: a credit-extended invoice is listed, then cleared by a receipt and an allocation", async () => {

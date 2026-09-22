@@ -25,6 +25,12 @@ export type { CoverageRow } from "./coverages";
 export { addAllergy, listAllergies } from "./allergies";
 export type { AllergyRow } from "./allergies";
 export { searchPatients, visiblePatientIds } from "./search";
+/**
+ * PHARMACY P19 — a walk-in sale of a Schedule H drug files the outside prescription's photo on the
+ * customer's record, in the sale's own transaction. One writer of `patient_documents`, reached
+ * through this seam, rather than a second INSERT in the pharmacy.
+ */
+export { captureDocument } from "./documents";
 export type { MatchLane, PatientSearchResult } from "./search";
 /** FD-8 — the near-match probe, shared by `POST /patients` and the walk-in. */
 export { nearMatches } from "./duplicates";

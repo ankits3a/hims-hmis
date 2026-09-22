@@ -21,12 +21,14 @@ import { PatientStrip } from "./components/patient-strip";
 import { Desk } from "./screens/desk";
 import { MyDay } from "./screens/my-day";
 import { StaffReports } from "./screens/staff-reports";
+import { OpdReportScreen } from "./screens/opd-report";
 import { DeskOne } from "./screens/desk-one/desk-one";
 import { SeatShell } from "./screens/desk-one/seat-shell";
 import { CounterFigures } from "./screens/counter-figures";
 import { PatientDetail } from "./screens/patient-detail";
 import { MergeReview } from "./screens/merge-review";
 import { ApprovalsInbox } from "./screens/approvals-inbox";
+import { MyReach } from "./screens/my-reach";
 import { OpdAdmin } from "./screens/opd-admin";
 import { OpdAppointments } from "./screens/opd-appointments";
 import { OpdDesk } from "./screens/opd-desk";
@@ -49,6 +51,8 @@ import { FormularyAdmin } from "./screens/formulary-admin";
 import { MaterialsItems } from "./screens/materials-items";
 import { MaterialsVendors } from "./screens/materials-vendors";
 import { MaterialsGrn } from "./screens/materials-grn";
+import { MaterialsCounts } from "./screens/materials-counts";
+import { MaterialsTransfers } from "./screens/materials-transfers";
 import { PartnerReceivables } from "./screens/partner-receivables";
 import { PartnerPnl } from "./screens/partner-pnl";
 import { OtList } from "./screens/ot-list";
@@ -57,7 +61,16 @@ import { OtCockpit } from "./screens/ot-cockpit";
 import { OtRecovery } from "./screens/ot-recovery";
 import { LabDesk } from "./screens/lab-desk";
 import { PharmacyCounter } from "./screens/pharmacy-counter";
+import { PharmacyAuthorise } from "./screens/pharmacy-authorise";
+import { PharmacyDesk } from "./screens/pharmacy-desk/pharmacy-desk";
 import { PharmacyItems } from "./screens/pharmacy-items";
+import { PharmacyPharmacists } from "./screens/pharmacy-pharmacists";
+import { PharmacyReorder } from "./screens/pharmacy-reorder";
+import { PharmacyH1Register } from "./screens/pharmacy-h1-register";
+import { PharmacyLeakage } from "./screens/pharmacy-leakage";
+import { PharmacyRetail } from "./screens/pharmacy-retail";
+import { PharmacyRetailLicence } from "./screens/pharmacy-retail-licence";
+import { PharmacyDowntime } from "./screens/pharmacy-downtime";
 import { RadiologyReception } from "./screens/radiology-reception";
 import { RadiologyWorklist } from "./screens/radiology-worklist";
 import { RadiologyStudy } from "./screens/radiology-study";
@@ -169,6 +182,8 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   { to: "/billing/dues", label: "nav.billingDues", permission: "billing.invoice.read", group: "billing" },
   { to: "/billing/session", label: "nav.billingSession", permission: "billing.session.own", group: "billing" },
   { to: "/billing/office", label: "nav.billingOffice", permission: "billing.reports.read", group: "billing" },
+  // PHARMACY P12 — the leakage triangle, beside the back office that reviews it.
+  { to: "/pharmacy/leakage", label: "nav.pharmacyLeakage", permission: "billing.reports.read", group: "billing" },
   { to: "/ops/mode", label: "nav.opsMode", permission: "ops.mode.set", group: "admin" },
   { to: "/ops/downtime-kit", label: "nav.opsDowntimeKit", permission: "ops.downtime.generate", group: "admin" },
   { to: "/admin/users", label: "nav.adminUsers", permission: "auth.users.manage", group: "admin" },
@@ -184,6 +199,8 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   // `desk`: reading a colleague's figures is supervision, not counter work, and putting it beside
   // the counter would make it look like part of a shift.
   { to: "/staff", label: "nav.staffReports", permission: "staff.reports.read", group: "admin" },
+  // The OPD day report (owner, 2026-09-19): the hospital's day by department, PDF and CSV.
+  { to: "/reports/opd-day", label: "nav.opdDayReport", permission: "opd.reports.read", group: "opd" },
   // PLAN 09 T3 — the path and the permission match `membershipManifest.menu`'s own entry exactly,
   // which is where the authoritative pairing lives.
   { to: "/counter/instruments", label: "nav.counterInstruments", permission: "membership.instrument.read", group: "desk" },
@@ -227,6 +244,10 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
    * `apps/core/test/nav-parity.test.ts`, so the next divergence fails a suite instead of a role.
    */
   { to: "/materials/grn", label: "nav.materialsGrn", permission: "materials.stock.read", group: "stores" },
+  // PLAN 14c, first slice — blind counts; the counter's grant opens it, the head's shows the review.
+  { to: "/materials/counts", label: "nav.materialsCounts", permission: "materials.counts.perform", group: "stores" },
+  // 2026-09-17 — stock transfers: the stores send, the receiving store confirms. Read opens it.
+  { to: "/materials/transfers", label: "nav.materialsTransfers", permission: "materials.stock.read", group: "stores" },
   /**
    * PLAN 15 T8 — the mini-OT. Each path and permission matches `otManifest.menu`'s own entry
    * exactly, which is where the authoritative pairing lives and which `nav-parity.test.ts` now
@@ -259,7 +280,20 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   { to: "/lab/reports", label: "nav.labReports", permission: "lab.reports.print", group: "opd" },
   // PLAN 16c T5 — the dispense counter beside the OPD stations it serves; sale items with the stores.
   { to: "/pharmacy/counter", label: "nav.pharmacyCounter", permission: "pharmacy.dispense.read", group: "opd" },
+  // PHASE PD — the pharmacy desk: one ticket in hand, one screen. Beside the counter until it replaces it (PD-D7).
+  { to: "/pharmacy/desk", label: "nav.pharmacyDesk", permission: "pharmacy.dispense.read", group: "opd" },
   { to: "/pharmacy/items", label: "nav.pharmacyItems", permission: "pharmacy.sale_items.manage", group: "stores" },
+  // PHARMACY P2 — the register of pharmacists, beside the pharmacy's other master data.
+  { to: "/pharmacy/pharmacists", label: "nav.pharmacyPharmacists", permission: "pharmacy.pharmacists.manage", group: "stores" },
+  // PHARMACY P4 — the reorder list: what the counter will run out of, and where it can come from.
+  { to: "/pharmacy/reorder", label: "nav.pharmacyReorder", permission: "pharmacy.dispense.read", group: "stores" },
+  // PHARMACY P9 — the Schedule H1 register, the pharmacist's statutory read.
+  { to: "/pharmacy/registers/h1", label: "nav.pharmacyH1", permission: "pharmacy.register.read", group: "stores" },
+  // PHARMACY P19 — the walk-in retail counter, and the licence that opens it.
+  { to: "/pharmacy/retail", label: "nav.pharmacyRetail", permission: "pharmacy.retail.sell", group: "opd" },
+  { to: "/pharmacy/retail-licence", label: "nav.pharmacyRetailLicence", permission: "pharmacy.retail.manage", group: "stores" },
+  // PHARMACY P20 — entering what left on paper while the screens were dark.
+  { to: "/pharmacy/downtime", label: "nav.pharmacyDowntime", permission: "pharmacy.downtime.enter", group: "stores" },
 ];
 
 /**
@@ -549,6 +583,24 @@ const staffReportsRoute = createRoute({
 });
 
 /**
+ * THE OPD DAY REPORT, department by department (owner, 2026-09-19). The dashboard panel links here
+ * with the day it was showing, so the screen opens on the same day rather than jumping to today.
+ */
+const opdDayReportRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/reports/opd-day",
+  validateSearch: (search: Record<string, unknown>): { date?: string; period?: "day" | "week" | "month" } => ({
+    date: typeof search.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(search.date) ? search.date : undefined,
+    period: search.period === "week" || search.period === "month" || search.period === "day" ? search.period : undefined,
+  }),
+  component: function OpdDayReportRoute() {
+    const { date, period } = opdDayReportRoute.useSearch();
+    /* Both halves or neither: a period without its anchor would silently read as today. */
+    return <OpdReportScreen initial={date === undefined ? undefined : { period: period ?? "day", date }} />;
+  },
+});
+
+/**
  * ═══ FD-9 / THE OWNER'S RULING, 2026-09-03 — DESK ONE *IS* `/counter`, AND IT IS THE ONLY DOOR ═══
  *
  * *"LOOK CLAUDE, remove the old design.. let's start from fresh because things are not landing what
@@ -757,7 +809,24 @@ const mergeRoute = createRoute({
 const approvalsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/approvals",
+  // PHASE O T3 — the alerts bell deep-links one card: `/approvals?focus=<approvalId>`. The inbox
+  // scrolls to it and marks it, so a reader who tapped a bell lands on the thing the bell was
+  // about instead of on a list they then have to search.
+  validateSearch: (search: Record<string, unknown>): { focus?: string } => ({
+    focus: typeof search.focus === "string" ? search.focus : undefined,
+  }),
   component: ApprovalsInbox,
+});
+
+/**
+ * PHASE O T4 — a person's own reach settings. NO NAV ROW, deliberately: it is linked from the
+ * alerts bell's footer, and a settings page somebody visits twice a year does not earn a line
+ * of chrome on every seat's sidebar for ever. The caddy SPA census gains it; the nav one does not.
+ */
+const myReachRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/me/reach",
+  component: MyReach,
 });
 
 const opdAdminRoute = createRoute({
@@ -822,10 +891,108 @@ const pharmacyCounterRoute = createRoute({
   component: PharmacyCounter,
 });
 
+/**
+ * PHASE PD — THE PHARMACY DESK (PD-3). Two paths, one screen: `/pharmacy/desk` with nobody in hand,
+ * and `/pharmacy/desk/<dispense id>` with a ticket in hand, so the owner's queue can open a ticket in
+ * a new tab and a reload keeps the patient at the window (PD-D7). Full viewport, as `/counter` is:
+ * `.d1` owns the screen. `/pharmacy/counter` stays until the desk replaces it, then redirects.
+ */
+const pharmacyDeskRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/desk",
+  staticData: { fullViewport: true },
+  component: function PharmacyDeskIdle() { return <PharmacyDesk ticketId={null} />; },
+});
+
+const pharmacyDeskTicketRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/desk/$ticketId",
+  staticData: { fullViewport: true },
+  component: function PharmacyDeskTicket() {
+    const { ticketId } = pharmacyDeskTicketRoute.useParams();
+    return <PharmacyDesk ticketId={ticketId} />;
+  },
+});
+
+/**
+ * PD-9 (owner ruling 2026-09-19) — where the PRESCRIBER reads the pharmacy's request and decides it.
+ * Reached from the request on the doctor's own desk; the server lets nobody else read or decide it.
+ */
+const pharmacyAuthoriseRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/authorisations/$authorisationId",
+  component: function PharmacyAuthoriseRoute() {
+    const { authorisationId } = pharmacyAuthoriseRoute.useParams();
+    return <PharmacyAuthorise authorisationId={authorisationId} />;
+  },
+});
+
 const pharmacyItemsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/pharmacy/items",
   component: PharmacyItems,
+});
+
+/** PHARMACY P2 — the register of pharmacists. Path matches `pharmacyManifest.menu`. */
+const pharmacyPharmacistsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/pharmacists",
+  component: PharmacyPharmacists,
+});
+
+/** PHARMACY P4 — the reorder list. Path matches `pharmacyManifest.menu`. */
+const pharmacyReorderRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/reorder",
+  component: PharmacyReorder,
+});
+
+/** PLAN 14c, first slice — stock counts. Path matches `materialsManifest.menu`. */
+const materialsCountsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/materials/counts",
+  component: MaterialsCounts,
+});
+
+/** 2026-09-17 — stock transfers. Path matches `materialsManifest.menu`. */
+const materialsTransfersRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/materials/transfers",
+  component: MaterialsTransfers,
+});
+
+/** PHARMACY P12 — the leakage triangle. Path matches `pharmacyManifest.menu`. */
+const pharmacyLeakageRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/leakage",
+  component: PharmacyLeakage,
+});
+
+/** PHARMACY P9 — the Schedule H1 register. Path matches `pharmacyManifest.menu`. */
+const pharmacyH1RegisterRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/registers/h1",
+  component: PharmacyH1Register,
+});
+
+/** PHARMACY P19 — the walk-in retail counter and its licence. Paths match `pharmacyManifest.menu`. */
+const pharmacyRetailRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/retail",
+  component: PharmacyRetail,
+});
+
+const pharmacyRetailLicenceRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/retail-licence",
+  component: PharmacyRetailLicence,
+});
+
+/** PHARMACY P20 — paper dispenses. Path matches `pharmacyManifest.menu`. */
+const pharmacyDowntimeRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/downtime",
+  component: PharmacyDowntime,
 });
 
 const labDeskRoute = createRoute({
@@ -1126,7 +1293,7 @@ export const router = createRouter({
     loginRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdScribeRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
@@ -1168,7 +1335,8 @@ export const router = createRouter({
       pcpndtFormFRoute, radiationSafetyRoute,
       // PLAN 16c T5 — 45 -> 47, the pharmacy: the dispense counter and the sale-items admin. TWO routes
       // and two NAV links. `caddyfile-parity.test.ts` pins the count and joins this task's Files list.
-      pharmacyCounterRoute, pharmacyItemsRoute,
+      pharmacyCounterRoute, pharmacyDeskRoute, pharmacyDeskTicketRoute, pharmacyAuthoriseRoute, pharmacyItemsRoute, pharmacyPharmacistsRoute, pharmacyReorderRoute, pharmacyH1RegisterRoute, materialsCountsRoute, materialsTransfersRoute, pharmacyLeakageRoute,
+      pharmacyRetailRoute, pharmacyRetailLicenceRoute, pharmacyDowntimeRoute,
       // PHASE 11i T9 — 50 -> 53, and every one of the three is a REDIRECT with no screen. They exist
       // because the catch-up deploy deletes three paths production has been serving since
       // 2 September and the desk PCs have them bookmarked. Removed in the release after the

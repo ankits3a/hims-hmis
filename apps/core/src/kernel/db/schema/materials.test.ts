@@ -5,6 +5,7 @@ import {
   items, resources, stockBalances, stockBatches, stockLedger, vendorDocuments, vendors,
 } from "./index";
 import type { Db } from "../client";
+import { normalizeDrugName } from "../../../modules/formulary";
 
 /**
  * PLAN 14 T1 — the sixteen materials tables, pinned by EXECUTION against the real migration.
@@ -199,7 +200,7 @@ describe("the materials tables (Plan 14 T1)", () => {
    *  every one of the five refusals below be attempted. Deliberately NOT built through the module's
    *  write paths: T1 has none yet, and the point of this file is what the DATABASE refuses. */
   async function fixture(): Promise<{ itemId: string; storeId: string; vendorId: string; batchId: string; docId: string }> {
-    await db.insert(formularyMedicines).values({ id: "med1", brandName: "Crocin 500", form: "tablet", ...AUDIT });
+    await db.insert(formularyMedicines).values({ id: "med1", brandName: "Crocin 500", nameNormalized: normalizeDrugName("Crocin 500"), form: "tablet", ...AUDIT });
     await db.insert(items).values({
       id: "it1", code: "CROC500", name: "Crocin 500mg tablet", class: "drug",
       formularyMedicineId: "med1", baseUom: "tablet", batchTracked: true, ...AUDIT,
@@ -267,7 +268,7 @@ describe("the materials tables (Plan 14 T1)", () => {
     })).rejects.toThrow(/stock_batches_recall_status_ck/);
   });
 
-  it("REFUSES a ledger row of zero delta, and a reason outside the five", async () => {
+  it("REFUSES a ledger row of zero delta, and a reason outside the six", async () => {
     const f = await fixture();
     const base = {
       resourceId: f.storeId, batchId: f.batchId, itemId: f.itemId, actorId: "t",
@@ -275,7 +276,9 @@ describe("the materials tables (Plan 14 T1)", () => {
     };
     await expect(db.insert(stockLedger).values({ ...base, id: "l1", qtyDelta: 0, reason: "grn" }))
       .rejects.toThrow(/stock_ledger_qty_delta_ck/);
-    await expect(db.insert(stockLedger).values({ ...base, id: "l2", qtyDelta: 5, reason: "adjust" }))
+    // `adjust` is 14c's sixth reason (a count's variance booked after approval); a write-off by any
+    // other name is still refused.
+    await expect(db.insert(stockLedger).values({ ...base, id: "l2", qtyDelta: 5, reason: "write_off" }))
       .rejects.toThrow(/stock_ledger_reason_ck/);
     // BOTH SIGNS are legal and the CHECK is `<> 0` rather than `> 0`: an issue is a NEGATIVE delta,
     // and a constraint written the obvious way would refuse every outbound movement in the system.

@@ -14,7 +14,8 @@ export { PharmacyError, PHARMACY_ERROR_CODES, pharmacyHttpStatus } from "./error
 export type { PharmacyErrorCode } from "./errors";
 export {
   PHARMACY_EVENTS, dispenseBilled, dispenseCancelled, dispenseClaimed, dispenseHandedOver, dispenseLineDeclined,
-  dispensePicked, dispenseQueued, dispenseVerified, substitutionRecorded,
+  dispensePicked, dispenseQueued, dispenseVerified, pharmacistRegistered, pharmacistRegistrationEnded,
+  substitutionRecorded,
 } from "./events";
 export {
   OPD_PHARMACY_STORE_CODE, PHARMACY_SUBSTITUTION_ENABLED, PICK_RESERVATION_MINUTES, REFUSED_FLAGS, REGISTER_FLAGS,
@@ -60,3 +61,54 @@ export type { LabelData, LabelLine } from "./label";
 
 // ── CLOSE REVIEW / F11 — the pick reservation expires (the worker's sixteenth job) ──
 export { PHARMACY_PICK_SWEEP_ACTOR, PICK_EXPIRED_REASON, sweepExpiredPicks } from "./expiry";
+/**
+ * P2 — the register of pharmacists (Pharmacy Act 1948 §42). `currentRegistration` is exported for
+ * the go-live census, which asks whether anyone who may complete a scheduled dispense holds one.
+ */
+export {
+  PHARMACIST_ROLE, currentRegistration, endPharmacistRegistration, listPharmacists, recordPharmacistRegistration,
+  requireRegisteredPharmacist,
+} from "./pharmacists";
+export type { PharmacistRegistration, PharmacistView } from "./pharmacists";
+/** P5 — a paid dispense that cannot be collected: cancelled, credited, a refund requested. */
+export { cancelBilledDispense } from "./refund";
+export type { CancelBilledInput, CancelBilledResult } from "./refund";
+/** P4 — the reorder list (doc 16 §9 Replenishment, drafting tier). Read-only. */
+export { reorderAdvice } from "./replenishment";
+export type { ReorderAdvice, ReorderLine, ReorderStatus } from "./replenishment";
+/** P6 — sales returns at the counter (doc 16 O-7). */
+export { acceptReturn } from "./returns";
+export type { ReturnInput, ReturnResult } from "./returns";
+/** P7 — the counter's day (doc 16 §8 KPIs, 16f's first strip). Read-only. */
+export { counterSummary } from "./summary";
+/** P15 — the renewal notice and the arithmetic the census shares with the register screen. */
+export { REGISTRATION_RENEWAL_NOTICE_DAYS } from "./config";
+export { renewalDaysLeft } from "./pharmacists";
+/** P12 — the leakage triangle (doc 16 I1). Read-only. */
+export { pharmacyLeakage } from "./leakage";
+export type { LeakageMismatch, LeakageReport } from "./leakage";
+/** P16 — each drug's GST slab from the notification, and the sale category that follows it. */
+export {
+  GST_NOTIFICATION, NIL_RATED_DRUGS, applyGstSlabPlan, gstSlabPlan, setItemGstSlab, suggestGstSlab, syncSaleItemCategory,
+} from "./gst-slab";
+export type { GstSlabPlanRow, GstSuggestion } from "./gst-slab";
+/** P9 — the Schedule H1 register, read (Drugs and Cosmetics Rules 1945 r.65(3A)). */
+export { H1_REGISTER_MAX_DAYS, h1Register } from "./registers";
+export type { H1Register, H1RegisterRow } from "./registers";
+export type { CounterSummary } from "./summary";
+/** P19 — walk-in retail sales (doc 16 §3.1b, register row R-174). */
+export { DOWNTIME_BACKFILL_DAYS, RETAIL_PHARMACY_STORE_CODE, RETAIL_REF_TYPE } from "./config";
+export { retailLicenceRecorded, retailLineReturned, retailSold } from "./events";
+export {
+  counterBatches, enterPaperDispense, getRetailSale, inspectSheet, pharmacyStaff, listPaperDispenses, listRetailLicences, listRetailSales,
+  previewPaperDispense, previewRetailSale, recordRetailLicence, retailLicenceState, retailStore, searchCounterShelf,
+  searchRetailShelf, sellRetail,
+} from "./retail";
+export type {
+  CounterBatch, PaperDispenseInput, PharmacyStaffMember, SheetCheck, RecordLicenceInput, RetailCustomerInput, RetailLicenceState, RetailLicenceView, RetailLineInput, RetailPrescriptionInput,
+  RetailPreview, RetailSaleInput, RetailSaleRow, RetailSaleView, RetailShelfEntry,
+} from "./retail";
+/** P19b — a sealed pack back at the walk-in counter, found by its bill. */
+export { acceptRetailReturn, findRetailSaleByInvoiceNo } from "./retail-returns";
+export type { RetailReturnInput, RetailReturnResult } from "./retail-returns";
+export { setShelfLocation, shelfLocationsFor } from "./shelf-locations";

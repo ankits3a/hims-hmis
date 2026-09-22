@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormProvider, useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -11,7 +11,7 @@ import { SKIP_REASONS, isInteractionHit, opdErrorMessage, todayIst } from "../li
 import type {
   WireDoctor, WireEncounter, WireOpdConfig, WirePatientSummary, WirePrescription, WireQueueEntry,
   WireQueueEntryView, WireQueueView, WireRxPrint, WireTimelineItem, WireVitals,
-  WireDuplicateHit, WireInteractionHit, WireRxNotice, WireSkipReason,
+  WireDrugDiseaseHit, WireDuplicateHit, WireInteractionHit, WireRxNotice, WireSkipReason,
   WireRxHistoryItem, WireVitalsHistoryItem,
   WireAdvisedTest, WirePriceListRow,
 } from "../lib/opd-api";
@@ -22,10 +22,14 @@ import { RxPrint } from "../components/rx-print";
 import { flagTone, provisionalResultsForEncounter, resultsForEncounter } from "../lib/lab-api";
 import { CheckboxField, FormKit, SelectField, TextField } from "../components/form-kit";
 import { PaperScreen, ScreenTitle } from "../components/paper-screen";
+import { useCopilot } from "../lib/use-copilot";
+import { CopilotReport } from "../components/copilot-report";
 import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
 import { DeskModal } from "../components/desk-modal";
 import { DrugField } from "../components/drug-field";
+import { SigPanel } from "../components/sig-panel";
+import type { SigPatch } from "../components/sig-panel";
 import { TagField, splitTags } from "../components/tag-field";
 import { useSnippets } from "../lib/use-snippets";
 import { PLACEHOLDER_FORMS, PLACEHOLDERS, expandSnippet, keywordProblem, unknownTokensIn } from "../lib/snippets";
@@ -62,7 +66,6 @@ import { TabStrip } from "../components/desk-fields";
 const POLL_MS = 15_000;
 
 const ROUTE_OPTIONS = ["oral", "iv", "im", "sc", "topical", "inhaled", "other"] as const;
-const FREQUENCY_OPTIONS = ["OD", "BD", "TDS", "QID", "HS", "SOS", "STAT", "other"] as const;
 
 type VisitDetail = {
   encounter: WireEncounter;
@@ -180,7 +183,11 @@ type WirePrecheck = {
   interactions: WireInteractionHit[];
   duplicates: WireDuplicateHit[];
   notices: WireRxNotice[];
+  /** P24. Optional: an older server sends nothing, and the screen then says nothing. */
+  drugDisease?: WireDrugDiseaseHit[];
   unresolvedLineIndexes: number[];
+  /** Formulary phase 3. Optional: an older server sends nothing, and the screen then says nothing. */
+  unreviewedLineIndexes?: number[];
 };
 type WireCoverage = { coverage: number; noticeEnabled: boolean };
 
@@ -276,6 +283,9 @@ export function OpdConsult(): React.ReactElement {
   const [skipping, setSkipping] = useState<WireQueueEntryView | null>(null);
   const [skipReason, setSkipReason] = useState<WireSkipReason>("absent");
   const [skipNote, setSkipNote] = useState("");
+  /* OWNER RULING 2026-09-20 — the held token this doctor is deciding about, and the sentence for it. */
+  const [openingUnpaid, setOpeningUnpaid] = useState<WireQueueEntryView | null>(null);
+  const [unpaidReason, setUnpaidReason] = useState("");
   const [note, setNote] = useState<NoteState>(EMPTY_NOTE);
   /*
     Every ICD-10 row the diagnosis field has offered, by its description. A ref rather than state:
@@ -297,10 +307,46 @@ export function OpdConsult(): React.ReactElement {
   const [interactionReasons, setInteractionReasons] = useState<string[]>([]);
   const [duplicateReasons, setDuplicateReasons] = useState<string[]>([]);
   /** Soft hits. They never gate anything and the panel is dismissible. */
+  /**
+   * ═══ WHICH PRODUCT A PICKED LINE ACTUALLY HOLDS (P27) ═══
+   *
+   * The line stores `medicineId` and the drug's NAME, and shows only the name — so two lines
+   * reading "Paracetamol" could be the 500 and the 650 and the screen would not say which. The
+   * owner's reference UI prints the shorthand under the name for exactly this reason:
+   * `[500 mg | Tablet | D0230]`.
+   *
+   * Kept beside the form rather than in it, because it is DISPLAY and nothing reads it back: the
+   * prescription posts `medicineId`, and the server resolves the product from that. Keyed on the
+   * field array's own row id, not the index, so removing a line does not slide one row's shorthand
+   * onto another.
+   *
+   * Its lifetime is deliberately the same as `medicineId`'s: set on a pick, dropped the moment the
+   * text is typed over, and gone when the panel resets — a reopened draft carries neither
+   * (`medicineId: null` on that path), so neither is shown, which is the honest state.
+   *
+   * THE `resetPanel` CLEAR IS HOUSEKEEPING, AND NO TEST GUARDS IT — said here rather than implied
+   * by a green suite. An assertion was written for it and then removed for being unfailable: the
+   * panel UNMOUNTS on completion, so the shorthand is absent afterwards whether or not the state
+   * was cleared. It cannot leak onto the next patient either, because `useFieldArray` mints new row
+   * ids on reset and a stale entry keyed by an old one can never be read. The clear stops the map
+   * growing across a session; it is not load-bearing, and claiming a test for it would be worse
+   * than having none.
+   */
+  const [shorthand, setShorthand] = useState<Record<string, { strength: string | null; form: string; code: string | null }>>({});
   const [notices, setNotices] = useState<WireRxNotice[]>([]);
   const [noticesDismissed, setNoticesDismissed] = useState(false);
+  /** P24 — soft drug-disease hits, shown beside the notices; the severe ones go to the dialog. */
+  const [diseaseNotices, setDiseaseNotices] = useState<WireDrugDiseaseHit[]>([]);
+  const [diseaseHits, setDiseaseHits] = useState<WireDrugDiseaseHit[]>([]);
+  const [diseaseReasons, setDiseaseReasons] = useState<string[]>([]);
   /** Line indexes the formulary could not resolve — the coverage-gated hint reads this (DD5). */
   const [unresolvedLines, setUnresolvedLines] = useState<number[]>([]);
+  /**
+   * Formulary phase 3: lines the server checked only in part, because a component is one pharmacy
+   * has not reviewed (no drug class, no interaction pairs). Not coverage-gated like the hint above:
+   * it is not a guess about the formulary, it is the server saying what it could not see.
+   */
+  const [unreviewedLines, setUnreviewedLines] = useState<number[]>([]);
   const [overrideError, setOverrideError] = useState<string | null>(null);
   const [rxPrint, setRxPrint] = useState<WireRxPrint | null>(null);
   const [followUp, setFollowUp] = useState("");
@@ -383,6 +429,19 @@ export function OpdConsult(): React.ReactElement {
     rail carries them now, because the doctor who lost her is the one standing next to her.
   */
   const leftQueue = view?.left ?? [];
+  /*
+    ═══ THE TOKENS WITH THE CASHIER (OWNER RULING 2026-09-20) ═══
+
+    *"It waits for bill to be paid until doctor opens the token from his dashboard manually.
+    Currently the doctor have no screen to do it."* This is that screen. They are waiting, their
+    vitals are charted, and their fee is unsettled — so the server keeps them out of `ordered`,
+    `callNext` cannot reach them and the hall's board never announces them. The doctor sees them
+    anyway, because the whole ruling is that THIS person decides, patient by patient.
+
+    `?? []` is not defensive habit: a tab left open across the deploy that adds the field talks to a
+    server that does not send it, and the right answer there is no group rather than a crash.
+  */
+  const heldForPayment = view?.heldForPayment ?? [];
   /*
     A ROW IS HELD ONLY IF THE SERVER SAID SO, IN WORDS. The field is typed `string | null`, and the
     one moment it is neither is the deploy window: a tab talking to the previous build gets a queue
@@ -678,9 +737,14 @@ export function OpdConsult(): React.ReactElement {
     setDuplicateHits([]);
     setInteractionReasons([]);
     setDuplicateReasons([]);
+    setShorthand({});
     setNotices([]);
     setNoticesDismissed(false);
+    setDiseaseNotices([]);
+    setDiseaseHits([]);
+    setDiseaseReasons([]);
     setUnresolvedLines([]);
+    setUnreviewedLines([]);
     setFollowUp("");
     setTestsOrdered(false);
     setAdmissionAdvised(false);
@@ -957,6 +1021,27 @@ export function OpdConsult(): React.ReactElement {
     }
   };
 
+  /**
+   * THE DOCTOR OPENS AN UNPAID TOKEN. One POST, and then the queue is re-read rather than patched
+   * locally: the server decides what is held, and a rail that moved the row itself would be a
+   * second opinion about the ledger. A refusal (`reason_required`, `not_your_patient`) lands on the
+   * rail's own error line, where the token is.
+   */
+  const confirmOpenUnpaid = async (): Promise<void> => {
+    const entry = openingUnpaid;
+    if (entry === null) return;
+    setQueueError(null);
+    try {
+      await api("POST", `/opd/visits/${entry.encounter.id}/consult/open-unpaid`, { reason: unpaidReason.trim() });
+      setOpeningUnpaid(null);
+      setUnpaidReason("");
+      await invalidateQueue();
+    } catch (e) {
+      setOpeningUnpaid(null);
+      setQueueError(opdErrorMessage(e));
+    }
+  };
+
   const startConsult = async (): Promise<void> => {
     if (current === null) return;
     setQueueError(null);
@@ -1064,6 +1149,7 @@ export function OpdConsult(): React.ReactElement {
     overrides?: AllergyOverride[],
     interactionOverrides?: { lineIndex: number; reason: string; saltPair: [string, string] }[],
     duplicateOverrides?: { lineIndex: number; reason: string; moiety: string }[],
+    drugDiseaseOverrides?: { lineIndex: number; reason: string; moiety: string; icd10Prefix: string }[],
   ): Promise<void> => {
     if (active === null) return;
     setRxError(null);
@@ -1082,18 +1168,24 @@ export function OpdConsult(): React.ReactElement {
     if (overrides !== undefined) body.overrides = overrides;
     if (interactionOverrides !== undefined) body.interactionOverrides = interactionOverrides;
     if (duplicateOverrides !== undefined) body.duplicateOverrides = duplicateOverrides;
+    if (drugDiseaseOverrides !== undefined) body.drugDiseaseOverrides = drugDiseaseOverrides;
     try {
       const issued = await api<{
         prescriptionId: string; version: number;
         notices?: WireRxNotice[];
+        unreviewedLineIndexes?: number[];
       }>("POST", `/opd/visits/${active.encounterId}/prescriptions`, body);
       setMatches(null);
       setReasons([]);
       setInteractionHits([]);
       setDuplicateHits([]);
+      setDiseaseHits([]);
+      setDiseaseReasons([]);
       setOverrideError(null);
       // Soft hits survive a successful issue: they are what the doctor should still know about.
       setNotices(issued.notices ?? []);
+      // The issue's own answer: when no hard warning paused it, the pre-check's was never shown.
+      setUnreviewedLines(issued.unreviewedLineIndexes ?? []);
       setNoticesDismissed(false);
       const print = await api<WireRxPrint>("GET", `/opd/prescriptions/${issued.prescriptionId}/print`);
       setRxPrint(print);
@@ -1102,7 +1194,7 @@ export function OpdConsult(): React.ReactElement {
       if (e instanceof ApiError) {
         const errBody = e.body as {
           code?: string;
-          detail?: { matches?: AllergyMatch[]; hits?: WireRxNotice[] };
+          detail?: { matches?: AllergyMatch[]; hits?: WireRxNotice[]; diseaseHits?: WireDrugDiseaseHit[] };
         } | null;
         // The allergy hard-warning is a DOMAIN answer carrying the matched lines, not a failure.
         if (errBody?.code === "allergy_conflict" && Array.isArray(errBody.detail?.matches)) {
@@ -1128,6 +1220,13 @@ export function OpdConsult(): React.ReactElement {
           const hits = errBody.detail.hits.filter((h): h is WireDuplicateHit => !isInteractionHit(h));
           setDuplicateHits(hits);
           setDuplicateReasons(hits.map(() => ""));
+          setOverrideError(null);
+          return;
+        }
+        if (errBody?.code === "drug_disease_conflict" && Array.isArray(errBody.detail?.diseaseHits)) {
+          const hits = errBody.detail.diseaseHits;
+          setDiseaseHits(hits);
+          setDiseaseReasons(hits.map(() => ""));
           setOverrideError(null);
           return;
         }
@@ -1162,15 +1261,22 @@ export function OpdConsult(): React.ReactElement {
       setNotices(pre.notices);
       setNoticesDismissed(false);
       setUnresolvedLines(pre.unresolvedLineIndexes);
+      setUnreviewedLines(pre.unreviewedLineIndexes ?? []);
       const severe = pre.interactions.filter((h) => h.severity === "severe");
       const hardDuplicates = pre.duplicates.filter((h) => h.hard);
-      if (pre.allergyMatches.length > 0 || severe.length > 0 || hardDuplicates.length > 0) {
+      // P24 — severe goes to the dialog; the rest sits with the notices, offer and all.
+      const disease = pre.drugDisease ?? [];
+      const severeDisease = disease.filter((h) => h.severity === "severe");
+      setDiseaseNotices(disease.filter((h) => h.severity !== "severe"));
+      if (pre.allergyMatches.length > 0 || severe.length > 0 || hardDuplicates.length > 0 || severeDisease.length > 0) {
         setMatches(pre.allergyMatches.length > 0 ? pre.allergyMatches : null);
         setReasons(pre.allergyMatches.map(() => ""));
         setInteractionHits(severe);
         setInteractionReasons(severe.map(() => ""));
         setDuplicateHits(hardDuplicates);
         setDuplicateReasons(hardDuplicates.map(() => ""));
+        setDiseaseHits(severeDisease);
+        setDiseaseReasons(severeDisease.map(() => ""));
         setOverrideError(null);
         return;
       }
@@ -1179,6 +1285,7 @@ export function OpdConsult(): React.ReactElement {
       // M5 — but the stale hint indexes go: pointing the amber "not in formulary" note at a row
       // whose line has since changed is worse than showing nothing.
       setUnresolvedLines([]);
+      setUnreviewedLines([]);
     }
     await postRx(values.lines);
   });
@@ -1188,11 +1295,37 @@ export function OpdConsult(): React.ReactElement {
    * mirroring the server's rule exactly. The three-character minimum is checked here so the doctor
    * is told in the dialog rather than by a round trip — and the server checks it again regardless.
    */
+  /**
+   * ═══ THE ONE-TAP SWITCH (P24 T7) ═══
+   *
+   * The offer has already been vetted by the server against THIS patient (D6), so what arrives here
+   * is safe to put on a button. One tap rewrites the line and clears its `medicineId` — the id
+   * named the drug being replaced, and leaving it would have the checks reason about the drug the
+   * doctor just abandoned.
+   *
+   * It does NOT re-submit. The doctor sees the line change and decides; the next Issue re-runs
+   * every check server-side anyway (design law 2). A switch that submitted on the doctor's behalf
+   * would be the co-pilot flying the plane.
+   */
+  const applySwitch = (lineIndex: number, offer: { moiety: string; label: string }): void => {
+    rxForm.setValue(`lines.${String(lineIndex)}.drug` as `lines.${number}.drug`, offer.label);
+    rxForm.setValue(`lines.${String(lineIndex)}.medicineId` as `lines.${number}.medicineId`, null);
+    setDiseaseHits([]);
+    setDiseaseReasons([]);
+    setDiseaseNotices([]);
+    setOverrideError(null);
+  };
+
+  /** The dialog carries four kinds now; only the allergy-only case may call itself an allergy. */
+  const allergyOnly = matches !== null
+    && interactionHits.length === 0 && duplicateHits.length === 0 && diseaseHits.length === 0;
+
   const confirmOverride = async (): Promise<void> => {
     const allReasons = [
       ...(matches === null ? [] : reasons.slice(0, matches.length)),
       ...interactionReasons.slice(0, interactionHits.length),
       ...duplicateReasons.slice(0, duplicateHits.length),
+      ...diseaseReasons.slice(0, diseaseHits.length),
     ];
     if (allReasons.length === 0) return;
     if (allReasons.some((r) => r.trim().length < 3)) {
@@ -1210,11 +1343,17 @@ export function OpdConsult(): React.ReactElement {
     const duplicateOverrides = duplicateHits.map((h, i) => ({
       lineIndex: h.lineIndex, reason: (duplicateReasons[i] ?? "").trim(), moiety: h.moiety,
     }));
+    // P24 — the override names the MOIETY and the RULING, because N18 and N18.4 are two decisions.
+    const drugDiseaseOverrides = diseaseHits.map((h, i) => ({
+      lineIndex: h.lineIndex, reason: (diseaseReasons[i] ?? "").trim(),
+      moiety: h.moiety, icd10Prefix: h.icd10Prefix,
+    }));
     await postRx(
       pendingLines.current,
       overrides.length > 0 ? overrides : undefined,
       interactionOverrides.length > 0 ? interactionOverrides : undefined,
       duplicateOverrides.length > 0 ? duplicateOverrides : undefined,
+      drugDiseaseOverrides.length > 0 ? drugDiseaseOverrides : undefined,
     );
   };
 
@@ -1276,18 +1415,34 @@ export function OpdConsult(): React.ReactElement {
     apology — a doctor who asks something this screen cannot see is told so in one sentence, and can
     stop wondering whether the silence meant "no".
   */
-  const [agentAnswer, setAgentAnswer] = useState<string | null>(null);
   const [agentLog, setAgentLog] = useState<AgentLine[]>([]);
 
-  const agentState = useRef({ view, activeAllergies, latestVitals, advisedTests, restricted });
-  agentState.current = { view, activeAllergies, latestVitals, advisedTests, restricted };
+  const agentState = useRef({ view, activeAllergies, latestVitals, advisedTests, restricted, patient: patient.data?.patient ?? null });
+  agentState.current = { view, activeAllergies, latestVitals, advisedTests, restricted, patient: patient.data?.patient ?? null };
 
-  const ask = useCallback((question: string): void => {
+  /*
+    ═══ FD-COPILOT — THE DOCK NOW HAS REACH, AND THE PARAGRAPH ABOVE STILL HOLDS ═══
+
+    That header's rule — *"the dock reads, it never infers"* — is unchanged and is the reason this
+    chain survives intact rather than being replaced. What changed is what happens to a question it
+    cannot see: it used to end at `agent.cannot`, and now it goes to the copilot first, which can
+    answer from the hospital's own readers under THIS doctor's own permissions.
+
+    Nothing model-written reaches a prescriber by this route. The model, when one is configured,
+    picks a TOOL NAME from a closed menu; the tool runs a real query; the sentence comes from the
+    locale file. The five branches below still answer everything about the screen itself — the
+    queue, the allergies on file, what Bay One charted, what the doctor has typed — and those are
+    exactly the questions no server was asked.
+
+    The doctor's own seat (the toggles, the pre-read, the pending pile) is the brainstorm at
+    `docs/superpowers/brainstorms/2026-09-17-doctor-copilot/`. This is only its T2: reach.
+  */
+  const localAnswer = useCallback((question: string): string | null => {
     const q = question.toLowerCase();
     const st = agentState.current;
     const lines = rxForm.getValues("lines").filter((l) => l.drug.trim() !== "");
 
-    const answer = ((): string => {
+    return ((): string | null => {
       if (/queue|waiting|next|token|katar|line/.test(q)) {
         const v = st.view;
         if (v === null) return t("opdConsult.agent.noQueue");
@@ -1322,12 +1477,22 @@ export function OpdConsult(): React.ReactElement {
           ? t("opdConsult.agent.noAdvised")
           : t("opdConsult.agent.advised", { count: st.advisedTests.length });
       }
-      return t("opdConsult.agent.cannot");
+      return null;
     })();
-
-    setAgentAnswer(answer);
-    setAgentLog((l) => logged(l, question));
   }, [rxForm, t]);
+
+  const copilot = useCopilot({
+    /*
+      The patient in the room, masked BY VALUE before anything could leave. A doctor types the name
+      of the person in front of them more readily than their UHID, and this screen knows it.
+    */
+    terms: () => {
+      const p = agentState.current.patient;
+      return [p?.name, p?.uhid].filter((x): x is string => typeof x === "string" && x !== "");
+    },
+    fallback: localAnswer,
+    onNote: (text) => { setAgentLog((l) => logged(l, text)); },
+  });
 
   // ——— this screen's OWN shortcuts; lib/keyboard.tsx owns the global ones and is NOT touched ———
 
@@ -1637,6 +1802,52 @@ export function OpdConsult(): React.ReactElement {
             {inConsult.map((e) => queueRow(e, parkedSince(e) === null ? "seated" : "parked"))}
             {ordered.map((e) => queueRow(e, "waiting"))}
           </ul>
+          {/*
+            ═══ WAITING FOR THE BILL — THE GROUP THE OWNER ASKED FOR (2026-09-20) ═══
+
+            Below the live queue and above the ones who left, because that is where they are in the
+            day: ready, charted, and stopped by money. Each row carries the sentence that explains
+            why it has no bill — the bay's or the front desk's own words — and one button, which is
+            this doctor deciding to see them anyway.
+          */}
+          {heldForPayment.length > 0 && (
+            <>
+              <h2 className="tag" data-testid="held-queue-title" style={{ margin: "8px 0 0" }}>
+                {t("opdConsult.heldQueue", { n: heldForPayment.length })}
+              </h2>
+              <p style={{ margin: 0, fontSize: 11, color: "var(--faint)" }}>{t("opdConsult.heldQueueHint")}</p>
+              <ul data-testid="held-queue" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                {heldForPayment.map((e) => (
+                  <li
+                    key={e.id} data-testid={`held-row-${e.id}`} className="drow"
+                    style={{
+                      display: "flex", flexWrap: "wrap", alignItems: "center", gap: 7, padding: "8px 10px", fontSize: 12.5,
+                      background: "var(--gold-soft)", boxShadow: "inset 3px 0 0 var(--gold)",
+                    }}
+                  >
+                    <span className="mo" style={{ fontSize: 16, fontWeight: 700 }}>{e.tokenNo}</span>
+                    <span style={{ flexGrow: 1, minWidth: 0 }}>{patientLabel(e.patient)}</span>
+                    {(e.danger || e.encounter.dangerFlagged) && (
+                      <span data-testid={`held-danger-${e.id}`} aria-label={t("opdConsult.danger")} style={{ color: "var(--red)", fontWeight: 700 }}>⚠</span>
+                    )}
+                    <span className="pill rd" style={{ fontWeight: 700 }}>{t("opd.feeStatus.unsettled")}</span>
+                    <button
+                      type="button" data-testid={`open-unpaid-${e.id}`} className="sec"
+                      style={{ padding: "3px 10px", fontSize: 12 }}
+                      onClick={() => { setOpeningUnpaid(e); setUnpaidReason(""); }}
+                    >
+                      {t("opdConsult.openUnpaid")}
+                    </button>
+                    {typeof e.encounter.feeBypassReason === "string" && e.encounter.feeBypassReason !== "" && (
+                      <span data-testid={`held-why-${e.id}`} style={{ flexBasis: "100%", fontSize: 11, color: "var(--dim)" }}>
+                        {t("opdConsult.heldWhy", { reason: e.encounter.feeBypassReason })}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           {/*
             ═══ LEFT THE QUEUE — THE GROUP THAT DID NOT EXIST ═══
 
@@ -2401,8 +2612,14 @@ export function OpdConsult(): React.ReactElement {
                   <FormProvider {...rxForm}>
                     <FormKit onSubmit={submitRx}>
                       {lines.fields.map((f, i) => (
-                        <div key={f.id} data-testid={`rx-row-${String(i)}`} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 9, padding: "11px 0", borderTop: i === 0 ? "none" : "1px solid var(--line)" }}>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                        <Fragment key={f.id}>
+                        {/*
+                          A LINE IS Drug · Dose · Route, then the sig panel — the ONLY control for
+                          how often, food timing, days and the note (see components/sig-panel.tsx
+                          for why the Frequency select and the Days and Instructions boxes went).
+                        */}
+                        <div data-testid={`rx-row-${String(i)}`} style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 9, padding: "11px 0 9px", borderTop: i === 0 ? "none" : "1px solid var(--line)" }}>
+                          <div style={{ flex: "2 1 240px", minWidth: 0, display: "flex", flexDirection: "column", gap: 5 }}>
                             {/*
                               THE DRUG FIELD IS NOW A COMBOBOX over the CLINICAL DRUG tier —
                               molecule and strength, no brand. It replaces a plain TextField plus a
@@ -2440,11 +2657,18 @@ export function OpdConsult(): React.ReactElement {
                                 rxForm.setValue(`lines.${i}.drug`, text, { shouldDirty: true });
                                 if (rxForm.getValues(`lines.${i}.medicineId`) !== null) {
                                   rxForm.setValue(`lines.${i}.medicineId`, null);
+                                  /* The id and the shorthand go together: what is shown must not
+                                     outlive the pick it describes. */
+                                  setShorthand((m) => {
+                                    const { [f.id]: dropped, ...rest } = m;
+                                    return dropped === undefined ? m : rest;
+                                  });
                                 }
                               }}
                               onPick={(hit) => {
                                 rxForm.setValue(`lines.${i}.drug`, hit.name, { shouldDirty: true });
                                 rxForm.setValue(`lines.${i}.medicineId`, hit.id);
+                                setShorthand((m) => ({ ...m, [f.id]: { strength: hit.strength, form: hit.form, code: hit.code } }));
                               }}
                             />
                             {/*
@@ -2452,32 +2676,62 @@ export function OpdConsult(): React.ReactElement {
                               enough. Below the threshold it would fire on almost every line and
                               become wallpaper, which is worse than silence.
                             */}
+                            {shorthand[f.id] !== undefined && (
+                              <span
+                                data-testid={`rx-shorthand-${String(i)}`}
+                                className="mo"
+                                style={{ fontSize: 10.5, color: "var(--faint)" }}
+                              >
+                                {`[${[
+                                  shorthand[f.id]?.strength ?? null,
+                                  shorthand[f.id]?.form ?? null,
+                                  shorthand[f.id]?.code ?? null,
+                                ].filter((x) => x !== null && x !== "").join(" | ")}]`}
+                              </span>
+                            )}
                             {noticeEnabled && unresolvedLines.includes(i) && (
                               <p data-testid={`rx-uncovered-${String(i)}`} style={{ margin: 0, fontSize: 11, color: "var(--gold)" }}>
                                 {t("opdConsult.notInFormulary")}
                               </p>
                             )}
                           </div>
-                          <TextField name={`lines.${String(i)}.dose`} label={t("opdConsult.dose")} />
-                          <SelectField
-                            name={`lines.${String(i)}.route`}
-                            label={t("opdConsult.route")}
-                            options={ROUTE_OPTIONS.map((r) => ({ value: r, label: t(`opdConsult.routeOption.${r}`) }))}
-                          />
-                          <SelectField
-                            name={`lines.${String(i)}.frequency`}
-                            label={t("opdConsult.frequency")}
-                            options={FREQUENCY_OPTIONS.map((r) => ({ value: r, label: t(`opdConsult.frequencyOption.${r}`) }))}
-                          />
-                          <TextField name={`lines.${String(i)}.durationDays`} label={t("opdConsult.durationDays")} type="number" />
-                          <TextField name={`lines.${String(i)}.instructions`} label={t("opdConsult.instructions")} />
-                          <CheckboxField name={`lines.${String(i)}.noSubstitution`} label={t("opdConsult.noSubstitution")} />
-                          {lines.fields.length > 1 && (
-                            <button type="button" className="sec" style={{ padding: "3px 11px", fontSize: 12, alignSelf: "end" }} onClick={() => lines.remove(i)}>
-                              {t("opdConsult.removeLine")}
-                            </button>
-                          )}
+                          <div style={{ flex: "1 1 130px", minWidth: 0 }}>
+                            <TextField name={`lines.${String(i)}.dose`} label={t("opdConsult.dose")} />
+                          </div>
+                          <div style={{ flex: "1 1 130px", minWidth: 0 }}>
+                            <SelectField
+                              name={`lines.${String(i)}.route`}
+                              label={t("opdConsult.route")}
+                              options={ROUTE_OPTIONS.map((r) => ({ value: r, label: t(`opdConsult.routeOption.${r}`) }))}
+                            />
+                          </div>
+                          <div style={{ flex: "0 1 auto", display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start", paddingTop: 22 }}>
+                            <CheckboxField name={`lines.${String(i)}.noSubstitution`} label={t("opdConsult.noSubstitution")} />
+                            {lines.fields.length > 1 && (
+                              <button type="button" className="sec" style={{ padding: "3px 11px", fontSize: 12 }} onClick={() => lines.remove(i)}>
+                                {t("opdConsult.removeLine")}
+                              </button>
+                            )}
+                          </div>
                         </div>
+                        <SigPanel
+                          lineIndex={i}
+                          frequency={rxForm.watch(`lines.${i}.frequency`)}
+                          instructions={rxForm.watch(`lines.${i}.instructions`)}
+                          durationDays={String(rxForm.watch(`lines.${i}.durationDays`) ?? "")}
+                          frequencyError={rxForm.formState.errors.lines?.[i]?.frequency?.message}
+                          daysError={rxForm.formState.errors.lines?.[i]?.durationDays?.message}
+                          onPatch={(patch: SigPatch) => {
+                            /* Straight into the line's own fields — the panel stores nothing. */
+                            /* Re-checked only once the doctor has tried to issue: an error must clear
+                               as they fix it, but must not appear under a box they have just opened. */
+                            const opts = { shouldDirty: true, shouldValidate: rxForm.formState.isSubmitted };
+                            if (patch.frequency !== undefined) rxForm.setValue(`lines.${i}.frequency`, patch.frequency, opts);
+                            if (patch.instructions !== undefined) rxForm.setValue(`lines.${i}.instructions`, patch.instructions, opts);
+                            if (patch.durationDays !== undefined) rxForm.setValue(`lines.${i}.durationDays`, patch.durationDays, opts);
+                          }}
+                        />
+                        </Fragment>
                       ))}
                       <div style={{ display: "flex", gap: 8, marginTop: 11 }}>
                         <button type="button" className="sec" style={{ padding: "4px 12px", fontSize: 12.5 }} onClick={() => lines.append(EMPTY_LINE)}>
@@ -2492,18 +2746,68 @@ export function OpdConsult(): React.ReactElement {
                     prescription, duplicates across route classes. They are data: dismissible, never
                     a gate, and they carry the in-system-only honesty line (design law 10).
                   */}
-                  {notices.length > 0 && !noticesDismissed && (
+                  {(notices.length > 0 || diseaseNotices.length > 0 || unreviewedLines.length > 0) && !noticesDismissed && (
                     <div data-testid="rx-notices" className="box" style={{ marginTop: 11, display: "flex", flexDirection: "column", gap: 5, padding: "10px 12px", fontSize: 12.5, borderColor: "var(--gold-line)", background: "var(--gold-soft)" }}>
                       {notices.map((hit, i) => (
                         <p key={`${String(hit.lineIndex)}-${String(i)}`} data-testid={`rx-notice-${String(i)}`} style={{ margin: 0 }}>
                           {isInteractionHit(hit)
                             ? t("opdConsult.noticeInteraction", { n: hit.lineIndex + 1, note: hit.note })
-                            : t("opdConsult.noticeDuplicate", { n: hit.lineIndex + 1, moiety: hit.moiety })}
+                            : hit.drugClass !== undefined
+                              ? t("opdConsult.noticeDuplicateClass", {
+                                n: hit.lineIndex + 1, moiety: hit.moiety, with: hit.with ?? "",
+                                cls: t(`opdConsult.therapyClass_${hit.drugClass}`, { defaultValue: hit.drugClass }),
+                              })
+                              : t("opdConsult.noticeDuplicate", { n: hit.lineIndex + 1, moiety: hit.moiety })}
                           {" "}
                           <span style={{ color: "var(--dim)" }}>{againstLabel(hit)}</span>
                         </p>
                       ))}
+                      {/*
+                        FORMULARY PHASE 3 — the checks above could see these lines only in part. One
+                        sentence for all of them rather than one per line: it is the same fact.
+                      */}
+                      {unreviewedLines.length > 0 && (
+                        <p data-testid="rx-unreviewed" style={{ margin: 0 }}>
+                          {t("opdConsult.partlyChecked", {
+                            count: unreviewedLines.length,
+                            lines: unreviewedLines.map((i) => String(i + 1)).join(", "),
+                          })}
+                        </p>
+                      )}
                       <p style={{ margin: 0, fontSize: 11, color: "var(--dim)" }}>{t("opdConsult.inSystemOnly")}</p>
+                      {/*
+                        P24 — a soft drug-disease hit: the book rated it moderate, OR it rests on a
+                        diagnosis over a year old and was downgraded for that reason (`stale`). The
+                        date is shown either way, because a doctor judging a 2019 code needs to see
+                        that it is a 2019 code.
+                      */}
+                      {diseaseNotices.map((h, i) => (
+                        <div key={`dxn-${String(h.lineIndex)}-${h.icd10Prefix}`} data-testid={`rx-disease-notice-${String(i)}`}>
+                          <p style={{ margin: 0 }}>
+                            {t("opdConsult.diseaseNotice", { n: h.lineIndex + 1, moiety: h.moiety, title: h.icd10Title, note: h.note })}{" "}
+                            <span style={{ color: "var(--dim)" }}>
+                              {h.stale
+                                ? t("opdConsult.diseaseStale", { code: h.diagnosis.code, on: h.diagnosis.codedOn })
+                                : t("opdConsult.diseaseCodedOn", { code: h.diagnosis.code, on: h.diagnosis.codedOn })}
+                            </span>
+                          </p>
+                          {h.alternatives.length > 0 && (
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4, alignItems: "center" }}>
+                              <span style={{ fontSize: 11.5, color: "var(--dim)" }}>{t("opdConsult.switchTo")}</span>
+                              {h.alternatives.map((a) => (
+                                <button
+                                  key={a.moiety} type="button" className="sec"
+                                  data-testid={`disease-notice-switch-${String(i)}-${a.moiety}`}
+                                  style={{ padding: "2px 10px", fontSize: 11.5 }}
+                                  onClick={() => { applySwitch(h.lineIndex, a); }}
+                                >
+                                  {a.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
                       <button type="button" className="sec" style={{ alignSelf: "flex-start", padding: "2px 10px", fontSize: 11.5 }} onClick={() => setNoticesDismissed(true)}>
                         {t("opdConsult.dismiss")}
                       </button>
@@ -2839,8 +3143,17 @@ export function OpdConsult(): React.ReactElement {
 
       {/* the allergy hard-warning: a reason per matched line, then the re-post carries them (K48) */}
       <DeskModal
-        open={matches !== null || interactionHits.length > 0 || duplicateHits.length > 0}
-        title={t("opdConsult.overrideTitle")} titleId="override-title" testId="override-dialog"
+        open={matches !== null || interactionHits.length > 0 || duplicateHits.length > 0 || diseaseHits.length > 0}
+        /*
+          THE TITLE MUST NAME WHAT IS ACTUALLY IN THE DIALOG. A browser walk at 400 px found this
+          reading "Allergy conflict" over a drug-disease warning, above a hint that told the doctor
+          the patient "is recorded as allergic to the substances below" — for a patient with no
+          allergy at all. It has been imprecise since the interaction and duplicate kinds joined
+          (P16a); the fourth kind is what made it visibly false. The allergy wording is kept for the
+          allergy-only case, which is the commonest one and the one it was written for.
+        */
+        title={allergyOnly ? t("opdConsult.overrideTitle") : t("opdConsult.overrideTitleChecks")}
+        titleId="override-title" testId="override-dialog"
         onClose={() => {
           setMatches(null);
           setReasons([]);
@@ -2848,11 +3161,15 @@ export function OpdConsult(): React.ReactElement {
           setInteractionReasons([]);
           setDuplicateHits([]);
           setDuplicateReasons([]);
+          setDiseaseHits([]);
+          setDiseaseReasons([]);
           setOverrideError(null);
         }}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-          <p style={{ margin: 0, fontSize: 12.5 }}>{t("opdConsult.overrideHint")}</p>
+          <p style={{ margin: 0, fontSize: 12.5 }}>
+            {allergyOnly ? t("opdConsult.overrideHint") : t("opdConsult.overrideHintChecks")}
+          </p>
           {(matches ?? []).map((m, i) => (
             <div key={`${String(m.lineIndex)}-${m.substance}`}>
               <label style={{ display: "block", marginBottom: 5, fontSize: 12.5, fontWeight: 600 }} htmlFor={`override-reason-${String(i)}`}>
@@ -2901,7 +3218,45 @@ export function OpdConsult(): React.ReactElement {
               />
             </div>
           ))}
-          {(interactionHits.length > 0 || duplicateHits.length > 0) && (
+          {/*
+            P24 — the fourth kind, in the same dialog and the same reason input as its three
+            neighbours, plus the one thing the others cannot offer: a vetted alternative. The label
+            names the DIAGNOSIS and the date it was coded, so the doctor is overriding a fact they
+            can see rather than a verdict they cannot.
+          */}
+          {diseaseHits.map((h, i) => (
+            <div key={`dx-${String(h.lineIndex)}-${h.icd10Prefix}`}>
+              <label style={{ display: "block", marginBottom: 5, fontSize: 12.5, fontWeight: 600 }} htmlFor={`disease-reason-${String(i)}`}>
+                {t("opdConsult.diseaseHit", { n: h.lineIndex + 1, moiety: h.moiety, title: h.icd10Title, note: h.note })}{" "}
+                <span style={{ fontWeight: 400, color: "var(--dim)" }}>
+                  {t("opdConsult.diseaseCodedOn", { code: h.diagnosis.code, on: h.diagnosis.codedOn })}
+                </span>
+              </label>
+              <input
+                id={`disease-reason-${String(i)}`}
+                data-testid={`disease-reason-${String(i)}`}
+                value={diseaseReasons[i] ?? ""}
+                onChange={(e) => setDiseaseReasons((rs) => rs.map((r, j) => (j === i ? e.target.value : r)))}
+                className="in" style={{ width: "100%", height: 34, fontSize: 13 }}
+              />
+              {h.alternatives.length > 0 && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6, alignItems: "center" }}>
+                  <span style={{ fontSize: 11.5, color: "var(--dim)" }}>{t("opdConsult.switchTo")}</span>
+                  {h.alternatives.map((a) => (
+                    <button
+                      key={a.moiety} type="button" className="sec"
+                      data-testid={`disease-switch-${String(i)}-${a.moiety}`}
+                      style={{ padding: "2px 10px", fontSize: 11.5 }}
+                      onClick={() => { applySwitch(h.lineIndex, a); }}
+                    >
+                      {a.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+          {(interactionHits.length > 0 || duplicateHits.length > 0 || diseaseHits.length > 0) && (
             <p style={{ margin: 0, fontSize: 11, color: "var(--dim)" }}>{t("opdConsult.inSystemOnly")}</p>
           )}
           <ErrorLine message={overrideError} />
@@ -2910,6 +3265,51 @@ export function OpdConsult(): React.ReactElement {
       </DeskModal>
 
       {/* THE ONLY `.print-doc` RENDER SITE ON THIS SCREEN — one nullable state, one mount. */}
+      {/*
+        ═══ SEEING A PATIENT BEFORE THE BILL — THE DOCTOR'S OWN SENTENCE (OWNER RULING 2026-09-20) ═══
+
+        A reason, typed, mandatory — the same rule the front desk's waiver carries (FD-32) and for
+        the same argument: "emergency" and "the chairman's guest" are different facts with different
+        consequences, and only a sentence tells them apart. The button is disabled until there is
+        one, and the server refuses an empty one too (`reason_required`), so the doctor learns it
+        from the screen rather than from an error. The line about the bill is there because this
+        dialog is the last moment anybody can believe the fee has been waived: it has not been.
+      */}
+      <DeskModal
+        open={openingUnpaid !== null}
+        title={t("opdConsult.openUnpaidTitle", { token: openingUnpaid?.tokenNo ?? "" })}
+        titleId="open-unpaid-title" testId="open-unpaid-dialog" width={460}
+        onClose={() => { setOpeningUnpaid(null); }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+          <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{t("opdConsult.openUnpaidHint")}</p>
+          <div>
+            <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="open-unpaid-reason">
+              {t("opdConsult.openUnpaidReason")}
+            </label>
+            <input
+              id="open-unpaid-reason" data-testid="open-unpaid-reason" value={unpaidReason}
+              onChange={(ev) => { setUnpaidReason(ev.target.value); }}
+              className="in" style={{ width: "100%", height: 34, fontSize: 13 }}
+            />
+          </div>
+          <p style={{ margin: 0, fontSize: 11.5, color: "var(--faint)" }}>{t("opdConsult.openUnpaidStillOwed")}</p>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 7 }}>
+            <button type="button" className="sec" style={{ padding: "4px 13px", fontSize: 12.5 }} onClick={() => { setOpeningUnpaid(null); }}>
+              {t("opdConsult.cancel")}
+            </button>
+            <button
+              type="button" className="pri" data-testid="open-unpaid-confirm"
+              style={{ padding: "4px 13px", fontSize: 12.5 }}
+              disabled={unpaidReason.trim().length < 3}
+              onClick={() => void confirmOpenUnpaid()}
+            >
+              {t("opdConsult.openUnpaidConfirm")}
+            </button>
+          </div>
+        </div>
+      </DeskModal>
+
       {/*
         ═══ THE SKIP DIALOG — SIX BUTTONS AND A BOX, AND IT IS NOT OPTIONAL ═══
 
@@ -2985,7 +3385,10 @@ export function OpdConsult(): React.ReactElement {
         rather than a failure.
       */}
       <AgentDock
-        answer={agentAnswer} log={agentLog} onAsk={ask}
+        answer={copilot.answer} log={agentLog} onAsk={copilot.ask}
+        panel={copilot.report === null ? undefined : (
+          <CopilotReport report={copilot.report} onDismiss={copilot.dismissReport} />
+        )}
         placeholder={t("opdConsult.askPlaceholder")} idle={t("opdConsult.agentIdle")}
       />
     </PaperScreen>

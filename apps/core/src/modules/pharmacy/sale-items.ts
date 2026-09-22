@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { pharmacySaleItems } from "../../kernel/db/schema";
 import { getItem, itemsByIds, listItems } from "../materials";
 import { createService, listServices } from "../tariff";
@@ -6,6 +6,7 @@ import { PharmacyError } from "./errors";
 import { gstCategoryFor } from "./price";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
+import { anyOfText } from "../../kernel/db/any-of";
 import type { ItemRow } from "../materials";
 
 /**
@@ -115,7 +116,7 @@ export async function saleItemCandidates(db: Db | Tx, filter: { search?: string 
   const drugs = await listItems(db, { class: "drug", active: true, ...(filter.search === undefined ? {} : { search: filter.search }) });
   if (drugs.length === 0) return [];
   const registered = await db.select({ itemId: pharmacySaleItems.itemId }).from(pharmacySaleItems)
-    .where(and(inArray(pharmacySaleItems.itemId, drugs.map((d) => d.id))));
+    .where(anyOfText(pharmacySaleItems.itemId, drugs.map((d) => d.id)));
   const taken = new Set(registered.map((r) => r.itemId));
   return drugs.filter((d) => !taken.has(d.id));
 }

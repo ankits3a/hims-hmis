@@ -18,6 +18,8 @@ import { billingManifest } from "../../modules/billing";
 import * as labSweepsMod from "../../modules/lab/sweeps";
 import * as pharmacyExpiryMod from "../../modules/pharmacy/expiry";
 import * as radiologyChasersMod from "../../modules/radiology/chasers";
+import * as rosterCalendarMod from "../../modules/roster/calendar";
+import * as rosterProposerMod from "../../modules/roster/proposer";
 import * as dispatcherMod from "../events/dispatcher";
 import * as timersMod from "../workflow/timers";
 import * as tempRolesMod from "../auth/temp-roles";
@@ -25,6 +27,7 @@ import * as guardiansMod from "../../modules/patients/guardians";
 import * as appointmentsMod from "../../modules/opd/appointments";
 import * as dailyCloseMod from "../../modules/billing/daily-close";
 import * as notifyPumpMod from "../notify/pump";
+import * as reachMod from "../notify/reach";
 import * as partitionsMod from "./partitions";
 import * as retentionMod from "../retention/sweep";
 import * as interfacesMod from "../ops/interfaces";
@@ -241,6 +244,13 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("runNotifyPump");
       return 0;
     }),
+    // PHASE O T4 — the second half of this census. The named array above says the job is
+    // REGISTERED; this spy is what makes "and it FIRES" an assertion rather than a hope, and
+    // §1a names it as the site a `toHaveLength` grep cannot find.
+    jest.spyOn(reachMod, "runReachLadder").mockImplementation(async () => {
+      invoked.push("runReachLadder");
+      return 0;
+    }),
     jest.spyOn(partitionsMod, "createEventPartitions").mockImplementation(async () => {
       invoked.push("createEventPartitions");
       return [];
@@ -326,6 +336,28 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("sweepUnreadWatchman");
       return { chased: [] };
     }),
+    /**
+     * THE NINETEENTH (phase R, R7). Stubbed for the same reason as the two above, and spied on
+     * `modules/roster/calendar` rather than on `modules/roster` — `jobs.ts` imports it from the
+     * index, and the eleventh's rule is that the binding lives in the module the index re-exports
+     * FROM. Un-stubbed it would open a transaction and re-expand every published cycle inside a
+     * fake-clock unit test that is about the CLOCK; its behaviour is asserted directly in
+     * `modules/roster/calendar.test.ts`.
+     */
+    jest.spyOn(rosterCalendarMod, "sweepRosterWindows").mockImplementation(async () => {
+      invoked.push("sweepRosterWindows");
+      return { departments: 0, written: 0 };
+    }),
+    /**
+     * PHASE R (R9) — stubbed on `modules/roster/proposer` for the same reason as the eleventh's
+     * rule above: `jobs.ts` imports it through the index, and the binding lives in the module the
+     * index re-exports FROM. Un-stubbed it would open a transaction and draft a month inside a
+     * fake-clock test that is about the CLOCK.
+     */
+    jest.spyOn(rosterProposerMod, "runMonthlyProposals").mockImplementation(async () => {
+      invoked.push("runMonthlyProposals");
+      return { skipped: true, drafted: 0, units: 0 };
+    }),
   ];
 }
 
@@ -344,6 +376,12 @@ const THE_EIGHTEEN = [
   "flagLateSurgeons",
   "runDailyClose",
   "runNotifyPump",
+  /**
+   * PHASE O T4 — THE CHANNEL LADDER, an `every(60_000)` INTERVAL job registered immediately
+   * after the pump, which is where `jobs.ts` puts it — so it sits there here too, and this
+   * array stays the REGISTRATION order rather than an alphabetical one.
+   */
+  "runReachLadder",
   "createEventPartitions",
   // PLAN 07c T8 — the THIRTEENTH, a `dailyIst("02:00")` job. Registered between the partition
   // creator and the retention sweep, which is where `jobs.ts` puts it — so it sits there here too,
@@ -388,6 +426,10 @@ const THE_EIGHTEEN = [
    */
   "sweepCriticalChaser",
   "sweepUnreadWatchman",
+  // PHASE R (R7) — the NINETEENTH, `dailyIst("01:30")`: the roster's duty-window horizon.
+  "sweepRosterWindows",
+  // PHASE R (R9) — the TWENTIETH, `dailyIst("02:10")`: next month's draft, cut on the 20th.
+  "runMonthlyProposals"
 ];
 
 /**
@@ -471,6 +513,7 @@ describe("Scheduler", () => {
       // like its three neighbours, for the same reason: at the shipped 5 s default a
       // 25-fake-hour advance would tick the pump 18 000 times.
       workerNotifyIntervalMs: 8 * 60 * 60 * 1000,
+      workerReachIntervalMs: 60_000, // PHASE O T4
       // Plan 11a R0-2, and it is deliberately NOT hours. This one is a WINDOW, not a cadence: it
       // gates which `sending` rows a cycle recovers and it never causes an invocation, so the
       // 25-fake-hour reasoning that sets its four neighbours does not apply and copying it here
@@ -654,7 +697,7 @@ describe("Scheduler", () => {
         .map(([atMs, daily]) => ({ atMs, daily }));
     })();
 
-    it("invokes all sixteen jobs across a stepwise advance from a pinned instant", async () => {
+    it("invokes all twenty-one jobs across a stepwise advance from a pinned instant", async () => {
       expect(process.env.DATABASE_URL).toBeUndefined(); // CI's environment, reproduced here
       const invoked: string[] = [];
       const spies = spyOnTheThirteen(invoked);

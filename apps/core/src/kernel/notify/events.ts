@@ -1,3 +1,4 @@
+import { NOTIFY_CHANNELS } from "./adapters";
 import { z } from "zod";
 import { defineEvent } from "@hmis/contracts";
 
@@ -21,7 +22,7 @@ export const notificationSent = defineEvent(
     templateKey: z.string().min(1),
     templateVersion: z.number().int(),
     audience: audienceSchema,
-    channel: z.enum(["whatsapp", "sms"]),
+    channel: z.enum(NOTIFY_CHANNELS),
     providerMessageId: z.string().nullable(), // console adapter always returns null (D11)
   }),
 );
@@ -33,7 +34,12 @@ export const notificationFailed = defineEvent(
     notificationId: z.string().min(1),
     templateKey: z.string().min(1),
     audience: audienceSchema,
-    reason: z.enum(["ladder_exhausted", "no_phone", "render_error", "stuck_sending"]),
+    // PHASE O T4 — `no_push_subscription` is the push twin of `no_phone`, and it is a separate
+    // word because the remedy is different: a missing phone is fixed at the desk, a missing
+    // subscription is fixed by the person granting permission in their own browser.
+    reason: z.enum([
+      "ladder_exhausted", "no_phone", "no_push_subscription", "render_error", "stuck_sending",
+    ]),
     refType: z.string().nullable(), // the outbox row's ref_type/ref_id — not every notification has one
     refId: z.string().nullable(),
   }),

@@ -2,8 +2,9 @@ import { and, asc, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import {
-  formularyMedicines, itemBarcodes, itemPriceRegulations, itemUoms, items,
+  itemBarcodes, itemPriceRegulations, itemUoms, items,
 } from "../../kernel/db/schema";
+import { medicineExists } from "../formulary";
 import { MaterialsError } from "./errors";
 import { itemRegistered, itemUpdated } from "./events";
 import type { UomRow } from "./uom";
@@ -96,9 +97,7 @@ async function assertDrugMedicinePairing(
   // Only now is the id worth resolving: a drug that named a medicine which does not exist would
   // otherwise fail on the FOREIGN KEY with a constraint name rather than a code.
   if (hasMedicine) {
-    const found = await tx.select({ id: formularyMedicines.id }).from(formularyMedicines)
-      .where(eq(formularyMedicines.id, formularyMedicineId));
-    if (found[0] === undefined) {
+    if (!await medicineExists(tx, formularyMedicineId)) {
       throw new MaterialsError(
         "unknown_item",
         `formulary medicine ${formularyMedicineId} not found — register the medicine in the ` +
@@ -459,6 +458,20 @@ export async function getItem(db: Db | Tx, itemId: string): Promise<ItemWithUoms
 export async function itemUomRows(db: Db | Tx, itemId: string): Promise<UomRow[]> {
   return db.select({ uom: itemUoms.uom, toBaseMultiplier: itemUoms.toBaseMultiplier })
     .from(itemUoms).where(eq(itemUoms.itemId, itemId));
+}
+
+/** PHARMACY P4 — every pack unit of the named items, keyed by item: the reorder list rounds to one. */
+export async function uomsByItems(
+  db: Db | Tx, itemIds: readonly string[],
+): Promise<Map<string, { uom: string; toBaseMultiplier: number; isIssueUom: boolean }[]>> {
+  const out = new Map<string, { uom: string; toBaseMultiplier: number; isIssueUom: boolean }[]>();
+  const wanted = [...new Set(itemIds)];
+  if (wanted.length === 0) return out;
+  const rows = await db.select({
+    itemId: itemUoms.itemId, uom: itemUoms.uom, toBaseMultiplier: itemUoms.toBaseMultiplier, isIssueUom: itemUoms.isIssueUom,
+  }).from(itemUoms).where(inArray(itemUoms.itemId, wanted));
+  for (const r of rows) out.set(r.itemId, [...(out.get(r.itemId) ?? []), { uom: r.uom, toBaseMultiplier: r.toBaseMultiplier, isIssueUom: r.isIssueUom }]);
+  return out;
 }
 
 export async function listItems(

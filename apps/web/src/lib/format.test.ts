@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { fmtIst, fmtPaise, monthYearIst, useDebounced } from "./format";
+import { fmtIst, fmtPaise, fmtRupees, monthYearIst, useDebounced } from "./format";
 
 describe("format", () => {
   afterEach(() => {
@@ -26,6 +26,15 @@ describe("format", () => {
     // T15's variance is signed: the minus rides OUTSIDE the rupee sign, never inside the digits.
     expect(fmtPaise(-172000)).toBe("-₹1,720.00");
     expect(fmtPaise(-5)).toBe("-₹0.05");
+  });
+
+  it("fmtRupees drops .00 on a whole-rupee amount and keeps real paise, in Indian grouping", () => {
+    expect(fmtRupees(12500000)).toBe("₹1,25,000");
+    expect(fmtRupees(125000)).toBe("₹1,250");
+    expect(fmtRupees(125050)).toBe("₹1,250.50");
+    expect(fmtRupees(5)).toBe("₹0.05");
+    expect(fmtRupees(0)).toBe("₹0");
+    expect(fmtRupees(-50000)).toBe("-₹500");
   });
 
   it("fmtIst renders a UTC instant as IST HH:MM — the opd-desk behaviour, transcribed not imported", () => {

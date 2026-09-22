@@ -129,6 +129,30 @@ describe("approver worklist", () => {
     expect((await listApprovals(db, billingHead, { status: "granted" })).total).toBe(1);
   });
 
+  /*
+    APPROVALS-UX — the approver's "Decided recently" list. A decided list read in the pending
+    order (urgency, then OLDEST request first) answers "what was decided longest ago", and with the
+    default page of 50 the newest decisions are the ones that fall off the end. So a decided list is
+    newest DECISION first. s1 is the older request but the older decision too, which is the case
+    the two orders disagree on.
+  */
+  it("a decided list is newest decision first, not oldest request first", async () => {
+    const s1 = await file("discount_override", "s1");
+    const s2 = await file("discount_override", "s2");
+    await db.update(approvals).set({ requestedAt: new Date(Date.now() - 3 * 60 * 60_000) }).where(eq(approvals.id, s1));
+    await approveRequest(db, billingHead, { approvalId: s1, note: "fine" });
+    await approveRequest(db, billingHead, { approvalId: s2, note: "fine" });
+    await db.update(approvals).set({ decidedAt: new Date(Date.now() - 2 * 60 * 60_000) }).where(eq(approvals.id, s1));
+    await db.update(approvals).set({ decidedAt: new Date(Date.now() - 60 * 60_000) }).where(eq(approvals.id, s2));
+
+    const granted = await listApprovals(db, billingHead, { status: "granted" });
+    expect(granted.items.map((i) => i.id)).toEqual([s2, s1]);
+    // The pending order is untouched: still oldest request first.
+    const p1 = await file("discount_override", "p1");
+    const p2 = await file("discount_override", "p2");
+    expect((await listApprovals(db, billingHead)).items.map((i) => i.id)).toEqual([p1, p2]);
+  });
+
   it("paginates with a stable total", async () => {
     for (let i = 0; i < 5; i += 1) {
       await file("discount_override", `s${i}`);

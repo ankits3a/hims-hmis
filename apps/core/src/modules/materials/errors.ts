@@ -158,7 +158,42 @@ export type MaterialsErrorCode =
    * constraint name. Distinct from `insufficient_stock`: that one is about available stock at a
    * location, this one is the last guard on the arithmetic itself.
    */
-  | "negative_stock";
+  | "negative_stock"
+  // ── Plan 14c, first slice: counts ──
+  /** The login lacks the counts grant the act needs; the act checks it as well as the route. */
+  | "permission_denied"
+  | "unknown_count"
+  /** A count is already being counted at this store: two sheets on one shelf is how counts go wrong. */
+  | "count_already_open"
+  /** Nobody holding `materials.counts.perform` is free of the store and of the scheduling. */
+  | "no_eligible_counter"
+  /** The transit store, or a retired one, is not a shelf anyone can count. */
+  | "not_countable"
+  /** The sheet belongs to the counter the system assigned. */
+  | "count_not_assigned"
+  | "count_not_open"
+  /** Every line on the sheet needs a number; a blank is not a zero. */
+  | "count_incomplete"
+  | "invalid_count_qty"
+  /** The sheet's time is before the freeze or after the submission. */
+  | "invalid_count_time"
+  | "count_not_submitted"
+  | "reason_required"
+  // ── Plan 14c, second slice: adjustments ──
+  /** Only a variance line of a submitted or closed count is booked; a match has nothing to book. */
+  | "nothing_to_adjust"
+  /** A line flagged for recount is booked from its recount, never from the count that flagged it. */
+  | "recount_pending"
+  | "already_requested"
+  /** The reason does not fit the direction: `found` books stock on, the loss reasons write it off. */
+  | "invalid_adjustment_reason"
+  | "adjustment_unapproved"
+  | "unknown_adjustment"
+  // ── The transfer screen (2026-09-17): two signatures, and the destination's own keeper ──
+  /** The person who issued a transfer tries to receive it. DD9's two signatures are two people. */
+  | "transfer_self_receipt"
+  /** The destination names its keepers (`attributes.custodianRoles`) and the receiver holds none of them. */
+  | "not_store_keeper";
 
 /**
  * 404 for a thing that is not there, 409 for a state conflict the caller can act on.
@@ -173,10 +208,12 @@ export type MaterialsErrorCode =
  */
 const NOT_FOUND_CODES = new Set<MaterialsErrorCode>([
   "unknown_item", "unknown_vendor", "unknown_store", "unknown_batch",
-  "unknown_document",
+  "unknown_document", "unknown_count", "unknown_adjustment",
 ]);
 
 export function materialsHttpStatus(code: MaterialsErrorCode): number {
+  // 14c: the act's own grant check answers as the route guard would.
+  if (code === "permission_denied") return 403;
   return NOT_FOUND_CODES.has(code) ? 404 : 409;
 }
 

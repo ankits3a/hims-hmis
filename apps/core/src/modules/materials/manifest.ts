@@ -88,6 +88,10 @@ export const materialsManifest: ModuleManifest = {
      * permission" is a rule the next module will read this file to learn.
      */
     { label: "Goods receipt", path: "/materials/grn", permission: "materials.stock.read" },
+    /** 14c, first slice — the counter's sheets and, for the head, scheduling and review on the same screen. */
+    { label: "Stock counts", path: "/materials/counts", permission: "materials.counts.perform" },
+    /** 2026-09-17 — the stores send, the receiving store confirms; read opens it, the acts check their own grants. */
+    { label: "Stock transfers", path: "/materials/transfers", permission: "materials.stock.read" },
   ],
   permissions: [
     "materials.items.read",
@@ -103,6 +107,13 @@ export const materialsManifest: ModuleManifest = {
     "materials.stock.receive",
     /** DD14's one-action freeze. Narrowest grant in the module: `materials_head` alone. */
     "materials.recall.manage",
+    /**
+     * 14c, first slice — schedule, review, close and cancel a blind count. Never the count itself:
+     * the scheduler is kept off the sheet by the act and by a CHECK.
+     */
+    "materials.counts.manage",
+    /** 14c — count a store the system assigned. Never a store whose stock one moved in the last 30 days. */
+    "materials.counts.perform",
   ],
   /**
    * **PLAN 14 T7 — THE ONE SUBSCRIPTION, LANDED WITH ITS HANDLER IN THIS COMMIT.**

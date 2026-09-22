@@ -3,7 +3,7 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
 import { opdEncounters } from "../../kernel/db/schema";
 import { seedBillingBase } from "../../../test/helpers/billing";
-import { registerVitalsStartGuard } from "./consultation";
+import { registerConsultStartGuard, registerVitalsStartGuard, startConsultation } from "./consultation";
 import { grantFeeBypass, openVisit } from "./encounters";
 import { preStage } from "./prestage";
 import { recordVitals } from "./vitals";
@@ -73,6 +73,13 @@ describe("FD-32 — the vitals desk is gated on payment, and the front desk can 
     /* The refusal names WHICH door, so a screen can say "pay first" rather than "consultation". */
     await expect(recordVitals(db, vd.actor, encId, adultOk, MON))
       .rejects.toMatchObject({ detail: { door: "vitals", code: "fee_unsettled" } });
+    /*
+      AND IT NAMES THE DOOR THAT IS OPEN. The owner read `the vitals desk is gated: fee_unsettled`
+      off a real screen with the emergency button in front of him and could not tell it was the way
+      through — the code moved to `detail` and the message became a sentence for the person.
+    */
+    await expect(recordVitals(db, vd.actor, encId, adultOk, MON))
+      .rejects.toMatchObject({ message: expect.stringContaining("emergency save") as unknown as string });
 
     /* NOTHING WRITTEN: the visit has not moved on, so the refusal cost the nurse nothing to undo. */
     const rows = await db.select().from(opdEncounters).where(eq(opdEncounters.id, encId));
@@ -152,5 +159,95 @@ describe("FD-32 — the vitals desk is gated on payment, and the front desk can 
     const encId = await opened();
     const done = await recordVitals(db, vd.actor, encId, adultOk, MON);
     expect(done.vitals.encounterId).toBe(encId);
+  });
+
+  /**
+   * ═══ THE BAY'S OWN EMERGENCY DOOR (OWNER RULING 2026-09-20) ═══
+   *
+   * Owner: *"he fails to bypass when the condition of the patient is emergency … the vitals desk
+   * doesn't even record/save the vitals data of the patient if the billing is not done. I think, we
+   * should allow the patient to record his vitals if the condition is like emergency."*
+   *
+   * FD-32's waiver was the front desk's alone, and the desk is not where the patient is. These
+   * four pin the shape of the answer: it lands, it is SIGNED, the money fact does not move, and the
+   * doctor's door stays shut behind it.
+   */
+  describe("the emergency save opens the gate itself", () => {
+    const urgent = { emergency: true };
+
+    it("the emergency save lands through a shut gate, and the waiver carries the saver's name", async () => {
+      gateRefusing();
+      const encId = await opened();
+      /* The ordinary save is still refused on the very same visit — the button is the difference. */
+      await expect(recordVitals(db, vd.actor, encId, adultOk, MON)).rejects.toMatchObject({ code: "consult_gate_refused" });
+
+      const done = await recordVitals(db, vd.actor, encId, adultOk, MON, urgent);
+      expect(done.vitals.encounterId).toBe(encId);
+      expect(done.vitals.emergency).toBe(true);
+      /* The screen is told, so the bay can say what it just did rather than save in silence. */
+      expect(done.feeWaived).toBe(true);
+      /* SIGNED: the waiver is the nurse's own, in the same columns the clerk's waiver uses. */
+      expect(done.encounter.feeBypassBy).toBe(vd.id);
+      expect(done.encounter.feeBypassReason).toContain("vitals taken at the bay before billing");
+      const rows = await db.select().from(opdEncounters).where(eq(opdEncounters.id, encId));
+      expect(rows[0]!.feeBypassBy).toBe(vd.id);
+      expect(rows[0]!.status).toBe("waiting");
+    });
+
+    it("the money fact does not move: the desk still shows UNPAID, now with the bay's sentence beside it", async () => {
+      await seedBillingBase(db);
+      gateRefusing();
+      const encId = await opened();
+      await recordVitals(db, vd.actor, encId, adultOk, MON, urgent);
+
+      const after = await preStage(db, vd.actor, encId, MON);
+      /* A waiver waives the ORDER, never the fee — the counter still has this visit to bill. */
+      expect(after.feeUnpaid).toBe(true);
+      expect(after.feeBypass).toMatchObject({ by: vd.id });
+      expect(after.feeBypass!.reason).toContain("the fee is still due");
+    });
+
+    it("the door stays open for the rest of the visit, and the waiver is not re-assigned", async () => {
+      gateRefusing();
+      const encId = await opened();
+      await recordVitals(db, vd.actor, encId, adultOk, MON, urgent);
+
+      /* A second set of numbers on a patient already waved through is not a second refusal —
+         and it is taken by a DIFFERENT nurse, which is what "not re-assigned" has to mean. */
+      const vd2 = await mkUser(db, "vd2", ["vitals_desk"]);
+      const second = await recordVitals(db, vd2.actor, encId, adultOk, MON);
+      expect(second.vitals.encounterId).toBe(encId);
+      /* And it is not a second waiver: the audit question is who opened the door FIRST. */
+      expect(second.feeWaived).toBe(false);
+      expect(second.encounter.feeBypassBy).toBe(vd.id);
+    });
+
+    it("a visit that HAS paid is stamped with nothing — the waiver is not a side effect of the button", async () => {
+      const encId = await opened();
+      const done = await recordVitals(db, vd.actor, encId, adultOk, MON, urgent);
+      expect(done.feeWaived).toBe(false);
+      expect(done.encounter.feeBypassBy).toBeNull();
+    });
+
+    /**
+     * THE ADJACENT PROPERTY, and the one this ruling must NOT change. `vitalsStartGuards` and
+     * `consultStartGuards` are two registries precisely so that "waved past for vitals" cannot
+     * quietly become "waved past for the consultation": the patient is charted, then billed, then
+     * seen. If a later task widens the bypass to the doctor's door, this row goes red and says so.
+     */
+    it("the doctor's door is still shut: an emergency chart does not start a consultation", async () => {
+      gateRefusing();
+      const unregisterConsult = registerConsultStartGuard("test_consult_fee_gate", () =>
+        Promise.resolve({ ok: false as const, code: "fee_unsettled", detail: { visitType: "new" } }));
+      try {
+        const encId = await opened();
+        await recordVitals(db, vd.actor, encId, adultOk, MON, urgent);
+        await expect(startConsultation(db, dra.actor, encId, MON)).rejects.toMatchObject({
+          code: "consult_gate_refused", detail: { guard: "test_consult_fee_gate", code: "fee_unsettled" },
+        });
+      } finally {
+        unregisterConsult();
+      }
+    });
   });
 });
