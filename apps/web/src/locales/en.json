@@ -3875,7 +3875,11 @@
       "q": "the whole line",
       "f8": "command",
       "enter": "find what is in the field",
-      "esc": "close, then clear the desk"
+      "esc": "close, then clear the desk",
+      "s": "see the slip",
+      "b": "batch & shelf",
+      "tender": "cash · UPI · card · split",
+      "f2": "ask the counter agent"
     },
     "sealedRecord": "sealed record",
     "years": "{{n}}y",
@@ -4129,7 +4133,8 @@
       "input": "Where {{drug}} sits",
       "placeholder": "R-12 · rack 3 · fridge",
       "cancel": "cancel",
-      "change": "change where it sits"
+      "change": "change where it sits",
+      "save": "Save"
     },
     "res": {
       "open": "choose what it is",
@@ -4204,6 +4209,53 @@
       "refused_one": "one cannot be dispensed here",
       "refused_other": "{{count}} cannot be dispensed here",
       "show": "Show the line"
+    },
+    "batch": {
+      "title": "FEFO batch & shelf",
+      "fefo": "FEFO",
+      "later": "later batch",
+      "given": "given",
+      "chip": "{{batch}} · exp {{expiry}}",
+      "a11y": "Batch {{batch}}, expires {{expiry}}, {{where}}. Change batch",
+      "noShelf": "shelf not set",
+      "rule": "Nearest expiry first. The top row is what goes out; take a later one only when that strip is not on the shelf. Scanning a strip picks its batch for you.",
+      "colBatch": "batch",
+      "colExpires": "expires",
+      "colWhere": "where",
+      "colOnHand": "on hand",
+      "daysLeft_one": "{{count}} day left",
+      "daysLeft_other": "{{count}} days left",
+      "monthsLeft_one": "{{count}} month left",
+      "monthsLeft_other": "{{count}} months left",
+      "fefoFirst": "FEFO · give this first",
+      "fefoSoon": "FEFO · give this first — it expires soonest",
+      "keyHint": "opens this on the line you are on",
+      "closes": "closes"
+    },
+    "scanBox": {
+      "label": "Scan a pack — it finds its line",
+      "placeholder": "scan any pack on this ticket — ⏎ ticks its line",
+      "noLine": "No open line is waiting for a pack."
+    },
+    "amount": "amount",
+    "menu": {
+      "batch": "Batch & shelf",
+      "qty": "Change the quantity",
+      "decline": "Decline this line"
+    },
+    "partialOwed": "giving {{n}} of {{of}} — say why under ⋯ before the tick counts",
+    "partialSaid": "giving {{n}} of {{of}} — {{reason}}",
+    "qtySheet": {
+      "title": "How many of {{drug}}?",
+      "label": "quantity, in {{uom}}",
+      "done": "Done"
+    },
+    "declineTitle": "Decline {{line}}",
+    "header": {
+      "registered": "registered · {{no}}",
+      "notRegistered": "not registered — cannot verify",
+      "drawerOpen": "drawer open · float {{float}}",
+      "noDrawer": "no drawer — open one to take money"
     }
   },
   "pharmacyAuthorise": {

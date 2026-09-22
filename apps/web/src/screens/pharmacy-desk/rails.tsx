@@ -39,10 +39,14 @@ export function Dossier({
       { label: t("pharmacyDesk.day.declined"), value: String(summary.declinedLines) },
       { label: t("pharmacyDesk.day.inLine"), value: String(queued) },
     ];
+    /* The board's legend. Each key is bound where it acts: S with a typed slip, B on a line with batches, 1-4 at the bill. */
     const keys = [
       { k: "Q", what: t("pharmacyDesk.keys.q") },
       ...(paletteBound ? [{ k: "F8", what: t("pharmacyDesk.keys.f8") }] : []),
-      { k: "⏎", what: t("pharmacyDesk.keys.enter") },
+      { k: "S", what: t("pharmacyDesk.keys.s") },
+      { k: "B", what: t("pharmacyDesk.keys.b") },
+      { k: "1-4", what: t("pharmacyDesk.keys.tender") },
+      { k: "F2", what: t("pharmacyDesk.keys.f2") },
       { k: "Esc", what: t("pharmacyDesk.keys.esc") },
     ];
     return (
@@ -59,7 +63,7 @@ export function Dossier({
           ))}
         </div>
         <div className="tag" style={{ marginTop: 22 }}>{t("pharmacyDesk.keys.title")}</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
+        <div data-testid="desk-keys" style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
           {keys.map((k) => (
             <div key={k.k} style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span className="kb">{k.k}</span>

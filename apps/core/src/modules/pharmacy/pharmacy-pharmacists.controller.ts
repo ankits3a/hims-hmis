@@ -4,7 +4,7 @@ import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { idSchema, parsed, toHttp } from "./pharmacy-http";
-import { endPharmacistRegistration, listPharmacists, recordPharmacistRegistration } from "./pharmacists";
+import { endPharmacistRegistration, listPharmacists, myRegistration, recordPharmacistRegistration } from "./pharmacists";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { PharmacistView } from "./pharmacists";
@@ -29,6 +29,16 @@ export class PharmacyPharmacistsController {
   @Get()
   async list(): Promise<{ items: PharmacistView[] }> {
     return { items: await listPharmacists(this.db) };
+  }
+
+  /**
+   * The desk header's pill: the CALLER's own current registration, or null. Read by anyone who may
+   * read the counter; it names nobody else, so it needs no more than that.
+   */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("me")
+  async me(@CurrentActor() actor: Actor): Promise<{ registration: { council: string; registrationNo: string; validUntil: string | null } | null }> {
+    return { registration: await myRegistration(this.db, actor, new Date()) };
   }
 
   @RequirePermission("pharmacy.pharmacists.manage", "hospital")

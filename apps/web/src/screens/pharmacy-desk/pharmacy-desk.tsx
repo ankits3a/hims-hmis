@@ -8,7 +8,7 @@ import { fetchCurrentSession } from "../../lib/billing-api";
 import { usePaletteOptional } from "../../components/command-palette";
 import { useCopilot } from "../../lib/use-copilot";
 import {
-  billDispense, claimDispense, confirmDispenseSlip, declineLine, fetchCounterSummary, fetchDispense, fetchQueue, findAtCounter, handOverDispense,
+  billDispense, claimDispense, confirmDispenseSlip, declineLine, fetchCounterSummary, fetchDispense, fetchMyRegistration, fetchQueue, findAtCounter, handOverDispense,
   pharmacyErrorCode, pharmacyErrorText, pickDispense, previewBill, verifyDispense,
 } from "../../lib/pharmacy-api";
 import { istClock, istDateLabel } from "../desk-one/model";
@@ -23,6 +23,7 @@ import type { CollectResult } from "./lines";
 import type { PickLine, Tender, VerifyLine, WireDispense, WireFindResult, WirePatientSummary } from "../../lib/pharmacy-api";
 import "../../styles/paper-pine.css";
 import "../desk-one/desk-one.css";
+import "./pharmacy-desk.css";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -148,6 +149,8 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
   const status = ticket.data?.status ?? null;
   /* The pharmacist's OWN drawer — every receipt needs it, not only cash (E21, measured). A 403 reads as closed. */
   const drawer = useQuery({ queryKey: ["billing", "session", "current"], queryFn: fetchCurrentSession, refetchInterval: 60_000, retry: false });
+  /* The header's other precondition: may this login verify (Pharmacy Act 1948 §42)? A 404 (older server) says nothing. */
+  const registration = useQuery({ queryKey: ["pharmacy", "pharmacists", "me"], queryFn: fetchMyRegistration, staleTime: 5 * 60_000, retry: false });
   /* Priced at batch grain, so only once collected; the last answer stays in the cache after hand-over. */
   const preview = useQuery({
     queryKey: ["pharmacy", "bill", inHandId],
@@ -370,6 +373,23 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
           <span style={{ fontSize: 12.5, color: "var(--dim)" }}>
             {t("pharmacyDesk.where")} · <strong style={{ color: "var(--ink)", fontWeight: 600 }}>{username ?? t("pharmacyDesk.thisDesk")}</strong>
           </span>
+          {registration.data === undefined ? null : registration.data.registration === null ? (
+            <span className="pill rd" style={{ height: 22 }} data-testid="desk-registered">{t("pharmacyDesk.header.notRegistered")}</span>
+          ) : (
+            <span className="pill on" style={{ height: 22 }} data-testid="desk-registered" title={registration.data.registration.council}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M7 11V8a5 5 0 0110 0v3M5 11h14v10H5z" /></svg>
+              {t("pharmacyDesk.header.registered", { no: registration.data.registration.registrationNo })}
+            </span>
+          )}
+          {drawer.isPending ? null : drawer.data?.session?.status === "open" ? (
+            <span className="pill" style={{ height: 22 }} data-testid="desk-drawer">
+              {t("pharmacyDesk.header.drawerOpen", { float: `₹${(drawer.data.session.openingFloatPaise / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })}` })}
+            </span>
+          ) : (
+            <span data-testid="desk-drawer" style={{ display: "inline-flex" }}>
+              <button type="button" className="pill gd" style={{ height: 22 }} onClick={() => void navigate({ to: "/billing/session" })}>{t("pharmacyDesk.header.noDrawer")}</button>
+            </span>
+          )}
           <span className="pill">PHARM-OPD</span>
           <div style={{ flexGrow: 1 }} />
           <span className="mo" style={{ fontSize: 11.5, color: "var(--faint)", letterSpacing: ".04em" }}>{istDateLabel()} · {clock}</span>

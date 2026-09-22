@@ -121,6 +121,7 @@ describe("choose what an unplaced line is (PD-5b)", () => {
     await userEvent.click(within(sheet).getByRole("button", { name: "Put Calpol 500 on the ticket" }));
 
     expect(within(row).getByRole("checkbox")).toBeEnabled();
+    await userEvent.click(within(row).getByRole("button", { name: /What else for/ }));
     await userEvent.click(within(row).getByRole("button", { name: "undo" }));
     expect(within(row).queryByTestId("desk-line-0-res")).toBeNull();
     expect(within(row).getByRole("checkbox")).toBeDisabled();

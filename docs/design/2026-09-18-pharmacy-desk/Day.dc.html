@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The counter day — every figure the server already answers</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #f4f7f4; }
+  a { color: #0e6b4e; text-decoration: none; }
+  a:hover { color: #0a5039; }
+  .pp { --paper:#f4f7f4; --card:#ffffff; --ink:#132420; --line:#dfe7e1; --line2:#ecf1ed;
+        --dim:#5c6f66; --wash:#eef3ef; --green:#0e6b4e; --green-soft:rgba(14,107,78,.08);
+        --green-line:rgba(14,107,78,.35); --gold:#dd8f1c; --gold-ink:#9a6208;
+        --gold-soft:rgba(221,143,28,.10); --gold-line:rgba(221,143,28,.45); --red:#b23a30;
+        --red-soft:rgba(178,58,48,.08); --red-line:rgba(178,58,48,.4); --agent:#132420;
+        --agent-fg:#d9efe4; --agent-dim:#9dbdae; --mint:#35c48f; }
+  .pp * { box-sizing: border-box; }
+  .pp button { font: inherit; color: inherit; cursor: pointer; background: none; border: none; padding: 0; text-align: left; }
+  .pp .mo { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .pp .tag { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9.5px; font-weight: 600;
+             letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+  .pp .pill { display: inline-flex; align-items: center; gap: 6px; height: 23px; padding: 0 9px; border-radius: 4px;
+              font-size: 10.5px; font-weight: 600; border: 1px solid var(--line); background: var(--card);
+              color: var(--dim); white-space: nowrap; }
+  .pp .pill.on { border-color: var(--green-line); background: var(--green-soft); color: var(--green); }
+  .pp .pill.gd { border-color: var(--gold-line); background: var(--gold-soft); color: var(--gold-ink); }
+  .pp .pill.rd { border-color: var(--red-line); background: var(--red-soft); color: var(--red); }
+</style>
+</helmet>
+<div class="pp" style="width: 1440px; height: 920px; display: flex; flex-direction: column; background: var(--paper); color: var(--ink); font: 13.5px/19px 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif; overflow: hidden;">
+
+  <header style="display: flex; align-items: center; gap: 14px; height: 46px; padding: 0 20px; background: var(--card); border-bottom: 1px solid var(--line); flex-shrink: 0;">
+    <a href="Main.dc.html" class="pill" style="height: 26px; text-decoration: none;">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>
+      Counter
+    </a>
+    <div style="display: flex; align-items: baseline; gap: 9px;">
+      <span style="font-size: 14px; font-weight: 600;">The counter day</span>
+      <span class="tag">Thursday 18 September · PHARM-OPD · still open</span>
+    </div>
+    <div style="flex-grow: 1;"></div>
+    <button class="pill" style="height: 28px;">Yesterday</button>
+    <button class="pill" style="height: 28px;">Pick a day</button>
+    <button class="pill on" style="height: 28px;">Send to the pharmacist in charge</button>
+  </header>
+
+  <div style="flex-grow: 1; min-height: 0; overflow-y: auto; padding: 18px 20px; display: flex; gap: 16px;">
+
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
+
+      <section style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px;">
+        <sc-for list="{{heads}}" as="h" hint-placeholder-count="5">
+          <div style="background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 13px 14px;">
+            <div class="tag" style="font-size: 9px;">{{h.label}}</div>
+            <div class="mo" style="margin-top: 8px; font-size: 27px; line-height: 29px; font-weight: 600; letter-spacing: -.025em; color: {{h.tone}};">{{h.value}}</div>
+            <div style="margin-top: 4px; font-size: 11.5px; color: var(--dim); line-height: 16px;">{{h.note}}</div>
+          </div>
+        </sc-for>
+      </section>
+
+      <section style="background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 15px 16px;">
+        <div style="display: flex; align-items: baseline; gap: 10px;">
+          <h2 style="margin: 0; font-size: 13.5px; font-weight: 600;">What did not leave the counter</h2>
+          <span style="font-size: 12px; color: var(--dim);">The negative space is the harvest — a counter is judged by what it failed to hand over.</span>
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 13px; align-items: stretch;">
+          <sc-for list="{{fate}}" as="f" hint-placeholder-count="4">
+            <div style="{{f.style}}">
+              <div class="mo" style="font-size: 20px; font-weight: 600;">{{f.n}}</div>
+              <div style="font-size: 12px; margin-top: 3px;">{{f.what}}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; margin-top: 14px;">
+          <div style="flex-grow: 1; height: 10px; border-radius: 5px; background: var(--wash); overflow: hidden; display: flex;">
+            <span style="width: 87.7%; background: var(--green);"></span>
+            <span style="width: 5.5%; background: var(--gold);"></span>
+            <span style="width: 6.8%; background: var(--red);"></span>
+          </div>
+          <span style="font-size: 11.5px; color: var(--dim);">64 handed over · 4 still waiting behind the counter · 5 cancelled</span>
+        </div>
+      </section>
+
+      <section style="background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 15px 16px;">
+        <div style="display: flex; align-items: baseline; gap: 10px;">
+          <h2 style="margin: 0; font-size: 13.5px; font-weight: 600;">Why a line was refused</h2>
+          <span style="font-size: 12px; color: var(--dim);">11 lines across 9 prescriptions. The top reason is a stock decision, not a clinical one.</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 9px; margin-top: 13px;">
+          <sc-for list="{{declines}}" as="d" hint-placeholder-count="5">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span style="width: 232px; flex-shrink: 0; font-size: 12.5px;">{{d.reason}}</span>
+              <div style="flex-grow: 1; height: 20px; background: var(--wash); border-radius: 4px; overflow: hidden;">
+                <span style="{{d.barStyle}}"></span>
+              </div>
+              <span class="mo" style="width: 26px; text-align: right; font-size: 12.5px; font-weight: 600;">{{d.n}}</span>
+              <button class="pill" style="height: 24px; width: 92px; justify-content: center;">{{d.act}}</button>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+
+      <section style="display: flex; gap: 16px;">
+        <div style="flex-grow: 1; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 15px 16px;">
+          <h2 style="margin: 0 0 12px 0; font-size: 13.5px; font-weight: 600;">How long people stood there</h2>
+          <sc-for list="{{times}}" as="t" hint-placeholder-count="2">
+            <div style="display: flex; align-items: baseline; gap: 10px; padding: 7px 0;">
+              <span style="flex-grow: 1; font-size: 12.5px;">{{t.what}}</span>
+              <span class="mo" style="font-size: 17px; font-weight: 600;">{{t.v}}</span>
+            </div>
+          </sc-for>
+          <p style="margin: 10px 0 0 0; font-size: 11.5px; color: var(--dim); line-height: 16px;">The gap between the two is the wait before a pharmacist picked them up — that is the number a second window would move.</p>
+        </div>
+        <div style="flex-grow: 1; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 15px 16px;">
+          <h2 style="margin: 0 0 12px 0; font-size: 13.5px; font-weight: 600;">Money that came back</h2>
+          <sc-for list="{{money}}" as="m" hint-placeholder-count="3">
+            <div style="display: flex; align-items: baseline; gap: 10px; padding: 7px 0;">
+              <span style="flex-grow: 1; font-size: 12.5px;">{{m.what}}</span>
+              <span class="mo" style="font-size: 13px; color: var(--dim);">{{m.n}}</span>
+              <span class="mo" style="font-size: 15px; font-weight: 600; width: 84px; text-align: right;">{{m.v}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+
+    </div>
+
+    <div style="width: 392px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px;">
+
+      <section style="background: var(--card); border: 1px solid var(--ink); border-radius: 8px; overflow: hidden;">
+        <div style="display: flex; align-items: center; gap: 8px; padding: 11px 14px; background: var(--agent); color: var(--agent-fg);">
+          <span style="font-size: 12.5px; font-weight: 600; flex-grow: 1;">Open right now</span>
+          <span class="mo" style="font-size: 11px; color: var(--agent-dim);">9</span>
+        </div>
+        <sc-for list="{{open}}" as="o" hint-placeholder-count="5">
+          <div style="display: flex; align-items: center; gap: 11px; padding: 10px 14px; border-top: 1px solid var(--line2);">
+            <span style="{{o.dot}}"></span>
+            <span style="flex-grow: 1; font-size: 12.5px;">{{o.what}}</span>
+            <span class="mo" style="font-size: 13px; font-weight: 600; color: {{o.tone}};">{{o.n}}</span>
+          </div>
+        </sc-for>
+      </section>
+
+      <section style="background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 15px 16px;">
+        <h2 style="margin: 0 0 4px 0; font-size: 13.5px; font-weight: 600;">How much was scanned</h2>
+        <p style="margin: 0 0 12px 0; font-size: 12px; color: var(--dim); line-height: 17px;">Every pick that was typed instead of scanned is a strip nobody proved.</p>
+        <div style="display: flex; align-items: baseline; gap: 9px;">
+          <span class="mo" style="font-size: 30px; font-weight: 600; letter-spacing: -.025em;">90%</span>
+          <span class="mo" style="font-size: 13px; color: var(--dim);">118 of 131 picks</span>
+        </div>
+        <div style="margin-top: 11px; height: 10px; border-radius: 5px; background: var(--wash); overflow: hidden;">
+          <span style="display: block; width: 90%; height: 100%; background: var(--green);"></span>
+        </div>
+        <div style="margin-top: 11px; display: flex; align-items: center; gap: 8px;">
+          <span class="pill gd">13 typed</span>
+          <span style="font-size: 11.5px; color: var(--dim);">11 of them at window 3.</span>
+        </div>
+      </section>
+
+      <section style="background: var(--card); border: 1px solid var(--gold-line); border-radius: 8px; padding: 15px 16px;">
+        <h2 style="margin: 0 0 4px 0; font-size: 13.5px; font-weight: 600;">Lines the books could not read</h2>
+        <p style="margin: 0 0 11px 0; font-size: 12px; color: var(--dim); line-height: 17px;">The four safety checks skipped these because a salt on the line has no attested moiety. They were dispensed without an interaction or allergy opinion.</p>
+        <div style="display: flex; align-items: baseline; gap: 9px;">
+          <span class="mo" style="font-size: 30px; font-weight: 600; letter-spacing: -.025em; color: var(--gold-ink);">31</span>
+          <span class="mo" style="font-size: 13px; color: var(--dim);">of 186 lines</span>
+        </div>
+        <div style="margin-top: 11px; display: flex; flex-direction: column; gap: 6px;">
+          <sc-for list="{{unread}}" as="u" hint-placeholder-count="3">
+            <div style="display: flex; align-items: baseline; gap: 8px;">
+              <span style="flex-grow: 1; font-size: 12px;">{{u.salt}}</span>
+              <span class="mo" style="font-size: 11.5px; color: var(--dim);">{{u.n}}</span>
+            </div>
+          </sc-for>
+        </div>
+        <button class="pill gd" style="height: 28px; margin-top: 12px;">Send these to the curator</button>
+      </section>
+
+      <section style="background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 15px 16px;">
+        <h2 style="margin: 0 0 11px 0; font-size: 13.5px; font-weight: 600;">Schedule H1</h2>
+        <div style="display: flex; align-items: baseline; gap: 9px;">
+          <span class="mo" style="font-size: 26px; font-weight: 600;">6</span>
+          <span style="font-size: 12.5px; color: var(--dim);">register rows written today</span>
+        </div>
+        <p style="margin: 10px 0 0 0; font-size: 11.5px; color: var(--dim); line-height: 16px;">Rows 2,313 to 2,318, each against Reg 41892. The register is append-only — the database refuses an update.</p>
+        <button class="pill" style="height: 28px; margin-top: 11px;">Print the register</button>
+      </section>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":920}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const heads = [
+      { label: 'Handed over', value: '64', note: 'of 73 that arrived today', tone: 'var(--ink)' },
+      { label: 'Billed, net', value: '₹48,312', note: 'after ₹640 of refunds', tone: 'var(--ink)' },
+      { label: 'Median wait', value: '7m', note: 'queue to hand-over', tone: 'var(--ink)' },
+      { label: 'Not collected', value: '4', note: '₹2,140 standing behind the counter', tone: 'var(--red)' },
+      { label: 'Lines refused', value: '11', note: 'of 186 lines dispensed', tone: 'var(--gold-ink)' }
+    ];
+
+    const box = (bg, bd) => 'flex-grow: 1; padding: 11px 13px; border-radius: 7px; background: ' + bg + '; border: 1px solid ' + bd + ';';
+    const fate = [
+      { n: '64', what: 'walked out with the medicine', style: box('var(--green-soft)', 'var(--green-line)') },
+      { n: '4', what: 'paid and never came back', style: box('var(--red-soft)', 'var(--red-line)') },
+      { n: '3', what: 'cancelled before the bill', style: box('var(--wash)', 'var(--line)') },
+      { n: '2', what: 'cancelled after paying, refunded', style: box('var(--gold-soft)', 'var(--gold-line)') }
+    ];
+
+    const bar = (pct, colour) => 'display: block; width: ' + pct + '%; height: 100%; background: ' + colour + ';';
+    const declines = [
+      { reason: 'Not a sale item here', n: '5', barStyle: bar(100, 'var(--red)'), act: 'Sale items' },
+      { reason: 'Nothing sellable on the shelf', n: '3', barStyle: bar(60, 'var(--red)'), act: 'Reorder' },
+      { reason: 'Schedule X, not dispensed here', n: '1', barStyle: bar(20, 'var(--gold)'), act: 'By law' },
+      { reason: 'Prescription superseded', n: '1', barStyle: bar(20, 'var(--gold)'), act: 'Open Rx' },
+      { reason: 'Cold chain not commissioned', n: '1', barStyle: bar(20, 'var(--gold)'), act: 'Escalate' }
+    ];
+
+    const times = [
+      { what: 'Queue to hand-over', v: '7m' },
+      { what: 'Claim to hand-over', v: '4m' }
+    ];
+
+    const money = [
+      { what: 'Cancelled after the bill', n: '2', v: '₹640' },
+      { what: 'Sealed packs returned', n: '1', v: '₹95' },
+      { what: 'Substituted to a generic', n: '5', v: '−₹212' }
+    ];
+
+    const dot = (c) => 'width: 7px; height: 7px; border-radius: 50%; background: ' + c + '; flex-shrink: 0;';
+    const open = [
+      { what: 'Waiting in the queue', n: '9', tone: 'var(--gold-ink)', dot: dot('var(--gold)') },
+      { what: 'Claimed, being checked', n: '2', tone: 'var(--ink)', dot: dot('var(--dim)') },
+      { what: 'Verified, waiting to be picked', n: '0', tone: 'var(--dim)', dot: dot('var(--line)') },
+      { what: 'Picked, holding stock', n: '3', tone: 'var(--gold-ink)', dot: dot('var(--gold)') },
+      { what: 'Billed, not collected', n: '4', tone: 'var(--red)', dot: dot('var(--red)') }
+    ];
+
+    const unread = [
+      { salt: 'Clavulanic acid', n: '14 lines' },
+      { salt: 'Serratiopeptidase', n: '9 lines' },
+      { salt: 'Tinidazole', n: '8 lines' }
+    ];
+
+    return { heads: heads, fate: fate, declines: declines, times: times, money: money, open: open, unread: unread };
+  }
+}
+</script>
+</body>
+</html>

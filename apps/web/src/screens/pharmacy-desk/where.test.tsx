@@ -74,6 +74,7 @@ describe("where the drug is, on the line (PD-D18)", () => {
     }));
     renderWithProviders(<PharmacyDesk ticketId="d1" />);
     const row = await screen.findByTestId("desk-line-0");
+    await userEvent.click(within(row).getByRole("button", { name: /What else for Calpol 500/ }));
     await userEvent.click(within(row).getByRole("button", { name: "where is it?" }));
     await userEvent.type(within(row).getByRole("textbox", { name: "Where Calpol 500 sits" }), "R-7{Enter}");
     await waitFor(() => expect(put("/pharmacy/sale-items/it-cp/location")).toEqual([{ storeResourceId: "st-opd", location: "R-7" }]));
@@ -84,6 +85,8 @@ describe("where the drug is, on the line (PD-D18)", () => {
     mockRoutes(base(() => ticket(lineOf()), ["pharmacy.dispense.place"]));
     renderWithProviders(<PharmacyDesk ticketId="d1" />);
     const row = await screen.findByTestId("desk-line-0");
+    await userEvent.click(within(row).getByRole("button", { name: /What else for Calpol 500/ }));
+    expect(within(row).getByRole("button", { name: "Decline this line" })).toBeInTheDocument();
     expect(within(row).queryByRole("button", { name: "where is it?" })).toBeNull();
     expect(within(row).queryByTestId("desk-line-0-where")).toBeNull();
   });

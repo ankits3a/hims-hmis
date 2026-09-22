@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>How the counter says no — the refusal grammar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #f4f7f4; }
+  a { color: #0e6b4e; text-decoration: none; }
+  a:hover { color: #0a5039; }
+  .pp { --paper:#f4f7f4; --card:#ffffff; --ink:#132420; --line:#dfe7e1; --line2:#ecf1ed;
+        --dim:#5c6f66; --wash:#eef3ef; --green:#0e6b4e; --green-soft:rgba(14,107,78,.08);
+        --green-line:rgba(14,107,78,.35); --gold:#dd8f1c; --gold-ink:#9a6208;
+        --gold-soft:rgba(221,143,28,.10); --gold-line:rgba(221,143,28,.45); --red:#b23a30;
+        --red-soft:rgba(178,58,48,.08); --red-line:rgba(178,58,48,.4); --agent:#132420;
+        --agent-fg:#d9efe4; --agent-dim:#9dbdae; --mint:#35c48f; }
+  .pp * { box-sizing: border-box; }
+  .pp button { font: inherit; color: inherit; cursor: pointer; background: none; border: none; padding: 0; text-align: left; }
+  .pp .mo { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .pp .tag { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9.5px; font-weight: 600;
+             letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+  .pp .pill { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 4px;
+              font-size: 10px; font-weight: 600; border: 1px solid var(--line); background: var(--card);
+              color: var(--dim); white-space: nowrap; }
+  .pp .pill.on { border-color: var(--green-line); background: var(--green-soft); color: var(--green); }
+  .pp .pill.gd { border-color: var(--gold-line); background: var(--gold-soft); color: var(--gold-ink); }
+  .pp .pill.rd { border-color: var(--red-line); background: var(--red-soft); color: var(--red); }
+</style>
+</helmet>
+<div class="pp" style="width: 1440px; height: 920px; display: flex; flex-direction: column; background: var(--paper); color: var(--ink); font: 13.5px/19px 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif; overflow: hidden;">
+
+  <header style="display: flex; align-items: center; gap: 14px; height: 46px; padding: 0 20px; background: var(--card); border-bottom: 1px solid var(--line); flex-shrink: 0;">
+    <a href="Main.dc.html" class="pill" style="height: 26px; text-decoration: none;">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>
+      Counter
+    </a>
+    <div style="display: flex; align-items: baseline; gap: 9px;">
+      <span style="font-size: 14px; font-weight: 600;">How the counter says no</span>
+      <span class="tag">71 refusals · 14 shown</span>
+    </div>
+    <div style="flex-grow: 1;"></div>
+    <span style="font-size: 12px; color: var(--dim);">A refusal is the only thing at this window that cannot be argued with. It had better be a sentence.</span>
+  </header>
+
+  <div style="flex-grow: 1; min-height: 0; display: flex;">
+
+    <aside style="width: 380px; flex-shrink: 0; border-right: 1px solid var(--line); background: var(--card); padding: 20px; overflow-y: auto;">
+      <h2 style="margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -.01em;">Three sentences, in this order</h2>
+      <p style="margin: 9px 0 0 0; font-size: 12.5px; line-height: 18px; color: var(--dim);">Today the counter shows the code&#39;s translation and stops. A person standing at a window with a sick relative needs the other two.</p>
+
+      <div style="display: flex; flex-direction: column; gap: 13px; margin-top: 20px;">
+        <sc-for list="{{rules}}" as="r" hint-placeholder-count="3">
+          <div style="display: flex; gap: 12px;">
+            <span class="mo" style="width: 22px; height: 22px; border-radius: 50%; background: var(--wash); color: var(--dim); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0;">{{r.n}}</span>
+            <div>
+              <div style="font-size: 13px; font-weight: 600;">{{r.name}}</div>
+              <div style="font-size: 12px; color: var(--dim); line-height: 17px; margin-top: 2px;">{{r.body}}</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="margin-top: 22px; padding: 13px 14px; border-radius: 8px; background: var(--red-soft); border: 1px solid var(--red-line);">
+        <div class="tag" style="color: var(--red);">Never</div>
+        <ul style="margin: 8px 0 0 0; padding-left: 17px; font-size: 12px; line-height: 19px; color: var(--ink);">
+          <li>Show the patient a code. <span class="mo" style="font-size: 11px;">short_stock</span> is for the log.</li>
+          <li>Offer a different strength because the one asked for is missing.</li>
+          <li>Say &#8220;try again&#8221; where nothing the person can do will change the answer.</li>
+          <li>Refuse silently by disabling a button with no sentence beside it.</li>
+        </ul>
+      </div>
+
+      <div style="margin-top: 14px; padding: 13px 14px; border-radius: 8px; background: var(--agent); color: var(--agent-fg);">
+        <div class="tag" style="color: var(--mint);">The copilot&#39;s part</div>
+        <p style="margin: 8px 0 0 0; font-size: 12px; line-height: 17px;">It may say the same refusal in Hindi or Hinglish and it may do the next act inside your grants. It may never soften the refusal or invent an alternative the shelf does not hold.</p>
+      </div>
+    </aside>
+
+    <div style="flex-grow: 1; min-width: 0; overflow-y: auto; padding: 18px 20px;">
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+        <sc-for list="{{gates}}" as="g" hint-placeholder-count="5">
+          <section style="background: var(--card); border: 1px solid var(--line); border-radius: 8px; overflow: hidden;">
+            <div style="display: flex; align-items: center; gap: 10px; padding: 11px 16px; background: var(--wash); border-bottom: 1px solid var(--line2);">
+              <span class="tag" style="flex-grow: 1;">{{g.gate}}</span>
+              <span style="font-size: 11.5px; color: var(--dim);">{{g.when}}</span>
+            </div>
+            <sc-for list="{{g.rows}}" as="x" hint-placeholder-count="3">
+              <div style="display: flex; align-items: flex-start; gap: 14px; padding: 12px 16px; border-bottom: 1px solid var(--line2);">
+                <div style="width: 210px; flex-shrink: 0;">
+                  <div class="mo" style="font-size: 11px; color: var(--dim);">{{x.code}}</div>
+                  <div style="font-size: 12.5px; font-weight: 600; margin-top: 3px; line-height: 17px;">{{x.head}}</div>
+                </div>
+                <div style="flex-grow: 1; min-width: 0;">
+                  <div style="font-size: 12.5px; line-height: 18px;">{{x.says}}</div>
+                  <div style="font-size: 11.5px; color: var(--dim); line-height: 17px; margin-top: 3px;">{{x.why}}</div>
+                </div>
+                <span class="{{x.cls}}" style="width: 128px; justify-content: center; flex-shrink: 0; margin-top: 2px;">{{x.act}}</span>
+              </div>
+            </sc-for>
+          </section>
+        </sc-for>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":920}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const rules = [
+      { n: '1', name: 'What happened, in his words', body: 'Name the medicine and the fact. Not the table, not the field, not the status.' },
+      { n: '2', name: 'Why it will not change today', body: 'A person argues with a refusal that sounds like a preference. Say what makes it fixed — the shelf, the law, the date, the money.' },
+      { n: '3', name: 'The next act, and whose it is', body: 'Every refusal has a next move. Name it, and name who can make it — if it is not this seat, say which one.' }
+    ];
+
+    const row = (code, head, says, why, act, cls) =>
+      ({ code: code, head: head, says: says, why: why, act: act, cls: cls || 'pill' });
+
+    const gates = [
+      { gate: 'At the claim', when: 'before anybody has touched a shelf', rows: [
+        row('no_prescription_today',
+            'No prescription today',
+            'There is no prescription for him from today. The last one is from 2 September and it has already been dispensed.',
+            'A pharmacy dispenses against a live prescription; an old one has been filled.',
+            'Send to OPD', 'pill gd'),
+        row('prescription_superseded',
+            'The doctor rewrote it',
+            'Dr Salunke reissued this prescription at 10:22. The paper in his hand is version 1 and the hospital is on version 2.',
+            'One live dispense per prescription version — the database will not hold two.',
+            'Open version 2', 'pill on'),
+        row('schedule_x_not_dispensed_here',
+            'Not at this window, by law',
+            'This is a Schedule X drug. It is not dispensed at the OPD counter — the main pharmacy holds it under double custody.',
+            'Refused at the claim, at the verify and again at the hand-over, and never offered as a substitute.',
+            'Print directions', 'pill rd')
+      ]},
+      { gate: 'At the verify', when: 'the pharmacist decides what will actually be given', rows: [
+        row('pharmacist_not_registered',
+            'Your registration is not on file',
+            'You cannot verify a scheduled line until your council registration is recorded. Your assistant can claim and pick; only a registered pharmacist verifies.',
+            'The H1 register must carry a real registration number, so it is checked before the act, not after.',
+            'Open the register', 'pill rd'),
+        row('sale_item_inactive',
+            'Not sold at this counter',
+            'Rosuvastatin 10 is not a sale item here. The main store holds 240 tablets.',
+            'An item has to be bridged to a priced service before this counter can sell it.',
+            'Raise transfer', 'pill gd'),
+        row('not_a_drug',
+            'This line is not a medicine',
+            'Line 4 says &#8220;physiotherapy, 5 sittings&#8221;. A pharmacy counter cannot dispense it.',
+            'Prescription lines are free text; not all of them are drugs.',
+            'Decline the line', 'pill')
+      ]},
+      { gate: 'At the pick', when: 'the strip is in your hand', rows: [
+        row('scan_wrong_item',
+            'That is the wrong medicine',
+            'You scanned Pantoprazole 40. This line is Amoxyclav 625. Put it back.',
+            'A wrong scan refuses outright — it does not warn and it does not let the pick through.',
+            'Scan again', 'pill rd'),
+        row('batch_expired',
+            'That batch is finished',
+            'CFX-3320 expired on 16 September. Choose another batch — there are two in date behind it.',
+            'The pick offers the earliest in-date batch; this one was picked by hand.',
+            'Take the next batch', 'pill gd'),
+        row('short_stock',
+            'Not enough on the shelf',
+            'He needs 10 tablets and there are 6 sellable. You can give 6 and say so on the slip, or decline the line.',
+            'Reserved and frozen stock is not available stock, so the shelf can look fuller than it is.',
+            'Give 6 / decline', 'pill gd')
+      ]},
+      { gate: 'At the bill', when: 'money enters and the screen loses some rights', rows: [
+        row('price_unknown',
+            'This has no price yet',
+            'Amoxyclav 625 has no price in the active tariff version, so it cannot be billed. Nothing is wrong with the stock.',
+            'Price comes from the lowest of batch MRP, the DPCO ceiling and the tariff — with no tariff line there is no answer.',
+            'Call billing', 'pill rd'),
+        row('invoice_not_settled',
+            'The payment is short',
+            '₹151.00 is payable and ₹150.00 was tendered. Billing will not issue a part-settled invoice.',
+            'Hand-over reads settlement at the moment it consumes the stock, not the status written earlier.',
+            'Take the rest', 'pill gd')
+      ]},
+      { gate: 'At the hand-over', when: 'the last moment anything can be stopped', rows: [
+        row('identity_confirmation_required',
+            'Ask him who he is',
+            'This is a Schedule H1 drug. Ask for the last four digits of his phone or his token number and type what he says.',
+            'The box starts empty on purpose. A prefilled box is the confirmation already answered.',
+            'Ask, then type', 'pill rd'),
+        row('identity_mismatch',
+            'That is not what the record says',
+            'The digits he gave do not match. Do not hand over. If he is collecting for somebody else, that is a different counter act.',
+            'Checked against the patient record at the instant of hand-over.',
+            'Stop, call senior', 'pill rd'),
+        row('batch_expired_before_collection',
+            'It expired while it waited for him',
+            'He paid on Tuesday for a batch that could not be used after yesterday. Do not hand it over. His money comes back today.',
+            'Expiry is asked again at the hand-over, not only at the pick — a paid dispense is held for him with no time limit.',
+            'Refund and repick', 'pill rd')
+      ]}
+    ];
+
+    return { rules: rules, gates: gates };
+  }
+}
+</script>
+</body>
+</html>

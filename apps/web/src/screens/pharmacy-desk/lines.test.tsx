@@ -127,11 +127,16 @@ describe("the line list at the window (PD-4)", () => {
     renderWithProviders(<PharmacyDesk ticketId="d1" />);
     const row = await screen.findByTestId("desk-line-0");
     expect(within(row).getByTestId("desk-line-0-advice")).toHaveTextContent("holds 200 and this line wants 270");
+    // the quantity and its reason live behind the line's ⋯, in their own sheet
+    await userEvent.click(within(row).getByRole("button", { name: /What else for Glycomet 500/ }));
+    await userEvent.click(within(row).getByRole("button", { name: "Change the quantity" }));
     await userEvent.click(within(row).getByRole("button", { name: "give 200" }));
     const tick = within(row).getByRole("checkbox");
     expect(tick).toBeDisabled();
     await userEvent.type(within(row).getByRole("textbox", { name: /giving 200 of 270/ }), "only 200 on the shelf");
     expect(posted("/pick")).toEqual([]); // typing the reason never fires anything
+    await userEvent.click(within(row).getByRole("button", { name: "Done" }));
+    expect(within(row).getByTestId("desk-line-0-qty")).toHaveTextContent("200");
     await userEvent.click(tick);
     await waitFor(() => expect(posted("/pick")).toEqual([{ lines: [{ lineIdx: 0, qtyBase: 200, pickNote: "only 200 on the shelf" }] }]));
     expect(posted("/verify")).toEqual([{ lines: [{ lineIdx: 0, qtyBase: 270 }] }]);
@@ -180,6 +185,7 @@ describe("the line list at the window (PD-4)", () => {
     await userEvent.click(screen.getByRole("checkbox", { name: /Cetzine 10/ }));
     expect(posted("/verify")).toEqual([]);
     await userEvent.click(within(odd).getByRole("button", { name: /What else for Ascoril/ }));
+    await userEvent.click(within(odd).getByRole("button", { name: "Decline this line" }));
     await userEvent.type(within(odd).getByRole("textbox", { name: /Why is Ascoril/ }), "not stocked here");
     await userEvent.click(within(odd).getByRole("button", { name: "Decline" }));
     await waitFor(() => expect(posted("/pick")).toHaveLength(1));
@@ -199,8 +205,10 @@ describe("the line list at the window (PD-4)", () => {
     renderWithProviders(<PharmacyDesk ticketId="d1" />);
     const row = await screen.findByTestId("desk-line-0");
     expect(within(row).getByTestId("desk-line-0-advice")).toHaveTextContent("before the 30-day course ends");
-    await userEvent.click(within(row).getByRole("button", { name: "take PAN-FRESH" }));
-    expect(within(row).getByTestId("desk-line-0-batch")).toHaveTextContent("batch PAN-FRESH");
+    await userEvent.click(within(row).getByTestId("desk-line-0-batch"));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: /PAN-FRESH/ }));
+    expect(within(row).getByTestId("desk-line-0-batch")).toHaveTextContent("later batch");
+    expect(within(row).getByTestId("desk-line-0-batch")).toHaveTextContent("PAN-FRESH");
     await userEvent.click(within(row).getByRole("checkbox"));
     await waitFor(() => expect(posted("/pick")).toEqual([{ lines: [{ lineIdx: 0, batchId: "late" }] }]));
   });
@@ -243,7 +251,8 @@ describe("the line list at the window (PD-4)", () => {
       "POST /api/pharmacy/dispenses/d1/pick": () => ({ status: 201, body: dispense("picked", lines) }),
     }));
     renderWithProviders(<PharmacyDesk ticketId="d1" />);
-    await userEvent.type(await screen.findByRole("textbox", { name: /Scan the pack for Mox 500/ }), "(01)08901234567890(10)MOX-7{enter}");
+    // ONE scan box for the ticket: the pack finds its own line
+    await userEvent.type(await screen.findByRole("textbox", { name: "Scan a pack — it finds its line" }), "(01)08901234567890(10)MOX-7{enter}");
     await waitFor(() => expect(posted("/pick")).toEqual([{ lines: [{ lineIdx: 0, scan: "(01)08901234567890(10)MOX-7" }] }]));
   });
 });
