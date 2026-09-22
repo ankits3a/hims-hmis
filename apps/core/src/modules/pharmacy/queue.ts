@@ -6,7 +6,7 @@ import { nextEpisodeNo } from "../../kernel/episodes/series";
 import { opdPrescriptions, pharmacyDispenseLines, pharmacyDispenses, users } from "../../kernel/db/schema";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { withTx } from "../../kernel/db/client";
-import { medicinesByIds, unreviewedSaltIds } from "../formulary";
+import { medicinesByIds, saltsByIds, unreviewedSaltIds } from "../formulary";
 import { availableQty, getBatch, itemsByIds, itemUomRows, sellableBatchesByItem } from "../materials";
 import { getPatient, getPatientSummaries, listAllergies } from "../patients";
 import { istDateOf } from "./config";
@@ -283,6 +283,11 @@ export type DispenseLineView = {
   batches: { batchId: string; batchNo: string; expiryDate: string | null; available: number }[];
   /** PD-4 — once picked, the batch the line was GIVEN from, which the desk prints beside it. */
   pickedBatch: { batchNo: string; expiryDate: string | null } | null;
+  /**
+   * The desk board's doctor column: what the medicine the doctor wrote is made of ("Amoxicillin +
+   * Clavulanic acid"), else the one dispensed, else null. Display only.
+   */
+  salt: string | null;
 };
 
 
@@ -387,6 +392,11 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
    */
   const medicines = await medicinesByIds(db, medicineIds);
   const unreviewed = await unreviewedSaltIds(db, [...medicines.values()].flatMap((m) => m.salts.map((s) => s.saltId)));
+  const saltNames = await saltsByIds(db, [...new Set([...medicines.values()].flatMap((m) => m.salts.map((s) => s.saltId)))]);
+  const saltOf = (m: { salts: { saltId: string }[] } | undefined): string | null => {
+    const names = (m?.salts ?? []).map((s) => saltNames.get(s.saltId)?.name).filter((n): n is string => n !== undefined);
+    return names.length === 0 ? null : names.join(" + ");
+  };
   const itemIds = [...new Set(lines.map((l) => l.itemId).filter((x): x is string => x !== null))];
   const items = itemIds.length === 0 ? new Map() : await itemsByIds(db, itemIds);
   const allergies = await listAllergies(db, d.patientId);
@@ -451,6 +461,7 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
       quote: item === undefined ? null : (quotes.get(item.id) ?? null),
       fefoOverride: l.fefoOverride, pickNote: l.pickNote,
       partlyChecked: (dm ?? om)?.salts.some((s) => unreviewed.has(s.saltId)) ?? false,
+      salt: saltOf(om) ?? saltOf(dm),
       batches: l.status === "open" && l.itemId !== null && l.batchId === null ? (batchesByItem.get(l.itemId) ?? []) : [],
       pickedBatch: picked === undefined ? null : { batchNo: picked.batchNo, expiryDate: picked.expiryDate },
       authorisations: asked.filter((a) => a.lineIdx === l.lineIdx).map((a) => ({
