@@ -45,6 +45,17 @@ function encounterColumn(d: RangeDimension): PgColumn | null {
     case "doctorId": return opdEncounters.doctorId;
     case "visitType": return opdEncounters.visitType;
     case "day": return opdEncounters.serviceDate;
+    /*
+     * T5 ADDED THESE AND THE COMPILER DEMANDED AN ANSWER — which is the seam working. A new
+     * dimension cannot be introduced without every provider saying whether it carries it, so there
+     * is no way to add one and have half the modules silently key by nothing.
+     *
+     * A visit has no payer and no service head: `intended_payer` lives on the INVOICE, and a
+     * service category is a billed line. Those are billing's to key, and the two modules' buckets
+     * meet in `mergeBuckets` on the dimensions they share.
+     */
+    case "payer": return null;
+    case "serviceCategory": return null;
   }
 }
 
@@ -68,6 +79,8 @@ function appointmentColumn(d: RangeDimension): PgColumn | SQL<string> | null {
     case "doctorId": return opdAppointments.doctorId;
     case "visitType": return null; // a booking has no visit type — see this file's header
     case "day": return BOOKED_IST_DAY;
+    case "payer": return null;         // money dimensions, both — see `encounterColumn`
+    case "serviceCategory": return null;
   }
 }
 
