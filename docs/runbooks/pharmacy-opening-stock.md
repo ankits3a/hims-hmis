@@ -10,24 +10,24 @@ as CSV again). One row per **brand + batch** on the shelf:
 
 | column | what to write | example |
 |---|---|---|
-| `brand` | the name on the strip, with its strength, or the item code from /pharmacy/items | `Zeptol 200` |
-| `batch` | the batch number as printed | `ZT24031` |
+| `brand` | the name on the strip, with its strength, or the item code from /pharmacy/items | `Dolo 650` |
+| `batch` | the batch number as printed | `DOBS4521` |
 | `expiry` | month/year as printed | `08/2027` |
-| `mrp_per_pack` | rupees, as printed on the pack | `42.00` |
-| `pack_size` | tablets in the strip; `1` for a bottle, tube or inhaler | `10` |
+| `mrp_per_pack` | rupees, as printed on the pack | `33.60` |
+| `pack_size` | tablets in the strip; `1` for a bottle, tube or inhaler | `15` |
 | `packs` | whole packs you counted | `12` |
-| `rack` | where it sits (replaces the suggested rack) | `B2` |
+| `rack` | where it sits (replaces the suggested rack) | `A1` |
 | `supplier_name` | optional — an active vendor's name or code; blank means "OPENING STOCK" | |
-| `purchase_rate_per_pack` | optional — what the hospital paid per pack; blank is valued at 0 | `30.00` |
+| `purchase_rate_per_pack` | optional — what the hospital paid per pack; blank is valued at 0 | `24.00` |
 
 Rules the script enforces, so you learn them from the sheet and not at the counter:
 
 - **The brand must already be on the shelf** (loaded from the starter list). A name it cannot place is
-  refused with the three nearest names; a name that fits two items (e.g. `Allercet` — 10 mg tablet and
+  refused with the three nearest names; a name that fits two items (e.g. `Cetzine` — 10 mg tablet and
   5 mg/5 mL syrup) is refused until you add the strength.
 - **Expired stock is not received.** Segregate it. Stock expiring within six months is received on its own
   GRN and waits for the materials head to accept it in **/approvals**; run the script again after that.
-- **MRP must divide into whole paise per tablet.** ₹42.00 on a strip of 10 is fine; ₹35.50 on a strip of 15
+- **MRP must divide into whole paise per tablet.** ₹33.60 on a strip of 15 is fine; ₹35.50 on a strip of 15
   is not (₹2.3666…), and the stock gate refuses it. Such rows are refused by name — bring them to the
   pharmacist in charge.
 - **A strip size the item does not have yet** (the starter list assumed 10) is added as a new pack unit, which

@@ -6,6 +6,7 @@ import { formularyMedicineSalts, formularyMedicines, items, opdPrescriptions } f
 import { medicineIdsByBrandNames } from "../src/modules/formulary";
 import { GST_NOTIFICATION, suggestGstSlab } from "../src/modules/pharmacy";
 import { NLEM_2022, NLEM_2022_SECTIONS, NLEM_2022_SOURCE } from "./data/nlem-2022";
+import { OPD_COMMON_BRANDS } from "./data/opd-common-brands";
 import { argValue, toCsvLine } from "./pharmacy-shelf-common";
 import { classifySalts, medicineFlag, moietyKey, nrcesScheduledSubstances } from "./set-schedule-flags";
 import type { Db } from "../src/kernel/db/client";
@@ -37,7 +38,7 @@ import type { NrcesVerdict, SaltVerdict } from "./set-schedule-flags";
  * An NLEM line (medicine + form + strength) is matched to the CDS bundle's generics by COMPOSITION:
  * the same moieties (salt words stripped) at the same amount per unit, in a dose form the line's form
  * allows. Then, among the bundle's brands of those generics that the formulary holds (by exact brand
- * name), `chooseBrand` picks: a maker the owner named (Cipla, Sun, Alkem, Mankind, Lupin, Dr Reddy's,
+ * name), `chooseBrand` picks: a brand named in `data/opd-common-brands.ts` (the brand doctors write) first; then a maker the owner named (Cipla, Sun, Alkem, Mankind, Lupin, Dr Reddy's,
  * Zydus, Torrent, Abbott, GSK, Micro Labs, Intas — one tier) before the other `PREFERRED_MANUFACTURERS`
  * before anyone; then the brand family with the most products in the bundle; then the shortest name.
  * A generic no preferred maker sells takes any brand by the same tie-break, and says so in `manufacturer`. A doctor's prescribed BRAND is stocked as that brand;
@@ -305,6 +306,11 @@ export const MAJOR_MANUFACTURERS = new Set([
 ]);
 const PREFERRED = new Set<string>(PREFERRED_MANUFACTURERS.map((m) => m.toLowerCase()));
 
+/** Every brand the OPD-common table names, lowercased, ranked by its position within its entry (0 = preferred). */
+export const OPD_PREFERENCE: ReadonlyMap<string, number> = new Map(
+  OPD_COMMON_BRANDS.flatMap((e) => e.brands.map((b, i) => [b.toLowerCase(), i] as const)),
+);
+
 /** A brand family's name: "Crocin Advance" and "Crocin 650" are both "crocin". */
 export function familyOf(brand: string): string {
   return (brand.toLowerCase().match(/[a-z0-9]+/)?.[0]) ?? brand.toLowerCase();
@@ -320,8 +326,13 @@ export function familyOf(brand: string): string {
  */
 export function chooseBrand(
   candidates: readonly BundleBrand[], inFormulary: (b: BundleBrand) => boolean, familySize: ReadonlyMap<string, number> = new Map(),
+  preferred: ReadonlyMap<string, number> = OPD_PREFERENCE,
 ): BundleBrand | undefined {
   const held = candidates.filter(inFormulary);
+  // THE OVERRIDE TABLE FIRST (`data/opd-common-brands.ts`): the brand doctors write, when it is a candidate.
+  const override = held.filter((b) => preferred.has(b.medicineName.toLowerCase()))
+    .sort((a, b) => preferred.get(a.medicineName.toLowerCase())! - preferred.get(b.medicineName.toLowerCase())!)[0];
+  if (override !== undefined) return override;
   const tier = (b: BundleBrand): number => {
     const m = b.manufacturer.replace(/''/g, "'").toLowerCase();
     return MAJOR_MANUFACTURERS.has(m) ? 0 : PREFERRED.has(m) ? 1 : 2;
@@ -341,6 +352,7 @@ export type StarterRow = {
 
 export type StarterReport = {
   prescribedMedicines: number; prescribedLines: number; freeTextLines: number; prescribedUnresolved: number;
+  opdCommonEntries: number; opdCommonHits: { label: string; brand: string; fallback: boolean }[]; opdCommonMisses: string[];
   nlemLinesConsidered: number; nlemMatched: number; nlemNoGeneric: string[]; nlemNoBrand: string[];
   scheduleXLeftOut: string[]; rows: number; target: number;
 };
@@ -369,7 +381,7 @@ function strengthOf(comp: readonly Component[] | null): string {
 
 /** A short, stable item code from the brand: `CROCIN500`. */
 export function codeFor(brand: string, strength: string, doseForm: string, taken: Set<string>): string {
-  const stem = brand.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8) || "ITEM";
+  const stem = brand.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10) || "ITEM";
   const num = (/[\d.]+/.exec(strength)?.[0] ?? "").replace(".", "").slice(0, 5);
   const d = doseForm.toLowerCase();
   const suffix = /tablet|capsule|lozenge/.test(d) ? "" : /eye/.test(d) ? "E" : /ear/.test(d) ? "O" : /nasal/.test(d) ? "N" : /inhal/.test(d) ? "I"
@@ -384,9 +396,10 @@ export function codeFor(brand: string, strength: string, doseForm: string, taken
 export async function buildStarterList(
   db: Db, bundle: Bundle, nrces: Map<string, NrcesVerdict>, opts: { target?: number } = {},
 ): Promise<{ rows: StarterRow[]; report: StarterReport }> {
-  const target = opts.target ?? 300;
+  const target = opts.target ?? 350;
   const report: StarterReport = {
     prescribedMedicines: 0, prescribedLines: 0, freeTextLines: 0, prescribedUnresolved: 0,
+    opdCommonEntries: OPD_COMMON_BRANDS.length, opdCommonHits: [], opdCommonMisses: [],
     nlemLinesConsidered: 0, nlemMatched: 0, nlemNoGeneric: [], nlemNoBrand: [], scheduleXLeftOut: [], rows: 0, target,
   };
 
@@ -409,6 +422,43 @@ export async function buildStarterList(
 
   type Pick = { brand: BundleBrand | null; medicineId: string; brandName: string; generic: BundleGeneric | null; why: Set<string>; nlem?: NlemEntry; prescribedCount: number };
   const picks = new Map<string, Pick>();
+  /**
+   * ONE ROW PER GENERIC + STRENGTH + FORM. The key is the composition (moiety, amount, per-unit) and
+   * the dose form, not the bundle's generic id — the bundle carries some compositions under two ids.
+   * The first pick to claim a key keeps it: OPD-common first, so it wins the brand for its generic.
+   */
+  const compKey = (g: BundleGeneric | null | undefined): string | null =>
+    g?.composition == null ? null : `${g.composition.map((c) => `${c.key}:${String(+c.amount.toFixed(4))}:${c.unit}/${c.per}`).sort().join("+")}@${g.doseForm.toLowerCase()}`;
+  const byKey = new Map<string, Pick>();
+  const claim = (p: Pick): Pick => {
+    const k = compKey(p.generic);
+    const owner = (k === null ? undefined : byKey.get(k)) ?? picks.get(p.medicineId);
+    if (owner !== undefined) {
+      for (const w of p.why) owner.why.add(w);
+      owner.nlem ??= p.nlem;
+      owner.prescribedCount += p.prescribedCount;
+      return owner;
+    }
+    picks.set(p.medicineId, p);
+    if (k !== null) byKey.set(k, p);
+    return p;
+  };
+
+  // ── half 0: the OPD-common table — every entry the database holds a brand for ──
+  const tableIds = await medicineIdsByBrandNames(db, OPD_COMMON_BRANDS.flatMap((e) => e.brands));
+  const hitIds = OPD_COMMON_BRANDS.flatMap((e) => e.brands).map((b) => tableIds.get(b.toLowerCase())).filter((x): x is string => x !== undefined);
+  const refOf = new Map((hitIds.length === 0 ? [] : await db.select({ id: formularyMedicines.id, sourceRef: formularyMedicines.sourceRef })
+    .from(formularyMedicines).where(inArray(formularyMedicines.id, hitIds))).map((m) => [m.id, m.sourceRef]));
+  for (const e of OPD_COMMON_BRANDS) {
+    const i = e.brands.findIndex((b) => tableIds.has(b.toLowerCase()));
+    if (i === -1) { report.opdCommonMisses.push(`${e.label} (${e.brands.map((b) => b.replace(/\s*\(.*$/, "")).join(" / ")})`); continue; }
+    const name = e.brands[i]!;
+    const id = tableIds.get(name.toLowerCase())!;
+    const ref = refOf.get(id) ?? null;
+    const b = ref === null ? undefined : bundle.brandBySctid.get(ref);
+    report.opdCommonHits.push({ label: e.label, brand: name, fallback: i > 0 });
+    claim({ brand: b ?? null, medicineId: id, brandName: name, generic: b === undefined ? null : bundle.generics.get(b.genericSctid) ?? null, why: new Set(["opd_common"]), prescribedCount: 0 });
+  }
 
   // ── half 1: prescribed ──
   const rx = await db.select({ lines: opdPrescriptions.lines }).from(opdPrescriptions);
@@ -437,8 +487,7 @@ export async function buildStarterList(
       if (b === undefined) { report.prescribedUnresolved += 1; continue; }
       pick = { brand: b, medicineId: heldId(b)!, brandName: b.medicineName, generic: asGeneric, why: new Set(["prescribed_in_opd"]), prescribedCount: n };
     }
-    const prev = picks.get(pick.medicineId);
-    if (prev === undefined) picks.set(pick.medicineId, pick); else prev.prescribedCount += n;
+    claim(pick);
   }
 
   // ── half 2: NLEM, primary level first, then section order ──
@@ -475,12 +524,12 @@ export async function buildStarterList(
     return out;
   };
 
-  // Prescribed first (all of them), then NLEM until the target.
+  // OPD-common and prescribed first (all of them), then NLEM until the target.
   for (const p of nlemPicks) {
-    const prev = picks.get(p.medicineId);
-    if (prev !== undefined) { prev.why.add("nlem"); prev.nlem ??= p.nlem; continue; }
-    if (picks.size >= target) continue;
-    picks.set(p.medicineId, p);
+    const k = compKey(p.generic);
+    const covered = (k !== null && byKey.has(k)) || picks.has(p.medicineId);
+    if (!covered && picks.size >= target) continue;
+    claim(p);
   }
   const info = await describe([...picks.keys()]);
 
@@ -507,8 +556,9 @@ export async function buildStarterList(
       code: codeOfMedicine.get(p.medicineId) ?? codeFor(shortBrand, strength, doseForm, taken),
       brandName: p.brandName, medicineId: p.medicineId, manufacturer: p.brand?.manufacturer.replace(/''/g, "'") ?? "",
       generic: p.nlem?.medicine ?? p.generic?.name ?? "", strength, form: doseForm,
-      why: [...p.why].sort((a, b) => (a === "prescribed_in_opd" ? -1 : b === "prescribed_in_opd" ? 1 : 0)).join("+"),
-      nlemCode: p.nlem?.code ?? "", category: section === "" ? "Prescribed in OPD (not NLEM)" : NLEM_2022_SECTIONS[section] ?? section,
+      why: WHY_ORDER.filter((w) => p.why.has(w)).join("+"),
+      nlemCode: p.nlem?.code ?? "",
+      category: section !== "" ? NLEM_2022_SECTIONS[section] ?? section : p.why.has("opd_common") ? "OPD common (not NLEM)" : "Prescribed in OPD (not NLEM)",
       schedule: derived ?? "", gstRateBps: gst.rateBps, gstBasis: gst.basis,
       ...pack, hsnCode: contraceptive ? "3006" : "3004", rack: "", prescribedCount: p.prescribedCount,
     });
@@ -522,8 +572,10 @@ export async function buildStarterList(
  * One letter per NLEM section in section order (prescribed-only rows last), twelve items a shelf,
  * H1 in its own cabinet — the way a counter keeps them (the demo seed's `H1 cabinet`).
  */
+const WHY_ORDER = ["opd_common", "prescribed_in_opd", "nlem"] as const;
+
 export function assignRacks(rows: StarterRow[]): void {
-  const sectionNo = (r: StarterRow): number => (r.nlemCode === "" ? 99 : Number(r.nlemCode.split(".")[0]));
+  const sectionNo = (r: StarterRow): number => (r.nlemCode !== "" ? Number(r.nlemCode.split(".")[0]) : r.why.startsWith("opd_common") ? 98 : 99);
   const order = [...rows].sort((a, b) => sectionNo(a) - sectionNo(b) || a.nlemCode.localeCompare(b.nlemCode, undefined, { numeric: true }) || a.brandName.localeCompare(b.brandName));
   const letters = new Map<number, string>();
   const perLetter = new Map<string, number>();
@@ -553,11 +605,12 @@ export function renderStarterCsv(rows: readonly StarterRow[], report: StarterRep
     "# PHARMACY STARTER LIST — generated by apps/core/scripts/build-pharmacy-starter-list.ts; review it, then load it with load-pharmacy-shelf.ts.",
     `# Built from: ${builtFrom}. Owner ruling 2026-09-22: every drug prescribed in OPD + NLEM 2022, one common Indian brand each.`,
     `# NLEM: ${NLEM_2022_SOURCE.title}, ${NLEM_2022_SOURCE.publisher} — ${NLEM_2022_SOURCE.url} (sha256 ${NLEM_2022_SOURCE.sha256}).`,
-    "# BRAND RULE (chooseBrand): among formulary brands of the composition-matched generic — a maker the owner named (Cipla, Sun, Alkem, Mankind, Lupin, Dr Reddy's, Zydus, Torrent, Abbott, GSK, Micro Labs, Intas) first, then other large Indian makers, then any; within that, the brand family with the most products in the CDS bundle; then shortest name.",
+    "# BRAND RULE (chooseBrand): the OPD-common table first (scripts/data/opd-common-brands.ts — the brand doctors write); then, among formulary brands of the composition-matched generic — a maker the owner named (Cipla, Sun, Alkem, Mankind, Lupin, Dr Reddy's, Zydus, Torrent, Abbott, GSK, Micro Labs, Intas) first, then other large Indian makers, then any; within that, the brand family with the most products in the CDS bundle; then shortest name.",
     `# GST — CA TO CONFIRM: 500 bps (5%) for every medicine, HSN 3004, effective ${GST_EFFECTIVE} (GST rationalisation, 56th Council); 0 for the 36 life-saving drugs of ${GST_NOTIFICATION}, and 0 for contraceptives (HSN 3006, Notification 10/2025-CT(Rate) entry 115). No 12% anywhere.`,
     `# GST sources: ${GST_SOURCES.join(" ; ")}`,
     "# SCHEDULE: derived as set-schedule-flags.ts derives it (Drugs Rules 1945 Schedules X/H1/H + NRCeS); blank = not scheduled by any list. Schedule X rows are left out (the OPD counter refuses X).",
     "# PACK: strip of 10 for tablets/capsules is a DEFAULT — the bundle has no pack size; the real pack is taken at opening stock. RACK: a suggestion by NLEM section; H1 in its own cabinet.",
+    `# OPD COMMON: ${String(report.opdCommonHits.length)} of ${String(report.opdCommonEntries)} entries of scripts/data/opd-common-brands.ts held (reviewed list of common North-Indian OPD brands, not market data); not held: ${report.opdCommonMisses.join("; ") || "none"}`,
     `# COUNTS: ${String(report.rows)} rows (target ${String(report.target)}) · prescribed medicines ${String(report.prescribedMedicines)} from ${String(report.prescribedLines)} lines (${String(report.freeTextLines)} free-text, ${String(report.prescribedUnresolved)} with no held brand) · NLEM OPD lines ${String(report.nlemLinesConsidered)}, matched ${String(report.nlemMatched)}, no generic ${String(report.nlemNoGeneric.length)}, no brand ${String(report.nlemNoBrand.length)} · Schedule X left out ${String(report.scheduleXLeftOut.length)}`,
     toCsvLine(STARTER_COLUMNS),
   ];
@@ -575,7 +628,7 @@ async function main(): Promise<void> {
   const bundlePath = argValue(argv, "--bundle") ?? "/opt/hmis-context/cds-bundle/cds-bundle.sql";
   const nrcesPath = argValue(argv, "--nrces") ?? "/opt/hmis-context/nrces-2026-09/generics.csv";
   const outPath = argValue(argv, "--out") ?? "scripts/data/pharmacy-starter-list.csv";
-  const target = Number(argValue(argv, "--target") ?? "300");
+  const target = Number(argValue(argv, "--target") ?? "350");
   const url = requireEnv("DATABASE_URL");
   const { db, pool } = createDb(url);
   try {
@@ -591,6 +644,8 @@ async function main(): Promise<void> {
       `  prescribed: ${String(report.prescribedMedicines)} medicines from ${String(report.prescribedLines)} lines (${String(report.freeTextLines)} free-text, ${String(report.prescribedUnresolved)} unresolved)\n` +
       `  NLEM OPD lines ${String(report.nlemLinesConsidered)} · matched ${String(report.nlemMatched)} · no generic ${String(report.nlemNoGeneric.length)} · no held brand ${String(report.nlemNoBrand.length)} · Schedule X left out ${String(report.scheduleXLeftOut.length)}\n`,
     );
+    process.stdout.write(`  OPD common: ${String(report.opdCommonHits.length)}/${String(report.opdCommonEntries)} entries held (${String(report.opdCommonHits.filter((h) => h.fallback).length)} on a fallback brand); not in the catalogue: ${report.opdCommonMisses.join("; ") || "none"}\n`);
+    for (const h of report.opdCommonHits.filter((x) => x.fallback)) process.stdout.write(`    fallback: ${h.label} → ${h.brand}\n`);
     if (argv.includes("--verbose")) {
       for (const l of report.nlemNoGeneric) process.stdout.write(`    no generic: ${l}\n`);
       for (const l of report.nlemNoBrand) process.stdout.write(`    no brand:   ${l}\n`);

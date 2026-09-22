@@ -126,6 +126,26 @@ describe("pharmacy-ready scripts", () => {
     expect(codeFor("Calpol", "250 mg/5 mL", "Oral suspension", taken)).toBe("CALPOL250L");
   });
 
+  it("starter list: the brand doctors write wins — paracetamol 650 is a Dolo, pantoprazole 40 a Pan or Pantocid (the OPD-common table)", () => {
+    const b = (medicineName: string, manufacturer: string): BundleBrand => ({ medicineSctid: medicineName, medicineName, brand: medicineName.replace(/\s*\(.*$/, ""), genericSctid: "g", manufacturer });
+    const families = new Map([["t", 40], ["dolo", 9], ["pan", 12]]);
+    const para650 = chooseBrand([
+      b("T 98 Strong (paracetamol) 650 mg oral tablet", "Mankind Pharma Limited"),
+      b("Cipmol (paracetamol) 650 mg oral tablet", "Cipla Limited"),
+      b("Dolo (paracetamol) 650 mg oral tablet", "Micro Labs Limited"),
+    ], () => true, families);
+    expect(para650?.medicineName).toMatch(/^Dolo \(paracetamol\) 650 mg/);
+    const panto40 = chooseBrand([
+      b("Pantosec (pantoprazole sodium) 40 mg gastro-resistant oral tablet", "Cipla Limited"),
+      b("Pantocid (pantoprazole sodium) 40 mg gastro-resistant oral tablet", "Sun Pharmaceutical Industries Limited"),
+      b("Pan (pantoprazole sodium) 40 mg gastro-resistant oral tablet", "Alkem Laboratories Limited"),
+    ], () => true, families);
+    expect(panto40?.brand).toMatch(/^(Pan|Pantocid)$/);
+    // Preferred first, fallback only when the preferred is not held.
+    const noPan = chooseBrand([b("Pantocid (pantoprazole sodium) 40 mg gastro-resistant oral tablet", "Sun Pharmaceutical Industries Limited"), b("Pan (pantoprazole sodium) 40 mg gastro-resistant oral tablet", "Alkem Laboratories Limited")], (x) => x.brand !== "Pan", families);
+    expect(noPan?.brand).toBe("Pantocid");
+  });
+
   it("starter list: the prescribed half is read from THIS database's prescriptions; an NLEM line gets one held brand", async () => {
     await issueRx(db, fx, [line({ drug: "Brufen 400", medicineId: fx.med.ibuprofen }), line({ drug: "Azee 500", medicineId: fx.med.azithro }), line({ drug: "something free-text" })]);
     const bundle: Bundle = {
