@@ -820,9 +820,41 @@ because this is precisely the step a session skips when the phase is finally gre
 
 Attack **context per call** first: it is the largest term, and cutting it verifies nothing less.
 Then **turns** — a mix that is 90%+ Bash means agents reading files through `cat`/`sed`/`grep`, one
-billed turn each. Take **agent count** last, and therefore the LANE last, because it is the only
+billed turn each. **The 90% figure is a smell, not a threshold: roster phase R sat at 83.5% (Bash 801
+of 959) and the turn mix was still the whole finding** (§9.11, ledger §2.167). Use the sibling-workflow
+test below to decide, never the percentage alone. Take **agent count** last, and therefore the LANE last, because it is the only
 lever that can cost verification depth. §2's rule stands unchanged: **the lane sets who codes and how
 work is dispatched; it does not set verification depth.**
+
+### 9.11 ATTRIBUTE THE WORKFLOW BEFORE YOU ATTRIBUTE THE COST — added 2026-09-22 (roster phase R audit, ledger §2.167)
+
+**`token-audit.js` filters by mtime and has no `--until`.** On a box running several sessions, its
+TOTAL line is your phase plus everyone else's live work. Run it **twice, minutes apart, with
+`--json`**, and keep only the `runs[]` rows whose `calls` did not change: a finished workflow is
+stable, a live one grows. Phase R's first reading conflated its own 860-call workflow with another
+session's sweep and produced a 2.7x "sibling comparison" between two unrelated populations — a false
+control, which is worse than a wrong number because it reads as evidence.
+
+**Then subtract the brief before blaming it.** Phase R: `wc -c` on the papers its agents were actually
+told to hold (`AGENT-RULES.md` + the phase document) came to ~25.2k tokens against a measured
+**192,867 per call**, with the ledger and the brief already forbidden by its EXECUTE-PROMPT. **~87% of
+each call's context was accumulated in-run**, so the lever was the turn mix — **Bash 702 of 860 calls
+(81.6%) against Read 51** — and no document edit could have reached it.
+
+**THE READING CONTRACT — three lines every compiled brief now carries** (extending §9.1):
+
+1. **Read with Read/Grep, not `cat`/`sed`/`grep`.** A Bash read bills a turn, usually returns the whole
+   file where a section was wanted, and is then re-sent in the context of every later call in that
+   agent's life.
+2. **Never re-read a file you have already read in this run.** A re-read buys nothing and is billed
+   twice — once as a turn, and again inside every later call.
+3. **When a task needs one section, the brief cites the section.** A file path with no anchor is an
+   instruction to read all of it.
+
+**The arithmetic that makes it worth doing:** cost is `calls x per-call`, so at 860 calls **every 1,000
+tokens off the average call is 860,000 tokens for the phase**, and halving the accumulated share would
+have cost **93.7M instead of 165.9M** — with the mutants and both review passes untouched, since
+neither instrument reads a file through Bash to do its work.
 
 ### 9.4 The honesty rule this section cannot enforce and the owner must
 
