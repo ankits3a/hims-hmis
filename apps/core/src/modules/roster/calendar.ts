@@ -3,6 +3,7 @@ import { newId } from "@hmis/contracts";
 import {
   ROSTER_ACTIVITIES, ROSTER_HOLIDAY_KINDS, ROSTER_HOLIDAY_PATTERNS,
   rosterCycleEntries, rosterCycleOverlays, rosterCycles, rosterDutyWindows, rosterHolidays,
+  rosterTeams,
 } from "../../kernel/db/schema/roster";
 import { orgDepartments } from "../../kernel/db/schema/org";
 import { RosterError } from "./errors";
@@ -481,6 +482,38 @@ export async function departmentsWithTakeGaps(
     out.push({ departmentId: cycle.departmentId, code: dept?.code ?? "?", gaps });
   }
   return out;
+}
+
+/**
+ * PHASE R (R10) — **THE DEPARTMENTS THAT RUN UNITS AND HAVE NO PUBLISHED CYCLE.**
+ *
+ * The question `take_is_continuous` has to ask, and the second reviewer of this phase caught the
+ * first two attempts at it. The row originally asked *"are there TEAMS?"* — answered yes by
+ * `seed:roster` on install day. The first fix asked *"is ANY cycle published?"*, which is better
+ * and still wrong in the same class: `departmentsWithTakeGaps` iterates published CYCLES, so a
+ * department with no cycle contributes no gaps. Publish Medicine's and leave Casualty, Surgery,
+ * OBG and Paediatrics with none, and the row reads green while Casualty admits nobody.
+ *
+ * So the population is DEPARTMENTS THAT RUN UNITS, and the question is asked of each of them. A
+ * department with no cycle at all is the hole — which is exactly what the row's own comment has
+ * said since R7 and what neither earlier version actually checked.
+ */
+export async function departmentsWithoutPublishedCycle(exec: Db | Tx): Promise<string[]> {
+  const units = await (exec as Db).select({ departmentId: rosterTeams.departmentId })
+    .from(rosterTeams).where(eq(rosterTeams.kind, "clinical_unit"));
+  const unitBearing = [...new Set(units.map((u) => u.departmentId))].sort();
+  if (unitBearing.length === 0) return [];
+  const published = await (exec as Db).select({ departmentId: rosterCycles.departmentId })
+    .from(rosterCycles).where(eq(rosterCycles.status, "published"));
+  const have = new Set(published.map((c) => c.departmentId));
+  return unitBearing.filter((d) => !have.has(d));
+}
+
+/** How many cycles the hospital is working to at all. Kept for the census's population leg. */
+export async function publishedCycleCount(exec: Db | Tx): Promise<number> {
+  const rows = await (exec as Db).select({ id: rosterCycles.id }).from(rosterCycles)
+    .where(eq(rosterCycles.status, "published"));
+  return rows.length;
 }
 
 export const ROSTER_CALENDAR_ACTIVITIES = ROSTER_ACTIVITIES;

@@ -236,7 +236,10 @@ staff masking, roster tools) → Plan 41 consumers.
 | R4 | `lane/roster-r4` (stacked on R3) | `27a98688` → merged `70eebfdb` | [#277](https://github.com/ankits3a/hims-hmis/pull/277) |
 | R5 | `lane/roster-r5` (stacked on R4) | `ed84f3ab` → merged `2489e106` | [#278](https://github.com/ankits3a/hims-hmis/pull/278) |
 | R6 | `lane/roster-r6` (stacked on R5) | `b9a8faaa` | [#279](https://github.com/ankits3a/hims-hmis/pull/279) |
-| R7 | `lane/roster-r7` (stacked on R6) | *(filled at commit)* | *(filled at open)* |
+| R7 | `lane/roster-r7` (stacked on R6) | `c7eac768` → merged `5cf75075` | [#280](https://github.com/ankits3a/hims-hmis/pull/280) |
+| R8 | `lane/roster-r8` (cut fresh from `main`) | `9f0ca4d2`, `bebea00a`, `274a12a1`, `0ddc0198`, merge `fd05dc76` → merged `a9d188f0` | [#285](https://github.com/ankits3a/hims-hmis/pull/285) |
+| R9 | `lane/roster-r9` (cut fresh from `main`) | merged `035af769` | [#286](https://github.com/ankits3a/hims-hmis/pull/286) |
+| R10 | `lane/roster-r10` (cut fresh from `main`) | *(this close)* | *(filled at open)* |
 | — | `lane/roster-clock-core` | `66b4a2e8` | [#272](https://github.com/ankits3a/hims-hmis/pull/272) — **not a phase-R task**: a clock time bomb that turned `main` red at IST midnight on 2026-09-21, diagnosed from R1's full suite and fixed so the phase could merge at all |
 
 ### 9.2 Kickoff re-measurement (§1), 2026-09-20
@@ -262,7 +265,22 @@ the three that MOVED are G2, G5 and G9, and one more (G3) grew a consequence. In
 - **G9 re-measured at 25 lanes.** R1 touched one file another lane might: `modules/opd/index.ts`.
 
 ### 9.3 Spike answers
-*(none owed by R1)*
+
+*(none owed by R1; three settled during execution and recorded here because each changed code)*
+
+- **Does the scheduler need a monthly cadence for R9's draft?** No. It has `every(ms)` and
+  `dailyIst`; a monthly one would mean editing `kernel/worker/scheduler.ts` — a file every lane
+  shares — to serve a single caller. R9's job is registered daily and returns early on 29 days in
+  30, and is idempotent so a double run drafts nothing twice.
+- **What actor does a scheduled roster job act as?** It depends on whether the job DECIDES.
+  R7's `MATERIALISER_ACTOR` is `user`-typed because re-expanding a published cycle continues a
+  person's decision. R9's proposer is `system`, because drafting a machine-origin roster is exactly
+  the act the matrix grants a machine (`draft_machine_period`) and nothing else. A `user` actor
+  there would stamp `drafted_by_actor_type: 'user'` on a roster no person wrote.
+- **Is `slot_over_24h` reachable at all?** Only for PRESENCE, and only where a position's own
+  `max_presence_hours` is looser than 24 — R2 already refuses a presence window past that cap. On
+  call is exempt by design; R2's own refusal says "on-call may be longer". Discovered by building
+  the fixture, and written into the rule.
 
 ### 9.4 Findings and their disposition
 
@@ -351,7 +369,128 @@ correctly about the tree it was given, not a defect — but it is worth knowing 
 mutant run, because it adds one expected failure to every mutant of that file.
 
 ### 9.6 The two review passes
-*(filled at R10)*
+
+**PASS 1 — one fresh reviewer, briefed at the operands, with §3's invariant table as the checklist**
+(EXECUTE-METHOD-V3 §9.7). The brief named the three failure modes this phase had already paid for:
+a test whose NAME claims more than its BODY proves; an emptiness that reads green; a test that pins
+the wrong layer. Twelve of seventeen invariants came back POINTED-AT. **Five did not**, and the
+first is a defect in shipped code rather than a gap in a test:
+
+| # | invariant | verdict | what it actually was |
+|---|---|---|---|
+| F30 | V11 (operational half) | **DEFECT** | `take_is_continuous` read GREEN on the emptiness its own comment says it refuses |
+| F31 | V5 | **MISSING** | no repair query, and the period-status half asserted nowhere |
+| F32 | V7 (second half) | **MISSING** | no absence test on the delete site; `unassign` never tested against a published period |
+| F33 | V6 | **WEAK** | "the stamps come from the DATABASE" proved by `>= before - 60_000`, which `new Date()` satisfies identically |
+| F34 | V10 | **WEAK** | the census walks the fallback sentence TABLE; ~30 throw sites pass custom messages nothing inspected |
+
+**F30 is the one worth the phase's attention.** The row asked `listTeams(...)`, bound the answer to
+a variable named `cycles`, and refused only when the hospital had no TEAMS — which `seed:roster`
+supplies, inactive, on the day of install. `departmentsWithTakeGaps` reads only PUBLISHED cycles,
+so with nothing published it returned `[]`: empty gaps, green row, every department admitting
+nobody. **It is the third instance of this lesson in the file that records the first two**
+(`radiology_devices_licensed`, then `roster_units_confirmed`), and the reason it survived is that
+`deployG2State` seeds no roster masters, so the blanket "no G3 row is green" assertion stepped over
+the state entirely. A census can only be caught lying in the state it lies about.
+
+All five remediated in R10, each with its guard executed red before it was executed green:
+
+- **F30** — the row now asks `publishedCycleCount(db) > 0`. Proof: the new test reports
+  `take_is_continuous: ok` against the original code and `RED` against the fix.
+- **F31** — `effectiveDrift()` is V5's named repair query, asserted across draft → publish → amend
+  → supersede and then with drift DELIBERATELY INJECTED, because a query that returned 0
+  unconditionally would pass every other leg. The injection also showed the division of labour: the
+  database REFUSES one direction outright (`roster_assignments_effective_ck`), and the other —
+  a live row of a published period quietly carrying `effective = false` — is representable, invisible
+  to every constraint, and exactly what the query is for.
+- **F32** — a source census pins the module's single delete site by name, plus an executed
+  `period_not_draft` refusal and a check that the refused delete left the row intact.
+- **F33** — a census names every exported function that takes a clock WITH A REASON each (48 of
+  them), so a new one cannot arrive unasked; the behavioural proof that already existed (an
+  amendment closing and opening in one instant) is cited rather than duplicated.
+- **F34** — the refusal census now walks the SOURCE for custom messages and refuses an instant in
+  any of them, with a non-empty-scan leg.
+
+**Plan 20 T7's census row** was also added here, and its first draft was wrong in an instructive
+way: written asymmetric (green while `ROSTER_RESOLVER_ENABLED` is off), it broke this census's own
+grammar — every G3/G4 row is RED until an ACT — and two existing tests said so within a minute.
+The row is now RED until a roster is published, and the flag appears in the FIX, where it tells a
+reader which of the two repairs they want.
+
+**PASS 2 — a second fresh reviewer over the remediation diff only** (§9.10). Scope was exactly one
+commit. **It found the remediation wanting on five of six claims**, and two of those were the same
+class of defect the remediation was written to fix:
+
+| # | against | verdict | what it was |
+|---|---|---|---|
+| F35 | F30's fix | **WEAK** | `publishedCycleCount > 0` closed only the ZERO case. `departmentsWithTakeGaps` iterates published CYCLES, so a department with none contributes no gaps — publish Medicine's and Casualty still reads covered |
+| F36 | F31's test | **WEAK** | only one direction injected. A DRAFT row with `effective = true` is constraint-legal and unasserted, so a mutant dropping `p.status = 'published'` survived |
+| F37 | F33's census | **BROKEN** | keyed on parameter NAMES, so it saw 29 functions against a map of 49 — twenty dead entries — and was blind to `knownAt`, `fromIstDate` and every `export const`. One-directional, so the dead entries never surfaced. Its "none of them STAMPS" clause was two POSITIVE greps that could only fail if the text were deleted |
+| F38 | F34's census | **WEAK** | `(?!undefined)` after `\s*` is evaluated at the space, which matches zero-width — so the lookahead never fired. 118 matches, 67 of them the literal `undefined`. And the "bare `Date` in a template" check the comment advertised did not exist |
+| F39 | both new rows | **WEAK** | neither census row had a GREEN leg anywhere in the repo: `check: async () => false` passed the whole suite. And `publishedPeriodCount` counted `status = 'published'`, which a period keeps FOR EVER once published — one rota from last year would have kept the row green while every question today fell back |
+
+All five remediated in turn, and the fixes were themselves caught by the existing tests twice:
+
+- **F35** — the population is now every department that RUNS UNITS, via
+  `departmentsWithoutPublishedCycle`. The first version of that function early-returned `[]` when
+  there were no unit-bearing departments, which made a FRESH database read green — **the same
+  emptiness, met for the third time inside the fix for it**, and caught within a minute by the
+  census's own "on a fresh database every row is RED" test. The row now asks both questions.
+- **F36** — both directions injected, and the overclaiming sentence deleted. What the constraint
+  actually refuses is a SUPERSEDED row being made effective; a draft's row is legal and is now
+  pinned by its own injection.
+- **F37** — rebuilt: keyed on TYPE (`: Date`) plus the IST-date convention, matching `export const`
+  as well as `export function`, and **bidirectional**, so a dead entry fails exactly as an
+  undeclared function does. It now sees 42. The stamp clause became a NEGATIVE scan over
+  `.set({…})` / `.values({…})` blocks — and the first version of THAT reported thirteen offenders,
+  every one correct code (`instant()` in an event schema, `iso(now)` in a payload), because it
+  conflated a column write with a payload. Instants are supposed to travel as ISO in payloads (V9).
+- **F38** — lookahead anchored, and the bare-`Date` check implemented. Its first pattern matched
+  `${what}` — a plain noun ending in "at" — which is the difference between a guard and a nuisance.
+- **F39** — a green leg added for `resolver_has_a_roster` (publish a roster covering NOW, assert
+  `ok`), and `publishedPeriodCount` replaced by `livePeriodCount(exec, at)`, which counts rosters
+  that COVER an instant.
+
+**Two corrections to the F30–F34 commit message**, which overstated two counts: it says the clock
+census "names all 48" functions (the map had 49 entries and its own scanner classified 29), and that
+"~30 sites pass their own message" (the real number is 51 of 118). Both numbers are restated
+correctly above rather than amended, because that commit is part of this branch's history.
+
+**PRODUCTION EFFECT, stated here because the commit understated it.** Two census rows change verdict
+on a live box: `take_is_continuous` flips green → RED wherever the roster is seeded and no cycle is
+published, and `resolver_has_a_roster` is new and RED until a roster covering now exists. On prod
+this is **not** a deploy breaker — `docker/prod/deploy.sh` runs the census with its exit code
+deliberately not the deploy's. On **UAT it is the stand-up gate**, whose exit code IS read as the
+verdict, so a UAT stand-up gains two reds until somebody publishes a cycle and a roster. That is the
+intended grammar (RED until an act) and it should be expected rather than discovered.
 
 ### 9.7 The token actuals row (`/token-audit`)
-*(filled at R10)*
+
+**What this row can honestly say, and what it cannot.** The stop-loss was raised at R1's close
+(§0) against a projection of ~1.3–1.5 M for R1–R9 versus the prompt's 900 k, and the ruling was
+that the actuals table "still records what it cost". Phase R ran across **several sessions on
+different days**, and no single session holds the others' meters. So this row records what is
+measurable from the artefacts rather than a total nobody can substantiate.
+
+| what | measured |
+|---|---|
+| tasks | R1–R10, ten PRs (#273, #275, #276, #277, #278, #279, #280, #285, #286, and this one) |
+| migrations | six on `main` from R1–R7 (`0108`–`0113`), one from R8, **none deployed** |
+| serial re-cuts | **four in one evening**, two of them on R8's branch (#280 took 0113 under #269; #283 took 0116; #284 took 0117 mid-CI) |
+| module at close | 30 source files, ~9.5k lines, 356 tests / 23 suites green |
+| phase-wide censuses touched | schema (5 tables), V8 export census (×4), V9 event census, `ist-clock-parity`, the seven-site scheduler census, `standup:check` (×2 rows) |
+| mutants | 31 built and killed R1–R7; 6 more at R8 (**one survived and produced a structural guard**); 1 at R9 |
+| review passes | 2, as the method requires — **pass 1 found 5 problems including a live defect, pass 2 found 5 more, all in pass 1's own remediation** |
+
+**The one number worth carrying forward is not a token count.** The most expensive recurring cost
+in this phase was the **migration serial collision**: four re-cuts in a single evening, each one a
+full regenerate-plus-drop-lane-databases cycle, because a ~16-minute core CI run is longer than the
+interval between merges on this box. "Take the serial at rebase, not at start" contained the damage
+every time — no migration was ever corrupted — but the containment is the tax, not the fix. A merge
+train or a serial reservation is the standing answer, and it is an owner-scale decision rather than
+a lane's.
+
+**The second is the review arithmetic.** Ten findings across two passes, on code that was already
+green on 356 tests and had been through its own author's checks. Five of the ten were in the
+remediation written to close the first five — including the same emptiness defect met a third time
+INSIDE the fix for it. A close review that stops after one pass would have shipped that.

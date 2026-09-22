@@ -21,7 +21,8 @@ export {
   rosterPeriodPublished, rosterPeriodSuperseded,
 } from "./events";
 export {
-  MAX_PRESENCE_HOURS, amend, asKnownAt, assign, contentHash, draftPeriod, periodWithAssignments,
+  MAX_PRESENCE_HOURS, amend, asKnownAt, assign, contentHash, draftPeriod, effectiveDrift,
+  livePeriodCount, periodWithAssignments,
   periodsTouching, presenceClashes, publishPeriod, publishPeriods, unassign,
 } from "./periods";
 export type {
@@ -77,7 +78,9 @@ export type {
 export {
   HORIZON_DAYS, SHORT_OPD_MINUTES, addIstDays, backupUnit, declareHoliday,
   departmentsWithTakeGaps, expandCycle, extendWindows, istMidnightUtc, istWeekday,
-  materialiseWindows, publishCycle, sweepRosterWindows, takeGaps, unitOnTake,
+  departmentsWithoutPublishedCycle, materialiseWindows, publishCycle, publishedCycleCount,
+  sweepRosterWindows, takeGaps,
+  unitOnTake,
 } from "./calendar";
 export type {
   CycleEntrySpec, CycleSpec, DeclareHolidayInput, HolidaySpec, OnTakeAnswer, OverlayEntrySpec,

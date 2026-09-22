@@ -1,3 +1,5 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { eq, sql } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
@@ -8,7 +10,8 @@ import {
 import { RosterError } from "./errors";
 import { ROSTER_MANAGE, ROSTER_PUBLISH, ROSTER_READ } from "./policy";
 import {
-  amend, asKnownAt, assign, contentHash, draftPeriod, periodWithAssignments, presenceClashes,
+  amend, asKnownAt, assign, contentHash, draftPeriod, effectiveDrift, periodWithAssignments,
+  presenceClashes,
   publishPeriod, publishPeriods, unassign,
 } from "./periods";
 import type { Db } from "../../kernel/db/client";
@@ -229,6 +232,301 @@ describe("roster — periods, the publication gate and amendments (R2)", () => {
   it("refuses to publish a roster with nobody on it", async () => {
     const p = await draft();
     expect((await refusal(withTx(db, (tx) => publishPeriod(tx, ms, p.periodId)))).code).toBe("empty_period");
+  });
+
+  /**
+   * PHASE R (R10) — **V5, WHICH HAD NO TEST AND NO NAMED GUARD UNTIL THIS ONE.**
+   *
+   * `effective ⇔ period.status = 'published' ∧ live_to IS NULL`. The database holds one half
+   * (`roster_assignments_effective_ck`, whose comment calls itself "the half a constraint can
+   * hold"); a constraint cannot look through a foreign key at the PERIOD's status, so the other
+   * half was guarded by nothing. A phase-R close review found it MISSING: no repair query, and no
+   * test anywhere asserting that a draft's rows are not effective.
+   *
+   * Asserted across the three writers that touch the column, and then with drift DELIBERATELY
+   * INJECTED — because zero drift on a database where nothing has happened is not evidence, and a
+   * query that always returned 0 would pass every leg but the last.
+   */
+  it("V5: no row's `effective` disagrees with its period — across draft, publish, amend and supersede", async () => {
+    // (1) a DRAFT's rows are not effective
+    const p = await draft();
+    const { assignmentId } = await slot(p.periodId, { startsAt: at("2026-10-12T20:00"), endsAt: at("2026-10-13T08:00") });
+    expect(await effectiveDrift(db)).toBe(0);
+
+    // (2) a PUBLISHED period's live rows are
+    await withTx(db, (tx) => publishPeriod(tx, ms, p.periodId));
+    expect(await effectiveDrift(db)).toBe(0);
+
+    // (3) an AMENDMENT closes one row and opens another, in one instant
+    await withTx(db, (tx) => amend(tx, ms, p.periodId, {
+      kind: "cover", reason: "Dr Rao called in sick at 19:40", requestedBy: SR,
+      close: [assignmentId],
+      open: [{
+        userId: JR, positionKey: "ward_jr", departmentId: MED,
+        startsAt: at("2026-10-12T20:00"), endsAt: at("2026-10-13T08:00"),
+        replacesAssignmentId: assignmentId,
+      }],
+    }));
+    expect(await effectiveDrift(db)).toBe(0);
+
+    // (4) a SUPERSEDE takes the old version out of effect
+    const v2 = await draft({ basedOnPeriodId: p.periodId });
+    await slot(v2.periodId, { startsAt: at("2026-10-14T20:00"), endsAt: at("2026-10-15T08:00") });
+    await withTx(db, (tx) => publishPeriod(tx, ms, v2.periodId));
+    expect(await effectiveDrift(db)).toBe(0);
+
+    /**
+     * (5) THE DIRECTIONS, SHOWN SEPARATELY — and the first draft of this leg overclaimed.
+     *
+     * It said "the database REFUSES one direction outright". What the constraint
+     * (`not effective or live_to is null`) actually refuses is narrower: making a SUPERSEDED row
+     * effective again. It says nothing about a DRAFT period's row being effective with
+     * `live_to` null — which is legal in the schema, invisible to every constraint, and would put
+     * a draft's slots into the one-body-two-rooms EXCLUDE and into every resolver read. A second
+     * reviewer pointed out that the biconditional was shipped but only one implication pinned, so
+     * a mutant dropping `p.status = 'published'` would have survived. Both are injected below.
+     */
+    await expect(db.execute(sql`
+      update roster_assignments set effective = true where id = ${assignmentId}
+    `)).rejects.toThrow(/roster_assignments_effective_ck/);
+
+    /**
+     * The other direction is perfectly representable — a LIVE row of a PUBLISHED period quietly
+     * carrying `effective = false` satisfies every constraint in the schema, and a resolver would
+     * answer "nobody is on" for a ward that is staffed. Nothing but this query can see it, which
+     * is why V5 named a repair query and why its absence was worth finding.
+     */
+    /**
+     * DIRECTION A — a DRAFT's row marked effective. Representable, constraint-legal, and the one
+     * a mutant that forgot the period's status would sail past.
+     */
+    // A draft of its OWN series with nobody else's window — drafting FROM a base copies the base's
+    // slots, and marking those effective collides with the live version's copies in the
+    // one-body-two-rooms EXCLUDE, which is the constraint doing its job rather than the drift
+    // this leg is about.
+    const draftV3 = await draft({ scopeId: "MED-U9" });
+    await slot(draftV3.periodId, {
+      userId: JR2, positionKey: "ward_jr",
+      startsAt: at("2026-10-20T20:00"), endsAt: at("2026-10-21T08:00"),
+    });
+    const inDraft = await db.execute(sql`
+      update roster_assignments set effective = true
+       where period_id = ${draftV3.periodId} and live_to is null
+       returning id
+    `);
+    expect(inDraft.rows.length).toBeGreaterThan(0);
+    expect(await effectiveDrift(db)).toBe(inDraft.rows.length);
+    await db.execute(sql`
+      update roster_assignments set effective = false where period_id = ${draftV3.periodId}
+    `);
+    expect(await effectiveDrift(db)).toBe(0);
+
+    /** DIRECTION B — a LIVE row of a PUBLISHED period quietly not effective. */
+    const drifted = await db.execute(sql`
+      update roster_assignments set effective = false
+       where period_id = ${v2.periodId} and live_to is null
+       returning id
+    `);
+    // The injection has to BITE, or the assertion below is about an update that changed nothing —
+    // which is exactly how the first draft of this leg passed for the wrong reason.
+    expect(drifted.rows.length).toBeGreaterThan(0);
+    expect(await effectiveDrift(db)).toBe(drifted.rows.length);
+  });
+
+  /**
+   * PHASE R (R10) — **V7's OTHER HALF.** "Nothing published is deleted" had one half proved (the
+   * supersede leaves `updated_by` alone) and one half guarded by nothing anybody had executed: the
+   * clause *"no `delete` on assignments outside `status='draft'`"*. A close review found that the
+   * module's single delete site was never tested against a published period, and that no absence
+   * test pinned the site list — though this module already uses that shape twice elsewhere.
+   */
+  it("V7: the module deletes assignments in exactly ONE place, and that place refuses a published roster", async () => {
+    // (a) the absence test — the site list, walked rather than grepped in a comment.
+    const SRC = resolve(__dirname, "..", "..");
+    const sites: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) { walk(full); continue; }
+        if (!entry.name.endsWith(".ts") || entry.name.endsWith(".test.ts")) continue;
+        // Count OCCURRENCES, not files: pushing the path once per file would let a second delete
+        // inside `periods.ts` — in a function with no `assertDraft` — leave this list unchanged.
+        const hits = readFileSync(full, "utf8").match(/\.delete\(\s*rosterAssignments\s*\)/g) ?? [];
+        for (const _ of hits) sites.push(full.slice(SRC.length + 1));
+      }
+    };
+    walk(SRC);
+    // ONE, and it is `unassign`. A second entry here is somebody deleting a duty somewhere that
+    // has not asked whether the roster is still scratch paper.
+    // Exactly ONE occurrence, in `unassign`. The `toEqual` pins non-emptiness by itself, so no
+    // separate anti-vacuity leg is needed here — a scanner that found nothing fails this line.
+    expect(sites.sort()).toEqual(["modules/roster/periods.ts"]);
+
+    // (b) executed: the guard refuses on a PUBLISHED period rather than merely being written down.
+    const p = await draft();
+    const { assignmentId } = await slot(p.periodId);
+    await withTx(db, (tx) => publishPeriod(tx, ms, p.periodId));
+    const e = await refusal(withTx(db, (tx) => unassign(tx, ms, assignmentId)));
+    expect(e.code).toBe("period_not_draft");
+
+    // and the row is still there — a refused delete must not be a partial one.
+    const { assignments } = await periodWithAssignments(db, p.periodId);
+    expect(assignments.some((a) => a.id === assignmentId)).toBe(true);
+  });
+
+  /**
+   * PHASE R (R10) — **V6's UNASSERTED CLAUSE, and the second attempt at guarding it.**
+   *
+   * The invariant reads "…and no exported function takes a `now` for a stamp". That clause lived in
+   * three doc comments and was asserted nowhere; the one test claiming the DATABASE clock proved
+   * only "a plausible instant" (`>= before - 60_000`, which a `new Date()` satisfies identically).
+   *
+   * **The first census written for it was itself broken**, and a second reviewer measured it: its
+   * filter keyed on PARAMETER NAMES (`now|at|asOf|…`), so it saw 29 functions while its map
+   * declared 49 — twenty dead entries — and it was blind to this module's own conventions
+   * (`knownAt`, `termStart`, `fromIstDate`, and every `export const`). A guard that cannot see the
+   * thing it guards is worse than none, because it reports success.
+   *
+   * This one keys on TYPE (`: Date`) plus the IST-date string convention, matches `export const`
+   * as well as `export function`, and is **bidirectional** — a dead entry fails it just as a new
+   * undeclared function does. `policy.test.ts` one file away already used that shape.
+   */
+  it("V6: every exported function that takes a clock is declared here, with a reason, both ways", () => {
+    const SRC = resolve(__dirname);
+    /**
+     * Every exported function of this module that takes an instant or an IST date, and why taking
+     * one is not STAMPING with one. A new entry is somebody being asked the question; a dead entry
+     * is a function that stopped taking a clock and should stop being listed.
+     */
+    const TAKES_A_CLOCK: Record<string, string> = {
+      absentUserIds: "a window — who is away between two instants",
+      asKnownAt: "`knownAt`: the KNOWLEDGE axis itself, which is the whole question",
+      attendanceProjection: "a term's two dates",
+      backupUnit: "an `at`; a read",
+      calloutList: "an `at`; a read",
+      closeTeam: "the date a unit stops existing — a fact about the establishment, not a stamp",
+      credentialsOf: "an `at`; a read",
+      delegationsInForce: "an `at`; a read",
+      departmentsWithTakeGaps: "a window",
+      draftCycleFromTemplate: "the IST date a pattern is anchored on",
+      dutiesOf: "a window",
+      endMembership: "the date a posting ends",
+      endOfficiating: "the date somebody stops standing in",
+      escalationRecipients: "an `at` — who to ring THEN",
+      expandCycle: "PURE: dates in, windows out, no database and no clock of its own (V15)",
+      expiringCredentials: "a window",
+      extendWindows: "the IST date to extend the horizon FROM",
+      fairnessOf: "rows in, counts out",
+      holdsCredential: "an `at`; a read",
+      hoursCarried: "a window",
+      istDateOfInstant: "an instant, answering which DAY",
+      istMidnightUtc: "a date string, answering which INSTANT",
+      istMinutesOfInstant: "an instant, answering the clock face",
+      livePeriodCount: "an `at` — which rosters COVER it",
+      materialiseWindows: "IST dates bounding what is written",
+      membershipsOf: "an `at`; a read",
+      modeDeclarations: "an IST date — the day's declarations",
+      nightPoolFor: "an `at`; a read",
+      officiatingAt: "an `at`; a read",
+      onDutyNow: "an `at` — the board's question",
+      parentTeamOf: "an `at`; a read",
+      periodsTouching: "a window",
+      publishCycle: "the IST date a cycle becomes effective from — a DECISION's date, and the row's own `published_at` still comes from the database",
+      rulesInForce: "an IST date — which parameters a department is under that day",
+      runMonthlyProposals: "a `now` used to ask WHICH DAY it is; every stamp it causes comes from `dbNow` inside the transaction",
+      skeletonModeOn: "an IST date",
+      sweepRosterWindows: "a `now` used as the HORIZON to extend to, never written to a column",
+      takeGaps: "a window",
+      teamMembers: "an `at` — which membership was live then",
+      unitOnTake: "an `at`; a read",
+      whoIsAt: "an `at`",
+      whoIsOn: "an `at` — who is on THEN",
+    };
+
+    const clocked: string[] = [];
+    for (const file of readdirSync(SRC)) {
+      if (!file.endsWith(".ts") || file.endsWith(".test.ts")) continue;
+      const src = readFileSync(join(SRC, file), "utf8");
+      for (const re of [
+        /export\s+(?:async\s+)?function\s+([A-Za-z0-9_]+)\s*\(([\s\S]*?)\)\s*:/g,
+        /export\s+const\s+([A-Za-z0-9_]+)\s*=\s*\(([\s\S]*?)\)\s*:/g,
+      ]) {
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(src)) !== null) {
+          const [, name, params] = m;
+          if (name === undefined || params === undefined) continue;
+          // BY TYPE, not by parameter name — the mistake the first version made.
+          if (/:\s*Date\b/.test(params) || /IstDate\s*:|istDate\s*:/.test(params)) clocked.push(name);
+        }
+      }
+    }
+
+    // BOTH WAYS. An undeclared function is somebody adding a clock nobody was asked about; a dead
+    // entry is a census describing a module that no longer exists.
+    expect([...new Set(clocked)].sort()).toEqual(Object.keys(TAKES_A_CLOCK).sort());
+    // …and the scanner found a realistic number, so a regex that broke cannot pass by matching none.
+    expect(new Set(clocked).size).toBeGreaterThan(30);
+  });
+
+  /**
+   * The other half of V6, and a NEGATIVE scan rather than a positive grep. The first attempt
+   * asserted that `select now()` and `publishedAt: now` were PRESENT in `periods.ts` — two checks
+   * that can only fail if somebody deletes the text, and which would pass unchanged against a
+   * `publishPeriods(…, now: Date)` that stamped a caller's clock.
+   */
+  it("V6: no STAMP column is ever assigned from anything but the database's own clock", () => {
+    const SRC = resolve(__dirname);
+    const STAMPS = [
+      "publishedAt", "supersededAt", "liveFrom", "liveTo", "appliedAt", "declaredAt",
+      "acceptedAt", "clearedAt", "withdrawnAt", "decidedAt",
+    ];
+    const offenders: string[] = [];
+    let assignments = 0;
+
+    /**
+     * ONLY INSIDE `.set({…})` AND `.values({…})` — the two places a COLUMN is written.
+     *
+     * The first version of this scan looked everywhere and reported thirteen offenders, every one
+     * of them correct code: `instant()` in an event SCHEMA, `iso(now)` in an event PAYLOAD,
+     * `row.decidedAt!.toISOString()` in a refusal's `detail`. Instants are SUPPOSED to travel as
+     * ISO strings in payloads — V9 requires it. The invariant is about what reaches a column, so
+     * the scan has to be about that too, or it is a nuisance that trains people to ignore it.
+     */
+    const writeBlocks = (src: string): string[] => {
+      const out: string[] = [];
+      for (const m of src.matchAll(/\.(?:set|values)\(\s*\{/g)) {
+        let depth = 1;
+        let i = m.index! + m[0].length;
+        while (i < src.length && depth > 0) {
+          if (src[i] === "{") depth += 1;
+          else if (src[i] === "}") depth -= 1;
+          i += 1;
+        }
+        out.push(src.slice(m.index! + m[0].length, i));
+      }
+      return out;
+    };
+
+    for (const file of readdirSync(SRC)) {
+      if (!file.endsWith(".ts") || file.endsWith(".test.ts")) continue;
+      for (const block of writeBlocks(readFileSync(join(SRC, file), "utf8"))) {
+        for (const stamp of STAMPS) {
+          for (const m of block.matchAll(new RegExp(`\\b${stamp}:\\s*([^,\n]+)`, "g"))) {
+            const rhs = (m[1] ?? "").trim();
+            assignments += 1;
+            // `now` is `dbNow(tx)`'s return — `select now()`, the transaction's own instant.
+            // `sql\`now()\`` is the database saying it inline. `null` clears a stamp.
+            if (!/^(now\b|sql`now\(\)`|null\b)/.test(rhs)) {
+              offenders.push(`${file}: ${stamp} <- ${rhs.slice(0, 50)}`);
+            }
+          }
+        }
+      }
+    }
+
+    // The scan found column writes at all — otherwise it passes by looking at nothing.
+    expect(assignments).toBeGreaterThan(5);
+    expect(offenders).toEqual([]);
   });
 
   it("publishes: rows go live, the hash is stamped, and the stamps come from the DATABASE", async () => {

@@ -8,8 +8,8 @@ import { createUser } from "../src/kernel/auth/identity";
 import { assignRole, grantPermissionToRole } from "../src/kernel/auth/permissions";
 import { withTx } from "../src/kernel/db/client";
 import {
-  billingConfig, formularyInteractions, labOrderables, opdDepartments, opdDoctors, resources,
-  services, pharmacySaleItems,
+  billingConfig, formularyInteractions, labOrderables, opdDepartments, opdDoctors, permissions,
+  resources, rolePermissions, services, pharmacySaleItems,
 } from "../src/kernel/db/schema";
 import { registerBillingApprovalTypes } from "../src/modules/billing/approval-types";
 import { registerPatientApprovalTypes } from "../src/modules/patients/approval-types";
@@ -28,6 +28,10 @@ import { ensureOtUnit } from "../scripts/seed-ot";
 import { seedOtBase } from "./helpers/ot";
 import { setupPcpndtFixture } from "./helpers/pcpndt";
 import { registerOtApprovalTypes } from "../src/modules/ot";
+import {
+  ROSTER_MANAGE, ROSTER_PUBLISH, ROSTER_RESOLVER_FLAG, assign, draftPeriod, listTeams,
+  publishPeriod, seedOrgDepartments, seedRosterPositions, seedUnits,
+} from "../src/modules/roster";
 import { STANDUP_ROWS, anyRed, censusLines, isNotModelled, runCensus } from "../scripts/standup-check";
 import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
 import type { Actor } from "@hmis/contracts";
@@ -394,6 +398,125 @@ describe("standup:check — the readiness census (11i T2)", () => {
     expect(billing?.detail).toContain("seed:billing");
     // and the printed line carries both the fix and the detail
     expect(censusLines([billing!])[0]).toContain("RED");
+  });
+
+  /**
+   * PHASE R (R10) — **THE STATE IN WHICH `take_is_continuous` USED TO LIE.**
+   *
+   * The row's own comment has always claimed *"Green only when a published cycle EXISTS and has no
+   * hole — the emptiness lesson this file learned twice"*. Its code asked `listTeams(...)`, bound
+   * the answer to a variable called `cycles`, and refused only when there were no TEAMS. Since
+   * `seed:roster` seeds the units, that guard was satisfied on day one, and
+   * `departmentsWithTakeGaps` — which reads only PUBLISHED cycles — returned an empty list. Empty
+   * gaps, green row, every department admitting nobody.
+   *
+   * `deployG2State` never reached this state because it seeds no roster masters at all, so the
+   * blanket "no G3 row is green" assertion above stepped straight over it. **A census can only be
+   * caught lying in the state it lies about**, and this test builds exactly that state: masters
+   * seeded, units seeded, no cycle published.
+   */
+  it("take_is_continuous is RED when the units exist and NO cycle is published", async () => {
+    await deployG2State(db);
+    // `seedRosterPositions` refuses if a position names a role that does not exist — the R1 guard
+    // that stops a position's `eligible_role_key` being tied to nothing.
+    for (const key of ["doctor", "duty_manager", "radiologist", "pathologist", "anaesthetist", "pharmacy"]) {
+      await ensureRole(db, key);
+    }
+    await seedOrgDepartments(db, "t");
+    await seedRosterPositions(db, "t");
+    await seedUnits(db, "t");
+
+    const results = await runCensus(db, "all");
+    const take = results.find((r) => r.code === "take_is_continuous");
+    expect(take).toBeDefined();
+
+    /**
+     * THE POPULATION THE OLD CODE LOOKED AT, asserted directly. The first version of this guard
+     * asserted `roster_masters_seeded` — departments and positions — which is NOT what the buggy
+     * check counted. It counted clinical-unit TEAMS, so if `seedUnits` ever stopped producing rows
+     * this test would have gone on passing while quietly ceasing to be a regression test at all.
+     */
+    expect((await listTeams(db, { kind: "clinical_unit" })).length).toBeGreaterThan(0);
+
+    // …and with nothing published, "no gaps" is not evidence of cover.
+    expect(`${take!.code}: ${take!.verdict}`).toBe("take_is_continuous: RED");
+  });
+
+  /**
+   * A roster that COVERS NOW — the act `resolver_has_a_roster` waits for. Small on purpose: one
+   * department, one unit, one slot, a window around this instant.
+   */
+  const publishARosterCoveringNow = async (db: Db): Promise<void> => {
+    // Both roles: one to be allowed to publish, one because `ward_jr` answers as `doctor`
+    // and R2 refuses a slot whose holder does not hold the position's eligible role.
+    const { actor: ms } = await mkUser(db, "standup.ms", ["medical_superintendent", "doctor"]);
+    await db.insert(permissions).values(
+      [ROSTER_MANAGE, ROSTER_PUBLISH].map((permission) => ({ permission, module: "roster" })),
+    ).onConflictDoNothing();
+    await db.insert(rolePermissions).values(
+      [ROSTER_MANAGE, ROSTER_PUBLISH].map((permission) => ({ roleKey: "medical_superintendent", permission })),
+    ).onConflictDoNothing();
+
+    // Pick the UNIT first and take its department from it. Choosing a department first and then
+    // hunting for one of its units assumes every department runs units, and `seedUnits` seeds them
+    // only for the ones that do.
+    const unit = (await listTeams(db, { kind: "clinical_unit" }))[0];
+    if (unit === undefined) throw new Error("fixture: seedUnits produced no clinical unit");
+    const dept = { id: unit.departmentId };
+    const from = new Date(Date.now() - 86_400_000);
+    const to = new Date(Date.now() + 86_400_000);
+
+    const p = await withTx(db, (tx) => draftPeriod(tx, ms, {
+      scopeType: "team", scopeId: unit.id, departmentId: dept.id, teamId: unit.id,
+      title: "standup fixture", startsAt: from, endsAt: to, coversPositions: ["ward_jr"],
+    }));
+    await withTx(db, (tx) => assign(tx, ms, p.periodId, {
+      userId: ms.id, positionKey: "ward_jr", departmentId: dept.id, teamId: unit.id,
+      startsAt: from, endsAt: new Date(from.getTime() + 8 * 3_600_000),
+    }));
+    await withTx(db, (tx) => publishPeriod(tx, ms, p.periodId));
+  };
+
+  /**
+   * PLAN 20 T7 / PHASE R (R10). The row is RED until a roster is published — this census's grammar,
+   * which the first draft of the row broke by being green while the resolver flag was off. The
+   * state T7 actually names (flag ON, nothing published) is the worst case of the same red: every
+   * on-call question falls back to role holders, correctly and silently, and nothing says so.
+   */
+  it("resolver_has_a_roster is RED until a roster is published, flag or no flag", async () => {
+    await deployG2State(db);
+    for (const key of ["doctor", "duty_manager", "radiologist", "pathologist", "anaesthetist", "pharmacy"]) {
+      await ensureRole(db, key);
+    }
+    await seedOrgDepartments(db, "t");
+    await seedRosterPositions(db, "t");
+    await seedUnits(db, "t");
+    const flagWas = process.env[ROSTER_RESOLVER_FLAG];
+    try {
+      delete process.env[ROSTER_RESOLVER_FLAG];
+      const off = (await runCensus(db, "all")).find((r) => r.code === "resolver_has_a_roster");
+      expect(`flag off, nothing published: ${off!.verdict}`).toBe("flag off, nothing published: RED");
+
+      process.env[ROSTER_RESOLVER_FLAG] = "true";
+      const on = (await runCensus(db, "all")).find((r) => r.code === "resolver_has_a_roster");
+      expect(`flag on, nothing published: ${on!.verdict}`).toBe("flag on, nothing published: RED");
+
+      /**
+       * AND IT TURNS GREEN ON THE ACT — without this leg, `check: () => false` would satisfy every
+       * assertion above and the whole repo besides, because the blanket test only ever asserts that
+       * no G3 row IS green. A census row with no green leg is a row nobody has proved can pass.
+       *
+       * The roster published here COVERS NOW, which is the other half: a period keeps
+       * `status = 'published'` for ever once published, so a rota from last year would turn this
+       * green while every question today still falls back.
+       */
+      await publishARosterCoveringNow(db);
+      const after = (await runCensus(db, "all")).find((r) => r.code === "resolver_has_a_roster");
+      expect(`after publishing: ${after!.verdict}`).toBe("after publishing: ok");
+    } finally {
+      if (flagWas === undefined) delete process.env[ROSTER_RESOLVER_FLAG];
+      else process.env[ROSTER_RESOLVER_FLAG] = flagWas;
+    }
   });
 
   it("after the DEPLOY'S seeds, exactly the G2 rows are green — and no G3 or G4 row is", async () => {

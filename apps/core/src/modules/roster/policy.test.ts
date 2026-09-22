@@ -239,6 +239,9 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     redactReason: "pure: decides who may read a reason, and mutates nothing",
     listAbsences: "a read — and the one that applies D6, so the caller that forgets cannot be the one that renders it",
     absentUserIds: "a read",
+    livePeriodCount: "a read — how many rosters COVER an instant. Deliberately not `status = published`, which a roster keeps for ever once published; see the function",
+    departmentsWithoutPublishedCycle: "a read — the departments that run units and have no cycle, which is the hole `departmentsWithTakeGaps` structurally cannot see",
+    effectiveDrift: "a read — V5's repair query. It counts rows whose `effective` disagrees with their period's status, which is the half of the biconditional no constraint can see through a foreign key to hold",
     attendanceProjection: "a read, and a FINDING rather than a refusal",
     credentialsOf: "a read",
     holdsCredential: "a read",
@@ -261,6 +264,7 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     backupUnit: "a read",
     takeGaps: "a read — V11's other half, which cannot be a constraint because absence is not a row",
     departmentsWithTakeGaps: "a read, for the census",
+    publishedCycleCount: "a read — how many cycles the hospital works to at all",
     cycleTemplate: "pure: looks a pattern up in the gallery",
     // R8 — the validator and the what-if. NOT ONE OF THEM WRITES, and that is exactly why a
     // machine may run them: R9's proposer evaluates its own drafts hundreds of times, and an
