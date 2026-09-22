@@ -16,7 +16,8 @@ import { getBatch, postMovements } from "./ledger";
 import { qcLine } from "./qc";
 import { requireStore } from "./stores";
 import { assertVendorPurchasable, hasValidDocument } from "./vendors";
-import { mrpPerBaseUnit, toBase } from "./uom";
+import { packPriceOf, toBase } from "./uom";
+import type { PackPrice } from "./uom";
 import type { QcContext, RuleCode } from "./qc";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -85,8 +86,10 @@ async function qcContextFor(
   /**
    * ═══ CLOSE REVIEW M7 — THE CONVERSION IS CAUGHT HERE, NOT ALLOWED TO ESCAPE ═══
    *
-   * `mrpPerBaseUnit` THROWS `unknown_uom` on a ceiling that will not divide into whole paise per
-   * base unit, or whose `mrpUom` is not one of the item's. This call was OUTSIDE any `try`, so the
+   * `mrpPerBaseUnit` THREW `unknown_uom` on a ceiling that would not divide into whole paise per
+   * base unit, or whose `mrpUom` is not one of the item's. (Since the loose-MRP ruling, 2026-09-22,
+   * the ceiling is kept as a `PackPrice` and compared by cross-multiplying, so a ceiling that does
+   * not divide is simply comparable; `packPriceOf` still throws on an unknown unit.) This call was OUTSIDE any `try`, so the
    * throw left `qcContextFor`, left `runGateQc`, and reached the controller as a **404 on the
    * whole GRN** — one mistyped regulation aborting a twenty-line delivery.
    *
@@ -94,11 +97,11 @@ async function qcContextFor(
    * `mrp_unconvertible` rejection. The two outcomes are kept apart deliberately: `null` means no
    * ceiling was notified (pass), the flag means one was and cannot be compared (reject).
    */
-  let ceilingPaisePerBase: number | null = null;
+  let ceiling: PackPrice | null = null;
   let ceilingUnconvertible = false;
   if (reg?.ceilingPaise !== null && reg?.ceilingPaise !== undefined) {
     try {
-      ceilingPaisePerBase = mrpPerBaseUnit(
+      ceiling = packPriceOf(
         uoms, reg.ceilingPaise,
         reg.mrpUom ?? uoms.find((u) => u.toBaseMultiplier === 1)?.uom ?? null,
       );
@@ -124,7 +127,7 @@ async function qcContextFor(
       id: item.id, class: item.class, active: item.active, shelfLifeDays: item.shelfLifeDays,
     },
     uoms,
-    ceilingPaisePerBase,
+    ceiling,
     ceilingUnconvertible,
     batchFrozen,
     hasConsignmentAgreement,

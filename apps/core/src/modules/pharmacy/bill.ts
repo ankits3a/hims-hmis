@@ -11,7 +11,7 @@ import { getEncounter } from "../opd";
 import { dispenseBilled } from "./events";
 import { PharmacyError } from "./errors";
 import type { DispenseRow } from "./queue";
-import { priceForBatch } from "./price";
+import { priceBatchSale } from "./price";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
 import { requireActiveSaleItem } from "./sale-items";
 import type { Actor } from "@hmis/contracts";
@@ -28,7 +28,7 @@ export type BillInput = {
   tags?: string[];
 };
 
-type PricedLinePlan = { lineId: string; lineIdx: number; input: InvoiceLineInput; winner: "batch_mrp" | "ceiling" };
+type PricedLinePlan = { lineId: string; lineIdx: number } & PricedBatchLine;
 
 /**
  * R-1 — EVERY LINE IS PRICED FROM THE BATCH IT WAS PICKED FROM: `batchUnitPaise` (the printed MRP
@@ -66,9 +66,23 @@ export async function gstCategoryMap(db: Db): Promise<GstCategoryMap> {
  * tariff engine taxes it with, so the ceiling is converted at the rate the bill applies (L2). An
  * exempt category carries no tax, so its ceiling stands as notified.
  */
+export type PricedBatchLine = {
+  /** The MAIN line: `qty` in base units at the loose rate. Every reader that keys on a sale line's invoice line keys on this one. */
+  input: InvoiceLineInput;
+  /**
+   * The LOOSE-MRP RULING's pack residue (owner, 2026-09-22), or null: only when a full pack's MRP
+   * does not divide into its units (₹35.50/15 → `1 × 10` paise for one strip). It follows its main
+   * line on the invoice, always immediately (`invoiceInputsOf`), and is mapped to no sale line.
+   */
+  residual: InvoiceLineInput | null;
+  winner: "batch_mrp" | "ceiling";
+  /** The ruling's amount for this quantity, before any contracted tariff undercuts it. */
+  amountPaise: number;
+};
+
 export async function priceBatchLine(
   db: Db, gstByCategory: GstCategoryMap, line: { itemId: string; batchId: string; qtyBase: number }, now: Date,
-): Promise<{ input: InvoiceLineInput; winner: "batch_mrp" | "ceiling" }> {
+): Promise<PricedBatchLine> {
   const sale = await requireActiveSaleItem(db, line.itemId);
   const batch = await getBatch(db, line.batchId);
   if (batch === undefined) throw new PharmacyError("batch_not_saleable", `batch ${line.batchId} not found`);
@@ -78,19 +92,45 @@ export async function priceBatchLine(
   if (gst === undefined) {
     throw new PharmacyError("gst_slab_unknown", `the sale item's category "${category ?? "?"}" has no GST configuration — seed or correct it before selling`, { category: category ?? null });
   }
-  const price = priceForBatch({
+  const price = priceBatchSale({
     uoms, batch: { mrpPaise: batch.mrpPaise, mrpUom: batch.mrpUom },
     regulation: regulation === undefined ? null : { ceilingPaise: regulation.ceilingPaise, mrpUom: regulation.mrpUom },
     taxRateBps: gst.exempt ? 0 : gst.rateBps,
-  });
+  }, line.qtyBase);
   return {
-    winner: price.winner,
+    winner: price.saleWinner,
+    amountPaise: price.amountPaise,
     // P1: an MRP includes its GST (L1), so the bill carves the tax out of the price, never adds it.
     input: {
       lineId: newId(), serviceId: sale.serviceId, qty: line.qtyBase,
       batchUnitPaise: price.batchUnitPaise, capUnitPaise: price.capUnitPaise, taxInclusive: true,
     },
+    residual: price.residue === null ? null : {
+      lineId: newId(), serviceId: sale.serviceId, qty: price.residue.qty,
+      batchUnitPaise: price.residue.unitPaise, capUnitPaise: price.residue.unitPaise, taxInclusive: true,
+    },
   };
+}
+
+/** The invoice lines a priced sale line becomes: its main line, then its pack residue if it has one. */
+export function invoiceInputsOf(p: { input: InvoiceLineInput; residual: InvoiceLineInput | null }): InvoiceLineInput[] {
+  return p.residual === null ? [p.input] : [p.input, p.residual];
+}
+
+/**
+ * The stored invoice line each priced sale line's MAIN input became, in plan order — stepping over
+ * the residue lines `invoiceInputsOf` put between them. `byNo` is the invoice's lines by `lineNo`.
+ */
+export function mainRowsOf<R>(byNo: readonly R[], priced: readonly { residual: InvoiceLineInput | null }[]): R[] {
+  const out: R[] = [];
+  let at = 0;
+  for (const [i, p] of priced.entries()) {
+    const row = byNo[at];
+    if (row === undefined) throw new PharmacyError("not_found", `invoice line ${String(i + 1)} missing`);
+    out.push(row);
+    at += p.residual === null ? 1 : 2;
+  }
+  return out;
 }
 
 /**
@@ -101,8 +141,10 @@ export function winnerOf(
   row: { regulatedClamp: unknown; unitPaise: number }, planned: { winner: "batch_mrp" | "ceiling"; batchUnitPaise?: number | null },
 ): "batch_mrp" | "ceiling" | "tariff" {
   const clamp = row.regulatedClamp as { boundApplied?: string } | null;
-  return clamp === null || clamp.boundApplied === "batch_mrp" ? "batch_mrp"
-    : clamp.boundApplied === "caller_cap" ? planned.winner
+  // `batch_mrp` from the engine with a planned `ceiling` happens only under the loose-MRP ruling: the
+  // two loose rates tie, and the ceiling's AMOUNT (its pack residue) is the lower — the plan knows.
+  return clamp === null ? "batch_mrp"
+    : clamp.boundApplied === "batch_mrp" || clamp.boundApplied === "caller_cap" ? planned.winner
       : row.unitPaise === planned.batchUnitPaise ? "batch_mrp" : "tariff";
 }
 
@@ -114,7 +156,7 @@ export async function previewDispenseBill(db: Db, actor: Actor, dispenseId: stri
   if (encounter === null) throw new PharmacyError("not_found", `encounter ${d.encounterId} not found`);
   const plan = await priceLines(db, dispenseId, now);
   void actor;
-  return previewInvoice(db, { patientId: d.patientId, encounterId: encounter.id, lines: plan.map((p) => p.input) }, now);
+  return previewInvoice(db, { patientId: d.patientId, encounterId: encounter.id, lines: plan.flatMap(invoiceInputsOf) }, now);
 }
 
 /**
@@ -170,7 +212,7 @@ export async function billDispense(db: Db, actor: Actor, dispenseId: string, inp
     draftId: d.id,
     patientId: d.patientId,
     encounterId: encounter.id,
-    lines: plan.map((p) => p.input),
+    lines: plan.flatMap(invoiceInputsOf),
     ...(input.tags === undefined ? {} : { tags: input.tags }),
     receipt: {
       tenders: input.tenders,
@@ -184,10 +226,9 @@ export async function billDispense(db: Db, actor: Actor, dispenseId: string, inp
     const result = await issueInvoice(tx as unknown as Db, actor, invoiceInput, now);
     const stored = await getInvoice(tx, result.invoiceId);
     if (stored === null) throw new PharmacyError("not_found", `invoice ${result.invoiceId} vanished inside its own transaction`);
-    const byNo = [...stored.lines].sort((a, b) => a.lineNo - b.lineNo);
+    const rows = mainRowsOf([...stored.lines].sort((a, b) => a.lineNo - b.lineNo), plan);
     for (const [i, p] of plan.entries()) {
-      const row = byNo[i];
-      if (row === undefined) throw new PharmacyError("not_found", `invoice line ${String(i + 1)} missing`);
+      const row = rows[i]!;
       const winner = winnerOf(row, { winner: p.winner, batchUnitPaise: p.input.batchUnitPaise });
       await tx.update(pharmacyDispenseLines)
         .set({ invoiceLineId: row.id, unitPaise: row.unitPaise, priceWinner: winner })

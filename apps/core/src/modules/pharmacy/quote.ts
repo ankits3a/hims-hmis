@@ -55,7 +55,11 @@ async function priceOf(db: Db, gst: GstCategoryMap, itemId: string, batch: { bat
     .sort((a, b) => a.toBaseMultiplier - b.toBaseMultiplier)[0];
   return {
     batchId: batch.batchId, batchNo: batch.batchNo, expiryDate: batch.expiryDate, unitPaise, winner, mrpUnitPaise, lastKnown,
-    pack: pack === undefined ? null : { uom: pack.uom, multiplier: pack.toBaseMultiplier, paise: unitPaise * pack.toBaseMultiplier },
+    // The loose-MRP ruling (2026-09-22): a full strip is its printed MRP, not the rounded-down tablet × 15.
+    pack: pack === undefined ? null : {
+      uom: pack.uom, multiplier: pack.toBaseMultiplier,
+      paise: (await priceBatchLine(db, gst, { itemId, batchId: batch.batchId, qtyBase: pack.toBaseMultiplier }, now)).amountPaise,
+    },
   };
 }
 

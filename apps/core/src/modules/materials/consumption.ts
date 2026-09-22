@@ -56,9 +56,11 @@ export const MATERIALS_CONSUMPTION_CONSUMER = "materials.consumption";
 /**
  * A pack price expressed per BASE unit, or `null` when it cannot be — CLOSE REVIEW M3.
  *
- * Null covers three cases and they are deliberately not distinguished here: no price at all, no
- * unit, and a price that does not divide into whole paise. **An unconvertible figure is carried as
- * null rather than thrown**, because the implant is already in the patient: refusing to RECORD a
+ * Null covers two cases and they are deliberately not distinguished here: no price at all, and no
+ * (or an unknown) unit. A price that does not divide into whole paise is NOT null since the
+ * loose-MRP ruling (owner, 2026-09-22): it is the loose-unit rate, ROUNDED DOWN, which is never
+ * above the MRP's share and so is safe as the per-unit bound a bill applies. **An unconvertible
+ * figure is carried as null rather than thrown**, because the implant is already in the patient: refusing to RECORD a
  * consumption because its price arithmetic is untidy would be the worse error by a wide margin.
  * A null tells the bill "this number was not computable", which is a fact it can act on.
  */

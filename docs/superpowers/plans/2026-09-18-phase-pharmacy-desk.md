@@ -24,6 +24,23 @@ a round trip, and none of the four books ever fires in anger.
 Owner rulings are for money, procurement and law. Everything else below is the standard
 Indian-corporate-hospital answer, taken and marked.
 
+### Money (owner rulings)
+
+- **PD-M1. LOOSE-MRP — DECIDED (owner, money, 2026-09-22).** When a pack's printed MRP does not
+  divide into whole paise per base unit (₹35.50 on a strip of 15 = 236.67 paise a tablet): a FULL
+  pack bills at EXACTLY its printed MRP; a LOOSE unit bills at the per-unit share ROUNDED DOWN to the
+  paisa (236); 20 tablets = 1 strip + 5 loose = 3550 + 5 × 236 = 4730. "Never above MRP" stays
+  absolute; where the MRP divides nothing changes. Built in lane `pharmacy-loose-mrp`:
+  `saleAmountPaise` (materials `uom.ts`) is the one place the arithmetic lives; `priceBatchSale`
+  (pharmacy `price.ts`) applies it to the MRP and the GST-inclusive ceiling alike (lower amount
+  wins). On the invoice a mixed quantity is the MAIN line (qty in base units at the loose rate) plus
+  a PACK-RESIDUE line right after it (`fullPacks × (MRP − pack × loose rate)`, e.g. `1 × 10` paise),
+  because the tariff engine prices `unit × qty` and its signature is not changed; a return credits
+  the residue down to what the kept units owe. Comparisons (GRN QC rule 6 MRP ≥ cost, rule 7 MRP ≤
+  ceiling) no longer round: they cross-multiply (`comparePackPrices`), so such an MRP is ACCEPTED at
+  GRN/opening stock and still refused when truly below cost. Replaces `mrpPerBaseUnit`'s
+  refuse-rather-than-round (Plan 14 DD7) for every sale and comparison.
+
 ### The screen
 
 - **PD-D1. One ticket in hand, five stages, no wizard.** `idle → found → working → payment → done`.

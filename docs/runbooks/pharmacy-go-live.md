@@ -110,7 +110,7 @@ The previous version of this table was headed "(chief pharmacist)". **Three of i
 | 5c | **Post** it into `PHARM-OPD` with batch, expiry and the printed MRP per pack | **`storekeeper`** | `/materials/grn` | census row **`pharmacy_batch_in_stock`**; the counter shows "N available" |
 
 > **2.5 CHECK THE PER-TABLET PRICE BEFORE YOU POST, BECAUSE NOTHING ELSE WILL.** The counter bills
-> per BASE unit — per tablet — and the GRN takes the MRP per PACK. QC divides one by the other, and
+> per BASE unit — per tablet — and the GRN takes the MRP per PACK. QC compares one with the other, and
 > **its only upper bound is a government ceiling that most items do not have** (`qc.ts` rule 7 fires
 > only where `ceiling_paise` is on file, and nothing seeds one). Rule 6 catches an MRP *below* cost;
 > there is no symmetric rule above it.
@@ -127,10 +127,13 @@ The previous version of this table was headed "(chief pharmacist)". **Three of i
 >   ₹120.00 ÷ 10 = ₹12.00        <- is that what the strip's printed MRP implies?
 > ```
 >
-> **And when the counter refuses `price_unknown` or QC says `mrp_unconvertible`, you are being asked
-> to hand-divide** — ₹85 on a strip of 12 has no whole-paisa answer. Enter the per-tablet figure you
-> chose and multiply it back before you accept it: ₹7.08 × 12 = ₹84.96, ₹7.09 × 12 = ₹85.08. Neither
-> is ₹85, and which one the hospital sells at is a decision, not a rounding.
+> **An MRP that does not divide is NOT an error any more (owner's loose-MRP ruling, 2026-09-22).**
+> ₹35.50 on a strip of 15 is 236.67 paise a tablet. Enter the MRP exactly as printed, per strip; QC
+> compares it with cost exactly (no rounding), and the counter bills **a full strip at exactly ₹35.50
+> and a loose tablet at ₹2.36** (the share rounded DOWN — never above MRP). 20 tablets = ₹35.50 +
+> 5 × ₹2.36 = ₹47.30; the bill shows it as `20 × ₹2.36` plus a `1 × ₹0.10` line for the strip. Do
+> NOT hand-divide or round the MRP yourself. QC's `mrp_unconvertible` now means only that the MRP's
+> unit is missing or is not one of the item's units — fix the unit.
 
 **2.2 THE GST SLAB (P16).** Since 22 September 2025, medicines (HSN 3003/3004) are **5%**, and the 36
 drugs listed in Notification 9/2025-Central Tax (Rate), Lists 3 and 4, are **nil**. A combination is
@@ -251,7 +254,7 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `unknown_item` · `not_found` · `unknown_dispense` · `unknown_line` · `unknown_prescription` | the id does not resolve | re-scan; the row may have been superseded |
 | `not_a_drug` | the item's class is not `drug` | register the right item |
 | `sale_item_exists` · `unknown_sale_item` · `sale_item_inactive` | already registered, not registered, or deactivated | §2.3 |
-| `price_unknown` | the batch has no MRP that divides into its base unit and no ceiling | fix the pack unit on the item, or the GRN's MRP |
+| `price_unknown` | the batch has no MRP (in one of the item's units) and no ceiling | record the GRN's MRP per pack, or fix its unit |
 | `gst_slab_unknown` | `gst_rate_bps` is not nil / 5 / 12 / 18 % | correct the item (§2.2) |
 | `prescription_superseded` | the doctor re-issued the Rx | take the new one |
 | `dispense_not_in_state` · `line_not_open` | the act does not match the row's state | re-read the queue |

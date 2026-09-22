@@ -1,5 +1,5 @@
 {
-  "_": "PLAN 16c T2 golden fixtures for priceForBatch (owner ruling R-1). uoms are the item's pack ladder; paise are integers; 'expect' is the full BatchPrice or an error code.",
+  "_": "PLAN 16c T2 golden fixtures for priceForBatch (owner ruling R-1). uoms are the item's pack ladder; paise are integers; 'expect' is the full BatchPrice (one LOOSE unit) or an error code.",
   "cases": [
     {
       "name": "MRP wins — no ceiling: a strip of 10 at ₹120 is ₹12 a tablet, and the bound is the MRP itself",
@@ -42,12 +42,12 @@
       "expect": { "batchUnitPaise": 90, "capUnitPaise": 90, "winner": "ceiling", "mrpPaisePerBase": null, "ceilingPaisePerBase": 90, "ceilingInclusivePaisePerBase": 90 }
     },
     {
-      "name": "an MRP that does not divide into the base unit is UNUSABLE, and the ceiling stands in",
+      "name": "LOOSE-MRP ruling: an MRP that does not divide sells loose at its share ROUNDED DOWN (₹100/15 → 666), and a lower ceiling still caps it",
       "uoms": [{ "uom": "tablet", "toBaseMultiplier": 1 }, { "uom": "strip", "toBaseMultiplier": 15 }],
       "batch": { "mrpPaise": 10000, "mrpUom": "strip" },
       "regulation": { "ceilingPaise": 9000, "mrpUom": "strip" },
       "taxRateBps": 0,
-      "expect": { "batchUnitPaise": 600, "capUnitPaise": 600, "winner": "ceiling", "mrpPaisePerBase": null, "ceilingPaisePerBase": 600, "ceilingInclusivePaisePerBase": 600 }
+      "expect": { "batchUnitPaise": 666, "capUnitPaise": 600, "winner": "ceiling", "mrpPaisePerBase": 666, "ceilingPaisePerBase": 600, "ceilingInclusivePaisePerBase": 600 }
     },
     {
       "name": "no MRP and no ceiling — UNSALEABLE",
@@ -58,12 +58,12 @@
       "expect": { "error": "price_unknown" }
     },
     {
-      "name": "an undividable MRP and no ceiling — UNSALEABLE, not rounded",
+      "name": "LOOSE-MRP ruling: an undividable MRP and no ceiling is SALEABLE — a loose tablet at the share rounded down (was price_unknown)",
       "uoms": [{ "uom": "tablet", "toBaseMultiplier": 1 }, { "uom": "strip", "toBaseMultiplier": 15 }],
       "batch": { "mrpPaise": 10000, "mrpUom": "strip" },
       "regulation": null,
       "taxRateBps": 0,
-      "expect": { "error": "price_unknown" }
+      "expect": { "batchUnitPaise": 666, "capUnitPaise": 666, "winner": "batch_mrp", "mrpPaisePerBase": 666, "ceilingPaisePerBase": null, "ceilingInclusivePaisePerBase": null }
     },
     {
       "name": "a ceiling in an unknown pack is ignored, the MRP stands",

@@ -46,7 +46,9 @@ describe("the GRN gate (Plan 14 T6)", () => {
   afterAll(async () => teardown());
   beforeEach(async () => { await truncateAll(db); });
 
-  async function drugItem(code = "CROC500", over: { shelfLifeDays?: number } = {}): Promise<string> {
+  async function drugItem(
+    code = "CROC500", over: { shelfLifeDays?: number; uoms?: { uom: string; toBaseMultiplier: number }[] } = {},
+  ): Promise<string> {
     const medicineId = newId();
     await db.insert(formularyMedicines).values({
       id: medicineId, brandName: `Brand ${medicineId}`, nameNormalized: normalizeDrugName(`Brand ${medicineId}`), form: "tablet",
@@ -55,7 +57,7 @@ describe("the GRN gate (Plan 14 T6)", () => {
     const { itemId } = await withTx(db, (tx) => registerItem(tx, HEAD, {
       code, name: `Item ${code}`, class: "drug", formularyMedicineId: medicineId,
       baseUom: "tablet", batchTracked: true, shelfLifeDays: over.shelfLifeDays ?? 1095,
-      uoms: [{ uom: "strip", toBaseMultiplier: 10 }, { uom: "box", toBaseMultiplier: 100 }],
+      uoms: over.uoms ?? [{ uom: "strip", toBaseMultiplier: 10 }, { uom: "box", toBaseMultiplier: 100 }],
     }));
     return itemId;
   }
@@ -265,41 +267,39 @@ describe("the GRN gate (Plan 14 T6)", () => {
    * missing `ORDER BY`.
    */
   /**
-   * ═══ SECOND-PASS FINDING F3 — M7's OTHER HALF: THE THROW MUST BE CAUGHT IN `qcContextFor` ═══
-   *
    * M7 has two halves. `qc.test.ts` pins the second — rule 7 rejects when `ceilingUnconvertible` is
    * set — by handing `qcLine` a context built by hand. **Nothing tested the first**, which is the
    * half M7 is actually about: `qcContextFor` calling `mrpPerBaseUnit` on the CEILING outside any
    * `try`, so the throw escaped `runGateQc` and `materialsHttpStatus` answered **404 for the whole
-   * delivery**. The second-pass reviewer measured it: deleting the `try`/`catch` in `grn.ts` left
-   * the entire suite green.
+   * delivery**.
    *
-   * The path is reachable through shipped code. `setPriceRegulation` enforces the pair rule and
-   * that `mrpUom` is one of the item's units — it does **not** check divisibility — so a gazette
-   * entered as ₹85.05 per strip of ten is ACCEPTED at write time and only fails when a GRN is
-   * gated against it. A price that does not divide into whole paise per base unit is refused
-   * rather than rounded, deliberately (`uom.ts`), and that refusal has to become a LINE verdict.
-   *
-   * The second line is what makes this leg discriminating rather than decorative: **the rest of the
-   * delivery must still post.** A per-line rule that takes the whole GRN down with it is the defect,
-   * not the fix.
+   * The path this leg used to drive — a gazette of ₹85.05 per strip of ten, which does not divide
+   * into whole paise per tablet — is NO LONGER unconvertible: the loose-MRP ruling (owner,
+   * 2026-09-22) keeps a price as `{ paise, baseUnits }` and compares by cross-multiplying. So it is
+   * now the exact-comparison leg: ₹85.05/10 is 850.5 a tablet, ABOVE an ₹85.00/10 MRP (pass), and
+   * ₹84.95/10 is 849.5, BELOW it (`mrp_above_ceiling`, by half a paisa — a rounded comparison would
+   * pass it or fail both). The per-line property stands: **the rest of the delivery must still post.**
    */
-  it("F3: an unconvertible CEILING rejects its line and leaves the rest of the delivery postable", async () => {
-    const bad = await drugItem("CEIL-BAD");
-    const good = await drugItem("CEIL-OK");
+  it("F3 / loose-MRP: an indivisible CEILING is compared exactly, per line, and the rest of the delivery posts", async () => {
+    const above = await drugItem("CEIL-ABOVE");
+    const below = await drugItem("CEIL-BELOW");
     const storeId = await aStore();
     const vendorId = await aVendor();
 
-    // ₹85.05 per strip of TEN — 8505 % 10 = 5, so it does not divide into whole paise per tablet.
-    await withTx(db, (tx) => setPriceRegulation(tx, HEAD, bad, {
+    // ₹85.05 and ₹84.95 per strip of TEN — neither divides into whole paise per tablet.
+    await withTx(db, (tx) => setPriceRegulation(tx, HEAD, above, {
       ceilingPaise: 8505, mrpUom: "strip",
-      effectiveFrom: new Date("2026-01-01T00:00:00Z"), gazetteRef: "NPPA/BAD",
+      effectiveFrom: new Date("2026-01-01T00:00:00Z"), gazetteRef: "NPPA/ABOVE",
+    }));
+    await withTx(db, (tx) => setPriceRegulation(tx, HEAD, below, {
+      ceilingPaise: 8495, mrpUom: "strip",
+      effectiveFrom: new Date("2026-01-01T00:00:00Z"), gazetteRef: "NPPA/BELOW",
     }));
 
     const { grnId } = await withTx(db, (tx) => captureGrn(tx, HEAD, {
       vendorId, source: "challan", storeResourceId: storeId,
       challanNo: "CH/F3/1", challanDate: CHALLAN,
-      lines: [goodLine(bad, { batchNo: "B-BAD" }), goodLine(good, { batchNo: "B-OK" })],
+      lines: [goodLine(below, { batchNo: "B-BELOW" }), goodLine(above, { batchNo: "B-ABOVE" })],
       now: T0,
     }));
 
@@ -308,15 +308,46 @@ describe("the GRN gate (Plan 14 T6)", () => {
     expect(status).toBe("partially_accepted");
     expect(verdicts.map((v) => ({ verdict: v.verdict, rule: v.rule })))
       .toEqual([
-        { verdict: "reject", rule: "mrp_unconvertible" },
+        { verdict: "reject", rule: "mrp_above_ceiling" },
         { verdict: "pass", rule: undefined },
       ]);
 
-    // …and the good line posts. One mistyped gazette costs one line, not a lorry.
     const { ledgerEntryIds } = await withTx(db, (tx) => postGrn(tx, HEAD, grnId, T0));
     expect(ledgerEntryIds).toHaveLength(1);
     const posted = await getGrn(db, grnId);
     expect(posted?.lines.map((l) => l.qtyAcceptedBase).sort((a, b) => a - b)).toEqual([0, 300]);
+  });
+
+  /**
+   * THE LOOSE-MRP RULING (owner, money, 2026-09-22). ₹35.50 on a strip of 15 is 236.67 paise a
+   * tablet: it used to be refused at QC (`mrp_unconvertible`), which refused most of a real shelf.
+   * It is ACCEPTED and POSTS; and an MRP truly below landed cost is still refused — 3550/15 against
+   * a cost of 237 a tablet is below it by a third of a paisa, and the exact comparison sees that.
+   */
+  it("loose-MRP: ₹35.50 on a strip of 15 is captured, passes QC and posts; one truly below cost is still refused", async () => {
+    const itemId = await drugItem("DOLO15", { uoms: [{ uom: "strip", toBaseMultiplier: 15 }, { uom: "box", toBaseMultiplier: 150 }] });
+    const storeId = await aStore();
+    const vendorId = await aVendor();
+    const { grnId } = await withTx(db, (tx) => captureGrn(tx, HEAD, {
+      vendorId, source: "challan", storeResourceId: storeId,
+      challanNo: "CH/LOOSE/1", challanDate: CHALLAN,
+      lines: [
+        goodLine(itemId, { batchNo: "L-OK", uom: "strip", qtyInUom: 4, mrpPaise: 3550, mrpUom: "strip", unitCostPaise: 236 }),
+        goodLine(itemId, { batchNo: "L-LOSS", uom: "strip", qtyInUom: 2, mrpPaise: 3550, mrpUom: "strip", unitCostPaise: 237 }),
+      ],
+      now: T0,
+    }));
+    const { status, verdicts } = await withTx(db, (tx) => runGateQc(tx, HEAD, grnId));
+    expect(verdicts.map((v) => ({ verdict: v.verdict, rule: v.rule })))
+      .toEqual([
+        { verdict: "pass", rule: undefined },
+        { verdict: "reject", rule: "mrp_below_cost" },
+      ]);
+    expect(status).toBe("partially_accepted");
+    const { ledgerEntryIds } = await withTx(db, (tx) => postGrn(tx, HEAD, grnId, T0));
+    expect(ledgerEntryIds).toHaveLength(1);
+    const posted = await getGrn(db, grnId);
+    expect(posted?.lines.map((l) => l.qtyAcceptedBase).sort((a, b) => a - b)).toEqual([0, 60]);
   });
 
   it("M9: the consignment lot names the agreement VALID on the challan date, not an arbitrary one", async () => {

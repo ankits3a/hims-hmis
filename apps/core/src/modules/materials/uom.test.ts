@@ -1,5 +1,5 @@
 import { MaterialsError } from "./errors";
-import { fromBase, mrpPerBaseUnit, multiplierFor, toBase } from "./uom";
+import { comparePackPrices, fromBase, mrpPerBaseUnit, multiplierFor, packPriceOf, saleAmountPaise, toBase } from "./uom";
 import type { UomRow } from "./uom";
 
 /**
@@ -131,14 +131,16 @@ describe("uom.ts — conversion (Plan 14 T3 / DD7)", () => {
   });
 
   /**
-   * **IT REFUSES RATHER THAN ROUNDS**, and the reason is rule 6: rounding down would let an MRP a
-   * paisa below cost pass, rounding up would fail a legitimate line, and either invents a number
-   * inside a price comparison. ₹85 on a strip of 12 has no honest integer answer.
+   * THE LOOSE-MRP RULING (owner, money, 2026-09-22) REPLACED "IT REFUSES RATHER THAN ROUNDS". ₹85 on
+   * a strip of 12 used to throw here; it now gives the LOOSE-unit rate, rounded DOWN (708), which is
+   * never above the MRP's share. Comparisons no longer read this number at all — they compare the
+   * printed pair exactly (`comparePackPrices`, below), so the old reason for refusing is gone.
    */
-  it("REFUSES an MRP that does not divide into whole paise per base unit", () => {
+  it("an MRP that does not divide gives the loose-unit rate ROUNDED DOWN — never above the share", () => {
     const odd: UomRow[] = [{ uom: "tablet", toBaseMultiplier: 1 }, { uom: "strip", toBaseMultiplier: 12 }];
-    expect(() => mrpPerBaseUnit(odd, 8500, "strip")).toThrow(/does not.*divide/);
-    // …and one that DOES divide passes, so the guard is not simply refusing everything.
+    expect(mrpPerBaseUnit(odd, 8500, "strip")).toBe(708);
+    expect(mrpPerBaseUnit([{ uom: "tablet", toBaseMultiplier: 1 }, { uom: "strip", toBaseMultiplier: 15 }], 3550, "strip")).toBe(236);
+    // …and one that DOES divide is exact, as it always was.
     expect(mrpPerBaseUnit(odd, 8400, "strip")).toBe(700);
   });
 
@@ -148,5 +150,49 @@ describe("uom.ts — conversion (Plan 14 T3 / DD7)", () => {
     expect(mrpPerBaseUnit(TABLETS, undefined, "strip")).toBeNull();
     // The pair rule: paise never travels without its unit (schema/materials.ts's header).
     expect(() => mrpPerBaseUnit(TABLETS, 8500, null)).toThrow(/no unit/);
+  });
+});
+
+describe("the loose-MRP ruling — saleAmountPaise (owner, money, 2026-09-22)", () => {
+  const strip15 = (qtyBase: number) => saleAmountPaise({ mrpPaise: 3550, packMultiplier: 15, qtyBase });
+
+  it("₹35.50 a strip of 15: a strip is EXACTLY its MRP, a loose tablet its share rounded down", () => {
+    expect(strip15(15)).toEqual({ amountPaise: 3550, unitPaise: 236, fullPacks: 1, looseUnits: 0, packResiduePaise: 10 });
+    expect(strip15(1)).toEqual({ amountPaise: 236, unitPaise: 236, fullPacks: 0, looseUnits: 1, packResiduePaise: 10 });
+    expect(strip15(20).amountPaise).toBe(4730); // 1 × 3550 + 5 × 236
+    expect(strip15(0).amountPaise).toBe(0);
+  });
+
+  it("never above the MRP's share, for every quantity up to ten strips", () => {
+    for (let q = 0; q <= 150; q += 1) {
+      const a = strip15(q).amountPaise;
+      expect(a * 15).toBeLessThanOrEqual(3550 * q); // amount ≤ q × 3550/15, compared without dividing
+      expect(a).toBeGreaterThanOrEqual(236 * q);
+    }
+  });
+
+  it("a pack that divides changes nothing: q × (MRP / pack)", () => {
+    for (const q of [1, 7, 10, 23]) expect(saleAmountPaise({ mrpPaise: 12000, packMultiplier: 10, qtyBase: q }).amountPaise).toBe(1200 * q);
+  });
+
+  it("refuses a fractional quantity or a non-positive pack", () => {
+    expect(() => saleAmountPaise({ mrpPaise: 3550, packMultiplier: 15, qtyBase: 1.5 })).toThrow(MaterialsError);
+    expect(() => saleAmountPaise({ mrpPaise: 3550, packMultiplier: 0, qtyBase: 1 })).toThrow(MaterialsError);
+  });
+});
+
+describe("comparePackPrices — per base unit, exactly, by cross-multiplication", () => {
+  it("₹35.50/15 sits strictly between 236 and 237 a tablet", () => {
+    const mrp = packPriceOf([{ uom: "tablet", toBaseMultiplier: 1 }, { uom: "strip", toBaseMultiplier: 15 }], 3550, "strip")!;
+    expect(mrp).toEqual({ paise: 3550, baseUnits: 15 });
+    expect(comparePackPrices(mrp, { paise: 236, baseUnits: 1 })).toBe(1);
+    expect(comparePackPrices(mrp, { paise: 237, baseUnits: 1 })).toBe(-1);
+    expect(comparePackPrices(mrp, { paise: 7100, baseUnits: 30 })).toBe(0);
+  });
+
+  it("packPriceOf keeps the unit refusals", () => {
+    expect(packPriceOf(TABLETS, null, null)).toBeNull();
+    expect(() => packPriceOf(TABLETS, 8500, null)).toThrow(/no unit/);
+    expect(() => packPriceOf(TABLETS, 8500, "carton")).toThrow(MaterialsError);
   });
 });
