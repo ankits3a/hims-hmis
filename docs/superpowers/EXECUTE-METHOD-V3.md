@@ -845,7 +845,10 @@ each call's context was accumulated in-run**, so the lever was the turn mix — 
 
 1. **Read with Read/Grep, not `cat`/`sed`/`grep`.** A Bash read bills a turn, usually returns the whole
    file where a section was wanted, and is then re-sent in the context of every later call in that
-   agent's life.
+   agent's life. **The distinction is bounded versus unbounded output:** `Read` on a known path costs
+   an amount you choose in advance; a Bash command costs whatever it happens to emit, and you learn
+   how much afterwards. Measured in phase R: a `git diff` whose pathspec preceded `--shortstat`
+   ignored the flag and returned **2.8 MB in one tool result**.
 2. **Never re-read a file you have already read in this run.** A re-read buys nothing and is billed
    twice — once as a turn, and again inside every later call.
 3. **When a task needs one section, the brief cites the section.** A file path with no anchor is an

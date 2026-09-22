@@ -2589,6 +2589,14 @@ and is safe to attribute; one that grew is live and belongs to someone else. **N
 line on a shared box** — and note that `--json` carries `tools` PER WORKFLOW, which the printed turn
 mix does not.
 
+**THE MECHANISM, STATED GENERALLY, BECAUSE THE NEXT PERSON WILL MEET IT THROUGH A DIFFERENT SCRIPT.**
+Any instrument that selects by TIME and not by IDENTITY — mtime, `--since`, a date-filtered log query,
+`git log --since` across a shared repo — returns "my work plus whoever else was awake". The defect is
+not in this script; it is in using a time window as a proxy for ownership on a box that runs ten
+sessions. The general form of the fix: **select by identity where the instrument offers one (here the
+workflow id), and where it does not, establish identity by STABILITY — measure twice and keep what did
+not move.**
+
 **Why it matters beyond the arithmetic.** The contaminated reading did not merely inflate a number,
 it manufactured a CONTROL: two workflows, "same papers", 2.7x apart, which is precisely the evidence
 one wants for "the cost is behavioural, not documentary". A number that is too big announces itself;
@@ -2604,6 +2612,17 @@ edit could have touched it. The cost model is `calls x per-call`, so the whole l
 accumulated term: **every 1,000 tokens shaved off the average call is 860,000 tokens for this phase,
 and halving the accumulated share would have cost 93.7M instead of 165.9M.** The fix is the brief's
 reading contract (method §9.11), not a smaller ledger.
+
+**WHAT THE ACCUMULATED 87% IS ACTUALLY MADE OF — two witnessed instances from the phase's own
+session, and both are ordinary.** A `git diff` written with the pathspec BEFORE `--shortstat` ignored
+the flag and emitted **2.8 MB into a single tool result** — one malformed Bash call, one billed turn,
+and a context cost every later turn in that run would have carried had the harness inlined it rather
+than persisting it to a file. And the same session re-ran suites to read counts it had already read,
+and re-measured lane state it had measured minutes earlier. **That is the Bash-versus-Read thesis in
+one sentence: `Read` on a known path costs a bounded amount you choose in advance, while
+`cat`/`grep`/`diff` through Bash costs whatever the command happens to emit, and you find out
+afterwards.** Neither instance is exotic; both are what an ordinary competent run looks like, which is
+why the term is 87% and not a rounding error.
 
 **AND THE COST SIDE, SO A CUT IS NEVER REPORTED ALONE (§5 honesty rule 3).** 38 mutants, of which
 **one survived** — R8's, which passed 251 of 251 because moving a validator past a supersede is
