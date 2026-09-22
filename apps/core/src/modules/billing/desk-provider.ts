@@ -1,5 +1,6 @@
 import { and, count, eq, inArray, ne } from "drizzle-orm";
 import { cashierSessions, invoices, receiptTenders, receipts } from "../../kernel/db/schema";
+import { billingRange } from "./range";
 import { enteredInErrorDocIds } from "./daily-close";
 import { liveExpectedCashPaise } from "./sessions";
 import { formatPaise } from "../../kernel/report/money";
@@ -150,6 +151,8 @@ export const billingDeskProvider: DeskProvider = {
    * the reason the contract in `desk/types.ts` gives: a float sum of half a year of collections is
    * a rounding argument nobody can win.
    */
+  /* T5 — the same money at a fourth grain: a range, split by tender, service head and payer. */
+  range: billingRange,
   facts: async (ctx) => {
     const d = await cashierDay(ctx.db, ctx.actor.id, ctx.date);
     return {
