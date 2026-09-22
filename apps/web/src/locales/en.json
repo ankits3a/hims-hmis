@@ -3875,7 +3875,11 @@
       "q": "the whole line",
       "f8": "command",
       "enter": "find what is in the field",
-      "esc": "close, then clear the desk"
+      "esc": "close, then clear the desk",
+      "s": "see the slip",
+      "b": "batch & shelf",
+      "tender": "cash · UPI · card · split",
+      "f2": "ask the counter agent"
     },
     "sealedRecord": "sealed record",
     "years": "{{n}}y",
