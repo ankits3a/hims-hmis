@@ -1,0 +1,119 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Devanagari:wght@400;600&display=swap">
+  <style>
+    body { margin: 0; font-family: "IBM Plex Sans", system-ui, sans-serif; color: #132420; background: #f4f7f4; }
+    a { color: #0e6b4e; } a:hover { color: #0a5038; }
+    .mo { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+    .dev { font-family: "IBM Plex Sans Devanagari", "Nirmala UI", sans-serif; }
+    .tag { font-family: "IBM Plex Mono", monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: #8ea69a; }
+    .box { background: #fff; border: 1px solid #dfe7e1; border-radius: 8px; }
+    .chip { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 15px; border-radius: 18px; border: 1px solid #dfe7e1; background: #fff; font-size: 13.5px; font-weight: 500; cursor: pointer; font-family: inherit; color: #132420; }
+    .chip:hover { border-color: #0e6b4e; }
+    .chip.on { border-color: #0e6b4e; background: rgba(14,107,78,.08); color: #0e6b4e; font-weight: 600; }
+    .pri { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 18px; border-radius: 6px; background: #0e6b4e; color: #f2faf6; font-size: 13px; font-weight: 600; border: 1px solid #0e6b4e; cursor: pointer; font-family: inherit; }
+    .in { height: 40px; border-radius: 6px; border: 1px solid #dfe7e1; background: #fff; padding: 0 12px; font-size: 14px; width: 100%; box-sizing: border-box; font-family: inherit; }
+    .in:focus { outline: none; border-color: #0e6b4e; box-shadow: 0 0 0 3px rgba(14,107,78,.08); }
+  </style>
+</helmet>
+
+<div style="padding: 24px 28px; background: #f4f7f4; min-height: 620px;">
+  <h1 style="margin: 0 0 3px; font-size: 20px; font-weight: 700; letter-spacing: -.01em;">Stage one — the complaint, by tap</h1>
+  <p style="margin: 0 0 18px; font-size: 13px; color: #5c6f66; max-width: 640px;">
+    The twelve complaints this department actually sees, ordered by how often it sees them. The doctor
+    taps two or three. Typing still works and still wins — it simply stops being the only way in.
+  </p>
+
+  <div class="box" style="padding: 17px 19px; max-width: 760px;">
+    <div style="display: flex; align-items: baseline; gap: 9px; margin-bottom: 11px;">
+      <span class="tag">Chief complaint</span>
+      <span class="mo" style="font-size: 10.5px; color: #8ea69a;">{{ picked }} picked</span>
+      <span style="flex-grow: 1;"></span>
+      <span class="tag">General medicine · OPD</span>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+      <sc-for list="{{ chips }}" as="c" hint-placeholder-count="12">
+        <button class="chip {{ c.cls }}" onclick="{{ c.pick }}">
+          {{ c.en }}
+          <span class="dev" style="font-size: 12px; opacity: .6;">{{ c.hi }}</span>
+        </button>
+      </sc-for>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 10px; margin-top: 15px;">
+      <input class="in" style="flex-grow: 1;" placeholder="…or type anything — this is never taken away" />
+      <button class="pri">Assess</button>
+    </div>
+
+    <sc-if value="{{ hasPick }}" hint-placeholder-val="{{ true }}">
+      <div style="margin-top: 14px; padding: 12px 14px; border-radius: 7px; border: 1px solid rgba(14,107,78,.35); background: rgba(14,107,78,.08);">
+        <div style="display: flex; align-items: baseline; gap: 9px;">
+          <span class="tag" style="color: #0e6b4e;">Suggests</span>
+          <span style="font-size: 14px; font-weight: 700; color: #0e6b4e;">{{ syndrome }}</span>
+          <span class="mo" style="font-size: 11px; color: #0e6b4e; opacity: .7;">{{ icd }}</span>
+        </div>
+        <div class="mo" style="font-size: 10.5px; color: #5c6f66; margin-top: 5px;">matched on {{ matched }} · keyword rank, no model</div>
+      </div>
+    </sc-if>
+  </div>
+
+  <div style="display: flex; gap: 26px; margin-top: 20px; max-width: 760px;">
+    <div style="flex: 1;">
+      <div class="tag">Why chips and not a dropdown</div>
+      <p style="margin: 6px 0 0; font-size: 12.5px; color: #5c6f66; line-height: 1.6;">
+        A dropdown takes the caret and gives it back somewhere else. A doctor mid-sentence loses
+        their place. Chips sit under the field, take one tap, and leave the cursor alone.
+      </p>
+    </div>
+    <div style="flex: 1;">
+      <div class="tag">Why both scripts</div>
+      <p style="margin: 6px 0 0; font-size: 12.5px; color: #5c6f66; line-height: 1.6;">
+        The complaint is heard in Hindi and written in English. The chip carries both, so the doctor
+        taps the words the patient said and the record keeps the words the chart needs.
+      </p>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":820,"height":660}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { picked: ["fever", "sore throat"] };
+  }
+  renderVals() {
+    const all = [
+      ["fever", "बुखार"], ["sore throat", "गले में दर्द"], ["cough", "खाँसी"],
+      ["loose motions", "दस्त"], ["vomiting", "उल्टी"], ["body ache", "बदन दर्द"],
+      ["headache", "सिर दर्द"], ["burning urine", "पेशाब में जलन"], ["breathlessness", "साँस फूलना"],
+      ["acidity", "जलन"], ["back pain", "कमर दर्द"], ["wheezing", "घरघराहट"],
+    ];
+    const picked = this.state.picked;
+    return {
+      chips: all.map(([en, hi]) => ({
+        en, hi,
+        cls: picked.includes(en) ? "on" : "",
+        pick: () => this.setState({
+          picked: picked.includes(en) ? picked.filter((x) => x !== en) : [...picked, en],
+        }),
+      })),
+      picked: picked.length,
+      hasPick: picked.length > 0,
+      syndrome: "Acute Upper Respiratory Infection",
+      icd: "J06.9",
+      matched: picked.join(", ") || "—",
+    };
+  }
+}
+</script>
+</body>
+</html>

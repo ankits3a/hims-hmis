@@ -1,0 +1,156 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: "IBM Plex Sans", system-ui, sans-serif; color: #132420; background: #f4f7f4; }
+    a { color: #0e6b4e; } a:hover { color: #0a5038; }
+    .mo { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+    .tag { font-family: "IBM Plex Mono", monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: #8ea69a; }
+    .box { background: #fff; border: 1px solid #dfe7e1; border-radius: 8px; }
+    .kb { display: inline-flex; align-items: center; justify-content: center; height: 16px; min-width: 20px; padding: 0 5px; border-radius: 3px; border: 1px solid #2c443a; background: #1c332b; font-family: "IBM Plex Mono", monospace; font-size: 9px; font-weight: 600; color: #7fa392; }
+    .cite { display: inline-flex; align-items: center; gap: 5px; height: 21px; padding: 0 8px; border-radius: 4px; border: 1px solid #2c443a; background: #172a23; font-family: "IBM Plex Mono", monospace; font-size: 9.5px; font-weight: 600; color: #7fa392; cursor: pointer; }
+    .cite:hover { border-color: #35c48f; color: #35c48f; }
+    .q { display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 15px; border: 1px solid #2c443a; background: transparent; font-size: 12px; color: #7fa392; cursor: pointer; font-family: inherit; }
+    .q:hover { border-color: #35c48f; color: #d9efe4; }
+    .q.on { border-color: #35c48f; background: rgba(53,196,143,.12); color: #d9efe4; font-weight: 600; }
+  </style>
+</helmet>
+
+<div style="padding: 24px 28px; background: #f4f7f4; min-height: 640px;">
+  <h1 style="margin: 0 0 3px; font-size: 20px; font-weight: 700; letter-spacing: -.01em;">The F2 agent, grounded</h1>
+  <p style="margin: 0 0 16px; font-size: 13px; color: #5c6f66; max-width: 660px;">
+    Today it answers from what is on the screen and says so. The change is not a bigger model — it is a
+    bigger <strong>context</strong>: the patient in the chair, the lines on the form, and the exact
+    clinical rules those drugs touch. Every sentence carries the row it came from.
+    <strong style="color: #132420;">Tap the questions below</strong> — all four are answered from rows this hospital actually holds.
+  </p>
+
+  <!-- the dock, expanded -->
+  <div style="max-width: 860px; border-radius: 10px; overflow: hidden; border: 1px solid #132420;">
+    <div style="background: #132420; padding: 15px 18px;">
+      <div style="display: flex; align-items: center; gap: 11px; margin-bottom: 13px;">
+        <span class="tag" style="color: #7fa392;">Desk agent</span>
+        <span class="mo" style="font-size: 10px; color: #35c48f;">● grounded · 4 rules · 1 patient</span>
+        <span style="flex-grow: 1;"></span>
+        <span class="kb">F2</span>
+      </div>
+
+      <div style="display: flex; gap: 10px; align-items: flex-start; margin-bottom: 14px;">
+        <span class="mo" style="font-size: 11px; color: #7fa392; padding-top: 2px;">You</span>
+        <span style="font-size: 13.5px; color: #d9efe4; font-weight: 500;">{{ question }}</span>
+      </div>
+
+      <div style="display: flex; gap: 10px; align-items: flex-start;">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="#35c48f" style="margin-top: 3px; flex-shrink: 0;"><path d="M7 0l7 7-7 7-7-7z"/></svg>
+        <div style="min-width: 0;">
+          <p style="margin: 0 0 9px; font-size: 13px; line-height: 1.6; color: #d9efe4;">{{ answer1 }}</p>
+          <p style="margin: 0 0 11px; font-size: 13px; line-height: 1.6; color: #d9efe4;">{{ answer2 }}</p>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+            <sc-for list="{{ cites }}" as="c" hint-placeholder-count="3">
+              <span class="cite">
+                <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 1h5a1 1 0 011 1v7M8 3H3a1 1 0 00-1 1v7h6"/></svg>
+                {{ c }}
+              </span>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="background: #17241f; padding: 11px 18px; display: flex; gap: 7px; flex-wrap: wrap; border-top: 1px solid #2c443a;">
+      <span class="tag" style="color: #5c7a6c; align-self: center; margin-right: 3px;">Ask</span>
+      <sc-for list="{{ prompts }}" as="p" hint-placeholder-count="4">
+        <button class="q {{ p.cls }}" onclick="{{ p.ask }}">{{ p.label }}</button>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 20px; max-width: 860px;">
+    <div class="box" style="padding: 14px 15px;">
+      <div class="tag" style="color: #0e6b4e;">What it is given</div>
+      <div style="font-size: 12.5px; color: #5c6f66; margin-top: 6px; line-height: 1.6;">
+        The patient's own row — age, weight, allergies, vitals, labs — plus the rules keyed to the
+        drugs on this form. Assembled by lookup, not by similarity.
+      </div>
+    </div>
+    <div class="box" style="padding: 14px 15px;">
+      <div class="tag" style="color: #0e6b4e;">What it may say</div>
+      <div style="font-size: 12.5px; color: #5c6f66; margin-top: 6px; line-height: 1.6;">
+        Only what those rows support, each sentence tied to a row id. A question the rows cannot
+        answer gets "not from this screen" — the honest refusal it already gives today.
+      </div>
+    </div>
+    <div class="box" style="padding: 14px 15px;">
+      <div class="tag" style="color: #b23a30;">What it may never do</div>
+      <div style="font-size: 12.5px; color: #5c6f66; margin-top: 6px; line-height: 1.6;">
+        Name a drug, a dose or a diagnosis that is not in the hospital's own tables. It selects from
+        our rows; it does not compose new ones.
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":920,"height":680}}'>
+/*
+  Four questions a doctor actually asks at the desk, each answered ONLY from rows this hospital
+  holds — the patient's own, and the clinical rules those drugs touch. The citations under each
+  answer are the row ids; an answer with no row behind it is the one thing the agent may not give.
+*/
+const ANSWERS = [
+  {
+    label: "Can I use azithromycin instead?",
+    q: "Can I give this child azithromycin instead? Mother says penicillin gave him a rash.",
+    a1: "Yes — and the swap is already the bundle's own. For a penicillin allergy in this syndrome it substitutes Azithromycin Oral Suspension 100mg/5ml for the amoxicillin-clavulanate line, because a macrolide avoids the beta-lactam.",
+    a2: "Two things before you tap it. The substitute's dose is written as prose in the bundle, not as a mg/kg rate, so I will not calculate millilitres for 7 kg — that needs a clinician's signature first. And azithromycin carries 2 CredibleMeds QTc points; with nothing else QT-prolonging on this form, that is the whole score.",
+    cites: ["SYN_URI_01 · allergy_substitutions", "ALLERGY_RULE 1 · Penicillin", "QTC_AZITH · CredibleMeds", "patient U00110152 · 7 kg"],
+  },
+  {
+    label: "Paediatric dose for 7 kg?",
+    q: "What is the paracetamol dose for this child?",
+    a1: "2 mL of the 250mg/5ml suspension, six-hourly as needed — that is 87.5 mg, from 12.5 mg/kg at the 7 kg on his chart this morning.",
+    a2: "The bundle's own text says 3.5 mL, which is the dose for the 14 kg child it was written around. I do not repeat that figure for a 7 kg child; the arithmetic above is what I used and you can check it.",
+    cites: ["SYN_URI_01 · line 1 · stated 12.5 mg/kg", "vitals 14 Sep 09:12 · 7 kg", "concentration 50 mg/mL"],
+  },
+  {
+    label: "Anything unsafe in pregnancy here?",
+    q: "Is any of this unsafe if she turns out to be pregnant?",
+    a1: "I cannot tell you whether she is pregnant — this hospital records that nowhere, on the encounter, the patient or the chart. So this is the list, not a clearance.",
+    a2: "Nothing on this form is on the bundle's teratogen list. If an NSAID is added later, PREG_T3_NSAID flags premature closure of the ductus in the third trimester, and that is the line I would raise again.",
+    cites: ["NO_PREGNANCY_FIELD · hospital gap", "pregnancy_trimester_rules · 6 rows", "PREG_T3_NSAID"],
+  },
+  {
+    label: "Cheaper equivalent?",
+    q: "Is there a Jan Aushadhi equivalent for any of this?",
+    a1: "For the adult regimen, yes — the bundle carries PMBJP equivalents with their DPCO ceilings, and the telmisartan-amlodipine pairing is the largest saving in the book at 82.5%.",
+    a2: "Nothing on this child's three lines has an equivalent in the index. I am not going to name a substitute the index does not hold.",
+    cites: ["dpco_jan_aushadhi_index · 7 rows", "PMBJP042 · ₹2.80 vs ₹16.00"],
+  },
+];
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { i: 0 };
+  }
+  renderVals() {
+    const a = ANSWERS[this.state.i];
+    return {
+      question: a.q, answer1: a.a1, answer2: a.a2, cites: a.cites,
+      prompts: ANSWERS.map((x, i) => ({
+        label: x.label, cls: i === this.state.i ? "on" : "",
+        ask: () => this.setState({ i }),
+      })),
+    };
+  }
+}
+</script>
+</body>
+</html>
