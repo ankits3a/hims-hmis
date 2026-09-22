@@ -1,0 +1,383 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Devanagari:wght@400;600&display=swap">
+  <style>
+    body { margin: 0; font-family: "IBM Plex Sans", system-ui, sans-serif; color: #132420; background: #f4f7f4; }
+    a { color: #0e6b4e; } a:hover { color: #0a5038; }
+    .mo { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+    .dev { font-family: "IBM Plex Sans Devanagari", "Nirmala UI", sans-serif; }
+    .tag { font-family: "IBM Plex Mono", monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: #8ea69a; }
+    .kb { display: inline-flex; align-items: center; justify-content: center; height: 16px; min-width: 20px; padding: 0 5px; border-radius: 3px; border: 1px solid #dfe7e1; background: #fff; font-family: "IBM Plex Mono", monospace; font-size: 9px; font-weight: 600; color: #5c6f66; }
+    .box { background: #fff; border: 1px solid #dfe7e1; border-radius: 8px; }
+    .pri { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 18px; border-radius: 6px; background: #0e6b4e; color: #f2faf6; font-size: 13px; font-weight: 600; border: 1px solid #0e6b4e; cursor: pointer; font-family: inherit; }
+    .pri:disabled { opacity: .35; cursor: default; }
+    .sec { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 13px; border-radius: 6px; border: 1px solid #dfe7e1; background: #fff; font-size: 12.5px; font-weight: 500; cursor: pointer; font-family: inherit; color: inherit; }
+    .sec:hover { border-color: #8ea69a; }
+    .pill { display: inline-flex; align-items: center; gap: 6px; height: 23px; padding: 0 9px; border-radius: 4px; font-size: 10.5px; font-weight: 600; border: 1px solid #dfe7e1; background: #fff; color: #5c6f66; white-space: nowrap; }
+    .pill.rd { border-color: rgba(178,58,48,.4); background: rgba(178,58,48,.08); color: #b23a30; }
+    .pill.gd { border-color: rgba(221,143,28,.45); background: rgba(221,143,28,.10); color: #dd8f1c; }
+    .pill.on { border-color: rgba(14,107,78,.35); background: rgba(14,107,78,.08); color: #0e6b4e; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 17px; border: 1px solid #dfe7e1; background: #fff; font-size: 13px; font-weight: 500; cursor: pointer; font-family: inherit; color: #132420; }
+    .chip:hover { border-color: #0e6b4e; }
+    .chip.on { border-color: #0e6b4e; background: rgba(14,107,78,.08); color: #0e6b4e; font-weight: 600; }
+    .stage { background: #fff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 15px 17px; }
+    .done { display: flex; align-items: center; gap: 10px; padding: 9px 15px; border-radius: 8px; border: 1px solid rgba(14,107,78,.35); background: rgba(14,107,78,.08); cursor: pointer; }
+    .drow { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-top: 1px solid #ecf1ed; }
+    .qrow { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-top: 1px solid #ecf1ed; cursor: pointer; }
+    .qrow:hover { background: #eef3ef; }
+  </style>
+</helmet>
+
+<div style="display: flex; flex-direction: column; height: 900px; background: #f4f7f4;">
+
+  <div style="display: flex; align-items: center; gap: 14px; height: 46px; padding: 0 18px; background: #fff; border-bottom: 1px solid #dfe7e1; flex-shrink: 0;">
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="#0e6b4e"><path d="M7 0l7 7-7 7-7-7z"/></svg>
+      <span style="font-size: 13.5px; font-weight: 700; letter-spacing: -.01em;">HMIS</span>
+    </div>
+    <span class="mo" style="font-size: 11px; color: #8ea69a;">demo.desai</span>
+    <span style="flex-grow: 1;"></span>
+    <span class="tag">taps this visit</span>
+    <span class="mo" style="font-size: 15px; font-weight: 700; color: {{ tapColor }};">{{ taps }}</span>
+    <button class="sec" style="height: 26px; font-size: 11px;" onclick="{{ reset }}">Start over</button>
+  </div>
+
+  <div style="display: flex; flex-grow: 1; min-height: 0;">
+
+    <aside style="width: 264px; flex-shrink: 0; padding: 13px; display: flex; flex-direction: column; gap: 9px; border-right: 1px solid #dfe7e1; background: #f4f7f4; overflow-y: auto;">
+      <div style="display: flex; align-items: baseline; gap: 8px;">
+        <span class="tag">My queue</span>
+        <span class="mo" style="font-size: 10.5px; color: #8ea69a;">tap to switch</span>
+      </div>
+      <div class="box" style="padding: 0; overflow: hidden;">
+        <sc-for list="{{ queue }}" as="q" hint-placeholder-count="2">
+          <div class="qrow" style="background: {{ q.bg }}; box-shadow: {{ q.bar }}; border-top: 1px solid #ecf1ed;" onclick="{{ q.pick }}">
+            <span class="mo" style="font-size: 16px; font-weight: 700;">{{ q.token }}</span>
+            <div style="flex-grow: 1; min-width: 0;">
+              <div style="font-size: 12.5px; font-weight: 600;">{{ q.name }}</div>
+              <div class="mo" style="font-size: 10px; color: #5c6f66;">{{ q.sub }}</div>
+            </div>
+            <sc-if value="{{ q.flag }}" hint-placeholder-val="{{ true }}"><span class="pill rd">{{ q.flagText }}</span></sc-if>
+          </div>
+        </sc-for>
+      </div>
+      <div class="tag" style="padding-top: 6px;">Try both — the doses and the dangers change</div>
+      <span style="flex-grow: 1;"></span>
+      <div style="font-size: 11px; color: #8ea69a; line-height: 1.55;">A prototype of the redesign. Nothing here is saved and no patient is real.</div>
+    </aside>
+
+    <main style="flex-grow: 1; min-width: 0; padding: 13px 16px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto;">
+
+      <div class="box" style="padding: 11px 15px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; flex-shrink: 0;">
+        <div>
+          <div style="font-size: 18px; font-weight: 700; letter-spacing: -.01em;">{{ p.name }}</div>
+          <div class="mo" style="font-size: 10.5px; color: #8ea69a;">{{ p.uhid }} · {{ p.age }}</div>
+        </div>
+        <div style="display: flex; gap: 7px; align-items: center; flex-wrap: wrap;">
+          <span class="pill on"><span class="mo">{{ p.weight }}</span></span>
+          <span class="pill"><span class="mo">{{ p.bp }}</span></span>
+          <span class="pill"><span class="mo">{{ p.pulse }}</span></span>
+          <span class="pill {{ p.tempCls }}"><span class="mo">{{ p.temp }}</span></span>
+        </div>
+        <span style="flex-grow: 1;"></span>
+        <span class="pill {{ p.allergyCls }}">{{ p.allergy }}</span>
+      </div>
+
+      <!-- ══ STAGE 1 · COMPLAINT ══ -->
+      <sc-if value="{{ s1open }}" hint-placeholder-val="{{ true }}">
+        <div class="stage" style="display: flex; flex-direction: column; gap: 11px;">
+          <div style="display: flex; align-items: baseline; gap: 9px;">
+            <span class="tag" style="color: #0e6b4e;">1 · Complaint</span>
+            <span style="font-size: 12.5px; color: #5c6f66;">Tap what they came in with.</span>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 7px;">
+            <sc-for list="{{ chips }}" as="c" hint-placeholder-count="8">
+              <button class="chip {{ c.cls }}" onclick="{{ c.pick }}">{{ c.en }} <span class="dev" style="font-size: 11.5px; opacity: .55;">{{ c.hi }}</span></button>
+            </sc-for>
+          </div>
+          <div style="display: flex; align-items: center; gap: 9px;">
+            <button class="pri" onclick="{{ assess }}" disabled="{{ noPick }}">Assess <span class="kb" style="border-color: rgba(255,255,255,.3); background: rgba(255,255,255,.12); color: #d9efe4;">⏎</span></button>
+            <span style="font-size: 12px; color: #8ea69a;">or type — typing is never taken away</span>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ s1done }}" hint-placeholder-val="{{ false }}">
+        <div class="done" onclick="{{ back1 }}">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#0e6b4e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 4.5L6.5 12 2.5 8"/></svg>
+          <span class="tag" style="color: #0e6b4e;">Complaint</span>
+          <span style="font-size: 13px; font-weight: 600; color: #0e6b4e;">{{ complaintLine }}</span>
+          <span style="flex-grow: 1;"></span>
+          <span class="tag" style="color: rgba(14,107,78,.6);">tap to change</span>
+        </div>
+      </sc-if>
+
+      <!-- ══ STAGE 2 · ASSESS ══ -->
+      <sc-if value="{{ s2open }}" hint-placeholder-val="{{ false }}">
+        <div class="stage" style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; align-items: baseline; gap: 9px;">
+            <span class="tag" style="color: #0e6b4e;">2 · Assess</span>
+            <span style="font-size: 12.5px; color: #5c6f66;">Matched on your words. No model in this path.</span>
+          </div>
+          <sc-if value="{{ noSyndrome }}" hint-placeholder-val="{{ true }}">
+            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+              <sc-for list="{{ hits }}" as="h" hint-placeholder-count="2">
+                <button class="chip" onclick="{{ h.pick }}" style="height: 38px;">
+                  {{ h.name }} <span class="mo" style="font-size: 10.5px; color: #8ea69a;">{{ h.icd }}</span>
+                </button>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ hasSyndrome }}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; align-items: baseline; gap: 9px;">
+              <span style="font-size: 14.5px; font-weight: 700;">{{ syndromeName }}</span>
+              <span class="mo" style="font-size: 10.5px; color: #8ea69a;">{{ icd10 }}</span>
+              <span style="flex-grow: 1;"></span>
+              <span class="pill on">{{ bandLabel }}</span>
+            </div>
+
+            <sc-for list="{{ cards }}" as="c" hint-placeholder-count="2">
+              <div style="border-radius: 7px; padding: 10px 12px; border: 1px solid {{ c.line }}; background: {{ c.bg }}; display: flex; gap: 11px; align-items: flex-start;">
+                <div style="flex-grow: 1; min-width: 0;">
+                  <div style="font-size: 12.5px; font-weight: 700; color: {{ c.fg }};">{{ c.title }}</div>
+                  <div style="font-size: 12px; color: #5c6f66; margin-top: 2px; line-height: 1.5;">{{ c.detail }}</div>
+                  <div class="mo" style="font-size: 9.5px; color: #8ea69a; margin-top: 4px;">{{ c.source }}</div>
+                </div>
+                <button class="sec" style="height: 30px; font-size: 11.5px; flex-shrink: 0;" onclick="{{ c.act }}">{{ c.action }}</button>
+              </div>
+            </sc-for>
+
+            <div style="border: 1px solid #ecf1ed; border-radius: 7px; overflow: hidden;">
+              <sc-for list="{{ lines }}" as="l" hint-placeholder-count="3">
+                <div class="drow">
+                  <div style="flex-grow: 1; min-width: 0;">
+                    <div style="font-size: 13px; font-weight: 600;">{{ l.drug }}</div>
+                    <div class="mo" style="font-size: 10.5px; color: #8ea69a;">{{ l.freq }}</div>
+                  </div>
+                  <sc-if value="{{ l.swapped }}" hint-placeholder-val="{{ false }}"><span class="pill rd">swapped</span></sc-if>
+                  <span class="mo" style="font-size: 13px; font-weight: 700; color: {{ l.doseColor }};">{{ l.dose }}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 9px;">
+              <button class="pri" onclick="{{ accept }}">Accept regimen <span class="kb" style="border-color: rgba(255,255,255,.3); background: rgba(255,255,255,.12); color: #d9efe4;">A</span></button>
+              <button class="sec" onclick="{{ accept }}">Edit lines first</button>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+      <sc-if value="{{ s2done }}" hint-placeholder-val="{{ false }}">
+        <div class="done" onclick="{{ back2 }}">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#0e6b4e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 4.5L6.5 12 2.5 8"/></svg>
+          <span class="tag" style="color: #0e6b4e;">Assess</span>
+          <span style="font-size: 13px; font-weight: 600; color: #0e6b4e;">{{ syndromeName }} · {{ lineCount }} lines</span>
+          <span style="flex-grow: 1;"></span>
+          <span class="tag" style="color: rgba(14,107,78,.6);">tap to change</span>
+        </div>
+      </sc-if>
+
+      <!-- ══ STAGE 3 · CLOSE ══ -->
+      <sc-if value="{{ s3open }}" hint-placeholder-val="{{ false }}">
+        <div class="stage" style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; align-items: baseline; gap: 9px;">
+            <span class="tag" style="color: #0e6b4e;">3 · Close</span>
+            <span style="font-size: 12.5px; color: #5c6f66;">The note, the diagnosis and the ICD-10 are already written.</span>
+          </div>
+          <div>
+            <div class="tag" style="margin-bottom: 6px;">Review in</div>
+            <div style="display: flex; gap: 7px;">
+              <sc-for list="{{ follows }}" as="f" hint-placeholder-count="3">
+                <button class="chip {{ f.cls }}" onclick="{{ f.pick }}">{{ f.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+          <div>
+            <div class="tag" style="margin-bottom: 6px;">Advice — the department's own, tap to include</div>
+            <div style="display: flex; gap: 7px; flex-wrap: wrap;">
+              <sc-for list="{{ advice }}" as="a" hint-placeholder-count="3">
+                <button class="chip {{ a.cls }}" onclick="{{ a.pick }}">{{ a.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 9px;">
+            <button class="pri" onclick="{{ complete }}">Complete consultation <span class="kb" style="border-color: rgba(255,255,255,.3); background: rgba(255,255,255,.12); color: #d9efe4;">Ctrl ⏎</span></button>
+            <span style="font-size: 12px; color: #8ea69a;">prints the slip and calls the next token</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ══ DONE ══ -->
+      <sc-if value="{{ finished }}" hint-placeholder-val="{{ false }}">
+        <div class="stage" style="border-color: rgba(14,107,78,.35); background: rgba(14,107,78,.08); display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <svg width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="#0e6b4e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 4.5L6.5 12 2.5 8"/></svg>
+            <span style="font-size: 16px; font-weight: 700; color: #0e6b4e;">{{ p.name }} — done</span>
+          </div>
+          <div style="display: flex; gap: 26px; flex-wrap: wrap;">
+            <div><div class="mo" style="font-size: 28px; font-weight: 600; color: #0e6b4e;">{{ taps }}</div><div class="tag">taps</div></div>
+            <div><div class="mo" style="font-size: 28px; font-weight: 600; color: #0e6b4e;">0</div><div class="tag">values typed</div></div>
+            <div><div class="mo" style="font-size: 28px; font-weight: 600; color: #0e6b4e;">{{ lineCount }}</div><div class="tag">lines prescribed</div></div>
+          </div>
+          <div style="font-size: 12.5px; color: #5c6f66; line-height: 1.6;">{{ doneNote }}</div>
+          <div><button class="sec" onclick="{{ reset }}">Run it again</button></div>
+        </div>
+      </sc-if>
+
+      <span style="flex-grow: 1;"></span>
+    </main>
+  </div>
+
+  <div style="flex-shrink: 0; background: #132420; color: #d9efe4; padding: 10px 16px; display: flex; align-items: center; gap: 14px;">
+    <span class="tag" style="color: #7fa392;">Desk agent</span>
+    <span style="font-size: 12px; flex-grow: 1;">{{ agentLine }}</span>
+    <span class="kb" style="border-color: #2c443a; background: #1c332b; color: #7fa392;">F2</span>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+const GOLD = { line: "rgba(221,143,28,.45)", bg: "rgba(221,143,28,.10)", fg: "#dd8f1c" };
+const RED  = { line: "rgba(178,58,48,.4)",   bg: "rgba(178,58,48,.08)",  fg: "#b23a30" };
+const INFO = { line: "#dfe7e1",              bg: "#fff",                 fg: "#132420" };
+
+const PATIENTS = {
+  aarav: {
+    name: "Aarav Kumar", uhid: "U00110152", age: "2y male", weight: "7 kg",
+    bp: "BP 110/70", pulse: "P 96", temp: "T 38.4 °C", tempCls: "rd",
+    allergy: "No allergy on file", allergyCls: "", token: "7", sub: "2y · 7 kg",
+    band: "Child regimen · 7 kg", flag: false, flagText: "",
+    lines: [
+      { drug: "Paracetamol Suspension 250mg/5ml", freq: "SOS · 3 days", dose: "2 mL (87.5 mg)", doseColor: "#0e6b4e", swapped: false },
+      { drug: "Amoxicillin + Clavulanate 228.5mg/5ml", freq: "BD · 5 days", dose: "needs review", doseColor: "#dd8f1c", swapped: false },
+      { drug: "Levocetirizine + Ambroxol Syrup", freq: "HS · 5 days", dose: "2.5 mL", doseColor: "#0e6b4e", swapped: false },
+    ],
+    cards: [
+      { ...GOLD, title: "1 paediatric dose awaits clinical review",
+        detail: "The bundle gives this one as a worked example for a 14 kg child, not as a mg/kg rate. The example is shown; no dose has been calculated.",
+        source: "DERIVED_UNREVIEWED", action: "Show example" },
+      { ...INFO, title: "AWaRe Access — Amoxicillin + Clavulanic acid",
+        detail: "Empirical cap 5 days. Culture before starting: no.",
+        source: "AMSP_AMOX · WHO AWaRe", action: "De-escalate" },
+    ],
+    doneNote: "Two of the three doses were computed for 7 kg. The third carries its reason instead of a number, so nothing unsigned can print.",
+  },
+  rekha: {
+    name: "Rekha Sharma", uhid: "U00110153", age: "29y female", weight: "58 kg",
+    bp: "BP 118/76", pulse: "P 88", temp: "T 37.8 °C", tempCls: "",
+    allergy: "Penicillin", allergyCls: "rd", token: "8", sub: "29y · penicillin",
+    band: "Adult regimen", flag: true, flagText: "PEN",
+    lines: [
+      { drug: "Paracetamol Tablets 650mg", freq: "BD · 3 days", dose: "1 tab", doseColor: "#0e6b4e", swapped: false },
+      { drug: "Azithromycin Tablets 500mg", freq: "OD · 3 days", dose: "needs review", doseColor: "#dd8f1c", swapped: true },
+      { drug: "Levocetirizine 5mg + Ambroxol 60mg", freq: "HS · 5 days", dose: "1 tab", doseColor: "#0e6b4e", swapped: false },
+      { drug: "Pantoprazole 40mg", freq: "OD · 5 days", dose: "1 tab", doseColor: "#0e6b4e", swapped: false },
+    ],
+    cards: [
+      { ...RED, title: "Allergy on file — 1 line changed",
+        detail: "Amoxicillin + Clavulanic Acid 625mg → Azithromycin Tablets 500mg. A macrolide avoids the beta-lactam.",
+        source: "ALLERGY_RULE 1 · Penicillin", action: "Show why" },
+      { ...RED, title: "Is she pregnant?",
+        detail: "This hospital records no pregnancy status anywhere. Nothing in this regimen is flagged, but the question is unanswered.",
+        source: "NO_PREGNANCY_FIELD", action: "Answer" },
+      { ...GOLD, title: "Cumulative QTc risk — 3 points",
+        detail: "Azithromycin (2) came in with the allergy swap; Pantoprazole (1) was already here. Baseline ECG if there is any history.",
+        source: "QTC_AZITH + QTC_PANTO · CredibleMeds", action: "Swap out" },
+    ],
+    doneNote: "The allergy swap introduced azithromycin, and the QTc meter caught what that did to the total. One guardrail noticed another's substitution.",
+  },
+};
+
+const CHIPS = [
+  ["fever", "बुखार"], ["sore throat", "गले में दर्द"], ["cough", "खाँसी"], ["body ache", "बदन दर्द"],
+  ["loose motions", "दस्त"], ["vomiting", "उल्टी"], ["burning urine", "पेशाब में जलन"], ["wheezing", "घरघराहट"],
+];
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = this.fresh("aarav");
+  }
+  fresh(who) {
+    return { who, stage: 1, picked: [], syndrome: null, followUp: 5, advice: [], taps: 0, finished: false };
+  }
+  tap(patch) {
+    this.setState({ ...patch, taps: this.state.taps + 1 });
+  }
+  renderVals() {
+    const st = this.state;
+    const p = PATIENTS[st.who];
+    const picked = st.picked;
+
+    return {
+      p, taps: st.taps,
+      tapColor: st.taps <= 7 ? "#0e6b4e" : "#dd8f1c",
+      reset: () => this.setState(this.fresh(st.who)),
+
+      queue: Object.entries(PATIENTS).map(([k, v]) => ({
+        token: v.token, name: v.name, sub: v.sub, flag: v.flag, flagText: v.flagText,
+        bg: k === st.who ? "rgba(14,107,78,.08)" : "#fff",
+        bar: k === st.who ? "inset 3px 0 0 #0e6b4e" : "none",
+        pick: () => this.setState(this.fresh(k)),
+      })),
+
+      // stage 1
+      s1open: st.stage === 1,
+      s1done: st.stage > 1,
+      chips: CHIPS.map(([en, hi]) => ({
+        en, hi, cls: picked.includes(en) ? "on" : "",
+        pick: () => this.tap({ picked: picked.includes(en) ? picked.filter((x) => x !== en) : [...picked, en] }),
+      })),
+      noPick: picked.length === 0,
+      complaintLine: picked.length === 0 ? "—" : picked.join(" · "),
+      assess: () => this.tap({ stage: 2 }),
+      back1: () => this.setState({ stage: 1, syndrome: null, finished: false }),
+
+      // stage 2
+      s2open: st.stage === 2,
+      s2done: st.stage > 2,
+      noSyndrome: st.syndrome === null,
+      hasSyndrome: st.syndrome !== null,
+      hits: [
+        { name: "Acute Upper Respiratory Infection", icd: "J06.9", pick: () => this.tap({ syndrome: "uri" }) },
+        { name: "Acute Bronchitis", icd: "J20.9", pick: () => this.tap({ syndrome: "uri" }) },
+      ],
+      syndromeName: "Acute Upper Respiratory Infection",
+      icd10: "J06.9",
+      bandLabel: p.band,
+      cards: p.cards.map((c) => ({ ...c, act: () => this.tap({}) })),
+      lines: p.lines,
+      lineCount: p.lines.length,
+      accept: () => this.tap({ stage: 3 }),
+      back2: () => this.setState({ stage: 2, finished: false }),
+
+      // stage 3
+      s3open: st.stage === 3 && !st.finished,
+      follows: [3, 5, 7].map((d) => ({
+        label: `${d} days`, cls: st.followUp === d ? "on" : "",
+        pick: () => this.tap({ followUp: d }),
+      })),
+      advice: ["Warm fluids", "Steam inhalation", "Return if breathless"].map((a) => ({
+        label: a, cls: st.advice.includes(a) ? "on" : "",
+        pick: () => this.tap({ advice: st.advice.includes(a) ? st.advice.filter((x) => x !== a) : [...st.advice, a] }),
+      })),
+      complete: () => this.tap({ finished: true }),
+
+      finished: st.finished,
+      doneNote: p.doneNote,
+      agentLine: st.syndrome === null
+        ? "I read this consultation and the clinical rules behind it. Press F2 to ask about a drug, a dose or an interaction."
+        : "Ask me why any line is here — every answer names the rule it came from.",
+    };
+  }
+}
+</script>
+</body>
+</html>
