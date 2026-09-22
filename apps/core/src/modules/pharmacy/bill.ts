@@ -11,7 +11,9 @@ import { getEncounter } from "../opd";
 import { dispenseBilled } from "./events";
 import { PharmacyError } from "./errors";
 import type { DispenseRow } from "./queue";
+import { counterPacks, mergeBillRows } from "./bill-rows";
 import { priceBatchSale } from "./price";
+import type { BillRowPack, RowGroup } from "./bill-rows";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
 import { requireActiveSaleItem } from "./sale-items";
 import type { Actor } from "@hmis/contracts";
@@ -28,7 +30,7 @@ export type BillInput = {
   tags?: string[];
 };
 
-type PricedLinePlan = { lineId: string; lineIdx: number } & PricedBatchLine;
+type PricedLinePlan = { lineId: string; lineIdx: number; itemId: string } & PricedBatchLine;
 
 /**
  * R-1 — EVERY LINE IS PRICED FROM THE BATCH IT WAS PICKED FROM: `batchUnitPaise` (the printed MRP
@@ -46,7 +48,7 @@ async function priceLines(db: Db, dispenseId: string, now: Date): Promise<Priced
       throw new PharmacyError("dispense_not_in_state", `line ${String(line.lineIdx + 1)} has not been picked`, { lineIdx: line.lineIdx });
     }
     const priced = await priceBatchLine(db, gstByCategory, { itemId: line.itemId, batchId: line.batchId, qtyBase: line.qtyBase }, now);
-    plan.push({ lineId: line.id, lineIdx: line.lineIdx, ...priced });
+    plan.push({ lineId: line.id, lineIdx: line.lineIdx, itemId: line.itemId, ...priced });
   }
   if (plan.length === 0) throw new PharmacyError("nothing_to_dispense", "no open line to bill");
   return plan;
@@ -148,15 +150,50 @@ export function winnerOf(
       : row.unitPaise === planned.batchUnitPaise ? "batch_mrp" : "tariff";
 }
 
+/** A draft line as a person reads it: a drug's main line with its pack residue folded in, and its quantity in packs. */
+export type DisplayPricedLine = PricedDraft["lines"][number] & { pack: BillRowPack | null };
+export type DisplayDraft = Omit<PricedDraft, "lines"> & { lines: DisplayPricedLine[] };
+
+/**
+ * ONE ROW PER DRUG (loose-MRP ruling): the residue lines `invoiceInputsOf` adds are folded into their
+ * main line here — money summed, never re-priced — so no screen shows "× 1 ₹0.10" as a second
+ * drug. The totals are billing's, untouched.
+ */
+export function displayDraft(
+  draft: PricedDraft, plan: readonly { input: InvoiceLineInput; residual: InvoiceLineInput | null; itemId: string }[],
+  packs: ReadonlyMap<string, RowGroup["pack"]>,
+): DisplayDraft {
+  const groups: RowGroup[] = plan.map((p) => ({ mainId: p.input.lineId, residueId: p.residual?.lineId ?? null, pack: packs.get(p.itemId) ?? null }));
+  const rows = mergeBillRows(draft.lines.map((l) => ({
+    id: l.lineId, serviceName: l.serviceName, qty: l.qty, unitPaise: l.unitPaise, grossPaise: l.grossPaise,
+    discountPaise: l.discountPaise, cgstPaise: l.gst.cgstPaise, sgstPaise: l.gst.sgstPaise, netPaise: l.netPaise,
+  })), groups);
+  const byId = new Map(draft.lines.map((l) => [l.lineId, l]));
+  return {
+    ...draft,
+    lines: rows.map((r) => {
+      const parts = r.lineIds.map((id) => byId.get(id)!);
+      const main = parts[0]!;
+      return {
+        ...main, grossPaise: r.grossPaise, discountPaise: r.discountPaise, netPaise: r.netPaise,
+        taxableBasePaise: parts.reduce((n, x) => n + x.taxableBasePaise, 0),
+        gst: { ...main.gst, cgstPaise: r.cgstPaise, sgstPaise: r.sgstPaise },
+        pack: r.pack,
+      };
+    }),
+  };
+}
+
 /** What the window shows before a rupee is taken: the priced draft, through billing's own preview. */
-export async function previewDispenseBill(db: Db, actor: Actor, dispenseId: string, now: Date): Promise<PricedDraft> {
+export async function previewDispenseBill(db: Db, actor: Actor, dispenseId: string, now: Date): Promise<DisplayDraft> {
   const d = await getDispenseRow(db, dispenseId);
   if (d.status !== "picked" && d.status !== "billed") throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} is ${d.status}, not picked`, { status: d.status });
   const encounter = await getEncounter(db, d.encounterId);
   if (encounter === null) throw new PharmacyError("not_found", `encounter ${d.encounterId} not found`);
   const plan = await priceLines(db, dispenseId, now);
   void actor;
-  return previewInvoice(db, { patientId: d.patientId, encounterId: encounter.id, lines: plan.flatMap(invoiceInputsOf) }, now);
+  const draft = await previewInvoice(db, { patientId: d.patientId, encounterId: encounter.id, lines: plan.flatMap(invoiceInputsOf) }, now);
+  return displayDraft(draft, plan, await counterPacks(db, plan.map((p) => p.itemId)));
 }
 
 /**

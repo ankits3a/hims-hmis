@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../lib/auth";
 import { askPrescriber, fetchPrecheck, pharmacyErrorText, setShelfLocation } from "../../lib/pharmacy-api";
+import { quoteAmountPaise } from "../../lib/pharmacy-bill";
 import { ResolveSheet } from "./resolve";
 import { CopilotOffer, firstLineNeedingHelp } from "./copilot";
 
@@ -386,7 +387,7 @@ function LineRow({
   const qtyNow = qty ?? line.qtyBase;
   const money = line.quote == null || qtyNow === null || declined
     ? null
-    : { amount: rupees(line.quote.unitPaise * qtyNow), rate: t("pharmacyDesk.eachRate", { amount: rupees(line.quote.unitPaise) }) };
+    : { amount: rupees(quoteAmountPaise(line.quote, qtyNow)), rate: t("pharmacyDesk.eachRate", { amount: rupees(line.quote.unitPaise) }) };
   const label = `${rx.drug} ${sigOf(rx)}`;
   const shownQty = qtyLabels(declined ? null : qtyNow, sub === null && res === null ? packOf(line.item) : null, line.item?.baseUom ?? res?.baseUom ?? "");
 

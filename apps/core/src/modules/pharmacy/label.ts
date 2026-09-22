@@ -1,7 +1,9 @@
 import { medicinesByIds } from "../formulary";
 import { fromBase, getBatch, itemUomRows, itemsByIds } from "../materials";
 import { getPatientSummaries } from "../patients";
+import { billRowsForInvoice } from "./bill-rows";
 import { PharmacyError } from "./errors";
+import type { BillRow } from "./bill-rows";
 import { personName, registrationAt } from "./pharmacists";
 import { getDispenseRow, linesOf } from "./queue";
 import type { Actor } from "@hmis/contracts";
@@ -35,6 +37,11 @@ export type LabelData = {
    * was current when they did. Null before the verify.
    */
   pharmacist: { name: string; council: string | null; registrationNo: string | null } | null;
+  /**
+   * The bill as a person reads it once issued — one row per drug, a pack residue folded into its
+   * drug (loose-MRP ruling, `bill-rows.ts`). Null before the bill.
+   */
+  billRows: BillRow[] | null;
 };
 
 /** Everything the counter prints per pack — read after the pick, so a batch and its expiry exist. Alias-safe. */
@@ -79,5 +86,6 @@ export async function labelFor(db: Db, actor: Actor, dispenseId: string): Promis
     dispenseNo: d.dispenseNo, status: d.status,
     patient: { display: summary.alias ?? summary.name ?? summary.uhid, uhid: summary.uhid },
     handedOverAt: d.handedOverAt, lines: out, pharmacist,
+    billRows: d.invoiceId === null ? null : await billRowsForInvoice(db, d.invoiceId, lines),
   };
 }

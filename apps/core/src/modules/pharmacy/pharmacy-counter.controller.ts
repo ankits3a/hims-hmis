@@ -14,6 +14,7 @@ import type { PatientRail } from "./patient-rail";
 import { confirmSlip, getDispense, listQueue } from "./queue";
 import type { Quote } from "./quote";
 import { billDispense, previewDispenseBill } from "./bill";
+import type { DisplayDraft } from "./bill";
 import { handOverDispense } from "./handover";
 import { labelFor } from "./label";
 import { pickDispense } from "./pick";
@@ -42,7 +43,6 @@ import type { FindResult } from "./claim";
 import type { DispenseView, QueueRow } from "./queue";
 import type { CheckedAlternative, LinePrecheck } from "./verify";
 import type { RetailShelfEntry } from "./retail";
-import type { PricedDraft } from "../billing";
 import type { LabelData } from "./label";
 
 const claimBody = z.object({ dispenseId: idSchema, door: z.enum(["rx_qr", "patient_qr", "token", "uhid"]) });
@@ -304,7 +304,7 @@ export class PharmacyCounterController {
 
   @RequirePermission("pharmacy.dispense.place", "hospital")
   @Get("dispenses/:id/bill/preview")
-  async preview(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<PricedDraft> {
+  async preview(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<DisplayDraft> {
     try {
       return await previewDispenseBill(this.db, actor, id, new Date());
     } catch (e) {

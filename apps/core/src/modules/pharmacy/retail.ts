@@ -19,6 +19,8 @@ import {
 import { runRxChecks } from "../opd";
 import { captureDocument, getPatient, nearMatches, registerPatient, resolvePatientId } from "../patients";
 import { gstCategoryMap, invoiceInputsOf, mainRowsOf, priceBatchLine, winnerOf } from "./bill";
+import { billRowsForInvoice } from "./bill-rows";
+import type { BillRow } from "./bill-rows";
 import {
   DOWNTIME_BACKFILL_DAYS, OPD_PHARMACY_STORE_CODE, REFUSED_FLAGS, REGISTER_FLAGS, RETAIL_PHARMACY_STORE_CODE, RETAIL_REF_TYPE,
   RETAIL_RETURN_REF_TYPE, SCHEDULED_FLAGS, isIsoDate, istDateOf,
@@ -901,6 +903,8 @@ export type RetailSaleView = {
     /** P19b — what has come back of this line so far. */
     returnedQtyBase: number;
   }[];
+  /** The bill as a person reads it: one row per drug, a pack residue folded in (loose-MRP ruling, `bill-rows.ts`). */
+  billRows: BillRow[] | null;
 };
 
 /** One sale, with its customer: a PHI read, logged by the patient module. */
@@ -947,6 +951,7 @@ export async function getRetailSale(db: Db, actor: Actor, saleId: string): Promi
     },
     pharmacistRegNo: sale.pharmacistRegNo,
     lines: out,
+    billRows: await billRowsForInvoice(db, sale.invoiceId, lines),
   };
 }
 

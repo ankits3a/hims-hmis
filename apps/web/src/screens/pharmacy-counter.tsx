@@ -9,6 +9,7 @@ import {
 import { fetchInvoicePrint } from "../lib/billing-api";
 import { CounterDayStrip } from "../components/counter-day-strip";
 import { InvoicePrint } from "../components/invoice-print";
+import { billQtyText } from "../lib/pharmacy-bill";
 import { PharmacyBillAnnex } from "../components/pharmacy-bill-annex";
 import { DispenseLabel } from "../components/dispense-label";
 import { Button } from "@/components/ui/button";
@@ -210,7 +211,7 @@ export function PharmacyCounter(): React.ReactElement {
         <Button type="button" variant="outline" className="no-print" onClick={() => setBillFor(null)}>{t("pharmacyCounter.backToCounter")}</Button>
         {failed !== null && <p role="alert" className="text-sm text-red-700">{pharmacyErrorText(failed, t)}</p>}
         {billPrint.data !== undefined && billLabel.data !== undefined && (
-          <InvoicePrint data={billPrint.data} annex={<PharmacyBillAnnex label={billLabel.data} />} />
+          <InvoicePrint data={billPrint.data} rows={billLabel.data.billRows ?? null} annex={<PharmacyBillAnnex label={billLabel.data} />} />
         )}
       </div>
     );
@@ -431,7 +432,7 @@ export function PharmacyCounter(): React.ReactElement {
                   <table className="w-full text-sm">
                     <tbody>
                       {draft.lines.map((l) => (
-                        <tr key={l.lineId}><td>{l.serviceName} × {l.qty}</td><td className="text-right">{rupees(l.unitPaise)}</td><td className="text-right">{rupees(l.netPaise)}</td></tr>
+                        <tr key={l.lineId} data-testid="counter-draft-line"><td>{l.serviceName} {billQtyText(t, l.qty, l.pack)}</td><td className="text-right">{l.pack != null && l.pack.packs > 0 && l.pack.packPaise !== null ? t("pharmacyBill.packRate", { amount: rupees(l.pack.packPaise), pack: l.pack.uom }) : rupees(l.unitPaise)}</td><td className="text-right">{rupees(l.netPaise)}</td></tr>
                       ))}
                       <tr className="border-t font-medium"><td>{t("pharmacyCounter.payable")}</td><td></td><td className="text-right" data-testid="payable">{rupees(draft.totals.netPayablePaise)}</td></tr>
                     </tbody>

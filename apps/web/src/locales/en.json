@@ -4947,7 +4947,11 @@
     "qty": "Qty",
     "substitutedFor": "(for {{brand}})",
     "dispensedBy": "Dispensed by {{name}}",
-    "reg": "Reg. {{no}}"
+    "reg": "Reg. {{no}}",
+    "packsLoose": "{{packs}} {{pack}} + {{loose}} {{unit}}",
+    "packsOnly": "{{packs}} {{pack}}",
+    "unitsOnly": "{{qty}} {{unit}}",
+    "packRate": "{{amount}}/{{pack}}"
   },
   "materialsCounts": {
     "title": "Stock counts",

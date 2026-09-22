@@ -171,6 +171,12 @@ describe("returns at the walk-in counter (P19b)", () => {
     expect(sum((l) => l.taxableBasePaise) + sum((l) => l.cgstPaise) + sum((l) => l.sgstPaise)).toBe(4730);
     // Carving per line vs on the whole 4730 differs only by the per-line rounding of each head.
     expect(Math.abs(sum((l) => l.cgstPaise) - inclusiveTaxHead(4730, 500))).toBeLessThanOrEqual(lines.length - 1);
+    // ONE ROW PER DRUG wherever a person reads the bill: the printed bill's rows fold the residue in.
+    const view = await getRetailSale(db, fx.pharmacist.actor, sale.id);
+    expect(view.billRows?.map((r) => [r.serviceName, r.netPaise, r.pack])).toEqual([
+      ["Dolo 650 tablet", 4730, { uom: "strip", multiplier: 15, packs: 1, loose: 5, baseUom: "tablet", packPaise: 3550 }],
+    ]);
+    expect(view.billRows?.some((r) => r.grossPaise === 10)).toBe(false);
     // The sale line keys on the MAIN invoice line, in base units, as every reader of it expects.
     expect(sale.lines.map((l) => [l.qtyBase, l.unitPaise])).toEqual([[20, 236]]);
 

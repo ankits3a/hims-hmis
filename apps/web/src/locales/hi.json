@@ -4947,7 +4947,11 @@
     "qty": "मात्रा",
     "substitutedFor": "({{brand}} के स्थान पर)",
     "dispensedBy": "{{name}} द्वारा दी गई",
-    "reg": "रजि. {{no}}"
+    "reg": "रजि. {{no}}",
+    "packsLoose": "{{packs}} {{pack}} + {{loose}} {{unit}}",
+    "packsOnly": "{{packs}} {{pack}}",
+    "unitsOnly": "{{qty}} {{unit}}",
+    "packRate": "{{amount}}/{{pack}}"
   },
   "materialsCounts": {
     "title": "स्टॉक गिनती",

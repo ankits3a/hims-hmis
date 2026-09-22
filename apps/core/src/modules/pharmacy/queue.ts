@@ -11,7 +11,7 @@ import { availableQty, getBatch, itemsByIds, itemUomRows, sellableBatchesByItem 
 import { getPatient, getPatientSummaries, listAllergies } from "../patients";
 import { istDateOf } from "./config";
 import { gstCategoryMap } from "./bill";
-import { quoteItem } from "./quote";
+import { quotedAmountPaise, quoteItem } from "./quote";
 import type { Quote } from "./quote";
 import { dispenseQueued } from "./events";
 import { PharmacyError } from "./errors";
@@ -472,7 +472,7 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
   }
   return {
     /* What the ticket comes to at today's shelf prices, over the quantities the check is made against. */
-    quotedTotalPaise: views.reduce((n, v) => n + (v.quote === null || v.qtyBase === null ? 0 : v.quote.unitPaise * v.qtyBase), 0),
+    quotedTotalPaise: views.reduce((n, v) => n + (v.quote === null || v.qtyBase === null ? 0 : quotedAmountPaise(v.quote, v.qtyBase)), 0),
     id: d.id, status: d.status, dispenseNo: d.dispenseNo, orderId: d.orderId, prescriptionId: d.prescriptionId,
     prescriptionVersion: d.prescriptionVersion, encounterId: d.encounterId, storeResourceId: d.storeResourceId,
     scheduled: d.scheduled, invoiceId: d.invoiceId, identityConfirmedVia: d.identityConfirmedVia,

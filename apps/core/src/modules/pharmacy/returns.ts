@@ -9,6 +9,7 @@ import {
 import { dispenseLineReturned } from "./events";
 import { PharmacyError } from "./errors";
 import { gstCategoryMap, priceBatchLine } from "./bill";
+import { residueLinesOf } from "./bill-rows";
 import { requireRegisteredPharmacist } from "./pharmacists";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
 import type { Actor } from "@hmis/contracts";
@@ -147,13 +148,7 @@ async function residueCredits(
   if (plan.length === 0) return plan;
   const invoice = await getInvoice(db, sale.invoiceId);
   if (invoice === null) return plan;
-  const byNo = [...invoice.lines].sort((a, b) => a.lineNo - b.lineNo);
-  const owned = new Set(lines.map((l) => l.invoiceLineId));
-  const residueOf = new Map<string, (typeof byNo)[number]>();
-  for (const [i, row] of byNo.entries()) {
-    const next = byNo[i + 1];
-    if (owned.has(row.id) && next !== undefined && !owned.has(next.id) && next.serviceId === row.serviceId) residueOf.set(row.id, next);
-  }
+  const residueOf = residueLinesOf(invoice.lines, new Set(lines.map((l) => l.invoiceLineId)));
   if (residueOf.size === 0) return plan;
   const credited = await invoiceLineCredits(db, [...residueOf.values()].map((r) => r.id));
   const gst = await gstCategoryMap(db);

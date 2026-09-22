@@ -1,3 +1,4 @@
+import type { WireBillRow, WireBillRowPack } from "./pharmacy-bill";
 import { api, ApiError } from "./api";
 import en from "../locales/en.json";
 
@@ -256,7 +257,8 @@ export async function checkPickScan(id: string, lineIdx: number, code: string): 
 export async function pickDispense(id: string, lines: PickLine[], idempotencyKey: string): Promise<WireDispense> {
   return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/pick`, { lines }, idempotencyKey);
 }
-export type WirePricedLine = { lineId: string; serviceId: string; serviceName: string; qty: number; unitPaise: number; grossPaise: number; discountPaise: number; netPaise: number; gst: { rateBps: number; exempt: boolean } };
+/** `pack`: the server folded a pack residue into this drug's line and says how its quantity reads (loose-MRP ruling). Absent from an older server. */
+export type WirePricedLine = { lineId: string; serviceId: string; serviceName: string; qty: number; unitPaise: number; grossPaise: number; discountPaise: number; netPaise: number; gst: { rateBps: number; exempt: boolean }; pack?: WireBillRowPack | null };
 export type WirePricedDraft = { lines: WirePricedLine[]; totals: { grossPaise: number; discountPaise: number; cgstPaise: number; sgstPaise: number; rawTotalPaise: number; netPayablePaise: number; roundingPaise: number } };
 export async function previewBill(id: string): Promise<WirePricedDraft> {
   return api<WirePricedDraft>("GET", `/pharmacy/dispenses/${id}/bill/preview`);
@@ -273,6 +275,8 @@ export type WireLabel = {
   lines: { lineIdx: number; drug: string; strength: string | null; form: string | null; qtyBase: number; unit: string; packs: string | null; batchNo: string; expiryDate: string | null; directions: string; substitutedFor: string | null }[];
   /** P2 — who verified the dispense, and the registration current then. Absent from an older server. */
   pharmacist?: { name: string; council: string | null; registrationNo: string | null } | null;
+  /** The issued bill, one row per drug (loose-MRP ruling). Null before the bill; absent from an older server. */
+  billRows?: WireBillRow[] | null;
 };
 export async function fetchLabel(id: string): Promise<WireLabel> {
   return api<WireLabel>("GET", `/pharmacy/dispenses/${id}/label`);
@@ -453,6 +457,8 @@ export type WireRetailSale = {
     /** P19b — absent from an older server. */
     returnedQtyBase?: number;
   }[];
+  /** The bill, one row per drug (loose-MRP ruling). Absent from an older server. */
+  billRows?: WireBillRow[] | null;
 };
 export type WireRetailSaleRow = {
   id: string; soldAt: string; soldBy: string; invoiceId: string; invoiceNo: string; netPaise: number;
