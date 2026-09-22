@@ -4129,7 +4129,8 @@
       "input": "Where {{drug}} sits",
       "placeholder": "R-12 · rack 3 · fridge",
       "cancel": "cancel",
-      "change": "change where it sits"
+      "change": "change where it sits",
+      "save": "Save"
     },
     "res": {
       "open": "choose what it is",
@@ -4226,7 +4227,26 @@
       "fefoSoon": "FEFO · give this first — it expires soonest",
       "keyHint": "opens this on the line you are on",
       "closes": "closes"
-    }
+    },
+    "scanBox": {
+      "label": "Scan a pack — it finds its line",
+      "placeholder": "scan any pack on this ticket — ⏎ ticks its line",
+      "noLine": "No open line is waiting for a pack."
+    },
+    "amount": "amount",
+    "menu": {
+      "batch": "Batch & shelf",
+      "qty": "Change the quantity",
+      "decline": "Decline this line"
+    },
+    "partialOwed": "giving {{n}} of {{of}} — say why under ⋯ before the tick counts",
+    "partialSaid": "giving {{n}} of {{of}} — {{reason}}",
+    "qtySheet": {
+      "title": "How many of {{drug}}?",
+      "label": "quantity, in {{uom}}",
+      "done": "Done"
+    },
+    "declineTitle": "Decline {{line}}"
   },
   "pharmacyAuthorise": {
     "title": "The pharmacy asks you to authorise",
