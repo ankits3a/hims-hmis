@@ -2,7 +2,7 @@
 
 **Status: EXECUTED 2026-09-14. Production is live on `8fe7a78c`, migrations 78 → 85. See §11 for
 what actually happened** — including the rehearsal that passed, the two near-misses worth knowing,
-and the one `deploy.sh` fix still open.
+and the `deploy.sh` passphrase fix, which has since **landed** (§11 — do not reimplement it).
 
 Written for `origin/main` @ `dc2bedc` on 2026-09-06 (Phase 11i T7); the run went out at a much later
 tip. The owner runs this. No agent deploys production and none ever will: the classifier blocks it
@@ -58,10 +58,13 @@ behind the same URL.
 ## What can go wrong, and what you do about it
 
 **There is now a way back.** Every image this deploy builds is tagged with its short SHA beside
-`:latest`, and what is *currently* running already carries its own SHA tag, `399f92c`.
-`HMIS_DEPLOY_ROLLBACK_TO=399f92c bash docker/prod/deploy.sh` retags and restarts **without
+`:latest`, and what is *currently* running already carries its own SHA tag.
+`HMIS_DEPLOY_ROLLBACK_TO=<sha> bash docker/prod/deploy.sh` retags and restarts **without
 building and without migrating** — old code on the new schema, which additive migrations permit by
 rule. Step 9 is that command written out even though you will probably never run it.
+**`<sha>` is read off the daemon, never off this page** — §9's loop names the targets that are
+actually resident, because a SHA written into a runbook outlives the image it names. This line
+used to hardcode `399f92c`, and by 2026-09-22 there were zero images at it.
 
 **The one thing a backout cannot undo** is a row the new code wrote while it was serving. Step 4's
 window names them.
@@ -212,19 +215,37 @@ this point: the drill restores into a scratch container and destroys it on every
 >     hmis-prod/db       latest = 399f92c = sha256:f5344ea35a4f
 >     docker images | grep -c c11833d   ->  0
 
-**Nothing to do here. The backout tag already exists:**
+**Nothing to do here. But CHECK THE TRIPLE BY NAME, NOT BY ROW COUNT:**
 
-    docker images | grep 399f92c
+    docker image inspect hmis-prod/server:<sha> hmis-prod/web:<sha> hmis-prod/db:<sha> >/dev/null \
+      && echo "COMPLETE — HMIS_DEPLOY_ROLLBACK_TO=<sha> will be accepted" \
+      || echo "INCOMPLETE — deploy.sh will REFUSE this target by name"
 
-**Expected:** three rows — `server`, `web` and `db`, all at `399f92c`. That is exactly what
-`HMIS_DEPLOY_ROLLBACK_TO` requires: `deploy.sh`'s `IMAGE_REPOS` is all three repositories and it
-`docker image inspect`s each one, refusing by name if any is missing.
+**Expected:** `COMPLETE`. That is exactly what `HMIS_DEPLOY_ROLLBACK_TO` requires: `deploy.sh`'s
+`IMAGE_REPOS` is `$IMAGE_NS/{server,web,db}` and step 1/8 `docker image inspect`s each one in turn,
+refusing **by name** if any is missing — so the check has to ask the same question, per repository.
 
-**AND BE CLEAR WHAT IT ROLLS BACK TO.** `399f92c` is **today's production — the accidental build**.
-It is a real, working backout for *this* deploy: it returns the box to the state it is in right now.
-**It is not a way back to pre-incident code.** The `c11833d` images were overwritten at 12:35 on
-2026-09-06 and there are no dangling images; rebuilding that tip from source and deploying it is a
-different and much larger act than a retag, against a database that has had migrations applied since.
+> **THIS STEP USED TO SAY `docker images | grep <sha>` AND READ THE ROW COUNT. DO NOT.** It is the
+> same false-pass shape as the retag commands above: a check that passes because the operator did
+> what it asked. `grep` matches on the whole line, so the **candidate** namespace counts towards the
+> total, and a repository that is missing the tag altogether can still be made up for by one that
+> has it twice. Measured on this box **2026-09-22**: `docker images | grep b9485337` prints
+> **three** rows — but they are `hmis-candidate/server`, `hmis-prod/server` and `hmis-prod/web`.
+> There is **no `hmis-prod/db:b9485337`**, so `HMIS_DEPLOY_ROLLBACK_TO=b9485337` dies at 1/8 with
+> `no image hmis-prod/db:b9485337 on this host` — the three-row pass was a lie about the only thing
+> the step exists to establish. A count answers "how many things are named this"; the rollback asks
+> "is each of these three repositories tagged", and only `docker image inspect` asks that.
+
+**`399f92c` ITSELF IS GONE — read the live target off the daemon, §9 has the loop.** Verified
+2026-09-22: zero images at that SHA, pruned by `HMIS_SHA_TAGS_KEPT`. The paragraph below is the
+September record of what the backout meant *on the day*, not a live instruction.
+
+**AND BE CLEAR WHAT IT ROLLED BACK TO, ON 2026-09-06.** `399f92c` was **that day's production —
+the accidental build**. It was a real, working backout for *that* deploy: it returned the box to
+the state it was already in. **It was never a way back to pre-incident code.** The `c11833d`
+images were overwritten at 12:35 on 2026-09-06 and there were no dangling images; rebuilding that
+tip from source and deploying it is a different and much larger act than a retag, against a
+database that has had migrations applied since.
 **If someone asks for "a rollback to before the accident", the honest answer is that this path does
 not offer one.**
 
@@ -411,20 +432,71 @@ step 9 will not help.
 
 ## 9. The backout — written as a command even though you will probably never run it
 
-    HMIS_DEPLOY_ROLLBACK_TO=399f92c bash /opt/hmis/docker/prod/deploy.sh
+**READ THE TARGET OFF THE DAEMON. DO NOT TAKE A SHA FROM THIS PAGE.** This step used to carry
+`HMIS_DEPLOY_ROLLBACK_TO=399f92c` written out as a runnable command, and on 2026-09-22 there were
+**zero** images at that SHA — the command in the backout step was dead in the file, which is the one
+place it cannot be. A SHA on this page rots; the daemon does not. The target is the newest
+**COMPLETE** triple that `:latest` is not already pointing at:
+
+    LIVE="$(docker image inspect --format '{{.Id}}' hmis-prod/server:latest)"
+    for sha in $(docker images --format '{{.Tag}}' hmis-prod/server | grep -v '^latest$'); do
+      if docker image inspect "hmis-prod/server:$sha" "hmis-prod/web:$sha" "hmis-prod/db:$sha" >/dev/null; then
+        if [ "$(docker image inspect --format '{{.Id}}' "hmis-prod/server:$sha")" = "$LIVE" ]; then
+          echo "COMPLETE   $sha  <- ALREADY LIVE. Rolling back here changes no code."
+        else
+          echo "COMPLETE   $sha"
+        fi
+      else
+        echo "INCOMPLETE $sha  <- deploy.sh refuses"
+      fi
+    done
+
+**The `ALREADY LIVE` marker is the whole point of the loop and it is why the inspect's stderr is
+left on.** An earlier version of this step printed the live image's Id on a line of its own, below a
+list that carried only tags — nothing in the output mapped one to the other, so an operator reading
+it during an incident picks the FIRST `COMPLETE` row, which on 2026-09-22 was `:latest` itself. That
+rollback prints all eight steps and every Expected bullet below in green while backing nothing out.
+A check that passes because the operator did as it asked is the same false pass §2b exists to
+remove; do not reintroduce it by "tidying" this loop back into a one-liner. For the same reason the
+inspect is NOT redirected with `2>&1`: a daemon-level failure must read as `No such image: ...` on
+your terminal, not be laundered into `INCOMPLETE` for every tag — which would march you straight
+into "no COMPLETE row at all" below and out the wrong door.
+
+`hmis-prod/server` is only the *enumerator* — the tags to try. Completeness is decided by the
+inspect, because the three repositories are pruned independently and `server` having a tag says
+nothing about `db` having it.
+
+**A reading with a date on it, not your target — measured 2026-09-22:** `47b02dfb` COMPLETE but
+**identical to `:latest`**; `61906e51` COMPLETE — the one real step back; `b9485337` **INCOMPLETE**
+(server and web, no `db`) and refused by name. Your loop will print something else.
+
+**Rolling back to the live SHA is not a no-op, and calling it one is how it gets chosen.** No code
+changes, but `deploy.sh` still restores the previous compose file, `caddy/` and `prometheus/` from
+`/opt/hmis-prod/previous` and restarts every service — so an incident ends with the stack bounced,
+the config reverted to whatever preceded the CURRENT deploy, and the faulty code still serving.
+
+    HMIS_DEPLOY_ROLLBACK_TO=<the newest COMPLETE sha that is not :latest> \
+      bash /opt/hmis/docker/prod/deploy.sh
 
 **Expected:**
 
-- `1/8 ROLLBACK — retagging :latest from 399f92c. Nothing is built and nothing is migrated`
-- three `hmis-prod/*:latest now points at 399f92c` lines
+- `1/8 ROLLBACK — retagging :latest from <sha>. Nothing is built and nothing is migrated`
+- three `hmis-prod/*:latest now points at <sha>` lines
 - `restored the previous compose file, caddy/ and prometheus/ from /opt/hmis-prod/previous`
 - `5/8 ROLLBACK — NO MIGRATION, NO SEED, NO GATE (D13)`
 - the stack restarts and the step-8 edge gate runs again
 
-If it refuses with `no image hmis-prod/server:399f92c on this host`, **stop.** It means the three
-images that are on the daemon today have been pruned (`deploy.sh` keeps `HMIS_SHA_TAGS_KEPT`, default
-three, per repository). There is then no way back through this path; say so immediately rather than
-improvising a tag from `:latest`, which is how this step was wrong in the first place.
+If it refuses with `no image hmis-prod/<repo>:<sha> on this host`, **stop — to re-read, not to
+despair.** `deploy.sh` keeps `HMIS_SHA_TAGS_KEPT` (default three) SHA tags **per repository** and
+prunes them independently, so by far the likelier cause is a target whose triple is incomplete, not
+a daemon with nothing on it. The refusal even names the repository that is missing: take it and go
+back to the loop above.
+
+**The old text here said "there is then no way back through this path." Do not repeat it.** It was
+false when checked on 2026-09-22 — two complete triples were resident while the SHA this step named
+had none. Only if the loop prints **no COMPLETE row at all** is there genuinely no way back, and
+then say so immediately rather than improvising a tag from `:latest`, which is how this step was
+wrong in the first place.
 
 **What a rollback cannot undo:** the rows in §4's list, written by the new code while it was
 serving. The schema stays where the deploy left it — 85 after this run — because these migrations
@@ -494,18 +566,29 @@ a failed deploy**, and do not let anyone roll back a healthy build over it.
    repository; a scratch prefix has none and fails. Run here, against production's own repository,
    the rehearsal restores the same backup the weekly drill does — which is the point.
 
-### The mitigation that was applied, and why it should become code
+### The mitigation that was applied, and the code fix it became — **LANDED, do not reimplement**
 
-`/opt/hmis-prod/.env.pgbackrest.pre-deploy-20260913` was taken before the run. `deploy.sh:542`
-derives that file with `cat > "$PGBR_ENV" <<EOF` — **truncate in place** — and
-`PGBACKREST_REPO1_CIPHER_PASS` is the **last line written**, while the code re-mints a passphrase
-whenever it reads that key back empty. A kill inside that window leaves the file without the
-passphrase, and the next deploy mints a new one, at which point **every backup already in the object
-store is unreadable ciphertext, including by us.** The script's own comment calls it "the worst
-failure shape available here" and truncates in place anyway.
+**What was found on 2026-09-13, in `deploy.sh` as it then stood — read this as the finding, not as
+the current code:** `/opt/hmis-prod/.env.pgbackrest.pre-deploy-20260913` was taken before the
+run. The then-`deploy.sh:542` derived that file with `cat > "$PGBR_ENV" <<EOF` — **truncate in
+place** — and `PGBACKREST_REPO1_CIPHER_PASS` was the **last line written**, while the code
+re-minted a passphrase whenever it read that key back empty. A kill inside that window left the
+file without the passphrase, the next deploy minted a new one, and at that point **every backup
+already in the object store would have been unreadable ciphertext, including by us.** The
+script's own comment called it "the worst failure shape available here" and truncated in place
+anyway.
 
-The copy fully mitigated it for this run. **The code fix — write `.tmp`, then `mv` — is still open**
-and is the single highest-value change to `deploy.sh`.
+The copy fully mitigated it for this run, and depended on somebody remembering to take it.
+
+**THE CODE FIX HAS LANDED. Do not reimplement it.** Verified 2026-09-22 by content, not by SHA:
+`/opt/hmis/docker/prod/deploy.sh` is byte-identical to the `origin/main` @ `47b02dfb` checkout
+(both `sha256:647a9a50…`), and the block now reads the passphrase back, **dies** if the file
+exists and carries an empty one, writes `$PGBR_ENV.tmp` under a `trap 'rm -f …' EXIT` so a live
+credential cannot outlive a failure, `chmod 600`s it, and `mv -f`s it into place — one directory,
+so a rename, so no window. **It landed larger than this section asked for:** refusing to mint over
+a damaged file is the load-bearing half, and `.tmp` + `mv` only removes the window that makes that
+case likely. The paragraphs above are kept as the record of how it was found — the `deploy.sh:542`
+line number in them is from before the fix and points at nothing now.
 
 ---
 

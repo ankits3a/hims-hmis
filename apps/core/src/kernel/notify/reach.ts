@@ -279,7 +279,27 @@ async function relayForUser(tx: Tx, userId: string, items: Candidate[], now: Dat
         link: linkFor(item.refType, item.refId),
       },
       dedupeKey: reachDedupeKey(item.alertId, channel),
-      occurredAt: item.createdAt,
+      // THE RELAY'S OWN MINT TIME, NOT THE ALERT'S — the same anchor the digest below has
+      // always used.
+      //
+      // `occurredAt` is the EXPIRY ANCHOR and, here, nothing else: `enqueueNotification` hands
+      // it to `template.expiresAt` and stores it, and no reader reads the column back (the pump
+      // claims and orders on `created_at`, and expires on `expires_at`). So anchoring on
+      // `item.createdAt` gave a `now`-lane relay `alert + 2h` — for a BACKLOG alert, an instant
+      // already in the past. Measured on production 2026-09-21: 28 of 28 `staff_alert_relay_now`
+      // rows had `expires_at < created_at` and went straight to `expired` with attempts=0 and
+      // `last_error` NULL — no adapter call, no error text — appending 28 `notification.expired`
+      // events for messages nobody was ever offered. D5's "never the wall clock" is a REPLAY
+      // defense, and the event replayed here is the LADDER PASS rather than the alert: a re-run
+      // recomputes the same dedupe key and wins nothing, so `now` costs that defense nothing.
+      //
+      // IT DOES CHANGE BEHAVIOUR, for backlog only: a relay for an alert older than its
+      // template's window now lives its full 2h/24h instead of arriving dead, so those messages
+      // are actually attempted. WHETHER a stale obligation should relay AT ALL is the owner's
+      // call and stays exactly where it already was — the selection gate above
+      // (RELAY_HORIZON_DAYS, plus the per-rung lane schedule). No predicate that picks an alert
+      // reads `occurredAt`, so WHICH alerts relay is unchanged; only how long the row lives is.
+      occurredAt: now,
       userId,
       refType: item.refType,
       refId: item.refId,

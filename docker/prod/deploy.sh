@@ -194,6 +194,13 @@ STANZA="hmis"
 CRON_FILE="${HMIS_CRON_FILE:-/etc/cron.d/${PROJECT}-backup}"
 # A first bring-up has to wait for an ACME order; a re-deploy answers in seconds.
 EDGE_HEALTH_TIMEOUT="${HMIS_EDGE_HEALTH_TIMEOUT:-240}"
+# Step 8's SECOND edge question — not "does /api/health answer" but "does it say ok" — and it gets
+# its own budget rather than whatever the ACME wait left of the one above. Step 6 recreates the
+# worker a couple of minutes before step 8 reads it, WORKER_STALE_AFTER_MS is 60s (kernel/config.ts)
+# and a booted worker heartbeats every 1-2s — so `degraded` shortly after a deploy is a worker
+# warming up, not a sick hospital. 90s is that window with room; a stack still degraded after it is
+# degraded for a reason somebody should read.
+EDGE_STATUS_TIMEOUT="${HMIS_EDGE_STATUS_TIMEOUT:-90}"
 # Plan 11c / D10. `prom/alertmanager:v0.27.0` runs as `nobody`, and its /etc/passwd maps that to
 # uid/gid 65534 (verified against the pinned tag, not assumed). The two files this script derives
 # into $DEPLOY_DIR/alertmanager are chmod 600 — GC2, one of them is an SMTP password — so they must
@@ -885,12 +892,41 @@ note "every configuration row the modules require is present"
 # `set -e` an unwrapped non-zero here would kill every deploy from now until the laboratory opens.
 #
 # On UAT (T6) the same script IS the stand-up gate and its exit code is read as the verdict.
+#
+# AND IT IS NOW WRITTEN DOWN, because until today it was not. The only copy of a production census
+# was whatever terminal transcript happened to survive the deploy, and on 2026-09-21 that turned a
+# regression hunt into a scavenger hunt: the rows that would have dated the change had existed,
+# once, on a screen. This is the cheapest record there is of what the hospital's master data looked
+# like at a known deploy, so it lands beside backup.log and restore-drill.log.
+#
+# TIMESTAMPED RATHER THAN APPENDED, unlike the two cron logs next to it: those are a stream of runs,
+# this is a snapshot whose whole use is being diffed against an older snapshot. `date -u` for the
+# reason the cron block gives — this host runs on UTC. $DEPLOY_DIR/log is created in step 2, and
+# its rotation is the runbook's, as the note at the end of step 7 already says of this directory.
+CENSUS_LOG="$DEPLOY_DIR/log/standup-check-$(date -u +%Y%m%d%H%M%S).log"
+# `tee`, not a redirect, so the terminal reads exactly as it did — persistence only.
+#
+# THE PIPE IS AROUND THE WHOLE `if`, NOT AROUND THE `compose run`, AND BOTH REASONS MATTER. The
+# census's own line stays byte-identical, which `deploy-parity.test.ts` pins verbatim (it asserts
+# the census is wrapped in an `if` and is never a bare line, the `set -e` rule above); and `$?` in
+# the RED branch keeps meaning what it has always meant — the CENSUS's exit code, not a pipeline
+# status that `pipefail` would have let `tee` speak for. The verdict lines ride into the file with
+# the rows, which is what you want a saved census to carry.
+#
+# `|| note` rather than `|| true`: a `tee` that cannot open its file still copies its input to the
+# terminal, so a failure here loses the FILE and nothing else — but it must not be silent, and it
+# must not abort. The `||` is what keeps this off `set -e`'s hook, exactly as the wrapping `if`
+# does for the census itself.
+note "census below is also written to $CENSUS_LOG"
+{
 if compose run --rm api node dist/scripts/standup-check.js all; then
   note "standup:check reported every declared row ok"
 else
   note "standup:check reported RED rows (exit $?) — that is the to-do list for the department"
   note "  heads, not a failed deploy. Each line names the runbook step that turns it green."
 fi
+} | tee "$CENSUS_LOG" \
+  || note "COULD NOT WRITE $CENSUS_LOG — the census above is this deploy's only copy of it"
 
 fi
 
@@ -1098,6 +1134,52 @@ case "$body" in
   *) die "$SITE_BASE/api/health answered 200 with a NON-JSON body — the edge is serving the
     SPA where the API should be. First 200 bytes: $(printf '%.200s' "$body")" ;;
 esac
+
+# ...AND JSON-NESS IS A STATEMENT ABOUT ROUTING, NOT ABOUT HEALTH. The `'{'*` test above proves the
+# @api matcher; it does not prove the API is well, and this gate was written to prove both.
+# `/health` is degraded-never-down by design (health/health.controller.ts, D7 — `status` is "ok" or
+# "degraded", never "down"), so {"status":"degraded","worker":"stale",...} is at once the realistic
+# bad state AND a body that starts with `{`: the leg reported GREEN for the exact failure it exists
+# to catch. Production is genuinely ok today, so nothing was missed — but that green was evidence
+# of the edge, not of the hospital. So require the word.
+#
+# IT WAITS INSTEAD OF DYING ON THE FIRST READING, and that is the care this needs. Step 6 recreated
+# the worker minutes ago and `stale` clears 1-2s after the new one boots (see EDGE_STATUS_TIMEOUT
+# at the top of the file for the arithmetic). A gate that read once would abort an entirely good
+# deploy at the LAST step — containers up, migrations applied — over a worker that was merely
+# warming up, which is the failure the `seed-roles` and census comments above spend their length
+# refusing to introduce.
+status_deadline=$(( $(date +%s) + EDGE_STATUS_TIMEOUT ))
+# THE LAST SENTENCE OF THE die BELOW MUST BE TRUE ON BOTH PATHS. The rollback branch skips
+# migration, seed, gate and census and then FALLS THROUGH to steps 6, 7 and 8 — so this gate also
+# runs during an emergency backout, where `:latest`, the compose file, `caddy/` and `prometheus/`
+# have ALREADY been swapped. "nothing has been rolled back" is the opposite of what just happened,
+# and it is the sentence an operator reads mid-incident. One variable, decided once, rather than a
+# sentence that is right on the path it was written for and wrong on the other.
+if [ -n "$ROLLBACK_TO" ]; then
+  status_state="THE ROLLBACK TO $ROLLBACK_TO IS ALREADY APPLIED — :latest and the configs were
+    swapped at steps 1 and 2 and the stack is serving the older code. This aborts the backout's
+    last gate; it does not undo the backout."
+else
+  status_state="THE STACK IS UP and nothing has been rolled back — this aborts the deploy's last
+    gate, it does not undo the deploy."
+fi
+while :; do
+  # Whitespace is removed before matching so a pretty-printed body could never fail a genuine ok.
+  # The body is compact today (Nest hands the object straight to JSON.stringify); this gate must
+  # not be the thing that dies over a formatting change.
+  case "${body//[[:space:]]/}" in *'"status":"ok"'*) break ;; esac
+  [ "$(date +%s)" -lt "$status_deadline" ] \
+    || die "$SITE_BASE/api/health answers, and answers JSON, but has not said \"status\":\"ok\"
+    within ${EDGE_STATUS_TIMEOUT}s. The edge and the API are both fine — this is the APPLICATION
+    reporting itself degraded, and the body names which half: \"worker\":\"stale\" is the scheduler
+    not heartbeating (compose logs worker). $status_state Last body: $body"
+  sleep 3
+  # `|| true` deliberately: the endpoint has already answered once, so a single curl blip should
+  # spend the budget above rather than abort the deploy through `set -e`. An empty body matches
+  # nothing and is printed by the die when the budget runs out.
+  body="$(curl -fsS $CURL_TLS --max-time 10 "$SITE_BASE/api/health" 2>/dev/null || true)"
+done
 note "api through the edge: HTTP 200 $body"
 
 # The APPLICATION half must be the application, and this is the leg that would have caught the
