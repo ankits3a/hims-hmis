@@ -1,8 +1,10 @@
+import { and, eq, inArray } from "drizzle-orm";
 import { createDb, withTx } from "../src/kernel/db/client";
 import { requireEnv } from "../src/kernel/config";
 import { getApprovalType } from "../src/kernel/approvals/types";
 import { getActiveDefinition } from "../src/kernel/workflow/definitions";
 import { usersHoldingRoleAtScope } from "../src/kernel/workflow/roles";
+import { users } from "../src/kernel/db/schema";
 import { loadBillingConfig } from "../src/modules/billing/config";
 import { getGstSettings, listGstCategories } from "../src/modules/tariff/gst-config";
 import { listPriceList, listServices } from "../src/modules/tariff/services";
@@ -137,8 +139,56 @@ async function labDoctorsOfRecord(db: Db): Promise<{ registrationNo: string | nu
   return listDoctors(db, { departmentId, activeOnly: true });
 }
 
+/**
+ * ═══ A HOLDER WHO CANNOT SIGN IN IS NOT A HOLDER — MEASURED ON PRODUCTION 2026-09-21 ═══
+ *
+ * `usersHoldingRoleAtScope` (`kernel/workflow/roles.ts:53`) selects from `role_assignments` and
+ * `temp_role_grants` and **never joins `users`**, so a DEACTIVATED account goes on satisfying every
+ * row that counts holders. Production carries exactly two `admin` assignments at hospital scope and
+ * one of them is `active = f`. The same deploy log therefore asserted both sides of one fact thirty
+ * lines apart: *"full administrators (whole auth.* set, hospital scope, active): 1 — admin"* under
+ * an ACT ON THIS banner, and `ok G4 hospital.second_administrator`. Of two answers on one page the
+ * green one is the one a reader believes, which is what makes this worse than a red.
+ *
+ * ═══ FIXED HERE AND NOT IN `roles.ts`, AND THAT IS THE SMALLER CHANGE ═══
+ *
+ * That function is the workflow engine's role resolver — escalation targets, and the declared-ROLES
+ * check `kernel/workflow/instances.ts` runs on every transition. Narrowing it would change who an
+ * escalation reaches in every module at once and owes its own review. The census's question is the
+ * census's to answer, in the shape `kernel/desk/staff.controller.ts:226` already uses for the team
+ * roll-up: borrow the kernel resolver for WHO HOLDS IT, then drop the accounts that cannot act.
+ * `kernel/auth/sessions.ts:78` refuses a session to an inactive user, so a deactivated holder can
+ * perform no act any row below certifies — including a temp grant's, which is why the filter is
+ * applied to the resolver's whole answer rather than to its permanent half.
+ *
+ * **THIS IS THE ONE PLACE IN THIS FILE THAT READS A TABLE RATHER THAN A LOADER** (D3, header), and
+ * it is disclosed rather than hidden: `users.active` has no loader. `hospitalScopeHolders`
+ * (`users-admin.controller.ts:139`) is active-aware and hospital-scoped but keyed on a PERMISSION,
+ * and every row here is keyed on a ROLE KEY on purpose — a workflow transition consults roles and
+ * not permissions (see `lab_role_held_*` below), so a permission-keyed census would answer a
+ * different question from the engine's.
+ */
+async function activeHoldersAtHospitalScope(db: Db, roleKey: string): Promise<string[]> {
+  const holders = await withTx(db, (tx) => usersHoldingRoleAtScope(tx, roleKey, "hospital"));
+  if (holders.length === 0) return [];
+  const active = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(inArray(users.id, holders), eq(users.active, true)));
+  return active.map((r) => r.id);
+}
+
+/**
+ * EVERY `*_held` ROW IS THIS PREDICATE, so the `active` filter reaches all eleven of them at once —
+ * deliberate, and **it is a behaviour change, stated rather than slipped in**: a hospital whose only
+ * `cashier`, `pathologist`, `ot_incharge` or `pcpndt_incharge` has been deactivated now reads RED
+ * where it read `ok`. That is the same false green `second_administrator` was printing, one row at a
+ * time — a role held only by an account that cannot log in is a seat nobody is sitting in, and §0's
+ * warning ("a login holding all fifteen permissions and none of the four role keys … cannot draw
+ * blood") is about the same gap from the other side.
+ */
 const heldAtHospitalScope = (roleKey: string) => async (db: Db): Promise<boolean> =>
-  (await withTx(db, (tx) => usersHoldingRoleAtScope(tx, roleKey, "hospital"))).length > 0;
+  (await activeHoldersAtHospitalScope(db, roleKey)).length > 0;
 
 export const STANDUP_ROWS: Record<string, Row[]> = {
   /** Not a department: the rows every department's opening rests on. */
@@ -264,8 +314,14 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       gate: "G4", code: "second_administrator",
       // lab-go-live.md §1.3, and it is a blocker there rather than a nicety: DD11's separation of
       // duties is the lab's central control, and one pair of hands holding every role satisfies none.
-      check: async (db) => (await withTx(db, (tx) => usersHoldingRoleAtScope(tx, "admin", "hospital"))).length >= 2,
-      fix: "§1.3: create a SECOND administrator at /admin/users — one pair of hands cannot hold DD11",
+      //
+      // ACTIVE holders, and that predicate IS the 2026-09-21 fix: two `admin` assignments of which
+      // one is deactivated is ONE pair of hands, and this row printed `ok` on exactly that state in
+      // production while `seed:roles`' own census printed the shortfall on the same deploy. The
+      // separation of duties this row exists for cannot be performed by an account that is refused
+      // a session, so the count that matters is the count of people who can log in and act.
+      check: async (db) => (await activeHoldersAtHospitalScope(db, "admin")).length >= 2,
+      fix: "§1.3: create a SECOND administrator at /admin/users — one pair of hands cannot hold DD11. If the screen already lists two, read the ACTIVE column: a deactivated admin is still a `role_assignments` row and is still nobody at the door — reactivate them or appoint somebody else.",
     },
     {
       gate: "G1", code: "roster_masters_seeded",
@@ -562,34 +618,55 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       fix: "§6: there is no printer destination registry — label, A4 and receipt printers are three devices at three seats. Record one test print per device per seat.",
     } as NotModelledRow,
     /**
-     * ═══ Q5 — THE ANALYSER BRIDGE MUST NOT OPEN BEFORE ITS GUARD IS DEPLOYED ═══
+     * ═══ Q5 — THE ANALYSER BRIDGE: ITS GUARD HAS SHIPPED, ITS BENCH HAS NOT ═══
      *
-     * The deployed base already ships `registerInstrument`, its wired controller, migrations
-     * 0070/0071 and a seeded `lab_bridge` role — but NOT 17-E T7a's guard, which is in one of the
-     * migrations still pending. Today that holds only by luck: `lab_instruments` has no rows and
-     * nobody holds `lab_bridge`, so the unguarded path has no actor and no machine.
+     * **THE PROHIBITION THIS ROW CARRIED IS LIFTED (2026-09-21), AND THE WAY IT WENT STALE IS THE
+     * FIRST HALF OF THE LESSON.** It read *"17-E T7a's guard is NOT in the deployed base — do not
+     * register a `lab_instruments` row and do not grant `lab_bridge` until the pending migrations
+     * are deployed"*, and it went on printing that after the catch-up deploy that landed them.
+     * A NOT MODELLED row re-measures nothing: **a sentence about a STATE is a sentence that will one
+     * day be false and print anyway**, which is the same trap §D15 avoided by citing runbook
+     * sections as text rather than by number. So the `fix` below names the ACT and its order, which
+     * stays true whether or not an analyser is ever connected.
      *
-     * ═══ WHY IT IS `NOT MODELLED` AND NOT A CHECK, WHICH IS THE INTERESTING PART ═══
+     * VERIFIED IN THIS TREE BEFORE REWRITING, rather than taken on report: migration `0079`
+     * (`drizzle/0079_lab_rerun_choice.sql`, journal idx 79) adds `reported_choice_at/_by/_reason`
+     * and the partial unique `lab_results_one_choice_idx`; `currentValue` (`lab/results.ts:1144`)
+     * reads `reportedChoiceAt` and returns `undefined` for two live values nobody has chosen
+     * between; and `assertReportable` (`lab/verify.ts`) refuses `result_superseded` and
+     * `rerun_unchosen` at VERIFY — D18's door, the one T7a was missing. `lab-go-live.md §11` now
+     * says it in its own words: the interface EXISTS, no hospital has connected one, and the two
+     * acts that make it reachable are deliberate human ones.
+     *
+     * ═══ WHY IT IS STILL `NOT MODELLED` — A DIFFERENT REASON NOW, WHICH IS THE INTERESTING PART ═══
      *
      * It was written first as a check — green while no instrument exists and nobody holds the role.
      * **The census rejected it on BOTH of its structural invariants** ("on a FRESH database every
-     * checkable row is RED" and "after the deploy's seeds, exactly the G2 rows are green"), and the
-     * rejection is correct rather than inconvenient.
+     * checkable row is RED" and "after the deploy's seeds, exactly the G2 rows are green"), because
+     * this census's grammar is **every row is RED until an act makes it green**: an inverted row —
+     * green until somebody does something dangerous — makes green mean two things on one page, and
+     * the dangerous meaning is the one that looks like "done".
      *
-     * This census's grammar is **every row is RED until an act makes it green**, so a reader
-     * scanning for RED is reading a to-do list. An inverted row — green until somebody does
-     * something dangerous — makes green mean two different things on one page, and the more
-     * dangerous meaning is the one that looks like "done".
+     * That argument was about the prohibition, and the prohibition is gone. What keeps the verdict
+     * is the judgement underneath it: **whether an analyser is COMMISSIONED is not a fact any table
+     * holds.** `lab_instruments` was 0 rows on production at the 2026-09-21 deploy, but `> 0` on it
+     * would only certify that somebody typed a machine in — not that the machine on the bench is the
+     * one whose codes were mapped, and not that the bench has ever seen what a rerun does to a
+     * report. There is no seam to read it through either: `listInstruments` lives in
+     * `lab/instruments.ts` and is not exported from `lab/index.ts`, and this file reads modules
+     * through their own loaders (D3). A human adjudicates, and the row hands them the two sections
+     * they perform.
      *
-     * **The census cannot express "do this, but NOT YET" in a grammar where green means done.**
-     * What it has instead is exactly right for it: NOT MODELLED says a human adjudicates this,
-     * because the thing being judged is not a row in a table — it is whether now is the right time.
-     * `pharmacist_council_number` is here for the same reason from the other direction.
+     * GATE LEFT AT G3 DELIBERATELY — it is half a G4 row and the classification had to be chosen
+     * rather than inherited. The act that gates everything else is registering a MACHINE, which is
+     * this hospital's master data (G3); the `lab_bridge` grant is a G4 fact that is not worth making
+     * until the machine exists. `pharmacist_council_number` is the other row here whose subject is
+     * half people and half register, and it sits the same way round.
      */
     {
       gate: "G3", code: "lab_bridge_not_open_before_its_guard",
       runbook: { file: LAB_RUNBOOK, section: "## 11. What this build does NOT do" },
-      fix: "17-E T7a's guard is NOT in the deployed base. Do not register a `lab_instruments` row and do not grant `lab_bridge` until the pending migrations are deployed — until then the analyser path has no guard and is safe only because nobody can reach it. Re-read this row after the catch-up deploy: once the guard ships, the prohibition lifts and `lab_bridge` becomes an ordinary G4 staffing row.",
+      fix: "§11 and §13 step 3b: 17-E's PROHIBITION IS LIFTED — the guard shipped (migration 0079, and `assertReportable` in `lab/verify.ts` refuses `result_superseded` and `rerun_unchosen` at verify), so an analyser MAY now be connected. What is owed is a commissioning, in this order, and each step below says how to see for yourself whether it has been done. (1) the pathologist registers the analyser (`lab.instruments.manage`) and maps its codes per machine — a value that cannot be named PARKS rather than attaching by guess. (2) a `lab_bridge` SERVICE account is created for the machine: two permissions and nothing else, never a technologist's login, because an account that can both report and re-map codes can rename any test it reports. (3) the bench rehearses §13 step 3b before a patient does — post the same analyte twice as the bridge account, watch BOTH values stay live, and have the bench choose one with a reason; that state is reachable only through an analyser's own route, so no seed and no re-key will ever rehearse it for you. (4) write the rehearsal into `## 14. Executed on UAT` with the date and who watched it. Until (1) and (2) are done this row names work nobody has started; a human reads it and says which.",
     } as NotModelledRow,
   ],
 
@@ -694,8 +771,13 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
        * verify and a scheduled hand-over refuse everyone else (`pharmacist_not_registered`): a
        * counter with role holders and no registrations cannot dispense a single Schedule H line.
        */
+      // ACTIVE holders (2026-09-21), for the reason `activeHoldersAtHospitalScope` gives and for one
+      // more that is local: `pharmacy_role_held` above now refuses a deactivated-only holder, and two
+      // rows in one module disagreeing about who holds `pharmacy` is the C2 shape
+      // (`users-admin.controller.ts`) — two pieces of code answering one question, each defensible
+      // alone. A leaver's council registration stays on file for ever and vouches for nobody.
       check: async (db) => {
-        const holders = await withTx(db, (tx) => usersHoldingRoleAtScope(tx, PHARMACIST_ROLE, "hospital"));
+        const holders = await activeHoldersAtHospitalScope(db, PHARMACIST_ROLE);
         const today = istDayString(new Date());
         for (const userId of holders) {
           if ((await currentRegistration(db, userId, today)) !== null) return true;
@@ -711,8 +793,11 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
        * REGISTRATION_RENEWAL_NOTICE_DAYS, and while nobody has one at all (red until an act). The act that turns it green is filing the renewed
        * certificate; the day it lapses, verify refuses that pharmacist at the counter.
        */
+      // ACTIVE holders, the same correction as the row above — a deactivated pharmacist's expiry
+      // date is not a renewal anybody owes, and counting one would keep this row green on a counter
+      // that has nobody left to refuse.
       check: async (db) => {
-        const holders = await withTx(db, (tx) => usersHoldingRoleAtScope(tx, PHARMACIST_ROLE, "hospital"));
+        const holders = await activeHoldersAtHospitalScope(db, PHARMACIST_ROLE);
         const today = istDayString(new Date());
         // Red until an act (the census grammar): with nothing on file there is nothing to vouch for.
         let anyCurrent = false;

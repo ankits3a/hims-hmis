@@ -20,7 +20,7 @@
 # SCHEDULER-parity surface, this file is the BACKUP surface, and `prometheus.yml`'s `rule_files`
 # list grows by one line to load both.
 #
-# ═══ THE TWO SERIES, AND WHERE THEY COME FROM ═══
+# ═══ THE DRILL'S TWO SERIES, AND WHERE THEY COME FROM ═══
 #
 # Both are served by one custom query in `docker/prod/postgres-exporter/queries.yml`
 # (`hmis_backup_last_drill`), a SELECT over the shipped `events` table using the shipped
@@ -41,6 +41,45 @@
 # drill has never once passed. That is the intended reading and it is the same choice `alerts.yml`
 # makes with its `absent()` leg: "we have never proven we can restore" is not a quieter fact than
 # "we could restore nine days ago". The alert text says which case it is looking at.
+#
+# ═══ THE ARCHIVER SERIES, AND WHY THIS FILE GREW A SECOND GROUP (2026-09-22) ═══
+#
+# The half of the backup story that runs every five minutes instead of once a night was watched by
+# NOTHING. `grep -Ei 'archiv|wal'` across every rule file this box loads returned zero matches
+# until the `hmis-backup-archiving` group below: a broken `archive_command` was visible only to the
+# weekly drill, i.e. up to six days late, and on this cluster it has already happened —
+# `pg_stat_archiver.failed_count` still reads 3, the last of them 2026-08-31 09:00:11, and nobody
+# was told at the time.
+#
+# NO NEW INSTRUMENTATION HERE EITHER, and unlike the drill it needed no new query: these three come
+# from the postgres-exporter image's OWN built-in `pg_stat_archiver` collector. Verified against the
+# running Prometheus on 2026-09-22 rather than remembered — `/api/v1/label/__name__/values` for the
+# names, `/api/v1/query` for the labels and the values quoted beside them:
+#
+#   pg_stat_archiver_last_archive_age   seconds since the last SUCCESSFUL archive   (gauge,   197)
+#   pg_stat_archiver_failed_count       cumulative archive_command failures         (counter, 3)
+#   pg_stat_archiver_archived_count     cumulative segments archived                (counter, 9081)
+#
+# They carry `job="postgres"` and `server="db:5432"` — the SCRAPE's own job label, because they are
+# not the custom query and have no `job` column of their own to win under `honor_labels`. Exactly as
+# with the drill's two series, that is what keeps them outside every matcher in `alerts.yml`, and
+# neither rule below uses a `job=~` matcher.
+#
+# ═══ WHAT THE TWO ARCHIVING RULES STILL DO NOT SEE, STATED OUT LOUD ═══
+#
+# THE NEVER-ARCHIVED CASE. This cluster is not in it (`archived_count` reads 9081), and what the
+# exporter emits when `pg_stat_archiver.last_archived_time` is still NULL was NOT determined here,
+# so nothing below asserts it. A cluster whose `archive_command` has never once worked is caught
+# from the other side regardless: `failed_count` starts climbing at the first forced segment switch,
+# within one `archive_timeout`.
+#
+# `archive_mode` IS AN ENUM AND THE EXPORTER DOES NOT EXPORT IT. There is a
+# `pg_settings_archive_timeout_seconds`; there is no `pg_settings_archive_mode`. A db container
+# recreated WITHOUT the `-c archive_mode=on` line in docker-compose.prod.yml would archive nothing
+# and fail nothing — silent to the failure-count rule. The AGE rule catches it anyway, because a
+# gauge that stops being reset keeps climbing; that is a second reason the age rule is the critical
+# one of the pair.
+
 groups:
   - name: hmis-backup-drill
     rules:
@@ -85,3 +124,148 @@ groups:
             `/opt/hmis-prod/log/restore-drill.log` for the verdict and the stanza check
             (`docker exec --user postgres hmis-prod-db-1 pgbackrest --stanza=hmis check`). Treat
             this as "there is currently no proven backup" until a drill passes.
+
+  - name: hmis-backup-archiving
+    rules:
+      # 900s, AND THE NUMBER IS READ OFF THE db SERVICE'S OWN COMMAND LINE. docker-compose.prod.yml
+      # starts Postgres with `-c archive_timeout=300`, so a cluster that is WRITING ANYTHING AT ALL
+      # forces a segment switch every five minutes and this gauge saws back to near zero that often
+      # — it read 197s on a healthy box while this rule was being written. 900 is three consecutive
+      # forced switches missed.
+      #
+      # THE IDLE CASE IS NOT COVERED BY THAT ARITHMETIC, and the distinction is load-bearing rather
+      # than pedantic. Since PG 9.6 the checkpointer SKIPS the `archive_timeout` switch when no
+      # important WAL record has been written since the last one, so a genuinely silent cluster does
+      # NOT switch and this gauge climbs unbounded — a FALSE CRITICAL, which is the exact failure
+      # this paragraph argues against. It does not bite here because this deployment is never
+      # write-silent for 15 minutes: the worker's scheduler writes on a 60s cadence and the
+      # heartbeat gauge behind `alerts-meta.yml` depends on the same fact. If the worker is ever
+      # stopped while the db is left up — a maintenance window, a debugging session — expect this to
+      # fire, and read it as "nothing is writing" rather than "archiving is broken". Much under ~600 would ride the sawtooth's own peak plus one slow push to a
+      # remote object store and cry wolf; much over it spends detection latency on a condition that
+      # only ever gets worse.
+      #
+      # ONE NUMBER COVERS THREE FAILURES, and that is why the AGE rule is the critical one rather
+      # than the failure count: a silently failing `archive_command`, an `archive_mode` lost to a
+      # recreated container, and a wedged WAL writer all stop this gauge being reset. Counting
+      # failures only ever sees the first of the three.
+      #
+      # CRITICAL, the same reading the two drill rules take, for a harder reason than they have:
+      # while this is true `pg_wal` grows without bound inside the db container, and the end of that
+      # is PGDATA full and Postgres refusing to write — the hospital stops. The drill rules say "we
+      # cannot prove we could restore"; this one says "we are losing the ability to, right now, and
+      # the disk is filling while we discuss it".
+      #
+      # `for: 5m` is confirmation, not patience. Between successful pushes this gauge only climbs,
+      # so five minutes costs nothing and keeps one missed scrape from paging at 03:00.
+      - alert: HmisWalArchiveStalled
+        expr: pg_stat_archiver_last_archive_age > 900
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No WAL archived in over 15 minutes — pg_wal is growing and PITR has stopped"
+          description: >-
+            The newest WAL segment pgBackRest accepted is {{ $value | humanizeDuration }} old, on a
+            cluster whose `archive_timeout=300` forces one every five minutes. Point-in-time
+            recovery is frozen at that moment and `pg_wal` now grows until PGDATA fills and Postgres
+            refuses writes — `pg_wal_size_bytes` is the second hand on it. Run
+            `docker exec --user postgres hmis-prod-db-1 pgbackrest --stanza=hmis check`, then
+            `docker compose -p hmis-prod logs --tail 100 db` for the archive_command's own error.
+
+      # `increase(...[15m]) > 0` AND NOT `> 0`, AND THE DIFFERENCE IS THIS BOX. `failed_count` is
+      # cumulative since `stats_reset`: it reads 3 today from failures that ended on 2026-08-31, so
+      # a bare `pg_stat_archiver_failed_count > 0` would fire the minute it was loaded and never
+      # stop — the same thing as not existing. The window asks the only useful question, which is
+      # whether it is failing NOW. A counter reset (`pg_stat_reset_shared('archiver')`) is handled
+      # by `increase()` itself and under-reports rather than inventing a failure.
+      #
+      # THE 15m WINDOW AND THE `printf "%.0f"` ARE LIFTED FROM alerts-meta.yml's
+      # HmisAlertNotificationsFailing on purpose: identical shape, identical extrapolation artefact,
+      # and an un-piped float is a worse email to read at 03:00.
+      #
+      # WARNING — THE FIRST IN THIS FILE, AND A DELIBERATE DEPARTURE FROM THE THREE CRITICALS ABOVE.
+      # A single failed archive-push against a remote object store is a real, recoverable event:
+      # Postgres retries the same segment, the next attempt succeeds, `archived_count` advances and
+      # nothing was lost. Paging the owner for that is how this file gets ignored. Alertmanager
+      # still DELIVERS warning — `severity = warning` routes to `owner-grouped` in
+      # alertmanager.yml.tpl, batched with a 24h repeat rather than immediate — and if the condition
+      # does not clear, HmisWalArchiveStalled escalates it to a critical page about fifteen minutes
+      # later. The pair is the alert: this is the early word, that one is the emergency.
+      - alert: HmisWalArchiveFailing
+        expr: increase(pg_stat_archiver_failed_count[15m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "archive_command is failing — WAL archiving is retrying, not succeeding"
+          description: >-
+            {{ $value | printf "%.0f" }} archive_command failures in the last 15 minutes
+            (pg_stat_archiver.failed_count). Postgres retries the same segment indefinitely and
+            archives strictly in order, so until this clears NOTHING newer is reaching the
+            repository either. Usual causes: rotated or expired R2 credentials in
+            /opt/hmis-prod/.env.r2, the object store refusing, a full disk.
+            `docker compose -p hmis-prod logs --tail 100 db`.
+
+# ════════════════════════════════════════════════════════════════════════════════════════════════
+# NO RULE FOR THE NIGHTLY FULL'S FRESHNESS — WHAT IS MISSING, AND WHY NOTHING WAS
+# INVENTED IN ITS PLACE (2026-09-22)
+# ════════════════════════════════════════════════════════════════════════════════════════════════
+#
+# THE GAP IS REAL. The nightly full is a HOST CRON, generated by deploy.sh step 7/8:
+#
+#     0 21 * * * root docker exec --user postgres hmis-prod-db-1 \
+#                pgbackrest --stanza=hmis --type=full backup >> .../log/backup.log 2>&1
+#
+# A failure specific to THAT line — the container renamed, `--type=full` failing while archive-push
+# keeps working, the generated crontab overwritten or never installed — is noticed today by the
+# weekly drill and by nothing else, so it carries up to seven days of detection latency. The rule it
+# wants is one line, and the threshold is already chosen so that nobody has to re-derive it:
+#
+#     expr: hmis_backup_last_full_ok_age_seconds > 108000   # 30h = one missed nightly (24h) plus
+#                                                           # 6h of slack for a full that runs long
+#
+# IT IS NOT WRITTEN BECAUSE THAT SERIES DOES NOT EXIST, and no series that does exist answers the
+# question. Checked rather than assumed on 2026-09-22: every metric name in the running Prometheus
+# matching `archiv|wal|backup|hmis_`, and both custom queries in
+# docker/prod/postgres-exporter/queries.yml. What is there is `hmis_backup_last_drill_*` (the weekly
+# RESTORE, not the nightly backup) and `pg_stat_archiver_*` (continuous WAL, not fulls). Neither is
+# a substitute, and saying so is the point of this block:
+#
+#   · The drill restores the NEWEST backup in the repository. If `--type=full` alone stops, the
+#     repository keeps every full it already has — `repo1-retention-full=14` with
+#     `repo1-retention-full-type=count` expires BY COUNT, and a count that stops growing expires
+#     nothing — so the drill goes on restoring an ageing full plus archived WAL and can go on
+#     PASSING. `hmis_backup_last_drill_pass_age_seconds` stays green while the newest full ages past
+#     a week.
+#   · pg_stat_archiver says WAL is shipping. WAL with no recent base backup to replay it onto is a
+#     longer and longer restore, not a backup.
+#
+# AND IT CANNOT SIMPLY BE ADDED TO queries.yml, WHICH IS THE PART WORTH WRITING DOWN. postgres-
+# exporter runs SQL against this cluster, and a completed pgBackRest full leaves NO trace in any
+# Postgres table: its records are `$DEPLOY_DIR/log/backup.log` and the repository's own
+# `backup.info`, in the object store. There is no SELECT, however clever, that answers "when did the
+# last full finish". So the honest options are:
+#
+#   1. THE IN-GRAIN ONE. Give the nightly full the seam the drill already has — a `backup.full_ok`
+#      definition beside the `backup.drill_*` names in apps/core/src/kernel/retention/events.ts,
+#      appended THROUGH `appendEvent` exactly as restore-drill.sh's `emit_verdict` does (its T5
+#      seam, ~line 175), never a hand-written INSERT — and then one more query here, the same shape
+#      as `hmis_backup_last_drill`, epoch sentinel included so that "no full has EVER succeeded"
+#      reads RED and not green:
+#
+#        select extract(epoch from (now() - coalesce(
+#                 (select max(recorded_at) from events where name = 'backup.full_ok'),
+#                 to_timestamp(0))))::float8 as ok_age_seconds
+#
+#      One event definition, one cron wrapper, one query, then the one-line rule above. It touches
+#      deploy.sh and apps/core, which is the only reason it is not part of this file's change.
+#   2. NOT the node-exporter textfile collector. docker-compose.prod.yml starts node-exporter
+#      without `--collector.textfile.directory`, so that route costs a compose change and a mount to
+#      reach an answer option 1 gets from a table that is already partitioned and already backed up.
+#
+# WHAT WAS DELIBERATELY NOT DONE: a 30h rule pointed at `hmis_backup_last_drill_pass_age_seconds`,
+# so that the board would show a backup-freshness alert. It would fire every single day on a
+# perfectly healthy deployment — the drill is WEEKLY — and be silenced inside a week, taking the two
+# real drill rules with it. An alert that can never fire is a lie about this deployment; an alert
+# that always fires is a worse one.

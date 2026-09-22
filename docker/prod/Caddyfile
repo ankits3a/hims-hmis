@@ -47,6 +47,56 @@ hmis.crkmch.com {
 	}
 
 	# ---------------------------------------------------------------------------------------
+	# ACCESS LOGGING — ADDED BY THE 2026-09 POST-DEPLOY SWEEP, BECAUSE EDGE 5xx WAS INVISIBLE.
+	#
+	# There was no `log` directive here at all, and that does NOT mean "logs to stderr": with none,
+	# Caddy's access logging is OFF and `docker logs caddy` carries lifecycle events only. So "no
+	# 5xx in the caddy log" proved nothing during the sweep — the log had never held a request line
+	# in its life — and live probes had to be substituted for the evidence this should have been.
+	#
+	# THIS WIDENS WHAT THE EDGE WRITES DOWN, deliberately: every request the site handles now lands
+	# on disk, `uri` included, so `/api/patients/<id>` paths and client IPs are in a file. Caddy
+	# redacts `Authorization` and `Cookie` to "REDACTED" itself — measured on caddy 2.11.4 in a
+	# throwaway container, not assumed — but the URI is NOT redacted and must not be, since the path
+	# is most of what makes a 5xx line diagnosable. Read the file as what it is: PHI-adjacent.
+	#
+	# WHY /data RATHER THAN /var/log/caddy: this container's only writable mounts are
+	# `caddy_data:/data` and `caddy_config:/config` — `./caddy` is `:ro` and is config. Anywhere
+	# else is the container's ephemeral filesystem, so a deploy that recreated caddy would erase the
+	# log at exactly the moment somebody wants to read it; that is the reasoning `pgbackrest_log`
+	# was created under, applied here. Caddy runs as root in this image and creates the missing
+	# directory itself (0700) — confirmed in a throwaway caddy:2-alpine, never against production.
+	#
+	# THE ROLL NUMBERS ARE LOAD-BEARING, NOT HYGIENE: `caddy_data` also holds the ACME account key
+	# and the issued certificate, so a log left to grow would take TLS down with it. 10 MiB active +
+	# 5 rolled bounds it at ~60 MiB even if nothing compressed; rolled files are gzipped, measured
+	# at ~30:1 on these lines (1 MiB of them → 33 KB), so the real footprint is ~12 MiB. Lines run
+	# ~335 bytes, so a roll is ~31k requests — days of this hospital, not hours. 720h is retention,
+	# which outlives a deploy-to-sweep cycle by a wide margin without turning the volume into an
+	# archive; whichever of size, count and age bites first wins.
+	#
+	# `roll_keep_for`, NOT `roll_keep_days`: the JSON field is `roll_keep_days`, but the Caddyfile
+	# adapter knows only the duration form and rejects the other outright — and a config this file
+	# cannot adapt is deploy.sh step 6's `caddy reload` failing AFTER the build and the migrations.
+	# `720h` adapts to `"roll_keep_days": 30` (checked with `caddy adapt`).
+	#
+	# It covers the :80 redirect too: a plain-HTTP request is logged here with status 308 by the
+	# automatic-HTTPS server. Measured, because the site's logger and that server are not obviously
+	# the same thing — the file header's 308 is now in the log as well as in the drill.
+	# ---------------------------------------------------------------------------------------
+	log {
+		output file /data/logs/access.log {
+			roll_size 10MiB
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		# JSON so the sweep can ask a machine rather than eyeball it: every line carries `status`,
+		# and a 5xx also carries `"level":"error"`, which is the grep that "no 5xx in the caddy log"
+		# was supposed to have been all along.
+		format json
+	}
+
+	# ---------------------------------------------------------------------------------------
 	# THE PARITY LINE — PLAN 11g / DD1. ONE PREFIX, AND THE ORIGIN NOW HAS ONE RULE:
 	# `/api/*` IS THE API, EVERYTHING ELSE IS THE APPLICATION.
 	#

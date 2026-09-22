@@ -162,6 +162,47 @@ describe("runReachLadder", () => {
     expect(await runReachLadder(db, new Date(NOW.getTime() + MIN))).toBe(0);
   });
 
+  // ——————————————— the regression: a relay must not be born already dead ———————————————
+
+  /**
+   * PRODUCTION 2026-09-22 — **28 of 28 `staff_alert_relay_now` rows had `expires_at <
+   * created_at`.** They went straight to `expired` with `attempts = 0` and `last_error` NULL: no
+   * adapter was ever called, no error text was ever written, and 28 `notification.expired` events
+   * were appended for messages nobody was offered. The cause was one word — the relay anchored
+   * `occurredAt` on the ALERT's timestamp, so a `now`-lane relay for a five-day-old backlog alert
+   * expired at `alert + 2h`, an instant already days in the past.
+   *
+   * Nothing in this file would have caught it: every other test seeds an alert minutes old, where
+   * `alert + 2h` is still comfortably ahead of the clock. **The bug lived exactly in the gap
+   * between the fixture's age and the backlog's.** So this test seeds an alert that is OLD —
+   * inside `RELAY_HORIZON_DAYS` so it is still selected, but far past any template window — and
+   * asserts the one property the outbox rows must have whatever the alert's age: they outlive
+   * their own creation.
+   */
+  it("a five-day-old backlog alert relays a row that OUTLIVES its creation, not one born expired", async () => {
+    await seedAlert(asha, { minutesAgo: 5 * 24 * 60 });
+
+    expect(await runReachLadder(db, NOW)).toBe(1);
+
+    const [row] = await outbox(asha);
+    expect(row).toBeDefined();
+    expect(row!.expiresAt).not.toBeNull();
+    /**
+     * **ASSERTED AGAINST `NOW`, NOT AGAINST `row.createdAt` — and that is not a detail.**
+     *
+     * `notifications.created_at` is stamped by the DATABASE's own clock, so in this fixture it is
+     * the real wall time; `expires_at` is computed from the pinned `NOW` of 2026-09-21. Comparing
+     * the two measures the gap between the harness's clock and the machine's, and would fail on a
+     * correct implementation for no reason but the calendar — the same fixture-date-meets-real-
+     * clock trap that has twice reddened `main` on this project. The ladder pass's own clock is
+     * `NOW`, so `NOW` is what the window must open from.
+     *
+     * With the bug: `alert + 2h`, five days BEHIND `NOW`. With the fix: `NOW + 2h`, ahead of it.
+     */
+    expect(row!.expiresAt!.getTime()).toBeGreaterThan(NOW.getTime());
+    expect(row!.expiresAt!.getTime()).toBe(NOW.getTime() + 2 * 60 * MIN);
+  });
+
   // ————————————————————————————— R9, the budget —————————————————————————————
 
   it("R9: the seventh interrupt in an hour becomes ONE digest carrying a count and no kinds", async () => {
