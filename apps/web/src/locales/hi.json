@@ -4204,6 +4204,28 @@
       "refused_one": "एक यहाँ नहीं दिया जा सकता",
       "refused_other": "{{count}} यहाँ नहीं दिए जा सकते",
       "show": "कतार दिखाएँ"
+    },
+    "batch": {
+      "title": "FEFO बैच और शेल्फ़",
+      "fefo": "FEFO",
+      "later": "बाद का बैच",
+      "given": "दिया गया",
+      "chip": "{{batch}} · एक्सपायरी {{expiry}}",
+      "a11y": "बैच {{batch}}, एक्सपायरी {{expiry}}, {{where}}। बैच बदलें",
+      "noShelf": "शेल्फ़ तय नहीं",
+      "rule": "सबसे पहले एक्सपायर होने वाला ऊपर। ऊपर वाली पंक्ति ही जाती है; बाद वाला तभी लें जब वह स्ट्रिप शेल्फ़ पर न हो। स्ट्रिप स्कैन करने से उसका बैच अपने-आप चुन जाता है।",
+      "colBatch": "बैच",
+      "colExpires": "एक्सपायरी",
+      "colWhere": "कहाँ",
+      "colOnHand": "हाथ में",
+      "daysLeft_one": "{{count}} दिन बाकी",
+      "daysLeft_other": "{{count}} दिन बाकी",
+      "monthsLeft_one": "{{count}} महीना बाकी",
+      "monthsLeft_other": "{{count}} महीने बाकी",
+      "fefoFirst": "FEFO · यही पहले दें",
+      "fefoSoon": "FEFO · यही पहले दें — यह सबसे जल्दी एक्सपायर होगा",
+      "keyHint": "जिस लाइन पर हैं उस पर यह खोलता है",
+      "closes": "बंद करता है"
     }
   },
   "pharmacyAuthorise": {

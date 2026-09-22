@@ -4204,6 +4204,28 @@
       "refused_one": "one cannot be dispensed here",
       "refused_other": "{{count}} cannot be dispensed here",
       "show": "Show the line"
+    },
+    "batch": {
+      "title": "FEFO batch & shelf",
+      "fefo": "FEFO",
+      "later": "later batch",
+      "given": "given",
+      "chip": "{{batch}} · exp {{expiry}}",
+      "a11y": "Batch {{batch}}, expires {{expiry}}, {{where}}. Change batch",
+      "noShelf": "shelf not set",
+      "rule": "Nearest expiry first. The top row is what goes out; take a later one only when that strip is not on the shelf. Scanning a strip picks its batch for you.",
+      "colBatch": "batch",
+      "colExpires": "expires",
+      "colWhere": "where",
+      "colOnHand": "on hand",
+      "daysLeft_one": "{{count}} day left",
+      "daysLeft_other": "{{count}} days left",
+      "monthsLeft_one": "{{count}} month left",
+      "monthsLeft_other": "{{count}} months left",
+      "fefoFirst": "FEFO · give this first",
+      "fefoSoon": "FEFO · give this first — it expires soonest",
+      "keyHint": "opens this on the line you are on",
+      "closes": "closes"
     }
   },
   "pharmacyAuthorise": {

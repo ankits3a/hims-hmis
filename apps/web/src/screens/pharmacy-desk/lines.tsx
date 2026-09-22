@@ -8,6 +8,7 @@ import { CopilotOffer, firstLineNeedingHelp } from "./copilot";
 
 const rupees = (paise: number): string => `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 import { SubstituteSheet } from "./substitute";
+import { BatchChip, BatchSheet } from "./batch";
 import { adviceFor, allSettled, blockedFor, canTick, freshTick, isPartial, isSettled, istToday, pickBody, placeable, qtyOf, sigOf, substitutable, verifyBody } from "./work";
 import type { Tick } from "./work";
 import type { PickLine, VerifyLine, WireAlternativeBlock, WireDispense, WireDispenseLine, WireLinePrecheck } from "../../lib/pharmacy-api";
@@ -42,6 +43,9 @@ export function LineList({
   /** The medicine the co-pilot named, carried into the sheet so its offer is one tap and a consent. */
   const [offered, setOffered] = useState<string | null>(null);
   const [resolving, setResolving] = useState<number | null>(null);
+  /* The FEFO batch & shelf sheet (`B`), and the line the pharmacist is on — B opens there. */
+  const [batchFor, setBatchFor] = useState<number | null>(null);
+  const [focusLine, setFocusLine] = useState<number | null>(null);
   const settleAfterDecline = useRef(false);
   const today = istToday();
   /* PD-D18 — whoever manages what the counter sells says where it sits; the aide who picks reads it. */
@@ -130,6 +134,25 @@ export function LineList({
     else settleAfterDecline.current = false;
   };
 
+  /** A line whose batch the pharmacist may still choose: open, worked here, its own shelf (not a substitute's). */
+  const batchable = (l: WireDispenseLine): boolean =>
+    editable && l.status === "open" && l.pickedBatch == null && (l.batches ?? []).length > 0
+    && blockedFor(l, ticks[l.lineIdx]) === null && ticks[l.lineIdx]?.sub == null && ticks[l.lineIdx]?.res == null && l.substitutionType !== "generic";
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "b" && e.key !== "B") return;
+      const el = e.target as HTMLElement | null;
+      if (el !== null && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || document.querySelector("[role=dialog]") !== null) return;
+      const on = dispense.lines.find((l) => l.lineIdx === focusLine && batchable(l)) ?? dispense.lines.find((l) => batchable(l) && ticks[l.lineIdx]?.ticked !== true) ?? dispense.lines.find(batchable);
+      if (on === undefined) return;
+      e.preventDefault();
+      setBatchFor(on.lineIdx);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   const settledCount = dispense.lines.filter((l) => isSettled(l, ticks[l.lineIdx])).length;
   /* The co-pilot speaks about the first line the shelf cannot fill as written (the board's `agchip`). */
   const helpLine = firstLineNeedingHelp(dispense.lines);
@@ -174,6 +197,8 @@ export function LineList({
             onToggleDecline={() => setDeclining((d) => (d === l.lineIdx ? null : l.lineIdx))}
             onSubstitute={() => setSubbing(l.lineIdx)}
             onResolve={() => setResolving(l.lineIdx)}
+            onOpenBatch={batchable(l) ? () => setBatchFor(l.lineIdx) : null}
+            onFocusLine={() => setFocusLine(l.lineIdx)}
             onDecline={(reason) => void decline(l.lineIdx, reason)}
           />
         ))}
@@ -201,6 +226,19 @@ export function LineList({
           }}
         />
       )}
+      {batchFor === null ? null : (
+        <BatchSheet
+          line={dispense.lines.find((l) => l.lineIdx === batchFor)!}
+          tick={ticks[batchFor]}
+          today={today}
+          onClose={() => setBatchFor(null)}
+          onChoose={(batchId) => {
+            /* A chosen batch is the pick's by name; a scan of another pack would contradict it, so it is cleared. */
+            if ((ticks[batchFor]?.batchId ?? null) !== batchId) edit(batchFor, { batchId, scan: "" }, false);
+            setBatchFor(null);
+          }}
+        />
+      )}
       {resolving === null ? null : (
         <ResolveSheet
           dispenseId={dispense.id}
@@ -223,7 +261,7 @@ export function LineList({
 }
 
 function LineRow({
-  line, tick, editable, busy, today, error, precheck, onPlace, prescriberName, onAsk, declining, onEdit, onToggleDecline, onDecline, onSubstitute, onResolve,
+  line, tick, editable, busy, today, error, precheck, onPlace, prescriberName, onAsk, declining, onEdit, onToggleDecline, onDecline, onSubstitute, onResolve, onOpenBatch, onFocusLine,
 }: {
   line: WireDispenseLine;
   tick: Tick | undefined;
@@ -243,6 +281,9 @@ function LineRow({
   onDecline: (reason: string) => void;
   onSubstitute: () => void;
   onResolve: () => void;
+  /** The FEFO batch & shelf sheet for this line, or null when its batch is not the pharmacist's to choose. */
+  onOpenBatch: (() => void) | null;
+  onFocusLine: () => void;
 }): React.ReactElement {
   const { t } = useTranslation();
   const [why, setWhy] = useState("");
@@ -274,6 +315,7 @@ function LineRow({
   /* The batches on the view are the ORIGINAL item's; a substitute is picked from its own shelf by FEFO. */
   const advice = editable && qty !== null && blocked === null && sub === null && res === null ? adviceFor(line, qty, today, tick?.batchId ?? null) : null;
   const partial = tick !== undefined && isPartial(line, tick);
+  const chipShown = line.pickedBatch != null || (advice !== null && advice.kind !== "none");
   const declined = line.status === "declined";
   /* The amber note's own control — the line menu does not draw it a second time (walk finding). */
   const noteOffers = editable && (blocked === "unresolved" ? placeable(line) : blocked === "empty" || blocked === "not_stocked" || blocked === "not_saleable");
@@ -287,7 +329,7 @@ function LineRow({
   const label = `${rx.drug} ${sigOf(rx)}`;
 
   return (
-    <section data-testid={`desk-line-${String(line.lineIdx)}`} style={{ borderTop: line.lineIdx === 0 ? "none" : "1px solid var(--line2)", boxShadow: `inset 3px 0 0 ${bar}` }}>
+    <section data-testid={`desk-line-${String(line.lineIdx)}`} onFocusCapture={onFocusLine} onMouseDown={onFocusLine} style={{ borderTop: line.lineIdx === 0 ? "none" : "1px solid var(--line2)", boxShadow: `inset 3px 0 0 ${bar}` }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "12px 15px" }}>
         <span style={{ width: 21, flexShrink: 0, paddingTop: 1 }}>
           {editable ? (
@@ -359,24 +401,18 @@ function LineRow({
             </span>
           ) : line.location != null ? (
             onPlace !== null && editable ? (
-              <button className="pill" data-testid={`desk-line-${String(line.lineIdx)}-where`} title={t("pharmacyDesk.rack.change")} onClick={() => setPlacing(line.location ?? "")} style={{ marginTop: 5 }}>
-                {line.location}
+              <button className="pill" title={t("pharmacyDesk.rack.change")} onClick={() => setPlacing(line.location ?? "")} style={{ marginTop: 5 }}>
+                {t("pharmacyDesk.rack.change")}
               </button>
-            ) : <span className="pill" data-testid={`desk-line-${String(line.lineIdx)}-where`} style={{ marginTop: 5 }}>{line.location}</span>
+            ) : chipShown ? null : <span className="pill" data-testid={`desk-line-${String(line.lineIdx)}-where`} style={{ marginTop: 5 }}>{line.location}</span>
           ) : onPlace !== null && editable ? (
             <button className="sec" style={{ height: 22, marginTop: 5, fontSize: 11 }} onClick={() => setPlacing("")}>{t("pharmacyDesk.rack.ask")}</button>
           ) : null}
           {placeError !== null ? <span role="alert" style={{ ...soft, background: "var(--red-soft)", color: "var(--red)" }}>{placeError}</span> : null}
 
-          {line.pickedBatch != null ? (
-            <span className="mo" style={{ display: "block", fontSize: 11.5, color: "var(--dim)", marginTop: 3 }} data-testid={`desk-line-${String(line.lineIdx)}-batch`}>
-              {t("pharmacyDesk.givenFrom", { batch: line.pickedBatch.batchNo, expiry: line.pickedBatch.expiryDate ?? "—" })}
-            </span>
-          ) : advice !== null && advice.kind !== "none" ? (
-            <span className="mo" style={{ display: "block", fontSize: 11.5, color: "var(--dim)", marginTop: 3 }} data-testid={`desk-line-${String(line.lineIdx)}-batch`}>
-              {t("pharmacyDesk.fromBatch", { batch: advice.batch.batchNo, expiry: advice.batch.expiryDate ?? "—", n: advice.batch.available })}
-              {tick !== undefined && tick.scan.trim() !== "" ? ` · ${t("pharmacyDesk.scanned")}` : ""}
-            </span>
+          {/* The board's FEFO batch & shelf chip: the batch that goes out, and where it sits. */}
+          {line.pickedBatch != null || (advice !== null && advice.kind !== "none") ? (
+            <span style={{ display: "block" }}><BatchChip line={line} tick={tick} onOpen={onOpenBatch} /></span>
           ) : null}
 
           {declined ? <span style={{ ...soft, background: "var(--gold-soft)" }}>{t("pharmacyDesk.declined", { reason: line.declinedReason ?? "" })}</span> : null}

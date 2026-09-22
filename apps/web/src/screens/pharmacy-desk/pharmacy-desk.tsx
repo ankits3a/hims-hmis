@@ -23,6 +23,7 @@ import type { CollectResult } from "./lines";
 import type { PickLine, Tender, VerifyLine, WireDispense, WireFindResult, WirePatientSummary } from "../../lib/pharmacy-api";
 import "../../styles/paper-pine.css";
 import "../desk-one/desk-one.css";
+import "./pharmacy-desk.css";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════

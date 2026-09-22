@@ -200,7 +200,8 @@ describe("the line list at the window (PD-4)", () => {
     const row = await screen.findByTestId("desk-line-0");
     expect(within(row).getByTestId("desk-line-0-advice")).toHaveTextContent("before the 30-day course ends");
     await userEvent.click(within(row).getByRole("button", { name: "take PAN-FRESH" }));
-    expect(within(row).getByTestId("desk-line-0-batch")).toHaveTextContent("batch PAN-FRESH");
+    expect(within(row).getByTestId("desk-line-0-batch")).toHaveTextContent("later batch");
+    expect(within(row).getByTestId("desk-line-0-batch")).toHaveTextContent("PAN-FRESH");
     await userEvent.click(within(row).getByRole("checkbox"));
     await waitFor(() => expect(posted("/pick")).toEqual([{ lines: [{ lineIdx: 0, batchId: "late" }] }]));
   });
